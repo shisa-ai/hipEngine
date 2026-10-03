@@ -36,12 +36,13 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
 
 
 def test_auto_selects_the_production_route(monkeypatch: pytest.MonkeyPatch) -> None:
-    # `auto` has been the grouped int8 MMQ route since that route became the
-    # production default. The exact routes are selected by pinning them, which
-    # the next test covers.
+    # `auto` is the grouped int8 MMQ route: it pins no owner, and the forward
+    # pass resolves the unpinned default through that route's own default-on
+    # lever (``gemma4_moe_gate_up_mmq_enabled``) with the DS4 MMQ down. The
+    # exact routes are selected by pinning them, which the next test covers.
     monkeypatch.delenv(_PREFILL_MODE_ENV, raising=False)
     assert _prefill_mode() == "auto"
-    assert _prefill_route_flags("auto") == (False, False, True)
+    assert _prefill_route_flags("auto") == (False, False, False)
 
 
 def test_pinned_exact_modes_never_probe_wmma() -> None:

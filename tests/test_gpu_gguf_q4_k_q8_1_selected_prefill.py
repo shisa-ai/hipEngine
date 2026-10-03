@@ -19,6 +19,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_dual_interleaved_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
@@ -26,6 +27,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16,
     gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out,
@@ -1234,6 +1237,7 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     activation_passes: int = 1,
     fused_stride: bool = False,
     fused_stride_rows: int | None = None,
+    fused: bool = False,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -1251,7 +1255,35 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     if activation_passes not in (1, 3):
         raise ValueError("activation_passes must be 1 or 3")
     q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(source_x)
-    if layout == "raw":
+    # ``fused`` mirrors Gemma 4's ``ffn_gate_up_exps``: one per-expert row block
+    # with the gate first. The fixture keeps the halves apart, so the fused
+    # weight is the two concatenated on the output axis and both weight
+    # pointers address one allocation. The raw launcher takes the up half as a
+    # row offset into that allocation; the T16 launcher takes the tile base for
+    # both halves, because its tile index comes from the fused width rather than
+    # from the pointer.
+    qweight_b_offset = 0
+    fused_raw = (
+        np.concatenate((fixture.qweight_a, fixture.qweight_b), axis=1)
+        if fused
+        else None
+    )
+    if fused and layout == "raw":
+        qweight_a = qweight_b = fused_raw
+        qweight_b_offset = (
+            fixture.out_features_a * (fixture.in_features // 256) * 144
+        )
+        launcher = (
+            gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out
+        )
+    elif fused and layout == "t16":
+        qweight_a = qweight_b = repack_gguf_q4_k_tile16(fused_raw).tiles
+        launcher = (
+            gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out
+        )
+    elif fused:
+        raise ValueError(f"fused MMQ32 has no {layout} route")
+    elif layout == "raw":
         qweight_a = fixture.qweight_a
         qweight_b = fixture.qweight_b
         # Q5_K shares the raw block layout -- no repack -- and reaches device
@@ -1262,6 +1294,14 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
             "gguf_q4_k": gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
             "gguf_q5_k": _gguf_q5_k_mmq32_launcher,
         }[quant]
+    elif layout == "raw_k128":
+        # The 128-wide K pass: same weights and same arithmetic as ``raw``, four
+        # Q4_K subblocks staged per pass instead of one.
+        qweight_a = fixture.qweight_a
+        qweight_b = fixture.qweight_b
+        launcher = (
+            gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out
+        )
     elif layout == "x8":
         qweight_a = repack_gguf_q4_k_x8(fixture.qweight_a).tiles
         qweight_b = repack_gguf_q4_k_x8(fixture.qweight_b).tiles
@@ -1381,7 +1421,7 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
             (
                 qweight_a_dev.ptr + fused_up_offset
                 if qweight_b_dev is None
-                else qweight_b_dev.ptr
+                else qweight_b_dev.ptr + qweight_b_offset
             ),
             out_dev.ptr,
             fixture.compact_rows,
@@ -1637,6 +1677,53 @@ def test_q4_k_q8_1_ds4_mmq32_selected_prefill_bf16_matches_ds4_cpu_reference(
             True,
             id="empty-first-multi-block-source-remap",
         ),
+        pytest.param([6, 3], 768, 64, 32, False, id="six-128-groups-uneven"),
+    ],
+)
+def test_q4_k_q8_1_ds4_mmq32x128_selected_prefill_matches_mmq32(
+    counts: list[int],
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    source_remap: bool,
+) -> None:
+    """The 128-wide K pass is the same arithmetic with four times fewer passes.
+
+    It is checked against the 32-wide route *bitwise*, not just against the
+    reference: the accumulation order into each output element is unchanged, so
+    any difference is a staging bug rather than rounding. The reference check
+    then confirms both are correct rather than merely equal.
+    """
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=23,
+    )
+    narrow = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, source_remap=source_remap)
+    wide = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, layout="raw_k128"
+    )
+    np.testing.assert_array_equal(wide, narrow)
+    expected = _q8_1_ds4_selected_reference(fixture)
+    np.testing.assert_allclose(wide, expected, **_TOLERANCE_BF16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b", "source_remap"),
+    [
+        pytest.param([4, 0, 5], 256, 32, 32, False, id="empty-middle-tail"),
+        pytest.param(
+            [0, 17, 31],
+            512,
+            32,
+            64,
+            True,
+            id="empty-first-multi-block-source-remap",
+        ),
     ],
 )
 def test_q4_k_x8_q8_1_ds4_mmq32_selected_prefill_matches_raw_mmq32(
@@ -1712,6 +1799,44 @@ def test_q4_k_t16_q8_1_ds4_mmq32_selected_prefill_matches_raw_mmq32(
     assert float(
         np.mean(np.argmax(expected, axis=-1) == np.argmax(actual, axis=-1))
     ) >= 0.9
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b"),
+    [
+        pytest.param([4, 0, 5], 256, 32, 32, id="empty-middle-tail"),
+        pytest.param([0, 17, 31], 512, 32, 64, id="empty-first-multi-block"),
+        pytest.param([33, 5, 40], 256, 64, 32, id="uneven-crosses-tile-boundary"),
+    ],
+)
+def test_q4_k_t16_fused_q8_1_ds4_mmq32_selected_prefill_matches_raw_fused(
+    counts: list[int],
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+) -> None:
+    """The T16 fused route must reproduce the raw fused route bit for bit.
+
+    Both changes are exercised at once: the resident 16-wide tile layout and the
+    fused gate | up tile run. The raw fused route is the production gemma4
+    expert gate/up owner, so bit equality against it is the contract a route
+    swap depends on.
+    """
+
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=29,
+    )
+    raw = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, fused=True)
+    actual = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, fused=True, layout="t16")
+    expected = _q8_1_ds4_selected_reference(fixture)
+    np.testing.assert_array_equal(actual, raw)
+    np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

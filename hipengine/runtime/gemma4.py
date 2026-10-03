@@ -24,6 +24,8 @@ whose tensors they cannot fails inside the dispatch that could not serve it.
 
 from __future__ import annotations
 
+import contextlib
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Mapping, Sequence
@@ -75,7 +77,11 @@ from hipengine.loading.gemma4_gguf_device import (
 from hipengine.loading.materialize import DeviceTensorAllocation, load_host_array_to_device_as_dtype
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
-from hipengine.runtime.gguf_linear import launch_gguf_linear
+from hipengine.runtime.gguf_linear import (
+    _WMMA_PREFILL_ENV,
+    launch_gguf_linear,
+    wmma_prefill_session,
+)
 from hipengine.runtime.gemma4_int8_kv import (
     Gemma4Int8KVCache,
     int8_kv_consumer_shared_bytes,
@@ -83,6 +89,37 @@ from hipengine.runtime.gemma4_int8_kv import (
 )
 
 _BF16_BYTES = 2
+
+
+@dataclass(frozen=True)
+class Gemma4SharedKV:
+    """A read view of one layer's KV cache, for a consumer that shares it.
+
+    The assistant head attends against this model's KV rather than holding its
+    own, so it needs the two buffer addresses and the live position count, but
+    must not be able to append. This type is that capability: it carries no
+    write offset and no reference to the runner.
+    """
+
+    layer_index: int
+    key_cache: int
+    value_cache: int
+    capacity: int
+    live: int
+    num_kv_heads: int
+    head_dim: int
+
+    @property
+    def kv_width(self) -> int:
+        """Elements per position: ``num_kv_heads * head_dim``."""
+
+        return self.num_kv_heads * self.head_dim
+
+    @property
+    def live_bytes(self) -> int:
+        """BF16 bytes of the live region, which is the readable span."""
+
+        return self.live * self.kv_width * _BF16_BYTES
 _F32_BYTES = 4
 _I64_BYTES = 8
 
@@ -423,6 +460,70 @@ def gemma4_text_config_from_gguf(
     )
 
 
+def gemma4_text_config_from_reader(
+    reader: GGUFReader,
+    *,
+    hf_config: Mapping[str, Any] | None = None,
+) -> Gemma4TextConfig:
+    """Derive the text config from artifact metadata, loading no tensor.
+
+    Split out of :func:`load_gemma4_device_weights` so the attention geometry is
+    available before any weight is resident. The geometry is what decides whether
+    a requested context length is servable, and a caller that discovers that only
+    after loading the artifact has already paid the load.
+    """
+
+    if hf_config is not None:
+        return gemma4_text_config_from_hf(hf_config)
+    info = reader.info
+    tensor_names = tuple(t.name for t in info.tensors)
+    gguf = gemma4_gguf_config_from_metadata(info)
+    return gemma4_text_config_from_gguf(gguf, tensor_names=tensor_names)
+
+
+def gemma4_require_context_capacity(
+    config: Gemma4TextConfig,
+    capacity: int,
+    *,
+    kv_storage: str = "bf16",
+) -> None:
+    """Raise if the *selected* attention consumer cannot serve ``capacity``.
+
+    BF16 attention moves logits to owned global scratch for the implemented
+    256/512 head geometries when the LDS requirement is too large. The direct
+    INT8 consumer instead keeps context-sized logits in LDS. Admission checks
+    only the selected storage consumer, rather than applying one storage's
+    resource bound to another.
+
+    ``gemma4_attention_shared_bytes`` is the repaired BF16 bound: the 256/512
+    head-dimension class kernel moves its logits to request-owned global scratch
+    beyond 64 KiB rather than refusing the context, so a long global-logit
+    context is servable and this does not reintroduce the old 256/512 LDS cap.
+
+    The check is on ``capacity`` and not on any live count, so a sliding window
+    does not lift it: the runner validates the configured context, not the keys
+    a particular query attends to.
+
+    This is a capability refusal and it is deliberately loud and named. It is
+    also deliberately callable without weights, so a caller can raise it before
+    paying for a load rather than after.
+    """
+
+    resolved = str(kv_storage or "auto")
+    if resolved == "auto":
+        resolved = "bf16"
+    if resolved == "int8_per_token_head":
+        for attention in config.attention:
+            int8_kv_consumer_shared_bytes(
+                capacity=int(capacity), head_dim=attention.head_dim
+            )
+        return
+    for attention in config.attention:
+        gemma4_attention_shared_bytes(
+            head_dim=attention.head_dim, keys=int(capacity)
+        )
+
+
 def load_gemma4_device_weights(
     reader: GGUFReader,
     *,
@@ -436,13 +537,7 @@ def load_gemma4_device_weights(
     conversion the GGUF metadata cannot describe.
     """
 
-    info = reader.info
-    tensor_names = tuple(t.name for t in info.tensors)
-    if hf_config is not None:
-        config = gemma4_text_config_from_hf(hf_config)
-    else:
-        gguf = gemma4_gguf_config_from_metadata(info)
-        config = gemma4_text_config_from_gguf(gguf, tensor_names=tensor_names)
+    config = gemma4_text_config_from_reader(reader, hf_config=hf_config)
     specs = plan_gemma4_gguf_resident_specs(reader)
     by_slot = {spec.slot_path: spec for spec in specs}
 
@@ -608,6 +703,18 @@ def _bf16_bits(values: np.ndarray) -> np.ndarray:
     return ((bits + rounding) >> 16).astype(np.uint16)
 
 
+def _gemma4_block_wmma_session(enabled: bool):
+    """Scope the WMMA dense prefill opt-in to one Gemma 4 prefill block.
+
+    An explicitly set ``HIPENGINE_GGUF_WMMA_PREFILL`` wins outright, so the env
+    var stays a working rollback lever rather than something this wrapper
+    silently overrides. When it is unset, a full block opts in and a partial
+    block opts out.
+    """
+
+    if os.environ.get(_WMMA_PREFILL_ENV, "").strip():
+        return contextlib.nullcontext()
+    return wmma_prefill_session(enabled)
 # The dense Q8_0 projections, admitted to the guarded d4x3 MMQ chain per shape.
 #
 # **Calibrated against the exact owner, and only reachable where that is the
@@ -665,6 +772,15 @@ class Gemma4Runner:
     weights: Gemma4DeviceWeights
     capacity: int
     max_block: int = 0
+    #: Bound on the logits projection buffers, in rows. A speculative verify
+    #: reads one row per verified position; the default of one row is what keeps
+    #: a wide prefill from sizing its logits scratch for the whole block.
+    max_logits_rows: int = 1
+    #: The prefill-attention variants the execution profile requests, or ``None``
+    #: for the layer's own automatic route selection. Verification passes the
+    #: explicit strict variant rather than ``None`` so a verify block does not
+    #: fall onto a production prefill route.
+    prefill_attention_variants: tuple[str, ...] | None = None
     #: KV storage request. ``bf16`` is the BF16 comparison path; ``auto`` is
     #: resolved to ``bf16``. ``int8_per_token_head`` selects the BF16-source INT8
     #: writer and the direct INT8 consumers over the owned INT8 cache.
@@ -681,6 +797,11 @@ class Gemma4Runner:
     _caches: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _staging: dict[str, tuple[DeviceBuffer, int]] = field(default_factory=dict, repr=False)
     _position: int = field(default=0, repr=False)
+    # Rows of the most recent block, which is what ``hidden_state`` indexes.
+    _last_rows: int = field(default=0, repr=False)
+    # Logits rows the most recent launch projected, which is what ``_collect_block``
+    # copies home (one, or the verify block's trailing rows).
+    _last_logits_rows: int = field(default=1, repr=False)
     # Rows of post-output_norm state left in ``_normalized`` by the most recent
     # forward that asked for ``return_hidden``; 0 when the caller did not.
     _normalized_hidden_rows: int = field(default=0, repr=False)
@@ -728,6 +849,13 @@ class Gemma4Runner:
                 kv_storage=self._kv_storage_resolved,
                 kv_scale_dtype=self._kv_scale_dtype_resolved,
             )
+        # A verify block projects one logits row per verified position, so the
+        # projection buffers are sized from this bound. Validated after the fit
+        # shrink because a block smaller than the bound cannot carry the rows.
+        if self.max_logits_rows <= 0:
+            raise ValueError("max_logits_rows must be positive")
+        if self.max_logits_rows > self.max_block:
+            raise ValueError("max_logits_rows must not exceed max_block")
         # Every buffer taken below is owned by this runner, so a failure
         # partway through construction must release the ones already taken
         # rather than leaving them to the garbage collector, which does not own
@@ -743,7 +871,12 @@ class Gemma4Runner:
             # lm_head can consume them without recomputing. 2.9 MB at a
             # 512-token block of 2816-wide states, against 25 GB in use.
             self._normalized = self._alloc(self.max_block * hidden * _BF16_BYTES)
-            self._logits = self._alloc(int(config.vocab_size or 0) * _F32_BYTES)
+            # Sized for the largest verify block's trailing rows, not one row:
+            # the default of one row still only fills the base slice, so the
+            # extra capacity is unread unless a caller asks for ``logits_rows``.
+            self._logits = self._alloc(
+                self.max_logits_rows * int(config.vocab_size or 0) * _F32_BYTES
+            )
             # Greedy argmax route (D10): the 16-byte (index, value) result and
             # its partial scratch, pre-allocated beside _logits so no malloc
             # can happen inside a decode step or a captured graph.
@@ -805,24 +938,13 @@ class Gemma4Runner:
     def _validate_attention_shared_memory(self, config: Any) -> None:
         """Refuse a context the *selected* attention consumer cannot fit.
 
-        The BF16 prefill kernel keeps one logit per live key in LDS; the direct
-        INT8 consumer sizes its logit scratch as ``capacity + head_dim + 2 *
-        num_warps`` floats. Those are different bounds, and at head_dim 512 the
-        INT8 bound is the looser of the two -- a context that fits the selected
-        INT8 consumer can still exceed the BF16 one. Validating the unselected
-        bound would refuse a context the selected consumer runs, so this applies
-        exactly one of them, chosen by the resolved storage. Each bound is
-        enforced by the kernel that owns it and neither is loosened here.
+        Delegates to :func:`gemma4_require_context_capacity` so the pre-load
+        check the generator runs and the construction check here cannot drift.
         """
 
-        if self._kv_storage_resolved == "int8_per_token_head":
-            for attention in config.attention:
-                int8_kv_consumer_shared_bytes(
-                    capacity=self.capacity, head_dim=attention.head_dim
-                )
-            return
-        for attention in config.attention:
-            gemma4_attention_shared_bytes(head_dim=attention.head_dim, keys=self.capacity)
+        gemma4_require_context_capacity(
+            config, self.capacity, kv_storage=self._kv_storage_resolved
+        )
 
     def _resolve_kv_storage(self) -> None:
         """Resolve the storage request to a concrete, supported mode.
@@ -927,6 +1049,7 @@ class Gemma4Runner:
         """Rewind to an empty sequence without freeing the cache."""
 
         self._position = 0
+        self._last_rows = 0
         # The exposed states belonged to the sequence just rewound; a consumer
         # must not read them for a prompt that no longer exists.
         self._normalized_hidden_rows = 0
@@ -970,6 +1093,127 @@ class Gemma4Runner:
     @property
     def position(self) -> int:
         return self._position
+
+    @property
+    def layer_count(self) -> int:
+        """Number of blocks this runner holds KV for.
+
+        Read from the config rather than from the BF16 cache list so an INT8
+        runner still reports the model's layer count; a consumer that then asks
+        for a BF16 :meth:`shared_kv` view gets a named capability miss instead
+        of an empty iteration that silently drafts nothing.
+        """
+
+        return len(self.weights.config.attention)
+
+    def shared_kv(self, layer_index: int) -> Gemma4SharedKV:
+        """Return a read view of one layer's BF16 KV cache.
+
+        The Gemma 4 assistant (MTP) head allocates no KV of its own: each of its
+        four blocks attends against one of this model's last two layers, sharing
+        the buffers written here rather than receiving a copy. This is the read
+        side of that binding -- a consumer gets the two buffer addresses, how
+        many positions are live, and the geometry it needs to index them, and
+        has no way to append.
+
+        ``live`` is the position count after the most recent forward, which is
+        what a shared reader must attend over. A consumer that reads while a
+        forward is in flight would see the previous count, so the draft step is
+        expected to run between forwards rather than concurrently with one.
+
+        The INT8 per-token/head cache has no BF16 read view -- the direct INT8
+        consumer owns its own layout -- so this refuses that storage by name
+        rather than returning pointers into a cache that does not exist.
+        """
+
+        if self._int8_kv is not None:
+            raise NotImplementedError(
+                "shared_kv requires BF16 KV storage; the INT8 per-token/head "
+                "cache exposes no BF16 read view for the assistant head"
+            )
+        if not 0 <= layer_index < len(self._kv):
+            raise IndexError(
+                f"layer {layer_index} is out of range for a model with "
+                f"{len(self._kv)} blocks"
+            )
+        attention = self.weights.config.attention[layer_index]
+        entry = self._kv[layer_index]
+        return Gemma4SharedKV(
+            layer_index=int(layer_index),
+            key_cache=int(entry.key_cache),
+            value_cache=int(entry.value_cache),
+            capacity=int(self.capacity),
+            live=int(self._position),
+            num_kv_heads=int(attention.num_kv_heads),
+            head_dim=int(attention.head_dim),
+        )
+
+    def hidden_state(self, row: int = -1) -> DeviceBuffer:
+        """Return the raw hidden state after the last block, for one row.
+
+        This is the tensor the assistant head's pre-projection consumes as
+        ``h_backbone``. ``row`` defaults to the last row of the most recent
+        forward, which is the position the next draft step predicts from; a
+        negative index counts back from that row and a positive one from the
+        start of the block.
+
+        The row count is the most recent forward's, not the accumulated position
+        count: a prefill of 512 followed by a decode of 1 leaves one valid row,
+        and indexing the 513 accumulated positions would read stale hidden state
+        from before the decode.
+
+        The buffer is BF16 and ``hidden_size`` wide, and is the runner's own
+        scratch: it is valid until the next forward pass overwrites it.
+        """
+
+        hidden = int(self.weights.config.hidden_size)
+        rows = int(self._last_rows)
+        if rows <= 0:
+            raise ValueError("no forward pass has run, so there is no hidden state")
+        index = int(row)
+        if index < 0:
+            index += rows
+        if not 0 <= index < rows:
+            raise IndexError(
+                f"row {row} is out of range for the last forward's {rows} rows"
+            )
+        return DeviceBuffer(
+            ptr=int(self._hidden.ptr) + index * hidden * _BF16_BYTES,
+            nbytes=hidden * _BF16_BYTES,
+        )
+
+    def rewind(self, position: int) -> None:
+        """Drop back to an earlier position without clearing the cache.
+
+        A speculative verify pass appends a whole draft and then accepts only a
+        prefix of it, so the cache has to give back the rejected tail. The K/V
+        written past ``position`` is left in place rather than cleared: the next
+        forward overwrites a position before reading it, so clearing would cost
+        the same write as the token that replaces it.
+
+        ``_last_rows`` deliberately survives, because the hidden rows of the
+        forward that was just rewound are still in the scratch buffer and are
+        still the rows the accepted prefix was computed from. That is what lets
+        a caller draft from the last accepted position after rewinding. The next
+        forward replaces both, so a draft must not be taken across one.
+        """
+
+        if self._closed:
+            raise RuntimeError("runner is closed")
+        target = int(position)
+        if not 0 <= target <= self._position:
+            raise ValueError(
+                f"cannot rewind to {target} from position {self._position}"
+            )
+        self._position = target
+        for index in range(len(self._kv)):
+            entry = self._kv[index]
+            self._kv[index] = Gemma4LayerKV(
+                key_cache=entry.key_cache,
+                value_cache=entry.value_cache,
+                capacity=self.capacity,
+                write_offset=target,
+            )
 
     @property
     def normalized_hidden(self) -> DeviceBuffer:
@@ -1016,6 +1260,9 @@ class Gemma4Runner:
         *,
         apply_softcap: bool = True,
         return_hidden: bool = False,
+        logits_rows: int = 1,
+        capture_layers: list[np.ndarray] | None = None,
+        verification: bool = False,
     ) -> np.ndarray:
         """Run ``token_ids`` through the model and return the last row's logits.
 
@@ -1045,23 +1292,64 @@ class Gemma4Runner:
         recomputing. The last row's logits are unchanged by it: the norm writes
         each row independently, so the default path and this one agree
         byte-for-byte on the row the projection reads.
+
+        ``logits_rows=k`` returns the last ``k`` rows' logits as a ``(k, vocab)``
+        array instead of one row, which is what a speculative verify pass reads:
+        it forwards a draft in one call and needs the target's own distribution
+        at every drafted position, not just the last. ``k`` is bounded by
+        ``max_logits_rows``, the constructor's bound on the projection buffers.
+        Each returned row is the same computation a single-token forward would
+        produce for that position: the mask is built from absolute positions, so
+        a row never depends on how many rows accompany it.
+
+        ``verification=True`` keeps a batched speculative block on the strict
+        attention arithmetic used by target decode rather than the production
+        prompt-prefill variants. The strict variant is named explicitly so a
+        verify block does not fall onto the layer's automatic tiled route.
+
+        ``capture_layers`` appends the residual stream after each block, as a
+        ``(rows, hidden)`` BF16 array, to the list it is given. It is a
+        diagnostic: it costs a device-to-host copy per layer, so a generation
+        path does not pass it.
         """
 
         tokens = self._validated_tokens(token_ids)
         rows = len(tokens)
 
-        logits = None
-        last_start = ((rows - 1) // self.max_block) * self.max_block
-        for start in range(0, rows, self.max_block):
-            logits = self._forward_block(
-                tokens[start : start + self.max_block],
-                apply_softcap=apply_softcap,
-                # Only this loop's last block's logits are returned; every
-                # earlier block's copy is overwritten on the next iteration, so
-                # its final norm, projection and device-to-host copy are unread.
-                needs_logits=start == last_start,
-                return_hidden=return_hidden,
+        wanted = int(logits_rows)
+        if not 1 <= wanted <= self.max_logits_rows:
+            raise ValueError(
+                f"logits_rows {wanted} is outside 1..{self.max_logits_rows}, the "
+                f"runner's projection buffer bound"
             )
+
+        if wanted > rows:
+            raise ValueError(f"logits_rows {wanted} exceeds this forward's {rows} rows")
+        logits = None
+        last_start = min(((rows - 1) // self.max_block) * self.max_block, rows - wanted)
+        block_starts = [*range(0, last_start, self.max_block), last_start]
+        for start in block_starts:
+            # Only this loop's last block's logits are returned; every earlier
+            # block's copy is overwritten on the next iteration, so its final
+            # norm, projection and device-to-host copy are unread.
+            last = start == last_start
+            end = rows if last else min(start + self.max_block, last_start)
+            block = tokens[start:end]
+            # A full block opts into the dense WMMA prefill; a partial block or a
+            # verify block stays on the strict route. An explicitly set
+            # HIPENGINE_GGUF_WMMA_PREFILL wins outright inside the session.
+            with _gemma4_block_wmma_session(
+                not verification and len(block) == self.max_block
+            ):
+                logits = self._forward_block(
+                    block,
+                    apply_softcap=apply_softcap,
+                    needs_logits=last,
+                    return_hidden=return_hidden,
+                    logits_rows=wanted if last else 1,
+                    capture_layers=capture_layers,
+                    verification=verification,
+                )
         assert logits is not None
         return logits
 
@@ -1092,12 +1380,14 @@ class Gemma4Runner:
         token = -1
         last_start = ((rows - 1) // self.max_block) * self.max_block
         for start in range(0, rows, self.max_block):
-            token = self._forward_block(
-                tokens[start : start + self.max_block],
-                apply_softcap=apply_softcap,
-                needs_logits=start == last_start,
-                collect_argmax=True,
-            )
+            block = tokens[start : start + self.max_block]
+            with _gemma4_block_wmma_session(len(block) == self.max_block):
+                token = self._forward_block(
+                    block,
+                    apply_softcap=apply_softcap,
+                    needs_logits=start == last_start,
+                    collect_argmax=True,
+                )
         assert token is not None
         return int(token)
 
@@ -1162,8 +1452,15 @@ class Gemma4Runner:
         needs_logits: bool = True,
         return_hidden: bool = False,
         collect_argmax: bool = False,
+        logits_rows: int = 1,
+        capture_layers: list[np.ndarray] | None = None,
+        verification: bool = False,
     ) -> np.ndarray | int:
-        """Run one block of at most ``max_block`` tokens; see :meth:`forward`."""
+        """Run one block of at most ``max_block`` tokens; see :meth:`forward`.
+
+        The dense WMMA prefill opt-in is scoped by the caller, one block at a
+        time, so this stays a plain session nest.
+        """
 
         with self._q8_mmq_prefill_session():
             return self._forward_block_inner(
@@ -1172,6 +1469,9 @@ class Gemma4Runner:
                 needs_logits=needs_logits,
                 return_hidden=return_hidden,
                 collect_argmax=collect_argmax,
+                logits_rows=logits_rows,
+                capture_layers=capture_layers,
+                verification=verification,
             )
 
     def _forward_block_inner(
@@ -1182,10 +1482,16 @@ class Gemma4Runner:
         needs_logits: bool = True,
         return_hidden: bool = False,
         collect_argmax: bool = False,
+        logits_rows: int = 1,
+        capture_layers: list[np.ndarray] | None = None,
+        verification: bool = False,
     ) -> np.ndarray | int:
         """The block body, run under whatever session :meth:`_forward_block` set.
 
         ``needs_logits`` is False for a block whose output ``forward`` discards.
+        ``verification``, ``logits_rows`` and ``capture_layers`` are per-call: a
+        speculative verify pass keeps its batched rows on the strict attention
+        kernel and projects the trailing ``logits_rows`` logit rows.
 
         The body splits into three phases so the decode-graph path can drive
         them separately: stage (position-dependent content, enqueued), launch
@@ -1200,6 +1506,11 @@ class Gemma4Runner:
         rows = len(tokens)
         if rows > self.max_block:
             raise ValueError(f"{rows} tokens exceeds max_block {self.max_block}")
+        projected = int(logits_rows)
+        if not 1 <= projected <= rows:
+            raise ValueError(
+                f"logits_rows {projected} is outside 1..{rows}, this block's rows"
+            )
 
         tables, masks = self._stage_block_content(tokens, stream=0)
         self._launch_block(
@@ -1212,6 +1523,9 @@ class Gemma4Runner:
             stream_moe=-1,
             needs_logits=needs_logits,
             return_hidden=return_hidden,
+            logits_rows=projected,
+            capture_layers=capture_layers,
+            verification=verification,
         )
         if collect_argmax:
             return self._collect_block_argmax(
@@ -1249,6 +1563,7 @@ class Gemma4Runner:
         rows = len(tokens)
         if not needs_logits:
             self._position += rows
+            self._last_rows = rows
             return -1
 
         vocab = int(self.weights.config.vocab_size or 0)
@@ -1278,6 +1593,7 @@ class Gemma4Runner:
         raw = np.empty(4, dtype=np.int64)  # 16 bytes: i64 index + f32 value
         copy_device_to_host(host_array_ptr(raw), self._argmax_out, 16)
         self._position += rows
+        self._last_rows = rows
         return int(raw[0])
 
     def _stage_block_content(
@@ -1286,6 +1602,7 @@ class Gemma4Runner:
         *,
         stream: int,
         keys_extent: int | None = None,
+        key_begin_at: Callable[[Gemma4AttentionGeometry], int] | None = None,
     ) -> tuple[
         dict[Gemma4RopeConfig, tuple[DeviceBuffer, DeviceBuffer]],
         dict[int | None, DeviceBuffer],
@@ -1301,6 +1618,10 @@ class Gemma4Runner:
         capture freezes it to its context bucket so the captured attention
         nodes never change shape, while the mask's *content* still describes
         this block's actual positions.
+
+        ``key_begin_at`` supplies the captured launch's frozen first key.
+        Otherwise masks use this block's actual sliding read range. Both the
+        column extent and origin must match the launch that consumes the mask.
         """
 
         config = self.weights.config
@@ -1354,7 +1675,10 @@ class Gemma4Runner:
             if attention.sliding_window not in masks:
                 masks[attention.sliding_window] = self._stage_upload(
                     f"mask{attention.sliding_window}",
-                    _keep_mask(attention, start, rows, extent),
+                    _keep_mask(
+                        attention, start, rows, extent,
+                        key_begin=None if key_begin_at is None else key_begin_at(attention),
+                    ),
                     stream=stream,
                 )
         return tables, masks
@@ -1371,6 +1695,9 @@ class Gemma4Runner:
         stream_moe: int = -1,
         needs_logits: bool = True,
         return_hidden: bool = False,
+        logits_rows: int = 1,
+        capture_layers: list[np.ndarray] | None = None,
+        verification: bool = False,
     ) -> None:
         """Enqueue every device launch for this block on ``stream``.
 
@@ -1382,6 +1709,11 @@ class Gemma4Runner:
         which also bounds the keys each layer attends) and ``key_begin_at``
         (how far into the cache each layer's attention starts; ``None`` takes
         the actual sliding-window range for ``kv_write_offset``).
+
+        ``verification`` keeps this block on the strict attention variant. It
+        names ``gemma4_plain`` explicitly rather than leaving the variants at
+        ``None``, because ``None`` selects the layer's own automatic tiled/AOTriton
+        route, which is not what a target-verify block must run.
         """
 
         config = self.weights.config
@@ -1454,9 +1786,29 @@ class Gemma4Runner:
                 # is no wider than the window. The layer re-checks the range; this
                 # flag is the mask's *semantics*, which only the builder knows.
                 attention_mask_is_causal=True,
+                # A global layer's window is the whole attended range, so saying
+                # so lets the kernel trim the trailing masked run as it already
+                # trims a sliding layer's leading one. A sliding layer keeps its
+                # own window.
+                window=(
+                    0 if key_begin_at is not None else (
+                        kv_write_offset + rows - key_begin
+                        if attention.sliding_window is None
+                        else int(attention.sliding_window)
+                    )
+                ),
+                prefill_attention_variants=(
+                    ("gemma4_plain",) if verification else self.prefill_attention_variants
+                ),
                 stream=stream,
                 stream_moe=stream_moe,
             )
+            if capture_layers is not None:
+                residual = np.empty((rows, hidden), dtype=np.uint16)
+                copy_device_to_host(
+                    host_array_ptr(residual), self._hidden, residual.nbytes
+                )
+                capture_layers.append(residual)
 
         # The caller wants one next-token distribution, so only the final block
         # computes one. Skipping it here drops a norm, a vocab-wide projection
@@ -1465,18 +1817,28 @@ class Gemma4Runner:
         if not needs_logits:
             return
 
-        # The default path keeps only the last row: the caller wants one
-        # next-token distribution and the earlier rows' logits are never read.
-        # ``return_hidden`` normalizes the whole block instead, so a multi-row
-        # lm_head can read the states already computed. Each row is independent
-        # under rmsnorm, so the row the projection consumes is identical either
-        # way -- asserted byte-for-byte by the live M2 test.
+        # ``return_hidden`` normalizes the whole block so a multi-row lm_head
+        # can read the states already computed; otherwise the projection reads
+        # the trailing ``logits_rows`` rows, one for the default next-token path
+        # and the verify block's rows for a speculative pass. Each row is
+        # independent under rmsnorm, so the row the projection consumes is
+        # identical either way -- asserted byte-for-byte by the live M2 test.
+        projected = int(logits_rows)
+        if not 1 <= projected <= rows:
+            raise ValueError(
+                f"logits_rows {projected} is outside 1..{rows}, this block's rows"
+            )
         if return_hidden:
             norm_rows, norm_input = rows, self._hidden.ptr
             self._normalized_hidden_rows = rows
+            head_rows = projected
+            head_input = self._normalized.ptr + (rows - projected) * hidden * _BF16_BYTES
         else:
-            norm_rows, norm_input = 1, self._hidden.ptr + (rows - 1) * hidden * _BF16_BYTES
             self._normalized_hidden_rows = 0
+            norm_rows = projected
+            norm_input = self._hidden.ptr + (rows - projected) * hidden * _BF16_BYTES
+            head_rows = projected
+            head_input = self._normalized.ptr
         gemma4_rmsnorm_f32w_bf16(
             norm_input,
             self.weights.final_norm.buffer.ptr,
@@ -1487,14 +1849,15 @@ class Gemma4Runner:
             stream=stream,
         )
         head = self.weights.lm_head or self.weights.embed_tokens
-        # With return_hidden the block's states occupy the whole buffer, so the
-        # projection reads the last row's slice rather than the base.
-        head_input = self._normalized.ptr + (norm_rows - 1) * hidden * _BF16_BYTES
+        # ``_collect_block`` copies this many rows home; the decode-graph path
+        # reads the same field so a capture that leaves it at one still copies
+        # exactly the row it projected.
+        self._last_logits_rows = head_rows
         launch_gguf_linear(
             head,
             head_input,
             self._logits.ptr,
-            1,
+            head_rows,
             hidden,
             vocab,
             output_dtype="f32",
@@ -1519,9 +1882,15 @@ class Gemma4Runner:
         rows = len(tokens)
         if not needs_logits:
             self._position += rows
+            self._last_rows = rows
             return np.empty(0, dtype=np.float32)
 
         vocab = int(self.weights.config.vocab_size or 0)
+        # The most recent launch records how many rows it projected: one for the
+        # default next-token path, the verify block's trailing rows otherwise.
+        # The decode-graph path reads the same field, so a capture that projected
+        # one row copies exactly one.
+        projected = max(1, int(self._last_logits_rows))
         # The cap is part of the model's output, applied here rather than in
         # the sampler so every consumer sees the distribution the model
         # defines (both CPU references do the same). It now runs on the
@@ -1536,7 +1905,7 @@ class Gemma4Runner:
         if apply_softcap and cap:
             gemma4_logit_softcap_f32(
                 self._logits.ptr,
-                vocab,
+                projected * vocab,
                 float(np.float32(cap)),
                 stream=int(stream) if stream is not None else 0,
             )
@@ -1546,9 +1915,11 @@ class Gemma4Runner:
 
             get_hip_runtime().stream_synchronize(int(stream))
 
-        logits = np.empty(vocab, dtype=np.float32)
+        shape = (projected, vocab) if projected > 1 else (vocab,)
+        logits = np.empty(shape, dtype=np.float32)
         copy_device_to_host(host_array_ptr(logits), self._logits, logits.nbytes)
         self._position += rows
+        self._last_rows = rows
         return logits
 
     def _stage_upload(self, name: str, values: np.ndarray, *, stream: int = 0) -> DeviceBuffer:
@@ -1601,36 +1972,46 @@ def _sliding_read_range(
     start: int,
     rows: int,
 ) -> int:
-    """First cached key a decode step must walk, or 0 when nothing is skipped.
+    """First cached key this block must walk, or 0 when nothing is skipped.
 
     A sliding layer's keep-mask zeroes every key outside its window, but the
     mask is full width, so the attention kernel walks the whole live context
     and the walk is what costs: measured on the RX 7900 XTX, the decode kernel's
     time tracks ``keys``, not the number of live keys. Gemma 4 has 25 sliding
     layers of 30, so at context 4096 that is 3073 keys walked per layer whose
-    weight is exactly zero.
+    weight is exactly zero. Prefill pays that per row, so its attention cost
+    grows with the square of the prompt length while a sliding layer can never
+    need more than ``window`` keys for any one row.
 
     Skipping them is bit-exact. A masked key contributes ``exp(-inf) = 0`` to
     the denominator and the same to the weighted sum, and dropping terms whose
     value is zero leaves the surviving terms in their original order, so the
     reduction is unchanged rather than merely close. The one thing that has to
     hold is that the skipped keys are *exactly* the masked ones; the unit tests
-    pin that against the mask itself for a range of window and context lengths.
+    pin that against the mask itself for a range of window, context and block
+    lengths.
 
-    Only a one-row block may skip. A prefill block's rows sit at different
-    positions and so have different windows, and its mask rows are strided by
-    the full key count, so the single pointer offset this enables would read the
-    wrong mask row rather than a shorter one.
+    The bound is the first row's. A block's rows sit at ``start .. start + rows
+    - 1``, and a sliding layer keeps key ``k`` for query ``q`` only while
+    ``q - k < window``, so ``start`` is the earliest query in the block and
+    ``start - window + 1`` is the earliest key any row of it can read. Later
+    rows have later windows and cannot need anything earlier, so this is exact
+    for the block rather than a heuristic. For a one-row block it reduces to
+    ``live - window``, which is what the decode path has always used.
+
+    The mask has to move with this. The kernel indexes it as ``keep_mask + token
+    * keys`` with ``keys`` shortened by ``key_begin``, so ``_keep_mask`` builds
+    exactly that many columns starting at ``key_begin`` and the layer wrapper
+    passes the mask base unshifted.
     """
 
     window = attention.sliding_window
-    if window is None or rows != 1:
+    if window is None:
         return 0
     window = int(window)
     if window <= 0:
         raise ValueError(f"sliding_window must be positive, got {window}")
-    live = start + rows
-    return max(0, live - window)
+    return max(0, start - window + 1)
 
 
 def _keep_mask(
@@ -1638,22 +2019,34 @@ def _keep_mask(
     start: int,
     rows: int,
     keys_extent: int | None = None,
+    *,
+    key_begin: int | None = None,
 ) -> np.ndarray:
-    """Build the ``(rows, keys)`` uint8 keep-mask for one block.
+    """Build the ``(rows, keys - key_begin)`` uint8 keep-mask for one block.
 
     A position may attend to a key at or before it, and on a sliding layer only
-    within ``sliding_window`` of it. The mask covers the cached range this
-    block attends: ``start + rows`` columns by default, or ``keys_extent``
-    columns when the decode-graph capture freezes the shape to its context
-    bucket. Columns past the live range are kept False, so one bucket-shaped
-    mask reads as the exact mask for every position inside that bucket.
+    within ``sliding_window`` of it. The mask is shortened to the cached range
+    this block attends: column 0 is key ``key_begin`` and the last column is key
+    ``keys - 1``, where ``keys`` is ``start + rows`` by default or ``keys_extent``
+    when the decode-graph capture freezes the shape to its context bucket.
+    Columns past the live range are kept False, so one bucket-shaped mask reads
+    as the exact mask for every position inside that bucket.
     """
 
     keys = start + rows if keys_extent is None else int(keys_extent)
     if keys < start + rows:
         raise ValueError(f"keys_extent {keys} must cover {start + rows} key positions")
+    # Shortened to the block's own read range: column 0 is key ``key_begin``,
+    # which is the same first key ``_sliding_read_range`` hands the layer and the
+    # kernel indexes as ``keep_mask + token * keys`` with ``keys`` shortened by
+    # the same amount. A full-width mask would address the wrong row from the
+    # second row on.
+    first_live = _sliding_read_range(attention, start, rows)
+    key_begin = first_live if key_begin is None else int(key_begin)
+    if not 0 <= key_begin <= first_live:
+        raise ValueError(f"key_begin {key_begin} must be in 0..{first_live}")
     queries = np.arange(start, start + rows, dtype=np.int64)[:, None]
-    key_positions = np.arange(keys, dtype=np.int64)[None, :]
+    key_positions = np.arange(key_begin, keys, dtype=np.int64)[None, :]
     keep = key_positions <= queries
     if attention.sliding_window is not None:
         keep &= (queries - key_positions) < int(attention.sliding_window)

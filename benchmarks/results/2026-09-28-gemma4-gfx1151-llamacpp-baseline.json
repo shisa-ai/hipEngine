@@ -1,0 +1,64 @@
+{
+ "kind": "gemma4_reference_baseline",
+ "performance_claim": false,
+ "recorded": "2026-09-28, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 126976 MiB), Gemma 4 26B-A4B UD-Q4_K_XL",
+ "why": "The Gemma 4 campaign's llama.cpp reference was 68.92 tok/s decode, measured on gfx1100 (W7900). This host is gfx1151 and per docs/OPTIMIZATION.md section 2 the two are independent lanes, so that row cannot be used here. The objective asks for the gfx1151 implementation and for llama.cpp baseline numbers, so this records the missing same-host reference.",
+ "artifact": {
+  "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "size_bytes": 17010980576,
+  "gguf_version": 3,
+  "architecture": "gemma4",
+  "name": "Gemma-4-26B-A4B-It",
+  "tensors": 658,
+  "kv_pairs": 60,
+  "block_count": 30
+ },
+ "reference": {
+  "implementation": "llama.cpp",
+  "build": "17252c769 (10685)",
+  "binary": "~/llama.cpp/llama.cpp-hip/build-hip/bin/llama-bench",
+  "backend": "ROCm",
+  "device": "AMD Radeon 8060S Graphics, gfx1151 (0x1151), Wave Size 32",
+  "command": "env -u HIP_VISIBLE_DEVICES ~/llama.cpp/llama.cpp-hip/build-hip/bin/llama-bench -m /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf -p 512,1024,2048,4096 -n 128 -r 3 -ngl 99",
+  "tok_s": {
+   "pp512": 1012.98,
+   "pp512_sd": 31.24,
+   "pp1024": 1057.48,
+   "pp1024_sd": 0.91,
+   "pp2048": 1067.14,
+   "pp2048_sd": 4.05,
+   "pp4096": 1039.85,
+   "pp4096_sd": 52.38,
+   "tg128": 41.92,
+   "tg128_sd": 0.11
+  },
+  "reading": "prefill is flat across a 512 to 4096 token prompt (1013 to 1040, no monotone trend, spread inside 3 percent). Decode is 41.92 tok/s at every prompt length tested."
+ },
+ "engine": {
+  "implementation": "hipEngine, branch gemma4 at bff332cc5",
+  "backend": "hip_gfx1100 kernels on gfx1151",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python scripts/gemma4_campaign_bench.py --prompt <P> --output 128 --samples 3 --warmup 1 --expect-gpu 8060S --out /tmp/audit_<P>.json",
+  "tok_s": {
+   "pp512": 271.0,
+   "pp1024": 251.0,
+   "pp2048": 220.0,
+   "tg128_at_512": 20.97,
+   "tg128_at_1024": 20.03,
+   "tg128_at_2048": 19.55
+  },
+  "notes": "three samples per point, spread under 1 percent at every point. path parity true in every run. Decode is the campaign bench's own decode rate over 127 steps after a warm prompt."
+ },
+ "gap": {
+  "pp512": 3.74,
+  "pp1024": 4.21,
+  "pp2048": 4.85,
+  "tg128": 2.09,
+  "reading": "the objective's decode target of 2x is the same-host llama.cpp decode rate almost exactly. Prefill is 3.7x to 4.9x, not the 30x the objective describes, because the campaign's grouped expert routes already took 512/128 prefill from 11.617 to 4.200 s on gfx1100 (2.77x) before this measurement."
+ },
+ "the_structural_finding": {
+  "observation": "llama.cpp prefill is flat in prompt length while this engine's degrades: 271, 251, 220 tok/s at 512, 1024, 2048 against a flat 1013 to 1067.",
+  "why_it_matters": "a weight-bandwidth-bound prefill should be flat or improve slightly with length, as llama.cpp's does. A falling rate means a cost that grows faster than the token count, and it widens the gap exactly where the objective's long-prompt cases live.",
+  "not_yet_attributed": "the campaign's iteration 49 profile on gfx1100 attributes 81 percent of a 512-token prefill to three weight-bound routes and 10.6 percent to attention. Attention is the only O(n^2) term in that list, so it is the first candidate for the degradation, but that profile is a gfx1100 lane and no equivalent attribution has been run on gfx1151."
+ },
+ "not_a_promotion": "This row is a reference baseline. It promotes nothing, changes no default, and is not a hipEngine performance claim against a prior hipEngine row."
+}

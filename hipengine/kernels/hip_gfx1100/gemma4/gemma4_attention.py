@@ -33,7 +33,11 @@ from __future__ import annotations
 
 import ctypes
 from collections.abc import Callable
+import os
+import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable, Sequence
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
@@ -50,7 +54,8 @@ _SYMBOL_DECODE_BF16 = "hipengine_gemma4_attention_decode_bf16"
 _SYMBOL_DECODE_F32 = "hipengine_gemma4_attention_decode_f32"
 _SYMBOL_DECODE_VARIANT = "hipengine_gemma4_attention_decode_variant"
 
-_ARGTYPES_PREFILL = (
+# The five buffers and the geometry scalars both prefill and decode share.
+_ARGTYPES_COMMON = (
     ctypes.c_void_p,
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -65,9 +70,11 @@ _ARGTYPES_PREFILL = (
     ctypes.c_int64,
 )
 
-# Decode adds the two-phase split's scratch pointer and slice count; the prefill
-# symbols keep the twelve-argument form.
-_ARGTYPES_DECODE = _ARGTYPES_PREFILL + (ctypes.c_void_p, ctypes.c_int)
+# Prefill adds the sliding walk's window and this block's start in the mask's
+# column frame; decode adds the two-phase split's scratch pointer and slice
+# count instead. The two tails are independent, so they cannot share one base.
+_ARGTYPES_PREFILL = _ARGTYPES_COMMON + (ctypes.c_int64, ctypes.c_int64)
+_ARGTYPES_DECODE = _ARGTYPES_COMMON + (ctypes.c_void_p, ctypes.c_int)
 
 _DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
 _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
@@ -530,6 +537,8 @@ def _launch_prefill(
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
     scratch: Gemma4AttentionScratch | None = None,
+    window: int = 0,
+    row_offset: int = 0,
 ) -> None:
     _check_prefill_shape(tokens, num_heads, num_kv_heads, head_dim)
     key_count = tokens if keys is None else int(keys)
@@ -648,6 +657,8 @@ def _launch_prefill(
         ctypes.c_float(scale),
         stream,
         key_count,
+        window,
+        row_offset,
     )
     _check_launch(runtime, err)
 
@@ -669,6 +680,8 @@ def gemma4_attention_prefill_bf16(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     scratch: Gemma4AttentionScratch | None = None,
+    window: int = 0,
+    row_offset: int = 0,
 ) -> None:
     """Masked, ungated prefill attention over ``tokens`` queries.
 
@@ -683,6 +696,14 @@ def gemma4_attention_prefill_bf16(
     attending over the live context. At ``tokens == 1`` this routes to the
     decode kernel (:func:`attention_symbol`); its output is bit-identical to the
     block kernel's.
+
+    ``window`` and ``row_offset`` let a row skip its leading masked columns.
+    ``row_offset`` is the block's start in the mask's column frame, so row
+    ``t``'s own position is ``row_offset + t``; with ``window > 0`` the walk
+    starts at column ``max(0, row_offset + t - window + 1)``. That is only
+    sound when the mask is zero below that column, which a sliding causal mask
+    guarantees and an arbitrary caller-supplied mask does not -- so ``window``
+    defaults to 0, meaning no promise and a walk from column 0.
     """
 
     _launch_prefill(
@@ -702,6 +723,8 @@ def gemma4_attention_prefill_bf16(
         library=library,
         runtime=runtime,
         scratch=scratch,
+        window=window,
+        row_offset=row_offset,
     )
 
 
@@ -722,12 +745,15 @@ def gemma4_attention_prefill_f32(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     scratch: Gemma4AttentionScratch | None = None,
+    window: int = 0,
+    row_offset: int = 0,
 ) -> None:
     """F32 entry point, for validating against the f32 CPU reference.
 
     The reference works in f32, so comparing through a BF16 round trip would
     measure the rounding rather than the kernel. Routed like the BF16 wrapper:
-    ``tokens == 1`` selects the decode kernel.
+    ``tokens == 1`` selects the decode kernel. ``window``/``row_offset`` carry
+    the same meaning as in :func:`gemma4_attention_prefill_bf16`.
     """
 
     _launch_prefill(
@@ -747,6 +773,8 @@ def gemma4_attention_prefill_f32(
         library=library,
         runtime=runtime,
         scratch=scratch,
+        window=window,
+        row_offset=row_offset,
     )
 
 
@@ -911,9 +939,9 @@ def register_gemma4_attention_kernels(*, replace: bool = False) -> None:
         gemma4_attention_prefill_tiled,
     )
 
-    for quant in ("gguf_q4_k_m", "gguf_q4_k_xl", "gguf_q8_0", "gguf"):
+    for quant in PREFILL_ATTENTION_QUANTS:
         register(
-            KernelKey("hip_gfx1100", "prefill_attention", quant, "gemma4_plain"),
+            KernelKey("hip_gfx1100", "prefill_attention", quant, PREFILL_ATTENTION_PLAIN),
             gemma4_attention_prefill_bf16,
             replace=replace,
         )
@@ -922,3 +950,211 @@ def register_gemma4_attention_kernels(*, replace: bool = False) -> None:
             gemma4_attention_prefill_tiled,
             replace=replace,
         )
+
+
+# --- prefill-attention variant selection -----------------------------------
+#
+# The strict kernel is the family's only unconditional entry point. Two WMMA
+# flash prefills exist (``gemma4_wmma_flash`` for the sliding geometry and
+# ``gemma4_wmma_flash_full`` for the full one) and an execution profile may
+# select either. Selection is a capability match against what each variant
+# declares it implements -- never a model name, artifact path, hash, or an
+# enumerated list of known-good inputs -- and a miss falls back to the strict
+# kernel with a reason rather than raising, because a profile is a performance
+# decision and not a licence to fail a request.
+
+PREFILL_ATTENTION_PLAIN = "gemma4_plain"
+PREFILL_ATTENTION_WMMA_FLASH = "gemma4_wmma_flash"
+PREFILL_ATTENTION_WMMA_FLASH_FULL = "gemma4_wmma_flash_full"
+PREFILL_ATTENTION_QUANTS = ("gguf_q4_k_m", "gguf_q4_k_xl", "gguf_q8_0", "gguf")
+
+
+def _requested_variants(requested: str | Sequence[str] | None) -> tuple[str, ...]:
+    """Normalise a profile request into an ordered tuple of variant names."""
+
+    if requested is None:
+        return ()
+    if isinstance(requested, str):
+        return (requested,) if requested else ()
+    return tuple(str(name) for name in requested if name)
+
+
+@dataclass(frozen=True, slots=True)
+class PrefillAttentionSelection:
+    """One resolved prefill-attention launcher plus why it was chosen."""
+
+    variant: str
+    launcher: Callable[..., int]
+    requested_variant: str | Sequence[str] | None
+    reason: str
+
+    @property
+    def is_strict(self) -> bool:
+        return self.variant == PREFILL_ATTENTION_PLAIN
+
+    def describe(self) -> str:
+        """One line naming the variant and the reason, for diagnostics."""
+
+        requested = _requested_variants(self.requested_variant)
+        return (
+            f"prefill_attention={self.variant} "
+            f"requested={','.join(requested) or PREFILL_ATTENTION_PLAIN} "
+            f"({self.reason})"
+        )
+
+
+def _select_prefill_attention(
+    *,
+    requested_variant: str | Sequence[str] | None = None,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    tokens: int | None = None,
+) -> PrefillAttentionSelection:
+    """Resolve a prefill-attention variant for one head geometry.
+
+    ``requested_variant`` is what an execution profile selected -- one variant
+    name or an ordered tuple of them, or ``None`` for the strict kernel. Each
+    candidate is admitted only where it declares the geometry implemented; the
+    first that matches wins. Every other input keeps the strict kernel, which
+    covers every geometry the family serves.
+
+    ``tokens`` is the query-block width of the call being served, and a block of
+    one is a decode step. The candidates are prefill kernels: their tiling is 16
+    query rows wide, so one row wastes fifteen sixteenths of every WMMA op, and
+    the strict path has a dedicated decode kernel for exactly that case (see
+    :func:`gemma4_attention_prefill_bf16`). A one-token block therefore keeps the
+    strict kernel whatever geometry it has. ``None`` means the caller is asking
+    about the geometry alone and accepts the multi-row answer.
+    """
+
+    requests = _requested_variants(requested_variant)
+    if not requests or requests == (PREFILL_ATTENTION_PLAIN,):
+        return PrefillAttentionSelection(
+            variant=PREFILL_ATTENTION_PLAIN,
+            launcher=gemma4_attention_prefill_bf16,
+            requested_variant=requested_variant,
+            reason="strict",
+        )
+    if tokens is not None and tokens <= 1:
+        return PrefillAttentionSelection(
+            variant=PREFILL_ATTENTION_PLAIN,
+            launcher=gemma4_attention_prefill_bf16,
+            requested_variant=requested_variant,
+            reason=(
+                f"decode: a {tokens}-token block routes to the decode kernel, "
+                "and the requested variants are multi-row prefill kernels"
+            ),
+        )
+    refusals: list[str] = []
+    for request in requests:
+        if request == PREFILL_ATTENTION_PLAIN:
+            return PrefillAttentionSelection(
+                variant=PREFILL_ATTENTION_PLAIN,
+                launcher=gemma4_attention_prefill_bf16,
+                requested_variant=requested_variant,
+                reason="strict",
+            )
+        if request == PREFILL_ATTENTION_WMMA_FLASH:
+            # Imported here so the candidate's module -- and the build of its
+            # .so -- is only reached once something actually asks for it.
+            from .gemma4_attention_prefill_wmma import (
+                gemma4_attention_prefill_wmma_bf16,
+                gemma4_attention_prefill_wmma_supported,
+            )
+
+            if gemma4_attention_prefill_wmma_supported(
+                num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
+            ):
+                return PrefillAttentionSelection(
+                    variant=PREFILL_ATTENTION_WMMA_FLASH,
+                    launcher=gemma4_attention_prefill_wmma_bf16,
+                    requested_variant=requested_variant,
+                    reason="capability match",
+                )
+            refusals.append(
+                f"{PREFILL_ATTENTION_WMMA_FLASH} implements head_dim "
+                f"{HEAD_DIM_WMMA} with GQA ratio {GQA_RATIO_WMMA}, got head_dim "
+                f"{head_dim} with {num_heads}q/{num_kv_heads}kv"
+            )
+            continue
+        if request == PREFILL_ATTENTION_WMMA_FLASH_FULL:
+            from .gemma4_attention_prefill_wmma_full import (
+                gemma4_attention_prefill_wmma_full_bf16,
+                gemma4_attention_prefill_wmma_full_supported,
+            )
+
+            if gemma4_attention_prefill_wmma_full_supported(
+                num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
+            ):
+                return PrefillAttentionSelection(
+                    variant=PREFILL_ATTENTION_WMMA_FLASH_FULL,
+                    launcher=gemma4_attention_prefill_wmma_full_bf16,
+                    requested_variant=requested_variant,
+                    reason="capability match",
+                )
+            refusals.append(
+                f"{PREFILL_ATTENTION_WMMA_FLASH_FULL} implements head_dim "
+                f"{HEAD_DIM_WMMA_FULL} with GQA ratio {GQA_RATIO_WMMA_FULL}, got "
+                f"head_dim {head_dim} with {num_heads}q/{num_kv_heads}kv"
+            )
+            continue
+        refusals.append(f"unknown variant {request!r}")
+    return PrefillAttentionSelection(
+        variant=PREFILL_ATTENTION_PLAIN,
+        launcher=gemma4_attention_prefill_bf16,
+        requested_variant=requested_variant,
+        reason="capability miss: " + "; ".join(refusals),
+    )
+
+
+# Each candidate's declared geometry, mirrored so the refusals above can name it
+# without importing the candidate's module.
+HEAD_DIM_WMMA = 256
+GQA_RATIO_WMMA = 2
+HEAD_DIM_WMMA_FULL = 512
+GQA_RATIO_WMMA_FULL = 8
+
+# One line per distinct (variant, head_dim), on stderr, when asked. The profile
+# resolves to a *request*; only the layer knows the geometry, so this is the
+# only place that can report what actually ran. A path that silently falls back
+# while passing its own targeted test is a defect, and this is what makes the
+# fallback visible.
+PREFILL_ATTENTION_LOG_ENV = "HIPENGINE_GEMMA4_PREFILL_ATTENTION_LOG"
+_logged_selections: set[tuple[str, int]] = set()
+
+
+def select_prefill_attention(
+    *,
+    requested_variant: str | Sequence[str] | None = None,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    tokens: int | None = None,
+) -> PrefillAttentionSelection:
+    """Resolve a prefill-attention variant for one head geometry, and report it.
+
+    The selection itself is :func:`_select_prefill_attention`; this wrapper adds
+    the one-shot diagnostic the log env var turns on. ``tokens`` is passed
+    through: see that function for why a one-token block keeps the strict
+    kernel.
+    """
+
+    selection = _select_prefill_attention(
+        requested_variant=requested_variant,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        tokens=tokens,
+    )
+    if os.environ.get(PREFILL_ATTENTION_LOG_ENV, "").strip():
+        marker = (selection.variant, int(head_dim))
+        if marker not in _logged_selections:
+            _logged_selections.add(marker)
+            print(
+                f"[gemma4-attention] {selection.describe()} "
+                f"{num_heads}q/{num_kv_heads}kv head_dim={head_dim}",
+                file=sys.stderr,
+                flush=True,
+            )
+    return selection

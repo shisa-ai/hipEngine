@@ -1,0 +1,447 @@
+{
+  "kind": "gemma4_assistant_tensor_spec",
+  "artifact": "mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+  "bytes": 461766816,
+  "architecture": "gemma4-assistant",
+  "meta": {
+    "general.architecture": "gemma4-assistant",
+    "gemma4-assistant.block_count": 4,
+    "gemma4-assistant.context_length": 262144,
+    "gemma4-assistant.embedding_length": 1024,
+    "gemma4-assistant.feed_forward_length": 8192,
+    "gemma4-assistant.attention.head_count": 16,
+    "gemma4-assistant.attention.head_count_kv": "[8, 8, 8, '...']",
+    "gemma4-assistant.rope.freq_base": 1000000.0,
+    "gemma4-assistant.rope.freq_base_swa": 10000.0,
+    "gemma4-assistant.attention.layer_norm_rms_epsilon": 9.999999974752427e-07,
+    "gemma4-assistant.attention.key_length": 512,
+    "gemma4-assistant.attention.value_length": 512,
+    "gemma4-assistant.attention.sliding_window": 1024,
+    "gemma4-assistant.attention.shared_kv_layers": 4,
+    "gemma4-assistant.embedding_length_per_layer_input": 0,
+    "gemma4-assistant.attention.sliding_window_pattern": "[1, 1, 1, '...']",
+    "gemma4-assistant.attention.key_length_swa": 256,
+    "gemma4-assistant.attention.value_length_swa": 256,
+    "gemma4-assistant.rope.dimension_count": 512,
+    "gemma4-assistant.rope.dimension_count_swa": 256,
+    "gemma4-assistant.embedding_length_out": 2816,
+    "gemma4-assistant.nextn_predict_layers": 4
+  },
+  "tensors": [
+    {
+      "name": "rope_freqs.weight",
+      "dims": [
+        256
+      ],
+      "ggml_type": 0,
+      "bytes": 1024
+    },
+    {
+      "name": "token_embd.weight",
+      "dims": [
+        1024,
+        262144
+      ],
+      "ggml_type": 8,
+      "bytes": 285212672
+    },
+    {
+      "name": "blk.0.attn_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.0.layer_output_scale.weight",
+      "dims": [
+        1
+      ],
+      "ggml_type": 0,
+      "bytes": 32
+    },
+    {
+      "name": "blk.0.ffn_down.weight",
+      "dims": [
+        8192,
+        1024
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.0.ffn_gate.weight",
+      "dims": [
+        1024,
+        8192
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.0.ffn_up.weight",
+      "dims": [
+        1024,
+        8192
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.0.post_attention_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.0.post_ffw_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.0.ffn_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.0.attn_output.weight",
+      "dims": [
+        4096,
+        1024
+      ],
+      "ggml_type": 8,
+      "bytes": 4456448
+    },
+    {
+      "name": "blk.0.attn_q_norm.weight",
+      "dims": [
+        256
+      ],
+      "ggml_type": 0,
+      "bytes": 1024
+    },
+    {
+      "name": "blk.0.attn_q.weight",
+      "dims": [
+        1024,
+        4096
+      ],
+      "ggml_type": 8,
+      "bytes": 4456448
+    },
+    {
+      "name": "blk.1.attn_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.1.layer_output_scale.weight",
+      "dims": [
+        1
+      ],
+      "ggml_type": 0,
+      "bytes": 32
+    },
+    {
+      "name": "blk.1.ffn_down.weight",
+      "dims": [
+        8192,
+        1024
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.1.ffn_gate.weight",
+      "dims": [
+        1024,
+        8192
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.1.ffn_up.weight",
+      "dims": [
+        1024,
+        8192
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.1.post_attention_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.1.post_ffw_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.1.ffn_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.1.attn_output.weight",
+      "dims": [
+        4096,
+        1024
+      ],
+      "ggml_type": 8,
+      "bytes": 4456448
+    },
+    {
+      "name": "blk.1.attn_q_norm.weight",
+      "dims": [
+        256
+      ],
+      "ggml_type": 0,
+      "bytes": 1024
+    },
+    {
+      "name": "blk.1.attn_q.weight",
+      "dims": [
+        1024,
+        4096
+      ],
+      "ggml_type": 8,
+      "bytes": 4456448
+    },
+    {
+      "name": "blk.2.attn_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.2.layer_output_scale.weight",
+      "dims": [
+        1
+      ],
+      "ggml_type": 0,
+      "bytes": 32
+    },
+    {
+      "name": "blk.2.ffn_down.weight",
+      "dims": [
+        8192,
+        1024
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.2.ffn_gate.weight",
+      "dims": [
+        1024,
+        8192
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.2.ffn_up.weight",
+      "dims": [
+        1024,
+        8192
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.2.post_attention_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.2.post_ffw_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.2.ffn_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.2.attn_output.weight",
+      "dims": [
+        4096,
+        1024
+      ],
+      "ggml_type": 8,
+      "bytes": 4456448
+    },
+    {
+      "name": "blk.2.attn_q_norm.weight",
+      "dims": [
+        256
+      ],
+      "ggml_type": 0,
+      "bytes": 1024
+    },
+    {
+      "name": "blk.2.attn_q.weight",
+      "dims": [
+        1024,
+        4096
+      ],
+      "ggml_type": 8,
+      "bytes": 4456448
+    },
+    {
+      "name": "blk.3.attn_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.3.layer_output_scale.weight",
+      "dims": [
+        1
+      ],
+      "ggml_type": 0,
+      "bytes": 32
+    },
+    {
+      "name": "blk.3.ffn_down.weight",
+      "dims": [
+        8192,
+        1024
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.3.ffn_gate.weight",
+      "dims": [
+        1024,
+        8192
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.3.ffn_up.weight",
+      "dims": [
+        1024,
+        8192
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.3.post_attention_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.3.post_ffw_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.3.ffn_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "blk.3.attn_output.weight",
+      "dims": [
+        8192,
+        1024
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "blk.3.attn_q_norm.weight",
+      "dims": [
+        512
+      ],
+      "ggml_type": 0,
+      "bytes": 2048
+    },
+    {
+      "name": "blk.3.attn_q.weight",
+      "dims": [
+        1024,
+        8192
+      ],
+      "ggml_type": 8,
+      "bytes": 8912896
+    },
+    {
+      "name": "output_norm.weight",
+      "dims": [
+        1024
+      ],
+      "ggml_type": 0,
+      "bytes": 4096
+    },
+    {
+      "name": "nextn.post_projection.weight",
+      "dims": [
+        1024,
+        2816
+      ],
+      "ggml_type": 8,
+      "bytes": 3063808
+    },
+    {
+      "name": "nextn.pre_projection.weight",
+      "dims": [
+        5632,
+        1024
+      ],
+      "ggml_type": 8,
+      "bytes": 21895200
+    }
+  ]
+}

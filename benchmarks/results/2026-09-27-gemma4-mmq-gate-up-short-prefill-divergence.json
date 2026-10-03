@@ -1,0 +1,186 @@
+{
+  "kind": "gemma4_numerical_evaluator_and_defect",
+  "performance_claim": false,
+  "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, 8192 context",
+  "summary": "A margin-aware probe chain closes the evaluator gap the campaign had recorded, and the first route it was pointed at turns out not to be marginally divergent at all. The MMQ expert gate/up route is deterministic and off by up to 2.036 KL with greedy decision flips at 7 of the 13 prefill lengths where it runs, while being nearly exact at the one length the campaign's recorded evidence was taken at.",
+  "probe_chain": {
+    "why": "The frozen campaign corpus is eight sentences cycled to the target length, so a 1024-token chain repeats each many times and the model is close to certain everywhere. The top-1 bar cannot see a reordering-class divergence there.",
+    "construction": "scripts/gemma4_campaign_bench.py probe_corpus: a seeded, never-repeating chain mixing material with no predictable continuation (hex digests, id-like digit groups, random codes) with material where only the wording is open (shuffled word lists, interchangeable enumerations). require_single_pass raises rather than cycling, so repetition cannot silently return.",
+    "measured_margin_contrast": {
+      "chain": "1023 scored rows, 2048-token prompt with a 1024-id prefill, strict arm",
+      "frozen": {
+        "median_margin": 1.0,
+        "rows_below_0.20": 0,
+        "rows_below_0.05": 0,
+        "rows_below_0.01": 0
+      },
+      "probe": {
+        "median_margin": 0.7203,
+        "rows_below_0.20": 247,
+        "rows_below_0.05": 77,
+        "rows_below_0.01": 14
+      }
+    },
+    "verdict": "the frozen chain has no low-margin row at all, so its top-1 bar is not nearly blind there - it is exactly blind. The probe chain carries 247 rows below 0.20 and 14 below 0.01."
+  },
+  "shipped_default_is_exact": {
+    "measured": "the default path is bit-identical to the strict single-kernel arm on both chains: KL exactly 0.0 on all 1023 rows, 0 top-1 flips, including all 77 close-margin rows. Observed selections [2] with 30690 split launches against the strict arm's [1] with 0, so the split engaged and still produced identical bits.",
+    "consequence": "the recorded claim that the shipped split breaches the same kl_max bar (0.055589) is not what this tree does today; it is stale text, not a measured property of the current default path."
+  },
+  "mmq_gate_up_route": {
+    "recorded_evidence_reproduced": {
+      "chain": "frozen, prompt 2048, prefill 1024",
+      "kl_mean": 0.0001438,
+      "kl_max": 0.0651,
+      "top1_flips": 0,
+      "rows_over_1e-3": 3,
+      "note": "matches the campaign's recorded 1.438e-04 / 0.0651 / 0 flips exactly"
+    },
+    "probe_chain_result": {
+      "chain": "probe, prompt 2048, prefill 1024",
+      "kl_mean": 0.3837,
+      "kl_max": 10.857,
+      "top1_flips": 229,
+      "rows_over_1e-3": 830,
+      "rows_over_1e-6": 1023,
+      "first_divergent_row": 0,
+      "baseline_margin_at_first_divergence": 0.89551
+    },
+    "attribution": "the route replaces only the prefill's expert gate/up projection, so the whole 1023-row divergence is inherited through the KV cache from the prefill. A single forward of N ids under each arm reproduces it.",
+    "length_probe": {
+      "command": "PYTHONPATH=. python scripts/gemma4_mmq_prefill_length_probe.py --artifact <model.gguf>",
+      "corpus": "frozen, so this is not a property of the probe chain",
+      "route_absent_below": 16,
+      "kl_by_length": {
+        "16": 0.305,
+        "24": 1.007,
+        "32": 0.1086,
+        "48": 0.135,
+        "64": 2.036,
+        "96": 1.656e-06,
+        "128": 0.1362,
+        "192": 0.003151,
+        "256": 0.1514,
+        "384": 2.558e-06,
+        "512": 3.431e-06,
+        "768": 0.0001246,
+        "1024": 7.335e-07
+      },
+      "over_the_0.05_bar_at": [
+        16,
+        24,
+        32,
+        48,
+        64,
+        128,
+        256
+      ],
+      "top1_flips_at": [
+        24,
+        64
+      ],
+      "deterministic": true,
+      "kl_at_the_recorded_evidence_length": 7.335e-07
+    },
+    "conclusion": "the route is not a marginally divergent arithmetic path. It is deterministically wrong at most prefill lengths from 16 to 256 ids, which is the ordinary short-prompt case, and the campaign's 1024-id evidence is its best case rather than a representative one. The recorded kl_max 0.0651 understates the divergence by roughly 30x and the recorded 'zero top-1 flips' does not survive at 24 or 64 ids.",
+    "not_established": "the mechanism. Six candidate explanations are now eliminated. (1) The route's own arithmetic at the true projection geometry: covered by tests/test_gpu_gemma4_expert_route_true_geometry.py, which holds 2816 -> 2*704 per expert over 128 experts with a fragmented short-prefill count pattern inside the same envelope the toy case uses. (2) Activation statistics: the same test is parametrized over a gaussian profile and an outlier profile carrying the large channels and near-zero rows a real short prefill produces, since the DS4 Q8_1 pack derives one int8 scale per 128-element group and a single outlier sets that group's scale. Both hold. (3) The padded row space: the leaf maps every padded tile back through expert_start_compact and masks the tail, so its row space is compact. (4) The tile map: the 32-row map and the 16-row row_tile belong to separate kernels, and the route launches the matching one. (5) The expert_start indexing: qwen35_moe_group_prefix_active_kernel writes expert_start[expert] for every expert plus a total at [num_experts], which is exactly the contract the leaf reads, and the dispatch passes packed_hidden, i.e. the gathered compact rows in compact order. (6) A side effect of the environment variable: it gates only the gate/up projection, _record_moe_route is telemetry, and the down projection is hard-coded to the fp32 grouped route. The lead the remeasurement points at is mmq_identity_ready, which is written once per scratch object on the stated grounds that the compact-to-source map is the identity over the scratch capacity. The scratch is a capacity, not an identity - the caller sizes it for the widest block it will run and then runs narrower blocks through it - so the next step is to confirm whether that once-per-object map and the padded starts stay valid when the live lane count is far below the capacity, and whether the count distribution at 96 ids is simply the case that hides it.",
+    "eliminated_mechanisms": [
+      "Padded rather than compact row space: the leaf maps every padded tile back through expert_start_compact and masks the tail.",
+      "A 32-row tile map mismatched with a 16-row row_tile: separate kernels, and the route launches the matching one.",
+      "The route's arithmetic at the toy geometry only: now covered at 2816 -> 2*704 per expert, 128 experts, fragmented counts.",
+      "Activation statistics: the DS4 Q8_1 pack derives one int8 scale per 128-element group, so outlier channels and near-zero rows were the leading candidate. Both profiles hold.",
+      "expert_start indexed by active rank rather than expert id: qwen35_moe_group_prefix_active_kernel writes expert_start[expert] for every expert plus a total at [num_experts], which is what the leaf reads.",
+      "The environment variable having a second effect: it gates only the gate/up projection, _record_moe_route is telemetry, and the down projection is hard-coded to the fp32 grouped route.",
+      "A scratch sized as a capacity but run at a narrower live width: the documented usage, and the one condition the earlier coverage missed (tokens=rows, top_k=1 makes capacity equal live width). Covered now at capacity factor 8, i.e. 4096 lanes of scratch for 512 live rows.",
+      "A multi-tile expert: the count pattern used by every earlier case peaked at exactly 32 rows, i.e. exactly one 32-row MMQ tile, so no expert ever crossed a tile boundary and the multi-tile map path was never exercised. A power-law skewed pattern at the real 512-lane width, asserting the head exceeds 32 rows so it cannot pass vacuously, also holds."
+    ],
+    "two_corpus_sweep": {
+      "why": "The probe selects its prompt with exact_prompt_ids over one of two corpora, so the same length is a different token sequence under each. Running both separates a length effect from a routing effect.",
+      "command": "PYTHONPATH=. python scripts/gemma4_mmq_prefill_length_probe.py --corpus {frozen,probe} --repeats 2",
+      "frozen": {
+        "lengths_tested": 13,
+        "over_the_0.05_bar": 7,
+        "decision_flips": [
+          24,
+          64
+        ],
+        "kl": {
+          "16": 0.305,
+          "24": 1.007,
+          "32": 0.1086,
+          "48": 0.135,
+          "64": 2.036,
+          "96": 1.656e-06,
+          "128": 0.1362,
+          "192": 0.003151,
+          "256": 0.1514,
+          "384": 2.558e-06,
+          "512": 3.431e-06,
+          "768": 0.0001246,
+          "1024": 7.335e-07
+        }
+      },
+      "probe": {
+        "lengths_tested": 13,
+        "over_the_0.05_bar": 9,
+        "decision_flips": [
+          16,
+          24,
+          32,
+          96,
+          192,
+          384
+        ],
+        "kl": {
+          "16": 5.563,
+          "24": 3.384,
+          "32": 1.159,
+          "48": 0.001647,
+          "64": 0.4026,
+          "96": 1.614,
+          "128": 0.01018,
+          "192": 1.005,
+          "256": 0.1493,
+          "384": 3.142,
+          "512": 0.7655,
+          "768": 0.002648,
+          "1024": 0.03461
+        }
+      },
+      "finding": "The divergence follows the prompt's routing, not the prompt length. The same length is exact under one corpus and flips the greedy decision under the other: 96 ids is 1.656e-06 frozen against 1.614 with a flip under probe, and 384 ids is 2.558e-06 against 3.142 with a flip. No monotonic or length-structural explanation survives, and the leaf is exact under every structural condition that has been constructed, so the remaining question is which arm of the comparison is correct.",
+      "record_correction": "The recorded claim of greedy decision flips at 7 of the 13 prefill lengths conflates lengths over the KL bar with lengths that change the decision. Under the frozen corpus 7 lengths are over the bar but only 2 flip, at 24 and 64. Under the probe corpus 9 are over the bar and 6 flip.",
+      "recorded_kl_at_1024_is_corpus_specific": "The recorded kl_max 0.0651 was taken at 1024 ids, where the frozen corpus gives 7.335e-07 and the probe corpus gives 0.0346. Neither is representative of the sweep."
+    },
+    "attribution_gap": {
+      "problem": "Every comparator in the campaign is engine-versus-engine. The probe computes KL between route-off and route-on, so it can report that the arms disagree but not which arm is wrong: it would report exact agreement at a length where both arms were wrong the same way, and everywhere else it names the MMQ route without having established that the fp32 route is the correct one. gemma4_teacher_forced_gate.py compares a capture against a stored baseline from an earlier build, which is a regression baseline rather than an oracle, and it does not read the MMQ variable at all.",
+      "mitigation": "The probe now records and prints both arms' greedy argmax so a divergence can be attributed against an independent reference rather than assigned to whichever arm runs second.",
+      "next": "Anchor against llama.cpp, the campaign's ground truth. Both scripts/gemma4_llamacpp_reference_bench.py and scripts/gemma4_llamacpp_compare.py still name /mnt/nvme1/llama-gemma4, which no longer exists; builds live under ~/. Compare each arm's greedy token at 16, 24 and 96 ids under the probe corpus, where the arms disagree."
+    }
+  },
+  "decision_impact": "the pending lead decision was whether an absolute kl_max applies to a reordering-class tail effect. That framing does not survive: there is no tail effect here to judge. The route is off by default for a concrete observed failure at short prefills, and the recorded rationale arguing for promotion on near-certain rows is corrected in the source comment, docs/ENVS.md and docs/REFACTOR.md.",
+  "clearing_condition": "scripts/gemma4_mmq_prefill_length_probe.py exits 0 - that is, the route is inside the kl_max bar at every length from 16 to 1024 ids.",
+  "remeasurement": {
+    "date": "2026-09-27",
+    "why": "The original finding predates five committed units, including ones that touched this route, so it was re-run on the current tree before any further source reading.",
+    "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "command": "PYTHONPATH=. python scripts/gemma4_mmq_prefill_length_probe.py --lengths 16 24 32 48 64 96 128 192 256 --repeats 2",
+    "still_diverges": true,
+    "kl_by_length": {
+      "16": 0.305,
+      "24": 1.007,
+      "32": 0.1086,
+      "48": 0.135,
+      "64": 2.036,
+      "96": 1.656e-06,
+      "128": 0.1362,
+      "192": 0.003151,
+      "256": 0.1514
+    },
+    "over_the_0.05_bar": 7,
+    "lengths_tested": 9,
+    "deterministic_at_every_length": true,
+    "route_launches_per_length": 58,
+    "sharpest_clue": "96 ids is exact at 1.66e-06 while 64 ids (2.036) and 128 ids (0.136) on either side diverge, and the whole sequence is non-monotonic in length. Every length is deterministic, and the route ran 58 times at every length, so this is not a race, a stale-artifact effect, or a route that silently stopped being taken. A monotonic explanation - more rows, more tiles, more quantization error - is excluded: whatever the trigger is, it is a property of the per-length count distribution, not of the row count.",
+    "blocker_removed": "The probe could not run at all: scripts/gemma4_campaign_bench.DEFAULT_ARTIFACT named /mnt/nvme1/models/..., a mount that no longer exists, so every campaign script failed at import with a FileNotFoundError naming the model rather than the missing mount. It now resolves, honoring HIPENGINE_GEMMA4_ARTIFACT and never raising at import. Five other scripts still carry the stale literal and are recorded as a follow-up."
+  }
+}

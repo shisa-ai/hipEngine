@@ -15,6 +15,12 @@ HIPBLASLT_MATMUL_DESC_TRANSA = 0
 HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES = 1
 HIPBLAS_STATUS_SUCCESS = 0
 
+#: Position in the zero-workspace heuristic list that `scripts/hipblaslt_algo_scan.py`
+#: measured fastest on this host for the shapes the YuE2 runtimes issue. See
+#: ``HipblasLtProblem.fast_algorithm`` for the measured spread and the reason this is
+#: a fixed index rather than a runtime autotune.
+FAST_ALGORITHM_INDEX = 4
+
 
 class HipblasLtAlgo(ctypes.Structure):
     _fields_ = (
@@ -287,6 +293,33 @@ class HipblasLtProblem:
 
         algorithms = self.algorithms()
         return algorithms[min(max(int(preferred_index), 0), len(algorithms) - 1)]
+
+    def zero_workspace_algorithms(self, maximum: int = 16) -> tuple[HipblasLtHeuristicResult, ...]:
+        """The candidates that need no workspace, in hipBLASLt's own order."""
+
+        return tuple(a for a in self.algorithms(maximum) if a.workspace_size == 0)
+
+    def fast_algorithm(self, maximum: int = 16) -> HipblasLtHeuristicResult:
+        """The zero-workspace candidate that measured fastest on this host.
+
+        hipBLASLt returns its candidates in its own heuristic order and does not
+        sort them by measured time, so taking the first one is a guess.
+        ``scripts/hipblaslt_algo_scan.py`` times all of them on the device; for
+        the 16 shapes it covers at rows 1, 64, 512, 1299 and 2048,
+        ``FAST_ALGORITHM_INDEX`` is fastest in 11 and within 15% of fastest in
+        the rest (the rows=1 cases, where every candidate is under 0.5 ms), and
+        the first entry is 1.4-5.7x slower on the large-row shapes. The choice is
+        a fixed index rather than a runtime autotune so that two runs of the same
+        input select the same algorithm and stay reproducible.
+        """
+
+        usable = self.zero_workspace_algorithms(maximum)
+        if not usable:
+            raise RuntimeError(
+                f"hipBLASLt returned no zero-workspace algorithms for M={self.rows} "
+                f"K={self.in_features} N={self.out_features}"
+            )
+        return usable[min(FAST_ALGORITHM_INDEX, len(usable) - 1)]
 
     def launch(
         self,

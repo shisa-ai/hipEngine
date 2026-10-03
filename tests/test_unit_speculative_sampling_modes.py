@@ -76,28 +76,44 @@ _SERVABLE = {
     "eos_gate": _params(temperature=0.7, eos_token_id=9),
     "stop_token_ids": _params(temperature=0.7, stop_token_ids=(9,)),
     "stop_token_sequences": _params(temperature=0.7, stop_token_sequences=((1, 2),)),
-    "greedy": _params(),
-    "eos_only": _params(eos_token_id=9),
-}
-
-_UNSERVABLE = {
     "logprobs": _params(temperature=0.7, logprobs=True),
     "top_logprobs": _params(temperature=0.7, top_logprobs=5),
     "forced_tokens": _params(temperature=0.7, forced_tokens_pending=(1,)),
+    "force_sequence_completion": _params(
+        temperature=0.7, force_sequence_completion_token_sequences=((1, 2),)
+    ),
+    "json_object_close": _params(temperature=0.7, json_object_close_forcing=True),
+    "tool_call_constraint": _params(
+        temperature=0.7, tool_call_constraint={"tool_names": ("read",)}
+    ),
+    "json_object_close_greedy": _params(json_object_close_forcing=True),
+    # The post-thinking queue can only be non-empty alongside a thinking budget,
+    # so the two are one case: the budget's phase machine is what releases it.
     "post_thinking_forced": _params(
         temperature=0.7,
         thinking_close_token_ids=(1,),
         thinking_hard_token_cap=4,
         post_thinking_forced_tokens_pending=(2,),
     ),
-    "force_sequence_completion": _params(
-        temperature=0.7, force_sequence_completion_token_sequences=((1, 2),)
-    ),
-    "json_object_close": _params(temperature=0.7, json_object_close_forcing=True),
     "thinking_budget": _params(
         temperature=0.7, thinking_close_token_ids=(1,), thinking_hard_token_cap=4
     ),
+    "greedy_logprobs": _params(logprobs=True),
+    "greedy": _params(),
+    "eos_only": _params(eos_token_id=9),
 }
+
+_UNSERVABLE: dict[str, object] = {}
+"""Requests the sampled route refuses. Empty: every blocker is served.
+
+Both fields that used to live here moved when the walk began preparing each row's
+selection: ``prepare_for_selection`` is what turns a reached hard thinking cap
+into the queued close sequence, and ``_queue_post_thinking_forced_tokens_if_ready``
+inside it is what moves the post-thinking queue into the same queue once the phase
+is answer. A request that carries a budget but cannot use the sampled route is
+still refused by the raw-argmax route's own blocker list, which the greedy fast
+path checks.
+"""
 
 
 @pytest.mark.parametrize("name", sorted(_SERVABLE))
@@ -133,10 +149,19 @@ def test_eos_supported_greedy_request_keeps_the_greedy_mode() -> None:
 
 def test_servable_and_unservable_blocker_sets_are_disjoint_and_cover_the_vocabulary() -> None:
     assert not set(SAMPLED_MTP_SERVABLE_BLOCKERS) & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
-    # Every blocker the sampled route refuses must be one of the processors the
-    # sampler itself applies, so a new processor cannot be served by accident.
+    # The servable set is the sampling law, the finish-rule relaxations, the
+    # metadata fields, the forced-token queue, the text-keyed constraints, and the
+    # thinking budget; the refused set is empty. Every blocker in the union must be
+    # one the sampler or the cycle commit can name, so a new field cannot be served
+    # or refused by accident.
     assert "temperature" in SAMPLED_MTP_SERVABLE_BLOCKERS
-    assert "logprobs" in SAMPLED_MTP_UNSERVABLE_BLOCKERS
+    assert "logprobs" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert "top_logprobs" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert "json_object_close_forcing" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert "tool_call_constraint" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert "thinking_budget" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert SAMPLED_MTP_UNSERVABLE_BLOCKERS == ()
+    assert "thinking_budget" in SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
 
 
 def _adapter(*, plugin_evidence=(), artifact_size=None, row=None):
@@ -281,7 +306,10 @@ def test_engine_loop_selects_the_sampled_mode_for_a_temperature_request() -> Non
         )
         == "greedy"
     )
-    assert _speculative_sampling_mode(runner, 1, _params(logprobs=True)) == "processed"
+    # A metadata-only request is served by the sampled route: its law is the
+    # processed distribution the accept already builds per row, and the reported
+    # value comes from the same row the autoregressive route would read.
+    assert _speculative_sampling_mode(runner, 1, _params(logprobs=True)) == "sampled"
     # Both are finish-rule fields and both are served now: the cycle commit
     # applies EOS, stop ids, stop sequences, and the min-token EOS floor to the
     # whole verified chain and selects its terminal prefix, so a stochastic
@@ -410,7 +438,15 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
     )
 
     sampled = _params(temperature=0.7)
-    unservable = _params(temperature=0.7, logprobs=True)
+    # The text-keyed hooks are now served by the sampled route, so they keep
+    # typed intent like any other servable field.
+    text_hook = _params(temperature=0.7, tool_call_constraint={"tool_names": ("read",)})
+    # An EOS-only request keeps the unqualified serving mode: it neither samples
+    # nor is raw-argmax exact, so it is not newly admitted to the greedy route.
+    # The route still admits it through the sampled row, which serves the
+    # finish-rule fields exactly -- the mode and the route answer different
+    # questions, and this pins both.
+    eos_only = _params(eos_token_id=9)
     greedy = _params()
 
     def route(engine, sampling, *, explicit=True, mode="auto"):
@@ -426,14 +462,24 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
         route(_serving_engine("greedy_fast", "sampled"), sampled)
         == _SPECULATIVE_MTP_BATCH_ROUTE
     )
-    # Shipped behavior: no row lists the sampled mode, so a temperature request
-    # still ends at K0 before provider mutation.
+    # An artifact whose row does not list the sampled mode still ends at K0
+    # before provider mutation.
     assert route(_serving_engine("greedy_fast"), sampled) == _SPECULATIVE_MTP_K0_ROUTE
-    # A blocker the sampled route refuses stays K0 even with the row.
+    # A servable field keeps the route the row lists for it.
     assert (
-        route(_serving_engine("greedy_fast", "sampled"), unservable)
-        == _SPECULATIVE_MTP_K0_ROUTE
+        route(_serving_engine("greedy_fast", "sampled"), text_hook)
+        == _SPECULATIVE_MTP_BATCH_ROUTE
     )
+    assert speculative_serving_sampling_mode(eos_only) == "processed_argmax"
+    assert (
+        route(_serving_engine("greedy_fast", "sampled"), eos_only)
+        == _SPECULATIVE_MTP_BATCH_ROUTE
+    )
+    # The one field the sampled route still refuses, ``thinking_budget``, is
+    # relaxed by the server's default policy before this check, so it is not a
+    # route-level refusal here either. That relaxation is exercised against real
+    # ``SamplingParams`` in the sampling unit tests; these stubs are plain
+    # namespaces and cannot carry the dataclass fields it rewrites.
     # Automatic mode selects the automatic route rather than the explicit one.
     assert (
         route(_serving_engine("greedy_fast", "sampled"), sampled, explicit=None)
@@ -492,9 +538,9 @@ _SELECTION_PRESERVING_FIELDS = {
     "seed": "selects the sampler stream, not the greedy decision",
     # Reasons label a queue that is itself a blocker, so an empty queue carries
     # no behavior of its own.
-    "forced_token_reason": "labels forced_tokens_pending, which is a blocker",
-    "post_thinking_forced_token_reason": "labels a blocked queue",
-    "force_sequence_completion_reason": "labels a blocked queue",
+    "forced_token_reason": "labels the served forced queue",
+    "post_thinking_forced_token_reason": "labels a queue a thinking budget gates",
+    "force_sequence_completion_reason": "labels the served forced queue",
     # The thinking budget is active only as a pair; a partial configuration
     # builds no budget state and enforces nothing.
     "thinking_close_token_ids": "inert without thinking_hard_token_cap",
@@ -504,7 +550,7 @@ _SELECTION_PRESERVING_FIELDS = {
 
 
 def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
-    """The sampled route reproduces the sampler law and the finish rule.
+    """The sampled route reproduces the sampler law, the finish rule, and the queue.
 
     ``hipengine/speculative/sampling.py`` requires the caller to apply the
     request's pipeline (bias, penalties, suppression, temperature, top-k,
@@ -514,7 +560,13 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
     ``limit_chain_accept_finish`` in ``hipengine/speculative/streaming.py``,
     which applies EOS, stop token ids, multi-token stop sequences, and the
     min-token EOS floor to the whole verified chain and selects its terminal
-    prefix, so they no longer have to be advertised blockers.
+    prefix, so they no longer have to be advertised blockers. The two metadata
+    fields are served by ``reported_logprob``, which reads the logits row that
+    predicted each published token with the same per-branch rule
+    ``select_token`` reports with. The three forced-token fields are one queue:
+    the row that predicts a position with a pending forced token gets a point
+    mass on it instead of the sampled law, and the live queue is popped only for
+    the tokens a cycle published.
     """
 
     finish_rule_fields = {
@@ -523,6 +575,17 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         "stop_token_ids",
         "stop_token_sequences",
     }
+    metadata_fields = {"logprobs", "top_logprobs"}
+    forced_queue_fields = {
+        "forced_tokens_pending",
+        "post_thinking_forced_tokens_pending",
+        "force_sequence_completion_token_sequences",
+    }
+    text_hook_fields = {"json_object_close_forcing", "tool_call_constraint"}
+    # The thinking budget is per-row sampler state the walk prepares before it
+    # reads the queue, so a reached cap's close sequence is queued and consumed
+    # exactly as it is on the autoregressive route.
+    thinking_fields = {"thinking_budget"}
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) == {
         "temperature",
         "logit_bias",
@@ -532,11 +595,23 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         "suppress_token_ids",
         "ignore_eos",
         *finish_rule_fields,
+        *metadata_fields,
+        *forced_queue_fields,
+        *text_hook_fields,
+        *thinking_fields,
     }
     # The two sets stay disjoint and still partition every incompatible field, so
     # a field can never be silently in neither.
     assert finish_rule_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
     assert not finish_rule_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
+    assert metadata_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert not metadata_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
+    assert forced_queue_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert not forced_queue_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
+    assert text_hook_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert not text_hook_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
+    assert thinking_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert not thinking_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) | set(SAMPLED_MTP_UNSERVABLE_BLOCKERS) == set(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
     )

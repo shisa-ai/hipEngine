@@ -1,0 +1,54 @@
+{
+ "kind": "gemma4_prefill_attention_read_range",
+ "performance_claim": true,
+ "recorded": "2026-09-28, gfx1151 Strix Halo (zbook, AMD Radeon 8060S), Gemma 4 26B-A4B UD-Q4_K_XL",
+ "what_changed": "A sliding layer's keep-mask zeroes every key outside its window, but the attention kernel walked the whole live context anyway. The read-range narrowing that drops those keys existed only for one-row blocks, so decode used it and prefill did not. It now applies to every block, which required the mask to move with it: the kernel addresses the mask as keep_mask + token * keys, so a block's mask has to start at key_begin rather than being shifted by the wrapper.",
+ "why_bit_exact": "A masked key contributes exp(-inf) = 0 to the softmax denominator and the same to the weighted sum. Dropping terms whose value is exactly zero leaves the surviving terms in their original order, so the reduction is unchanged rather than merely close. This is the same argument the decode path has always relied on, and the unit tests pin the range against the mask itself across window, context and block lengths.",
+ "bit_exactness_verified": {
+  "method": "the real artifact's prefill logits hashed at three lengths, with the change and with the three edits stashed",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/prefill_bitid.py 512 1024 2048",
+  "digests": {
+   "512": "4f4e617d38028d43aa46f07dd03efcba663359f46a1d813c92cccc3d93a5bf8b",
+   "1024": "eac1fa31124fe7071a3444e8283353ea80cf832cc407073056a3e5451f2f5744",
+   "2048": "faee8a68dcd296232db496e781950cd11701c38b2c5c29a6f39c3b79f0cd1dae"
+  },
+  "reading": "identical in both arms at every length, including the top-1 token and the logit sum. No arithmetic moved."
+ },
+ "measured_effect": {
+  "command": "scripts/gemma4_campaign_bench.py --prompt <P> --output 128 --samples 3 --warmup 1 --expect-gpu 8060S",
+  "prefill_tok_s": {
+   "512": {"before": 271, "after": 272},
+   "1024": {"before": 251, "after": 249},
+   "2048": {"before": 220, "after": 222}
+  },
+  "reading": "the effect is inside the noise floor and this row does not claim otherwise. The 1024 point is a clean control: prefill chunks at 512 tokens, so both of its chunks get key_begin = 0 and the change is a provable no-op there, yet it moved by 0.8 percent. The 2048 point's +1.2 percent sits in the same band."
+ },
+ "why_the_effect_is_small": {
+  "structure": "prefill runs in 512-token chunks, and the block bound is the first row's window. Only the last chunk of a 2048-token prompt can narrow at all.",
+  "per_chunk": [
+   {"chunk": 0, "start": 0, "keys": 512, "key_begin": 0, "walked": 512},
+   {"chunk": 1, "start": 512, "keys": 1024, "key_begin": 0, "walked": 1024},
+   {"chunk": 2, "start": 1024, "keys": 1536, "key_begin": 1, "walked": 1535},
+   {"chunk": 3, "start": 1536, "keys": 2048, "key_begin": 513, "walked": 1535}
+  ],
+  "total_walk": {"before": 5120, "after": 4606, "less": "10.0 percent"},
+  "predicted_overall": "2.9 percent, because attention is 28.9 percent of a 2048-token prefill",
+  "reading": "the block bound cannot do better than this. Row 0 of a chunk sits at the chunk start, so any chunk whose start is inside the window keeps every key."
+ },
+ "the_real_lever": {
+  "observation": "the bound that matters is per row, not per block. Within a chunk every row shares one key loop, but row at position p only ever needs min(p + 1, window) keys.",
+  "arithmetic_at_2048": {
+   "block_bound_keys_walked": 2359296,
+   "per_row_bound_keys_walked": 1573376,
+   "less": "33 percent",
+   "predicted_overall": "about 9.6 percent of a 2048-token prefill, growing with context"
+  },
+  "how": "the prefill kernel already runs one blockIdx.x per (token, head) and already skips the dot product for a masked key, so the walk it pays is the loop and its barrier rounds rather than the arithmetic. Starting that loop at the row's own first kept key, tile-aligned, drops the leading all-masked tiles. It needs the window and the chunk's absolute start passed to the kernel, which is why it is a separate unit rather than part of this one.",
+  "not_done": "not attempted here. It is a kernel change and needs its own RED contract."
+ },
+ "correctness_gate": {
+  "unit": "tests/test_unit_gemma4_sliding_read_range.py, 12 tests, including the block range pinned against the block mask for window in (1, 4, 1024), start in (0, 1, 5, 1024, 4096) and rows in (1, 2, 8, 64)",
+  "end_to_end": "the digest comparison above, on the real artifact at three lengths",
+  "promotion_gate": "not required: the change is bit-exact, so it is not a changed-arithmetic default"
+ }
+}

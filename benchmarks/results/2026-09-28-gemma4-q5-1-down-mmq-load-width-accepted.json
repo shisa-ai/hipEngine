@@ -1,0 +1,54 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted and promoted (bit-exact, default path)",
+ "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, 512 prompt / 128 output",
+ "candidate": "merge the Q5_1 expert down MMQ's inner-loop memory traffic. The kernel issued 24 scalar memory operations per (row, sub-block) against 16 sudot4: load_qs_bytes fetched each weight qword as four byte loads or-ed together, the weight nibble planes and high-bit expansions were rebuilt for every row of a dynamically-bounded row loop, and the eight activation dwords of a sub-block were eight separate dword loads.",
+ "reason": "a load-width and loop-invariant change, not an arithmetic one. The byte-or-chain and the single dword load produce the same value, the hoisted expressions depend only on the sub-block, and the two uint4 loads read the same eight dwords the scalar loads read. No floating-point operation moved or changed, so the output is bit-identical, and that is measured below rather than argued.",
+ "geometry": {
+  "route": "gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out, the Q5_1 expert down projection on the row-reusing prefill path",
+  "shape": "128 experts, in_features 704 (intermediate), out_features 2816 (hidden), 4096 compact rows at a 512-token prompt, one launch per layer over 29 layers",
+  "launch": "grid (out_features/128, num_experts) = (22, 128), 128 threads, no LDS, __launch_bounds__(128, 4)",
+  "weight_bytes": "5.519 GB over 29 layers of Q5_1 down weights; 471.0 GFLOP at 512 tokens with top-8 of 128 experts active",
+  "route_share": "124.2 ms of an 829.5 ms prefill (15.0%) after the change, against 162.4 ms (18.9%) before, from scripts/gemma4_prefill_kernel_census.py"
+ },
+ "performance": {
+  "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm, bf16 activations",
+  "protocol": "one declared same-host protocol measuring both arms in the same session: scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --warmup 1, with the parent revision of the one changed file restored into the worktree for the baseline arm and the committed revision for the candidate arm. Nothing else differs between the arms.",
+  "primary": {
+   "row": "512 prompt / 128 output, public path",
+   "incumbent_s": 0.8840,
+   "incumbent_tps": 579.2,
+   "candidate_s": 0.8295,
+   "candidate_tps": 617.3,
+   "delta": "-0.0545 s (1.066x, +6.6%)"
+  },
+  "decode": {
+   "incumbent_tps": 27.626,
+   "candidate_tps": 28.061,
+   "delta": "+1.6%",
+   "why": "not incidental. gemma4_moe_prefill_route_enabled keys on the runner's declared width rather than the live row count, by design, so a runner built for 512 tokens takes this same MMQ kernel on its single-token decode steps. The route is therefore a property of the runner and the fix reaches both phases."
+  },
+  "kernel_isolation": {
+   "instrument": "scripts/gemma4_expert_mmq_wrapper_split.py, which times the leaf kernel in place with a HIP event pair on the compute stream",
+   "incumbent_ms_per_layer": 5.391,
+   "candidate_ms_per_layer": 4.051,
+   "delta": "-24.9%",
+   "rate_incumbent": "35.3 GB/s, 3.01 TFLOP/s",
+   "rate_candidate": "46.5 GB/s, 3.97 TFLOP/s",
+   "at_1024_tokens": "5.347 to 4.031 ms per layer, the same -24.6%, so the fix is not specific to the 512-token operating point"
+  },
+  "control": "the Q4_K gate_up kernel, launched 29 times per prefill against the same rows, is unchanged within noise (5.246 to 5.309 ms per layer). It stages its weight and activation tiles through LDS caches rather than re-reading global memory, which is why it was already at 54.4 GB/s and why the down projection was the outlier."
+ },
+ "correctness": {
+  "basis": "measured, not argued",
+  "bit_exactness": "the kernel's own fixture, at in_features 640 and 704, produces byte-identical output under both revisions: sha256[:32] 08931a6142d04555d6986cfdc4341d2e and c41ea0bc1a78a2996f8a5df88a145bb2 for the full uint16 output, uint16 sums 556677148 and 555451868, identical in both arms.",
+  "tests": "tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py (2 passed), tests/test_gpu_gemma4_expert_route_true_geometry.py and tests/test_gpu_gemma4_expert_row_invariance.py (15 passed), tests/test_unit_gemma4_expert_route.py (63 passed). 80 tests, no failures.",
+  "public_path": "public_path_parity True and public_generated_equals_expected True in both arms, greedy sampler."
+ },
+ "selection": {
+  "flag": "none - the changed kernel is the route the default path already selects",
+  "route_confirmation": "the probe counts the leaf calls it intercepts on the default path with no environment variable set: 29 q5_1_mmq_ds4_selected_prefill_bf16_bf16_out calls per prefill, one per layer, all through the edited kernel.",
+  "fallback": "unchanged. gemma4_project_experts_down_mmq still selects this route on the weight's quant_key being gguf_q5_1 and falls through to the grouped family otherwise; no threshold, guard, or variant moved."
+ },
+ "leaves_open": "the down projection is still 1.29x behind the gate_up per byte, and the residue is the Q5_1 five-bit format's second sudot4 pass for the high bit, which is real work rather than waste; what is left beyond that is the gate_up's LDS staging, which the down does not do. The same four-byte or-chain load appears in nine other files under kernels/hip_gfx1100/quant/ and was not checked for this defect."
+}

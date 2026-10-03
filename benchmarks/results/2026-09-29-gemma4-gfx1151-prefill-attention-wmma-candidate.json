@@ -1,0 +1,95 @@
+{
+  "kind": "gemma4_gfx1151_prefill_attention_wmma_candidate",
+  "performance_claim": true,
+  "recorded": "2026-09-29, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 126976 MiB), ROCm SDK via ~/miniforge3 site-packages",
+  "why": "The 4096-token prefill census (artifact 2026-09-29-gemma4-gfx1151-prefill-ladder-and-attention-share.json) attributed 61.0 percent of the step to gemma4_attention_prefill_bf16 at 276 GFLOP/s, about 1 percent of this part's BF16 rate. This row measures a BF16 WMMA replacement for the 25 sliding-window layers on the same device buffers, shapes, mask and arguments as the strict row it is compared against.",
+  "status": "candidate, not promoted",
+  "not_a_promotion": "Nothing in the production path selects this kernel: attention_symbol, the layer wrapper, the runtime and dispatch all still resolve to the strict kernel, which is byte-for-byte unchanged. The changed-arithmetic gate in docs/EXECUTION-PROFILES.md has not been run and is not claimed. Registration under the variant gemma4_wmma_flash is additive and unreachable by any existing resolution.",
+  "candidate": {
+    "kernel": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.hip",
+    "wrapper": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py",
+    "test": "tests/test_gpu_gemma4_attention_prefill_wmma.py",
+    "geometry": "head_dim 256, 16 query heads, 8 KV heads, GQA ratio 2, window 1024, causal -- the sliding layers, 25 of 30",
+    "tiling": "QUERY_ROWS 16 x GQA_HEADS 2 = 32 WMMA columns, 64 threads (2 waves), K_BATCH 32, 33.8 KB LDS",
+    "resources": "VGPRs 256 (the ISA ceiling for wave32), TotalSGPRs 40, ScratchSize 16 bytes/lane, VGPRs Spill 3",
+    "unsupported": "head_dim 512 (the 5 full layers) raises NotImplementedError rather than running a different geometry",
+    "arithmetic": "changed -- the score dot is reassociated through the 16x16x16 F16 matrix unit and the softmax weights are rounded to FP16 before the P*V dot. Not claimed bit-exact."
+  },
+  "measurement": {
+    "instrument": "scripts/gemma4_attention_prefill_bench.py --compare-wmma, median of 5 launches after 2 warmups, device-synchronized per launch",
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_attention_prefill_bench.py --tokens 4096 --iters 5 --compare-wmma",
+    "comparability": "both rows are timed on the same device buffers with the same shapes, the same keep mask and the same arguments, and both GFLOP/s figures divide by the same windowed causal pair count",
+    "tokens_4096": {
+      "swa_256d_16q_8kv_window_1024": {
+        "strict_ms": 130.63,
+        "strict_gflops": 460.4,
+        "candidate_ms": 9.58,
+        "candidate_gflops": 6279.6,
+        "ratio": 13.64
+      },
+      "swa_256d_16q_8kv_window_0_probe": {
+        "strict_ms": 386.05,
+        "strict_gflops": 356.1,
+        "candidate_ms": 59.56,
+        "candidate_gflops": 2308.0,
+        "ratio": 6.48,
+        "note": "not a model configuration; isolates how much of the win is the block-level walk trim"
+      },
+      "full_512d_16q_2kv_window_0": {
+        "strict_ms": 642.5,
+        "strict_gflops": 427.9,
+        "candidate": "n/a, unsupported geometry"
+      }
+    },
+    "token_sweep": {
+      "512": {"strict_gflops": 565.0, "candidate_gflops": 4214.7, "ratio": 7.46},
+      "1024": {"strict_gflops": 576.7, "candidate_gflops": 5680.4, "ratio": 9.85},
+      "2048": {"strict_gflops": 560.8, "candidate_gflops": 5810.2, "ratio": 10.36},
+      "4096": {"strict_gflops": 462.0, "candidate_gflops": 6344.7, "ratio": 13.73}
+    },
+    "repeatability": "strict 462.6/459.0/462.0/465.3 GFLOP/s and candidate 6017/6345/6290/6280 GFLOP/s across four separate runs, one device in one clock state; not measured across reboots, clock states, thermal states or a second device",
+    "independent_reproduction": "130.63 ms -> 9.58 ms (13.64x) reproduced by the lead on the same command after the candidate was written, against the author's 130.17 ms -> 9.48 ms (13.73x)"
+  },
+  "ceiling": {
+    "instrument": "standalone wmma_f32_16x16x16_f16_w32 throughput probe, 5120 blocks x 2 waves, not committed",
+    "measured_tflops": "49.4-51.3 across 1, 2, 4 and 8 independent accumulator chains",
+    "dependent_chain_tflops": "50.4 at 20000 deep, so the tensor unit is throughput-limited rather than latency-limited and accumulator splitting is not the lever",
+    "candidate_share": "the kernel's raw tensor-core work runs at ~7.1 TFLOP/s, about 14 percent of the probe",
+    "ablation": "removing the global loads from both K/V staging passes (keeping the conversion and LDS stores, wrong results, timing only) takes 9.99 ms to 5.66 ms, so 43 percent of the runtime is global-load cost in staging; removing the P*V value-fragment read is only 9 percent, which rules out the LDS read pattern"
+  },
+  "correctness": {
+    "oracle": "the strict gemma4_attention_prefill_bf16 kernel, driven through ctypes on the same device buffers with the same arguments, so the only difference between the outputs is the arithmetic",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run --offline pytest tests/test_gpu_gemma4_attention_prefill_wmma.py",
+    "result": "20 passed, 0 skipped, 0 failed; independently reproduced by the lead",
+    "cases": "real sliding geometry at 512 and 1024 tokens; the production mask frame gemma4_layer passes (row_offset = window - 1, keys = tokens + window - 1); chunked prefill with row_offset > 0 and keys > tokens at (512, 1024, 512) and (256, 4096, 3840); window == 0 with random, blocky and fully-masked-row masks; tokens < QUERY_ROWS at (1,1), (5,8), (15,16) and (17,32); narrow windows 1, 2, 4 and 17; scale 0.25; the launcher refusing head_dim 512; attention_symbol still selecting the strict kernel",
+    "tolerance": "RTOL 7.9e-3 relative to each case's output peak (about four BF16 ulps) plus exact NaN-placement equality; the measured worst ratio is 3.7e-3, so the bound carries about 2.1x margin",
+    "agreement": "99.0-99.6 percent of output BF16 bit patterns are identical across every case; the worst absolute difference is 1.562e-2, one BF16 ulp at the largest output magnitude",
+    "bound_teeth": "injecting an off-by-one into the leading walk trim fails the production-frame cases, the (256, 4096, 3840) chunked case and all four narrow-window cases, while the real-geometry and window == 0 cases still pass -- the expected shape of a trim bug, and the honest limit of a four-ulp bound at window 1024",
+    "not_verified": "no float64 CPU reference and no quality metric; the comparison is against the strict kernel only"
+  },
+  "not_verified": [
+    "End-to-end prefill or generation throughput. The claim is the kernel's rate at the model's geometry in isolation. The whole-model gap closing is a separate measurement that has not been run, because nothing selects this kernel yet.",
+    "The head_dim-512 full layers (5 of 30) are not implemented.",
+    "No execution-profile gate, calibration run, or promotion."
+  ],
+  "next": "Promotion is a product call. If yes, the changed-arithmetic gate in docs/EXECUTION-PROFILES.md and the rollup in docs/OPTIMIZATION.md apply before the strict kernel stops being the default. The head_dim-512 full layers are the other half of the attention FLOPs and are a separate unit. The staging prefetch named in the ablation is the remaining rate on this one.",
+  "provenance": {
+    "git_commit": "e1aa9bf6f92d0a60e75ffbce3b7f5a8c113a91df",
+    "git_dirty_files": [
+      "audit/inventory/flags.json",
+      "audit/inventory/kernels.json",
+      "audit/inventory/ledger.json",
+      "audit/inventory/meta.json",
+      "audit/inventory/worklog.json",
+      "scripts/gemma4_attention_prefill_bench.py",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.hip",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py",
+      "tests/test_gpu_gemma4_attention_prefill_wmma.py"
+    ],
+    "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "artifact_head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+    "backend": "hip_gfx1151",
+    "env": {"HIPENGINE_HIP_ARCH": "gfx1151"},
+    "worklog_entry": "worklog/entries/20260928T193803.559998Z-lhl-gemma4-gemma4-wmma-prefill-candidate-85c4b9.md"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "status": "correctness-repair-diagnostic",
+  "scope": "Overflow repair with unchanged finite WMMA output; not a new topline or task-quality benchmark",
+  "host": "zbook",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "backend": "hip_gfx1151",
+  "model": "Gemma 4 26B-A4B UD-Q4_K_XL",
+  "model_bytes": 17010980576,
+  "model_head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+  "kv": "BF16",
+  "profile": "production",
+  "manifest_sha256": "11bd3c240c725a4e9330801feff134153098d7ba2748a39c0fe9548a3a10ccf3",
+  "base_commit": "211e8e1484559a176079a44952607f7f9bfad20e",
+  "merge_parent": "780d24f293c2eb964ac2e5548e0153cd5bacf952",
+  "dirty": true,
+  "baseline": "Saved pre-repair T16 Q8 WMMA library, with dense down WMMA enabled in both arms",
+  "baseline_library_sha256": "8f18b33a374f036dc6d7645ad9e735a231122155135b47b8ac5f72ccdc4b7ea1",
+  "candidate": "Same resident model and routes, inline FP32 recomputation only for non-finite WMMA accumulator elements",
+  "hipcc": "7.15.26333 / clang 23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961",
+  "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python scripts/gemma4_dense_range_ab.py --baseline-library /tmp/gemma4-q8-wmma-before.so --json /tmp/gemma4-range-ab-final.json",
+  "protocol": "One residency; four alternating-order pairs per prompt length; eight greedy output tokens; one full-shape warmup per arm and length; separate public LLM.generate_detailed checks",
+  "rows": [
+    {"prompt": 512, "before_prefill_tps_median": 1252.887, "after_prefill_tps_median": 1247.676, "tokens_identical": true},
+    {"prompt": 1024, "before_prefill_tps_median": 1210.537, "after_prefill_tps_median": 1204.933, "tokens_identical": true},
+    {"prompt": 2048, "before_prefill_tps_median": 1164.724, "after_prefill_tps_median": 1163.936, "tokens_identical": true},
+    {"prompt": 4096, "before_prefill_tps_median": 1111.468, "after_prefill_tps_median": 1119.811, "tokens_identical": true}
+  ],
+  "interpretation": "Observed median changes span -0.46% to +0.75%; no statistical claim of zero overhead. The blanket down-projection opt-out is absent.",
+  "correctness": {
+    "targeted_tests_passed": 262,
+    "overflow_matrix": "BF16 rows 4/17/33; normal/boundary/overflow/mixed; single/two/four-wave; FP32 CPU oracle and deterministic repeat",
+    "red": "Pre-repair boundary input produced NaNs; normal cases passed",
+    "normal_fixture_baseline_bytes_identical": true,
+    "raw_logits_command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python scripts/gemma4_dense_range_ab.py --baseline-library /tmp/gemma4-q8-wmma-before.so --pairs 1 --json /tmp/gemma4-range-logits.json",
+    "raw_logits": "All eight uncapped full-vocabulary logit rows per prompt length were finite and SHA-256 identical between arms at shared teacher inputs",
+    "public_selected_variant": "gguf_q8_0_t16_v1/t16_wmma_prefill_bf16_bf16_out",
+    "public_fell_back_to_strict": false,
+    "limits": "No new full-category quality certification; hardware validation is gfx1151 only"
+  },
+  "profiler": {
+    "kernel": "gguf_q8_0_t16_prefill_wmma_kernel<unsigned short, unsigned short, 16, 16>",
+    "shape": [17, 256, 256],
+    "normal_duration_ns": 4609,
+    "overflow_duration_ns": 56835,
+    "jit_during_trace": false
+  }
+}

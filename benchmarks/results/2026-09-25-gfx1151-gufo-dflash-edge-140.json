@@ -1,0 +1,551 @@
+{
+  "kind": "hipengine_external_gufo_edge_screen",
+  "schema_version": 1,
+  "date": "2026-09-25",
+  "status": "completed_diagnostic",
+  "official_mlperf_result": false,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-25T14:35:30.708729+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "9299cf8c80f92584f69fb7a96c955f9d3befc50f",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 2,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-Q4_K_M.gguf",
+    "model_revision": "82d411acf4a06cfb8d9b073a5211bf410bfc29bf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "3609fb4ea4bc3f281eedad5c380ff77a5339a469a062c49815ff82a7443f7a25",
+      "size_bytes": 16817244384,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8408097904,
+        16816195808
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "Q4_K_M",
+    "kv_dtype": "fp16",
+    "command": [
+      "/home/lhl/mlperf-edge-endpoints/.venv/bin/inference-endpoint",
+      "benchmark",
+      "from-config",
+      "--config",
+      "/home/lhl/gate-runs/gufo-edge-20260925/screen-140/config.yaml"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "gufo Release",
+    "timing_protocol": "fixed140-coordinator-arrival-single-pass",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "provenance_note": "Collected after run. Canonical provenance describes recording hipEngine tree; measured engine source/binary is in engine block. No arithmetic change in compatibility patch.",
+  "host_machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "engine": {
+    "upstream_commit": "98641a6503da2ec5d6dbb1888ddc95f8a3e13b28",
+    "binary_sha256": "8ca63994d7325dee3d635c9dd38d0278fae5aaafd888228966724dc5c88cdf17",
+    "compatibility_patch": "benchmarks/mlperf-edge/gufo-qwen36-template.patch",
+    "patch_sha256": "e9d47e4257187f6d93757f73167d37737c875e4f72a7d72103dd2b103212ad09",
+    "source_state": "Modified chat_template.cpp removes dimension-based Qwen3.8 classification; template test source modified and generated golden include untracked. Full source.patch and generated test hashes below. No kernel edits.",
+    "build": "CMake Release, existing ROCm SDK, -DCMAKE_CXX_FLAGS=-include format; see configure/build logs and CMakeCache.txt",
+    "speculative": "dflash2",
+    "draft_revision": "2d9571f8ce46e151f61c6499c99dee6079e1d610",
+    "draft_repo": "z-lab/Qwen3.8-27B-DFlash2-GGUF",
+    "draft_file": "Qwen3.8-27B-DFlash2-Q4_K_M.gguf",
+    "draft_sha256": "1a25c56858e1ebe93f2718ac1d49d1151f9323325c1bbfd6209370f4db131ebd",
+    "draft_pairing": "User-approved cross-version Qwen3.8 draft with unchanged Qwen3.6 target; no same-engine AR control yet."
+  },
+  "workload": {
+    "baseline_artifact": "2026-09-25-gfx1151-mlperf-edge-140.json",
+    "frozen_manifest": {
+      "source_sha256": "b7da8c4ffbe1cabd79c4d8169e5201541e006364b4bfc016d01d893e20ee6f70",
+      "subset_sha256": "af173ad508159c95d76876db8abf4f384f4af9131378ebfe5279929cf126b9fe",
+      "conversations": {
+        "pallets__flask-5014": 27,
+        "pydata__xarray-6721": 52,
+        "pytest-dev__pytest-6202": 61
+      },
+      "source_rows": 280,
+      "generated_turns": 140,
+      "harness_revision": "e71b928f8a72fd0c9d850dc5ddd8fd7760356354",
+      "hipengine_revision": "2fafa58f5df2abc18dc79d488e7b44c527b3ca21",
+      "llama_binary_revision": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "llama_binary_sha256": "d496e87f0988ea72dd3f0e9e727b4ce4bb11ca3212869205f7fe302e64fb2072",
+      "timing_policy": "Use unchanged client formulas and corrected coordinator timestamps. No injected delays or real tool execution. Server timing logs are separate diagnostics, not interchangeable denominators.",
+      "repeats": 1,
+      "order": [
+        "hipengine",
+        "llamacpp"
+      ]
+    },
+    "target_sha256": "5ed60d0af4650a854b1755bd392f9aef4872643dc25a254bc68043fa638392a0",
+    "context": 32768,
+    "concurrency": 1,
+    "temperature": 0,
+    "seed": 42,
+    "max_tokens": 1024,
+    "thinking": false,
+    "preserve_thinking": false,
+    "kv": "fp16",
+    "tools_executed": false,
+    "tool_delays_injected": false,
+    "cache": "137 memory hits,3 misses; fresh server before measured phase"
+  },
+  "commands": {
+    "server": [
+      "bash",
+      "/tmp/t17-env.sh",
+      "/home/lhl/gate-runs/gufo-edge-20260925/build/gufo",
+      "serve",
+      "llm",
+      "--model",
+      "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-Q4_K_M.gguf",
+      "--served-model-name",
+      "Qwen3.6-27B-Q4_K_M",
+      "--context",
+      "32768",
+      "--sessions",
+      "1",
+      "--speculative",
+      "dflash2",
+      "--dflash-model",
+      "/home/lhl/models/mlperf-edge/drafts/Qwen3.8-27B-DFlash2-Q4_K_M.gguf",
+      "--preserve-thinking",
+      "off",
+      "--think",
+      "off",
+      "--temperature",
+      "0",
+      "--seed",
+      "42",
+      "--max-tokens",
+      "1024",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8098"
+    ],
+    "runner": [
+      "/home/lhl/mlperf-edge-endpoints/.venv/bin/inference-endpoint",
+      "benchmark",
+      "from-config",
+      "--config",
+      "/home/lhl/gate-runs/gufo-edge-20260925/screen-140/config.yaml"
+    ],
+    "orchestrator": [
+      "bash",
+      "/tmp/t17-env.sh",
+      "python",
+      "/home/lhl/gate-runs/gufo-edge-20260925/run-screen.py"
+    ]
+  },
+  "results": {
+    "phase_seconds": 1041.494200547,
+    "inline_command_iou": 0.6387,
+    "by_conversation_iou": {
+      "pallets__flask-5014": 0.6975296296296296,
+      "pydata__xarray-6721": 0.5961519230769231,
+      "pytest-dev__pytest-6202": 0.6489065573770492
+    },
+    "response_counts": {
+      "complete": 140,
+      "empty": 0,
+      "tool_calls": 141,
+      "content_responses": 8
+    },
+    "server_totals": {
+      "prompt_tokens": 1675019.0,
+      "prefill_tokens": 57828.0,
+      "cached_tokens": 1617191.0,
+      "generated_tokens": 10196.0,
+      "draft_accepted": 2584.0,
+      "draft_proposed": 16369.0,
+      "duration_ms": 1040970.7,
+      "ttft_ms": 246706.8,
+      "cache_restore_ms": 1667.3
+    },
+    "latency_mean_s": 7.439043624242857,
+    "latency_median_s": 5.194634757999999,
+    "client_ttft_mean_s": 7.039284977164286,
+    "near_end_first_chunks": 132,
+    "estimated_server_rates": {
+      "prefill_tps": {
+        "estimated_seconds": 208.7745713352312,
+        "pooled_tokens_per_second": 8023.098738928348,
+        "rate_rounding_interval": [
+          8021.568896952095,
+          8024.628541949107
+        ],
+        "numerator": "prompt_tokens",
+        "method": "Reconstruct per-request duration from token count / logged rate (rounded to 0.1 tok/s); pool durations, never average rates. Interval only covers rounding, not repeat variance."
+      },
+      "decode_tps": {
+        "estimated_seconds": 792.7014514640666,
+        "pooled_tokens_per_second": 12.862345566756147,
+        "rate_rounding_interval": [
+          12.812072673842529,
+          12.912616374107218
+        ],
+        "numerator": "generated_tokens",
+        "method": "Reconstruct per-request duration from token count / logged rate (rounded to 0.1 tok/s); pool durations, never average rates. Interval only covers rounding, not repeat variance."
+      }
+    },
+    "cache_reuse_fraction": 0.9654762125086342,
+    "draft_acceptance_fraction": 0.15785936831816239,
+    "original_distributions": {
+      "latency": {
+        "total": 1041466107394,
+        "min": 2759906594,
+        "max": 58147795383,
+        "median": 5183122500.0,
+        "avg": 7439043624.242857,
+        "std_dev": 7708465757.789679,
+        "percentiles": {
+          "99.9": 39585433332.0,
+          "99.0": 39021537183.0,
+          "97.0": 30588767329.0,
+          "95.0": 16833197077.0,
+          "90.0": 12454863544.0,
+          "80.0": 6882091792.0,
+          "75.0": 6211098580.0,
+          "50.0": 5183122500.0,
+          "25.0": 4463235195.0,
+          "10.0": 3746884192.0,
+          "5.0": 3394767603.0,
+          "1.0": 2896382807.0
+        },
+        "early_stopping_percentiles": {
+          "99.9": null,
+          "99.0": null,
+          "97.0": null,
+          "95.0": 58147795383.0,
+          "90.0": 30814733692.0,
+          "80.0": 11985182572.0,
+          "75.0": 8306325445.0,
+          "50.0": 5635584748.0
+        }
+      },
+      "ttft": {
+        "total": 985499896803,
+        "min": 1180857315,
+        "max": 58147556555,
+        "median": 5062715958.0,
+        "avg": 7039284977.164286,
+        "std_dev": 7672821344.381649,
+        "percentiles": {
+          "99.9": 39585365625.0,
+          "99.0": 39021306770.0,
+          "97.0": 30588535193.0,
+          "95.0": 16548717092.0,
+          "90.0": 10277513479.0,
+          "80.0": 6325687273.0,
+          "75.0": 6089506341.0,
+          "50.0": 5062715958.0,
+          "25.0": 4271523898.0,
+          "10.0": 3490040081.0,
+          "5.0": 3101983334.0,
+          "1.0": 1414254249.0
+        },
+        "early_stopping_percentiles": {
+          "99.9": null,
+          "99.0": null,
+          "97.0": null,
+          "95.0": 58147556555.0,
+          "90.0": 30814500534.0,
+          "80.0": 8831853143.0,
+          "75.0": 7058449761.0,
+          "50.0": 5525340511.0
+        }
+      },
+      "tpot": {
+        "total": 594434109.7678887,
+        "min": 69876375.43478261,
+        "max": 86412160.21153846,
+        "median": 73149236.91463415,
+        "avg": 74304263.72098608,
+        "std_dev": 5291582.8352424,
+        "percentiles": {
+          "99.9": 75500164.36538461,
+          "99.0": 75500164.36538461,
+          "97.0": 75500164.36538461,
+          "95.0": 75500164.36538461,
+          "90.0": 75500164.36538461,
+          "80.0": 74782661.9368421,
+          "75.0": 74782661.9368421,
+          "50.0": 73149236.91463415,
+          "25.0": 70462990.5410959,
+          "10.0": 69876375.43478261,
+          "5.0": 69876375.43478261,
+          "1.0": 69876375.43478261
+        },
+        "early_stopping_percentiles": {
+          "99.9": null,
+          "99.0": null,
+          "97.0": null,
+          "95.0": null,
+          "90.0": null,
+          "80.0": null,
+          "75.0": null,
+          "50.0": null
+        }
+      },
+      "input_sequence_lengths": {
+        "total": 1675019,
+        "min": 1363,
+        "max": 22902,
+        "median": 12026.0,
+        "avg": 11964.421428571428,
+        "std_dev": 5400.700183846213,
+        "percentiles": {
+          "99.9": 22676.0,
+          "99.0": 22254.0,
+          "97.0": 21673.0,
+          "95.0": 20536.0,
+          "90.0": 19056.0,
+          "80.0": 16971.0,
+          "75.0": 15973.0,
+          "50.0": 12026.0,
+          "25.0": 7767.0,
+          "10.0": 4664.0,
+          "5.0": 3085.0,
+          "1.0": 2075.0
+        }
+      },
+      "output_sequence_lengths": {
+        "total": 10196,
+        "min": 26,
+        "max": 715,
+        "median": 45.0,
+        "avg": 72.82857142857142,
+        "std_dev": 99.3572105733073,
+        "percentiles": {
+          "99.9": 515.0,
+          "99.0": 459.0,
+          "97.0": 421.0,
+          "95.0": 197.0,
+          "90.0": 124.0,
+          "80.0": 56.0,
+          "75.0": 53.0,
+          "50.0": 45.0,
+          "25.0": 39.0,
+          "10.0": 31.0,
+          "5.0": 29.0,
+          "1.0": 27.0
+        }
+      }
+    }
+  },
+  "correctness": {
+    "output_sanity": "140 completed,141 valid bash calls with parseable nonempty command strings,0 empty or failed requests; all finish tool_calls.",
+    "template": "Existing Qwen template suite plus two byte-identical Qwen3.6 HF tool/history goldens pass for thinking=false,preserve_thinking=false. This is not blanket equivalence for all Qwen3.6 template options.",
+    "preflight": "Streaming real request finishes tool_calls; actual draft_accepted23/draft_proposed147.",
+    "bfcl": "not_run",
+    "numerical_quality_gate": "not_run; no arithmetic changes",
+    "quality_parity": "not established; inline IoU is executable-name overlap, not argument correctness or issue resolution"
+  },
+  "timing_notes": {
+    "prefill": "~8023 effective tok/s = all prompt tokens / summed Prefill() call durations reconstructed from rounded logs; includes benefit of prefix reuse. Excludes cache restore, tokenization, admission, snapshot and decode. Cache restore total1.6673s is separately recorded.",
+    "decode": "~12.86 tok/s = completion tokens / summed gufo decode-step durations reconstructed from logs; differs from hipEngine stream_decode_ms and llama.cpp eval windows. Not an isolated kernel rate.",
+    "client": "132/140 first visible chunks within1ms of completion; mean client TTFT7.039s vs mean internal first-token timestamp1.762s.",
+    "tpot": "Only8 observations; tool-only buffered responses do not have meaningful streaming TPOT. Do not invert harness TPOT for comparison.",
+    "comparison": "Single pass, different outputs/KV/speculation. Earlier hipEngine/llama are AR controls, not final accelerated comparison. Not a DFlash2 speedup or accuracy-parity claim."
+  },
+  "raw_root": "~/gate-runs/gufo-edge-20260925",
+  "artifacts": [
+    {
+      "path": "binary-sha256.txt",
+      "bytes": 65,
+      "sha256": "7b76d0bd645935be72a8f62a73feebfdca0f7644b323fa20645aa5d075628090"
+    },
+    {
+      "path": "build/CMakeCache.txt",
+      "bytes": 36676,
+      "sha256": "cf892e1d2b49941546d9524637bec26833fb2473e73dfc358ba9a2edeef9a9fd"
+    },
+    {
+      "path": "generate-goldens.py",
+      "bytes": 1975,
+      "sha256": "c8e0c4dc7adeb6a093fb3a419ab076a7b7b428be94241f36d533108ed8e59b0f"
+    },
+    {
+      "path": "preflight-dflash/health.json",
+      "bytes": 15,
+      "sha256": "a29ee2b15c494311c52521766e44af56a3ad2248e7a8ab465e5206463c13d288"
+    },
+    {
+      "path": "preflight-dflash/request.json",
+      "bytes": 5705,
+      "sha256": "1157f05f76ce7a6a4e77c7fa91c215236a8bf7594fe83f449ee739d05681f793"
+    },
+    {
+      "path": "preflight-dflash/response.json",
+      "bytes": 15161,
+      "sha256": "e71c33bbff1fae303fc2546bfb301181599c77b0a1b936cde9d4f010b4d82400"
+    },
+    {
+      "path": "preflight-dflash/response.sse",
+      "bytes": 10382,
+      "sha256": "fc762cb38489402e9afb88981c7adc4824b7ea161f67df0fc645fa8684945970"
+    },
+    {
+      "path": "preflight-dflash/server-command.json",
+      "bytes": 589,
+      "sha256": "1f712c8817dcee298846baca4695a1ece6246548962f26459f92d39f16693adf"
+    },
+    {
+      "path": "preflight-dflash/server.log",
+      "bytes": 1640,
+      "sha256": "7ac87e887fb7577563efbd915654463c618709c17ee4038ed7de30fbc267c85f"
+    },
+    {
+      "path": "preflight-dflash.py",
+      "bytes": 2206,
+      "sha256": "7a00652ade8f48df18ef94888bb64917dc7bc99867db489f15838f6b42d39761"
+    },
+    {
+      "path": "qwen36_goldens.inc",
+      "bytes": 23775,
+      "sha256": "4b7bb08e40cd0bbf7b2a5d210cae410b2999e0495edc6e28061e5a58d0f060dd"
+    },
+    {
+      "path": "run-screen.py",
+      "bytes": 1754,
+      "sha256": "58e5c44cd0008bba128f0a0204e4b2c21ba9fa8a3b4d6b09733e386c9a14064f"
+    },
+    {
+      "path": "screen-140/config.yaml",
+      "bytes": 963,
+      "sha256": "a2edcd42069059805c62ccc5d07989d16ee01b9f413bb61c6319bb00a3451643"
+    },
+    {
+      "path": "screen-140/end-utc.txt",
+      "bytes": 21,
+      "sha256": "2fd8775ebe3390c5083967ee381d292eb7f8b99ed77b6ebc87b8100163d69df0"
+    },
+    {
+      "path": "screen-140/exit-status.txt",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "screen-140/harness/accuracy/accuracy_results.json",
+      "bytes": 331,
+      "sha256": "34a9b95c2f963b9c87722aa05526856f6637f9100c2d25824f6b22e44697e91a"
+    },
+    {
+      "path": "screen-140/harness/config.yaml",
+      "bytes": 2095,
+      "sha256": "957b3a3022e537ff178894e36d40360bdfc2dc051dfe3de1e367f5acfa773ea8"
+    },
+    {
+      "path": "screen-140/harness/events.jsonl",
+      "bytes": 6659371,
+      "sha256": "0473e41728f6d2a5ff9d9e0392abc9f03ac2570af9ba128c70866c4efc946a5e"
+    },
+    {
+      "path": "screen-140/harness/metrics/.ready",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "screen-140/harness/metrics/final_snapshot.json",
+      "bytes": 23825,
+      "sha256": "06079a5b6e3c748cfaedb5e2291703bc1e1344458da701f8a913d9be6a7c155d"
+    },
+    {
+      "path": "screen-140/harness/performance/result_summary.json",
+      "bytes": 21909,
+      "sha256": "2b5c560d015a7991cd76d46177ae67f00c7c9975e5dad605fc147f15ebf4135a"
+    },
+    {
+      "path": "screen-140/harness/report.txt",
+      "bytes": 9745,
+      "sha256": "c35fd1ef72bb0f35e8f85735f6085a43670bfa04e04067de6a0b4e4fa28193c7"
+    },
+    {
+      "path": "screen-140/harness/sample_idx_map.json",
+      "bytes": 6215,
+      "sha256": "be72235f7812786fce55af1c8c7a80e42d5e3a31861e2fba3dacc9ae993af2ff"
+    },
+    {
+      "path": "screen-140/harness/scores.json",
+      "bytes": 36511,
+      "sha256": "24a90e6351cd8574bf28dfe15ab691932b7f87705747b5536fd740b126399860"
+    },
+    {
+      "path": "screen-140/health.json",
+      "bytes": 15,
+      "sha256": "a29ee2b15c494311c52521766e44af56a3ad2248e7a8ab465e5206463c13d288"
+    },
+    {
+      "path": "screen-140/initial-analysis.json",
+      "bytes": 573,
+      "sha256": "dee9b317509971ba32219254945a4e2646b22302f2ca46aed6dda77b3cdb8a93"
+    },
+    {
+      "path": "screen-140/runner-command.json",
+      "bytes": 181,
+      "sha256": "1c69b467f68ceb92295bd023013fa2d73e887334ce378745c6cd2403e74cfe5f"
+    },
+    {
+      "path": "screen-140/runner.log",
+      "bytes": 24183,
+      "sha256": "875121e075954e3ca66ccfb9c69ed4cacde0a02ebdc0b4555834689dfc4a775e"
+    },
+    {
+      "path": "screen-140/server-command.json",
+      "bytes": 589,
+      "sha256": "1f712c8817dcee298846baca4695a1ece6246548962f26459f92d39f16693adf"
+    },
+    {
+      "path": "screen-140/server.log",
+      "bytes": 91640,
+      "sha256": "7dda7727bd66922afce5ec2db7369bce1d448d6a6b9588bf75124001e72b43d3"
+    },
+    {
+      "path": "screen-140/start-utc.txt",
+      "bytes": 21,
+      "sha256": "fc553f95aac2af492c29577b68f232a5957eaf1a0a0c9e0d850fecac04cc7480"
+    },
+    {
+      "path": "source/src/cli/serve/generation_metrics.hpp",
+      "bytes": 4000,
+      "sha256": "c9a438e5c0637e0938fed4c3de7f2c269bbc0f63a3951ce18ae882c544dd09ef"
+    },
+    {
+      "path": "source/src/cli/serve/text_generation_scheduler.cpp",
+      "bytes": 51542,
+      "sha256": "01279ecc64c773497788f4f35d19bda91882004d799b9694db1257562344fc7f"
+    },
+    {
+      "path": "source.patch",
+      "bytes": 1321,
+      "sha256": "d449457a8f0afdaed5bf53cb24460b0c66164418514549e54cd00d659c9a4b5c"
+    }
+  ]
+}

@@ -109,6 +109,39 @@ __device__ inline const uint8_t* q8_t16_tile_ptr(
   return tiles + tile_index * Q8_0_T16_BLOCK_BYTES;
 }
 
+// Slow repair is reached only when FP16 operand narrowing made the WMMA
+// accumulator non-finite. Keep the original activation and dequantize in FP32;
+// do not clamp a finite BF16/F32 input to the FP16 range. A bit test is used so
+// compiler finite-math assumptions cannot erase the check.
+template <typename scalar_t>
+__device__ __attribute__((always_inline)) inline float repair_q8_t16_output(
+    const scalar_t* x, const uint8_t* tiles,
+    int row, int col, int in_features) {
+  const int blocks = in_features / Q8_0_QK;
+  const scalar_t* x_row = x + static_cast<int64_t>(row) * in_features;
+  float sum = 0.0f;
+  for (int blk = 0; blk < blocks; ++blk) {
+    const uint8_t* tile = q8_t16_tile_ptr(tiles, col / T16_COLS, blk, blocks);
+    const int lane = col % T16_COLS;
+    const float d = fp16_bytes_to_float(tile + lane * 2);
+    for (int k = 0; k < Q8_0_QK; ++k) {
+      const int8_t q = static_cast<int8_t>(tile[Q8_0_T16_Q_OFFSET + k * T16_COLS + lane]);
+      sum = fmaf(scalar_to_float(x_row[blk * Q8_0_QK + k]), d * static_cast<float>(q), sum);
+    }
+  }
+  return sum;
+}
+
+template <typename scalar_t>
+__device__ inline float finite_or_repair_q8_t16(
+    float value, const scalar_t* x, const uint8_t* tiles,
+    int row, int col, int in_features) {
+  if ((__float_as_uint(value) & 0x7f800000U) == 0x7f800000U) {
+    return repair_q8_t16_output(x, tiles, row, col, in_features);
+  }
+  return value;
+}
+
 // -------------------------------------------------------------------------
 // gguf_q8_0_t16_prefill_wmma_kernel
 //
@@ -250,7 +283,8 @@ __global__ void gguf_q8_0_t16_prefill_wmma_kernel(
         if (col < out_features) {
           const int64_t idx =
               static_cast<int64_t>(out_row) * out_features + col;
-          store_output<out_t>(out, idx, static_cast<float>(acc[tm][tn][j]));
+          store_output<out_t>(out, idx, finite_or_repair_q8_t16(
+              static_cast<float>(acc[tm][tn][j]), x, tiles, out_row, col, in_features));
         }
       }
     }
@@ -361,7 +395,8 @@ __global__ void gguf_q8_0_t16_prefill_wmma_nwave_kernel(
         if (col < out_features) {
           const int64_t idx =
               static_cast<int64_t>(out_row) * out_features + col;
-          store_output<uint16_t>(out, idx, static_cast<float>(acc[tm][tn][j]));
+          store_output<uint16_t>(out, idx, finite_or_repair_q8_t16(
+              static_cast<float>(acc[tm][tn][j]), x, tiles, out_row, col, in_features));
         }
       }
     }
@@ -447,7 +482,8 @@ __global__ void gguf_q8_0_t16_dual_prefill_wmma_kernel(
     for (int j = 0; j < 8; ++j) {
       const int col = 2 * j + (wave_lane >> 4);
       const int64_t idx = static_cast<int64_t>(out_row) * T16_COLS + col;
-      store_output<uint16_t>(out, idx, static_cast<float>(acc[tn][j]));
+      store_output<uint16_t>(out, idx, finite_or_repair_q8_t16(
+          static_cast<float>(acc[tn][j]), x, tiles, out_row, col, in_features));
     }
   }
 }

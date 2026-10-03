@@ -1,0 +1,62 @@
+{
+  "kind": "gemma4_gfx1151_prefill_wmma_attention_production_ladder",
+  "performance_claim": true,
+  "recorded": "2026-09-29, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 126976 MiB), ROCm SDK via ~/miniforge3 site-packages",
+  "why": "The 4096-token prefill census attributed 61.0 percent of the step to gemma4_attention_prefill_bf16 at 276 GFLOP/s (artifact 2026-09-29-gemma4-gfx1151-prefill-ladder-and-attention-share.json). A BF16 WMMA replacement for the 25 sliding layers measured 13.64x that kernel in isolation (artifact 2026-09-29-gemma4-gfx1151-prefill-attention-wmma-candidate.json). This row is what that kernel does end to end, in situ, through the path a user reaches.",
+  "change": "gemma4_wmma_flash is the production execution profile's selection for Gemma 4's sliding prefill attention (head_dim 256, 16 query heads, 8 KV heads, 25 of 30 layers). Commits 0bcf2dc0b (the kernel) and dfc329348 (the wiring).",
+  "measurement": {
+    "instrument": "scripts/gemma4_campaign_bench.py, three samples per point after one warmup, fixed-length rows, EOS ignored",
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=<arm> .venv/bin/python scripts/gemma4_campaign_bench.py --prompt <P> --output 128 --samples 3 --warmup 1 --expect-gpu 8060S --label <arm>_<P> --out /tmp/lad_<arm>_<P>.json",
+    "arms": "production selects the WMMA variant for the sliding layers; strict is the recorded pre-existing path and is unchanged by this work",
+    "rows": {
+      "512": {"strict_prefill_tps": 870.0, "production_prefill_tps": 1012.8, "gain": 1.16, "gap_vs_reference": {"was": 1.16, "now": 1.00}},
+      "1024": {"strict_prefill_tps": 707.2, "production_prefill_tps": 925.1, "gain": 1.31, "gap_vs_reference": {"was": 1.50, "now": 1.14}},
+      "2048": {"strict_prefill_tps": 570.0, "production_prefill_tps": 804.6, "gain": 1.41, "gap_vs_reference": {"was": 1.88, "now": 1.33}},
+      "4096": {"strict_prefill_tps": 456.1, "production_prefill_tps": 628.2, "gain": 1.38, "gap_vs_reference": {"was": 2.29, "now": 1.66}}
+    },
+    "prefill_seconds": {
+      "512": {"strict": 0.5885, "production": 0.5055},
+      "1024": {"strict": 1.4479, "production": 1.1068},
+      "2048": {"strict": 3.5928, "production": 2.5453},
+      "4096": {"strict": 8.98, "production": 6.5198}
+    },
+    "reference": {
+      "implementation": "llama.cpp",
+      "artifact": "2026-09-28-gemma4-gfx1151-llamacpp-baseline.json",
+      "tok_s": {"512": 1012.98, "1024": 1057.48, "2048": 1067.14, "4096": 1039.85}
+    },
+    "baseline_reproduction": "The strict arm reproduces the previously recorded ladder (870.4 / 704.3 / 567.8 / 453.9) within 2 percent at every point, which is what makes the two arms comparable.",
+    "reading": "At 512 tokens the engine now matches the reference (1012.8 against 1012.98). At 4096 the gap falls from 2.29x to 1.66x. The isolated kernel is 13.64x and the end-to-end gain is 1.38x; the attenuation is arithmetic rather than a shortfall, since the sliding layers are about 52 percent of attention FLOPs, attention was 61 percent of the step, and the production path is chunked at 512 rows against a growing KV rather than the bench's single 4096-row launch. 0.683 + 0.317/13.6 = 0.706, i.e. 1.42x, against 1.38x measured."
+  },
+  "path_evidence": {
+    "instrument": "HIPENGINE_GEMMA4_PREFILL_ATTENTION_LOG=1 on a real LLM.generate() prefill",
+    "production": [
+      "prefill_attention=gemma4_wmma_flash requested=gemma4_wmma_flash (capability match) 16q/8kv head_dim=256",
+      "prefill_attention=gemma4_plain requested=gemma4_wmma_flash (capability miss: gemma4_wmma_flash implements head_dim 256 with GQA ratio 2, got head_dim 512 with 16q/2kv) 16q/2kv head_dim=512"
+    ],
+    "strict": [
+      "prefill_attention=gemma4_plain requested=gemma4_plain (strict) 16q/8kv head_dim=256",
+      "prefill_attention=gemma4_plain requested=gemma4_plain (strict) 16q/2kv head_dim=512"
+    ],
+    "resolved_profile": "every ladder artifact records its own resolved profile with fell_back_to_strict false; production manifest sha256 59bf84fcea62becd87d492df67e400855b0206855b35e5b6cff903a1b53ecc72, strict 8114b5b03869203cd6530e5e59eb6083678ccec76638e564d1422e9dfb1c8533"
+  },
+  "numerical": {
+    "screen": "All 12 greedy generations (4 prompt lengths x 3 samples, 128 tokens each) are token-identical between the strict and production arms.",
+    "not_the_gate": "This is a screen, not the docs/EXECUTION-PROFILES.md section 6 production numerical gate. That gate wants full-vocabulary teacher-forced rows with a KL envelope (mean <= 1e-3, p95 <= 5e-3, p99 <= 2e-2, max <= 5e-2, top-1 >= 99% overall and >= 97% per scope). The route is a T2 association candidate (WMMA accumulation order, FP16 rounding of the softmax weights before the P*V dot) and that gate is what its promotion evidence is made of. Owed and recorded in docs/REFACTOR.md; the rollback lever is HIPENGINE_EXECUTION_PROFILE=strict."
+  },
+  "not_verified": [
+    "The production numerical gate above.",
+    "Token identity is over 128-token greedy rows on one prompt corpus; it is not a distributional statement.",
+    "No repeatability study across GPU clock states, thermal states or reboots. Each point is three samples after one warmup.",
+    "The head_dim-512 full layers are still the strict kernel, still 5 of 30 layers at 427.9 GFLOP/s. They are the other half of the attention FLOPs and are most of the remaining 1.66x gap at 4096 tokens."
+  ],
+  "provenance": {
+    "git_commit": "dfc329348",
+    "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "artifact_head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+    "backend": "hip_gfx1151",
+    "env": {"HIPENGINE_HIP_ARCH": "gfx1151", "HIPENGINE_EXECUTION_PROFILE": "production|strict"},
+    "worklog_entry": "worklog/entries/20260928T200104.021462Z-lhl-gemma4-gemma4-wmma-prefill-attention-on-by-default-6a0640.md",
+    "supersedes_ladder_in": "2026-09-29-gemma4-gfx1151-prefill-ladder-and-attention-share.json"
+  }
+}

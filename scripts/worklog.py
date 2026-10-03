@@ -379,7 +379,10 @@ def parse_entry_text(text: str) -> tuple[dict[str, str], str]:
     if not re.fullmatch(r"[0-9a-f]{40}", fields["base_commit"]):
         raise WorklogError("base_commit must be a full 40-character lowercase commit hash")
     if slugify(fields["topic"], fallback="") != fields["topic"]:
-        raise WorklogError("topic must be a lowercase kebab-case slug")
+        raise WorklogError(
+            "topic must be a lowercase kebab-case slug of at most 48 characters "
+            f"(got {len(fields['topic'])}: {fields['topic']!r})"
+        )
 
     body = "\n".join(lines[end + 1 :]).strip() + "\n"
     body_lines = body.splitlines()

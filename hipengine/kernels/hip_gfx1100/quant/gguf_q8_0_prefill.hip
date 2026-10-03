@@ -257,7 +257,7 @@ int launch_gguf_q8_0_prefill_wmma(
       rows <= 0 || in_features <= 0 || out_features <= 0 ||
       (in_features % Q8_0_BLOCK) != 0 ||
       (tile_m != 16 && tile_m != 32 && tile_m != 64) ||
-      (tile_n != 16 && tile_n != 32)) {
+      (tile_n != 16 && tile_n != 32 && tile_n != 64)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const dim3 block(32);
@@ -285,7 +285,15 @@ int launch_gguf_q8_0_prefill_wmma(
   if (tile_m == 16 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_WMMA(16, 32); }
   if (tile_m == 32 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_WMMA(32, 32); }
   if (tile_m == 64 && tile_n == 16) { HIPENGINE_LAUNCH_Q8_0_WMMA(64, 16); }
-  HIPENGINE_LAUNCH_Q8_0_WMMA(64, 32);
+  if (tile_m == 16 && tile_n == 64) { HIPENGINE_LAUNCH_Q8_0_WMMA(16, 64); }
+  if (tile_m == 32 && tile_n == 64) { HIPENGINE_LAUNCH_Q8_0_WMMA(32, 64); }
+  if (tile_m == 64 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_WMMA(64, 32); }
+  // (64, 64) passes the range check above -- 64 is a legal value for both axes --
+  // but is not instantiated: it wants 4096 accumulators, 128 floats per lane
+  // against (32, 64)'s 64. It used to fall through to the unguarded (64, 32)
+  // launch below, so a caller asking for it silently got a different tile.
+  // Rejecting it here is the difference between a wrong answer and an error.
+  return static_cast<int>(hipErrorInvalidValue);
 #undef HIPENGINE_LAUNCH_Q8_0_WMMA
 }
 
@@ -434,7 +442,7 @@ int launch_gguf_q8_0_prefill_dual_wmma(
       rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0 ||
       (in_features % Q8_0_BLOCK) != 0 ||
       (tile_m != 16 && tile_m != 32 && tile_m != 64) ||
-      (tile_n != 16 && tile_n != 32) ||
+      (tile_n != 16 && tile_n != 32 && tile_n != 64) ||
       (out_features_a % tile_m) != 0 || (out_features_b % tile_m) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -466,7 +474,12 @@ int launch_gguf_q8_0_prefill_dual_wmma(
   if (tile_m == 16 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(16, 32); }
   if (tile_m == 32 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(32, 32); }
   if (tile_m == 64 && tile_n == 16) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(64, 16); }
-  HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(64, 32);
+  if (tile_m == 16 && tile_n == 64) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(16, 64); }
+  if (tile_m == 32 && tile_n == 64) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(32, 64); }
+  if (tile_m == 64 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(64, 32); }
+  // Same as the single-output launcher above: the range check admits (64, 64)
+  // and this chain does not implement it. It used to run (64, 32) instead.
+  return static_cast<int>(hipErrorInvalidValue);
 #undef HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA
 }
 

@@ -1,0 +1,93 @@
+{
+  "kind": "gemma4_q5_1_pack8_selected_gemv",
+  "verdict": "accepted (default path; no new flag)",
+  "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B, UD-Q4_K_XL, 512-token prompt / 128-token output",
+  "why": "The selected-GEMV dispatcher prefers an eight-output-per-block variant wherever one is registered, and Q4_K, Q5_K, Q6_K and Q8_0 all registered one. Q5_1 did not, so gemma4's expert down projection -- the Q5_1 tensors -- silently took the scalar one-output-per-block fallback while the Q4_K gate/up on the same layer took the eight-output shape. The pack8 shape reads the x row once per eight outputs and pays the block reduction once per eight outputs instead of once per one.",
+  "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --warmup 1 --expect-gpu 8060S --label loop-i79",
+  "route_attribution": {
+    "command": "instrumented LLM.generate() on the real artifact, wrapping the resolved kernels at KernelKey(hip_gfx1151, linear, gguf_q5_1, <variant>) and counting launches",
+    "pack8_launches": 464,
+    "scalar_launches": 0,
+    "note": "The weight's backend is hip_gfx1151, which the registry aliases to the hip_gfx1100 tree, so a probe that instruments only the literal hip_gfx1100 key counts zero and looks like the route did not run. Instrumenting the key the dispatcher actually resolves is what settles it.",
+    "route_counts_after_the_run": {
+      "selected_gemv": 944,
+      "grouped_row4": 16
+    }
+  },
+  "measured": {
+    "decode_tps_before": 21.48,
+    "decode_tps_after": 24.89,
+    "decode_samples": [
+      24.95,
+      24.85,
+      24.88
+    ],
+    "decode_delta_pct": 15.9,
+    "prefill_s_before": 1.01,
+    "prefill_s_after": 1.01,
+    "prefill_samples": [
+      1.01,
+      1.0,
+      1.01
+    ],
+    "public_path_token_id_parity": true
+  },
+  "correctness": {
+    "contract": "bit-exact against the scalar owner it replaces, not a numerical candidate",
+    "why_bit_exact": "The k walk (column = tid; column += blockDim.x), the per-element dequant and the reduction tree are properties of an output, not of the block, so the pack8 kernel reproduces all three per output: same dequant_q5_1, same strided halving from blockDim.x/2 down to 32, same warp shuffle over offsets 16..1. It deliberately does not borrow the Q4_K pack8 tree, which reduces within each warp and then sums per-warp partials -- a different association order that would have made this a candidate rather than a replacement.",
+    "test": "tests/test_unit_gemma4_expert_route.py::test_pack8_selected_is_bit_exact_against_the_single_output_owner[gguf_q5_1-2816-704]",
+    "cases": [
+      [
+        "gguf_q4_k",
+        1408,
+        2816
+      ],
+      [
+        "gguf_q4_k",
+        2816,
+        2816
+      ],
+      [
+        "gguf_q5_k",
+        1408,
+        2816
+      ],
+      [
+        "gguf_q8_0",
+        2816,
+        704
+      ],
+      [
+        "gguf_q5_1",
+        2816,
+        704
+      ]
+    ],
+    "result": "5 of 5 bit-exact; the Q5_1 case is the real down-projection geometry (out 2816, in 704, 4 experts, 8 rows) and compares bf16 bit patterns, not values",
+    "vacuity_guard": "the test now also asserts the two variant keys resolve to different function objects, because two keys resolving to one kernel would make the comparison compare a route with itself and report agreement"
+  },
+  "defect_found_and_fixed": {
+    "what": "tests/test_unit_gemma4_expert_route.py::test_rows_keeps_the_selected_gemv_below_one_lane_per_expert registered a recording lambda for the scalar selected key only, then called the rows router with placeholder pointers 0x1000/0x2000/0x3000/0x4000. While Q5_1 had no pack8 sibling the dispatcher fell to the lambda and nothing launched. Registering one made the dispatcher prefer the real pack8 kernel, which launched on those pointers.",
+    "evidence": "HSA_STATUS_ERROR_MEMORY_FAULT in q5_1_selected_pack8_gemv_bf16_bf16_kernel, faulting addr 0x4000 -- literally the placeholder the fixture passes. Reproduced by running tests/test_unit_gemma4_contracts.py before tests/test_unit_gemma4_expert_route.py; bisected to that pair; the file alone passed.",
+    "fix": "both router fixtures now register both selected variant keys, and the grouped-preference test asserts the pack8 recorder was not called either. The fixtures are about a route decision, so they pin every key that decision can reach.",
+    "note": "This is a test-fixture defect that the registration exposed, not a kernel defect. It is recorded because it is the general hazard: a fixture that pins one variant stops pinning the route the moment a quant gains a sibling, and these fixtures pass placeholder pointers."
+  },
+  "validation": {
+    "narrow": "tests/test_unit_gemma4_expert_route.py 58 passed; bit-exactness subset 5 passed",
+    "bundle": "pytest tests/ -k 'gemma4 or q5_1' -> 409 passed, 1 failed",
+    "pre_existing_failure": "tests/test_unit_gemma4_runner.py::test_incremental_decode_matches_a_dense_prefill at max abs diff 4.417; reproduces identically with this change reverted, fails on the tiny fixture only, real geometry exact",
+    "production_path": "verified in a fresh process with no manual registration that KernelKey(hip_gfx1151, linear, gguf_q5_1, selected_pack8_gemv_bf16_bf16_out) is registered and resolves to the new kernel, and that a real LLM.generate() took it 464 times and the scalar route 0 times"
+  },
+  "shape_constraints": {
+    "in_features": "must be a multiple of 32; gemma4's down width is 704 = 22 x 32",
+    "out_features": "must be a multiple of 8; gemma4's down width is 2816 = 352 x 8",
+    "why_704_matters": "704 is a multiple of 32 but not of 256, which is why the existing logical256 Q5_1 variants are not an answer for this model",
+    "tail_behaviour": "a width that fails either guard is an error from the launcher, not a silent tail, so the dispatcher's out_features % 8 check falls back to the scalar route"
+  },
+  "no_new_flag": "The pack8 shape is selected by the existing preference in gemma4_project_experts_selected, which already preferred it for every other quant. There is no new env var and no new default to roll back: the change is a registration for a quant that was missing one.",
+  "caveats": [
+    "Decode is 24.89 tok/s against llama.cpp's 41.92, so 1.68x remains on the decode objective; this unit closes part of it, not all of it.",
+    "The Q5_1 dequant still re-loads a block's d, m and qh per element per output. The pack8 shape amortises the x read and the reduction 8x, not the metadata read; vectorising the 24-byte block read is a separate unit.",
+    "Prefill is unchanged at 1.01 s because prefill takes the grouped and MMQ routes, not the selected GEMV."
+  ]
+}

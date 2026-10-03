@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 from hipengine.core.hip import get_hip_runtime, HipRuntime
 from hipengine.core.memory import (
-    malloc, copy_host_to_device, copy_device_to_host,
+    malloc, copy_host_array_to_device, copy_host_to_device, copy_device_to_host,
     host_array_ptr, free, DeviceBuffer,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
@@ -43,7 +43,7 @@ class MtpCachedDraftRunner:
         self._dev_weights: dict[str, DeviceBuffer] = {}
         for name, (data, qt, shape) in self._weights.items():
             buf = malloc(data.nbytes, runtime=self.runtime)
-            copy_host_to_device(buf, host_array_ptr(np.ascontiguousarray(data)),
+            copy_host_array_to_device(buf, np.ascontiguousarray(data),
                                runtime=self.runtime)
             self._dev_weights[name] = buf
             self._buffers.append(buf)

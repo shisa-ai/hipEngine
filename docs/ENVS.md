@@ -196,6 +196,10 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` | unset | none | Resolves the MTP2 context window used by the dense speculative route; unset takes the model's retained window. Benchmark harnesses export it through `scripts/bench_env_preflight.py` to catch wrappers that silently drop it. |
 | `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` | `4` | none | Bounded provider KV/state checkpoints for MTP restoration after a target radix-cache hit. Capture is disabled when target prefix caching is off. Set `0` for the memory/bisection rollback; prefix hits without a provider checkpoint cannot restore MTP provider state. |
 | `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS` | `4` | none | Server cap on concurrently active MTP2 (dense speculative) requests. |
+| `HIPENGINE_GEMMA4_ARTIFACT` | unset | none | Overrides the Gemma 4 campaign GGUF that `scripts/gemma4_campaign_bench.py` and the probes built on it default to. When unset, the first of the recorded locations that exists is used. Read by the scripts only, never by the runtime. |
+| `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ` | unset (on) | none | Rollback lever for the fused int8-dp4a MMQ32 route on Gemma 4's `Q4_K` expert gate/up prefill, which is the default path and measures 1.27x on the 512/128 prefill. Set it to `0` to restore the fp32 grouped route. On realistic input the route matches its fp32 owner: ten consecutive tokens over 2004 ids of prose and all 23 over a truncated Python snippet, with the arms parting only at low-margin positions and, where they do, parting from llama.cpp together rather than from each other. Its raw-logit perturbation is three times smaller in distribution than out (3.46 against 9.76 max absolute difference), which is the mechanism behind that: the int8 activation-quantization step is small enough not to move a decision on input the model was trained for, and random ids leave the logits flat enough that it is. It is over the binding 0.05 `kl_max` bar at 7 of the 13 frozen-campaign prefill lengths with greedy decision flips at 24 and 64 ids, and at 1024 ids it is 7.3e-07; divergence counts are corpus-specific, because the trigger is the prompt's routing rather than its length, so the same length is bit-exact under one corpus and a decision flip under the other. Retained only as a rollback lever; removed once a teacher-forced gate verdict for the new default is on file. See `docs/REFACTOR.md`. |
+| `HIPENGINE_GEMMA4_MOE_DOWN_MMQ` | unset (on) | none | Rollback lever for the Q5_1 DS4 DP4A MMQ route on Gemma 4's expert down projection, which is the default path and measures 1.38x on the 2048-token prefill (7.191 s to 5.213 s). Set it to `0` to restore the fp32 grouped route. Before this route Q5_1 had no MMQ path at all, so the down projection ran the fp32 grouped family at 8.6 GB/s where the Q4_K gate/up MMQ on the same layer runs at 67 GB/s. The route needs a partial trailing 128-wide block because Gemma 4's expert down width is 704 (5 x 128 + 64); that is exact rather than approximate, since the padding elements are zero and a zero cannot raise a `max_abs` or move a sum. At the model's own geometry it is within 1.2% of the fp32 grouped owner and 1.3% of an exact dequant oracle, the same envelope the Q4_K gate/up route runs at, and it uses the same one-plane activation quantization. On the 2048/1024 teacher-forced gate it measures `kl_max` 0.137 against the binding 0.05 bar with `top1_rate` 1.0 and 0 flips; that over-bar is pre-existing and not this route's, since turning it off measures 0.171 and turning both it and the WMMA dense prefill off measures 0.157. Retained only as a rollback lever; removed once a teacher-forced gate verdict for the new default is on file. See `docs/REFACTOR.md`. |
+| `HIPENGINE_GEMMA4_PREFILL_ATTENTION_LOG` | false | Diagnostic | Prints one stderr line per distinct `(prefill-attention variant, head_dim)` naming the variant that ran and why it was chosen. The execution profile selects a variant as a *request*; only the layer knows each layer's head geometry, so a capability miss falls back to the strict kernel there and this line is what makes that visible. Set it to reproduce the route attribution for a Gemma 4 prefill, or when a change to the profile wiring has to be shown to have taken effect rather than inferred from a timing change. |
 
 ## Vision (multimodal server input) variables
 
@@ -211,6 +215,7 @@ qwen35moe fast-path safety gate.
 | --- | --- | --- |
 | `HIPENGINE_COMPILER_VERSION_TEXT` | unset | Literal compiler-version text for cache keys; avoids probing `<compiler> --version`. |
 | `HIPENGINE_COMPILER_VERSION_FILE` | unset | Reads compiler-version text from a file. Recommended for cached benchmarks/profiling. |
+| `UD_HIPCC_VERSION_FILE` | `/tmp/ud-hipcc-version.txt` | Script-local alias: the leaf-timing harness (`scripts/gguf_iq_local32_decode_leaf.py`) reads its pinned compiler-version text from this path before building the microbenchmark library. |
 | `HIPENGINE_HIPCC_VERSION_TEXT` / `HIPENGINE_HIPCC_VERSION_FILE` | unset | Compiler-specific override for `hipcc`; takes precedence over the generic compiler-version vars. The same per-compiler pattern applies to other compiler basenames (e.g. `HIPENGINE_NVCC_VERSION_FILE` for `nvcc`). |
 | `HIPENGINE_REQUIRE_CACHED_BUILD` | unset | When true, JIT builds must hit the build cache; a cache miss is an error instead of a `hipcc` spawn. Set by benchmark/test harnesses from `--require-cached-build` so a measured or profiled process never invokes the compiler. |
 | `HIPENGINE_BUILD_CACHE_ROOT` | unset | Explicit build-cache root directory; used by the continuous-owner profiling harness alongside `HIPENGINE_REQUIRE_CACHED_BUILD`. |
@@ -270,7 +275,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` | backend-scoped (gfx1151 physical rows >=4; otherwise false) | Retained c4/c8 rollback and broad diagnostic | Unset keeps each backend's own rule: on gfx1151, one-, two-, and three-row Q8T16 decode uses the tiled kernels from four physical rows up, while two rows and all gfx1100 widths stay on the direct kernels. Set `0` to turn the tiled path off at every width (the separately measured eight-row pair policy is unaffected). Set `1` only to reproduce the wider-rows experiment, which costs 1.795% at two rows. |
 | `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE` | false | Diagnostic | Enables the Q8T16 selected-pair rowtile helper; set by the MTP verifier rocprof harness for route attribution. |
 | `HIPENGINE_GGUF_WMMA_PREFILL` | false | Low-level performance selector | Process-wide default for low-level GGUF sessions. The public generator passes `use_wmma_prefill=True`; benchmark CLI/session arguments remain explicit for artifact provenance. |
-| `HIPENGINE_GGUF_GEMV_DECODE` | false | Low-level performance selector | Process-wide default for low-level GGUF sessions. The public generator passes `use_gemv_decode=True`. For qwen35moe, effective use is safety-gated unless decode-repack is active or the unsafe override is set. |
+| `HIPENGINE_GGUF_GEMV_DECODE` | false | Low-level performance selector | Process-wide default for low-level GGUF sessions. The Qwen3.5 public generator passes `use_gemv_decode=True` at its call sites in `hipengine/generation/qwen35_gguf.py`; the Gemma 4 generator does not pass it, so Gemma 4 takes the process-wide default and this variable is the only thing that selects the newer family for it. For qwen35moe, effective use is safety-gated unless decode-repack is active or the unsafe override is set. **Measured neutral on Gemma 4, so it is not a Gemma 4 performance lever.** On 2026-09-28 the flag moved 205 of 410 dense `gguf_q8_0` decode resolutions from `pack8_gemv_bf16_bf16_out` to `pack8_gemv_decode_bf16_bf16_out` and left the 512/128 decode at 24.81 against 24.83 tok/s. Dense `gguf_q8_0` is 1866.7 MB of the 3219.6 MB a decode token moves, so this was the right place to look; the two decoders simply run at the same rate on these shapes, which means the 58 percent of decode traffic on the legacy decoder is not limited by the decoder's choice. |
 | `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS` | false | Unsafe diagnostic | Bypasses qwen35moe GGUF fast-path safety. Do not set for normal use or promoted correctness claims. |
 | `HIPENGINE_GGUF_AOTRITON_PREFILL` | `v3` | Attention implementation selector | `v3`, `v2`, or `auto`/`v2-if-safe`. `v2` is rejected for chunked suffix prefill because it has the wrong causal-mask semantics there. |
 | `HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT` | `1024` | Decode threshold | Context length where GGUF full-attention decode uses split/paged decode; `0` disables. Compatibility alias: `NANOVLLM_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT`. |
@@ -285,7 +290,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_DECODE_GRAPH` | true | Retained default with rollback opt-out | Enables GGUF resident decode HIP graph replay. Backend capability gates whether a graph is captured at all; `0` forces eager decode for bisection. |
 | `HIPENGINE_GGUF_MOE_GRAPH` | false | Opt-in diagnostic | Graph-captures the selected-MoE decode segment in addition to the retained decode graph; used by decode-graph and PM4 profiling harnesses, off by default. |
 | `HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS` | `8` | Correctness fallback | Number of leading GGUF full-attention layers kept as BF16 primary storage for long explicit `int8_per_token_head` sessions. Long contexts require at least 8 BF16-prefix layers unless `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` is set. The 2026-06-24 W7900 gate accepts prefix 8 at `128K/128` after the layer-local BF16 prefill-oracle fix (`KL mean=0.01448`, top-1 `0.96124`, no persistent BF16 mirror); prefix 7 still fails `128K/16`, and pure INT8 fails `4K/1`. Short contexts (`<=8192` rounded max context) still use the exact BF16 mirror instead. |
-| `HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS` | unset | Unsafe diagnostic | Comma/range list of zero-based GGUF full-attention indices to keep as BF16 primary storage instead of using the leading-prefix rule, e.g. `0-5,7`. Requires `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` unless the list exactly matches the admitted default prefix. Added for non-contiguous sensitivity sweeps; 2026-06-24 W7900 `128K/16` masks with INT8 layers `{6,8,9}` and `{5,8,9}` still failed the BF16-vs-INT8 guard, so no custom mask is promoted. |
+| `HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS` | unset | Unsafe diagnostic | Comma/range list of zero-based GGUF full-attention indices to keep as BF16 primary storage instead of using the leading-prefix rule, e.g. `0-5,7`. Requires `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` unless the list exactly matches the admitted default prefix. Added for non-contiguous sensitivity sweeps; 2026-06-24 W7900 `128K/16` masks with INT8 layers `{6,8,9}` and `{5,8,9}` still failed the BF16-vs-INT8 guard, so no custom mask is promoted. Set it to `none` (or `empty`/`-`) to clear the BF16 prefix and make the full-attention stack uniformly INT8, which restores the packed decode width to the declared `max_direct_rows`. `0` means layer 0, not none. |
 | `HIPENGINE_GGUF_INT8_KV_KEY_ONLY` | false | Unsafe diagnostic | For explicit GGUF `int8_per_token_head` sessions, store retained K as INT8 but V as BF16 for INT8-selected full-attention layers. This is a diagnostic key-only layout, not a promoted 24GB path: 2026-06-24 W7900 prefix `0` failed `4K/1`, prefix `6` failed `128K/16` top-1, and prefix `7` passed `128K/16` but saved less memory and had higher prefill peak than the admitted prefix-8 per-token/head path. |
 | `HIPENGINE_GGUF_INT8_KV_BLOCK16` | false | Unsafe diagnostic | For explicit GGUF `int8_per_token_head` sessions, use the guarded block16 INT8 K/V scale granularity (`[blocks, block_size, kv_heads, 16]`) and route GGUF retained-KV write/decode through the block16 HIP kernels. This is a runtime diagnostic for the Q8-format follow-up, not a promoted path: 2026-06-24 W7900 forced-long `4K/1` BF16-vs-block16 gates fail top-1 even at prefix `8`. Do not combine with `HIPENGINE_GGUF_INT8_KV_KEY_ONLY`. |
 | `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG` | false | Unsafe diagnostic | Allows long GGUF `int8_per_token_head` diagnostics below the verified 8-layer BF16 prefix (including pure INT8-only, key-only, block16, or non-contiguous BF16 layer masks when the custom mask env is set). Leave unset for normal use: pure INT8-only and lower memory-saving prefixes failed BF16-vs-INT8/GGUF hybrid logit gates and are capacity-diagnostic only. |
@@ -748,6 +753,12 @@ hidden-bisect harnesses. Leave everything except the documented defaults unset.
 | `HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE` | false | Inserts a sync fence at the sampler suffix boundary. |
 | `HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE` | false | Inserts a kernel-scope fence at the sampler suffix boundary. |
 
+## YuE2 variables
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `HIPENGINE_YUE2_NAR_ATTENTION` | `wmma` | Attention kernel for the YuE2 acoustic solver at its production head geometry (16 query heads over 8 key/value heads at head_dim 128). `wmma` is the tensor-core `nar_wmma.hip` kernel; `scalar` selects the strict FP32 `nar_attention_f32`, which is bit-exact against the recorded parent kernel and is the solver's debugging oracle and bisection point. The tensor-core path changes arithmetic by design and is held to the production profile gates instead. Removal condition in [`REFACTOR.md`](REFACTOR.md). |
+
 ## Qwen4 experimental variables
 
 These select kernel routes inside the Qwen4Exp GGUF runner. The registered
@@ -888,6 +899,8 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_TEST_PARO_MODEL` | unset | PARO model directory override for the live PARO tokenizer/EOS tests; falls back to the standard `/models/hipengine/...` candidates. |
 | `HIPENGINE_TEST_REQUIRE_CACHED_BUILD` | unset | When truthy, GPU kernel tests require cached JIT builds (the test-side analogue of `HIPENGINE_REQUIRE_CACHED_BUILD`). |
 | `HIPENGINE_INT8_MTP_MODEL` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` | Dense GGUF model path for the live INT8 MTP test. |
+| `HIPENGINE_DMS_MTP_MODEL` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` | Dense GGUF model path for the live DMS+INT8 MTP parity gate. |
+| `HIPENGINE_DMS_MTP_METADATA` | `~/dms-artifacts/qwen38-external-v1/sidecar/dms_metadata.json` | Trained external DMS sidecar metadata for the live DMS+INT8 MTP parity gate; produced by `scripts/qwen38_dms_train_sidecar.py`. |
 | `HIPENGINE_IQ4_XS_LAYOUT_GGUF` | `/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf` | GGUF artifact for the live IQ4_XS T16 layout test. |
 | `HIPENGINE_UD_ROLE_MODEL` | `/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf` | Published UD K_M model path for the live UD Q5/Q6 role tests. |
 | `HIPENGINE_DMS_DEVICE_PAYLOADS` | unset | DMS device-payload test fixture knob; asserted unset for the host-payload baseline. |
@@ -896,6 +909,7 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_MOONSHINE_SNAPSHOT` | local default | Moonshine HuggingFace snapshot directory override for the Moonshine GPU tests. |
 | `HIPENGINE_MOONSHINE_FIXTURE_DIR` / `HIPENGINE_MOONSHINE_FIXTURES_SIX` / `HIPENGINE_MOONSHINE_SIX_FIXTURE_DIR` | local defaults | Moonshine audio fixture directory overrides for the single- and six-fixture suites. |
 | `VIBEVOICE_STANDALONE_GGUF` / `VIBEVOICE_STANDALONE_REPORT` | local defaults | VibeVoice standalone-encoder GGUF and report fixture paths for the VibeVoice tests. |
+| `HIPENGINE_TORCH_ABSENCE_CHILD` | unset | Internal re-execution flag set by `tests/_torch_absence.py` to the pytest node id running in a fresh interpreter; the clean child detects it and runs the real test body instead of recursing. |
 | `VIBEVOICE_REFERENCE_HF` / `VIBEVOICE_REFERENCE_AUDIO` | local defaults | VibeVoice HuggingFace reference snapshot and reference audio fixture paths for the encoder comparison tests. |
 
 ## Benchmark and development harness variables
@@ -964,6 +978,14 @@ in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) for the protocols.
 | `CONCURRENCY_REQUIRE_CACHED` | unset | Requires cached builds for the concurrency re-baseline harness. |
 | `SKIP_HIPENGINE_PREBUILD` | unset | `1` skips the hipEngine prebuild step in the TheRock wrapper scripts. |
 | `FIXTURE` / `DTYPE` / `ARMS` / `REQS` / `HERE` / `RECREATE` / `SITE` / `PORT` / `HOST` / `PYTHON` / `PYTHON_BIN` / `BASE_PYTHON` / `VENV` | per-script defaults | Per-script parameter locals (fixture path, dtype, arm list, requirement set, output root, recreate flag, site/port/host, and interpreter paths) read by the shell harnesses; each script assigns its own default. |
+
+### YuE2 model, gate, and timing harnesses
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `YUE2_MODEL_DIR` | HF cache snapshot of `m-a-p/YuE2-3B` | Checkpoint directory for the YuE2 AR replay, session, product and timing harnesses. When unset each script resolves the pinned revision from the Hugging Face cache and fails with an explicit message if it is absent. |
+| `YUE2_VAE_DIR` | HF cache snapshot of `m-a-p/YuE2-Vae` | Decoder checkpoint directory for the VAE gate, case-timing, and end-to-end harnesses. |
+| `YUE2_SHOOTOUT` | `~/yue2-shootout` | Reference checkout and recorded-run root the oracle harness reads and writes. |
 
 ### External-engine comparison harnesses (vLLM, llama.cpp, atlas)
 
@@ -1059,11 +1081,17 @@ These names appear in the tree but must not be confused with env knobs:
   (an env-file output format written by a harness), and the `DEFAULT_HIPENGINE_*`
   identifier fragments `HIPENGINE_ARRAYS`, `HIPENGINE_ARTIFACT`,
   `HIPENGINE_TOKENS`, `HIPENGINE_RAW_ROOT`.
+- Argument *metavars* that name an artifact slot rather than a variable:
+  `HIPENGINE_JSON` (`scripts/yue2_ar_matched_timing.py`,
+  `scripts/yue2_stage_matched_timing.py`).
+- Shell-local variables inside the `scripts/*_ab.sh` A/B harnesses, read as
+  `$NAME` and assigned in the same script, not process env vars: `BENCH`,
+  `FILE`, `FILES`.
 - Placeholder names used in doc/test examples and generic metavars
   (`HIPENGINE_FOO`, `HIPENGINE_ZZZ`, `HIPENGINE_AAA`, `HIPENGINE_EXAMPLE`,
   `HIPENGINE_SOMETHING_ELSE`, `HIPENGINE_STALE_FLAG`, `HIPENGINE_ONE`,
   `HIPENGINE_TWO`, `HIPENGINE_PREBUILD`, `HIPENGINE_DUP`, `HIPENGINE_KEY`,
-  `HIPENGINE_ROUTE`).
+  `HIPENGINE_ROUTE`, `PROFILE_ISOLATION_TEST_UNRELATED`).
 - Removed or never-shipped flags that tests assert are absent from the runtime
   source: `HIPENGINE_GGUF_AR_STREAM_PREFILL`,
   `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`,

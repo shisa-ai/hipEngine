@@ -1,0 +1,23 @@
+{
+  "kind": "gemma4_decode_host_floor",
+  "verdict": "diagnostic; rules out launch-bound and redirects the decode plan",
+  "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B, UD-Q4_K_XL",
+  "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gemma4_decode_host_floor.py",
+  "method": "Every launch funnel returns immediately, so the decode loop still runs its full Python call chain and its synchronization but issues nothing. The number is a differential over two max_tokens values, (long - short) / step, median of 3, which cancels prefill and fixed costs. Outputs are wrong on purpose; only timing is read.",
+  "measured": {
+    "host_floor_ms_per_token": 8.11,
+    "host_floor_tok_s_ceiling": 123.3,
+    "actual_ms_per_token": 40.2,
+    "actual_tok_s": 24.89,
+    "device_traffic_ms_at_256GB_s": 12.6,
+    "host_plus_ideal_device_ms": 20.7,
+    "host_plus_ideal_device_tok_s": 48.3
+  },
+  "reading": "The step is NOT launch-bound. The host floor is 8.11 ms of a 40.2 ms step, 20 percent, so removing every launch would buy at most 1.26x and would still leave 8.11 ms. Host plus device traffic at peak is 20.7 ms, or 48.3 tok/s, which is above llama.cpp's 41.92 -- so parity is reachable, but only with kernels near peak bandwidth, because the host floor alone leaves less headroom than the gap. Actual minus host floor is 32.1 ms for 12.6 ms of traffic, so the device side runs at about 39 percent of peak. The lever is therefore kernel efficiency and multi-token steps, not fewer launches.",
+  "consequence_for_the_plan": "MTP is the larger lever on the decode objective. It produces more than one token per forward pass, so it amortises both the 8.11 ms host floor and the device-side inefficiency at once, where a kernel-efficiency campaign has to reach near peak to close 1.68x. This is why the next decode unit is MTP rather than a launch-count reduction or another decoder swap.",
+  "caveats": [
+    "The host floor and device work are measured separately and are not necessarily additive: with real launches the host can run ahead while the GPU works, so the true overlap may be better than the sum implies. That makes 20.7 ms a pessimistic bound, not a target.",
+    "The host floor is a property of this launch structure and this machine's host path. It is not a hardware limit.",
+    "Diagnostic only: no production code changed and no performance claim about a shipped path is made."
+  ]
+}

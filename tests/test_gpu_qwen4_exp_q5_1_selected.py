@@ -28,6 +28,50 @@ def _hip_available() -> bool:
     return True
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime unavailable")
+@pytest.mark.parametrize("out_features", [1, 3, 4, 5, 11])
+def test_amortized_partial_output_tiles(out_features):
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out,
+    )
+
+    runtime = get_hip_runtime()
+    rows, experts, width = 9, 2, 64
+    starts = np.array([0, 5, rows], dtype=np.int64)
+    x = np.arange(rows * width, dtype=np.float32).reshape(rows, width) / 128
+    x_bits = float_array_to_bf16_bits(x)
+    raw = np.zeros((experts, out_features, width // 32, 24), dtype=np.uint8)
+    scales = np.array([1.0], dtype=np.float16).view(np.uint8)
+    raw[..., :2] = scales
+    for expert in range(experts):
+        for col in range(out_features):
+            raw[expert, col, :, 8:] = (col + expert + 1) * 0x11
+    expected = np.empty((rows, out_features), dtype=np.float32)
+    for expert in range(experts):
+        begin, end = starts[expert:expert + 2]
+        expected[begin:end] = bf16_to_float32(x_bits[begin:end]).sum(axis=1)[:, None] * (
+            np.arange(out_features) + expert + 1
+        )
+    output = np.full((rows, out_features), 0xFFFF, dtype=np.uint16)
+    buffers = []
+    try:
+        for host in (x_bits, starts, raw, output):
+            buf = malloc(host.nbytes, runtime=runtime)
+            buffers.append(buf)
+            copy_host_to_device(buf, host_array_ptr(host), runtime=runtime)
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out(
+            *(buf.ptr for buf in buffers), rows, experts, width, out_features,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(output), buffers[-1], runtime=runtime)
+        np.testing.assert_array_equal(output, float_array_to_bf16_bits(expected))
+    finally:
+        for buf in reversed(buffers):
+            free(buf, runtime=runtime)
+
+
 def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
     from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
         plan_qwen4_exp_q5_1_build,

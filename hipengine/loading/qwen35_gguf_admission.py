@@ -143,6 +143,8 @@ from hipengine.loading.qwen35_gguf_nextn import Qwen35GGUFNextNMap
 from hipengine.loading.qwen35_gguf_policy import (
     gguf_ar_decode_repack_veto,
     gguf_ar_f32_linear_contraction,
+    resolve_gguf_decode_repack,
+    resolve_ud_repack_eligibility,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
 
@@ -2394,11 +2396,24 @@ def preflight_qwen35_gguf_artifact(
             for layer in model_map.layers
             for tensor in layer.tensors.values()
         )
-        plan_flags["decode_repack"] = bool(decode_repack) and not gguf_ar_decode_repack_veto(
-            ar_types
+        # E3: mirror plan_qwen35_gguf_materialization exactly. A None
+        # decode_repack resolves through the env default (on), and under the
+        # shipped per-tensor eligibility mode only 'model-wide' lets one
+        # raw-IQ tensor veto repack for the whole model; per-tensor mode
+        # vetoes ineligible tensors inside the planner, so this model-level
+        # flag must stay open for a raw-IQ carrier's eligible Q4/Q5/Q6/Q8
+        # tensors (the old coercion recorded repack=OFF for files the
+        # runtime loads with T16 routes).
+        plan_flags["decode_repack"] = resolve_gguf_decode_repack(
+            decode_repack
+        ) and not (
+            resolve_ud_repack_eligibility() == "model-wide"
+            and gguf_ar_decode_repack_veto(ar_types)
         )
     else:
-        plan_flags["decode_repack"] = bool(decode_repack) and not bool(repack_veto)
+        plan_flags["decode_repack"] = resolve_gguf_decode_repack(
+            decode_repack
+        ) and not bool(repack_veto)
     if contract_f32_linear is None:
         ar_types = (
             tensor.ggml_type

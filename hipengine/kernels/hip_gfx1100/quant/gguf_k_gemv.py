@@ -390,6 +390,9 @@ gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out = _make_pack8_wrapper(
 gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out = _make_pack8_wrapper(
     "gguf_q8_0", _symbol("gguf_q8_0", "exact_prefill_tile16x4_bf16_bf16_out")
 )
+gguf_q8_0_exact_prefill_tile4x16_bf16_bf16_out = _make_pack8_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "exact_prefill_tile4x16_bf16_bf16_out")
+)
 gguf_q8_0_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_gemv_bf16_bf16_out"))
 
 
@@ -965,6 +968,20 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
         for variant, fn in _WRAPPERS[quant].items():
             register(KernelKey("hip_gfx1100", "linear", quant, variant), fn, replace=replace)
+    # The grouped row4 GEMV is also reachable through the MoE expert route,
+    # which resolves `moe_linear`. It is the only grouped kernel Q5_K has, and
+    # one MoE layer of a dynamic quant can carry Q5_K expert weights while the
+    # rest of the model is Q4_K.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_k",
+            "selected_grouped_row4_gemv_bf16_bf16_out",
+        ),
+        gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out,
+        replace=replace,
+    )
     register(KernelKey("hip_gfx1100", "linear+gr_gated_mean", "gguf_q8_0",
                        "coltile2_branch4_rowbatch4_wave_scale_f32_exact"),
              gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32,
@@ -1573,6 +1590,7 @@ _WRAPPERS = {
         "exact_prefill_tile8x2_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out,
         "exact_prefill_tile8x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out,
         "exact_prefill_tile16x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out,
+        "exact_prefill_tile4x16_bf16_bf16_out": gguf_q8_0_exact_prefill_tile4x16_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q8_0_selected_gemv_bf16_bf16_out,
         "selected_grouped_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
         "selected_grouped_row4_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out,

@@ -26,6 +26,94 @@ returns only the definition, the package export, and this entry, and the Gemma 4
 unit tier plus one public `LLM.generate()` request pass after the wrapper is
 gone. Removal should be its own unit, separate from the fusion that stranded it.
 
+## Gemma 4's WMMA prefill attention is on; the teacher-forced KL gate is met, the wider promotion set is not (found 2026-09-29)
+
+`gemma4_wmma_flash` and `gemma4_wmma_flash_full` are the `production` profile's
+selections for Gemma 4's prefill attention -- the sliding geometry (head_dim
+256, 16 query heads, 8 KV heads, 25 of 30 layers) and the full geometry
+(head_dim 512, 16 query heads, 2 KV heads, 5 of 30 layers) respectively -- and
+are therefore on by default. The layer matches each request against its own head
+geometry, so the two candidates cover all 30 layers between them; any geometry
+neither implements falls back to `gemma4_plain` on a capability miss rather than
+raising.
+
+Both are changed-arithmetic paths: the score dot is reassociated through the
+16x16x16 F16 matrix unit and the softmax weights are rounded to FP16 before the
+P*V dot. Each candidate's evidence artifact carries its own kernel row against
+the strict kernel on the same bench buffers (13.64x at 4096 tokens for the
+sliding geometry, 9.19x for the full one) and its correctness cases at a
+declared four-BF16-ulp bound (20 and 19 cases respectively). The end-to-end
+ladder is measured in all three arms at four prompt lengths:
+
+| prompt | strict only | sliding candidate | both candidates | llama.cpp |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 870.0 | 1012.8 | 1078 | 1012.98 |
+| 1024 | 707.2 | 925.1 | 1042 | 1057.48 |
+| 2048 | 570.0 | 804.6 | 1007 | 1067.14 |
+| 4096 | 456.1 | 628.2 | 973 | 1039.85 |
+
+**The production numerical gate is met.**
+`benchmarks/results/2026-09-29-gemma4-teacher-forced-gate-prefill-attention.json`
+records the `docs/EXECUTION-PROFILES.md` §6 verdict on the shipping path against
+a frozen strict baseline over the campaign chain (2048 prompt tokens, 1024
+prefilled, 1023 scored rows, vocab 262144): mean KL 4.68e-06, p95 1.09e-05, p99
+5.21e-05, max 1.74e-03 against limits 1e-3 / 5e-3 / 2e-2 / 5e-2, and top-1 100
+percent with zero flips. `passed: true`, `failed: []`, with the decode split
+observed on 30690 launches over keys 1024-2047. The first run of this gate
+failed with `no_decode_launches_observed` and a 1.39e-02 max KL, which is how
+the selection bug below was found.
+
+**What is still outstanding is the rest of the promotion set**: this evaluator
+is a single teacher-forced chain, so it supplies no category, isolation or task
+gates, and 1023 rows on one chain is not the 500-1000 *paired* row standard.
+Both routes are T2 association candidates, so that set is what their promotion
+evidence is made of. It is tracked in
+`docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`, not here.
+
+The lever is the profile, not an env var: `HIPENGINE_EXECUTION_PROFILE=strict`
+restores `gemma4_plain` everywhere. Remove it when either candidate is
+superseded, or once the promotion set above is complete and the candidates
+carry default evidence.
+
+This candidate's routing is worth one note for whoever reads it next. The
+variant is selected by head geometry **and block width**: a one-token block is a
+decode step and keeps the strict kernel, because the candidates tile 16 query
+rows wide and the strict path has a dedicated decode kernel. A first cut matched
+on geometry alone, so decode ran the prefill tiling on all 30 layers and lost 10
+percent; `scripts/gemma4_teacher_forced_gate.py`'s route check is what caught it,
+because it asserts on observed launcher selections rather than the requested
+policy. A change that routes decode off the strict path re-fires it.
+
+## Gemma prefill attention tiled variant is a dead route (found 2026-09-28)
+
+`gemma4_attention_prefill_tiled_kernel` is exported as
+`hipengine_gemma4_attention_prefill_tiled_{bf16,f32}` and has no Python wrapper.
+It was written to make the shared-memory footprint independent of context -- the
+strict kernel materialises one logit per key, so its shared array is
+`(head_dim + keys + 256) * 4` bytes and occupancy falls from 16 blocks per CU at
+512 keys to 3 at 4096 -- on the theory that this is what limits the strict
+kernel. It is not what limits it.
+
+Measured with `scripts/gemma4_attention_prefill_tiled_ab.py`, both kernels
+driven through ctypes on the same device buffers, 5 iters and 2 warmups:
+
+| tokens | head_dim | strict | tiled | ratio |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 256 | 150.5 ms | 150.65 ms | 1.00 |
+| 2048 | 256 | 46.72 ms | 67.21 ms | **1.44 (slower)** |
+| 2048 | 512 | 88.83 ms | 95.52 ms | **1.075 (slower)** |
+
+and the outputs are **bit-identical** at every one of those sizes -- 0
+mismatched elements out of 8,388,608 and 16,777,216, max abs diff 0, max rel
+diff 0. The two kernels are not two arithmetic contracts; they are one contract
+with two schedules, and the schedule that costs a 1.44x slowdown is the one
+whose only justification was the occupancy theory the measurement refutes.
+
+Removal condition: delete `gemma4_attention_prefill_tiled_kernel`,
+`launch_gemma4_attention_prefill_tiled`, and the two exported symbols, and drop
+`scripts/gemma4_attention_prefill_tiled_ab.py`. Nothing selects them, so there
+is no behaviour to preserve. Keep the strict kernel, which is both faster and
+the one the decode-parity contract is written against.
 ## Dense Q8 MMQ prefill branch is unreachable behind the WMMA rewrite (found 2026-09-26)
 
 The dense branch of `_q8_mmq_prefill_dispatch`
@@ -40,6 +128,15 @@ so it returns the dispatch unchanged. Instrumentation at the entry point confirm
 29% slower (1054 against 1367 tok/s) although correct, and `kl_max` improved to
 0.000893 from 0.001341. The unreachability is the mechanism that keeps a slower
 route off the default path, so the ordering is load-bearing.
+
+Removal condition: delete the dense branch of `_q8_mmq_prefill_dispatch` (and the
+three unwrapped variant names it matches on) once no caller can reach it. That is
+already true today -- the WMMA rewrite runs first for every shape the branch's own
+policy admits, and the ordering is load-bearing -- so the branch is dead code whose
+only remaining effect is to look selectable. Removing it needs no replacement path:
+the WMMA route it loses to is the faster one. If the ordering is ever reversed,
+delete the branch instead of reviving it, and treat a faster dense Q8 MMQ leaf as a
+new candidate with its own measurement rather than as a restoration of this one.
 
 What is left to clean up is the appearance: the branch reads as a working route.
 Either delete the dense branch and its policy entries, or add the note at the
@@ -73,6 +170,124 @@ unit/GPU guard plus one public `LLM.generate()` request pass. Clearing condition
 the launch ABI carries an explicit two-pass selection instead of a slice count,
 keeping the existing split entry threshold and the strict single-kernel oracle
 route.
+## gfx1151 compact attention wave producer — NUMERICAL CONTROL FAILURE
+
+The gfx1151 BF16 compact attention build selects the existing generic grouped
+producer. The wave-group6 producer failed the unchanged four-category G0
+no-evict control; replacing only attention with dense arithmetic eliminated the
+mixed-category mismatch. Evidence and exact commands are in
+`worklog/entries/20260926T140616.347941Z-main-dms-producer-control-183661.md`.
+No feature is disabled and no model identity is used for admission. gfx1100
+selection is unchanged; this finding was measured on gfx1151 only.
+
+Removal condition: repair the wave producer and pass the same G0 command from
+that worklog, the matched-input attention GPU test, public DMS lifecycle tests,
+and applicable execution-profile numerical gates before restoring gfx1151 wave
+selection. Primitive tolerances alone did not catch this full-model failure.
+
+
+## Dormant (Q3_K gate, IQ4_XS up), (IQ4_XS gate, Q3_K up), (IQ3_S gate, IQ4_XS up), and (Q5_K gate, Q6_K planar up) fused pair registrations (2026-09-25) — AWAITING A CLEARING SCREEN
+
+E6b-5 built the fused pair+SiLU owner for the 3-layer (Q3_K, IQ4_XS)
+family: `B_KIND=2` in `gguf_iq4_q4_pair.hip` (side B = the strict
+per-row Q3_K GEMV's exact 128-thread tile emulated across the pair's
+waves), the `hipengine_gguf_q3_iq4_pair_silu` entry point, its Python
+wrapper, and the registered key `gguf_q3_k+gguf_iq4_xs`. It is
+bit-exact against `q3 strict single + iq4 local32 single + silu_mul`
+at K=5120 (GPU test) and at (5120, 17408) rows=1 (screen), but the
+production screen measured **0.92-0.99x across five runs - never the
+required >= 1.00** - so the route block ships dormant: no dispatch
+path selects this key, and production behavior is unchanged by
+construction.
+
+**E6b-7 added the reverse direction the same day (iteration 18):**
+(IQ4_XS gate, Q3_K up), 1 layer (blk.0), under a second instantiation
+`<W, GATE_IS_Q4=false, B_KIND=2, A_IS_CHAIN=false>` and its own
+extern-C `hipengine_gguf_iq4_q3_pair_silu` + wrapper
+`gguf_iq4_q3_pair_silu_bf16_bf16_out` + registration key
+`gguf_iq4_xs+gguf_q3_k` (route order == C geometry, no reorder; the
+epilogue takes the gate from side A's IQ4 chain). Bit-exact at K=5120
+(GPU suite) and at (5120, 17408) rows=1, but five production screens
+measured **0.95 / 0.97 / 1.03 / 0.96 / 0.95 - mean 0.972, four of five
+below the >= 1.00 gate** (the lone 1.03 inside the historical screen
+spread), so its route block was also removed and production stayed
+byte-identical by construction (LLM probe: pair7 = 0 dispatches, all
+five shipped families intact). The structural cause is the same one
+recorded for the first direction: sides keep identical arithmetic, so
+the direction swap cannot change the wall picture.
+
+**E6 closeout added two more dormant directions the same day
+(iteration 21):** (IQ3_S gate, IQ4_XS up), 1 layer (layer 11), under
+instantiation `<W, GATE_IS_Q4=true, B_KIND=3, A_KIND=0>` + extern-C
+`hipengine_gguf_iq3s_iq4_pair_silu` + wrapper
+`gguf_iq3s_iq4_pair_silu_bf16_bf16_out` + key
+`gguf_iq3_s+gguf_iq4_xs` (B_KIND=3 is the IQ3_S local32 decode
+owner's Q==2 split-K path verbatim - both sides of layer 11 take the
+session's local32 owner, no ffn_gate pin; the wrapper reorders the
+gate-first route args to C geometry). Bit-exact at K=5120 (GPU test)
+and at (5120, 17408) rows=1 (screen), but four production screens
+measured **0.99 / 0.99 / 0.98 / 0.97 - never the required >= 1.00**.
+And (Q5_K gate, Q6_K planar up), 1 layer (layer 63), under
+`<W, GATE_IS_Q4=true, B_KIND=1, A_KIND=3>` + extern-C
+`hipengine_gguf_q5_q6_pair_silu` + wrapper
+`gguf_q5_q6_pair_silu_bf16_bf16_out` + key
+`gguf_q5_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1` (A_KIND=3 emulates
+the planar single's exact 4-wave chain across the block's waves; the
+wrapper reorders gate-first args so side A runs the planar chain).
+Bit-exact everywhere, but four production screens measured
+**0.60-0.61x** - the chain emulation across block waves costs far more
+than the launch it saves. Both route blocks were removed with the unit;
+production behavior is byte-identical by construction. The third
+closeout direction, (IQ4_NL gate, Q5_K up) at 1.03-1.04x, passed its
+gate and shipped (it is not part of this entry).
+
+**E6 same-quant closeout recorded a capability gap (iteration 22):**
+(Q3_K gate, Q3_K up), 1 layer (layer 14), has no expressible entry -
+side A has no strict-Q3 instantiation (only `B_KIND=2` runs the strict
+Q3 tile, on side B), and every strict-emulation screen to date lands
+0.60-0.99x (E6b-5, E6b-7, E6 closeout), so a predicted-failing body
+was not built. Nothing ships and production is unchanged by
+construction; any artifact carrying this ordered pair hits the same
+gap. The same unit adjudicated (Q4_K, Q4_K) as **already fused** by
+the pre-existing dense-dual route (5 layers, 4.84 launches/token - no
+entry needed, admission test only) and shipped (IQ4_NL gate, IQ4_NL
+up) at 1.04x with `B_KIND=4`; neither belongs to this entry.
+
+Clearing command (Q3_K/Q3_K gap): port the strict per-row Q3_K tile
+into the pair's side A (mirror of `B_KIND==2`, e.g. `A_KIND=4`),
+instantiate `<W, GATE_IS_Q4=false, B_KIND=2, A_KIND=4>` +
+`hipengine_gguf_q3_q3_pair_silu` + wrapper + registration key
+`gguf_q3_k+gguf_q3_k`, prove bit-exact vs `q3 strict + q3 strict +
+silu_mul` at K=5120 and at (5120, 17408) rows=1, then screen
+`~/ud-e1-census/e6_closeout_screen.py` (or successor): only at
+>= 1.00x add the route block in `hipengine/runtime/gguf_linear.py`
+keyed on both sides' raw strict `gemv_bf16_bf16_out` owners at
+rows==1.
+
+Clearing command: re-run `~/ud-e1-census/e6b5_screen.py`,
+`~/ud-e1-census/e6b7_screen.py`, and
+`~/ud-e1-census/e6_closeout_screen.py` (or successors) after a
+structural change to the pair (e.g. overlapping side A and side B
+phases, a lower-overhead strict emulation, or a wave-scheduled planar
+chain that runs each single-wave on its own hardware wave); if any
+direction measures >= 1.00x bit-exact, add that direction's route
+block back in `hipengine/runtime/gguf_linear.py` keyed on its ordered
+pair (`gguf_q3_k+gguf_iq4_xs` or `gguf_iq4_xs+gguf_q3_k` gate-first,
+`gguf_iq3_s+gguf_iq4_xs`, `gguf_q5_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1`)
+with the matching predicates (raw-IQ side = session-qualified decode
+owner with the spec's slot_path - Q3/IQ3_S parents keep
+`gemv_bf16_bf16_out` without a policy entry or under a pin, IQ4 sides
+the local32 owner; Q5 side = E4a tile8 c1 owner; Q6 side = direct
+planar decode key; both sides' ABIs as the shipped wrappers read them)
+and delete this entry.
+
+Removal condition: if the fused pair family is redesigned or those
+layers change quant, delete `B_KIND==2`, `B_KIND==3`, `A_KIND==3`, all
+four dormant extern-C wrappers, their Python wrappers/registrations
+(all four ordered keys), and their GPU/route tests together - dead
+code with no route does not accumulate a second life.
+Evidence: `docs/campaigns/UD-GFX1151-OPTIMIZE2.md` E6b-5 row;
+`worklog/entries/20260925T011636.401265Z-lhl-ud-gfx1151-optimize2-e6b5-q3-iq4-negative-c7f21a.md` (this unit's entry).
 
 ## Dense27B prefix oracle disagreement after prefix/MTP integration (2026-09-20) — RESOLVED
 
@@ -176,52 +391,48 @@ int8-KV artifacts under `benchmarks/results/` record the pre-change id
 (`4b0e936f…` for the gfx1100 direct-c4 contract); they are frozen measurements
 and are not rewritten.
 
-## The packed workspace lease still reserves one full session context per slot (found 2026-09-18)
+## Packed workspace eager reservation is bounded — RESOLVED
 
-`hipengine/generation/qwen35_gguf.py` sizes the eager packed-execution workspace
-lease as `workspace_slots * workspace_pages_per_slot`, where the per-slot term is
-`max(ceil(session_scratch.max_positions / 256), 4)` pages. The slot term now
-follows the serving capacity (see
-`worklog/entries/20260918T205735.370215Z-lhl-packed-workspace-lease-capacity-be3814.md`),
-but the per-slot term is still priced from the session's **physical** context,
-not from the longest context a request can actually be admitted at. Measured on
-gfx1151 with an auto-resolved 262144-token session: the C1 lease is 1024 pages
-(16 GiB) while the largest realized union across a 5,469-token prefill and two
-short prompts (one carrying an explicit `speculative_mtp` request, which the
-production plan did not admit) was 5469 tokens (22 pages), and the 8192-token
-pinned configuration reserves 32 pages per slot where that same run's largest
-realized union was also 5469 tokens. This is a reservation, not a leak (every
-page is accounted and pinned at pool creation), so it is a memory-footprint debt
-rather than a correctness bug.
+`packed_verify_workspace_lease_pages` reserves four 256-token pages per serving
+slot, matching the existing 1,024-token packed context floor. Longer realized
+contexts or wider physical layouts use private KV charged against the same pool
+budget. They never overwrite the pinned lease or another request's pages.
 
-Removal trigger: size the per-slot term from the loop's admission ceiling (the
-context the scheduler will actually admit, `min(session max, server
-max_context_tokens)`), or make the workspace lease grow with the realized union
-the way the global pool already grows against its budget. Either way the change
-must preserve ownership: an under-sized lease must use budgeted private KV
-or refuse rather than overwrite a neighbour's pages. It also needs its own
-C1/C4 measurement, because shrinking this term raises the context the
-auto-context resolver selects on the same hardware.
+The capacity estimator reports `private_workspace_bytes` separately and prices
+both the eager lease and the full private fallback when the requested context
+exceeds the floor. Bounding startup reservation therefore does not assume that
+long-context workspace is free. Private buffers and their budget charges follow
+the packed state's existing growth and close lifecycle.
 
-## The capacity estimate prices a one-slot workspace lease while the pool leases the serving capacity (found 2026-09-18)
+## Capacity estimates include serving-capacity workspace leases — RESOLVED
 
-`qwen35_gguf_resident_breakdown` (`hipengine/runtime/qwen35_gguf_runner.py`)
-computes `workspace_lease_pages = slots * max(pages_per_request, 4)` from its own
-`max_batch_size` argument, and `_resident_capacity_estimate` calls it with
-`max_batch_size=1` because context admission is per request. The pool's lease,
-by contrast, now takes one slot per serving capacity. At C4 on a 262144-token
-session the estimate prices 1024 pages (16 GiB) where the pool leases 4096 pages
-(64 GiB), so the auto-context resolver and any capacity probe built on the same
-breakdown under-report the resident footprint by 48 GiB at that shape.
+`qwen35_gguf_resident_breakdown` and `estimate_qwen35_gguf_kv_capacity` accept
+`workspace_lease_slots`, independently of `max_batch_size`. The generator prices
+elastic request KV at one request and the eager workspace lease at serving
+capacity. Auto-context selections are cached by capacity and allocation mode,
+so a single-request selection cannot be reused for a wider pinned lease.
 
-Removal trigger: give the breakdown a separate `workspace_lease_slots` term
-(default: `max_batch_size`, so single-request pricing is unchanged) and have
-`_resident_capacity_estimate` pass the serving capacity for the lease while
-keeping `max_batch_size=1` for the per-request KV terms. This changes the
-resolved auto context, so it needs the same measurement protocol as the entry
-above before it becomes a default.
+Regression coverage compares estimator pages with the allocator's lease helper
+at capacities 1, 4, and 8 and contexts below, above, and unrelated to the packed
+context floor. Private growth and eager reservation are priced separately.
 
-## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19)
+## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19) — RESOLVED
+
+Resolved in three steps. (1) The `(8, 3)` cell left
+`GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]` in 9c8ff5444; the
+explicit capacity-8 route now falls to the registered strict fallback
+`gguf_target_ar`, and the production-admission rerun recorded in
+`benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`
+confirms the withdrawal. (2) Speculation routes by priming source instead of
+sink refusal (3edac59c9): a row whose prompt sink was refused declines
+capability with `provider_state_absent` before any cycle can open a provider
+(regression:
+`tests/test_unit_qwen35_gguf_mtp2_seam.py::test_capability_refuses_a_row_whose_prompt_sink_was_refused`).
+(3) A zero partition bound is one whole-batch AR step in the engine instead of
+"do not partition" (regression:
+`tests/test_unit_specdec2_engine_loop.py::test_zero_partition_bound_stops_a_wide_capable_runner_from_cycling`).
+The observations below record the original finding; the first bullet's claim
+that the production width table lists `(8, 3)` predates the withdrawal.
 
 - `hipengine/kernels/hip_gfx1151/__init__.py` lists `(8, 3)` in
   `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]`, but
@@ -904,6 +1115,52 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   dispatch branch together, and keep the chunk-outer tests only as the decline
   coverage the layer-outer path needs.
 
+## `HIPENGINE_YUE2_NAR_ATTENTION` (scalar fallback for the tensor-core attention)
+
+- `nar_wmma.hip` became the default attention for the production head geometry
+  (16 query heads over 8 key/value heads at head_dim 128) on 2026-09-17, after
+  all three M4 solver gates passed and the 32-step product solve of
+  `mandarin-off-s1234` fell 54.76 s -> 32.22 s. The kernel is 5.1x the scalar
+  kernel's rate (20.1 ms -> 3.85 ms per call at 1 299 rows / 2 695 keys) and
+  lands inside 1.7x of the pinned upstream's own attention kernel.
+- `HIPENGINE_YUE2_NAR_ATTENTION=scalar` selects `nar_attention_f32`, which stays
+  registered as the strict fallback: it is bit-exact against
+  `tests/fixtures/yue2/operators/nar_attention_parent.npz` and against the
+  recorded parent kernel, so it is the debugging oracle and the bisection point
+  for any solver regression. The tensor-core kernel changes arithmetic by design
+  (f16 WMMA operands, f16 output accumulator) and is held to the production
+  profile gates instead.
+- Removal condition: once the tensor-core path has held through a release cycle
+  with no solver regression traced to it, drop the environment flag and the
+  `_wmma_attention` branch, keep the scalar kernel registered but unreachable by
+  default, and keep `test_attention_matches_the_parent_kernel_bit_for_bit` as
+  the oracle's coverage.
+
+## YuE2 AR full-vocabulary head route (gate-only, keep)
+
+- `Yue2ArRuntime.logits(branch, domain=...)` projects only a phase's window
+  (`hipengine.generation.yue2.phase_window`: 32 769 rows for `semantic`, 151 849
+  for `abc`) and returns a full-vocabulary row that is `-inf` outside it, which is
+  exactly what `distribution` masks. The session loop always passes a window and
+  then samples through `distribution_windowed`, so the unwindowed call is now
+  reached only by the replay matrix (`scripts/yue2_ar_replay.py`), the
+  matched-timing harnesses and the paired-head check, all of which score
+  full-vocabulary rows against the pinned upstream oracle.
+- That is why this route stays: the reference rows are full-vocabulary, so a
+  windowed row cannot be compared against them and the AR replay gate would lose
+  its oracle. Do not remove `domain=None` as dead code; it is the diagnostic path
+  the numerical gate depends on. Both routes share one kernel
+  (`dense_gemv_bf16_f32_out_rowtile2`) and differ only in the weight offset and
+  `out_features`, so there is no second implementation to keep in sync.
+- The same split exists one level up in the sampler: `distribution` (full row) and
+  `distribution_windowed` (window slice plus its token offset) are one arithmetic
+  body, `_distribution_slice`, called with `(0, n)` or with a phase window. The
+  full-row call is not a fallback that can be retired -- it is the shape the
+  equivalence tests compare against -- but it is also no longer a second
+  implementation, so there is nothing to keep in step.
+- Removal condition: none. Revisit only if the oracle fixtures gain windowed rows
+  or a future profile retires the full-vocabulary replay gate.
+
 ## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
 
 - Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead
@@ -942,36 +1199,31 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   wrong and was corrected in
   `worklog/entries/20260912T000826.517239Z-lhl-p3-c1-graph-floor-correction-5a1217.md`.
 
-## H2D uploads should retain the source instead of taking a bare address
+## Host-to-device source ownership
 
-- `copy_host_to_device(buffer, host_ptr, nbytes)` takes an `int`, so every call
-  site has to keep its own array alive. That is the whole defect class: the
-  inline form (`copy(buf, host_array_ptr(np.zeros_like(x)))`) frees the array
-  before the copy is entered, and no amount of care at the call site makes the
-  next author safe. The durable fix is an upload API that owns the reference,
-  e.g. `upload_host_array(buffer, array, nbytes=None)` doing the
-  `np.ascontiguousarray` + `host_array_ptr` + `memcpy` internally, with
-  `copy_host_to_device` kept only for callers that genuinely hold a raw address.
-  Measured mechanism and the tests that pin it: `tests/test_gpu_h2d_source_lifetime.py`.
-- Two residues are outside the AST guard in `tests/test_gpu_device_memory_hygiene.py`
-  (which is documented as partial, with its gaps pinned by
-  `test_the_lint_is_documented_as_partial_and_its_gaps_are_pinned`):
-  - `host_array_ptr(np.ascontiguousarray(x))` with a non-contiguous `x` copies,
-    so the temporary is the only reference and is freed before the copy is
-    entered. On a contiguous `x` it is a no-op and safe, which is why the guard
-    does not flag it; the ~100 existing call sites are safe as written, so this
-    is only worth closing with the upload API above.
-  - an allocation reached through a factory or a view, e.g.
-    `host_array_ptr(_fresh())` or `host_array_ptr(np.zeros(8).reshape(2, -1))`,
-    which a source-level lint cannot see. The first form is demonstrated in
-    `tests/test_gpu_h2d_source_lifetime.py`.
-- `_copy_array_to_tensor`-style helpers (e.g.
-  `hipengine/runtime/gguf_native_spec_cycle.py`) do bind the source to a local,
-  which is sufficient on its own -- the transfer is complete when the copy
-  returns (`tests/test_gpu_h2d_source_lifetime.py::test_transfer_is_complete_when_the_copy_returns`).
-  Their per-call `device_synchronize()` is defensive only and is the part worth
-  removing; a persistent pinned staging buffer is the alternative if a future
-  async copy path needs one.
+- `copy_host_array_to_device(buffer, array, nbytes=None)` retains a contiguous
+  source through the synchronous copy and checks both source and destination
+  bounds. Its default byte count is the source size. Use this API for arrays,
+  including temporary results of `np.ascontiguousarray`; noncontiguous inputs
+  must be made contiguous by the caller. The helper does not import NumPy or
+  add device-wide synchronization.
+- The reviewed temporary-array uploads in the GGUF, PARO, Moonshine, Evie,
+  TimesFM, and MTP runners use the owning API. Ownership and strided-input
+  regressions live in `tests/test_unit_host_array_upload.py`; real copies and
+  source reuse are covered by `tests/test_gpu_host_array_upload.py` and
+  `tests/test_gpu_h2d_source_lifetime.py`.
+- Remaining cleanup: named-local array uploads still use the raw-address
+  `copy_host_to_device` API in other paths. Named locals are safe through a
+  synchronous copy, but future edits must not replace them with temporary
+  pointer expressions. The AST guards are partial, not a proof of arbitrary
+  pointer lifetimes. Migrate array callers when touching those paths; retain
+  the pointer API for callers that genuinely manage a raw address. Remove this
+  ledger entry when array upload callers consistently use the owning API.
+- `_copy_array_to_tensor`-style helpers may also carry defensive per-copy
+  `device_synchronize()` calls. A synchronous copy retains no dependency on
+  the host source after return; removing synchronization still requires checking
+  each helper's device ordering contract. A future asynchronous upload API must
+  define a separate source-lifetime contract.
 
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
@@ -7344,7 +7596,18 @@ batches (len(sessions) >= 2) with a RED-first contract
   policy. Do not restore a scalar ceiling or broaden intervening widths. Keep
   the registered strict fallback.
 
-## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31)
+## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31) — RESOLVED
+
+Resolved: `_maybe_run_partitioned_speculative_decode` now treats a zero
+partition bound as one whole-batch AR step instead of "do not partition"
+(`tests/test_unit_specdec2_engine_loop.py::test_zero_partition_bound_stops_a_wide_capable_runner_from_cycling`
+pins the engine decision against a runner whose capability would grant the
+wide cycle), and the admission owner caps gfx1151 production MTP widths at
+four (9c8ff5444), so C5-C8 never enter MTP and the census artifact's true-AR
+column stays their operative baseline -- no remeasure row is claimed here.
+Decision: the partitioner-level threshold is retained deliberately as the
+zero-bound signal the engine maps; it is not a redundant defense. The
+observation below records the measured inert state from 2026-09-19.
 
 `GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS = {"production": 4}` plus a
 zero `partition_max_requests` result make an over-bound due batch take one
@@ -8772,15 +9035,20 @@ every one of its 162 cycles. Remove the flag and
 second protocol or host, or once a wider-group route actually beats the batch AR
 decode; until then the flag is the only way to reproduce the rejected arm.
 
-**Sampled-route finish-rule blockers (open).** The route's servable blocker set is the sampling law and nothing else
-(`temperature`, `logit_bias`, penalties, `suppress_token_ids`) plus
-`ignore_eos`. `min_tokens`, `eos_token_id`, `stop_token_ids`, and
-`stop_token_sequences` are unservable until the route implements the
-autoregressive finish rule: the cycle commit ends a row only when its last
-visible token is the row's EOS, and a stochastic accept has no
-`greedy_chain_eos_limit` bound, so a stop token or EOS can land mid-cycle.
-Moving them back to servable requires a finish-rule gate, not just the
-induced-law gate.
+**Sampled-route finish-rule blockers — resolved (2026-09-22).** The route's
+servable blocker set is the sampling law and nothing else
+(`temperature`, `logit_bias`, penalties, `suppress_token_ids`), plus the
+finish-rule relaxations the cycle commit honors: `ignore_eos`, `min_tokens`,
+`eos_token_id`, `stop_token_ids`, and `stop_token_sequences`. The commit applies
+the autoregressive finish rule to the whole verified chain through
+`hipengine/speculative/streaming.py` `limit_chain_accept_finish`, selecting the
+terminal prefix and reporting `eos` or `stop`, so a stop token or EOS that lands
+mid-cycle publishes nothing after it.
+Evidence: `benchmarks/results/2026-09-22-gfx1151-qwen38-int8-mtp-finish-rule.json`
+and `benchmarks/results/2026-09-22-gfx1151-qwen38-bf16-mtp-finish-rule.json`
+(`scripts/mtp_finish_rule_gate.py`, with `tests/test_unit_mtp_finish_rule_gate.py`
+driving each check to fail against a server that violates it).
+Source: `worklog/entries/20260922T140534.086274Z-lhl-mtp-finish-rule-c10d7c.md`.
 
 **Sampled-route debug traces (env-gated, added 2026-09-18; retained 2026-09-19).**
 `HIPENGINE_DEBUG_SAMPLED_ROUTE` gates stderr traces that name every gate on this
@@ -8950,6 +9218,280 @@ ladder with a width the box cannot hold, then assert a full-context session plus
 chat smoke still allocate. If the failed attempt does not roll back completely, fix
 the rollback instead of weakening the probe.
 
+## Dormant Q5_T16 rows==1 dual block with poisoned variant inheritance (open 2026-09-25)
+
+`launch_gguf_linear_pair_silu`'s Q5 block (`hipengine/runtime/gguf_linear.py`, the
+`q5_t16_pair_variant = registered_decode_variant or "q5_dense_dual_silu..."` path) is
+dormant on `hip_gfx1151` for three stacked reasons found in E6a (UD-GFX1151-OPTIMIZE2
+iteration 11): the identity policy row hands back the **Q4** variant name
+`dense_dual_local32_bf16_bf16_out` (the row mirrors plain by design; the IQ4 branch
+selects its own key and ignores the value, the Q5 block inherits it blindly, and the
+resulting key is unregistered under `gguf_q5_k_t16_v1`); post-E4a both sides dispatch
+`t16_gemv_decode_tile8_bf16_bf16_out` while the rule demands the direct key; and the
+earlier `_q5_t16_dense_pair_silu_variant(rows)` branch at the `dense_pair_quant ==
+"gguf_q5_k_t16_v1"` test is dead code (`dense_pair_quant` only ever holds quants in
+`_Q4_T16_DENSE_QUANTS`, which excludes Q5).
+
+E6a's gate says leave it dormant: at the production shape (5120, 17408) rows=1 the
+dual is bit-exact against the 2× tile8 + `silu_mul_separate_out_bf16` chain but
+**loses** it — 705.6 vs 653.6 µs/layer (0.93×, allocate-once timing, 200 launches,
+`~/ud-e1-census/e6a_screen.py`) — because the dual kernel mirrors the direct
+owner's schedule while the singles now run on the faster tile8 owner.
+
+Clearing command: re-screen `dual vs 2×tile8 chain` at rows=1 before any change
+here; only if the dual wins at the current dispatched singles does it make sense to
+fix the variant selection (Q5 branch selects its own key, mirroring the IQ4
+precedent), extend the dispatch predicate to the tile8 key, and update the block's
+stale comment (it still describes the direct-only rows==1 condition). Until that
+screen passes, the dormancy is load-bearing and the dead branch plus the stale
+comment should be cleaned up instead.
+## Logprobs requests skip the captured-graph sampled accept (open 2026-09-23)
+
+`_device_sampled_accept_plan` in `hipengine/generation/qwen35_gguf_mtp2.py`
+declines a request that asked for logprobs. The captured graph samples and
+accepts on the device and returns no logits row to the host, so the route has
+nothing to report a published token's logprob from; the request falls to the
+eager host accept, which scores each published token against the verified row
+that predicted it. Serving the metadata is what the logprobs path requires, and
+the fallback is exact -- the gate compares it against the autoregressive route
+token for token at zero delta -- so the decline costs the graph's speed on those
+requests, not their correctness.
+
+Remove this once the graph accept can return the per-row values it selected
+from -- the top-1 candidate and its processed logprob, plus the
+retained top-k the request asked for -- for the rows it accepted. The evidence
+that would justify it is the same gate at zero delta with the decline removed
+and the execution path reporting the captured-graph accept.
+
+## Forced-token requests skip the captured-graph sampled accept (open 2026-09-23)
+
+A request with a pending forced token cannot use the captured-graph sampled
+accept, for the same reason logprobs requests cannot: the graph samples on the
+device and the route needs the row's law on the host to substitute the forced
+token for it. `supports_native_gpu_sampling` in
+`hipengine/generation/sampling.py` refuses those requests, so they take the
+eager host accept, where the override is a point mass on the forced token and
+the accept walk corrects to it. `_sampled_accept_summary` in
+`hipengine/generation/qwen35_gguf_mtp2.py` raises rather than silently sampling
+if a forced token ever reaches the native shape. The fallback is exact -- the
+gate compares both arms token for token, including the queue's position in the
+output -- so the decline costs those requests the graph's speed, not their
+correctness.
+
+Remove this once the graph accept can consume a per-row override, which needs
+the device sampler to take a row's forced token as an input the way the host
+path does. The evidence that would justify it is the same gate with the refusal
+removed and the execution path reporting the captured-graph accept.
+
+## Gemma 4 fused MMQ gate/up prefill is the default; the flag is a rollback lever (open 2026-09-27)
+
+`HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ` selects a fused int8-dp4a MMQ32 route for
+Gemma 4's `Q4_K` expert gate/up prefill. It replaces two fp32 grouped launches
+plus a fused-stride read with one pack, one tile map, and one MMQ launch that
+reads Gemma 4's per-expert `gate | up` row block directly, and it measures
+**4.23 s -> 3.33 s on the 512/128 prefill (1.27x)** with path parity intact.
+
+**The route is now the default path.** The lead made that call on 2026-09-27
+after the teacher-forced check passed on the gfx1100 branch at worst-case KL
+0.0013 and 0.00077 against the 0.05 bar with no top-1 changes, and this branch
+reaches the same conclusion by measurement: on realistic prose (2004 ids) the
+route matches the fp32 arm for ten consecutive tokens with the first divergence
+being llama.cpp alone, and on a truncated Python snippet - the exact class this
+flag cited as its cause - it matches for all 23. The variable is now the rollback
+lever: `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0` restores the fp32 grouped route, and
+unset means on. `tests/test_unit_gemma4_expert_route.py` pins both halves, because
+the campaign's harnesses select their arms through the same function and an
+inversion would have had them compare the route with itself while reporting
+agreement. The reason this flag was originally raised was a recorded observed failure, and
+that failure did not reproduce. The flag's text cited a Python snippet that
+agrees for two tokens and then collapses into a fourteen-token repetition;
+against llama.cpp on a comparable prompt, cut mid-comparison so the continuation
+is genuinely ambiguous, all three arms agree on all 23 first tokens with no
+repetition. What does reproduce is a divergence at low-margin positions, and it
+is a property of out-of-distribution input rather than of the route. The route's
+raw-logit perturbation is three times smaller in distribution than out (3.46 max
+absolute difference on prose against 9.76 on random ids), which is the mechanism
+that was previously recorded as unidentified: the int8 activation-quantisation
+step is small enough not to move a decision on input the model was trained for,
+and random ids leave the logits flat enough that it is. The route replaces only
+the prefill's expert gate/up projection, so one forward of N ids under each arm
+reproduces what a longer teacher-forced chain shows, and
+`scripts/gemma4_mmq_prefill_length_probe.py` sweeps that. Measured on the frozen
+campaign chain, deterministically: the route is over the binding 0.05 `kl_max`
+bar at **7 of the 13 prefill lengths from 16 to 1024 ids** where it runs - `kl`
+0.305 at 16, 1.007 at 24, 0.109 at 32, 0.135 at 48, **2.036 at 64** - with greedy
+decision flips at 24 and 64 ids. At 1024 ids it is 7.3e-07.
+
+The earlier recorded reason for this flag was wrong in a way that argued for
+promotion. It read the breach as a near-certain-row tail effect: `kl_max` 0.0651
+on 2 of 1022 rows, top-1 100% with zero flips, and the already-shipped attention
+split breaching the same bar at the same rows. That measurement was taken at a
+1024-id prefill, which is this route's **best case** rather than a representative
+one, and the current default path is bit-identical to the strict arm on both
+chains (KL exactly 0.0 over 1023 rows, including all 77 close-margin rows, with
+30690 split launches engaged), so the split does not breach that bar today. The
+applicability question that text raised was not the operative one.
+
+The mechanism is input-distribution-dependent rather than a per-row
+activation-quantization bound: that bound is per row and does not vary by six
+orders of magnitude with the row count, and what varies is how often the model's
+margin is smaller than the bound. The leaf's only unit coverage was once 4
+experts over 10 rows in `tests/test_unit_gemma4_expert_route.py`, which does not
+reach the real geometry of 128 experts;
+`tests/test_gpu_gemma4_expert_route_true_geometry.py` now covers the real geometry
+including an expert spanning more than one MMQ tile.
+
+Remove it once a teacher-forced gate against the campaign's frozen evaluator
+has been recorded for the new default and its verdict is on file. Note
+that `capture` must run with `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0` to freeze the
+incumbent fp32 path, since capture otherwise freezes the new default and the gate
+would compare the route with itself. The implementation, its registered launch
+path, and its correctness tests stay in place. Evidence:
+`benchmarks/results/2026-09-27-gemma4-mmq-gate-up-three-arm-attribution.json`,
+`benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
+
+## Gemma 4 Q5_1 expert down prefill is the default; the flag is a rollback lever (open 2026-09-28)
+
+`HIPENGINE_GEMMA4_MOE_DOWN_MMQ` selects the Q5_1 DS4 DP4A MMQ route for Gemma 4's
+expert down projection. Before it, Q5_1 had no MMQ path at all --
+`gemma4_project_experts_gate_up_mmq` accepts only `gguf_q4_k` and `gguf_q5_k` -- so
+the down projection ran the fp32 grouped family at **8.6 GB/s** where the Q4_K
+gate/up MMQ on the same layer ran at **67 GB/s**, 11.8x per FLOP. It measures
+**7.191 s -> 5.213 s on the 2048-token prefill (+38.0%)**, and the expert share of
+prefill falls from 43.4% to 11.0%. On the loop's 512/128 shape the prefill goes
+from 1.52 s to 1.01 s.
+
+**The route is now the default path.** `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` restores
+the fp32 grouped route, and unset means on. `tests/test_unit_gemma4_expert_route.py`
+and `tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py` pin the route.
+
+**Why the width constraint had to be lifted, not worked around.** The Q5_1 MMQ
+kernel tiled `in_features` in 128-wide DS4 blocks and computed
+`ds4_blocks = in_features / 128` with integer division, so a width that is not a
+multiple of 128 silently dropped its tail; its `in_features % 128` guard existed to
+prevent exactly that. Gemma 4 26B-A4B's expert down width is **704**, which is
+`5 x 128 + 64`. The route now rounds `ds4_blocks` up and skips the Q5_1 sub-blocks
+a trailing group does not have, and the DS4 activation pack rounds `blocks_per_row`
+up and reads `0.0` past `hidden`. **This is exact, not an approximation:** the
+elements past `hidden` are zero, and a zero cannot raise a `max_abs` or move a sum,
+so the scale the real elements get is the one they would have got without the
+padding.
+
+**Numerical envelope, measured.** At the model's own geometry -- 4096 compact rows,
+128 experts, 704 -> 2816, one plane -- against the fp32 grouped owner and against an
+exact dequant oracle: grouped vs oracle max 0.00789 / mean 0.000712; MMQ vs oracle
+max 0.01297 / mean 0.001336; MMQ vs grouped max 0.01218 / mean 0.001110. That is the
+same envelope the Q4_K gate/up route above already runs at, and it uses the same
+plane count (`_MMQ_ACTIVATION_PASSES = 1`) for the same reason.
+
+**It is over the 0.05 `kl_max` bar on the 2048/1024 teacher-forced gate, and that
+over-bar is not this route's.** Measured 2026-09-28 against
+`/tmp/gemma4-gate-strict-gfx1151.npz`: all routes on gives `kl_max` 0.137246 with
+`kl_mean` 0.000317, `kl_p99` 0.000179, `top1_rate` 1.0 and 0 flips; with this route
+off it is **0.170633**; with the WMMA dense prefill off it is 0.167806; with both off
+it is 0.156917. Every configuration fails the bar and turning this route off makes it
+*worse*, so the over-bar is the pre-existing property of the Q4_K gate/up MMQ route
+recorded in the section above -- over the bar at 7 of 13 frozen-campaign prefill
+lengths -- and not something this route introduced. All-on also reproduces to six
+decimal places across runs, so the result is deterministic rather than a tail draw.
+
+Remove it once a teacher-forced gate against the campaign's frozen evaluator
+has been recorded for the new default and its verdict is on file. Note that
+`capture` must run with `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` to freeze the incumbent
+fp32 path, for the same reason the gate/up entry gives. The implementation, its
+registered launch path, and its correctness tests stay in place. Evidence:
+`benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json`.
+
+## Gemma 4's pack8 expert layout is deleted (settled and removed 2026-09-28)
+
+**RESOLVED 2026-09-28: the layout was measured never ahead, and the flag and its
+unreached code have been deleted.** Nothing here is outstanding.
+
+The clearing condition this entry set was measured at 512 prefill rows against 128
+experts, the one regime the ladder does not give to `grouped_prefill`: prefill
+343.2 against 340.0 tok/s (a 0.9 percent difference, inside run-to-run variation)
+and decode 21.24 against 7.78 tok/s, reproducing the documented 2.73x regression on
+a fresh run. Evidence:
+`benchmarks/results/2026-09-28-gemma4-gfx1151-expert-pack8-layout-settlement.json`.
+
+### What was removed
+
+The flag `HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT` and the unreached code behind it,
+as this entry's second bullet specified: `LAYOUT_Q4_K_PACK8`, `pack8_arrays`,
+`_materialize_pack8`, `_pack8_shapes`, `_pack8_nbytes`, `pack8_layout_enabled`, and
+`gemma4_project_experts_pack8`, along with `_PACK8_ALLOCATION_NAMES`, the
+`pack8_selected` rung of the expert route ladder, the planning branch in
+`hipengine/loading/gemma4_gguf_device.py`, the pack8 branch in `resident_bytes`,
+the `gemma4_project_experts_pack8` leaf in `scripts/gemma4_prefill_kernel_census.py`,
+the env-var row in `docs/ENVS.md`, and the six tests in
+`tests/test_unit_gemma4_gguf_device.py` that existed to exercise or pin the layout.
+`_product` and `import os` became unused in the loading module and went with them.
+
+The removal takes a flag, a 19.2 GB raw/packed duplication path, and 116.6 s of
+load-time repacking off the path of anyone who had set the variable.
+
+### What deliberately remains
+
+**`_SELECTED_PACK8_VARIANT` and the `pack8_selected` GEMV kernels are a different
+thing and were left in place.** That family is the 8-output-columns-per-block form
+of the per-lane selected GEMV over the *raw* blocks; it is preferred where it is
+registered by `gemma4_project_experts_selected`, a live route, and it is pinned
+bit-exact against its single-output owner by
+`tests/test_unit_gemma4_expert_route.py`. It shares the name and nothing else. The
+dense `require_pack8` GEMV path in `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py`
+is likewise unrelated.
+
+### Why the default-off was legitimate while it lasted
+
+It was one of the real default-off cases: a **measured cause**, not a missing
+qualification. Decode measured 21.03 tok/s without the layout and 7.64 tok/s with
+it, with `pack8_selected` confirmed as the route that ran. The layout was
+arithmetically correct, so every correctness test passed either way -- which is why
+the default was pinned by its own test, because a silent flip back would have
+reintroduced a 2.75x decode regression with nothing else noticing. That pinning
+test is gone with the flag, which is the correct end state rather than a coverage
+loss: there is no longer a default that can flip.
+
+The duplication the flag enabled was 19.2 GB on the 26B artifact: 60 rank-3 expert
+tensors at 14.4 GB raw expanding by 1.33x. It was affordable against the measured
+124 GiB device ceiling, which was never the reason the flag was off. Evidence:
+`benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json`.
+
+## The 128-wide MMQ32 K pass is implemented, correct and unwired (open 2026-09-28)
+
+`gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_kernel` stages four Q4_K
+subblocks per pass instead of one, taking the gate/up projection from 88 staging iterations
+and 176 `__syncthreads()` to 22 and 44 at identical arithmetic. It is exported as
+`hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out` with a
+Python wrapper, and `tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py` checks it **bitwise**
+against the 32-wide route on three geometries plus the CPU reference. Nothing routes to it.
+
+Removal condition: delete
+`gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_kernel`, its `extern "C"`
+launcher and its Python symbol unless the route is either re-measured at the production gate/up
+geometry and wins, or wired behind an `in_features % 128 == 0` dispatch condition and shown to
+improve end-to-end prefill. Clearing command: rerun
+`scripts/gemma4_mmq_k_width_leaf_bench.py` at `out_features` 1408 once the fixture can reach it,
+or promote the route and take an end-to-end number.
+
+**It is unwired because it was measured and did not earn the place.** On the leaf bench
+(`scripts/gemma4_mmq_k_width_leaf_bench.py`) the wide pass was 0.986x at `in_features` 512,
+0.897x at 1024, and 0.914x at 2816 -- and the 2816 medians moved between runs (narrow 138.2
+then 159.5 us) while the minima sat within 4% of each other, so at the production K depth it
+is a wash. The barrier count was worth a factor of 1.36 in the earlier estimate; it is worth
+about 10% at best and nothing at 2816.
+
+Two things would clear it, and either is enough:
+
+- **Re-measure at the production geometry.** The bench could not reach `out_features` 1408
+  because the synthetic weight generator overflows `uint8` past 128, so every point above runs
+  at 128 output features and a quarter of the intended arithmetic intensity.
+- **Wire it and take an end-to-end number.** That requires an `in_features % 128 == 0`
+  dispatch condition, which the narrow route does not need.
+
+If neither happens, delete the kernel, its `extern "C"` launcher, its Python symbol and its
+three test parameters. The `KSUB` template machinery underneath stays either way: it is a
+verified no-op at `KSUB = 1` and it is what made the experiment cheap.
 ## `HIPENGINE_GEMMA4_MOE_PREFILL` selects a prefill route that fails an absolute bar (open 2026-09-26)
 
 The Gemma 4 prefill MoE has two WMMA owner variants per projection that are 2.7x

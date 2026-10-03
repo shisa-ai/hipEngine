@@ -1079,6 +1079,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             max_active_requests=resident_capacity,
             max_sequence_length=int(args.max_sequence_length),
             speculative_candidate_budget=int(args.candidate_budget),
+            kv_storage=args.kv_storage,
         )
     except BaseException:
         if scope_grant is not None:
@@ -1131,11 +1132,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 speculative_candidate_budget=int(args.candidate_budget),
                 shutdown_grace_seconds=5.0,
+                kv_storage=str(args.kv_storage or "auto"),
             ),
             llm=llm,
         )
         cells: list[dict[str, Any]] = []
+        kv_capability: dict[str, Any] = {}
         with TestClient(app) as client:
+            ready = client.get("/ready").json()
+            kv_capability = dict((ready.get("model") or {}).get("kv_capability") or {})
+            effective_storage = kv_capability.get("effective_kv_storage")
+            if args.kv_storage is not None and str(effective_storage) != str(
+                args.kv_storage
+            ):
+                raise RuntimeError(
+                    f"requested kv_storage {args.kv_storage!r} resolved to "
+                    f"{effective_storage!r}: {kv_capability.get('reason')}"
+                )
             for width in widths:
                 for arm in ARMS:
                     _run_arm(
@@ -1274,7 +1287,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "timing": "blocking OpenAI barrier-to-last-completion complete wall",
             "capture_prefill_attribution": bool(args.capture_prefill_attribution),
+            "requested_kv_storage": args.kv_storage,
+            "effective_kv_storage": kv_capability.get("effective_kv_storage"),
         },
+        "kv_capability": kv_capability,
         "runtime_profile": runtime_profile,
         "summary": summary,
         "acceptance": summarize_acceptance(cells),
@@ -1298,6 +1314,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1100")
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument(
+        "--kv-storage",
+        default=None,
+        help=(
+            "KV storage cell this run measures: omit for the product default, or "
+            "'int8_per_token_head' for the compressed cell. The run records the "
+            "cell it resolved and refuses to write an artifact when the server's "
+            "/ready reports a different one, because an artifact that cannot say "
+            "which cell it measured cannot be told apart from a default-KV run. "
+            "An unqualified artifact falls back to BF16 unless the unverified-INT8 "
+            "diagnostic override is set."
+        ),
+    )
     parser.add_argument(
         "--execution-profile",
         choices=("strict", "production", "default"),

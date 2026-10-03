@@ -1,5 +1,11 @@
 """gfx1100 fused kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.fused.gguf_iq4_q4_pair import (
+    build_gguf_iq4_q4_pair,
+    gguf_iq4_q4_pair_silu_bf16_bf16_out,
+    plan_gguf_iq4_q4_pair_build,
+    register_gguf_iq4_q4_pair_kernels,
+)
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     build_gguf_ops,
     gguf_add_rmsnorm_bf16_f32_weight,
@@ -135,6 +141,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
 __all__ = [
     "build_gguf_ops",
     "build_laguna_attention",
+    "build_gguf_iq4_q4_pair",
     "build_gguf_q6_q4_pair",
     "build_moonshine_glue",
     "build_moonshine_mlp",
@@ -192,6 +199,8 @@ __all__ = [
     "plan_qwen4_exp_gr_build",
     "plan_qwen4_exp_ple_build",
     "register_gguf_ops",
+    "gguf_iq4_q4_pair_silu_bf16_bf16_out",
+    "register_gguf_iq4_q4_pair_kernels",
     "register_gguf_q6_q4_pair_kernels",
     "register_laguna_attention_kernels",
     "register_paro_combine_kernels",

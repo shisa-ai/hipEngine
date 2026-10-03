@@ -52,11 +52,15 @@ from scripts.gemma4_campaign_bench import (  # noqa: E402
     exact_prompt_ids,
 )
 
-DEFAULT_SERVER = Path("/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server")
-DEFAULT_SOURCE = Path("/mnt/nvme1/llama-gemma4")
+# The pinned llama.cpp HIP comparator. These were hard-coded paths under
+# /mnt/nvme1 until that mount moved, which left the campaign's ground-truth
+# build unreachable from the scripts that name it. ~/llama.cpp is a container
+# directory rather than a checkout, so the comparator is the llama.cpp-hip tree
+# inside it. Override with --server/--source when measuring another build.
+DEFAULT_SERVER = Path("~/llama.cpp/llama.cpp-hip/build-hip/bin/llama-server").expanduser()
+DEFAULT_SOURCE = Path("~/llama.cpp/llama.cpp-hip").expanduser()
 DEFAULT_OUT = Path("/tmp/gemma4_llamacpp_reference.json")
 DEFAULT_PORT = 18793
-DEFAULT_PCI = "0000:10:00.0"
 
 
 def reference_row(response: dict[str, Any], prompt_ids: Sequence[int], outputs: int) -> dict[str, Any]:
@@ -141,8 +145,8 @@ def tokenizer_probe(llama_tokens: Sequence[int], prompt_ids: Sequence[int]) -> d
     }
 
 
-def _completion_body(prompt: Any, outputs: int) -> dict[str, Any]:
-    return dict(
+def _completion_body(prompt: Any, outputs: int, *, n_probs: int = 0) -> dict[str, Any]:
+    body = dict(
         prompt=prompt,
         n_predict=outputs,
         temperature=0,
@@ -153,6 +157,11 @@ def _completion_body(prompt: Any, outputs: int) -> dict[str, Any]:
         stream=False,
         return_tokens=True,
     )
+    if n_probs:
+        # Only asked for when the caller needs to know how sure the reference was,
+        # so the recorded benchmark rows keep their existing request shape.
+        body["n_probs"] = n_probs
+    return body
 
 
 def _wait_health(base: str, process: subprocess.Popen[bytes], log_path: Path, budget: float = 600.0) -> None:
@@ -198,7 +207,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--context", type=int, default=8192)
     parser.add_argument("--kv", default="bf16")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--pci", default=DEFAULT_PCI)
+    parser.add_argument("--pci", default=None,
+                        help="PCI id of the card whose idleness gates the run; by default the "
+                             "only amdgpu card is used, and several cards fail loudly")
     parser.add_argument("--idle-limit-mib", type=int, default=128)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--label", default="g0-llamacpp-reference")
@@ -225,7 +236,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     idle_used = int(card.vram_used_path.read_text())
     if idle_used > args.idle_limit_mib * 1024 * 1024:
         print(
-            f"ERROR: GPU {args.pci} is not idle ({idle_used / 1024 / 1024:.0f} MiB used, "
+            f"ERROR: GPU {card.pci_id} is not idle ({idle_used / 1024 / 1024:.0f} MiB used, "
             f"limit {args.idle_limit_mib} MiB); refusing to measure",
             file=sys.stderr,
         )

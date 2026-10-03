@@ -103,7 +103,7 @@ class GlobalDeviceKVPool:
         self._primary_plane = sorted(planes)[0]
         self._request_allocations: dict[int, DeviceKVPoolAllocation] = {}
         self._workspace_leases: dict[str, tuple[int, ...]] = {}
-        self._private_workspace_reservations: dict[object, int] = {}
+        self._private_workspace_reservations: dict[object, tuple[str, int]] = {}
         self._pin_counts: dict[int, int] = {}
         self._last_active_seconds = 0.0
         self._high_water_observed_pages = 0
@@ -135,37 +135,99 @@ class GlobalDeviceKVPool:
     @property
     def private_workspace_bytes(self) -> int:
         with self._lock:
-            return sum(self._private_workspace_reservations.values())
+            return sum(
+                charged
+                for _name, charged in self._private_workspace_reservations.values()
+            )
+
+    @property
+    def resident_consumers(self) -> tuple[Any, ...]:
+        """Every charged resident consumer: the arena first, then charges in order."""
+
+        from hipengine.runtime.memory_admission import MemoryConsumer
+
+        with self._lock:
+            return (
+                MemoryConsumer("kv_arena", self.current_pages * self.page_bytes),
+                *(
+                    MemoryConsumer(name, charged)
+                    for name, charged in self._private_workspace_reservations.values()
+                ),
+            )
 
     @property
     def accounted_bytes(self) -> int:
-        """Allocated arena plus reserved private KV payload, including idle pages."""
+        """Allocated arena plus every reserved resident consumer, including idle pages."""
+
         with self._lock:
             return self.current_pages * self.page_bytes + self.private_workspace_bytes
 
-    def reserve_private_workspace(self, nbytes: int) -> object:
-        """Charge private KV before allocation; retain the charge until buffers free."""
+    def reserve_resident_bytes(self, name: str, nbytes: int) -> object:
+        """Charge a resident device consumer before allocating it.
+
+        The charge is retained until the consumer's buffers are freed, so the
+        budget prices the whole resident footprint rather than only the arena.
+        The charge is refused, naming this consumer, before the caller allocates
+        anything.
+        """
+
         count = int(nbytes)
         if count <= 0:
-            raise ValueError("private workspace bytes must be positive")
+            raise ValueError("resident consumer bytes must be positive")
+        label = str(name).strip()
+        if not label:
+            raise ValueError("resident consumer needs a name")
         with self._lock:
             self._require_open()
-            self._check_byte_budget(count)
+            self._check_byte_budget(count, name=label)
             token = object()
-            self._private_workspace_reservations[token] = count
+            self._private_workspace_reservations[token] = (label, count)
             return token
+
+    def reserve_private_workspace(
+        self, nbytes: int, name: str = "private_workspace"
+    ) -> object:
+        """Charge private KV before allocation; retain the charge until buffers free."""
+
+        return self.reserve_resident_bytes(name, nbytes)
 
     def release_private_workspace(self, token: object) -> None:
         with self._lock:
             del self._private_workspace_reservations[token]
 
-    def _check_byte_budget(self, additional_bytes: int) -> None:
+    def _check_byte_budget(
+        self, additional_bytes: int, name: str = "private_workspace"
+    ) -> None:
+        """Refuse a charge that does not fit, naming the consumer that does not.
+
+        Imported here rather than at module scope: ``hipengine.runtime`` pulls in
+        the KV cache, so a module-scope edge from this package to that one is a
+        cycle. The budget itself is shared, not duplicated.
+        """
+
         budget = self.budget_bytes
-        if budget is not None and self.accounted_bytes + additional_bytes > budget:
-            raise MemoryError(
-                "arena and private workspace KV exceed the pool budget: "
-                f"{self.accounted_bytes} + {additional_bytes} > {budget} bytes"
-            )
+        if budget is None:
+            return
+        from hipengine.runtime.memory_admission import (
+            MemoryAdmissionRefused,
+            MemoryConsumer,
+            price_memory_admission,
+        )
+
+        decision = price_memory_admission(
+            free_bytes=budget,
+            consumers=(
+                MemoryConsumer("kv_arena", self.current_pages * self.page_bytes),
+                *(
+                    MemoryConsumer(charged_name, charged)
+                    for charged_name, charged in self._private_workspace_reservations.values()
+                ),
+                MemoryConsumer(str(name), int(additional_bytes)),
+            ),
+            reserve_bytes=0,
+        )
+        if not decision.admitted:
+            raise MemoryAdmissionRefused(decision)
 
     @property
     def allocations(self) -> dict[int, DeviceKVPoolAllocation]:

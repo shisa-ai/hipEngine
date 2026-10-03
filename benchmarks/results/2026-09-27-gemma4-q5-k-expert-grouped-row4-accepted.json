@@ -1,0 +1,46 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted and promoted (bit-exact, default path)",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B Q5_K expert gate/up (fused)",
+ "candidate": "route the one MoE layer whose expert gate/up weights are Q5_K through the grouped row4 GEMV instead of the per-row expert gather. Q5_K has no grouped *prefill* family at all - the only Q5_K prefill kernels that exist are WMMA and MMQ, both of which change the association - but it does have a grouped GEMV that reuses an expert's weight rows across four rows instead of one, and that kernel was registered only under the dense linear layer.",
+ "reason": "the change is bit-exact, so it needs no numerical gate. The grouped row4 kernel reproduces the per-row gather's association: 0 of 1,441,792 bf16 outputs differ at the fused geometry (8 experts, one of them empty, identity lane map), and the committed test drives the dispatcher at (2816, 2816) and (1408, 2816) and compares on bits.",
+ "mechanism": {
+  "structure": "gemma4_project_experts_grouped_row4 resolves moe_linear/<quant>/selected_grouped_row4_gemv_bf16_bf16_out and is tried between the grouped prefill family and the per-row gather. Its launch ABI differs from the grouped prefill family (it takes a lane map plus separate source and destination row counts), so it is a dispatch step rather than a preference-list entry. The compact layout puts lane i's activation in row i, so the lane map is the identity and the launcher takes a null pointer.",
+  "arithmetic": "unchanged. Same k-set, same order, same reduction tree.",
+  "refuted_alternative": "the grouped prefill family itself: Q5_K registers no variant for it, and the WMMA and MMQ Q5_K prefill kernels that do exist change the association, so they are gate candidates rather than bit-exact routes.",
+  "profile": "one block per four rows per (expert, out_col) group; 128 experts, 4096 compact rows."
+ },
+ "correctness": {
+  "gate": "not applicable - no arithmetic change, so no execution-profile gate is required",
+  "kernel_level": "0 of 1,441,792 bf16 outputs differ against gemma4_project_experts_selected at the fused gate/up geometry (8 experts, counts [100, 0, 90, 40, 0, 82, 100, 100], identity lane map).",
+  "unit_test": "tests/test_unit_gemma4_expert_route.py::test_grouped_row4_is_bit_exact_against_the_selected_gemv asserts the dispatcher returns 'grouped_row4' and then compares bits at (2816, 2816) and (1408, 2816). 46 pass in that file; 508 in the gemma4 bundle.",
+  "route_ran": "the route table over a real 512-token forward shows moe_linear/gguf_q5_k/selected_grouped_row4_gemv_bf16_bf16_out at 111.7 ms where the previous tree showed linear/gguf_q5_k/selected_gemv_bf16_bf16_out at 244.4 ms.",
+  "generation_parity": "not run as a separate arm: the two routes are bit-identical at the kernel level, which the device test pins, so a token-id comparison could only restate it."
+ },
+ "performance": {
+  "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm",
+  "protocol": "three measurements. Kernel isolation: one process, both kernels resolved, five timed launches per round, two interleaved rounds. Route: the same attribution harness on two trees. Public: the same timing script on two git worktrees, one warm-up plus five timed 512-token forwards each, medians reported.",
+  "primary": {
+   "row": "512 prompt prefill, public path",
+   "incumbent_s": 3.238,
+   "candidate_s": 3.119,
+   "delta": "-0.109 s (1.035x)",
+   "sample": "5 timed forwards per tree; minima 3.218 against 3.109 s"
+  },
+  "kernel_level": {
+   "geometry": "128 experts, 2816 -> 2816 fused gate/up, 4096 compact rows",
+   "incumbent_ms": 469.31,
+   "candidate_ms": 154.08,
+   "delta": "3.05x"
+  },
+  "limits": "the public delta is smaller than the route delta (133 ms) because the two trees are separate processes; the route row is the cleaner component measurement and the public row is the whole-model one.",
+  "secondary": {
+   "row": "route attribution, 512 prompt",
+   "why": "reports which kernel ran and its cost: 244.4 -> 111.7 ms on the Q5_K route, with every other route unchanged within noise."
+  }
+ },
+ "selection": {
+  "flag": "none - the route is tried before the gather whenever the quant has the kernel",
+  "fallback": "a quant with no grouped row4 kernel still reaches the per-row gather, and a quant with a grouped prefill family never reaches this route at all."
+ }
+}

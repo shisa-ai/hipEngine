@@ -1,0 +1,28 @@
+{
+  "default_unset": {
+    "env": null,
+    "enabled": true,
+    "route_delta": {
+      "gate_up_mmq32": 29,
+      "grouped_prefill": 30,
+      "grouped_row4": 8,
+      "selected_gemv": 413
+    },
+    "mmq_ran": true,
+    "text_head": "    \"\"\"Merge overlapping intervals and return the"
+  },
+  "rollback_0": {
+    "env": "0",
+    "enabled": false,
+    "route_delta": {
+      "grouped_prefill": 59,
+      "grouped_row4": 8,
+      "selected_gemv": 413
+    },
+    "mmq_ran": false,
+    "text_head": "    \"\"\"Merge overlapping intervals and return the"
+  },
+  "verdict": "PASS",
+  "why": "AGENTS.md: works in the harness is not works. The unit test pins the predicate and the kernel tests call the projection directly; neither shows that a user's call reaches the route. This exercises hipengine.LLM.generate() on the real artifact.",
+  "reading": "Default: gate_up_mmq32 29, grouped_prefill 30. Rollback: no gate_up_mmq32 and grouped_prefill 59. 29 + 30 = 59, so the gate/up projections move between the two routes exactly, and both arms produced the same continuation."
+}

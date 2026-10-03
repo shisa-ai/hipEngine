@@ -44,6 +44,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     aotriton_prefill_admits,
     gemma4_attention_prefill_aotriton,
     gemma4_attention_prefill_bf16,
+    select_prefill_attention,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import (
     Gemma4AttentionTiledUnsupported,
@@ -143,6 +144,10 @@ def gemma4_project(
     ``int`` is a bf16 device pointer; anything else is a GGUF device weight and
     goes through the quantized linear dispatch, which picks its own kernel from
     the weight's quant key and the row count.
+
+    Keep WMMA prefill eligible for every dense projection, including GeGLU
+    down. T16 Q8 kernels repair non-finite WMMA accumulators in FP32 from the
+    original activation rather than disabling prefill for the whole projection.
     """
 
     if isinstance(weight, int):
@@ -152,15 +157,6 @@ def gemma4_project(
     # the runtime layer and the kernel package does not depend on it otherwise.
     from hipengine.runtime.gguf_linear import launch_gguf_linear
 
-    # ``use_wmma_prefill=True`` is what both shipping GGUF call sites pass
-    # literally (generation/qwen35_gguf.py, runtime/qwen35_gguf_nextn.py), and
-    # ENVS.md records it as the public generator's behaviour: the env var is only
-    # the low-level session default. Gemma's dense projections were taking the
-    # fallback schedule instead -- 888.9 us against 281.5 us on the (512, 2816,
-    # 2112) q/k/v shape, a 3.16x difference measured with the unaffected MoE
-    # gate_up flat across the same runs. The dispatch only rewrites shapes that
-    # have a registered WMMA prefill kernel (currently gguf_q8_0 and raw
-    # gguf_q4_k), so every other quant and row count keeps its existing schedule.
     launch_gguf_linear(
         weight,
         x_ptr,
@@ -636,6 +632,26 @@ def _select_prefill_route(
     ):
         return "aotriton"
     return "exact"
+def _layer_backend(layer: Gemma4LayerPointers) -> str | None:
+    """The backend of whichever projection carries resident quantized weights.
+
+    ``router_proj`` is always a raw f32 pointer, so the router cannot read a
+    backend off its own weight. Any quantized projection in the same layer is on
+    the same backend, and a bf16 artifact has none -- the caller falls back to
+    the kernel tree's own backend, which is what ``gguf_embedding`` does.
+    """
+
+    for name in (
+        "mlp_gate_up_proj",
+        "mlp_gate_proj",
+        "experts_gate_up_proj",
+        "q_proj",
+    ):
+        projection = getattr(layer, name, None)
+        value = getattr(projection, "backend", None)
+        if value is not None:
+            return str(value)
+    return None
 
 
 def gemma4_layer_forward_bf16(
@@ -653,6 +669,8 @@ def gemma4_layer_forward_bf16(
     rotary_dim: int | None = None,
     key_begin: int = 0,
     attention_mask_is_causal: bool = False,
+    window: int = 0,
+    prefill_attention_variants: tuple[str, ...] | None = None,
     stream: int = 0,
     # -1 (the default) selects a second stream so the MoE branch overlaps the
     # dense branch. Passing ``stream_moe=stream`` restores the single-stream
@@ -668,11 +686,23 @@ def gemma4_layer_forward_bf16(
     sliding layers, which this function does not re-derive.
 
     ``key_begin`` drops cached keys the caller knows are masked out, by moving
-    the key, value and mask pointers forward together and shortening ``keys``.
-    It is only valid for a one-row block, where the mask has a single row to
-    offset; the caller owns that restriction (see ``_sliding_read_range``). It
-    changes no arithmetic: a masked key contributes zero to both reductions, so
-    the remaining terms keep their order and the result is bit-identical.
+    the key and value pointers forward and shortening ``keys``. The keep-mask
+    must already start at ``key_begin``: the kernel indexes it as
+    ``keep_mask + token * keys`` with ``keys`` shortened by the same amount, so a
+    mask whose column 0 is key ``key_begin`` is addressed correctly for every
+    row without the wrapper shifting it. It changes no arithmetic: a masked key
+    contributes zero to both reductions, so the remaining terms keep their order
+    and the result is bit-identical.
+
+    ``window`` extends that skip to a per-row bound. Row ``t`` of the block sits
+    at cache position ``kv.write_offset + t``, so with ``window > 0`` its walk
+    starts at column ``max(0, (kv.write_offset - key_begin) + t - window + 1)``.
+    ``key_begin`` drops the keys every row of the block masks; this drops the
+    rest of each row's own prefix, which only a multi-row block has. Sound under
+    the same condition as ``key_begin`` -- the mask must be zero below that
+    column, which the sliding causal mask above is and an arbitrary caller-built
+    mask need not be -- so it defaults to 0, meaning no promise and a walk from
+    column 0. Like ``key_begin`` it changes no arithmetic.
 
     ``attention_mask_is_causal`` asserts that ``keep_mask_ptr`` holds nothing but
     ``key <= query``, which is what lets a sliding layer take the flash path: a
@@ -880,7 +910,28 @@ def gemma4_layer_forward_bf16(
             mask_is_causal=attention_mask_is_causal,
         )
         _last_prefill_route = route
-        if route == "tiled":
+        if prefill_attention_variants is not None:
+            attention = select_prefill_attention(
+                requested_variant=prefill_attention_variants,
+                num_heads=num_heads, num_kv_heads=num_kv_heads,
+                head_dim=head_dim, tokens=rows,
+            )
+            _last_prefill_route = attention.variant
+            attention.launcher(
+                buf("q_rot"),
+                (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+                if kv is not None else buf("k_rot"),
+                (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+                if kv is not None else buf("v"),
+                keep_mask_ptr,
+                buf("context"), tokens=rows, keys=key_count,
+                window=window,
+                row_offset=(kv.write_offset if kv is not None else 0) - key_begin,
+                scratch=scratch.attention, num_heads=num_heads,
+                num_kv_heads=num_kv_heads, head_dim=head_dim,
+                scale=geometry.scale, **kwargs,
+            )
+        elif route == "tiled":
             # head_dim 512: Gemma 4's five global layers. The tiled kernel stages
             # its own dtype buffers inside the HIP source, so unlike the other two
             # routes it takes no scratch arena.
@@ -892,7 +943,7 @@ def gemma4_layer_forward_bf16(
                 (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
                 if kv is not None
                 else buf("v"),
-                keep_mask_ptr + key_begin,
+                keep_mask_ptr,
                 buf("context"),
                 tokens=rows,
                 keys=key_count,
@@ -930,7 +981,7 @@ def gemma4_layer_forward_bf16(
                 (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
                 if kv is not None
                 else buf("v"),
-                keep_mask_ptr + key_begin,
+                keep_mask_ptr,
                 buf("context"),
                 tokens=rows,
                 keys=key_count,
@@ -1028,6 +1079,7 @@ def gemma4_layer_forward_bf16(
         scratch=scratch.router,
         eps=eps,
         stream=moe_stream,
+        backend=_layer_backend(layer),
     )
     gemma4_rmsnorm_f32w_bf16(
         buf("hidden"),

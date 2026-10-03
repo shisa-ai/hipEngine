@@ -1,157 +1,119 @@
 ---
 status: current
-owns: Kernel catalog, source-lineage drift workflow, optimal path map, port playbook, JIT cache gotcha, and build profiles.
+owns: Kernel source catalog, model/quant and registry mappings, arithmetic variants, and fused fallback map.
 ---
-# hipEngine Kernel Catalog and Port Playbook
+# Kernel catalog
 
-This document is the durable catalog of kernel families implemented in hipEngine and the stable mechanics for adding or porting one. It is intentionally **not** an experiment log.
+Kernel families, source locations, and what they do. Keep each description to
+one short sentence. Implementation history, measurements, tuning decisions,
+and work-in-progress notes belong in `worklog/entries/` or `benchmarks/results/`,
+not here. General porting/runtime guidance lives in
+[LESSONS-LEARNED.md](LESSONS-LEARNED.md); architecture-specific guidance lives in
+[RDNA3-TUNING-GUIDE.md](RDNA3-TUNING-GUIDE.md). Validation rules live in
+[OPTIMIZATION.md](OPTIMIZATION.md).
 
-Dense gfx1151 Q4T16 gate/up prefill selects the existing fused row48 owner
-at rows33-48 (`GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS=48`), row64/row128
-above that band, and the registered unfused chain as fallback. The
-Qwen3.8-27B Q4_K_M qualification is in
-`benchmarks/results/2026-09-12-gfx1151-qwen38-row48-prefill-retained.json`.
+Paths are relative to the backend directory shown in each section. Device
+sources generally have same-name Python build and launch wrappers. Exact
+variants and backend availability are defined by the kernel registry and
+backend packages, not this catalog.
 
-Keep here:
-
-- what kernel and oracle families exist;
-- where their source and Python registrations live;
-- which backends and model/format paths use them;
-- which fused/composite families exist and what their unfused fallback is;
-- stable ABI, build, profiling, and port rules.
-
-Do not put here:
-
-- benchmark results, tuning chronology, candidate ladders, campaign codes, or "next target" notes;
-- rejected experiments or transient selectors;
-- running status reports.
-
-Those belong in immutable `worklog/entries/`, compact `benchmarks/results/` artifacts, `benchmarks/CHANGELOG.md`, and focused design/status docs. Current defaults are code: backend package capabilities and registry registrations, not prose copied into this catalog.
-
-Related documents:
-
-- [`PLAN.md`](PLAN.md) — architecture and roadmap.
-- [`TESTING.md`](TESTING.md) — RED/GREEN workflow, fixtures, and correctness gates.
-- [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) — strict/production/
-  batch-invariant arithmetic, ownership, fallback, and manifest contracts.
-- [`BENCHMARK.md`](BENCHMARK.md) — benchmark protocols and evidence policy.
-- [`REFACTOR.md`](REFACTOR.md) — temporary flags and fallback-removal ledger.
-- [`source_lineage.json`](source_lineage.json) — external source baselines.
-- Model/path notes: [`GGUF.md`](reference/GGUF.md), [`MAPLE.md`](campaigns/MAPLE.md), [`MOONSHINE.md`](model-cards/MOONSHINE.md), [`DFLASH.md`](reference/DFLASH.md), and [`MTP.md`](reference/MTP.md).
-
-## How to read and maintain the catalog
-
-hipEngine's registry key is:
+## Backend and source map
 
 ```text
-(backend, layer, quant, variant)
+hipengine/kernels/
+├── registry.py                 # (backend, layer, quant, variant)
+├── backends.py                 # Backend package loading and selection
+├── cpu_reference/              # NumPy oracles
+├── hip_gfx1100/                # HIP device sources and Python wrappers
+│   ├── attention/              # Attention and key/value cache operations
+│   ├── convert/                # Casts and row gathers
+│   ├── dispatch/               # Native launch dispatch
+│   ├── fused/                  # Composite and elementwise operations
+│   ├── gemma4/                 # Gemma 4 layers, attention, rotary, router, experts
+│   ├── linear/                 # Dense projections and output heads
+│   ├── linear_attn/            # Convolution and gated delta recurrence
+│   ├── moe/                    # Routing, grouping, and expert combination
+│   ├── norm/                   # Normalization
+│   ├── quant/                  # Quantized projections and format conversion
+│   ├── rotary/                 # Rotary transforms
+│   ├── runtime/                # Device state and launch batching
+│   ├── sampling/               # Token sampling
+│   ├── speculative/            # Drafting, acceptance, and state commit
+│   ├── evie/, surya/, vision/  # Vision and OCR
+│   ├── vibevoice/              # Speech encoders, decoders, and diffusion
+│   ├── yue2/                   # Music-generation attention, solver, and audio decoder
+│   ├── timesfm/, timesfm3/     # Forecasting
+│   ├── wmma/                   # Matrix-tiled PARO projections
+│   └── smoke/                  # Build/runtime probes
+├── hip_gfx1151/                # Peer registrations for shared gfx11 sources
+├── cuda_sm120a/                # Independent CUDA sources and wrappers
+│   ├── attention/, encoder/   # Maple/Moonshine attention and speech encoder
+│   ├── fused/, linear/, norm/ # Decoder operations
+│   ├── moe/, quant/           # Expert operations and packed projections
+│   └── smoke/                 # Build/runtime probes
+└── cuda_sm86/                  # Scaffold
 ```
 
-The catalog is organized in the same direction a user or maintainer selects a path:
-
-1. **backend** — CPU oracle, HIP gfx1100/gfx1151, or CUDA sm_120a;
-2. **model/format path** — shared Qwen/PARO, GGUF/Laguna/Qwen, Maple, Moonshine, or speculative support;
-3. **functional family** — conversion, norm/rotary, projection, attention/KV, linear attention, MoE, sampling/state;
-4. **variant** — exact registered keys remain authoritative in source.
-
-A row catalogs a source/wrapper family, not every C++ template instantiation. Many families intentionally register dozens or hundreds of shape/layout variants. Enumerating those variants by hand here would duplicate the registry and drift quickly.
-
-To inspect exact live keys:
-
-```python
-from hipengine.kernels.backends import load_backend_kernel_package
-from hipengine.kernels.registry import registered_keys
-
-load_backend_kernel_package("hip_gfx1100")
-for key in registered_keys():
-    if key.backend == "hip_gfx1100":
-        print(key.display())
-```
-
-Catalog maintenance rules:
-
-- Add or remove the relevant family row in the same commit as a landed/removed kernel family.
-- Name the `.hip`/`.cu` and `.py` owner; use registry layer/quant names rather than campaign labels.
-- Put only stable constraints in Notes (ABI, storage layout, fallback, backend relationship).
-- Link detailed performance/correctness evidence from worklogs or benchmark artifacts; do not reproduce it here.
-- A rejected candidate that leaves no registered kernel does not get a catalog row.
-- A retained diagnostic primitive may be marked **diagnostic**, but its experiment narrative stays elsewhere.
-
-## Backend matrix
-
-| Backend | Native target | Source ownership | Cataloged paths |
-| --- | --- | --- | --- |
-| `cpu_reference` | NumPy/host | `hipengine/kernels/cpu_reference/` | Shared primitive oracles, Qwen/PARO/GGUF, Laguna, Maple, Moonshine, Moonshine encoder |
-| `hip_gfx1100` | RDNA3 `gfx1100` | `hipengine/kernels/hip_gfx1100/` | Qwen/PARO, GGUF/Qwen/Laguna, Maple, Moonshine, MTP/DFlash, shared state/sampling |
-| `hip_gfx1151` | RDNA3.5 `gfx1151` | Shared gfx11 device sources plus peer registrations/capabilities in `hip_gfx1151/__init__.py` | Independently admitted subsets of the gfx11 families above |
-| `cuda_sm120a` | CUDA `sm_120a` | `hipengine/kernels/cuda_sm120a/` | Maple and Moonshine peer implementations plus smoke/shared helpers |
-| `cuda_sm86` | CUDA `sm_86` | package scaffold only | No implemented device family yet |
-
-### gfx1151 source sharing is not backend equivalence
-
-The raw `quant/gguf_k_gemv.{hip,py}` family also exposes an exact
-Q5_K selected grouped-row4 owner. It accepts exclusive expert starts and an
-optional sorted-lane-to-original-row map, preserves selected GEMV reduction
-order, and keeps `selected_gemv_bf16_bf16_out` as its strict fallback.
-Qwen4Exp gfx1151 production selects it for ungrouped gate/up rows>=64;
-strict, short rows and missing registry capabilities keep selected GEMV.
-
-The experimental Q5_K bundled row-reduction sibling was removed after the
-clean `4b39fbfa5` canonical A/B: all72 trajectories exact, but five prefill
-and six request-wall cases regress. Earlier kernel1.015x/1.021x screens
-and five full-logit/state/KV cases did not establish a whole-model win.
-The original row4 implementation remains; its64/128/256-thread and
-CPU-reference coverage is retained. This removal does not affect the
-separate production Q8 bundled variant.
-Evidence: `2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json`.
-
-`hip_gfx1151` compiles shared gfx11 `.hip` bodies as native `gfx1151` code objects and registers a peer backend key. `hipengine/kernels/hip_gfx1151/__init__.py` controls aliases, exclusions, thresholds, and architecture-specific defaults. A gfx1100 variant is not a gfx1151 default merely because the source compiles there; each promotion needs its own correctness and performance gate.
-
-### CUDA is a peer backend
-
-`cuda_sm120a` has independent `.cu` bodies and Python wrappers. It does not alias HIP launch wrappers. CUDA-specific CUTLASS, cuDNN, cuBLASLt, graph, or thread-geometry choices are not selection evidence for either gfx11 backend.
-
-## CPU-reference oracle catalog
-
-CPU oracles favor clarity and deterministic boundaries over speed. They are the required comparison path for net-new kernels.
-
-| Model/path | Source | Oracle families |
+| Backend | Source ownership | Model/family coverage |
 | --- | --- | --- |
-| Shared primitives and Qwen/PARO/GGUF | `cpu_reference/ops.py` | embedding, linear/QKV/O/lm-head, RMSNorm, rotate, full/paged attention, KV quant/dequant/write, GDN and Conv prefill, GGUF Q4/Q5/Q6/Q8 dequant/GEMV, PARO AWQ pack8, MoE selected/tail, MTP/NextN helpers |
-| Qwen4Exp | `cpu_reference/qwen4_exp.py` | four-branch GR, PLE hash/gate/dilated Conv, QSA split-half partial RoPE/block pooling/scoring/selection/sparse GQA, sigmoid-gated GDN boundary, 512/top-10 MoE, and reduced complete layer/model semantics |
-| Laguna | `cpu_reference/laguna.py` | YaRN/plain RoPE, head RMSNorm, global/SWA attention, dense and sparse FFN/MoE, routing, DFlash layer/model, target-hidden projection |
-| DFlash2 | `cpu_reference/dflash2.py` | grouped dynamic conv (prepare/finish), top-16 bilinear candidate selector + greedy walk, q/k-norm sliding-window attention, Qwen3 block-repeat RoPE | DFlash2DraftModel exact-math oracles; fixtures generated from the z-lab/dflash torch reference (test-time torch only). |
-| Maple | `cpu_reference/maple.py` | ternary and affine4 pack/dequant, BF16 boundaries, projections, attention/KV spans, routing/MoE, complete model semantics |
-| Moonshine decoder | `cpu_reference/moonshine.py` | projection, LayerNorm, partial RoPE, self/cross attention, fixed cache, MLP, residual, tied head/argmax |
-| Moonshine encoder | `cpu_reference/moonshine_encoder.py` | convolution, group norm, encoder attention/RoPE, GELU, layout transformations |
-| TimesFM 2.5 | `cpu_reference/timesfm.py` | multiplicative-scale RMSNorm, ResidualBlock heads, fused-QKV RoPE (pre-norm), QK norm, per-dim softplus scaling, unscaled masked attention, patch running stats/revin, AR patch decode; oracle fixture from the vendored torch reference |
-| TimesFM 3.0 | `cpu_reference/timesfm3.py` | non-autoregressive multivariate forward+decode: seq + non-causal variate attention (SDPA semantics: scores x sqrt(head_dim), fully-masked rows -> zeros), 192-dim ReLU tokenizer, stitching, linear detrending, CPM iterative RevIN refine, freeze_after post-hoc mean/std; nn.RMSNorm eps = finfo(float32).eps; oracle fixtures (base/edge/covmask incl. long horizon) from the vendored torch reference |
-| Fixtures | `cpu_reference/fixtures.py` | fixture load/save/run and tolerance contracts |
+| `cpu_reference` | Python/NumPy oracles | Shared primitives and model references |
+| `hip_gfx1100` | Native HIP sources | Qwen/PARO/GGUF, Laguna, Maple, Moonshine, speech, vision, forecasting, speculation |
+| `hip_gfx1151` | Shared HIP sources, peer registrations | Supported subsets of the gfx11 families |
+| `cuda_sm120a` | Native CUDA sources | Maple, Moonshine, and shared helpers |
+| `cuda_sm86` | Package scaffold | No device kernels |
 
-`register_cpu_reference_kernels()` registers the primitive subset exposed through the four-axis registry. Additional plain NumPy functions remain direct test oracles even when they do not have a registry key.
+## Registry-layer map
 
-## HIP gfx11 catalog
+Keys are `(backend, layer, quant, variant)`. This table groups layer names;
+individual variants and storage formats remain defined in their wrappers.
+Paths below refer to the HIP source families unless a backend is named.
 
-Unless a row says otherwise, source is under `hipengine/kernels/hip_gfx1100/`, registration is for `hip_gfx1100`, and the independently allowed subset is aliased under `hip_gfx1151`.
-
-### VibeVoice ASR and TTS
-
-| Family | Source / registry | Contract |
+| Layer family | Source family | Operation |
 | --- | --- | --- |
-| Causal encoders and connectors | `vibevoice/encoder.{hip,py}`, `vibevoice/registered.py` | BF16 storage, FP32 accumulation; explicit convolution prefixes. Frontend GEMM has `wmma` and `strict` variants. Depthwise `fused` has a registered `strict` FP32-accumulate/residual chain with no intermediate BF16 rounding; its two primitives are separately registered. |
-| Qwen2 attention and KV write | `vibevoice/encoder.{hip,py}` (`vv_attention_spans`, `vv_kv_write_spans`) | Uniform `KVLiveSpans`, block size one; logical-to-physical slot mapping, int64 per-row live counts/positions, physical token positions and eviction masks. Maximum capacity 16,000 slots. |
-| Decoder prefill | `vibevoice/registered.py` (`vibevoice_prefill`) | `hipblaslt` capability negotiation precedes device mutation; registered `strict` incremental chain is the fallback. Launch failures are propagated. |
-| TTS diffusion linears | `linear/dense_gemv.{hip,py}` (`dense_gemv_out_bf16`) | Production uses the 64-thread reduction; the oracle-injected branch diagnostic explicitly uses its original 256-thread reference arithmetic. Global 128/256 alternatives are rejected for generated-speech regressions despite passing that diagnostic. |
+| `cast_*`, `gather_f32_rows_by_i32id` | `convert/` | Convert or gather rows. |
+| `rmsnorm`, `add_rmsnorm`, `head_rmsnorm` | `norm/rmsnorm`, `fused/gguf_ops` | Normalize activations. |
+| `paro_rotate1/2/3`, `partial_rotary`, `split_qgate` | `rotary/` | Rotate activations and split query/gate planes. |
+| `dense_gemv`, `linear`, `linear_pair/triple/quad` | `linear/`, `quant/` | Project dense or quantized weights. |
+| `pack8_gemv`, `selected_*pack8_gemv`, `pack8_gemm` | `quant/paro_awq_gemv` | Project PARO packed weights. |
+| `lm_head`, `lm_head_argmax`, `argmax`, `topk` | `linear/lm_head` | Project or select output tokens. |
+| `router_logits`, `router_select`, `router_topk_*` | `moe/router` | Select experts and route weights. |
+| `moe_group_*`, `moe_gather_packed_hidden`, `moe_*tile_map` | `moe/group_scatter` | Group and pack expert work. |
+| `moe_linear`, `moe_linear+weighted_sum` | `quant/gguf_*` | Project selected experts and combine outputs. |
+| `moe_ffn_selected` | `quant/paro_moe_ffn_fused`, `quant/gguf_q4_k_moe_ffn_fused` | Execute a fused expert feed-forward chain. |
+| `weighted_sum`, `shared_gate_combine` | `fused/paro_combine` | Combine expert outputs. |
+| `embedding` | `quant/gguf_q6_k_embedding`, `quant/gguf_iq_dense` | Look up quantized token rows. |
+| `activation_quant`, `weight_pack` | `quant/gguf_*` | Prepare packed projection operands. |
+| `paged_kv_write`, `paged_kv_copy` | `attention/paged_kv_write` | Update paged caches. |
+| `full_attn_*`, `paged_attn_*` | `attention/paged_attn_decode` | Compute attention. |
+| `dms_*` | `attention/dms_compact*` | Maintain and attend over compact caches. |
+| `linear_attn_*conv_*`, `gdn_*recurrent*` | `linear_attn/` | Update convolutional and recurrent state. |
+| `qsa_*` | `attention/qwen4_exp_qsa` | Select blocks and compute sparse attention. |
+| `sampler`, `mtp_draft_topk` | `sampling/sampler` | Sample tokens or select draft candidates. |
+| `dflash_*`, `speculative_accept_commit`, `mtp_nextn_*` | `speculative/` | Propose, verify, and commit draft tokens. |
 
-Both gfx1100 and gfx1151 backend packages install these registrations. Runtime
-construction resolves primitives once through `kernels/vibevoice.py`; host
-tensor-layout helpers live in `loading/vibevoice_layout.py`. Physical gfx1100
-qualification is separate from gfx1151 evidence. Variant manifests identify
-selected arithmetic and fallbacks; a manifest alone is not production approval.
+## CPU reference
 
-### Shared Qwen / PARO path
+Source: `hipengine/kernels/cpu_reference/`. These are NumPy reference operations.
 
-These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attention, linear-attention, MoE, and common runtime glue. Some are also reused by GGUF paths.
+| Source | Purpose |
+| --- | --- |
+| `ops.py` | Shared projection, normalization, rotary, attention, quantization, recurrent-state, and expert operations. |
+| `dflash2.py` | Dynamic convolution, candidate selection, attention, and rotary operations for DFlash2. |
+| `dms.py` | Compact key/value cache packing, eviction, and attention. |
+| `evie.py` | Evie vision and language operations. |
+| `laguna.py` | Laguna attention, routing, feed-forward, and draft-model operations. |
+| `maple.py` | Ternary/affine4 projections, attention, and expert operations. |
+| `moonshine.py` | Moonshine decoder projections, normalization, attention, and cache operations. |
+| `moonshine_encoder.py` | Moonshine encoder convolution, normalization, and attention. |
+| `qwen2.py` | Qwen2 decoder operations. |
+| `qwen4_exp.py` | Qwen4Exp branch mixing, positional embeddings, sparse attention, recurrence, and experts. |
+| `surya.py` | Surya OCR vision and text operations. |
+| `timesfm.py` | TimesFM 2.5 normalization, attention, patch processing, and forecasting. |
+| `timesfm3.py` | TimesFM 3.0 sequence/variate attention and multivariate forecasting. |
+| `vibevoice_asr.py` | VibeVoice speech-recognition operations. |
+| `vibevoice_tts.py` | VibeVoice speech-generation operations. |
+| `vibevoice_tts_diffusion.py` | VibeVoice diffusion-head operations. |
+| `yue2.py` | YuE2 normalization, rotary, attention, solver, and audio-decoder reference operations. |
 
 | Functional family | Source / wrapper | Principal registry layers and quants | Stable notes |
 | --- | --- | --- | --- |
@@ -178,413 +140,215 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact schedules retain FP32 recurrent state; segmented, chain/tree, snapshot, and decode-order writers cover prefill, verifier, and multi-request selected commit, with optional FP32 state-row journals, direct BF16 handoffs, and an exact FP32 output tap. FP16-state (FP32 accumulation) and gfx1151 cluster/chunked compact-peer variants are explicit opt-ins or capability selections that always retain an FP32 fallback. |
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. Full-vocabulary `sorted_rows_i32` uses 256-key tile sorting, parallel merging and FP64 scans of FP32 weights; the original temperature/top-p variants remain registered strict fallbacks. Caller-owned scratch is `rows * (24*vocab + 8*ceil(vocab/256))` bytes. gfx1151 correctness and trace evidence are in `tests/test_gpu_sampler_full_vocab.py` and the fast-sampling worklog; gfx1100 hardware transfer is unverified. |
+## HIP gfx11
 
-The INT8 `paged_attn_decode` variant
-`per_token_head_gqa_splitk_gate_bf16_verify_chain_spans` in
-`attention/paged_attn_decode.{hip,py}` consumes one shared page table with
-per-row causal live counts. It supports FP16/FP32 per-token/head scales and
-strided BF16 gate/output for 16Q/2KV or 24Q/4KV, D256, page256. It preserves
-the independent c1 INT8 producer/reducer arithmetic; the registered
-`gqa_splitk_gate_bf16_spans` leaf remains the row-wise fallback. It accepts
-uniform `verify_chain` spans only, not DMS or tree masks.
+Device sources: `hipengine/kernels/hip_gfx1100/`.
+`hipengine/kernels/hip_gfx1151/` registers supported shared sources for native
+gfx1151 compilation; it does not enable every gfx1100 variant.
 
-**Compact DMS attention** — `attention/dms_compact.{hip,py}` registers `dms_extract_decision`, `dms_decision_source`, `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` (grouped GQA fallback plus bounded-LDS split-K) for the compact-KV path. The split-K family includes the `dms_compact_attn_splitk_group6_wave_producer_kernel` for the Qwen3.8 24Q/4KV/D256 geometry (one compact token scored per wave, Q shared across the GQA group), compiled for gfx1151 and gfx1100; the grouped and scalar split-K producers remain registered fallbacks. The CPU-reference oracles in `cpu_reference/dms.py` are the registered strict fallbacks for every key; the kernels are wired into `DMSCompactBackend` behind explicit device-payload selection, and no model package defaults to DMS.
+### Conversion, normalization, and rotary
 
-The explicit gfx1100 `attention/dms_compact_int8.{hip,py}` family adds compact
-INT8 pack/append and bounded split-K attention with FP32 per-token/head scales:
-the append path is the chunked keep-scan (`dms_int8_append_kernel`, one launch per
-chunk rather than a serial per-token loop), and the attention path registers the
-wave-grouped GQA producer `dms_int8_attn_split_wave_kernel` (in-register int8
-loads with scale dequant, Q shared across the GQA group) with the generic
-`dms_int8_attn_split_kernel` as fallback. Device fixtures cover exact codec
-bytes/scales and ownership, above-window retention, fail-closed overflow,
-attention numerics, and snapshot restoration. BF16 kernels remain unchanged
-fallbacks; model-serving INT8 DMS qualification is separate and is not
-established by these device fixtures. Speed and correctness evidence for the
-wave6 producer, chunked keep-scan, and wave-grouped INT8 producer lives in
-`benchmarks/results/2026-09-08-w7900-dense-vs-dms-speed-probe-final.json` and
-the capacity lane's XTX verification
-(`benchmarks/results/2026-09-08-rx7900xtx-dms-int8-merged-lane-capacity.json`).
+| Source | Purpose |
+| --- | --- |
+| `convert/cast.hip` | Convert floating-point storage formats and scale rows. |
+| `convert/gather.hip` | Gather rows by integer index. |
+| `norm/rmsnorm.hip` | Root-mean-square normalization and residual/head variants. |
+| `rotary/paro_rotate.hip` | PARO rotations and fused normalization/rotation. |
+| `rotary/qwen35_rotary.hip` | Qwen partial rotary embeddings and query/gate splitting. |
+| `fused/gguf_ops.hip` | GGUF normalization, head rotary, and attention-gate composites. |
 
-### GGUF / Qwen / Laguna path
+### Dense projections and expert operations
 
-GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layouts, exact expanded planes, and source-F16 Laguna tensors have distinct storage and registry keys.
+| Source | Purpose |
+| --- | --- |
+| `linear/dense_gemv.hip` | Dense matrix-vector projections and paired/residual variants. |
+| `linear/lm_head.hip` | Vocabulary projection, argmax, and top-k reductions. |
+| `quant/paro_awq_gemv.hip` | PARO packed 4-bit projections and selected-expert variants. |
+| `quant/paro_marlin_k.hip` | PARO decode projection using the Marlin-K layout. |
+| `wmma/paro_awq_wmma.hip` | Matrix-tiled PARO prefill projections. |
+| `quant/w8a16_linear.hip` | 8-bit-weight, 16-bit-activation projections and shared-expert helpers. |
+| `quant/paro_moe_ffn_fused.hip` | Fused PARO selected-expert feed-forward chain. |
+| `moe/router.hip` | Expert router logits, top-k selection, and shared gates. |
+| `moe/group_scatter.hip` | Group expert assignments and pack rows and tile metadata. |
+| `moe/prefill.py` | Compose selected-expert prefill operations. |
+| `dispatch/moe_c1_dispatch.hip` | Dispatch single-token expert operations through native function pointers. |
+| `fused/paro_silu.hip` | SiLU activation/product and fused down-projection rotation. |
+| `fused/paro_combine.hip` | Combine routed/shared experts with residual and normalization variants. |
 
-#### Qwen3.8-27B dense GGUF route map
+### Attention and state
 
-Qwen3.8-27B dense is served by the shared Qwen3.5/3.6/3.8 dense plugin; there is no separate Qwen3.8 model plugin. The chain from `LLM(...)` to a launch is:
+| Source | Purpose |
+| --- | --- |
+| `attention/paged_kv_write.hip` | Write and copy paged key/value caches. |
+| `attention/paged_attn_decode.hip` | Dense/paged attention for decode and prefill, including quantized caches. |
+| `attention/aotriton.py`, `attention/aotriton_wrap.py` | Adapt the optional AOTriton attention library. |
+| `attention/dms_compact.hip` | Select, pack, append, and attend over compact key/value caches. BF16 split attention uses the generic grouped producer on gfx1151 and the wave-group6 producer on gfx1100 at supported geometry. |
+| `attention/dms_compact_int8.hip` | Pack, append, and attend over compact INT8 key/value caches. |
+| `linear_attn/conv.hip` | Causal convolution with prefill, decode, and state snapshots. |
+| `linear_attn/gdn.hip` | Gated delta recurrence, output normalization, and state snapshots. |
+| `runtime/state.hip` | Device token, position, graph, and commit bookkeeping. |
+| `sampling/sampler.hip` | Greedy and probabilistic token sampling and draft top-k selection. |
+| `smoke/smoke_add.hip` | Vector addition for build/runtime smoke tests. |
 
-| Stage | Module | Key |
-| --- | --- | --- |
-| Model plugin | `models/qwen35.py` (`QWEN35_GGUF`) | `name="qwen3_5_gguf"`, `architectures=("qwen35",)`, `default_quant="gguf_q4_k_m"` |
-| Backend admission | `kernels/backends.py` `select_backend` | explicit arg → `HIPENGINE_BACKEND` → detected arch → `cpu_reference` |
-| Generator factory | `generation/registry.py` `resolve_text_generator` | `(model, backend, quant, mode="greedy_one_token")`, exact match |
-| Execution profile | `execution_profiles.py` `resolve_runtime_profile` | `(model, backend, quant, profile)`; an omitted profile selects a certified production plan where registered, and the migration route otherwise |
-| Materialize / quant | `loading/qwen35_gguf_materialize.py` | file quant `gguf_q4_k_m` → layout/registry quant `gguf_q4_k_t16_v1`; GDN family uses `gguf_qwen35` |
-| Dense linear dispatch | `runtime/gguf_linear.py` `resolve_gguf_linear_dispatch` | `(layout, activation, output)` template, backend from the resolved weight |
-| Kernel resolution | `kernels/registry.py` `resolve` | exact → no-variant → `fp16` → `cpu_reference`; no cross-HIP-backend fallback |
+### GGUF projections and quantization
 
-Default route: bulk WMMA prefill (`use_bulk_prefill`, `bulk_prefill_attention_mode=bulk`, `use_wmma_prefill` default True) and GEMV decode (`use_gemv_decode=True`). `HIPENGINE_GGUF_DECODE_GRAPH` is enabled by default; graph replay additionally requires an admitted layout and the backend's published replay horizon. Decode remains eager when those conditions are not met. An unset sweep graph option now follows engine admission rather than forcing eager execution.
+| Source | Purpose |
+| --- | --- |
+| `quant/gguf_k_gemv.hip` | Raw Q5_K, Q6_K, and Q8_0 projections, including selected experts. |
+| `quant/gguf_q3_k_gemv.hip` | Raw Q3_K selected-expert projections. |
+| `quant/gguf_q4_k_gemv.hip` | Q4_K projections with paired, activation, and residual composites. |
+| `quant/gguf_q4_k_moe_ffn_fused.hip` | Fused Q4_K selected-expert feed-forward chain. |
+| `quant/gguf_q4_k_prefill.hip` | Matrix-tiled Q4_K/Q6_K prefill projections. |
+| `quant/gguf_q4_k_selected_prefill.hip` | Q4_K selected-expert prefill projections. |
+| `quant/gguf_k_selected_prefill.hip` | Raw Q5_K/Q6_K selected-expert prefill projections. |
+| `quant/gguf_q8_0_prefill.hip` | Grouped Q8_0 expert-down prefill projections. |
+| `quant/gguf_expert_pack8_gemv.hip` | Packed selected-expert projections. |
+| `quant/gguf_k_selected_pack8_gemv.hip` | Packed Q5_K/Q6_K selected-expert projections. |
+| `quant/gguf_q4_k_selected_pack8_gemv.hip` | Packed Q4_K selected-expert projections. |
+| `quant/gguf_q4_k_pack8_gemv.hip` | Packed Q4_K matrix-vector projections. |
+| `quant/gguf_q6_k_pack8_gemv.hip` | Packed Q6_K matrix-vector projections. |
+| `quant/gguf_q8_0_pack8_gemv.hip` | Packed Q8_0 matrix-vector projections. |
+| `quant/gguf_q6_k_t16_gemv.hip` | T16/qmicro Q6_K projections and head/residual composites. |
+| `quant/gguf_t16_selected_gemv.hip` | T16 selected-expert projections and weighted/residual composites. |
+| `quant/gguf_k_t16_selected_prefill.hip` | T16 Q5_K/Q6_K selected-expert prefill projections. |
+| `quant/gguf_q4_k_t16_selected_prefill.hip` | T16 Q4_K selected-expert prefill projections. |
+| `quant/gguf_q5_k_qmicro_planar_gemv.hip` | Planar qmicro Q5_K selected-expert projections. |
+| `quant/gguf_q8_0_t16_gemv.hip` | T16 Q8_0 decode projections. |
+| `quant/gguf_q8_0_t16_prefill.hip` | T16 Q8_0 prefill projections with FP32 repair of non-finite WMMA accumulators. |
+| `quant/gguf_q8_0_raw_to_t16.hip` | Repack raw Q8_0 weights into T16 storage. |
+| `quant/gguf_iq_dense.hip` | Raw IQ/Q3 dense projections and Q3_K embedding lookup. |
+| `quant/gguf_iq_gemv.hip` | Raw IQ selected-expert projections. |
+| `quant/gguf_iq_selected_prefill.hip` | IQ selected-expert prefill projections. |
+| `quant/gguf_iq_wmma_prefill.hip` | Matrix-tiled raw IQ dense prefill projections. |
+| `quant/gguf_k_mmq_prefill.hip` | Activation quantization and integer Q5_K/Q6_K prefill projections. |
+| `quant/gguf_iq_source_mmq_prefill.hip` | Integer IQ selected-expert prefill projections. |
+| `quant/gguf_iq2_xs_mmq_prefill.hip` | Integer IQ2_XS prefill projections. |
+| `quant/gguf_q4_k_q8_1_mmq_prefill.hip` | Diagnostic integer Q4_K prefill projections. |
+| `quant/gguf_q4_k_q8_1_dp4a_vdr_gemv.hip` | Diagnostic Q4_K decode projections using packed integer dot products. |
+| `quant/gguf_q4_k_q8_1_selected_prefill.hip` | Q8_1 activation packing and integer Q4_K/Q6_K projections. |
+| `quant/gguf_q4_k_qmicro_dp4a_grouped.hip` | Grouped qmicro Q4_K projections using packed integer dot products. |
+| `quant/gguf_q5_1_mmq_selected_prefill.hip` | Integer Q5_1 selected-expert prefill projections. |
+| `quant/gguf_q5_k_q8_1_selected_prefill.hip` | Integer Q5_K selected-expert prefill projections. |
+| `quant/gguf_q8_0_mmq_prefill.hip` | Integer Q8_0 prefill projections and weight packing. |
+| `quant/gguf_q8_0_dp4a_gemv.hip` | Q8_0 projections using packed integer dot products. |
+| `quant/gguf_q5_k_f32_rocblas_prefill.hip` | Expand quantized weights to FP32 for prefill consumers. |
+| `quant/gguf_q6_k_f16_rocblas_prefill.hip` | Dequantize Q4/Q5/Q6 tiles for FP16 rocBLAS projections. |
+| `quant/gguf_q6_k_embedding.hip` | Raw GGUF embedding lookup. |
+| `quant/gguf_x8_selected_gemv.hip` | X8 packed selected-expert projections and head helpers. |
+| `fused/gguf_q6_q4_pair.hip` | Paired Q6_K/Q4_K projections. |
 
-Backend-specific knobs are read through `backend_package_capability(backend, NAME, default)` against module-level constants in `kernels/<backend>/`. Process-start HIP defaults live in `HIP_BACKEND_PROCESS_ENV_DEFAULTS` (gfx1100 `HSA_SCRATCH_SINGLE_LIMIT=8388608`; gfx1151 `GPU_MAX_HW_QUEUES=2`) and never overwrite explicit user values.
+### Qwen4Exp
 
-`runtime/qwen35_gguf_runner.py` declares 80 module-level `KernelKey("hip_gfx1100", layer, quant, variant)` constants (46 on the dense `gguf_qwen35` GDN/linear-attention families, 34 on the MoE path). **These are nominal source markers, not backend pins:** every consumer discards `key.backend` and substitutes the active backend, for example through a local `_resolve` closure calling `resolve(backend=backend, layer=key.layer, quant=key.quant, variant=key.variant)`. Resolving the dense GDN keys on gfx1151 returns the gfx1151 bodies (`qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16` and its `_fp16state` sibling), not the gfx1100 ones. Grep hits on that literal in this file are not gfx1100-only surfaces. The live pin of this class is PARO's `_PAGED_KV_REGISTRY_BACKEND` in `runtime/qwen35_paro.py`; see `docs/REFACTOR.md`.
+| Source | Purpose |
+| --- | --- |
+| `fused/qwen4_exp_gr.hip` | Gated branch reads, writes, and mixing. |
+| `fused/qwen4_exp_ple.hip` | Positional-embedding gating, convolution, and addition. |
+| `linear_attn/qwen4_exp_gdn.hip` | Gated delta recurrence with sigmoid output gating. |
+| `attention/qwen4_exp_qsa.hip` | Sparse-attention rotary transforms, block pooling/scoring/selection, and attention. |
+| `attention/qwen4_exp_qsa_flash.hip` | Flash-style dense prefill attention. |
+| `quant/qwen4_exp_q5_1.hip` | Raw Q5_1 selected-expert projections. |
+| `vision/qwen4_exp_vision.hip` | Vision normalization, activation, residual, and attention operations. |
 
-#### GGUF projection and quant families
+### Laguna
 
-| Quant/layout family | Source / wrapper | Principal registry layers | Stable notes |
-| --- | --- | --- | --- |
-| Q4_K selected FFN megakernel | `quant/gguf_q4_k_moe_ffn_fused.{hip,py}` | `moe_ffn_selected` (`gguf_q4_k`) | Whole selected gate/up → SiLU → down projection; primitive selected projections remain fallback. |
-| Qwen4Exp GR/PLE/GDN | `fused/qwen4_exp_gr.{hip,py}`, `fused/qwen4_exp_ple.{hip,py}`, `linear_attn/qwen4_exp_gdn.{hip,py}` | grouped GR read/write, sparse PLE gate/Conv/add, `gdn_recurrence_norm_gate` (`f32_state`) | Strict raw-pointer primitives for four authoritative BF16 branches, FP32 PLE history/compute, and FP32 recurrent state with sigmoid output gate. The retained `gr_gated_mean_sigmoid` owner preserves both materialized F32 gate and mixed output bit-for-bit and removes one launch through rows<=256, with registered `strict_unfused` fallback. For rows>256, the retained raw-Q8 up composite preserves each coltile8 reduction while grouping two hidden columns across four branches and emits both gate and mean: clean p508 is 91.158→91.600 tok/s and code-p1024 is 88.754→89.239 tok/s with 450/450 logits and 18/18 state/tasks exact. The primitive coltile plus GR epilogue remains fallback. GDN has c1 decode plus a row-bulk sibling that is bit-exact to serial recurrence. The GDN family also registers a T0 tile-16 raw-Q/K staging sibling for Hk16/Hv32-or-48/D128 prefill; the columnwarp parent and serial strict route remain registered fallbacks. Qwen4Exp K4 Conv now has a separately registered bulk prefill owner that emits the same contraction sequence as serial decode per row; output/state are F32-bit exact, p508 Conv compute launches fall 18,432→72 (plus 72 final-state launches), and the serial owner remains fallback. The gfx1151 recurrence trace records the bulk symbol at 17,474 ns for a five-row reduced fixture. The registered `qwen4exp_sigmoid_peer_prefill` host composite chains Qwen4Exp prepare, compact peer-wave32 recurrence, and sigmoid gate. All-layer arithmetic fails the full numerical envelope, but the named gfx1151 production profile certifies global layers 35–47 (actual GDN layers 36/37/38/40/41/42/44/45/46): the complete stack passes 448/450 top-1 with no scope failures. At p508 it replaces nine exact fused launches with 26.77 ms total peer work, reducing the traced GDN family 992.16→750.68 ms; `qwen4exp_sigmoid_strict_prefill` and c1 remain fallbacks/oracles. |
-| Qwen4Exp QSA | `attention/qwen4_exp_qsa.{hip,py}` | `qsa_split_norm_rope`, `qsa_norm_rope`, `qsa_pool_norm_rope`, `qsa_index_score`, `qsa_select_blocks`, `qsa_sparse_attention` | Split-half partial RoPE, FP32 raw-key complete-block pooling, deterministic lower-start tie break, and sparse original-BF16-K/V GQA. The exact c1 index append has a registered device-position sibling for graph-owned decode control; scalar/row append remains fallback. c1 plus explicit-position row-bulk Q/K/gate and index-query transforms are registered; reduced gfx1151 three-row traces are 2,204/2,124 ns and bit-exact to c1. Variable-selection sparse rows consume complete paged spans and trace at 7,213 ns on a reversed-page fixture; non-flash multirow dense rows use the exact fixed256/precomputed-offset/vector2 owner (real primitive 6.846→2.485 ms, clean p508 91.529→92.442 tok/s, code-p1024 89.150→90.634 tok/s), with generic FP32 batch context fallback. A bounded prompt-chunk mixer composes bulk quant projections, exact row transforms, shared K/V writes, dense batch context, and variable-selection sparse context. Its block-table-aware raw index-key scatter replaces p508's 6,096 per-row D2D copies with 24 chunk kernels and cuts p512 trace launches 11,053→4,933 with bit-exact logits; c1 append remains fallback. Its reduced six-row dense→sparse boundary matches independent c1 output/state and traces the dense/sparse leaves at 3,927/6,132 ns on gfx1151. The corrected exact chunk path uses chunk-batched PLE staging, batched projections, decode-order-exact bulk causal Conv, and exact grouped Q5_1 down pass all 687 teacher-forced rows bit-for-bit and improve the natural suite 5.265→12.117 tok/s (2.301x); warm p512 is 16.555 tok/s. The former size-2 smoke remains historical (`KL_teacher=0.00510`, `KL_serial=0.00410`), while approximate size 9 is rejected (`KL_serial=0.09754`; artifact: `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-chunked-prefill-smoke.json`). The first real sparse row at token 2,052 also passes; promoted chunk64 is bit-exact to serial, both have teacher KL `7.65e-5` and top-1 264, teardown is clean, and prefill improves 370.565→136.129 s (2.722x), as does a repeated-token structural 4K checkpoint (`KL_teacher→serial=4.40e-5`, `KL_teacher→chunk=4.78e-5`, diagnostic 854.982→574.759 s). A chunk-only repeated-token 16K checkpoint further passes teacher KL `7.55e-5`, top-1 264 exact, and clean teardown in 2,434.172 s; strict remains measured through 4K. A chunk-only repeated-token 64K checkpoint also passes teacher KL `5.74e-6`, top-1 264 exact, and clean teardown in 10,336.580 s. Real full-capacity ownership allocates and tears down at 262,144 tokens (91,126,119,496 tracked bytes, 38,915,162,112 physical bytes still free, zero tracked bytes after close), but this is not a 262K inference result. Natural 4K retrieval and Transformers index-reference control pass exactly. Persistent compressed-key preparation reduces pool launches 24,540→384 and block work 18,849,792→12,288; exact device radix top-512 removes 24,540 score D2H synchronizations and 403.341 MB metadata H2D, reducing natural 4K 303.528→294.434 s with unchanged output/control. Production wave32 H128 sparse attention improves its real 2,048-token primitive 1,982→1,796 us and paired natural 4K 298.078→290.941 s; four sparse categories have bit-exact final logits/control and strict spans remain fallback. Exact chunk-batched score/top-k reduces launches 49,080→768 and paired natural 4K 295.706→290.971 s; exact grouped rowbatch8 Q4_K gate/up then gives 291.624→231.798 s, and output4 scheduling cuts full-shape CTAs 75% plus paired wall 235.774→228.569 s, all with bit-exact logits/control. The exact owner now also covers Q8_0-down layers, removing 64 direct gate/up launches and improving paired p508 12.021→11.189 s (45.404 tok/s). Its current sibling predecodes exact `d*scale`/`dmin*min` metadata once into 2 KiB LDS; with chunk256 this reaches 51.220 tok/s first-run / 58.466 tok/s steady p508 and 55.046 tok/s p1006, all bit-exact. Natural 16K/64K now pass at 17.301/17.099 tok/s with retrieval/control/CPU-oracle/lifecycle exact; 262K execution and broader lifecycle gates remain open (`benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json`, `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json`, `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json`, `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json`, `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json`). The complete runner mirrors paged K/V physical ownership, uses dense equivalence through 2,051 tokens, then runs native projections/pool/score/sparse attention with an exact host lexicographic top-512 control fallback; the single-thread device selector remains a reduced-fixture oracle and is not the long-context route. For gfx1151 c1 H256 indexed-sparse decode, production selects an exact ordered three-pass owner: parallel QK scores preserve the strict reduction tree, one global selected-order recurrence emits online-softmax coefficients, and output-column recurrences consume them in the same order. The serialized strict owner remains the registered fallback; the promoted ordered-v2 rewrite (`strict_ordered_three_pass_v2_spans`) preserves that arithmetic and operand order while de-latencying each pass: warp-tree scores on an eight-token grid reproduce the strict reduction tree, an exact `fmaxf` block scan supplies the coefficient max trajectory with pointwise `expf` off the critical path and a prefetched serial denominator, and staged-tile values use clamped unconditional loads after a per-load select was shown to defeat memory-level parallelism (406 versus 122us). Named kernel medians at clean source, cache-only build: scores 33.5us, coefficients 14.3us, values 100.7us (VGPR 32/40/96, scratch 0) versus parent 399.7/176.1/533.0us; leaf route 1.154->0.179ms/layer, 6.45x, bit-exact; six-case off/on/off full logits/4-step/state/full-KV gate passes at committed source; canonical A/B 72 trajectories exact with p4096 weighted TG +14.705% (arithmetic-mean-rate ratio +16.516%). Evidence: `2026-09-08-framework-qwen4exp-qsa-ordered-v2-kernels.json`. |
-| Qwen4Exp vision | `vision/qwen4_exp_vision.{hip,py}` | `vision_layernorm`, `vision_add_bias_residual`, `vision_gelu`, `vision_attention` | <=1K Qwen3-VL-compatible images/videos: merge-compatible RGB grids up to 256 patches/temporal pair, 2×2 block-major order, align-corners learned-position interpolation, frame-pair attention isolation, multiple images, odd-frame duplication, and typed placeholders. FP32 attention uses explicit vision H/W RoPE. Full 32×64 encoder matches Transformers at relative L2 1.48e-6/cosine 1.0; text QSA's registered MRoPE sibling applies interleaved T/H/W `[11,11,10]` and traces at 12,143 ns. Bounded PNG data URLs work through non-streaming chat; remote URLs/SSE/>1K remain open. |
-| Qwen4Exp raw Q5_1 experts | `quant/qwen4_exp_q5_1.{hip,py}` | selected `linear`/`moe_linear` (`gguf_q5_1`) | Strict selected-expert consumer plus exact grouped rowbatch8 and grouped-WMMA down projections for the pinned Unsloth UD-Q4_K_XL mixed quant. Exact output8 scheduling cuts full-shape grouped-down CTAs 1,310,720→163,840 and paired natural 4K 237.131→222.228 s with exact logits/control; output1 remains fallback. The current short-prefill owner iterates 512 experts through 64 worker CTAs and uses 128 physical threads to materialize the same 256 logical partials before the original reduction tree; its p512 bucket is 3.470→2.534 s with exact bits. Q5_1 grouped WMMA is not the strict owner; explicit gfx1151 Qwen4Exp `production` selects it with cooperative Q4 gate/up on the definitive maximal suffix layers 27–47. Every layer 0–26 fails final-prompt mean or p95; the 27–47 450-row/three-repeat manifest passes at mean/p95/p99/max KL 1.05e-4/3.81e-4/1.52e-3/5.59e-3 and 99.556% top-1, improving the MoE-only p508/p1012 59.401→67.243 / 58.723→66.268 tok/s. The same explicit profile adds dense-Q8 WMMA on certified layers 32–47; the combined 450-row gate passes mean/p95/p99/max KL 1.20e-4/4.93e-4/1.72e-3/8.69e-3 and 99.778% top-1, reaching 73.361/71.834 tok/s. Exact grouped/coltile fallbacks remain registered. The strict selected decode default now uses 64 physical threads to materialize the same 256 logical partials before reconstructing the original shared strides 128/64/32 and wave32 tail. The first exact t128 contraction cuts Q5 cycle-wall 692.930→410.364 ms and graph decode 11.380→12.140 tok/s; t64 is BF16-bit exact to both registered t128/t256 fallbacks, cuts its matched Q5 trace 444.699→362.525 ms, and improves graph decode 13.077→13.302 tok/s (+1.69%). The c1 default also fuses selected down with routed weighted sum: one CTA per H=2560 output preserves every route BF16 result and the original ordered `fmaf`, removes 1,806 traced launches, contracts target cycle-wall 369.241→313.535 ms, and improves 13.379→13.523 tok/s (+1.06%); the separate exact chain remains fallback. A default-off 64-thread sibling improves warm decode further but is rejected for production mean/p95 KL (`0.002565/0.007202`). |
-| Raw Q5_K/Q6_K/Q8_0 | `quant/gguf_k_gemv.{hip,py}` | `linear`, `linear_pair`, `attention_projection_quad` | Decode/prefill, BF16/F32 output, pair/quad launch contractions, rowbatch/coltile variants. The gfx1151 Qwen4Exp exact Q8/F32 owner first cut p508 26.264→14.718 s with coltile4/rowbatch8, then promotes coltile8/rowbatch4 alongside exact expert scheduling to reach 42.376 tok/s; p512 Q8 kernel wall falls 3.121→2.482 s with bit-exact full logits. Its c1 F32/F32 output-pack8 sibling reuses each activation across eight columns without changing per-output arithmetic, cuts the traced Q8 bucket 2.620→1.171 s and paired decode 5.698→6.305 tok/s; registered scalar raw Q8 remains fallback. gfx1151 Q5/Q6 W7900 policies remain disabled. |
-| Q5_K/Q6_K selected prefill WMMA | `quant/gguf_k_selected_prefill.{hip,py}` | `moe_linear` | Raw-byte compact selected-MoE f16-WMMA consumers with strict raw selected-gemv fallbacks. The gfx1151 Qwen4Exp layer-2 Q5_K/Q5_K route is production-rejected/default-off: p508 Q5_K gate/up falls 279.86→16.66 ms and 20/20 category-balanced p512 pairs win by about 5%, but the complete 450-row gate fails prefill-last mean KL at 0.001179 > 0.001. Do not rescreen unchanged T2 arithmetic; the older optimized metadata-hoist sibling is a separate rejected path. |
-| Raw Q3_K selected | `quant/gguf_q3_k_gemv.{hip,py}` | `moe_linear` | Q3 selected-expert projection family. |
-| Q4_K pack8/raw | `quant/gguf_q4_k_gemv.{hip,py}` | `linear`, `linear_pair`, `linear_pair_silu`, `linear+residual` | Raw GGUF math and lossless pack8 layouts; pair/SiLU and exact rounded-BF16 residual composites where registered. Qwen4Exp c1 now resolves raw selected dual gate/up by registry capability, halves Q4 launches 94→47/token, and improves paired decode 6.065→6.223 tok/s. Its operation-complete sibling preserves both BF16 projection boundaries and the standalone SiLU/product bits, removes another 47 launches/token, and improves 6.400→6.420 tok/s. The selected default now maps logical lanes `tid`/`tid+64` onto 64 physical threads while publishing the same four strict wave sums; it contracts Q4 cycle-wall 1,076.767→814.906 ms across 1,974 launches and improves counterbalanced graph decode 12.003→13.167 tok/s (+8.84%). IDs/full logits are exact and the physical128 dual/singleton chains remain fallbacks. Above these kernels, gfx1151 now captures each complete stateless Qwen4Exp MoE chain in one self-validating request-owned graph: 48 captures/zero rejects, 192 full-logit rows exact, eager 6.511→11.515 tok/s, then exact Q5/Q4/Q5 contractions and Q5 down+weighted fusion reach 12.140/13.167/13.302/13.523 tok/s; c2 is exact and stateful GDN/QSA remain outside replay. Explicit gfx1151 `production` adds one-plane Q8_1 DP4A Q4 dual+SiLU on calibrated static layers `0,2,5,6,8,9,10,11,13–47`; measured-failing layers `1,3,4,7,12` remain exact. The physical64 owner preserves the candidate's 128 logical partials and BF16 boundaries; combined production passes 447/450 top-1 with mean/p95/p99/max KL 2.72e-4/1.40e-3/4.00e-3/5.77e-3, improves decode 13.880→15.543 tok/s, and contracts Q4 target cycle-wall 825.340→397.755 ms. Direct suffix13→calibrated43 is +0.37%. Suffix12 and all-layer DP4A are rejected at 445/450; exact logical128/t64 remains fallback and omitted-profile default. A Qwen4Exp one-layout expert replacement is rejected and removed: sampled layer-0 bits are exact and micro speed is 4.47x, but uncached load is 979 s and full-model mean/p95 KL fail at 0.002089/0.006529. Primitive projection+add fallbacks remain available. |
-| Q4_K/Q6_K prefill WMMA | `quant/gguf_q4_k_prefill.{hip,py}` | `linear` | Resident pack8/raw prefill consumers; exact scalar/pack8 routes remain fallbacks. The p512 pack8-Q4 rounded-residual output-store sibling is rejected (0.958x core / 0.952x public complete-model prefill) and is not registered. |
-| Q8_0 T16 prefill | `quant/gguf_q8_0_t16_prefill.{hip,py}` | `linear`, `linear_pair` | WMMA/T16 Q8 prefill and architecture-specific wave schedules. gfx1151 rows512/K1024/N16+N16 alpha/beta uses the exact two-wave dual owner; singleton WMMA remains the fallback. |
-| Q8_0 T16 decode | `quant/gguf_q8_0_t16_gemv.{hip,py}` | `linear`, `linear_pair`, `linear_triple` | Exact T16 Q8 decode GEMV for Qwen3.5-family attention projections (in 2048; fused qkv 8192 + gate 4096). Per-row dual/split owners run at all widths, with an exact 128-thread dual-split rowtile col8 pair owner admitted at rows >= the backend-package floor `GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS`. |
-| Q6/Q4 mixed and narrow K/V grids | `fused/gguf_q6_q4_pair.{hip,py}` | `linear_pair` (standard-Q6+Q4, Q4, Q4+planar-Q6) | Exact block-parallel rows1 pairs; gfx1151 qualifies Qwen3.8 recurrent K5120/N10240+N6144 and full-attention K/V K5120/N1024+N1024 while primitive projections remain fallbacks. |
-| Dense Q6_K T16/qmicro | `quant/gguf_q6_k_t16_gemv.{hip,py}` | `linear`, `linear+argmax`, `linear+residual` | Exact dense Q6 decode/prefill/root families. gfx1100 planar row8 uses the exact DPP reduction (VGPR136→112, bpermute320→0), admitted on all 55 actual-operation rows and retained by a 1.634% complete-owner wall win; rows1-7 keep the generic reduction. gfx1151 rows>=512 uses 128-thread/four-wave shared-weight WMMA for standard K5120/N10240 QKV (2.96-3.55x) and planar K17408/N5120 FFN-down (1.42-1.50x); both use 24 KiB LDS / 248 VGPR. Rows<512, narrow V, root, shape misses, and peer backends retain exact one-wave/16x16 primitives. |
-| Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}`, `quant/gguf_k_t16_selected_prefill.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. Exact one-wave/shared-B WMMA rowtile owners cover physical shapes, with grouped-grid siblings, fused dual+SiLU prefill owners, and input-F16 activation siblings (`*_fp16_in_bf16_out`) registered per backend; every shape/row miss and env-disabled path retains the strict one-wave/shared-B or primitive fallback, and current per-shape ownership is backend-package capability data. gfx1100/W7900 additionally retains the exact c8 Q4 selected gate/up pair-reuse dual owner through the package floor `GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS` (2026-09-05 audit packet D1: native-c8 +4.97% with exact repeatable trajectories, arm-identical state differentials on steady c2/c4/c8 and c8 shrink-sparse, natural-prompt duplicate-lane fraction 0.616 versus the direct-fixture 0.5, and a c8 census showing `q4_k_t16_selected_dual_pairreuse_direct_gemv_kernel` x80 with zero scalar fallbacks); the route's geometry gate pins it to x_rows=8/rows=64, lower widths and env-0 keep the per-row dual owner, and the selected-down/Q6-down pair-reuse packets stay unqualified on gfx1100 (floors 0). The selected Q5 MoE down projection additionally has a qmicro-planar local32 owner (`q5_k_qmicro_t16_selected_local32_gemv_kernel`, 32 lanes/eight columns/single wave with register metadata) admitted by `GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE` at `(in_features, out_features) = (512, 2048)` for `gguf_q5_k_qmicro_t16_v1`; it is 1.3806x the production qmicro tile8 owner in isolation at that shape but neutral end to end on Qwen3.6-35B-A3B-UD-Q4_K_M natural 512/128, and the selected row-to-x contract is `x_rows == rows == top_k` for a single token. |
-| Dense planar-Q6 integer MMQ | `quant/gguf_q4_k_q8_1_selected_prefill.{hip,py}` | `activation_quant`, `linear` | gfx1151 production-profile T2 composite for rows17-48 on sole-resident planar K17408/N5120 down and K5120/N1024 narrow-V: session-owned BF16-to-Q8_1 packing feeding the integer `mmq64x64` consumer; exact A owners remain registered for strict/profile fallback. |
-| Dense Q4 q8_1-dp4a VDR screen | `quant/gguf_q4_k_q8_1_dp4a_vdr_gemv.{hip,py}` | `linear` (leaf screen, not dispatched) | nasone32 k-quant load-reuse port (efa4e8641): subblock-hoisted metadata with activation packs reused across 8 columns, plus an unamortized control with identical thread mapping and f32 order (bit-exact RED contract). 2026-09-09 four-arm leaf on both gfx1100 cards: -50..-76% vs the control inside the dp4a class, but 1.11-1.44x slower than the retained T16 rows=1 owners at every production shape (T16 sits at the DRAM floor), so rejected as a decode replacement; retained as evidence for future integer decode routes. |
-| Dense Q4 int-MMQ prefill screen | `quant/gguf_q4_k_q8_1_mmq_prefill.{hip,py}` | `linear` (leaf screen, not dispatched) | Raw-Q4_K x DS4-Q8_1 bulk-prefill integer MMQ (PP8192-attribution candidate): staged-dp4a 32x32-tile and direct-global iu8-WMMA 32x16-tile consumers, each with bit-exact ctl/vdr siblings (block-header/subblock-metadata hoisting) and a DS4 CPU oracle. 2026-09-09 W7900 six-arm leaf on real Qwen3.8-27B Q4_K_M weights, rows 512/1024/4096: best integer totals (pack + consumes) reach only 0.205-0.542x the retained float T16 prefill owners (9/9 case-rows), load-reuse deltas within +-3%, pack negligible — rejected as a bulk-prefill replacement; retained as leaf evidence for future integer prefill routes. |
-
-| IQ2/IQ3/IQ4 decode | `quant/gguf_iq_gemv.{hip,py}` | `moe_linear` | Raw IQ selected-expert projection families. IQ3 tile4 remains scoped to the retained gfx1100 explicit-DFlash route; gfx1151 excludes it after a complete-route rejection and keeps tile1. |
-| Q8_0 grouped down (P1) | `quant/gguf_q8_0_prefill.{hip,py}` | `moe_linear` | P1 device-driven grouped Q8_0 down owner (`gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out`) for the layer-2/4/30/46/47 Q8_0 expert-down family. Reads `expert_start` on device and iterates experts via a fixed worker grid, replacing the `group_expert_start` D2H copy + Python loop over 512 experts. BF16-exact to `gguf_q8_0_gemv` per grouped row (RED test `test_gpu_qwen4_exp_q8_0_grouped_down.py`). Strict per-expert selected gemv remains default; `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects it. **Perf-negative as of 2026-08-30** (microbench 20260830T202256): grouped owner ~3-12x slower than strict `selected_gemv` on layer-2 shape due to a 1.31M-block grid with OUT_BATCH=1 and no weight reuse; not promoted. |
-| Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. A Qwen4Exp one-layout replacement profile is rejected and removed: optimized p512 is neutral (213.52 vs 211.76 tok/s), paired decode regresses 5.925→3.615 tok/s, and mean/p95 KL fail at 0.003010/0.008338. gfx1151 Qwen3.8 standard-Q4 physical rows6/8/12/16 use the exact single-wave WMMA parent for K/N 5120/6144, 5120/10240, 5120/12288, and 6144/5120; narrow V, wide-K down, and misses retain shared-B. gfx1100 Qwen3.6 physical rows6 instead uses the C1-equivalent rowtile for K/N 5120/1024, 5120/6144, 5120/10240, 5120/12288, and 17408/5120, plus the exact single-wave parent for 5120/17408; all other rows/shapes keep explicitly registered shared-B. The same gfx1151 model's Q5 K6144/N5120, K17408/N5120, and K5120/N10240 rows2-8 use the exact col8 rowtile; registered parents remain strict fallbacks. |
-| Dense raw IQ/Q3 projections | `quant/gguf_iq_dense.{hip,py}` | `linear` | IQ4_XS/IQ4_NL/IQ3_S/Q3_K/IQ3_XXS/IQ2_S/IQ2_XS, BF16 input and BF16/F32 output, fixed 128-thread F32 reduction with contraction disabled. Raw row-batched correctness fallback; no fused pair. gfx1151 real-row leaf tests cover K=5120/17408. The same family owns raw Q3_K BF16 embedding lookup (`embedding` / `lookup_bf16_out`), exact against independent real-row fixtures on gfx1151. K_M/K_S load-time consumer coverage passes; gfx1100 numerical validation is pending. |
-| IQ selected prefill | `quant/gguf_iq_selected_prefill.{hip,py}` | `moe_linear` | Grouped/expert-major, active-expert, rowbatch, and output-ownership variants. |
-| Raw-K activation MMQ | `quant/gguf_k_mmq_prefill.{hip,py}` | `activation_quant`, `linear` | Q8_1 producer layouts plus Q5/Q6 MMQ consumers; retained diagnostics may not be runtime defaults. The gfx1100 C8 Q5 owner choice between K-major source MMQ and raw MMQ is capability/env data (`HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ`, `HIPENGINE_GGUF_C8_Q5_RAW_MMQ`) in the backend package. |
-| Raw-IQ source MMQ | `quant/gguf_iq_source_mmq_prefill.{hip,py}` | `moe_linear` | Source-faithful IQ MMQ diagnostic/alternative consumers. |
-| Exact expanded F32 planes | `quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}` | `linear` and raw-quant composites | Raw Q5/Q6 producers plus ordered exact consumers; library SGEMM variants are distinct diagnostic paths. |
-| Source-F16 Q4/Q5/Q6 library route | `quant/gguf_q6_k_f16_rocblas_prefill.{hip,py}` | dequant/cast/`linear` composites | Bounded tile producers feeding F16 rocBLAS for Q4T16/Q5T16 and raw/sole-planar-Q6T16, with scalar, pair-, and octet-owned producer variants. Changed arithmetic is model/shape gated; scalar producers and exact T16 kernels remain registered fallbacks, and decode, verifier, peer backends, and unqualified shapes stay exact. |
-| Embedding | `quant/gguf_q6_k_embedding.{hip,py}` | `embedding` (`gguf_q4_k/q5_k/q6_k/q8_0`) | Raw GGUF row lookup for root/token tables. |
-| X8 sidecars/replacements | `quant/gguf_x8_selected_gemv.{hip,py}` and pack8 modules | selected `moe_linear` / top-1 helpers | GGML-style packed selected-expert and head diagnostics/qualified lanes. |
-| Q8 dp4a verifier | `quant/gguf_q8_0_dp4a_gemv.{hip,py}` | `linear` pair/triple/rowtile variants | q8_1+sudot4 verifier/draft families; selection is route-specific. The Q6 X8 direct-top1 consumer is c1-only for shared-slot AR; multi-row uses Q6 rowtile logits plus GPU argmax. |
-| Selected pack8/T16 support files | `quant/gguf_*selected*.{hip,py}`, `quant/gguf_*pack8*.{hip,py}`, `quant/gguf_*t16*.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, producer/metadata variants | Build/registration partitions for selected-expert storage layouts; exact ownership stays in each wrapper. |
-
-Model-, quant-, and shape-specific owner selection for the dense Qwen3.6, Qwen3.8, and Qwen3.5-0.8B GGUF paths (payload plans, decode rowtiles, c=N decode maps, source-F16 library admissions, fused c1 composites, and norm/KV capability keys) is capability/policy data in `hip_gfx1100/__init__.py`, `hip_gfx1151/__init__.py`, and the GGUF dispatch wrappers — not catalog prose. Performance and correctness evidence for each selection lives in `benchmarks/results/` and the corresponding immutable worklog entries.
-
-The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
-
-#### Laguna model families
-
-| Functional family | Source / wrapper | Principal registry layers/quants | Stable notes |
-| --- | --- | --- | --- |
-| Source-F16 projections | `linear/laguna_f16_projection.{hip,py}` | `linear`, `linear_pair/triple/quad`, `linear+add+rmsnorm` (`fp16_weight`) | Decode GEMV, exact tiled prefill, compensated WMMA diagnostics/qualified routes, projection-boundary composites. |
-| Router and route combine | `moe/laguna_router.{hip,py}` | `laguna_router_topk`, `laguna_sigmoid_router_topk`, `weighted_sum` | Stable sigmoid correction/top-k and route-weight reductions. |
-| KV write and attention | `attention/laguna_kv_attention.{hip,py}` | `laguna_kv_write`, `laguna_attention_decode`, `laguna_attention_prefill` | Global and SWA, scalar/bulk, exact qrow, online/changed-association, split/fused GQA, dense-prefix/ring, and long-context variants; complete `KVLiveSpans` ABI throughout. |
-| Source F16-WMMA attention | `attention/laguna_flash_attention_prefill.{hip,py}` | `laguna_attention_prefill` diagnostic variant | Source-faithful changed-association leaf; does not replace exact attention without the full quality gate. |
-| Head/RoPE/KV composites | `attention/laguna_kv.{py}` over `laguna_kv_attention.hip` | `head_rmsnorm+partial_rotary+kv_write`, projection+head+KV | Registered fused boundaries retain primitive head norm/RoPE and writer fallbacks. |
-| Norm/RoPE/glue | `fused/gguf_ops.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `head_rmsnorm+partial_rotary`, attention gate helpers | GGUF F32-weight norm and Qwen/Laguna head-prelude primitives/composites. |
-| Softplus attention gate | `fused/laguna_attention.{hip,py}` | `attention_gate` (`f32`) | Generic and mixed-layout/prefill-tile output gates. |
-| Host-batched kernel launches | `runtime/laguna_launch_batch.{hip,py}` | `linear+moe_tail+next_rmsnorm_host_batch` | Native launch contraction over already registered exact component kernels. |
-
-Architecture-specific Laguna route choices live in `hip_gfx1100/__init__.py` and `hip_gfx1151/__init__.py`. Keep rationale/results in worklogs and benchmark artifacts; keep only family existence here.
-
-### Maple path
-
-The Maple path uses ternary projection weights, affine4 embedding/head weights, dense BF16 routing, and the common `KVLiveSpans` contract.
-
-| Functional family | Source / wrapper | Principal registry layers | Notes |
-| --- | --- | --- | --- |
-| Ternary/affine4 projections | `quant/maple_ternary.{hip,py}` | `maple_ternary_gemv/gemm/qkv`, `maple_selected_ternary(_dual)`, `maple_affine4_embed/gemv` | 2-bit ternary and group-64 affine4 storage; grouped expert-major and c1/batched head variants. |
-| Attention/KV | `attention/maple_attention.{hip,py}` | `maple_kv_span_update`, `maple_qknorm_rope_kv_write`, `maple_attention_decode/prefill` | Standard QK RMSNorm, partial RoPE, BF16 ring KV, GQA decode and prefill; all readers/writers use complete spans. |
-| Router/MoE tail | `moe/maple_moe.{hip,py}` | `maple_router_topk`, `maple_clamped_swiglu`, `maple_weighted_residual` | Stable top-k, clamp-7 SwiGLU, and selected weighted residual. |
-| Shared norm/head helpers | `norm/rmsnorm`, `linear/lm_head`, `moe/group_scatter` | norm, argmax/top-k, compact metadata | Reused through Maple's registered backend/quant keys. |
-
-### Moonshine path
-
-| Functional family | Source / wrapper | Principal registry layers | Notes |
-| --- | --- | --- | --- |
-| FP16 projections | `linear/moonshine_projection.{hip,py}` | projection single/rows/bias/pair/QKV/cross-KV/lm-head and MLP boundaries | Decoder projections and direct head-major cross-KV output. |
-| W8A16 projections | `linear/moonshine_w8a16.{hip,py}` | Moonshine projection/QKV/cross-KV/MLP/lm-head (`w8a16`) | Quantized peer family with FP16 path as fallback. |
-| LayerNorm | `norm/moonshine_layernorm.{hip,py}` | `moonshine_layernorm`, residual+LayerNorm | FP32 statistics with explicit rounded FP16 boundary. |
-| Glue primitives | `fused/moonshine_glue.{hip,py}` | embedding, residual, partial RoPE, self-cache, RoPE+cache, argmax | Fixed-cache decoder glue and deterministic lowest-ID selection. |
-| MLP activation | `fused/moonshine_mlp.{hip,py}` | `moonshine_gated_silu` | FP16 value/gate split with FP32 activation math. |
-| Self/cross attention | `attention/moonshine_attention.{hip,py}` | `moonshine_self_attention`, `moonshine_cross_attention` | Logical-dim-52 self/cross attention, cache buckets, and parallel-token variants. |
-
-Encoder kernels are currently CUDA-only; see the CUDA catalog below.
-
-### TimesFM path
-
-| Functional family | Source / wrapper | Principal registry layers | Notes |
-| --- | --- | --- | --- |
-| Fused norm/elementwise | `timesfm/timesfm.{hip,py}` | rmsnorm (multiplicative scale, eps inside rsqrt), norm+add post-norm residual, bias, bias+swish, swish, add | Templated `<T>` `_f16`/`_f32` variants; FP16 storage with FP32 math. |
-| RoPE + QK norm + scatter | `timesfm/timesfm.{hip,py}` | `timesfm_rope` (timescale table), `timesfm_qkv_norm_scatter` | One block per (b, n, h) head vector: in-kernel non-interleaved RoPE, query/key RMSNorm, per-dim softplus query scaling, head-major `[B, H, S, D]` k/v cache scatter, `[B, H, Q, D]` q transpose. |
-| Masked softmax | `timesfm/timesfm.{hip,py}` | `timesfm_mask_softmax` | Register-resident two-pass row softmax; masked keys are `-INFINITY`, all-masked rows emit uniform 1/S (reference parity). |
-| Attention | `timesfm/timesfm.{hip,py}` + rocBLAS `gemm_strided_batched` | `timesfm_attention` (strict FP32 fallback), `timesfm_flash_attention` (FP16 production) | Naive block-per-row kernel for the strict path; production path is a WMMA flash kernel (w32 `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32`): online softmax with width-16 shuffle row reductions, LDS-staged P, causal kv-tile skipping, uniform-1/S all-masked fallback, ragged-S bounds guards, 4 q-tiles/block for Q>=64. Attention sub-window: 0.73 ms/layer prefill at b8/ctx8192. |
-| Head transpose | `timesfm/timesfm.{hip,py}` | `timesfm_transpose_heads` | `[B, H, Q, D]` back to row-major `[B*Q, H*D]` for the out projection; one block per row, half4-vectorized coalesced (6.8 us at b8/n=256). |
-
-Model contract, loader, NumPy oracle, and GPU orchestration live in
-`models/timesfm.py`, `loading/timesfm.py`, `kernels/cpu_reference/timesfm.py`,
-and `runtime/timesfm_decode.py` respectively. The TimesFM RMSNorm is a
-different contract from the Qwen family (multiplicative `scale`, no +1).
-
-### TimesFM 3.0 path
-
-Single non-autoregressive forward pass (no AR loop, no persistent KV cache);
-sequence attention runs over `batch * variates` independent sequences with one
-scratch cache pair reused across layers.
-
-| Functional family | Source / wrapper | Principal registry layers | Notes |
-| --- | --- | --- | --- |
-| Variate attention | `timesfm3/timesfm3.{hip,py}` | `timesfm3_var_attention` | Non-causal attention across up to 32 variates, one block per (b, n, h) with per-warp query rows; per-(b, v) leading-mask counts exclude variate keys; scores x sqrt(head_dim); fully-masked query rows -> zeros (CPU SDPA semantics). FP16/FP32 templated. |
-| QK norm + scatter (3.0) | `timesfm3/timesfm3.{hip,py}` | `timesfm3_qkv_norm_scatter_f16` | 2.5's fused kernel with runtime epsilon (torch `nn.RMSNorm` finfo(float32).eps, not 1e-6). |
-| ReLU elementwise | `timesfm3/timesfm3.{hip,py}` | `timesfm3_relu` | 3.0 FFN/tokenizer activation (2.5 uses Swish). |
-| Everything else | `timesfm/timesfm.{hip,py}` | reused 2.5 layers | rmsnorm/norm_add/bias/add (eps-parameterized), rope (absolute patch positions, host-supplied), flash attention, head rmsnorm/per-dim scale (also on var q/k via B=rows, N=1), scatter, transpose. The SDPA sqrt(head_dim) score scale is folded into the K-side norm weight; the 2.5 uniform fully-masked-row fallback differs from the oracle zeros only at leading-pad rows that decode() slices away (verified end-to-end on all fixtures). |
-
-Model contract, loader, NumPy oracle, GPU orchestration, and bench live in
-`models/timesfm3.py`, `loading/timesfm3.py`, `kernels/cpu_reference/timesfm3.py`,
-`runtime/timesfm3_decode.py`, and `scripts/timesfm3_gpu_bench.py`; the
-per-model record is `docs/model-cards/MODEL-TIMESFM3.md`.
-
-### Surya OCR path
-
-Surya OCR 2 (`datalab-to/surya-ocr-2`, Qwen3.5-family tower with a Qwen3-VL-style
-vision encoder) runs torch-free on the fp32 CPU reference and, for gfx11, on a
-HIP lane that reuses the proven EVIE / Qwen3.5 linear-attention kernels plus a
-small Surya-specific op set. These families are direct-launched through their
-Python wrappers with no four-axis registry entries; the runtime-level strict
-fallback is the contract of record (see `docs/REFACTOR.md`).
-
-The KV write and decode kernels read the complete
-`(base_offsets, live_counts, token_positions, evict_mask)` span ABI over the
-same head-major fp32 `(nk, max_seq, hd)` planes the prefill path addresses. The
-dense policy fills every field uniformly (identity page table, `arange`
-positions, empty eviction mask) rather than leaving them null, so the default
-path exercises the metadata it claims to honour.
-
-| Functional family | Source / wrapper | Principal entry points | Notes |
-| --- | --- | --- | --- |
-| Split q / gate | `surya/surya_ops.{hip,py}` | `surya_split_qgate_f32` | Separates the fused q+gate projection into query and gate planes for the GDN output gate. |
-| GDN q/k L2 norm | `surya/surya_ops.{hip,py}` | `surya_gdn_l2norm_f32` | Strided-source, plain-output per-head L2 normalization of the recurrent q/k; the repeat variant in the shared GDN family writes a doubled per-head layout Surya does not use. |
-| Plain-weight RMSNorm | `surya/surya_ops.{hip,py}` | `surya_rmsnorm_f32` | Plain `w` convention. Surya's GDN `RMSNormGated` uses plain weights, unlike the standalone Qwen `(1+w)` norm. |
-| Dense KV scatter | `surya/surya_ops.{hip,py}` | `surya_scatter_kv_f32_spans` | Spans-aware strided scatter into the contiguous `(nk, max_seq, hd)` cache: the logical token index is mapped through the page table and skipped when it is outside `live_counts`, has a negative `token_positions` entry, or is marked in `evict_mask`. The pre-spans `surya_scatter_kv_f32(tokens, token_offset)` parent stays registered as the bisection oracle. |
-| Decode attention | `surya/surya_ops.{hip,py}` | `surya_full_attn_decode_f32_spans`, `..._split_k_reduce_f32` | Fused fp32 GQA-4 split-K decode attention over complete `KVLiveSpans`: one producer block per `(kv_head, context chunk)` computes all four query heads of that KV head, so each K/V plane is read once per KV head instead of once per query head, and no `(nq, max_seq)` score row is materialized. Replaces the batched-SGEMM scores + scale + row-softmax + AV chain; `attention_decode_rocblas_f32` in `runtime/surya.py` is the registered strict fallback for head_dim != 256 or GQA repeat != 4. |
-| Causal mask + scale | `surya/surya_ops.{hip,py}` | `surya_causal_mask_scale_f32` | Builds the scaled causal score mask for the packed full-attention layers. Takes the tile's first query as a `query_offset`, because a query-row tile's mask is relative to the absolute query position, not the tile-local row index. |
-| Vision tower | `hip_gfx1100/evie/evie_ops.{hip,py}` | `build_evie_ops` symbol set | Reused EVIE JIT library: patch embed, learned position add, bidirectional attention, LayerNorm, GELU, merger GEMMs. Surya vision has biases where EVIE does not. |
-| Linear attention | `hip_gfx1100/linear_attn/conv.{hip,py}`, `gdn.{hip,py}` | `qwen35_linear_attn_conv_*`, `qwen35_gdn_prefill_recurrent_*` | Reused Qwen3.5 GDN prefill/decode kernels; Surya has 12 GDN and 12 full-attention layers. |
-| GEMM | rocBLAS (`hipengine/core/rocblas.py`) | strided-batched / plain GEMM | fp32 throughout; all projections and the tied LM head. |
-
-Model contract, loader, CPU oracle, GPU runtime, and generators live in
-`models/surya.py`, `loading/surya.py`, `kernels/cpu_reference/surya.py`,
-`runtime/surya.py`, and `generation/surya{,_gpu}.py`. The per-model record is
-`docs/model-cards/MODEL-SURYA.md`; the lane comparison is
-`scripts/surya_perf_compare.py`.
-
-### Speculative decoding path
-
-| Functional family | Source / wrapper | Principal registry layers/quants | Notes |
-| --- | --- | --- | --- |
-| DFlash drafter | `speculative/dflash_drafter.{hip,py}` | `dflash_*` projection, norm, attention, activation, metadata layers (`w4_paro`) | Raw-pointer drafter primitives; target verification remains transaction-shaped. |
-| DFlash2 drafter reference | `speculative/dflash2_drafter.py` + `cpu_reference/dflash2.py` | `dflash2_grouped_conv`, `dflash2_selector`, `dflash2_selector_path`, `dflash2_attention_forward`, `dflash2_rope_tables` (`fp32`) | Torch-free NumPy DFlash2 exactness reference (grouped dynamic conv, top-16 bilinear selector, q/k-norm sliding attention). Golden fixtures from z-lab/dflash @ 07ebd93; native kernels land in D2. Source lineage: `docs/source_lineage.json` (repo `dflash`). |
-| DFlash2 native kernels | `speculative/dflash2.{hip,py}` | `dflash2_grouped_conv`, `dflash2_top16_rows`, `dflash2_selector` (`bf16`/`fp32`) | Native grouped dynamic conv (strided side views over the 1280-wide projection), top-16 logits, and the low-rank bilinear candidate-selector greedy walk. Strict RED vs `cpu_reference/dflash2.py` (BF16 round-trip modeled); registered for `hip_gfx1100` + `hip_gfx1151`. D2a. |
-| DFlash acceptance | `speculative/dflash_accept.{hip,py}` | `dflash_accept_chain`, `speculative_accept_commit` | GGUF/PARO acceptance and bounded commit summaries. |
-| DFlash commit/state | `speculative/dflash_commit.{hip,py}` | `dflash_commit_chain`, `linear_state_pair_*` | Transactional selected-state and cursor commit helpers. gfx1100 target verification reads initial Conv/GDN state from a resident multi-slot slab with the strict chunked pointer-table import as rollback; gfx1151 keeps the packed-state route, and a per-layer HIP D2D chain remains a lower strict fallback on gfx1100. |
-| MTP core | `speculative/mtp.{hip,py}` | MTP norm/fuse/router/top-k/gate/finalize/route accumulation | Provider-neutral proposal/acceptance primitives. Dense H5120 Q4_K_M gfx1100 native C1 verification uses allocated cache capacity (BF16 KV/FP32 state); scalarized rows snapshot initial Conv/GDN state before mutation. Native graph metadata is independent of bulk-prefill metadata thresholds; topology transitions may select eager native execution. |
-| MTP NextN | `speculative/mtp_nextn.{hip,py}` | `mtp_nextn_*`, quant GEMVs, shared head | GGUF NextN layer, attention, MoE, and projection helpers. The exact K/V-only full-attention branch owns prompt priming and accepted-tail repair by default; `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY=0` restores the complete NextN block. |
-
-Detailed provider/runtime status belongs in `MTP.md`, `DFLASH.md`, worklogs, and benchmark artifacts.
-
-## CUDA sm_120a catalog
-
-CUDA families are implemented independently under `hipengine/kernels/cuda_sm120a/` and registered only by that backend package.
+| Source | Purpose |
+| --- | --- |
+| `linear/laguna_f16_projection.hip` | FP16-weight projections and fused residual/normalization. |
+| `moe/laguna_router.hip` | Expert routing and weighted route combination. |
+| `attention/laguna_kv_attention.hip` | Key/value writes, rotary transforms, and global/sliding-window attention. |
+| `attention/laguna_flash_attention_prefill.hip` | Matrix-tiled prefill attention. |
+| `fused/laguna_attention.hip` | Softplus/sigmoid attention output gating. |
+| `runtime/laguna_launch_batch.hip` | Batch projection and expert-tail launches in native code. |
 
 ### Maple
 
-| Functional family | Source / wrapper | Principal registry layers | Notes |
-| --- | --- | --- | --- |
-| Ternary/affine4 projections | `quant/maple_ternary.{cu,py}` | Maple ternary, selected expert, affine4 embedding/head layers | CUDA peer of the Maple packed storage contract. |
-| Attention/KV | `attention/maple_attention.{cu,py}` | Maple span update, QK/RoPE/KV write, decode/prefill | Complete spans and CUDA warp32-specific implementations. |
-| Router/MoE | `moe/maple_moe.{cu,py}`, `moe/group_scatter.{cu,py}` | Maple router/SwiGLU/weighted residual; compact metadata | Stable selection and grouped native-prefill support. |
-| Norm and final reductions | `norm/maple_rmsnorm.{cu,py}`, `linear/maple_lm_head.{cu,py}` | RMSNorm/add/head norm, lm-head/argmax/top-k | Independent CUDA launch/runtime wrappers. |
+| Source | Purpose |
+| --- | --- |
+| `quant/maple_ternary.hip` | Ternary projections and affine4 embedding/head operations. |
+| `attention/maple_attention.hip` | Query/key normalization, rotary transforms, cache writes, and attention. |
+| `moe/maple_moe.hip` | Expert selection, clamped SwiGLU, and weighted residuals. |
 
 ### Moonshine
 
-| Functional family | Source / wrapper | Principal registry layers | Notes |
+| Source | Purpose |
+| --- | --- |
+| `linear/moonshine_projection.hip` | FP16 decoder projections and fused projection boundaries. |
+| `linear/moonshine_w8a16.hip` | 8-bit-weight decoder projections. |
+| `norm/moonshine_layernorm.hip` | Layer normalization and residual/normalization. |
+| `fused/moonshine_glue.hip` | Embedding, residual, rotary, cache, and argmax operations. |
+| `fused/moonshine_mlp.hip` | Gated SiLU activation. |
+| `attention/moonshine_attention.hip` | Decoder self-attention and cross-attention. |
+
+### Speech, vision, OCR, and forecasting
+
+| Source | Purpose |
+| --- | --- |
+| `vibevoice/encoder.hip` | Speech encoders/connectors and Qwen2 attention/cache operations. |
+| `vibevoice/decoder.hip` | Streaming speech-decoder convolutions and upsampling. |
+| `vibevoice/diffusion.hip` | Diffusion-head normalization, modulation, and solver steps. |
+| `evie/evie_ops.hip` | Vision patch embedding, normalization, attention, and merger operations. |
+| `surya/surya_ops.hip` | Surya normalization, query/gate splitting, cache writes, and attention. |
+| `timesfm/timesfm.hip` | TimesFM normalization, rotary transforms, attention, and layout operations. |
+| `timesfm3/timesfm3.hip` | TimesFM 3.0 variate attention, query/key normalization, and ReLU. |
+
+### YuE2 music generation
+
+| Source / shared family | Purpose |
+| --- | --- |
+| `yue2/nar.hip` | Non-autoregressive attention, rotary transforms, cache gathering, step embeddings, and midpoint solver updates. |
+| `yue2/nar_wmma.hip` | Matrix-tiled non-autoregressive attention with changed arithmetic. |
+| `yue2/vae.hip` | FP32 audio-decoder convolutions, transposed convolutions, Snake activation, and residuals. |
+| `vibevoice/encoder.hip` | Shared normalization, rotary, span-cache writes, attention, and residual operations. |
+| `linear/dense_gemv.hip` | Shared autoregressive projections and output head, including exact paired-branch row tiles and phase-windowed output. |
+| `rotary/qwen35_rotary.hip`, `fused/paro_silu.hip` | Shared decode rotary and gated activation operations. |
+
+### Speculative decoding
+
+| Source | Purpose |
+| --- | --- |
+| `speculative/dflash_drafter.hip` | DFlash draft-model projections, normalization, attention, and metadata. |
+| `speculative/dflash2.hip` | DFlash2 dynamic convolution, top-k, and candidate selection. |
+| `speculative/dflash_accept.hip` | Draft-chain acceptance and commit summaries. |
+| `speculative/dflash_commit.hip` | Commit selected recurrent states and cursors. |
+| `speculative/mtp.hip` | Multi-token prediction proposal, routing, and acceptance helpers. |
+| `speculative/mtp_nextn.hip` | NextN draft-layer projections, attention, and expert operations. |
+| `speculative/sampled_accept.hip` | Probabilistic draft-chain acceptance and residual sampling. |
+
+## Exact and production implementation map
+
+`strict` names an exact or parent-parity contract; `production` is a selection
+profile, not a synonym for approximate math. Production can select exact
+kernels too. The profile manifest identifies each selected variant and its
+strict fallback; backend packages supply shape-specific choices. See
+[EXECUTION-PROFILES.md](EXECUTION-PROFILES.md) for the numerical contracts.
+
+| Model / quant family | Strict or unfused implementation | Alternate / production implementation | Source family |
 | --- | --- | --- | --- |
-| Decoder projections | `linear/moonshine_projection.{cu,py}`, `linear/lm_head.{cu,py}` | single/rows/bias/pair/QKV/cross-KV/MLP/lm-head | FP16 projection families and bounded fused head/top-1 routes. |
-| LayerNorm and MLP | `norm/moonshine_layernorm.{cu,py}`, `fused/moonshine_mlp.{cu,py}` | LayerNorm, residual+LayerNorm, gated SiLU | CUDA warp reductions and explicit FP16 boundaries. |
-| Decoder glue | `fused/moonshine_glue.{cu,py}` | embedding/residual/RoPE/cache/argmax plus position/result publication | Includes device-owned decode control helpers. |
-| Self/cross attention | `attention/moonshine_attention.{cu,py}` | self/cross attention variants | CUDA-native scalar/batched cache routes. |
-| CUTLASS attention | `attention/moonshine_attention_cutlass.{cu,py}` | `moonshine_self_attention` AOT variants | Optional architecture-qualified library path; native attention remains fallback. |
-| Encoder core | `encoder/moonshine_encoder.{cu,py}` | conv1/2/3, group norm, GELU, encoder RoPE/attention/transpose | Torch-free CUDA encoder primitives. |
-| Encoder library adapters | `encoder/moonshine_encoder_lt.{cu,py}`, `encoder/moonshine_encoder_cudnn.{cu,py}` | projection/attention/conv alternatives | CUDA-only cuBLASLt/cuDNN candidates or selected routes. |
+| Qwen/PARO `w4_paro` | Pack8 projections, separate rotation/SiLU/combine | Fused rotation/projection and selected feed-forward chains; matrix-tiled prefill | `quant/paro_awq_gemv`, `quant/paro_moe_ffn_fused`, `wmma/paro_awq_wmma` |
+| GGUF Q4/Q5/Q6 T16 | Scalar/row-tiled projections and primitive residual/weighted sums | Matrix-tiled prefill, dual+SiLU, weighted-down and residual composites | `quant/gguf_t16_selected_gemv`, `quant/gguf_k_t16_selected_prefill`, `quant/gguf_q4_k_t16_selected_prefill` |
+| GGUF Q4/Q5/Q6 library routes | Exact raw/T16 projections | Dequantized FP16 rocBLAS and activation-quantized integer prefill | `quant/gguf_q6_k_f16_rocblas_prefill`, `quant/gguf_k_mmq_prefill`, `quant/gguf_q4_k_q8_1_selected_prefill` |
+| GGUF Q8_0 | Raw/T16 GEMV and exact row-batched variants | Matrix-tiled and integer prefill; packed-integer verifier projections | `quant/gguf_k_gemv`, `quant/gguf_q8_0_t16_*`, `quant/gguf_q8_0_mmq_prefill`, `quant/gguf_q8_0_dp4a_gemv` |
+| Qwen4Exp Q5_1 experts | Selected GEMV and exact grouped projections | `selected_grouped_wmma_prefill_compact_bf16_bf16_out` | `quant/qwen4_exp_q5_1` |
+| Qwen4Exp branch mixing | `strict_unfused` | Fused gated branch mean | `fused/qwen4_exp_gr` |
+| Qwen4Exp recurrent attention | `qwen4exp_sigmoid_strict_prefill` | `qwen4exp_sigmoid_peer_prefill` | `linear_attn/qwen4_exp_gdn` |
+| Qwen4Exp sparse attention | `strict_rows_spans`, exact ordered decode variants | `production_wave32_h128_spans`, `production_rows_wave32_h128_spans` | `attention/qwen4_exp_qsa` |
+| Laguna FP16 | Scalar/tiled projections and strict attention | Matrix-tiled projections, flash prefill, and fused attention/output gate | `linear/laguna_f16_projection`, `attention/laguna_kv_attention`, `attention/laguna_flash_attention_prefill` |
+| Moonshine FP16 | Separate projection, activation, residual, and norm | Fused MLP/residual/norm; optional CUDA CUTLASS attention | `linear/moonshine_projection`, `fused/moonshine_*`, `norm/moonshine_layernorm`, CUDA `attention/moonshine_attention_cutlass` |
+| Gemma 4 GGUF `gguf_q4_k_m` prefill attention | Scalar per-(token, head) prefill attention, exact against the decode twin | BF16 WMMA flash prefill, one candidate per attention geometry: `gemma4_wmma_flash` (sliding, head_dim 256) and `gemma4_wmma_flash_full` (full, head_dim 512) | `gemma4/gemma4_attention_prefill_wmma`, `gemma4/gemma4_attention_prefill_wmma_full` |
+| VibeVoice BF16 | `strict` primitives and incremental prefill | Fused depthwise convolution, matrix-tiled frontend, and library prefill | `vibevoice/encoder`, `vibevoice/registered.py` |
+| TimesFM | FP32 attention | FP16 matrix-tiled flash attention | `timesfm/timesfm` |
+| YuE2 autoregressive BF16 | Row-by-row dense GEMV prefill | FP16-converted hipBLASLt batched prefill | Shared `linear/dense_gemv`, `hipengine/runtime/yue2_ar.py` |
+| YuE2 non-autoregressive attention | `nar_attention_f32` | `nar_attention_wmma` with changed arithmetic | `yue2/nar`, `yue2/nar_wmma` |
 
-### CUDA shared support
-
-`smoke/smoke_add.{cu,py}` validates the CUDA build/runtime path. There is no CUDA PARO or general GGUF/Laguna catalog yet; adding one requires peer `.cu` implementations or an explicit architecture-qualified library integration, not a backend branch in engine code.
-
-## Device translation-unit inventory
-
-This is the mechanical inventory of every in-tree HIP/CUDA device translation unit. The semantic catalogs above are the primary organization; this tree is the completeness check. A translation unit may implement many registry keys and template instantiations.
-
-```text
-hipengine/kernels/hip_gfx1100/
-├── attention/
-│   ├── dms_compact.hip
-│   ├── laguna_flash_attention_prefill.hip
-│   ├── laguna_kv_attention.hip
-│   ├── maple_attention.hip
-│   ├── moonshine_attention.hip
-│   ├── paged_attn_decode.hip
-│   ├── paged_kv_write.hip
-│   ├── qwen4_exp_qsa_flash.hip
-│   └── qwen4_exp_qsa.hip
-├── convert/
-│   ├── cast.hip
-│   └── gather.hip
-├── dispatch/
-│   └── moe_c1_dispatch.hip
-├── evie/
-│   └── evie_ops.hip
-├── fused/
-│   ├── gguf_ops.hip
-│   ├── gguf_q6_q4_pair.hip
-│   ├── laguna_attention.hip
-│   ├── moonshine_glue.hip
-│   ├── moonshine_mlp.hip
-│   ├── paro_combine.hip
-│   ├── paro_silu.hip
-│   ├── qwen4_exp_gr.hip
-│   └── qwen4_exp_ple.hip
-├── linear/
-│   ├── dense_gemv.hip
-│   ├── laguna_f16_projection.hip
-│   ├── lm_head.hip
-│   ├── moonshine_projection.hip
-│   └── moonshine_w8a16.hip
-├── linear_attn/
-│   ├── conv.hip
-│   ├── gdn.hip
-│   └── qwen4_exp_gdn.hip
-├── moe/
-│   ├── group_scatter.hip
-│   ├── laguna_router.hip
-│   ├── maple_moe.hip
-│   └── router.hip
-├── norm/
-│   ├── moonshine_layernorm.hip
-│   └── rmsnorm.hip
-├── quant/
-│   ├── gguf_expert_pack8_gemv.hip
-│   ├── gguf_iq2_xs_mmq_prefill.hip
-│   ├── gguf_iq_dense.hip
-│   ├── gguf_iq_gemv.hip
-│   ├── qwen4_exp_q5_1.hip
-│   ├── gguf_iq_selected_prefill.hip
-│   ├── gguf_iq_source_mmq_prefill.hip
-│   ├── gguf_k_gemv.hip
-│   ├── gguf_k_mmq_prefill.hip
-│   ├── gguf_k_selected_pack8_gemv.hip
-│   ├── gguf_k_selected_prefill.hip
-│   ├── gguf_k_t16_selected_prefill.hip
-│   ├── gguf_q3_k_gemv.hip
-│   ├── gguf_q4_k_gemv.hip
-│   ├── gguf_q4_k_moe_ffn_fused.hip
-│   ├── gguf_q4_k_pack8_gemv.hip
-│   ├── gguf_q4_k_prefill.hip
-│   ├── gguf_q4_k_q8_1_mmq_prefill.hip
-│   ├── gguf_q4_k_q8_1_selected_prefill.hip
-│   ├── gguf_q4_k_qmicro_dp4a_grouped.hip
-│   ├── gguf_q4_k_selected_pack8_gemv.hip
-│   ├── gguf_q4_k_selected_prefill.hip
-│   ├── gguf_q4_k_t16_selected_prefill.hip
-│   ├── gguf_q5_k_f32_rocblas_prefill.hip
-│   ├── gguf_q5_1_mmq_selected_prefill.hip
-│   ├── gguf_q5_k_q8_1_selected_prefill.hip
-│   ├── gguf_q5_k_qmicro_planar_gemv.hip
-│   ├── gguf_q6_k_embedding.hip
-│   ├── gguf_q6_k_f16_rocblas_prefill.hip
-│   ├── gguf_q6_k_pack8_gemv.hip
-│   ├── gguf_q6_k_t16_gemv.hip
-│   ├── gguf_q8_0_dp4a_gemv.hip
-│   ├── gguf_q8_0_mmq_prefill.hip
-│   ├── gguf_q8_0_pack8_gemv.hip
-│   ├── gguf_q8_0_prefill.hip
-│   ├── gguf_q8_0_raw_to_t16.hip
-│   ├── gguf_q8_0_t16_gemv.hip
-│   ├── gguf_q8_0_t16_prefill.hip
-│   ├── gguf_t16_selected_gemv.hip
-│   ├── gguf_x8_selected_gemv.hip
-│   ├── maple_ternary.hip
-│   ├── paro_awq_gemv.hip
-│   ├── paro_marlin_k.hip
-│   ├── paro_moe_ffn_fused.hip
-│   └── w8a16_linear.hip
-├── rotary/
-│   ├── paro_rotate.hip
-│   └── qwen35_rotary.hip
-├── runtime/
-│   ├── laguna_launch_batch.hip
-│   └── state.hip
-├── sampling/
-│   └── sampler.hip
-├── smoke/
-│   └── smoke_add.hip
-├── speculative/
-│   ├── dflash2.hip
-│   ├── dflash_accept.hip
-│   ├── dflash_commit.hip
-│   ├── dflash_drafter.hip
-│   ├── mtp.hip
-│   └── mtp_nextn.hip
-├── surya/
-│   └── surya_ops.hip
-├── timesfm/
-│   └── timesfm.hip
-├── timesfm3/
-│   └── timesfm3.hip
-├── vision/
-│   └── qwen4_exp_vision.hip
-└── wmma/
-    └── paro_awq_wmma.hip
-
-hipengine/kernels/cuda_sm120a/
-├── attention/
-│   ├── maple_attention.cu
-│   ├── moonshine_attention.cu
-│   └── moonshine_attention_cutlass.cu
-├── encoder/
-│   ├── moonshine_encoder.cu
-│   ├── moonshine_encoder_cudnn.cu
-│   └── moonshine_encoder_lt.cu
-├── fused/
-│   ├── moonshine_glue.cu
-│   └── moonshine_mlp.cu
-├── linear/
-│   ├── lm_head.cu
-│   ├── maple_lm_head.cu
-│   └── moonshine_projection.cu
-├── moe/
-│   ├── group_scatter.cu
-│   └── maple_moe.cu
-├── norm/
-│   ├── maple_rmsnorm.cu
-│   └── moonshine_layernorm.cu
-├── quant/
-│   └── maple_ternary.cu
-└── smoke/
-    └── smoke_add.cu
-```
-
-`hipengine/kernels/cpu_reference/` is cataloged separately above because it contains Python/NumPy oracles rather than device translation units. `hipengine/kernels/cuda_sm86/` is an empty backend scaffold.
+These rows identify related implementations, not blanket profile assignments:
+exactness, supported inputs, and selection scope belong to each variant.
 
 ## Fused and composite fallback map
 
-A `+` in a registry layer name denotes a composite boundary. Every fused
-composite must have a registered strict unfused route. Strict composites satisfy
-their declared exact/parent-parity boundary; production composites may
-reassociate only under a certified profile manifest and still fall back to the
-strict chain. The table groups registered composites by semantic family; exact
-variants/dtypes remain in source.
+Each fused composite has a registered strict unfused chain. Exact variants and
+rounding boundaries are defined in the wrappers and execution profiles.
 
-| Composite family | Backends / paths | Required unfused chain |
+| Composite family | Paths | Unfused chain |
 | --- | --- | --- |
 | `add+rmsnorm`, `add_rmsnorm` | HIP Qwen/GGUF; CUDA Maple helper | add/residual boundary → RMSNorm |
 | `head_rmsnorm+partial_rotary` | HIP PARO/GGUF/Laguna | head RMSNorm → partial rotary |
@@ -1425,3 +1189,50 @@ A new or ported kernel lands only when all applicable checks pass:
 8. Run registry, declared-profile numerical/control, profiler, and narrow integration gates.
 9. Record decisions/results in a new immutable worklog entry; write compact benchmark artifacts only when making a performance claim.
 10. Commit the validated family as one logical unit with source commit provenance when ported.
+| `add+rmsnorm`, `add_rmsnorm` | Qwen/GGUF, CUDA Maple | Residual add → RMSNorm |
+| `head_rmsnorm+partial_rotary` | PARO/GGUF/Laguna | Head RMSNorm → rotary |
+| `head_rmsnorm+partial_rotary+kv_write` | Laguna | Head RMSNorm → rotary → cache write |
+| Projection + head norm + rotary + cache write | Laguna | Projection → head RMSNorm → rotary → cache write |
+| `rotate+dual_pack8_gemv` | PARO | Input rotation → two projections |
+| `rotate+selected_dual_pack8_gemv` | PARO | Selected projections and rotation in variant order |
+| `silu_rotate+selected_pack8_gemv` | PARO | SiLU/product → rotation → down projection |
+| `split_qgate+key_cast` | PARO | Query/gate split → key cast |
+| `weighted_lanes_sum+shared_add` | PARO | Weighted reduction → shared add |
+| `shared_gate_combine+residual` | PARO/GGUF | Shared-gate combine → residual add |
+| `weighted_sum+shared_gate+residual` | PARO/GGUF | Weighted sum → shared-gate combine → residual add |
+| Expert tail + RMSNorm | PARO/GGUF/Laguna | Expert combine → residual → RMSNorm |
+| `moe_linear+weighted_sum` | GGUF | Selected down projection → weighted reduction |
+| `linear+residual` | GGUF | Projection → rounded residual add |
+| `linear+add+rmsnorm` | Laguna | Projection → residual add → RMSNorm |
+| Linear-attention snapshot composites | GGUF/DFlash | Convolution or recurrence → named cast → state snapshot |
+| `laguna_attention_decode+attention_gate` | Laguna | Attention → output gate |
+| `moonshine_partial_rope+moonshine_self_cache` | HIP/CUDA Moonshine | Rotary → cache append |
+| `moonshine_residual+moonshine_layernorm` | HIP/CUDA Moonshine | Rounded residual add → LayerNorm |
+| Moonshine MLP projection composites | HIP/CUDA Moonshine | Bias projection → gated SiLU; projection → rounded residual |
+| Selected-expert feed-forward composite | GGUF Q4_K | Gate/up projections → SiLU/product → down projection |
+| Selected-expert rotation/feed-forward composite | PARO | Input rotation → gate/up → SiLU/down rotation → down projection |
+
+## CUDA sm_120a
+
+Device sources: `hipengine/kernels/cuda_sm120a/`. These are independent CUDA
+implementations. `cuda_sm86` is a scaffold with no device kernels.
+
+| Source | Purpose |
+| --- | --- |
+| `quant/maple_ternary.cu` | Maple ternary projections and affine4 embedding/head operations. |
+| `attention/maple_attention.cu` | Maple normalization, rotary transforms, cache writes, and attention. |
+| `moe/maple_moe.cu` | Maple routing, SwiGLU, and weighted residuals. |
+| `moe/group_scatter.cu` | Group expert assignments and pack tile metadata. |
+| `norm/maple_rmsnorm.cu` | Maple root-mean-square normalization and residual/head variants. |
+| `linear/maple_lm_head.cu` | Maple vocabulary projection, argmax, and top-k. |
+| `linear/moonshine_projection.cu` | Moonshine FP16 decoder projections. |
+| `linear/lm_head.cu` | Vocabulary projection and final reductions. |
+| `norm/moonshine_layernorm.cu` | Moonshine layer normalization and residual/normalization. |
+| `fused/moonshine_mlp.cu` | Moonshine gated SiLU activation. |
+| `fused/moonshine_glue.cu` | Moonshine embedding, residual, rotary, cache, and decode control. |
+| `attention/moonshine_attention.cu` | Moonshine decoder self-attention and cross-attention. |
+| `attention/moonshine_attention_cutlass.cu` | Moonshine self-attention through CUTLASS. |
+| `encoder/moonshine_encoder.cu` | Moonshine encoder convolution, normalization, activation, and attention. |
+| `encoder/moonshine_encoder_lt.cu` | Moonshine encoder projections/attention through cuBLASLt. |
+| `encoder/moonshine_encoder_cudnn.cu` | Moonshine encoder convolution through cuDNN. |
+| `smoke/smoke_add.cu` | Vector addition for build/runtime smoke tests. |

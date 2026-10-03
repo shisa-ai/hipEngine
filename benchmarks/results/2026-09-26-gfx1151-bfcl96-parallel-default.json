@@ -1,0 +1,1105 @@
+{
+  "schema_version": 1,
+  "kind": "bfcl96_parallel_default_repair",
+  "date": "2026-09-26",
+  "official_mlperf_result": false,
+  "baseline_artifact": "2026-09-26-gfx1151-bfcl96-quality.json",
+  "source_base": "c375707c34e5d2e5389d5f44651f02f151a447ae",
+  "source_change": "hipengine/server/api.py: omitted parallel_tool_calls now enabled in host constraint, model-owned grammar and result validation; capability updated. No math change.",
+  "source_patch": "diff --git a/hipengine/server/api.py b/hipengine/server/api.py\nindex b9c4f7eec..7272a13ce 100644\n--- a/hipengine/server/api.py\n+++ b/hipengine/server/api.py\n@@ -1377,7 +1377,7 @@ def _tools_capability(\n             \"allows_pending_tool_calls_at_transcript_end\": True,\n             \"applies_to_session_snapshots\": True,\n         },\n-        \"parallel_tool_calls_requires_opt_in\": True,\n+        \"parallel_tool_calls_requires_opt_in\": False,\n         \"parallel_tool_calls\": True,\n         \"streaming_argument_chunks\": True,\n         \"streaming_argument_chunk_chars\": _TOOL_CALL_ARGUMENT_STREAM_CHARS,\n@@ -14110,7 +14110,7 @@ def _grammar_sampling_spec(request, engine):\n         if mode!=\"none\" and getattr(target,\"model_owned_tool_grammar\",False):\n             spec = {\"format\":\"qwen4exp_tools\",\"tools\":tools,\n                     \"mode\":\"required\" if mode in {\"required\",\"function\"} else \"auto\",\n-                    \"name\":name,\"answer\":spec,\"parallel\":bool(request.parallel_tool_calls)}\n+                    \"name\":name,\"answer\":spec,\"parallel\":request.parallel_tool_calls is not False}\n     if spec is not None:\n         if isinstance(request,ChatCompletionRequest):\n             thinking = _thinking_control_from_request(request,chat_default_max_tokens=None)\n@@ -14164,7 +14164,7 @@ def _tool_call_sampling_constraint(\n         tool_names=names,\n         mode=constraint_mode,\n         envelope=\"xml\",\n-        parallel_tool_calls=bool(request.parallel_tool_calls),\n+        parallel_tool_calls=request.parallel_tool_calls is not False,\n         forbidden_text_prefixes=forbidden,\n         thinking_start_marker=_THINKING_START_MARKER if thinking_enabled else None,\n         thinking_end_marker=_THINKING_CLOSE_MARKER if thinking_enabled else None,\n@@ -18324,7 +18324,7 @@ def _validate_chat_tool_result(\n         if strict and mode in {\"required\", \"function\"}:\n             return _tool_validation_failure(\"tool_required_not_satisfied\")\n         return _ToolValidationResult(parsed)\n-    if len(parsed.tool_calls) > 1 and not bool(request.parallel_tool_calls):\n+    if len(parsed.tool_calls) > 1 and request.parallel_tool_calls is False:\n         return _tool_validation_failure(\"invalid_tool_call\")\n \n     tools_by_name = _tool_map_by_name(request.tools)\n",
+  "configuration": "Same target+NextN, production/BF16/32K/c1,temperature0,seed42,thinkingoff,1024limit; frozen96manifest/scorer and llama/gufo outputs unchanged.",
+  "host": {
+    "name": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm_version": "HIP version: 7.15.26333-0000000"
+  },
+  "raw_root": "/home/lhl/gate-runs/edge-bfcl-quality-20260925",
+  "server_command": [
+    "bash",
+    "/tmp/t17-env.sh",
+    "python",
+    "/home/lhl/gate-runs/mlperf-edge-speculative-20260925/capture-server-v2.py",
+    "--model",
+    "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-original-target-plus-MTP-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--served-model-name",
+    "Qwen3.6-27B-Q4_K_M",
+    "--max-context-tokens",
+    "32768",
+    "--kv-storage",
+    "bf16",
+    "--execution-profile",
+    "production",
+    "--metrics",
+    "prometheus",
+    "--info",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8098",
+    "--log-level",
+    "info",
+    "--speculative-mtp-serving",
+    "enabled"
+  ],
+  "runner_command": [
+    "/home/lhl/mlperf-edge-endpoints/.venv/bin/python",
+    "/home/lhl/gate-runs/edge-bfcl-quality-20260925/run-frozen.py",
+    "benchmark",
+    "from-config",
+    "--config",
+    "/home/lhl/gate-runs/edge-bfcl-quality-20260925/hipengine-parallel-default/config.yaml",
+    "--accuracy-only"
+  ],
+  "config": "name: diagnostic-bfcl96-hipengine\nversion: '1.0'\ntype: online\nmodel_params:\n  name: Qwen3.6-27B-Q4_K_M\n  tokenizer_name: /home/lhl/models/mlperf-edge/tokenizer\n  temperature: 0\n  seed: 42\n  max_new_tokens: 1024\n  chat_template_kwargs:\n    enable_thinking: false\ndatasets:\n- name: bfcl_v4::function_calling\n  type: accuracy\n  generate_params:\n    categories:\n    - non_live\n    - live\n    - hallucination\n    category_sample_pct:\n      non_live: 62\n      live: 10\n      hallucination: 10\n    subset_floor: 25\n  accuracy_config:\n    eval_method: bfcl_v4\n    ground_truth: ground_truth\n    extractor: function_call_extractor\n    num_repeats: 1\nsettings:\n  runtime:\n    max_issue_duration_ms: 14400000\n    dataloader_random_seed: 42\n  timeouts:\n    run_timeout_s: 5400\n  load_pattern:\n    type: concurrency\n    target_concurrency: 1\n  client:\n    num_workers: 1\n    max_connections: 1\n    warmup_connections: 0\nendpoint_config:\n  endpoints:\n  - http://127.0.0.1:8098\n  api_type: openai\n  api_key: null\nreport_dir: /home/lhl/gate-runs/edge-bfcl-quality-20260925/hipengine-parallel-default/harness\n",
+  "hipengine": {
+    "published": {
+      "dataset_name": "bfcl_v4::function_calling",
+      "extractor": "FunctionCallExtractor",
+      "ground_truth_column": "ground_truth",
+      "score": 0.78125,
+      "unit_samples": 96,
+      "num_repeats": 1,
+      "total_samples": 96,
+      "duration_s": 577.118,
+      "complete": true,
+      "dataset_type": "accuracy",
+      "breakdown": {
+        "overall_accuracy": 78.12,
+        "normalized_single_turn_score": 82.29,
+        "category_scores": {
+          "non_live": 75.0,
+          "live": 84.38,
+          "hallucination": 87.5
+        },
+        "subset_scores": {
+          "irrelevance": 87.5,
+          "live_irrelevance": 87.5,
+          "live_multiple": 87.5,
+          "live_parallel": 75.0,
+          "live_parallel_multiple": 75.0,
+          "live_simple": 100.0,
+          "multiple": 100.0,
+          "parallel": 62.5,
+          "parallel_multiple": 75.0,
+          "simple_java": 50.0,
+          "simple_javascript": 37.5,
+          "simple_python": 100.0
+        },
+        "unscored_subsets": {},
+        "total_samples": 96,
+        "issued_samples": 96
+      },
+      "response_counts": {
+        "issued": 96,
+        "scored": 96,
+        "empty": 0,
+        "missing": 0
+      },
+      "osl_tokenize_s": 0.004
+    },
+    "event_counts": {
+      "session.started": 1,
+      "sample.issued": 96,
+      "sample.recv_first": 96,
+      "sample.complete": 96,
+      "session.ended": 1
+    },
+    "counts": {
+      "irrelevance": {
+        "correct": 7.0,
+        "n": 8
+      },
+      "live_irrelevance": {
+        "correct": 7.0,
+        "n": 8
+      },
+      "live_multiple": {
+        "correct": 7.0,
+        "n": 8
+      },
+      "live_parallel": {
+        "correct": 6.0,
+        "n": 8
+      },
+      "live_parallel_multiple": {
+        "correct": 6.0,
+        "n": 8
+      },
+      "live_simple": {
+        "correct": 8.0,
+        "n": 8
+      },
+      "multiple": {
+        "correct": 8.0,
+        "n": 8
+      },
+      "parallel": {
+        "correct": 5.0,
+        "n": 8
+      },
+      "parallel_multiple": {
+        "correct": 6.0,
+        "n": 8
+      },
+      "simple_java": {
+        "correct": 4.0,
+        "n": 8
+      },
+      "simple_javascript": {
+        "correct": 3.0,
+        "n": 8
+      },
+      "simple_python": {
+        "correct": 8.0,
+        "n": 8
+      }
+    },
+    "parallel_call_counts": {
+      "2": 21,
+      "1": 4,
+      "4": 3,
+      "3": 4
+    }
+  },
+  "changed_verdicts": [
+    {
+      "id": "live_parallel_6-3-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_4-1-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_9-5-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_10-6-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_7-3-1",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_11-7-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_multiple_18-16-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_multiple_12-10-1",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_multiple_14-12-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_multiple_16-14-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_multiple_13-11-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "live_parallel_multiple_1-1-0",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_115",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_48",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_59",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_98",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_93",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_multiple_13",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_multiple_15",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_multiple_3",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_multiple_7",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_multiple_116",
+      "old": 0.0,
+      "new": 1.0
+    },
+    {
+      "id": "parallel_multiple_49",
+      "old": 0.0,
+      "new": 1.0
+    }
+  ],
+  "paired": [
+    {
+      "id": "irrelevance_9",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_17",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_5",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_16",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_18",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_21",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_15",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_18-2-6",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_78-2-66",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_76-2-64",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_50-2-38",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_4-0-4",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_irrelevance_86-2-74",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_56-2-44",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_21-2-9",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_35-11-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_0-0-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_87-38-4",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_multiple_97-42-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_multiple_83-38-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_40-15-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_48-18-3",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_3-2-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_6-3-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_15-11-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_8-4-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_4-1-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_9-5-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_10-6-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_7-3-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_11-7-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_18-16-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_9-8-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_4-3-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_12-10-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_14-12-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_16-14-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_13-11-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_1-1-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_21-4-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_23-5-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_15-3-11",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_19-3-15",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_9-3-5",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_17-3-13",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_3-2-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_4-3-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_94",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_82",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_79",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_9",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_33",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_105",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_54",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_80",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_115",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_48",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_59",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_19",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_38",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_104",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_98",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_93",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_13",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_15",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_21",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_multiple_3",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_7",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_55",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_multiple_116",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_49",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_60",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_59",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_java_40",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_28",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_java_5",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_26",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_java_0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_7",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_5",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_26",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_javascript_8",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_javascript_17",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_18",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_14",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_7",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_javascript_20",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_python_83",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_61",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_102",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_66",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_211",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_222",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_48",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_235",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    }
+  ],
+  "speculating_requests": 96,
+  "recoverable_failures": 0.0,
+  "validation": [
+    "CPU default pytest exit0",
+    "Focused server API/poolside/conformance/XML tests pass",
+    "Original unchanged manifest96IDs; every issued payload matches saved llama/gufo",
+    "Upstream per-case scorer reproduces all subset scores"
+  ],
+  "files": {
+    "run-hipengine-parallel-default.py": {
+      "sha256": "240db4ea533e3c6b511b76c72cd58cac8a5e3720b308e3f07f924652bf8e2cb3",
+      "bytes": 3028
+    },
+    "analyze-parallel-default.py": {
+      "sha256": "ada663c597cbd581aa31f37eecb464451687917965a8a362b962e0cbff618dd6",
+      "bytes": 3221
+    },
+    "quality-analysis-parallel-default.json": {
+      "sha256": "8d6636507c104fad2807f763547b8dcfa175c2c3514c9cd93229d98c177d3e2d",
+      "bytes": 250440
+    },
+    "manifest.json": {
+      "sha256": "ed383343a2d60c8b0cb0df67c1dc88aa4b6c7b88fc64725e3354fa5c8696540f",
+      "bytes": 5838
+    },
+    "hipengine-parallel-default/server.log": {
+      "sha256": "4cc831bfc9fb5f2c6724a4eb505f6e38f63c0abfbc31e86761d6a8d9db82fc38",
+      "bytes": 189494
+    },
+    "hipengine-parallel-default/runner.log": {
+      "sha256": "5311b8086ea129124cf812e0a5d1771c9fcd03460c61b22e3a552ddeb2afba22",
+      "bytes": 23705
+    },
+    "hipengine-parallel-default/config.yaml": {
+      "sha256": "13f9c30fe011df950b620ee790b8a6e6017ef53b718b1db5cbd4340ecd1bbf38",
+      "bytes": 1092
+    },
+    "hipengine-parallel-default/harness/events.jsonl": {
+      "sha256": "9ea80b7faa15223db60751d733f7ce6a3b67cd1e8ea508f87a5188c343dfbbbd",
+      "bytes": 335959
+    },
+    "hipengine-parallel-default/harness/accuracy/accuracy_results.json": {
+      "sha256": "6cecdf9f27ec05af7ba1cc964b3d741d66eb82f5a889e76b2a3202173c304748",
+      "bytes": 5280
+    },
+    "hipengine-parallel-default/harness/sample_idx_map.json": {
+      "sha256": "970b85612a6c752e338839a7f8ff00ab78c46cea45cde755788fcfeba0a480ac",
+      "bytes": 4253
+    }
+  }
+}
