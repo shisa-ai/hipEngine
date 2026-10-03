@@ -1,0 +1,88 @@
+{
+ "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "length": 4096,
+ "chunks": [
+  512,
+  1024,
+  4096
+ ],
+ "repeats": 1,
+ "route": {
+  "use_wmma_prefill": true,
+  "use_gemv_decode": true
+ },
+ "geometry_policy_disabled": true,
+ "noise": [
+  {
+   "pair": [
+    "512#0",
+    "512#1"
+   ],
+   "kl": 0.0,
+   "max_abs_logit": 0.0
+  },
+  {
+   "pair": [
+    "1024#0",
+    "1024#1"
+   ],
+   "kl": 0.0,
+   "max_abs_logit": 0.0
+  },
+  {
+   "pair": [
+    "4096#0",
+    "4096#1"
+   ],
+   "kl": 0.0,
+   "max_abs_logit": 0.0
+  }
+ ],
+ "pairs": [
+  {
+   "pair": [
+    "512#0",
+    "1024#0"
+   ],
+   "kl": 0.0,
+   "top1_a": 9707,
+   "top1_b": 9707,
+   "top1_agree": true,
+   "max_abs_logit": 0.0,
+   "below_run_noise": false
+  },
+  {
+   "pair": [
+    "512#0",
+    "4096#0"
+   ],
+   "kl": 3.148215910186991e-07,
+   "top1_a": 9707,
+   "top1_b": 9707,
+   "top1_agree": true,
+   "max_abs_logit": 1.2789690494537354,
+   "below_run_noise": false
+  },
+  {
+   "pair": [
+    "1024#0",
+    "4096#0"
+   ],
+   "kl": 3.148215910186991e-07,
+   "top1_a": 9707,
+   "top1_b": 9707,
+   "top1_agree": true,
+   "max_abs_logit": 1.2789690494537354,
+   "below_run_noise": false
+  }
+ ],
+ "verdict": {
+  "kl_floor": 0.05,
+  "top1_floor": 0.9,
+  "worst_kl": 3.148215910186991e-07,
+  "worst_top1_agreement": 1.0,
+  "run_noise_floor_kl": 0.0,
+  "passes_smoke_floor": true,
+  "all_pairs_below_run_noise": false
+ }
+}

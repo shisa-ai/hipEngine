@@ -8205,24 +8205,21 @@ Two consequences worth knowing:
   `tiled16_multi` on the UD lane - is a profile/gate task and does not need
   this arm.
 
-## GGUF prefill chunk values are unvalidated against the correctness gate (2026-10-03)
+## The gfx1151 arch chunk profile is geometry-blind (2026-10-03)
 
-- The dispatch defect that made this section necessary is **fixed**:
-  `resolve_prefill_config_for_sequence` is now the single owner of the final
-  linear/MoE chunk sizes, the geometry policy and the arch profile are inputs to
-  it, `target_arch` reaches the resolver from the GGUF runner, and
-  `prefill_chunk_tuning["chunk_sizes"]` describes the run. See
-  `worklog/entries/20261003T090216.486327Z-lhl-gguf-prefill-chunk-single-owner-2f48bb`.
-- What remains open is the **value**, not the wiring. Chunk boundaries change
-  reduction grouping, so a chunk-size change is an arithmetic change:
-  - the H2048-MoE geometry policy is `(512, 512)` but measured 512 = 1459.3,
-    1024 = 1487.7, 4096 = 1503.9 tok/s at 4096 tokens, so the shipping value is
-    not the fastest;
-  - the gfx1151 arch profile's `(256, 256)` is right for H5120 dense (398.6 vs
-    387.7 at 1024) and wrong for H2048-MoE (1363.7, the worst of five).
-- Removal condition: once the per-geometry value is chosen from a shape sweep
-  **and** the applicable `docs/EXECUTION-PROFILES.md` gate passes at that value,
-  delete this entry. Until the gate runs, no chunk value is retained.
+- The H2048-MoE chunk *value* is settled: the geometry policy is now
+  `(1024, 1024)`, bit-exact against the 512 it replaced and +1.4% prefill at
+  4K. See
+  `worklog/entries/20261003T100200.274738Z-lhl-gfx1151-h2048moe-prefill-chunk-1024-promoted-d001da`.
+- What remains is the arch layer. `_ARCH_CHUNK_PROFILES["gfx1151"]` is
+  `(256, 256)` and is applied without regard to model geometry:
+  - H5120 dense: right, 398.6 vs 387.7 tok/s at 1024;
+  - H2048-MoE: wrong, 1363.7 tok/s, the worst of five values measured.
+- The H2048-MoE geometry entry only shields the GGUF lane from that profile. The
+  PARO 35B-A3B lane has the same geometry and is likely running 256.
+- Removal condition: key the arch profile by geometry, or fold the measured
+  per-geometry values into the geometry layer and drop the arch layer for
+  gfx1151, **after** measuring the PARO H2048-MoE path. Then delete this entry.
 
 ## Direct `Qwen35GGUFResidentSession` construction is not the shipping AR route (2026-10-03)
 
