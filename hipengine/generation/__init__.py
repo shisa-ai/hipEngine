@@ -154,6 +154,7 @@ def register_builtin_generators() -> None:
         from hipengine.generation import surya_gpu as _surya_gpu  # noqa: F401
         from hipengine.generation import vibevoice_asr as _vibevoice_asr  # noqa: F401
         from hipengine.generation import vibevoice_tts as _vibevoice_tts  # noqa: F401
+        from hipengine.generation import yue2_song as _yue2_song  # noqa: F401
 
         _BUILTINS_REGISTERED = True
 

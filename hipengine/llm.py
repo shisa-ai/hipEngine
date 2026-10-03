@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import inspect
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from numbers import Integral
 from pathlib import Path
@@ -320,6 +320,7 @@ class LLM:
         kv_scale_dtype: str | None = None,
         kv_scale_granularity: str | None = None,
         vision_model: str | None = None,
+        vae_model: str | None = None,
         dms: "DMSConfig | None" = None,
         engine_command_timeout_seconds: float | None = None,
     ) -> None:
@@ -414,6 +415,11 @@ class LLM:
         )
         if self.vision_model == "":
             raise ValueError("vision_model must be non-empty when set")
+        self.vae_model = (
+            None if vae_model is None else str(vae_model).strip()
+        )
+        if self.vae_model == "":
+            raise ValueError("vae_model must be non-empty when set")
         if engine_command_timeout_seconds is None:
             self.engine_command_timeout_seconds = _engine_command_timeout_seconds()
         else:
@@ -554,6 +560,75 @@ class LLM:
             kwargs["cfg_scale"] = cfg_scale
         return synthesize(script, speaker_references, **kwargs)
 
+    def generate_song(
+        self,
+        style: str | None = None,
+        lyrics: str | None = None,
+        *,
+        request: Any = None,
+        cot: str | None = None,
+        seed: int | None = None,
+        abc: str | None = None,
+        cfg_scale: float | None = None,
+        request_id: str | None = None,
+        steps: int | None = None,
+        context: int | None = None,
+        tiled: bool = True,
+        cancelled: Callable[[], bool] | None = None,
+        on_token: Callable[[str, int], None] | None = None,
+        abc_sampling: Any = None,
+        semantic_sampling: Any = None,
+    ):
+        """Generate one song from lyrics and a style prompt through a model-owned path.
+
+        ``style`` and ``lyrics`` are the request; ``cot`` selects the mode (``off``,
+        ``melody`` or ``full``), and ``abc`` supplies an external score in the
+        symbolic modes. Pass ``request`` instead to send a model-owned request
+        object or a mapping of its fields. ``steps`` overrides the product's ODE
+        step count, and ``cancelled`` is polled between stages so a disconnected
+        client stops the pipeline.
+
+        Returns the model-owned result: ``audio`` is ``[channels, samples]`` FP32
+        at ``sample_rate``, alongside the plan, the raw semantic codes, the
+        latents, the effective settings, and the checkpoint identities.
+        """
+
+        generator = self._get_text_generator()
+        generate = getattr(generator, "generate_song", None)
+        if not callable(generate):
+            raise NotImplementedError("song generation is not supported by this model")
+        return generate(
+            request,
+            style=style,
+            lyrics=lyrics,
+            cot=cot,
+            seed=seed,
+            abc=abc,
+            cfg_scale=cfg_scale,
+            request_id=request_id,
+            steps=steps,
+            context=context,
+            tiled=tiled,
+            cancelled=cancelled,
+            on_token=on_token,
+            abc_sampling=abc_sampling,
+            semantic_sampling=semantic_sampling,
+        )
+
+    def song_generator(self) -> Any:
+        """Return the model-owned song generator for staged use.
+
+        The generator carries the same pipeline one stage at a time
+        (``plan``, ``generate_semantic``, ``synthesize``, ``decode``) over one
+        resident session, which is what a caller needs to reuse a plan or to
+        re-decode saved latents.
+        """
+
+        generator = self._get_text_generator()
+        if not callable(getattr(generator, "generate_song", None)):
+            raise NotImplementedError("song generation is not supported by this model")
+        return generator
+
     def reset(self) -> None:
         """Return a loaded engine to its initial state.
 
@@ -569,6 +644,27 @@ class LLM:
         if not callable(reset):
             raise NotImplementedError("this engine has no resettable state")
         return reset()
+
+    @property
+    def generation_surfaces(self) -> tuple[str, ...]:
+        """Return the generation surfaces this model declares.
+
+        A surface names what the model produces -- ``text`` for prompt-to-text,
+        ``song`` for lyrics-to-audio. Reading the model plugin's declaration is
+        what lets a caller route to an implemented path and refuse an unimplemented
+        one without matching on the model's name or artifact.
+        """
+
+        from hipengine.models import generation_surfaces
+
+        _weight_index, model_plugin = self._load_model_metadata()
+        return generation_surfaces(model_plugin)
+
+    @property
+    def supports_song_generation(self) -> bool:
+        """Whether this model declares the song generation surface."""
+
+        return "song" in self.generation_surfaces
 
     @property
     def supports_vision(self) -> bool:
@@ -1327,6 +1423,10 @@ class LLM:
         }
         if self.vision_model is not None:
             factory_kwargs["vision_model_path"] = self.vision_model
+        if self.vae_model is not None:
+            # The companion decoder checkpoint. YuE2 needs it to turn latents into
+            # audio, so it is a model input rather than a server-only setting.
+            factory_kwargs["vae_model_path"] = self.vae_model
         effective_factory = factory if profile_resolution is None else (profile_resolution.factory or factory)
         factory_kwargs.update(_factory_capacity_kwargs(
             effective_factory,max_sequence_length=self.max_sequence_length,
@@ -1570,21 +1670,10 @@ class LLM:
         if self._weight_index is not None and self._model_plugin is not None:
             return self._weight_index, self._model_plugin
 
-        from hipengine.loading import discover_gguf_files, load_gguf_index, load_weight_index, resolve_model_path
-        from hipengine.models import resolve_model
-
-        model_path = resolve_model_path(self.model)
-        if _looks_like_gguf_path(model_path):
-            gguf_files = discover_gguf_files(model_path)
-            index = load_gguf_index(gguf_files[0])
-            self.model = str(model_path if len(gguf_files) > 1 else index.path)
-            plugin = resolve_model(index.architecture or "")
-        else:
-            index = load_weight_index(self.model)
-            # Store resolved filesystem path so downstream code (tokenizer, runner) gets a
-            # real directory instead of an HF model ID string.
-            self.model = str(index.model_path)
-            plugin = resolve_model(_primary_architecture(index.config))
+        index, plugin, resolved_path = _resolve_model_metadata(self.model)
+        # Store resolved filesystem path so downstream code (tokenizer, runner) gets a
+        # real directory instead of an HF model ID string.
+        self.model = resolved_path
         self._weight_index = index
         self._model_plugin = plugin
         return index, plugin
@@ -1643,6 +1732,47 @@ def _looks_like_gguf_path(path: Path) -> bool:
     if path.is_dir():
         return any(path.glob("*.gguf"))
     return path.suffix.lower() == ".gguf"
+
+
+def _resolve_model_metadata(model: str) -> tuple[Any, Any, str]:
+    """Resolve ``(weight index, model plugin, model path)`` for a model reference.
+
+    Metadata only: this reads a checkpoint's config and index and never loads
+    weights, so a caller that needs to know what a model declares can ask without
+    paying for residency.
+    """
+
+    from hipengine.loading import (
+        discover_gguf_files,
+        load_gguf_index,
+        load_weight_index,
+        resolve_model_path,
+    )
+    from hipengine.models import resolve_model
+
+    model_path = resolve_model_path(model)
+    if _looks_like_gguf_path(model_path):
+        gguf_files = discover_gguf_files(model_path)
+        index = load_gguf_index(gguf_files[0])
+        plugin = resolve_model(index.architecture or "")
+        return index, plugin, str(model_path if len(gguf_files) > 1 else index.path)
+    index = load_weight_index(model)
+    plugin = resolve_model(_primary_architecture(index.config))
+    return index, plugin, str(index.model_path)
+
+
+def resolve_generation_surfaces(model: str) -> tuple[str, ...]:
+    """Return the generation surfaces a model declares, without loading it.
+
+    A server uses this to route a request to an implemented path before any
+    weights are resident, which is what keeps the refusal cheap and named rather
+    than a failure discovered mid-generation.
+    """
+
+    from hipengine.models import generation_surfaces
+
+    _index, plugin, _path = _resolve_model_metadata(model)
+    return generation_surfaces(plugin)
 
 
 def _normalize_prompts(prompts: Any) -> tuple[Any, ...]:
