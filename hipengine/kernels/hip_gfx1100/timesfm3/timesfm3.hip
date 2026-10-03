@@ -272,11 +272,105 @@ __global__ void var_attention_kernel(
   }
 }
 
+// ---------------------------------------------------------------------------
+// FP32 GEMM with FP64 accumulation (strict-parity fp32 path).
+//
+// C[M, N] = A[M, K] @ B[N, K]^T, all row-major fp32, with every dot product
+// accumulated in double before the single rounding to fp32.
+//
+// The strict fp32 decode path must reproduce the CPU/torch fp32 oracle, whose
+// BLAS accumulation order the gfx1100 rocBLAS SGEMM solution does not match:
+// the resulting per-GEMM difference (~1.2e-6 rel) is amplified by the 20-layer
+// stack and the CPM RevIN refinement to ~4e-4 on the decode output, past the
+// strict 5e-5 gate.  Accumulating in double makes each GEMM effectively exact,
+// so the device result differs from the fp32 oracle only by the oracle's own
+// fp32 rounding (measured 5.7e-6).  This is the strict fallback path only; the
+// fp16 production path keeps its rocBLAS gemm_ex GEMMs.
+// ---------------------------------------------------------------------------
+
+constexpr int kSgemmBM = 32;
+constexpr int kSgemmBN = 32;
+constexpr int kSgemmBK = 32;
+constexpr int kSgemmThreads = 256;  // 16 x 16; each thread owns a 2x2 tile
+
+__global__ void sgemm_f64acc_kernel(
+    const float* __restrict__ A,
+    const float* __restrict__ B,
+    float* __restrict__ C,
+    int M,
+    int N,
+    int K) {
+  __shared__ float As[kSgemmBM][kSgemmBK];
+  __shared__ float Bs[kSgemmBN][kSgemmBK];
+  const int tx = threadIdx.x;  // 0..15
+  const int ty = threadIdx.y;  // 0..15
+  const int row0 = blockIdx.y * kSgemmBM;
+  const int col0 = blockIdx.x * kSgemmBN;
+  const int tid = ty * 16 + tx;
+
+  double acc00 = 0.0, acc01 = 0.0, acc10 = 0.0, acc11 = 0.0;
+  for (int k0 = 0; k0 < K; k0 += kSgemmBK) {
+    for (int i = tid; i < kSgemmBM * kSgemmBK; i += kSgemmThreads) {
+      const int r = i / kSgemmBK;
+      const int c = i % kSgemmBK;
+      const int gr = row0 + r;
+      const int gc = k0 + c;
+      As[r][c] = (gr < M && gc < K) ? A[(size_t)gr * K + gc] : 0.0f;
+    }
+    for (int i = tid; i < kSgemmBN * kSgemmBK; i += kSgemmThreads) {
+      const int r = i / kSgemmBK;
+      const int c = i % kSgemmBK;
+      const int gr = col0 + r;
+      const int gc = k0 + c;
+      Bs[r][c] = (gr < N && gc < K) ? B[(size_t)gr * K + gc] : 0.0f;
+    }
+    __syncthreads();
+    for (int k = 0; k < kSgemmBK; ++k) {
+      const float a0 = As[ty][k];
+      const float a1 = As[ty + 16][k];
+      const float b0 = Bs[tx][k];
+      const float b1 = Bs[tx + 16][k];
+      acc00 += (double)a0 * (double)b0;
+      acc01 += (double)a0 * (double)b1;
+      acc10 += (double)a1 * (double)b0;
+      acc11 += (double)a1 * (double)b1;
+    }
+    __syncthreads();
+  }
+
+  const int r0 = row0 + ty;
+  const int r1 = row0 + ty + 16;
+  const int c0 = col0 + tx;
+  const int c1 = col0 + tx + 16;
+  if (r0 < M) {
+    if (c0 < N) C[(size_t)r0 * N + c0] = (float)acc00;
+    if (c1 < N) C[(size_t)r0 * N + c1] = (float)acc01;
+  }
+  if (r1 < M) {
+    if (c0 < N) C[(size_t)r1 * N + c0] = (float)acc10;
+    if (c1 < N) C[(size_t)r1 * N + c1] = (float)acc11;
+  }
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
 // C ABI wrappers.
 // ---------------------------------------------------------------------------
+
+extern "C" int timesfm3_sgemm_f64acc(
+    const float* A,
+    const float* B,
+    float* C,
+    int M, int N, int K,
+    hipStream_t stream) {
+  if (M <= 0 || N <= 0 || K <= 0) return (int)hipErrorInvalidValue;
+  dim3 block(16, 16);
+  dim3 grid((unsigned)((N + kSgemmBN - 1) / kSgemmBN),
+            (unsigned)((M + kSgemmBM - 1) / kSgemmBM));
+  hipLaunchKernelGGL(sgemm_f64acc_kernel, grid, block, 0, stream, A, B, C, M, N, K);
+  return (int)hipGetLastError();
+}
 
 extern "C" int timesfm3_relu_f16(half_t* x, int64_t count, hipStream_t stream) {
   if (count <= 0) return (int)hipErrorInvalidValue;

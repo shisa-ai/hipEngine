@@ -69,10 +69,14 @@ K-side norm weight (both precisions).
   FP16/FP32-accum GEMMs; gate: max ≤ 2%, mean ≤ 0.5% of per-series signal
   scale vs the torch oracle on both fixtures (measured max 0.42% / mean
   0.12%).
-- **`fp32` (strict):** rocBLAS SGEMM + FP32 kernels, routed through the
-  **unfused** variate-attention chain (`head_rmsnorm` ×2 + `head_perdim`
-  + raw var attention) — the strict fallback for the fused fp16 var
-  kernel; parity vs the torch oracle fixture at max 1.1e-5, deterministic.
+- **`fp32` (strict):** FP32 kernels with a double-accumulating SGEMM
+  (`timesfm3_sgemm_f64acc`), routed through the **unfused** variate-attention
+  chain (`head_rmsnorm` ×2 + `head_perdim` + raw var attention) — the strict
+  fallback for the fused fp16 var kernel; parity vs the torch oracle fixture
+  at max 1.1e-5, deterministic.  The GEMMs accumulate each dot product in
+  double because the CPU/torch fp32 oracle uses a BLAS accumulation order the
+  arch-dependent rocBLAS SGEMM solution does not reproduce; fp32 accumulation
+  diverged by ~4e-4 on gfx1100, past the strict gate.
 
 Both validated by
 `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/timesfm3_gpu_bench.py --check`.
