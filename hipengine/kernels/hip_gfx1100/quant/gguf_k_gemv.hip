@@ -787,12 +787,19 @@ __device__ __forceinline__ void gguf_k_coltile_load_stage(
 // instead of stalling the wave. Per-output arithmetic is untouched: each
 // accumulator still receives its FMAs in ascending k order, the wave shuffle
 // tree and the ordered four-wave publication are the same.
+// Declared here because the DPP wave reduction below is defined after the kernels
+// that want to use it.
+template <int ROW_BATCH, int COL_TILE>
+__device__ inline void h7c_reduce_wave_accumulators_dpp(
+    float (&acc)[ROW_BATCH][COL_TILE]);
+
 template <
     typename scalar_t,
     typename out_t,
     int qtype,
     int COL_TILE,
-    int ROW_BATCH, bool WAVE_SCALE = false>
+    int ROW_BATCH, bool WAVE_SCALE = false, bool ROW_FIRST = false,
+    bool DPP_REDUCTION = false>
 __launch_bounds__(128, 2)
 __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
     const scalar_t* __restrict__ x,
@@ -804,8 +811,20 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
   static_assert(
       COL_TILE * ROW_BATCH == 32 || COL_TILE * ROW_BATCH == 64,
       "exact coltile screens require 32 or 64 accumulators");
-  const int out_col_base = static_cast<int>(blockIdx.x) * COL_TILE;
-  const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
+  // ``ROW_FIRST`` only swaps which grid axis carries the column tile and which
+  // carries the row batch. It changes the order in which the hardware schedules
+  // blocks and therefore the reuse distance of each operand; it touches no
+  // arithmetic, no accumulator and no reduction, so every instantiation is
+  // bit-identical. The default (``blockIdx.x`` = column tile) sweeps all
+  // ``out_features/COL_TILE`` weight slices of one row batch before any of them is
+  // needed again, so a re-read is separated by the whole weight tensor plus the
+  // activation; ``ROW_FIRST`` keeps one 21.8 KB weight slice resident across the
+  // row sweep instead. See
+  // benchmarks/results/2026-10-04-qwen4exp-q8-prefill-grid-order/.
+  const int out_col_base =
+      static_cast<int>(ROW_FIRST ? blockIdx.y : blockIdx.x) * COL_TILE;
+  const int row_base =
+      static_cast<int>(ROW_FIRST ? blockIdx.x : blockIdx.y) * ROW_BATCH;
   const int tid = threadIdx.x;
   if (out_col_base >= out_features || row_base >= rows) return;
 
@@ -880,12 +899,27 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
     have_a = have_a_next;
   }
 
+  // The reduction is the largest single opcode class in this kernel: the five
+  // ``__shfl_down`` levels compile to ``ds_bpermute_b32``, which is an LDS access,
+  // and the static stream carries 160 of them per thread against 32 accumulators
+  // plus 113 ``s_waitcnt lgkmcnt`` instructions. ``DPP_REDUCTION`` swaps the tree for
+  // the VALU-only DPP reduction the q6_k prefill kernels already use (one
+  // ``v_permlanex16``, three ``v_mov_dpp`` row shifts, one ``v_add_f32_dpp``), which
+  // removes every LDS round trip from the epilogue. It folds lanes 16-31 into 0-15
+  // before the row shifts instead of reducing 16,8,4,2,1 across all 32 lanes, so the
+  // per-output summation order changes and this variant is NOT bit-identical to its
+  // parent; it is a production-profile candidate, not a strict one. See
+  // benchmarks/results/2026-10-04-qwen4exp-q8-prefill-dpp-reduction/.
+  if constexpr (DPP_REDUCTION) {
+    h7c_reduce_wave_accumulators_dpp<ROW_BATCH, COL_TILE>(acc);
+  } else {
 #pragma unroll
-  for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
 #pragma unroll
-    for (int col = 0; col < COL_TILE; ++col) {
-      for (int offset = 16; offset > 0; offset >>= 1) {
-        acc[row_idx][col] += __shfl_down(acc[row_idx][col], offset);
+      for (int col = 0; col < COL_TILE; ++col) {
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          acc[row_idx][col] += __shfl_down(acc[row_idx][col], offset);
+        }
       }
     }
   }
@@ -4820,7 +4854,8 @@ template <
     typename out_t,
     int qtype,
     int COL_TILE,
-    int ROW_BATCH, bool WAVE_SCALE = false>
+    int ROW_BATCH, bool WAVE_SCALE = false, bool ROW_FIRST = false,
+    bool DPP_REDUCTION = false>
 int launch_gguf_k_gemv_coltile_rowbatch_pipelined_out(
     const scalar_t* x,
     const uint8_t* qweight,
@@ -4839,14 +4874,16 @@ int launch_gguf_k_gemv_coltile_rowbatch_pipelined_out(
   }
   const dim3 block(128);
   const dim3 grid(
-      static_cast<unsigned int>(out_features / COL_TILE),
-      static_cast<unsigned int>((rows + ROW_BATCH - 1) / ROW_BATCH));
+      static_cast<unsigned int>(ROW_FIRST ? (rows + ROW_BATCH - 1) / ROW_BATCH
+                                         : out_features / COL_TILE),
+      static_cast<unsigned int>(ROW_FIRST ? out_features / COL_TILE
+                                         : (rows + ROW_BATCH - 1) / ROW_BATCH));
   gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<
       scalar_t,
       out_t,
       qtype,
       COL_TILE,
-      ROW_BATCH, WAVE_SCALE><<<grid, block, 0, stream>>>(
+      ROW_BATCH, WAVE_SCALE, ROW_FIRST, DPP_REDUCTION><<<grid, block, 0, stream>>>(
       x,
       qweight,
       out,
@@ -5411,6 +5448,22 @@ extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_
     int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
   return launch_gguf_k_gemv_coltile_rowbatch_pipelined_out<
       float, float, 8, 8, 4, true>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out(
+    const float* x, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_gemv_coltile_rowbatch_pipelined_out<
+      float, float, 8, 8, 4, true, false, true>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out(
+    const float* x, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_gemv_coltile_rowbatch_pipelined_out<
+      float, float, 8, 8, 4, true, true>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 

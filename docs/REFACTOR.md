@@ -8363,3 +8363,30 @@ Two consequences worth knowing:
   checkpoint for bisection, then drop the selector, hoist the (now constant)
   owner choice out of the per-layer path, and remove the 16-column wrapper once
   the tile8 owner is the only qualified gfx1151 owner.
+
+## Q8 dense prefill: the DPP wave reduction and the row-first grid order
+
+- `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip` carries two boolean
+  template parameters on the pipelined Q8 prefill kernel, `DPP_REDUCTION` and
+  `ROW_FIRST`, both defaulting to `false` so that every pre-existing
+  instantiation and exported symbol is unchanged. `DPP_REDUCTION` is the retained
+  win (bit-identical, mean -1.64% across five real layers); `ROW_FIRST` is the
+  measured negative (free and bit-identical, 2.1-2.9% slower on all five layers).
+- **`ROW_FIRST` should be deleted rather than kept as an experiment.** It exists
+  only to produce the one measurement that refutes the traffic reading of this
+  kernel family, and that measurement is now recorded in three places
+  (`benchmarks/results/2026-10-04-qwen4exp-q8-prefill-dpp-reduction/README.md`,
+  `benchmarks/README.md`, `docs/QWEN4EXP-OPTIMIZATION-LEDGER.md` §7A). Its arm in
+  `scripts/qwen4exp_dense_projection_ab.py` and its two test cases in
+  `tests/test_gpu_qwen4exp_q8_dpp_reduction.py` exist for the same single purpose.
+  Do not re-run it expecting a different answer; a locality change cannot win here.
+- `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` (default on, `=0` restores the pipelined
+  leaf) follows the `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE` precedent: the flag is in
+  the dispatch memoization key so a flip inside one process cannot replay the
+  other arm's leaf, and the rewrite is `is_registered`-guarded so the chain
+  degrades DPP -> pipelined -> wave-scale parent -> unscaled exact parent.
+- Removal condition: keep the `=0` rollback through one prefill campaign
+  checkpoint for bisection, then make `DPP_REDUCTION` unconditional in the
+  pipelined leaf, delete the `ROW_FIRST` parameter and its arm/test cases, and
+  drop the flag once the DPP leaf is the only qualified gfx1151 owner for this
+  tile shape.
