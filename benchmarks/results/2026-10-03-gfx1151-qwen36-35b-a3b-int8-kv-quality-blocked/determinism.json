@@ -1,0 +1,26 @@
+{
+ "schema": 1,
+ "kind": "gfx1151_qwen36_35b_a3b_int8_decode_kv_determinism",
+ "date": "2026-10-03",
+ "status": "diagnostic_complete",
+ "publishable": false,
+ "performance_claim": false,
+ "result": {
+  "1024/8": "candidate and reference logits bit-identical across repeat; per-prompt metrics identical",
+  "4096/16": "candidate and reference logits bit-identical across repeat; binding mixed_v1 failure reproduces exactly (mean KL 0.1597, max 2.6939, top-1 0.9412)"
+ },
+ "raw_pairing": {
+  "1024/8": {
+   "same_candidate_logits": true,
+   "same_reference_logits": true,
+   "same_per_prompt_metrics": true,
+   "prompts_compared": 11
+  },
+  "4096/16": {
+   "same_candidate_logits": true,
+   "same_reference_logits": true,
+   "same_per_prompt_metrics": true,
+   "prompts_compared": 11
+  }
+ }
+}

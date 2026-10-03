@@ -1,0 +1,151 @@
+{
+ "schema": 1,
+ "kind": "gfx1151_qwen36_35b_a3b_int8_decode_kv_runtime",
+ "date": "2026-10-03",
+ "status": "diagnostic_complete",
+ "publishable": false,
+ "performance_claim": false,
+ "question": "Does the INT8 decode KV copy move decode throughput, and does its advantage widen with depth?",
+ "protocol": {
+  "name": "gufo cached-prefix protocol",
+  "turn_tokens": 2048,
+  "decode_tokens": 128,
+  "depths": [
+   0,
+   4096,
+   16384
+  ],
+  "depth_note": "depth is an untimed cached prefix; the timed request is a 2048-token new turn plus 128 decode tokens",
+  "one_resident_session": true,
+  "warm_iteration_discarded": true,
+  "measured_repetitions": 2,
+  "int8_graph_env": "HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH=1",
+  "decode_graph_min_replay_steps": 128
+ },
+ "tg_tok_s": {
+  "bf16_eager": {
+   "0": 56.87,
+   "4096": 56.86,
+   "16384": 53.58
+  },
+  "bf16_graph": {
+   "0": 56.81,
+   "4096": 56.8,
+   "16384": 56.73
+  },
+  "int8_eager": {
+   "0": 57.67,
+   "4096": 57.63,
+   "16384": 56.89
+  },
+  "int8_graph": {
+   "0": 57.63,
+   "4096": 57.65,
+   "16384": 57.63
+  }
+ },
+ "deltas_pct": {
+  "int8_eager_vs_bf16_eager": {
+   "0": 1.41,
+   "4096": 1.35,
+   "16384": 6.18
+  },
+  "int8_graph_vs_bf16_graph": {
+   "0": 1.44,
+   "4096": 1.5,
+   "16384": 1.59
+  },
+  "int8_eager_vs_bf16_graph": {
+   "0": 1.51,
+   "4096": 1.46,
+   "16384": 0.28
+  }
+ },
+ "depth_drop_0_to_16384_pct": {
+  "bf16_eager": -5.78,
+  "bf16_graph": -0.14,
+  "int8_eager": -1.35,
+  "int8_graph": 0.0
+ },
+ "reading": "INT8 KV is worth +1.44%/+1.50%/+1.59% against the BF16 graph route at depths 0/4096/16384: real but flat, and an order of magnitude too small to explain the 1.23x/1.26x/1.40x decode ratio attributed to gufo. The KV-width hypothesis for the depth-widening gap is therefore not supported by this measurement. The BF16 eager route is the one that loses depth (-5.78%), and graph admission removes that loss (-0.14%), which is a separate and already-known effect.",
+ "raw": {
+  "turn_tokens": 2048,
+  "decode_tokens": 128,
+  "context_tokens": "depth+2048",
+  "depth_note": "depth is an untimed cached prefix",
+  "tg_tok_s": {
+   "bf16_eager": {
+    "0": 56.87,
+    "4096": 56.86,
+    "16384": 53.58
+   },
+   "bf16_graph": {
+    "0": 56.81,
+    "4096": 56.8,
+    "16384": 56.73
+   },
+   "int8_eager": {
+    "0": 57.67,
+    "4096": 57.63,
+    "16384": 56.89
+   },
+   "int8_graph": {
+    "0": 57.63,
+    "4096": 57.65,
+    "16384": 57.63
+   }
+  },
+  "int8_graph_env": "HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH=1",
+  "decode_graph_min_replay_steps": 128,
+  "deltas_pct": {
+   "int8_eager_vs_bf16_eager": {
+    "0": 1.41,
+    "4096": 1.35,
+    "16384": 6.18
+   },
+   "int8_graph_vs_bf16_graph": {
+    "0": 1.44,
+    "4096": 1.5,
+    "16384": 1.59
+   },
+   "int8_eager_vs_bf16_graph": {
+    "0": 1.51,
+    "4096": 1.46,
+    "16384": 0.28
+   }
+  },
+  "depth_drop_0_to_16384_pct": {
+   "bf16_eager": -5.78,
+   "bf16_graph": -0.14,
+   "int8_eager": -1.35,
+   "int8_graph": 0.0
+  }
+ },
+ "comparator_baseline": {
+  "engine": "gufo Qwen3.6-35B-A3B-Q6dense (published scoreboard)",
+  "prefill_tok_s": 3095,
+  "decode_tok_s": 68.43,
+  "decode_gb_s": 156.2,
+  "depth_note": "The comparator value is a single published headline, not a per-depth measurement: the 2026-10-03 reconciliation records that gufo's own per-depth values were not reproduced. A 'gap that widens with depth' computed as 68.43 divided by a depth-varying hipEngine number is therefore a statement about hipEngine's own depth curve.",
+  "ratios_vs_this_run": {
+   "bf16_eager": {
+    "0": 1.2033,
+    "4096": 1.2035,
+    "16384": 1.2772
+   },
+   "bf16_graph": {
+    "0": 1.2046,
+    "4096": 1.2067,
+    "16384": 1.2062
+   },
+   "int8_graph": {
+    "0": 1.1874,
+    "4096": 1.187,
+    "16384": 1.1874
+   },
+   "note": "Computed as 68.43 / measured tok/s. Under graph admission the ratio is flat at ~1.20x (BF16) or ~1.19x (INT8); only the eager route widens, to 1.28x, because it is the eager route that loses depth."
+  },
+  "source": "benchmarks/results/2026-10-03-gfx1151-35b-a3b-gufo-reconciliation/README.md"
+ },
+ "follow_up": "Settling the comparator gap needs a same-protocol measurement of the comparator build, not a ratio against a headline number: that is the gufo-fork comparison task. This screen establishes only that INT8 KV is not the lever, because its gain is flat in depth."
+}
