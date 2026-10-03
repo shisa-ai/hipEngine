@@ -20,8 +20,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Query blocks match the runner's chunked prefill, including a partial tail.
+# Synthetic block geometries exercise offsets and partial tails. The runner may
+# trim the effective sliding KV span before reaching this ABI.
 CASES = ((512, 513), (512, 2053), (512, 8191), (127, 17000))
+DECODE_CASES = ((1, 127), (1, 513), (1, 2053), (1, 8191), (1, 17000))
 
 
 def inputs(tokens, keys, heads, kv_heads, dim, window, seed=20261003):
@@ -60,6 +62,12 @@ def require_bitwise_equal(baseline, candidate):
     return equal
 
 
+def valid_event_duration(value):
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError('invalid HIP event duration')
+    return float(value)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--library', type=Path)
@@ -67,9 +75,15 @@ def main(argv=None):
                    help='Frozen baseline .so; alternate paired launches on shared buffers')
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--repeats', type=int, default=7)
+    p.add_argument('--decode', action='store_true', help='Measure singleton-query key depths instead of prefill blocks')
     p.add_argument('--warmup', type=int, default=2)
-    p.add_argument('--case', type=int, choices=range(len(CASES)))
+    p.add_argument('--instrumentation', choices=('clean', 'profiled'),
+                   help='Declare external instrumentation; known injection overrides clean')
+    p.add_argument('--case', type=int)
     args = p.parse_args(argv)
+    cases = DECODE_CASES if args.decode else CASES
+    if args.case is not None and not 0 <= args.case < len(cases):
+        p.error('case index is outside the selected workload')
     if args.repeats < 1 or args.warmup < 0:
         p.error('repeats must be positive and warmup nonnegative')
     from hipengine.benchmark.provenance import collect_artifact_provenance
@@ -80,20 +94,26 @@ def main(argv=None):
     lib = ctypes.CDLL(str(args.library.resolve())) if args.library else staged.build_gemma4_attention_staged(load=True)
     baseline = ctypes.CDLL(str(args.baseline_library.resolve())) if args.baseline_library else None
     rt = get_hip_runtime()
+    from scripts.gemma4_decode_attribution import instrumentation_state
+    instrumentation = instrumentation_state(args.instrumentation)
     report = {'kind': 'gemma4_staged_prefill_kernel_measurement', 'model_throughput_claim': False,
-              'workload': 'deterministic synthetic BF16 Q/K/V; causal prefill block',
-              'provenance': collect_artifact_provenance(repo_root=ROOT, quant='synthetic_bf16', kv_dtype='bf16'),
+              'performance_claim': instrumentation['status'] == 'declared_clean',
+              'instrumentation': instrumentation,
+              'mode': 'decode' if args.decode else 'prefill',
+              'workload': 'deterministic synthetic BF16 Q/K/V; causal query block',
+              'provenance': collect_artifact_provenance(repo_root=ROOT, quant='synthetic_bf16', kv_dtype='bf16',
+                  warmups=args.warmup, repetitions=args.repeats, profiler=instrumentation),
               'library': lib._name, 'library_sha256': hashlib.sha256(Path(lib._name).read_bytes()).hexdigest(),
               'source_sha256': hashlib.sha256(staged._SOURCE.read_bytes()).hexdigest() if not args.library else None,
-              'timing': 'HIP events on default stream; reusable workspace; no profiler; median of repetitions',
+              'timing': 'HIP events on default stream; reusable workspace; median of repetitions; see instrumentation',
               'correctness': 'independent per-arm capture after output and FP32 workspace NaN poisoning; finite BF16 output and mandatory raw-bit parity',
               'warmup': args.warmup, 'repetitions': args.repeats, 'cases': []}
     if baseline is not None:
         report['baseline_library'] = baseline._name
         report['baseline_library_sha256'] = hashlib.sha256(Path(baseline._name).read_bytes()).hexdigest()
         report['timing'] = ('HIP events on default stream; shared device buffers and reusable workspace; '
-                            'alternating AB/BA pairs; per-arm median; no profiler')
-    for index, (tokens, keys) in enumerate(CASES):
+                            'alternating AB/BA pairs; per-arm median; see instrumentation')
+    for index, (tokens, keys) in enumerate(cases):
         if args.case is not None and index != args.case:
             continue
         for dim, kv_heads, window in ((256, 8, 1024), (512, 2, 0)):
@@ -138,7 +158,7 @@ def main(argv=None):
                     for name in names:
                         rt.event_record(start); launch(arms[name]); rt.event_record(stop)
                         rt.event_synchronize(stop)
-                        samples[name].append(rt.event_elapsed_time_ms(start, stop))
+                        samples[name].append(valid_event_duration(rt.event_elapsed_time_ms(start, stop)))
                 times = samples['candidate']
                 out = captures['candidate']
                 row = {'tokens': tokens, 'keys': keys, 'heads': 16, 'kv_heads': kv_heads,
@@ -152,14 +172,14 @@ def main(argv=None):
                     row['outputs_bitwise_equal'] = equal
                     row['baseline_output_sha256'] = hashlib.sha256(captures['baseline'].tobytes()).hexdigest()
                 report['cases'].append(row)
-                print(json.dumps(row), flush=True)
+                print(json.dumps(row, allow_nan=False), flush=True)
             finally:
                 scratch.close()
                 for event in (start, stop):
                     if event is not None: rt.event_destroy(event)
                 for buffer in buffers: free(buffer)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2) + '\n')
+    args.out.write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')
     return 0
 
 

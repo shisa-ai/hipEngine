@@ -10,7 +10,10 @@ reference cannot launch:
   not interchangeable with another. That is
   the strongest available statement of the candidate's contract, and it covers
   both the one-token decode routing and multi-token blocks, causal, sliding and
-  holed masks, nonzero ``window``/``row_offset``, and both head widths.
+  holed masks, nonzero ``window``/``row_offset``, and both head widths. A single
+  query token takes the singleton PV decomposition and every other shape takes
+  the 256-thread one, so the parity table is also the check that the two
+  decompositions agree bit for bit on the shapes they share.
 * **Oracle.** Past 15,872 keys at head_dim 256 (15,616 at 512) the strict
   kernel's shared-memory requirement exceeds the 64 KB budget and it refuses to
   launch, so no bitwise reference exists there. Those cases are compared against
@@ -79,6 +82,21 @@ _PARITY_SHAPES = [
     (3, 1025, 16, 8, 256, "sliding", 64, 900, 1.0),
     (2, 2055, 16, 2, 512, "sliding", 128, 1500, 1.0),
     (2, 1025, 16, 2, 512, "holes", 0, 0, 1.0),
+    # Single-token shapes, which take the 32-thread singleton PV decomposition:
+    # both head widths, the GQA ratios 1/2/4/8 and the odd ratios whose last row
+    # group holds a single row, a weight tile narrower than the block, and key
+    # counts that land on and past a tile boundary.
+    (1, 1, 16, 8, 256, "keep", 0, 0, 1.0),  # one live key, one-element tile
+    (1, 7, 6, 2, 512, "keep", 0, 0, 1.0),  # ratio 3, tile narrower than 32 threads
+    (1, 33, 10, 2, 256, "holes", 0, 0, 1.0),  # ratio 5, a second partial tile
+    (1, 257, 4, 4, 512, "causal", 0, 0, 1.0),  # ratio 1: one resident row
+    (1, 257, 32, 2, 512, "causal", 0, 0, 1.0),  # ratio 16: eight row groups
+    (1, 1025, 6, 2, 256, "keep", 0, 0, 1.0),  # ratio 3: a one-row tail group
+    (1, 1025, 10, 2, 256, "holes", 0, 0, 1.0),  # ratio 5: two full, one partial
+    (1, 2055, 24, 2, 256, "keep", 0, 0, 1.0),  # ratio 12: every group full
+    (1, 4096, 16, 8, 256, "keep", 0, 0, 1.0),  # 256 dims, four full tiles
+    (1, 4096, 16, 2, 512, "holes", 0, 0, 1.0),  # 512 dims, sixteen full tiles
+    (1, 1025, 16, 8, 256, "sliding", 96, 1024, 1.0),  # the sliding trim too
 ]
 
 
@@ -314,6 +332,14 @@ def test_staged_is_bit_identical_to_strict(
         assert np.isfinite(decoded).all()
     assert plan.rows == tokens * num_heads
     assert plan.keys == keys
+    # The shape ran the decomposition its token count selects, so the bitwise
+    # equality above is a statement about that kernel rather than about a
+    # fallback that quietly served the launch.
+    if tokens == 1:
+        assert plan.pv_threads == staged.SINGLETON_THREADS
+        assert plan.pv_dim_slices * staged.SINGLETON_DIM_SLICE == head_dim
+    else:
+        assert plan.pv_threads == staged.THREADS
 
 
 def test_all_masked_rows_are_nan_in_both(staged_library):
@@ -349,7 +375,15 @@ def test_launch_accepts_an_explicit_runtime_and_library(staged_library):
         library=staged_library,
     )
     _assert_bit_identical(reference, candidate, "bf16")
-    assert plan.lds_bytes == staged.staged_lds_bytes(256)
+    assert out.shape == candidate.shape
+    assert np.isfinite(bf16_decode(out)).all()
+    # The single-token shape took the singleton decomposition, so the launch
+    # under test is the one whose reservation this asserts.
+    assert plan.pv_singleton
+    assert plan.lds_bytes == max(
+        plan.score_lds_bytes, plan.softmax_lds_bytes, plan.pv_lds_bytes
+    )
+    assert plan.pv_lds_bytes == staged.SINGLETON_ROWS_PER_BLOCK * staged.PV_TILE_KEYS * 4
 
 
 def test_caller_owned_scratch_survives_repeated_launches(staged_library):
@@ -475,15 +509,20 @@ def test_pv_variant_dispatch_is_pinned(staged_library):
     for num_heads, num_kv_heads, resident in _PV_VARIANT_TABLE:
         rows_per_head = num_heads // num_kv_heads
         assert _pv_resident_rows(staged_library, num_heads, num_kv_heads) == resident
+        # The table is the 256-thread decomposition's, which is the one a launch
+        # with more than one query token uses: the plan below is driven with two
+        # tokens so the row grouping it reports is that decomposition's.
         plan = staged.staged_plan(
-            tokens=1, keys=64, num_heads=num_heads, num_kv_heads=num_kv_heads,
+            tokens=2, keys=64, num_heads=num_heads, num_kv_heads=num_kv_heads,
             head_dim=256,
         )
         # The variant changes the kernel body only: the grid the plan reports is
         # the one the launch uses either way.
         assert plan.rows_per_head == rows_per_head
         assert plan.row_groups == -(-rows_per_head // staged.MAX_ROWS_PER_BLOCK)
-        assert plan.pv_grid == (1, num_kv_heads, plan.row_groups)
+        assert plan.pv_grid == (2, num_kv_heads, plan.row_groups)
+        assert plan.pv_threads == staged.THREADS
+        assert plan.pv_lds_bytes == staged.staged_pv_lds_bytes()
         assert (resident == rows_per_head) == (rows_per_head in (1, 2, 4, 8))
     # A geometry the launcher refuses answers 0, like the workspace export's
     # invalid sentinel, instead of naming a variant that cannot run.
@@ -542,6 +581,221 @@ def test_exact_and_generic_variants_agree_on_one_row_group(staged_library):
     # The shared row group: heads 0..7, KV head 0, in both launches.
     _assert_bit_identical(exact[:, :exact_heads // kv_heads],
                           generic[:, :exact_heads // kv_heads], "f32")
+
+
+# --- the singleton (T0) PV decomposition ------------------------------------
+
+# The decomposition a shape selects, read from the kernel's own resolver. It is
+# declared here rather than in the wrapper module because it is a diagnostic for
+# this test, not part of the launcher's calling contract.
+_SYMBOL_PV_THREADS = "hipengine_gemma4_attention_staged_pv_threads"
+_SYMBOL_PV_ROWS_PER_BLOCK = "hipengine_gemma4_attention_staged_pv_rows_per_block"
+_SYMBOL_PV_GRID_Z = "hipengine_gemma4_attention_staged_pv_grid_z"
+
+
+def _pv_decomposition(library, tokens: int, num_heads: int, num_kv_heads: int,
+                      head_dim: int) -> tuple[int, int, int]:
+    """(block width, rows per block, grid Z) the PV launcher would use."""
+
+    import ctypes
+
+    from hipengine.core.ctypes_cache import signed_kernel_fn
+
+    answers = []
+    for symbol in (_SYMBOL_PV_THREADS, _SYMBOL_PV_ROWS_PER_BLOCK, _SYMBOL_PV_GRID_Z):
+        fn = signed_kernel_fn(
+            library, symbol, (ctypes.c_int64,) * 4, ctypes.c_int64
+        )
+        answers.append(
+            int(fn(int(tokens), int(num_heads), int(num_kv_heads), int(head_dim)))
+        )
+    return (answers[0], answers[1], answers[2])
+
+
+# (tokens, num_heads, num_kv_heads, head_dim, block width, rows per block, grid Z)
+_PV_DECOMPOSITION_TABLE = [
+    # A single query token: 32 threads, two rows, and one 32-dimension slice per
+    # CTA, so Z is the row-group count times head_dim / 32.
+    (1, 16, 2, 512, 32, 2, 4 * 16),
+    (1, 16, 8, 256, 32, 2, 1 * 8),
+    (1, 4, 4, 256, 32, 1, 1 * 8),  # ratio 1: no second row to pair
+    (1, 24, 2, 256, 32, 2, 6 * 8),  # ratio 12, every group full
+    (1, 6, 2, 256, 32, 2, 2 * 8),  # ratio 3: a full group and a one-row tail
+    (1, 10, 2, 512, 32, 2, 3 * 16),  # ratio 5: two full groups, one partial
+    # The combined Z bound, both sides of it: 16,382 rows at head_dim 256 is
+    # 8,191 row groups x 8 slices, and 8,192 x 8 does not fit one grid dimension.
+    (1, 16382, 1, 256, 32, 2, 65528),
+    (1, 16384, 1, 256, 256, 8, 2048),
+    (1, 16383, 1, 256, 256, 8, 2048),  # an odd ratio past the bound, same fallback
+    (1, 8190, 1, 512, 32, 2, 65520),
+    (1, 8192, 1, 512, 256, 8, 1024),
+    # More than one query token keeps the 256-thread decomposition, whose
+    # resident row count comes from the variant table rather than the tile.
+    (2, 16, 2, 512, 256, 8, 1),
+    (7, 16, 2, 512, 256, 8, 1),
+    (3, 32, 2, 512, 256, 8, 2),
+    (2, 16, 8, 256, 256, 2, 1),  # an exact two-row variant
+    (2, 4, 1, 512, 256, 4, 1),
+    (1, 524280, 1, 256, 256, 8, 65535),  # the widest ratio the family serves
+    # Not shapes this family serves at all: no ratio, a width the score tree does
+    # not implement, and a ratio past the row-group grid.
+    (0, 16, 2, 512, 0, 0, 0),
+    (1, 3, 2, 256, 0, 0, 0),
+    (1, 16, 2, 128, 0, 0, 0),
+    (1, 524290, 1, 256, 0, 0, 0),
+    (1, 2**31, 1, 256, 0, 0, 0),
+]
+
+
+def test_pv_decomposition_exports_match_the_planner(staged_library):
+    """The kernel's own resolver and the Python planner agree, shape by shape.
+
+    The launcher dispatches on the C++ resolver and the plan reports what Python
+    computed; a disagreement would mean the plan named a kernel that did not run,
+    so both sides are read here for the same table -- including the shapes that
+    sit on and one past the combined Z bound, and the shapes neither side serves.
+    """
+
+    for tokens, num_heads, num_kv_heads, head_dim, threads, rows, grid_z in (
+        _PV_DECOMPOSITION_TABLE
+    ):
+        assert _pv_decomposition(
+            staged_library, tokens, num_heads, num_kv_heads, head_dim
+        ) == (threads, rows, grid_z)
+        if threads == 0:
+            with pytest.raises((ValueError, NotImplementedError)):
+                staged.staged_plan(
+                    tokens=tokens, keys=64, num_heads=num_heads,
+                    num_kv_heads=num_kv_heads, head_dim=head_dim,
+                )
+            continue
+        plan = staged.staged_plan(
+            tokens=tokens, keys=64, num_heads=num_heads, num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+        )
+        assert (plan.pv_threads, plan.pv_rows_per_block) == (threads, rows)
+        assert plan.pv_grid[2] == grid_z
+        # The selection is what keeps every launch inside the grid: the
+        # singleton decomposition's packed Z fits, and so does the Z of the
+        # decomposition a shape falls back to.
+        assert plan.pv_grid[2] <= staged.MAX_GRID_DIM
+        assert plan.pv_singleton == (threads == staged.SINGLETON_THREADS)
+        assert plan.pv_lds_bytes == (
+            rows * staged.PV_TILE_KEYS * 4
+            if plan.pv_singleton
+            else staged.staged_pv_lds_bytes()
+        )
+
+
+# The same comparison as a sweep, so the parity above is not only true of the
+# named rows: every ratio either boundary can turn on, at both head widths, for a
+# single token and for several.
+_PV_DECOMPOSITION_SWEEP_RATIOS = (
+    1, 2, 3, 4, 5, 8, 12, 16, 17, 255, 4095, 4096, 8190, 8191, 8192, 16382, 16383,
+    16384, 16385, 65534 * 8, 65535 * 8, 65535 * 8 + 1,
+)
+
+
+def test_pv_decomposition_parity_holds_across_the_ratio_sweep(staged_library):
+    """The launcher's resolver and the planner agree shape by shape, not by luck.
+
+    The launcher dispatches on the C++ resolver this export reads, so an equality
+    here is an equality between the grid the planner reports and the grid the
+    launch uses -- for the singleton decomposition, for the eight-row fallback a
+    packed-Z overflow takes, and for the shapes neither serves.
+    """
+
+    for tokens in (1, 2, 7):
+        for head_dim in (256, 512):
+            for ratio in _PV_DECOMPOSITION_SWEEP_RATIOS:
+                kernel = _pv_decomposition(staged_library, tokens, ratio, 1, head_dim)
+                try:
+                    plan = staged.staged_plan(
+                        tokens=tokens, keys=64, num_heads=ratio, num_kv_heads=1,
+                        head_dim=head_dim,
+                    )
+                except NotImplementedError:
+                    assert kernel == (0, 0, 0), (tokens, ratio, head_dim)
+                    continue
+                assert kernel == (
+                    plan.pv_threads,
+                    plan.pv_rows_per_block,
+                    plan.pv_grid[2],
+                ), (tokens, ratio, head_dim)
+                assert plan.pv_grid[2] <= staged.MAX_GRID_DIM
+                # The singleton decomposition is only ever the single-token one;
+                # a packed-Z overflow keeps the eight-row grid instead.
+                assert not plan.pv_singleton or tokens == 1
+
+
+def test_singleton_decomposition_is_the_one_that_ran(staged_library):
+    """Which PV kernel ran is read back from the launch, not inferred from time.
+
+    The 256-thread decomposition holds a whole query row, so a single-token
+    launch has one PV CTA per KV head. The singleton decomposition pairs the
+    query rows and slices the head width instead, so the same launch has
+    ``ceil(rows_per_head / 2) * head_dim / 32`` CTAs. Both are launched below
+    and the decomposition that ran is asserted against the plan the launcher
+    returned and against the kernel's own resolver.
+    """
+
+    for tokens, num_heads, num_kv_heads, head_dim, threads, rows, slices in (
+        (1, 16, 2, 512, 32, 2, 16),  # the full-attention geometry
+        (1, 16, 8, 256, 32, 2, 8),  # the sliding geometry
+        (1, 4, 4, 256, 32, 1, 8),  # ratio 1: one resident row
+        (1, 6, 2, 256, 32, 2, 8),  # ratio 3: a one-row tail group
+        (2, 16, 2, 512, 256, 8, 1),  # two tokens: the 256-thread decomposition
+    ):
+        shape = (tokens, 512, num_heads, num_kv_heads, head_dim)
+        mask = _mask(tokens, 512, "keep", 0, 0, seed=9)
+        out, plan, _, _ = _run_staged(
+            shape, dtype="bf16", mask=mask, scale=1.0, window=0, row_offset=0,
+            library=staged_library,
+        )
+        assert np.isfinite(bf16_decode(out)).all()
+        assert (plan.pv_threads, plan.pv_rows_per_block, plan.pv_dim_slices) == (
+            threads,
+            rows,
+            slices,
+        )
+        assert plan.pv_grid == (tokens, num_kv_heads, plan.row_groups * slices)
+        assert _pv_decomposition(
+            staged_library, tokens, num_heads, num_kv_heads, head_dim
+        ) == (threads, rows, plan.pv_grid[2])
+        # A single-token launch has more independent PV CTAs than the
+        # 256-thread decomposition would launch for the same shape, which is one
+        # CTA per (token, KV head).
+        if tokens == 1:
+            assert plan.pv_singleton
+            rows_per_head = num_heads // num_kv_heads
+            multi_ctas = num_kv_heads * (
+                -(-rows_per_head // staged.MAX_ROWS_PER_BLOCK)
+            )
+            assert num_kv_heads * plan.pv_grid[2] > multi_ctas
+
+
+def test_singleton_grid_bound_launches_and_the_fallback_matches(staged_library):
+    """Both sides of the combined Z bound, against the strict kernel.
+
+    16,382 query rows at head_dim 256 is the last single-token shape whose
+    row-group-by-slice product (65,528) fits one grid dimension, and 16,384 is
+    one past it: the first launches the singleton decomposition with 65,528 CTAs
+    in Z, the second keeps the 256-thread one. Both are compared bitwise with the
+    strict kernel, which is what makes "the fallback is not a different result"
+    a checked statement rather than a claim about the source the two share.
+    """
+
+    for num_heads, threads, grid_z in ((16382, 32, 65528), (16384, 256, 2048)):
+        shape = (1, 64, num_heads, 1, 256)
+        mask = _mask(1, 64, "keep", 0, 0, seed=10)
+        reference, candidate, plan = _run_both(
+            shape, dtype="bf16", mask=mask, scale=1.0, window=0, row_offset=0,
+            library=staged_library,
+        )
+        assert (plan.pv_threads, plan.pv_grid[2]) == (threads, grid_z)
+        assert plan.pv_grid[2] <= staged.MAX_GRID_DIM
+        assert np.isfinite(bf16_decode(candidate)).all()
+        _assert_bit_identical(reference, candidate, "bf16")
 
 
 # --- the oracle, past the strict kernel's ceiling ---------------------------
@@ -631,7 +885,11 @@ def test_staged_matches_the_oracle_past_the_strict_ceiling(staged_library, dtype
     assert np.mean(np.argmax(reference_rows, axis=1) ==
                    np.argmax(candidate_rows, axis=1)) >= 0.90
     assert plan.chunks == 17
-    assert plan.lds_bytes == staged.staged_lds_bytes(512)
+    assert plan.pv_singleton
+    assert plan.pv_lds_bytes == staged.SINGLETON_ROWS_PER_BLOCK * staged.PV_TILE_KEYS * 4
+    assert plan.lds_bytes == max(
+        plan.score_lds_bytes, plan.softmax_lds_bytes, plan.pv_lds_bytes
+    )
 
 
 def test_staged_sliding_band_matches_the_oracle_past_the_ceiling(staged_library):
@@ -658,6 +916,48 @@ def test_staged_sliding_band_matches_the_oracle_past_the_ceiling(staged_library)
     assert int(mask.sum()) == window
 
 
+# (num_heads, num_kv_heads, head_dim, keys, row groups, slices)
+_SINGLETON_LONG_KEY_SHAPES = [
+    # The sliding geometry's ratio 2 at head_dim 256 (strict ceiling 15,872): one
+    # row group and eight slices, so 8 CTAs of 32 threads walk 20,000 keys in
+    # 79 tiles each.
+    (16, 8, 256, 20000, 1, 8),
+    # Ratio 3: a full group and a one-row tail, which is the generic variant.
+    (6, 2, 256, 17000, 2, 8),
+    # Ratio 5 past the head_dim 512 ceiling (15,616): two full groups, one partial.
+    (10, 2, 512, 16000, 3, 16),
+]
+
+
+@pytest.mark.parametrize(
+    "num_heads,num_kv_heads,head_dim,keys,groups,slices", _SINGLETON_LONG_KEY_SHAPES
+)
+def test_singleton_long_keys_match_the_oracle_past_the_strict_ceiling(
+    staged_library, num_heads, num_kv_heads, head_dim, keys, groups, slices
+):
+    """A single token over a context the strict kernel cannot launch.
+
+    Every shape here is past the strict kernel's shared-memory ceiling, so the
+    reference is the independent float64 oracle. The key counts are long enough
+    that each CTA walks many tiles of the shared weight tile, and the GQA ratios
+    cover the full-group and the partial-tail variants of the decomposition.
+    """
+
+    shape = (1, keys, num_heads, num_kv_heads, head_dim)
+    mask = _mask(1, keys, "keep", 0, 0, seed=12)
+    out, plan, (query, key, value), _ = _run_staged(
+        shape, dtype="f32", mask=mask, scale=0.05, window=0, row_offset=0,
+        library=staged_library,
+    )
+    assert plan.pv_singleton
+    assert (plan.row_groups, plan.pv_dim_slices) == (groups, slices)
+    assert plan.pv_grid == (1, num_kv_heads, groups * slices)
+    assert keys > STRICT_KEY_CEILING[head_dim]
+    assert np.isfinite(out).all()
+    oracle = staged_cpu_oracle(query, key, value, mask, num_kv_heads=num_kv_heads, scale=0.05)
+    np.testing.assert_allclose(out, oracle, rtol=1e-4, atol=1e-5)
+
+
 def test_row_zero_is_identical_across_token_decompositions(staged_library):
     """Batch-composition invariance at a context the strict kernel cannot launch.
 
@@ -679,7 +979,7 @@ def test_row_zero_is_identical_across_token_decompositions(staged_library):
     mask[1] = ((index <= 9000) & (index > 8000)).astype(np.uint8)
     mask[2] = ((index <= 15000) & (index > 14000)).astype(np.uint8)
 
-    single, _, _, _ = _run_staged(
+    single, single_plan, _, _ = _run_staged(
         single_shape, dtype="f32", mask=mask[:1], scale=1.0, window=0, row_offset=0,
         library=staged_library, query=query[:1], key=key, value=value,
     )
@@ -688,6 +988,10 @@ def test_row_zero_is_identical_across_token_decompositions(staged_library):
         window=0, row_offset=0, library=staged_library, query=query, key=key, value=value,
     )
     assert plan.pv_grid == (3, 2, 1)
+    # The two launches take different PV decompositions -- the single token one
+    # and the multi-token one -- so the equality below is the statement that the
+    # decomposition is a code shape and not a different result.
+    assert single_plan.pv_singleton and not plan.pv_singleton
     _assert_bit_identical(single[0], batched[0], "f32")
     # Rows 1 and 2 are not degenerate, so the equality above is not a
     # comparison of two empty rows.

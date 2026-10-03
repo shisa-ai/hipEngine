@@ -5,6 +5,16 @@ from scripts import gemma4_staged_prefill_bench as bench
 from scripts.gemma4_staged_prefill_bench import inputs
 
 
+@pytest.mark.parametrize('duration', [0, -1, float('nan'), float('inf')])
+def test_event_timing_rejects_invalid_samples(duration):
+    with pytest.raises(ValueError, match='event duration'):
+        bench.valid_event_duration(duration)
+
+
+def test_event_timing_accepts_positive_finite_samples():
+    assert bench.valid_event_duration(0.02) == 0.02
+
+
 def test_prefill_block_is_causal_with_nonzero_absolute_offset():
     q, k, v, mask, offset = inputs(3, 7, 4, 2, 8, 0)
     assert offset == 4

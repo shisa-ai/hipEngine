@@ -14,6 +14,16 @@ shipped strict wrapper bitwise on identical device buffers.
 the workspace layout and the launch shape; this module states the host side of
 the same contract.
 
+The PV stage has two work decompositions, and the plan reports which one a
+launch selected. A single query token -- the shape with the fewest independent
+PV CTAs, because one CTA holds a whole query row's dimensions -- uses the
+singleton decomposition: 32 threads, two query rows that share a KV head per
+CTA, and one 32-dimension output slice per CTA, so the same launch has
+``ceil(rows_per_head / 2) * head_dim / 32`` independent CTAs over the same
+ascending-key chains. Every launch with more than one query token, and a
+single-token shape whose combined row-group-by-slice grid does not fit one grid
+dimension, keeps the 256-thread decomposition this candidate has always used.
+
 The workspace is explicit and stream/device-safe:
 
 * :func:`staged_workspace_bytes` and :class:`StagedWorkspaceLayout` give its
@@ -97,6 +107,15 @@ MAX_ROWS_PER_BLOCK = 8
 PV_TILE_KEYS = 256
 LDS_BUDGET_BYTES = 64 * 1024
 
+# The single-token PV decomposition: 32 threads, two query rows that share a KV
+# head per CTA, and one 32-dimension output slice per CTA. The two rows are the
+# reuse factor for a V element, the slice is what turns one CTA per KV head into
+# `ceil(rows_per_head / 2) * head_dim / 32` of them, and neither splits a key
+# range: every output element stays one ascending-key FP32 FMA chain.
+SINGLETON_THREADS = 32
+SINGLETON_ROWS_PER_BLOCK = 2
+SINGLETON_DIM_SLICE = 32
+
 # gfx11 grid X allows 2**31-1 CTAs; Y and Z allow 65535. Limits describe
 # the actual launch dimensions, not a context-admission policy.
 MAX_GRID_X = 2**31 - 1
@@ -144,6 +163,95 @@ class StagedWorkspaceLayout:
         return self.total_floats * 4
 
 
+def staged_pv_resident_rows(rows_per_head: int) -> int:
+    """Query rows one 256-thread PV CTA holds for a GQA ratio.
+
+    The ratios 1, 2, 4 and 8 fill the resident tile exactly, so their whole group
+    is in one CTA and their row count is a compile-time constant; every other
+    ratio keeps the generic kernel, which holds :data:`MAX_ROWS_PER_BLOCK` rows
+    and skips the ones past the group's end. The kernel's own
+    ``gemma4_staged_pv_resident_rows`` is this table and exports it, so the two
+    are compared on a device rather than assumed to agree.
+    """
+
+    return int(rows_per_head) if int(rows_per_head) in (1, 2, 4, 8) else MAX_ROWS_PER_BLOCK
+
+
+@dataclass(frozen=True, slots=True)
+class _PvDecomposition:
+    """Which PV work decomposition a shape launches, and the grid it launches on.
+
+    ``threads`` is the block width, ``rows_per_block`` the query rows one CTA
+    holds, ``dim_slices`` the number of CTAs the head width is divided into, and
+    ``row_groups`` the number of row groups per (token, KV head). The PV grid is
+    ``(tokens, num_kv_heads, row_groups * dim_slices)``: for the 256-thread
+    decomposition ``dim_slices`` is 1 and the Z dimension is the row group alone.
+    """
+
+    threads: int
+    rows_per_block: int
+    dim_slices: int
+    row_groups: int
+
+    @property
+    def singleton(self) -> bool:
+        return self.threads == SINGLETON_THREADS
+
+    @property
+    def grid_z(self) -> int:
+        return self.row_groups * self.dim_slices
+
+    @property
+    def lds_bytes(self) -> int:
+        """Shared bytes the selected PV kernel reserves for its weight tiles.
+
+        A singleton variant holds the rows it pairs, so its footprint follows its
+        own row count. The 256-thread launcher reserves its eight-row tile for
+        every variant, the exact ones included, so that decomposition's footprint
+        is that constant rather than the resident row count.
+        """
+
+        if self.singleton:
+            return staged_pv_lds_bytes(self.rows_per_block)
+        return staged_pv_lds_bytes()
+
+
+def _staged_pv_decomposition(
+    tokens: int, num_heads: int, num_kv_heads: int, head_dim: int
+) -> _PvDecomposition:
+    """The PV decomposition one shape launches: the singleton, or the 256-thread one.
+
+    A single query token is the case the 256-thread decomposition serves worst:
+    it holds every dimension of a query row in one CTA, so the launch has as few
+    PV CTAs as the layer has KV heads. The singleton decomposition pairs the
+    query rows that share a KV head (two per CTA, or one when the ratio is one)
+    and gives each CTA a 32-dimension slice of the output instead, which is
+    ``ceil(rows_per_head / rows) * head_dim / 32`` independent CTAs over the same
+    ascending-key chains.
+
+    Its Z dimension packs the row group and the slice, so it is selected only
+    while that product fits one grid dimension. Past it -- and for every launch
+    with more than one query token -- the 256-thread decomposition runs, which is
+    the code path this family has always used, so a shape is never refused for a
+    grid the other decomposition can represent. The caller has already validated
+    ``head_dim`` and the GQA ratio; this only chooses between the two.
+    """
+
+    rows_per_head = num_heads // num_kv_heads
+    if tokens == 1:
+        rows = 1 if rows_per_head == 1 else SINGLETON_ROWS_PER_BLOCK
+        dim_slices = head_dim // SINGLETON_DIM_SLICE
+        row_groups = -(-rows_per_head // rows)
+        if row_groups * dim_slices <= MAX_GRID_DIM:
+            return _PvDecomposition(SINGLETON_THREADS, rows, dim_slices, row_groups)
+    return _PvDecomposition(
+        THREADS,
+        staged_pv_resident_rows(rows_per_head),
+        1,
+        -(-rows_per_head // MAX_ROWS_PER_BLOCK),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class StagedAttentionPlan:
     """One resolved launch: the grid, the shared footprint and the workspace.
@@ -167,6 +275,9 @@ class StagedAttentionPlan:
     threads: int
     score_chunk_keys: int
     pv_tile_keys: int
+    pv_threads: int
+    pv_rows_per_block: int
+    pv_dim_slices: int
     score_lds_bytes: int
     softmax_lds_bytes: int
     pv_lds_bytes: int
@@ -189,16 +300,25 @@ class StagedAttentionPlan:
         return (self.rows, 1)
 
     @property
+    def pv_singleton(self) -> bool:
+        """True when the single-token decomposition is the one that ran."""
+
+        return self.pv_threads == SINGLETON_THREADS
+
+    @property
     def pv_grid(self) -> tuple[int, int, int]:
-        return (self.tokens, self.num_kv_heads, self.row_groups)
+        return (self.tokens, self.num_kv_heads, self.row_groups * self.pv_dim_slices)
 
     def describe(self) -> str:
         """One line naming the decomposition, for diagnostics."""
 
+        pv = "singleton" if self.pv_singleton else "multi"
         return (
             f"gemma4_attention_staged rows={self.rows} keys={self.keys} "
             f"score_grid={self.score_grid[0]}x{self.score_grid[1]} "
             f"pv_grid={self.pv_grid[0]}x{self.pv_grid[1]}x{self.pv_grid[2]} "
+            f"pv={pv}({self.pv_threads}t,{self.pv_rows_per_block}r,"
+            f"{self.pv_dim_slices}s) "
             f"rows_per_head={self.rows_per_head} lds={self.lds_bytes}B "
             f"workspace={self.workspace_bytes}B"
         )
@@ -316,18 +436,25 @@ def staged_softmax_lds_bytes() -> int:
     return (THREADS + 1) * 4
 
 
-def staged_pv_lds_bytes() -> int:
-    """Shared bytes the PV stage reserves: one weight tile per resident row."""
+def staged_pv_lds_bytes(rows_per_block: int = MAX_ROWS_PER_BLOCK) -> int:
+    """Shared bytes the PV stage reserves: one weight tile per resident row.
 
-    return MAX_ROWS_PER_BLOCK * PV_TILE_KEYS * 4
+    The footprint follows the decomposition's row count rather than the launch's:
+    the singleton decomposition holds two rows (2 KB) and the 256-thread one
+    holds eight (8 KB). Both are constant in ``keys``.
+    """
+
+    return int(rows_per_block) * PV_TILE_KEYS * 4
 
 
 def staged_lds_bytes(head_dim: int) -> int:
-    """Largest shared allocation any of the three stages asks for.
+    """Largest shared allocation any of the three stages can ask for.
 
     The bounded-layout property: this does not mention ``keys``, where
     ``gemma4_attention_shared_bytes(head_dim=512, keys=n)`` grows with ``n`` and
-    refuses above 15,616.
+    refuses above 15,616. It is the family's worst case over both PV
+    decompositions; the reservation of the decomposition one launch actually
+    selected is ``StagedAttentionPlan.lds_bytes``.
     """
 
     return max(
@@ -385,8 +512,8 @@ def staged_plan(
             f"KV heads; {num_kv_heads} would need a flattened PV grid"
         )
     rows_per_head = num_heads // num_kv_heads
-    row_groups = (rows_per_head + MAX_ROWS_PER_BLOCK - 1) // MAX_ROWS_PER_BLOCK
-    if row_groups > MAX_GRID_DIM:
+    pv = _staged_pv_decomposition(tokens, num_heads, num_kv_heads, head_dim)
+    if pv.row_groups > MAX_GRID_DIM:
         raise NotImplementedError(
             f"gemma4_attention_staged launches one PV CTA per {MAX_ROWS_PER_BLOCK} query "
             f"rows that share a KV head on a {MAX_GRID_DIM}-wide grid dimension, so it "
@@ -402,13 +529,16 @@ def staged_plan(
         rows=rows,
         chunks=chunks,
         rows_per_head=rows_per_head,
-        row_groups=row_groups,
+        row_groups=pv.row_groups,
         threads=THREADS,
         score_chunk_keys=SCORE_CHUNK_KEYS,
         pv_tile_keys=PV_TILE_KEYS,
+        pv_threads=pv.threads,
+        pv_rows_per_block=pv.rows_per_block,
+        pv_dim_slices=pv.dim_slices,
         score_lds_bytes=staged_score_lds_bytes(head_dim),
         softmax_lds_bytes=staged_softmax_lds_bytes(),
-        pv_lds_bytes=staged_pv_lds_bytes(),
+        pv_lds_bytes=pv.lds_bytes,
         workspace=_staged_workspace_layout(tokens, num_heads, keys),
     )
 

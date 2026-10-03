@@ -1978,6 +1978,36 @@ numeric 128K row is carried forward. Evidence:
 
 ### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
 
+#### Singleton staged-attention PV (2026-10-03)
+
+On physical host **zbook / Radeon 8060S (gfx1151)**, the default production
+staged-attention path uses independent output-dimension slices for a single
+query token, preserving each output's ascending-key FP32 accumulation chain.
+Synthetic BF16 attention with 16 query heads measures **28.7–81.7% lower latency**
+across ten sliding/full geometries at 127/513/2053/8191/17000 keys. Three
+seven-pair AB/BA blocks use identical device buffers and reusable workspace;
+all independent outputs are finite and bit-identical. Eight multi-query controls
+meet the predeclared candidate/baseline pooled-median limit of 1.02.
+
+A same-residency model diagnostic uses `UD-Q4_K_XL`, BF16 KV, capacity 8207,
+a fixed teacher token and prefix, and nine alternating replays per arm after
+warmup. Both arms bind frozen libraries identically; times include forward,
+host argmax and synchronization, not prefill or request loading:
+
+| Teacher-prefix tokens | Baseline decode wall | Singleton decode wall | Latency reduction |
+| --- | ---: | ---: | ---: |
+| 513 | 38.25 ms | 36.89 ms | 3.5% |
+| 2053 | 48.05 ms | 38.01 ms | 20.9% |
+| 8191 | 64.84 ms | 37.97 ms | 41.4% |
+
+Every replay's full logits match baseline bits. A separate `LLM.generate()`
+request at 2053/4 selects staged attention; cached native profiling confirms
+32-thread singleton PV kernels. The 134 unit/GPU primitive checks pass, and
+two saved 64-row strict teacher chains match full logits bit-for-bit. These
+measurements do not establish a free-running throughput curve, a 256K result,
+a llama.cpp comparison, or total host overhead.
+[Commands, samples, attribution and checks](results/2026-10-03-gemma4-gfx1151-staged-pv-singleton.json).
+
 #### Staged-attention PV specialization (2026-10-03)
 
 Production uses strict-order staged attention. Specializing the resident GQA
