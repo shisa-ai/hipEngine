@@ -1,16 +1,21 @@
 """CPU lifecycle regressions for :class:`Gemma4Runner`.
 
-Two ownership defects are pinned here without any HIP execution:
+Ownership defects pinned here without any HIP execution:
 
 * the reusable staging buffer used to allocate exactly the requested size and
   keep every replaced allocation, so a per-decode mask that grows with the
-  sequence retained O(n^2) bytes over a session; and
+  sequence retained O(n^2) bytes over a session;
 * ``__post_init__`` allocated the runner buffers with no exception cleanup, so
-  a failure partway through construction leaked every buffer already taken.
+  a failure partway through construction leaked every buffer already taken; and
+* every layer carried its own transient attention workspace, so a deep prefill
+  retained one growth chain per layer instead of one for the block.
 
-Both are checked through a fake allocator: ``malloc``/``free`` in the runner
-module are replaced with counters, and the config/weights are a tiny in-memory
-stand-in. No device, no kernel, no ROCm import.
+The runner tests are checked through a fake allocator: ``malloc``/``free`` in
+the runner module are replaced with counters, and the config/weights are a tiny
+in-memory stand-in. The shared-workspace tests drive ``Gemma4AttentionScratch``
+with a fake runtime of its own, which is the only thing it asks of a device:
+``current_device``, an allocator, and ``stream_synchronize``. No device, no
+kernel, no ROCm import.
 """
 
 from __future__ import annotations
@@ -79,9 +84,19 @@ def _config(*, num_layers: int = 2, hidden_size: int = 16) -> Gemma4TextConfig:
 
 
 def _weights(config: Gemma4TextConfig) -> SimpleNamespace:
-    # ``__post_init__`` reads only ``weights.config``; the projections are only
-    # touched by a forward pass, which these lifecycle tests never run.
-    return SimpleNamespace(config=config)
+    # ``__post_init__`` reads only ``weights.config`` and the per-layer dense
+    # widths. ``layers``, ``final_norm`` and ``embed_tokens`` are only touched by
+    # a forward pass, and the one test that runs the block body replaces every
+    # kernel it reaches, so placeholders are enough.
+    layers = tuple(SimpleNamespace() for _ in range(len(config.attention)))
+    return SimpleNamespace(
+        config=config,
+        layers=layers,
+        dense_intermediate=(),
+        final_norm=SimpleNamespace(buffer=SimpleNamespace(ptr=0)),
+        embed_tokens=SimpleNamespace(),
+        lm_head=None,
+    )
 
 
 def _wide_config(*, head_dim: int = 512, num_layers: int = 1) -> Gemma4TextConfig:
@@ -629,6 +644,232 @@ def test_multi_block_forward_takes_the_head_only_on_the_final_block(
         f"lm_head ran {len(heads)} times across 2 blocks; the loop overwrites "
         "every block but the last, so the earlier projections are unread work"
     )
+class _FakeAttentionRuntime:
+    """Stand-in for the HIP runtime that :class:`Gemma4AttentionScratch` asks for.
+
+    The scratch is handed a runtime on every ``buffer`` call and asks it for
+    three things: the current device, an allocation, and a stream
+    synchronization. The buffers are keyed by stream, so the events recorded
+    here are what show whether two layers shared one allocation and whether
+    cleanup synchronized before freeing.
+    """
+
+    def __init__(self, device: int = 0) -> None:
+        self.device = device
+        self.next_ptr = 0x90000
+        self.live: dict[int, int] = {}
+        self.events: list[tuple[str, int]] = []
+
+    def current_device(self) -> int:
+        return self.device
+
+    def malloc(self, nbytes: int) -> int:
+        self.next_ptr += 0x1000
+        self.live[self.next_ptr] = nbytes
+        self.events.append(("malloc", self.next_ptr))
+        return self.next_ptr
+
+    def free(self, ptr: int) -> None:
+        self.events.append(("free", ptr))
+        del self.live[ptr]
+
+    def stream_synchronize(self, stream: int) -> None:
+        self.events.append(("sync", stream))
+
+
+def test_runner_layers_share_one_attention_workspace_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One transient workspace serves every layer of a runner.
+
+    A layer's attention scratch is temporary: it is live only while that
+    layer's launch chain runs. Giving each layer its own owner retains one
+    growth chain per layer, which is what makes a deep prefill's workspace
+    scale with the layer count rather than with the widest request.
+    """
+
+    runner, _ = _make_runner(monkeypatch, config=_config(num_layers=4))
+    try:
+        owners = [scratch.attention for scratch in runner._scratches]
+        assert len(owners) == 4
+        assert all(owner is owners[0] for owner in owners)
+    finally:
+        runner.close()
+
+
+def test_separate_runners_keep_separate_attention_workspace_owners(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sharing is per runner; a second runner is not handed the first's owner."""
+
+    first, _ = _make_runner(monkeypatch, config=_config(num_layers=2))
+    second, _ = _make_runner(monkeypatch, config=_config(num_layers=2))
+    try:
+        assert first._scratches[0].attention is first._scratches[1].attention
+        assert second._scratches[0].attention is second._scratches[1].attention
+        assert first._scratches[0].attention is not second._scratches[0].attention
+    finally:
+        first.close()
+        second.close()
+
+
+def test_shared_attention_owner_reuses_one_buffer_per_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every layer's same-stream request lands on one allocation.
+
+    The layers are submitted serially on one stream, so a request made through
+    any layer's scratch must find the allocation the previous layer's kernels
+    are queued behind. A request on another stream must not: the scratch keys
+    its buffers by stream, because a kernel queued on stream 0 may still be
+    reading the workspace.
+    """
+
+    runner, _ = _make_runner(monkeypatch, config=_config(num_layers=4))
+    runtime = _FakeAttentionRuntime()
+    try:
+        owners = [scratch.attention for scratch in runner._scratches]
+        first = owners[0].buffer(4096, stream=0, runtime=runtime)
+        for owner in owners[1:]:
+            assert owner.buffer(4096, stream=0, runtime=runtime) is first
+        # Per-layer owners would have left four live allocations here.
+        assert runtime.live == {first.ptr: first.nbytes}
+
+        # A wider request grows the one shared allocation, and every layer sees
+        # the growth because they share the owner.
+        grown = owners[-1].buffer(8192, stream=0, runtime=runtime)
+        assert grown is not first
+        assert grown.nbytes >= 8192
+        assert owners[0].buffer(1, stream=0, runtime=runtime) is grown
+
+        other = owners[0].buffer(4096, stream=1, runtime=runtime)
+        assert other is not grown
+        assert other.ptr != grown.ptr
+        # Two streams hold two live workspaces; the replaced same-stream
+        # allocation is retained rather than freed under a queued kernel.
+        assert len(runtime.live) == 3
+    finally:
+        runner.close()
+
+
+def test_close_synchronizes_then_frees_the_shared_workspace_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup closes the shared owner once, after the stream is quiescent.
+
+    Each layer scratch still closes the workspace it was handed, so a shared
+    owner is closed once per layer; the close has to be idempotent and it has
+    to synchronize the used streams before freeing, or a queued kernel would
+    read a released allocation. The runner's own buffers must still be released
+    exactly once as well.
+    """
+
+    runner, allocator = _make_runner(monkeypatch, config=_config(num_layers=4))
+    runtime = _FakeAttentionRuntime()
+    try:
+        shared = runner._scratches[0].attention
+        assert all(scratch.attention is shared for scratch in runner._scratches)
+        buffer = shared.buffer(256, stream=0, runtime=runtime)
+        runner.close()
+        runner.close()
+
+        assert runtime.live == {}
+        frees = [event for event in runtime.events if event[0] == "free"]
+        assert frees == [("free", buffer.ptr)]
+        first_free = runtime.events.index(frees[0])
+        assert ("sync", 0) in runtime.events[:first_free]
+        assert [event for event in runtime.events if event[0] == "sync"] == [("sync", 0)]
+        assert len(allocator.freed) == len(allocator.allocated)
+    finally:
+        runner.close()
+
+
+def test_constructor_failure_closes_the_shared_workspace_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live shared workspace is released once when construction fails.
+
+    The failure lands while the second layer's KV is allocated, so two layer
+    scratches already exist and both point at the same owner. Cleanup runs
+    ``free`` over both, and the workspace must be synchronized and released
+    exactly once across them.
+    """
+
+    runtime = _FakeAttentionRuntime()
+    primed: list[int] = []
+    owners: list[object] = []
+    original_init = gemma4_module.Gemma4LayerScratch.__init__
+
+    allocator = _FakeAllocator()
+
+    def priming_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        owners.append(self.attention)
+        if not primed:
+            # Give the shared owner a live allocation before the failure, so
+            # the cleanup path has something to release.
+            primed.append(self.attention.buffer(256, stream=0, runtime=runtime).ptr)
+        elif allocator.fail_at is None:
+            # Fail on the next allocation after the second layer's scratch
+            # exists, which is that layer's own KV. The runner's pre-layer
+            # allocation count is not part of this test's contract, so the
+            # failure point is derived rather than hardcoded.
+            allocator.fail_at = allocator.calls + 1
+
+    monkeypatch.setattr(gemma4_module.Gemma4LayerScratch, "__init__", priming_init)
+    monkeypatch.setattr(gemma4_module, "malloc", allocator.malloc)
+    monkeypatch.setattr(gemma4_module, "free", allocator.free)
+
+    with pytest.raises(MemoryError):
+        Gemma4Runner(weights=_weights(_config(num_layers=4)), capacity=64, max_block=8)
+
+    assert primed, "the shared workspace was never exercised"
+    # Two layers were constructed before the failure, on one owner.
+    assert len(owners) == 2
+    assert owners[0] is owners[1]
+    assert runtime.live == {}
+    frees = [event for event in runtime.events if event[0] == "free"]
+    assert frees == [("free", primed[0])]
+    first_free = runtime.events.index(frees[0])
+    assert ("sync", 0) in runtime.events[:first_free]
+    assert len(allocator.freed) == len(allocator.allocated)
+
+
+def test_block_forward_hands_every_layer_the_shared_attention_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The block body runs every layer on the one owner, on one stream.
+
+    The constructor-level identity check says the scratches share an owner; this
+    says the block body actually hands that owner to each layer's launch chain,
+    with the default stream the sharing argument depends on. Every kernel the
+    block body reaches is replaced, so the layers' own arithmetic never runs.
+    """
+
+    runner, _ = _make_runner(monkeypatch, config=_config(num_layers=3), max_block=8)
+    seen: list[tuple[object, int]] = []
+
+    def fake_layer(*args, scratch, **kwargs):
+        seen.append((scratch.attention, int(kwargs.get("stream", 0))))
+
+    monkeypatch.setattr(gemma4_module, "gemma4_layer_forward_bf16", fake_layer)
+    monkeypatch.setattr(gemma4_module, "enqueue_host_to_device", lambda *a, **k: None)
+    monkeypatch.setattr(gemma4_module, "copy_device_to_host", lambda *a, **k: None)
+    monkeypatch.setattr(gemma4_module, "launch_gguf_embedding", lambda *a, **k: None)
+    monkeypatch.setattr(gemma4_module, "gemma4_scale_bf16", lambda *a, **k: None)
+    monkeypatch.setattr(gemma4_module, "gemma4_rmsnorm_f32w_bf16", lambda *a, **k: None)
+    monkeypatch.setattr(gemma4_module, "launch_gguf_linear", lambda *a, **k: None)
+
+    try:
+        runner._forward_block_inner([1, 2, 3], apply_softcap=False)
+    finally:
+        runner.close()
+
+    assert len(seen) == 3
+    assert [stream for _, stream in seen] == [0, 0, 0]
+    assert len({id(owner) for owner, _ in seen}) == 1
+
+
 def test_shared_kv_view_reports_geometry_and_live_positions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
