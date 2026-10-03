@@ -440,7 +440,7 @@ __device__ __forceinline__ void gemma4_decode_pass3(
 // bit-exact). Pass 2 and pass 3 are the block kernel's own partitions verbatim -
 // tree lane L accumulates keys j == L (mod 256) ascending, and each dimension
 // keeps its ascending-j chain - so only pass 1 changed shape.
-template <typename scalar_t, int kHalves, int kKeysPerTile>
+template <typename scalar_t, int kHalves, int kKeysPerTile, bool kGlobalLogits = false>
 __global__ void gemma4_attention_decode_class_kernel(
     const scalar_t* __restrict__ query,
     const scalar_t* __restrict__ key,
@@ -459,17 +459,22 @@ __global__ void gemma4_attention_decode_class_kernel(
     // running pass 3. The incumbent single-kernel path passes nullptr and is
     // byte-for-byte the kernel it was before this parameter existed.
     float* __restrict__ split_weights = nullptr,
-    float* __restrict__ split_header = nullptr) {
+    float* __restrict__ split_header = nullptr,
+    float* __restrict__ global_logits = nullptr) {
   constexpr int kWarpLanes = 32;
   constexpr int kOwn = 8;                       // tree lanes per warp lane
   constexpr int kTreeLanes = kWarpLanes * kOwn; // 256, the block kernel's lane count
 
   extern __shared__ float shared[];
-  float* logits_s = shared;
+  // Global rows are disjoint per (token, head). Block barriers also publish
+  // global stores before another wave consumes them. Only storage moves:
+  // the logit tree, denominator partitions and ordered V chains are unchanged.
+  float* logits_s = kGlobalLogits
+      ? global_logits + static_cast<int64_t>(blockIdx.x) * keys : shared;
   // One kTreeLanes-float denominator region per 256-thread group, so every
   // group can run the pinned 256-lane tree without colliding; only group 0's
   // result is used. See kGemma4ReduceThreads.
-  float* partial = logits_s + keys;
+  float* partial = kGlobalLogits ? shared : logits_s + keys;
   float* max_s = partial + kTreeLanes * (blockDim.x / kGemma4ReduceThreads);
 
   const unsigned int threads = blockDim.x;
@@ -952,7 +957,7 @@ void gemma4_decode_launch(
 
 // Key-class decode launcher: eight warps per (token, head), one warp per key
 // class, the block kernel's pass 2 and pass 3.
-template <typename scalar_t, int kHalves>
+template <typename scalar_t, int kHalves, bool kGlobalLogits = false>
 int gemma4_decode_class_launch(
     const scalar_t* query,
     const scalar_t* key,
@@ -965,26 +970,31 @@ int gemma4_decode_class_launch(
     float scale,
     int64_t tokens,
     int64_t keys,
-    hipStream_t stream) {
+    hipStream_t stream,
+    float* global_logits = nullptr) {
   constexpr int kKeysPerTile = 2;
   constexpr unsigned int kThreads = 512;
   const size_t shared_bytes =
-      (static_cast<size_t>(keys) + 256 * (kThreads / kGemma4ReduceThreads) +
+      ((kGlobalLogits ? 0 : static_cast<size_t>(keys)) +
+       256 * (kThreads / kGemma4ReduceThreads) +
        kThreads / 32) * sizeof(float);
   if (shared_bytes > 64 * 1024) {
     return -1;
   }
+  if (kGlobalLogits && global_logits == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
   const unsigned int grid = static_cast<unsigned int>(tokens * num_heads);
-  gemma4_attention_decode_class_kernel<scalar_t, kHalves, kKeysPerTile>
+  gemma4_attention_decode_class_kernel<scalar_t, kHalves, kKeysPerTile, kGlobalLogits>
       <<<dim3(grid), dim3(kThreads), shared_bytes, stream>>>(
           query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim, scale, tokens,
-          keys);
+          keys, nullptr, nullptr, global_logits);
   return static_cast<int>(hipGetLastError());
 }
 
 // Last decode selection: 0 = block, 1 = single key-class, 2 = two-phase
-// dimension partition, 3 = flash-decoding. Introspection only; this does not
-// change dispatch.
+// dimension partition, 3 = flash-decoding, 4 = global-logit strict class.
+// Introspection only; this does not change dispatch.
 inline int& gemma4_decode_selection() {
   static int selection = 0;
   return selection;
@@ -1458,6 +1468,20 @@ int launch_gemma4_attention_decode(
   if (num_heads % num_kv_heads != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  // Long rows use the strict class arithmetic with global logits, not an
+  // oversized LDS launch or a changed softmax. Match Python's resident bound
+  // so multi-row prefill uses the same owned-workspace route.
+  const size_t resident_bytes =
+      (static_cast<size_t>(keys) + (head_dim == 512 ? 768 : 528)) * sizeof(float);
+  if ((head_dim == 256 || head_dim == 512) && resident_bytes > 64 * 1024) {
+    const int rc = head_dim == 256
+        ? gemma4_decode_class_launch<scalar_t, 1, true>(query, key, value, keep_mask, out,
+              num_heads, num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace)
+        : gemma4_decode_class_launch<scalar_t, 2, true>(query, key, value, keep_mask, out,
+              num_heads, num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace);
+    gemma4_decode_selection() = 4;
+    return rc;
+  }
   int effective_slices = split_slices;
   if (split_slices < 0 && split_workspace != nullptr) {
     // Flash request: Python's admission already checked the capability
@@ -1551,8 +1575,8 @@ int launch_gemma4_attention_decode(
 }  // namespace
 
 // Returns 0 for block, 1 for single key-class, 2 for dimension partition,
-// or 3 for flash-decoding. Test/introspection surface for the routing
-// contract.
+// 3 for flash-decoding, or 4 for global-logit strict class. Test/introspection
+// surface for the routing contract.
 extern "C" int hipengine_gemma4_attention_decode_variant(void) {
   return gemma4_decode_selection();
 }

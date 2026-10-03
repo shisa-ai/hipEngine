@@ -49,12 +49,12 @@ does not imply token-by-token delivery during generation.
   generator.
 - Tool-call response parsing is not implemented. A server request containing
   tools returns HTTP 400 `unsupported_parameter`.
-- The attention implementation stores live-key scores in GPU shared memory.
-  For the 26B artifact's 512-wide attention heads, the kernel's capacity ceiling
-  is 15616 tokens; the default context is 8192. This is an implementation limit,
-  not the model's advertised context length. Larger capacities require a tiled
-  attention implementation and fail with a named shared-memory error. Memory
-  availability can impose a lower practical capacity.
+- BF16 attention uses request-owned global score scratch for 256/512-wide
+  heads when a resident score row would exceed 64 KiB of shared memory. The
+  fallback preserves the strict reduction order and batches at most four query
+  rows to bound per-layer global scratch. Other head geometries retain their
+  shared-memory capability limit. Available GPU memory can impose a lower
+  practical capacity; the default context is 8192.
 - This guide covers text inference, not image/audio input or speculative decode.
 
 ## Exercised coverage
@@ -66,6 +66,13 @@ server returned a clean Paris answer with end-of-turn stopping and HTTP 400 for
 the unsupported tool request. Targeted Gemma regression tests cover request
 controls, allocation cleanup, staging reuse, FFN and output-head geometry, and
 attention reduction/shared-memory boundaries.
+
+The BF16 bounded global-score fallback is exercised through `LLM.generate()`
+with 16384 prompt tokens and 128 generated tokens at capacity16640 on the
+26B-A4B UD-Q4_K_XL artifact. Collected logits are finite, and production selects
+the `global_class` route. This is a capacity/functional check, not a throughput
+comparison or a model-quality evaluation. See the
+[capacity artifact](../../benchmarks/results/gemma4-16k-bounded-scratch-20261003.json).
 
 These are functional checks, not a model-quality evaluation or a published
 throughput comparison. The [review closure](../../worklog/entries/20260923T091939.935292Z-lhl-gemma4-review-closure-474f1e.md)
