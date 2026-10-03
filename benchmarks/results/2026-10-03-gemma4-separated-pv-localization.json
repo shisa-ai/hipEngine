@@ -1,0 +1,468 @@
+{
+  "kind": "gemma4_separated_pv_localization",
+  "sources": {
+    "diagnostic_scores.hip": "09acd4105e39b5e6f1650278ed4b961d7811385f7d749e12ae6a108c0afb6741",
+    "gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+    "gemma4_attention_prefill_wmma.hip": "7ffddee7a72623494ff0cb821f08db71235e5d858a982343b414235293341bbd",
+    "gemma4_attention_prefill_wmma_full.hip": "9926115683bcc0bb6c7b98105e777ddf0ad0bd8ebad41bb910c4ac2e6c1d59c9"
+  },
+  "loading": {
+    "resolve_s": 0.46177719393745065,
+    "load_s": 15.297107391990721,
+    "internal_load_s": 15.057914514909498,
+    "resolution": {
+      "_resolved_backend": "hip_gfx1151",
+      "_resolved_quant": "gguf_q4_k_m",
+      "_resolved_execution_profile": {
+        "profile": "production",
+        "manifest_sha256": "11bd3c240c725a4e9330801feff134153098d7ba2748a39c0fe9548a3a10ccf3",
+        "fell_back_to_strict": false
+      },
+      "generator_type": "SubmitPollTextGenerator"
+    },
+    "context_length": 8255,
+    "runner_capacity": 8255,
+    "max_block": 512
+  },
+  "arms": [
+    {
+      "arm": "separated_2_terms",
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.001524270513237195,
+            "kl_p95": 0.0009394440326331318,
+            "kl_p99": 0.06500719615737721,
+            "kl_max": 0.06500719615737721,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p99",
+              "kl_max"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 576,
+          "calls": 1950
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.008217338910695312,
+            "kl_p95": 0.03713383648020113,
+            "kl_p99": 0.25058086288930864,
+            "kl_max": 0.25058086288930864,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 1094,
+          "calls": 1980
+        }
+      ]
+    },
+    {
+      "arm": "separated_3_terms",
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0010985907485161724,
+            "kl_p95": 0.004631585055481501,
+            "kl_p99": 0.05134112971018738,
+            "kl_max": 0.05134112971018738,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p99",
+              "kl_max"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 576,
+          "calls": 1950
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.015416865464643666,
+            "kl_p95": 0.04468318551532354,
+            "kl_p99": 0.49394686325709547,
+            "kl_max": 0.49394686325709547,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 1094,
+          "calls": 1980
+        }
+      ]
+    }
+  ],
+  "performance_claim": false,
+  "parent_commit": "fc32bf90824cfc6784df93a77261b7ee234afa13",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. OPENBLAS_NUM_THREADS=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python /tmp/priority_separated_pv.py",
+  "driver_sha256": "c76634da0309eefca3ea780be0a6e3852da369dfaadce6ad93381c6ad26a6e3e",
+  "helper_checks": [
+    {
+      "terms": 2,
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 0
+      },
+      "elements": 2097152,
+      "differing_elements": 837,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.03125,
+      "rms_diff": 3.00628344821741e-05,
+      "relative_l2_diff": 3.9630039689301784e-05
+    },
+    {
+      "terms": 2,
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 512,
+        "row_offset": 0
+      },
+      "elements": 4194304,
+      "differing_elements": 3989,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.125,
+      "rms_diff": 6.78034113400093e-05,
+      "relative_l2_diff": 0.00011585295858267755
+    },
+    {
+      "terms": 2,
+      "geometry": {
+        "tokens": 512,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 512
+      },
+      "elements": 2097152,
+      "differing_elements": 1347,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.0078125,
+      "rms_diff": 1.955200211014013e-05,
+      "relative_l2_diff": 2.6892945149268813e-05
+    },
+    {
+      "terms": 2,
+      "geometry": {
+        "tokens": 512,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 512
+      },
+      "elements": 4194304,
+      "differing_elements": 3699,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.0625,
+      "rms_diff": 5.9142096182588435e-05,
+      "relative_l2_diff": 0.00010811912744062366
+    },
+    {
+      "terms": 2,
+      "geometry": {
+        "tokens": 1,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 1023
+      },
+      "elements": 4096,
+      "differing_elements": 5,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.00390625,
+      "rms_diff": 6.151846178924564e-05,
+      "relative_l2_diff": 8.043049541547812e-05
+    },
+    {
+      "terms": 2,
+      "geometry": {
+        "tokens": 1,
+        "keys": 8192,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 8192,
+        "row_offset": 8191
+      },
+      "elements": 8192,
+      "differing_elements": 89,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.0625,
+      "rms_diff": 0.0006943801786929594,
+      "relative_l2_diff": 0.0012101321151079033
+    },
+    {
+      "terms": 2,
+      "geometry": {
+        "tokens": 1,
+        "keys": 8193,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 8193,
+        "row_offset": 8192
+      },
+      "elements": 8192,
+      "differing_elements": 43,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.00390625,
+      "rms_diff": 5.5691535846390784e-05,
+      "relative_l2_diff": 8.705315424392611e-05
+    },
+    {
+      "terms": 3,
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 0
+      },
+      "elements": 2097152,
+      "differing_elements": 832,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.03125,
+      "rms_diff": 3.0072312677399966e-05,
+      "relative_l2_diff": 3.964253422813865e-05
+    },
+    {
+      "terms": 3,
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 512,
+        "row_offset": 0
+      },
+      "elements": 4194304,
+      "differing_elements": 908,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.015625,
+      "rms_diff": 1.914105547274438e-05,
+      "relative_l2_diff": 3.2705550695560096e-05
+    },
+    {
+      "terms": 3,
+      "geometry": {
+        "tokens": 512,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 512
+      },
+      "elements": 2097152,
+      "differing_elements": 1345,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.0078125,
+      "rms_diff": 1.9551783485662795e-05,
+      "relative_l2_diff": 2.6892644440623013e-05
+    },
+    {
+      "terms": 3,
+      "geometry": {
+        "tokens": 512,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 512
+      },
+      "elements": 4194304,
+      "differing_elements": 2405,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.0625,
+      "rms_diff": 5.7530840153261184e-05,
+      "relative_l2_diff": 0.00010517355047905507
+    },
+    {
+      "terms": 3,
+      "geometry": {
+        "tokens": 1,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 1023
+      },
+      "elements": 4096,
+      "differing_elements": 5,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.00390625,
+      "rms_diff": 6.151846178924564e-05,
+      "relative_l2_diff": 8.043049541547812e-05
+    },
+    {
+      "terms": 3,
+      "geometry": {
+        "tokens": 1,
+        "keys": 8192,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 8192,
+        "row_offset": 8191
+      },
+      "elements": 8192,
+      "differing_elements": 88,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.0625,
+      "rms_diff": 0.0006943539837911864,
+      "relative_l2_diff": 0.0012100864639029004
+    },
+    {
+      "terms": 3,
+      "geometry": {
+        "tokens": 1,
+        "keys": 8193,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 8193,
+        "row_offset": 8192
+      },
+      "elements": 8192,
+      "differing_elements": 42,
+      "bitwise_equal": false,
+      "max_abs_diff": 0.00390625,
+      "rms_diff": 5.569153185934662e-05,
+      "relative_l2_diff": 8.705314801165463e-05
+    }
+  ],
+  "helper_check_command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. OPENBLAS_NUM_THREADS=1 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python /tmp/priority_separated_pv_check.py",
+  "compile_definitions_by_arm": {
+    "separated_2_terms": [
+      "-DDIAGNOSTIC_PROB_TERMS=2"
+    ],
+    "separated_3_terms": [
+      "-DDIAGNOSTIC_PROB_TERMS=3"
+    ]
+  },
+  "scope": "Two saved 64-row teacher chains and seven identical-input geometries. Strict scores/global statistics/no split; separate probability high/residual/tail WMMA accumulators, combined at epilogue. BF16 terms for full attention, FP16 terms for sliding. Ordinary expert routing. Diagnostic only.",
+  "patches_against_global_stats_control": {
+    "gemma4_attention_prefill_wmma.hip": "--- global_stats/gemma4_attention_prefill_wmma.hip\n+++ separated_pv/gemma4_attention_prefill_wmma.hip\n@@ -61,6 +61,10 @@\n #include <float.h>\n #include <math.h>\n #include <stdint.h>\n+\n+#ifndef DIAGNOSTIC_PROB_TERMS\n+#define DIAGNOSTIC_PROB_TERMS 2\n+#endif\n \n namespace {\n __device__ float* diagnostic_exact_scores = nullptr;\n@@ -288,9 +292,13 @@\n   }\n \n   float8_t accumulator[kDimTiles];\n+  float8_t low_accumulator[kDimTiles];\n+  float8_t tail_accumulator[kDimTiles];\n #pragma unroll\n   for (int tile = 0; tile < kDimTiles; ++tile) {\n     accumulator[tile] = zero_float8();\n+    low_accumulator[tile] = zero_float8();\n+    tail_accumulator[tile] = zero_float8();\n   }\n   const int64_t diagnostic_row = static_cast<int64_t>(valid_column ? query_row : 0) * num_heads + (valid_column ? query_head : 0);\n   float running_max = diagnostic_global_stats ? diagnostic_global_stats[diagnostic_row * 2] : -INFINITY;\n@@ -376,6 +384,8 @@\n #pragma unroll\n         for (int element = 0; element < 8; ++element) {\n           accumulator[dim_tile][element] *= previous_scale;\n+          low_accumulator[dim_tile][element] *= previous_scale;\n+          if (DIAGNOSTIC_PROB_TERMS > 2) tail_accumulator[dim_tile][element] *= previous_scale;\n         }\n       }\n     }\n@@ -386,6 +396,7 @@\n     // over one shuffle.\n     half2_t probability_pairs[kKeyTiles][8];\n     half2_t probability_residual_pairs[kKeyTiles][8];\n+    half2_t probability_tail_pairs[kKeyTiles][8];\n     float local_sum = 0.0f;\n #pragma unroll\n     for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {\n@@ -407,6 +418,13 @@\n             static_cast<half_t>(partner - static_cast<float>(ordered[1]))};\n         probability_residual_pairs[key_tile][element] =\n             (lane_hi == 0) ? residual : half2_t{residual[1], residual[0]};\n+        if (DIAGNOSTIC_PROB_TERMS > 2) {\n+          const half2_t tail = half2_t{\n+              static_cast<half_t>((probability - static_cast<float>(ordered[0])) - static_cast<float>(residual[0])),\n+              static_cast<half_t>((partner - static_cast<float>(ordered[1])) - static_cast<float>(residual[1]))};\n+          probability_tail_pairs[key_tile][element] =\n+              (lane_hi == 0) ? tail : half2_t{tail[1], tail[0]};\n+        }\n       }\n     }\n     const float batch_sum = local_sum + lane_xor16(local_sum);\n@@ -438,8 +456,14 @@\n         }\n         accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(\n             value_fragment, probability_fragment, accumulator[dim_tile]);\n-        accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(\n-            value_fragment, probability_residual_fragment, accumulator[dim_tile]);\n+        low_accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(\n+            value_fragment, probability_residual_fragment, low_accumulator[dim_tile]);\n+        if (DIAGNOSTIC_PROB_TERMS > 2) {\n+          const half16_t tail_fragment =\n+              *reinterpret_cast<const half16_t*>(probability_tail_pairs[key_tile]);\n+          tail_accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(\n+              value_fragment, tail_fragment, tail_accumulator[dim_tile]);\n+        }\n       }\n     }\n     __syncthreads();\n@@ -459,7 +483,9 @@\n     for (int element = 0; element < 8; ++element) {\n       const int dim = dim_tile * 16 + 2 * element + lane_hi;\n       const float diagnostic_denominator = diagnostic_global_stats ? diagnostic_global_stats[diagnostic_row * 2 + 1] : running_sum;\n-      out[out_base + dim] = float_to_bf16_bits(accumulator[dim_tile][element] / diagnostic_denominator);\n+      const float combined = accumulator[dim_tile][element] + low_accumulator[dim_tile][element] +\n+          (DIAGNOSTIC_PROB_TERMS > 2 ? tail_accumulator[dim_tile][element] : 0.0f);\n+      out[out_base + dim] = float_to_bf16_bits(combined / diagnostic_denominator);\n     }\n   }\n }\n",
+    "gemma4_attention_prefill_wmma_full.hip": "--- global_stats/gemma4_attention_prefill_wmma_full.hip\n+++ separated_pv/gemma4_attention_prefill_wmma_full.hip\n@@ -94,6 +94,10 @@\n #include <float.h>\n #include <math.h>\n #include <stdint.h>\n+\n+#ifndef DIAGNOSTIC_PROB_TERMS\n+#define DIAGNOSTIC_PROB_TERMS 2\n+#endif\n \n namespace {\n __device__ float* diagnostic_exact_scores = nullptr;\n@@ -447,9 +451,13 @@\n   }\n \n   float8_t accumulator[kDimTilesPerWave];\n+  float8_t low_accumulator[kDimTilesPerWave];\n+  float8_t tail_accumulator[kDimTilesPerWave];\n #pragma unroll\n   for (int tile = 0; tile < kDimTilesPerWave; ++tile) {\n     accumulator[tile] = zero_float8();\n+    low_accumulator[tile] = zero_float8();\n+    tail_accumulator[tile] = zero_float8();\n   }\n   const int64_t diagnostic_row = static_cast<int64_t>(valid_column ? query_row : 0) * num_heads + (valid_column ? query_head : 0);\n   float running_max = diagnostic_global_stats ? diagnostic_global_stats[diagnostic_row * 2] : -INFINITY;\n@@ -601,6 +609,8 @@\n #pragma unroll\n         for (int element = 0; element < 8; ++element) {\n           accumulator[dim_tile][element] *= previous_scale;\n+          low_accumulator[dim_tile][element] *= previous_scale;\n+          if (DIAGNOSTIC_PROB_TERMS > 2) tail_accumulator[dim_tile][element] *= previous_scale;\n         }\n       }\n     }\n@@ -611,6 +621,7 @@\n     // over one shuffle.\n     bf16x2_t probability_pairs[kKeyTiles][8];\n     bf16x2_t probability_residual_pairs[kKeyTiles][8];\n+    bf16x2_t probability_tail_pairs[kKeyTiles][8];\n     float local_sum = 0.0f;\n #pragma unroll\n     for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {\n@@ -631,6 +642,13 @@\n             static_cast<bf16_t>(partner - static_cast<float>(ordered[1]))};\n         probability_residual_pairs[key_tile][element] =\n             (lane_hi == 0) ? residual : bf16x2_t{residual[1], residual[0]};\n+        if (DIAGNOSTIC_PROB_TERMS > 2) {\n+          const bf16x2_t tail = bf16x2_t{\n+              static_cast<bf16_t>((probability - static_cast<float>(ordered[0])) - static_cast<float>(residual[0])),\n+              static_cast<bf16_t>((partner - static_cast<float>(ordered[1])) - static_cast<float>(residual[1]))};\n+          probability_tail_pairs[key_tile][element] =\n+              (lane_hi == 0) ? tail : bf16x2_t{tail[1], tail[0]};\n+        }\n       }\n     }\n     const float batch_sum = local_sum + lane_xor16(local_sum);\n@@ -663,8 +681,14 @@\n         }\n         accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(\n             value_fragment, probability_fragment, accumulator[dim_tile]);\n-        accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(\n-            value_fragment, probability_residual_fragment, accumulator[dim_tile]);\n+        low_accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(\n+            value_fragment, probability_residual_fragment, low_accumulator[dim_tile]);\n+        if (DIAGNOSTIC_PROB_TERMS > 2) {\n+          const bf16x16_t tail_fragment =\n+              *reinterpret_cast<const bf16x16_t*>(probability_tail_pairs[key_tile]);\n+          tail_accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(\n+              value_fragment, tail_fragment, tail_accumulator[dim_tile]);\n+        }\n       }\n     }\n     __syncthreads();\n@@ -688,7 +712,8 @@\n #pragma unroll\n       for (int element = 0; element < 8; ++element) {\n         const int dim = dim_base + dim_tile * 16 + 2 * element + lane_hi;\n-        dst[dim] = accumulator[dim_tile][element];\n+        dst[dim] = accumulator[dim_tile][element] + low_accumulator[dim_tile][element] +\n+            (DIAGNOSTIC_PROB_TERMS > 2 ? tail_accumulator[dim_tile][element] : 0.0f);\n       }\n     }\n     // The max and the denominator depend only on this column's scores, not on\n@@ -712,7 +737,9 @@\n     for (int element = 0; element < 8; ++element) {\n       const int dim = dim_base + dim_tile * 16 + 2 * element + lane_hi;\n       const float diagnostic_denominator = diagnostic_global_stats ? diagnostic_global_stats[diagnostic_row * 2 + 1] : running_sum;\n-    out[out_base + dim] = float_to_bf16_bits(accumulator[dim_tile][element] / diagnostic_denominator);\n+    const float combined = accumulator[dim_tile][element] + low_accumulator[dim_tile][element] +\n+        (DIAGNOSTIC_PROB_TERMS > 2 ? tail_accumulator[dim_tile][element] : 0.0f);\n+    out[out_base + dim] = float_to_bf16_bits(combined / diagnostic_denominator);\n     }\n   }\n }\n"
+  },
+  "result": "Both arms fail frozen KL bars despite top1=1.0 on both chains. Three terms reduce local full-prefill BF16 mismatches but mixed-summary maximum KL worsens to 0.493947. Pivot to an exact staged decomposition, not another WMMA precision promotion."
+}
