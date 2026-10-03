@@ -42,6 +42,8 @@ Guarded on both artifacts and on HIP.
 
 from __future__ import annotations
 
+import contextlib
+import os
 from pathlib import Path
 
 import numpy as np
@@ -103,6 +105,33 @@ _needs = pytest.mark.skipif(
     not (hip_runtime_available() and BACKBONE.exists() and HEAD.exists()),
     reason="the Gemma 4 backbone, the MTP head, and HIP are all required",
 )
+
+# The candidate oracle below is llama.cpp's own ``--verbose`` MTP log, so the
+# backbone feeding the head has to reproduce llama.cpp's arithmetic rather than
+# this tree's exact one. llama.cpp runs its own quantized MoE kernels; the exact
+# grouped-down default puts 623 above 3729 at draft step 3 (623 15.24 against
+# 3729 14.93), while llama.cpp and the split-projection MMQ route put 3729 above
+# 623 (14.97 against 15.11). This pin is the oracle's arithmetic requirement, not
+# a way past the default path: the default route is exercised by the other nodes
+# here and by ``scripts/gemma4_generated_history_gate.py``, whose production==strict
+# screen the split-MMQ route fails (mean KL 5.8e-3 against a 1e-3 bar).
+_LLAMACPP_PARITY_ROUTE = ("HIPENGINE_GEMMA4_MOE_PREFILL", "mmq")
+
+
+@contextlib.contextmanager
+def _llamacpp_parity_route():
+    """Pin the MoE route whose arithmetic llama.cpp's candidate list assumes."""
+
+    key, value = _LLAMACPP_PARITY_ROUTE
+    previous = os.environ.get(key)
+    os.environ[key] = value
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = previous
 
 # A short synthetic prompt with repeated structure. Not asserted on: the head
 # disagrees with its own backbone here (see the first test's docstring). Kept
@@ -272,9 +301,14 @@ def test_the_draft_chain_reproduces_llamacpps_candidates() -> None:
     state and every later step uses the head's own projected state at a constant
     position. Asserting the top three at each step, rather than only the top one,
     makes an implementation that re-seeds or re-norms partway through fail.
+
+    The session runs under :func:`_llamacpp_parity_route` because the oracle is
+    llama.cpp's output, not this engine's: the head's candidates follow the
+    backbone's expert arithmetic, and only the llama.cpp-compatible route puts
+    the step-3 candidates in llama.cpp's order.
     """
 
-    with _Session(TEMPLATED) as session:
+    with _llamacpp_parity_route(), _Session(TEMPLATED) as session:
         drafted = []
         token = session.sampled
         for step, expected in enumerate(LLAMACPP_CANDIDATES):
