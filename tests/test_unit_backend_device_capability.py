@@ -496,6 +496,10 @@ def test_public_llm_seam_refuses_before_generator_or_device_work(
     from hipengine import LLM
     from hipengine.kernels import backends
 
+    # Import builtin runtime modules before replacing exported helpers: their
+    # module-level ``from ... import`` bindings must not retain our sentinel
+    # after monkeypatch teardown and contaminate later tests.
+    generation.register_builtin_generators()
     metadata_read = {"count": 0}
 
     def _stub_metadata(self):
