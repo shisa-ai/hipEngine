@@ -182,6 +182,64 @@ class Rebinding(unittest.TestCase):
         self.assertEqual(core.rebind([other], decisions), [])
 
 
+    @staticmethod
+    def _detailed_finding(line, detail="server/api.py"):
+        return core.Row(
+            kind="doc-path-drift", key=f"docs/REFACTOR.md:{line}:{detail}",
+            title=f"names {detail}", location=f"docs/REFACTOR.md:{line}",
+            evidence={"line": line}, signals=[],
+            hints={"anchor": "docs/REFACTOR.md",
+                   "refs": [f"docs/REFACTOR.md:{line}:{detail}"],
+                   "tokens": ["names", detail]},
+        )
+
+    def test_moved_reference_with_detail_keeps_decision_and_stale_evidence(self):
+        before, after = self._detailed_finding(100), self._detailed_finding(170)
+        decision = decide(before, hints=before.hints, note="verified existing path")
+        decisions = {before.id: decision}
+        moved = core.rebind([after], decisions)
+        self.assertEqual([(m[0], m[1]) for m in moved], [(before.id, after.id)])
+        self.assertEqual(decisions[after.id].note, "verified existing path")
+        self.assertEqual(decisions[after.id].evidence_hash, before.evidence_hash)
+        self.assertEqual(core.reconcile([after], decisions)["stale"], [after])
+
+    def test_detailed_reference_preserves_numeric_suffix_and_other_path(self):
+        self.assertEqual(core._ref_identity({"a.py:100:phase:2"}), {"a.py:phase:2"})
+        before = self._detailed_finding(100, "server/api.py")
+        after = self._detailed_finding(170, "runtime/pool.py")
+        decisions = {before.id: decide(before, hints=before.hints)}
+        self.assertEqual(core.rebind([after], decisions), [])
+
+    def test_ambiguous_repeated_sites_do_not_depend_on_row_order(self):
+        before = self._detailed_finding(100)
+        a, b = self._detailed_finding(170), self._detailed_finding(240)
+        for candidates in ([a, b], [b, a]):
+            decisions = {before.id: decide(before, hints=before.hints)}
+            self.assertEqual(core.rebind(candidates, decisions), [])
+            self.assertEqual(list(decisions), [before.id])
+
+    def test_ambiguous_reference_is_not_resolved_by_an_earlier_match(self):
+        old_a = self._detailed_finding(100)
+        old_b = self._detailed_finding(120)
+        x, y = self._detailed_finding(170), self._detailed_finding(240)
+        # B has an exact reference to X; A cannot inherit Y just because B
+        # claimed X first. Its original evidence was ambiguous between X/Y.
+        old_b.hints = x.hints
+        for old in ([old_a, old_b], [old_b, old_a]):
+            decisions = {r.id: decide(r, hints=r.hints) for r in old}
+            moved = core.rebind([x, y], decisions)
+            self.assertEqual([(m[0], m[1]) for m in moved], [(old_b.id, x.id)])
+            self.assertIn(old_a.id, decisions)
+            self.assertNotIn(y.id, decisions)
+
+    def test_two_old_decisions_cannot_compete_for_one_moved_site(self):
+        a, b = self._detailed_finding(100), self._detailed_finding(120)
+        after = self._detailed_finding(170)
+        decisions = {old.id: decide(old, hints=old.hints) for old in (a, b)}
+        self.assertEqual(core.rebind([after], decisions), [])
+        self.assertEqual(set(decisions), {a.id, b.id})
+
+
 class Expiry(unittest.TestCase):
     def test_a_decision_past_its_date_is_reported(self):
         target = row()
