@@ -25,7 +25,11 @@ FLAG = re.compile(r"\bHIPENGINE_[A-Z0-9_]+\b")
 #  A backticked token that looks like a repo path.
 PATHISH = re.compile(r"`([A-Za-z0-9_./-]+\.(?:py|hip|md|json|toml|h))`")
 #  Language that states when the entry should disappear.
-CONDITION = re.compile(r"\b(remove (?:it |this )?(?:when|after|once)|delete when|drop when|until|unblock)\b", re.I)
+CONDITION = re.compile(
+    r"\b(remove (?:it |this )?(?:when|after|once)|delete when|drop when|until|unblock)\b"
+    r"|\b(?:clearing|removal) condition:[ \t]*\S",
+    re.I,
+)
 
 
 def sections(text: str) -> list[tuple[int, str, str]]:
