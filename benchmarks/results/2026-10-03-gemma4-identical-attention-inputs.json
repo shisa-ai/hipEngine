@@ -1,0 +1,968 @@
+{
+  "kind": "gemma4_identical_attention_inputs",
+  "performance_claim": false,
+  "surface": "hipengine.LLM.generate",
+  "outputs": [
+    "### Migration Plan"
+  ],
+  "scope": "Diagnostic only: saved prompt, public greedy request, identical inputs; sampled float64 oracle, not a teacher-forced production gate.",
+  "case": "general_en_plan",
+  "prompt_ids_sha256": "090acc8de1564cebd2ecb79229895728d807868996555922f47a341eeafc52a6",
+  "loading": {
+    "resolve_s": 0.42385423299856484,
+    "load_s": 15.01833142794203,
+    "internal_load_s": 14.780005951994099,
+    "resolution": {
+      "_resolved_backend": "hip_gfx1151",
+      "_resolved_quant": "gguf_q4_k_m",
+      "_resolved_execution_profile": {
+        "profile": "production",
+        "manifest_sha256": "11bd3c240c725a4e9330801feff134153098d7ba2748a39c0fe9548a3a10ccf3",
+        "fell_back_to_strict": false
+      },
+      "generator_type": "SubmitPollTextGenerator"
+    },
+    "context_length": 8255,
+    "runner_capacity": 8255,
+    "max_block": 512
+  },
+  "sources": {
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip": "d17d9ce22e7af26ff471c01b71652497a7201f8b211e519e5ffba1382f7f4b48",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.hip": "f5a28a348a11b2748cb7df8f929f29d02e057556012a40396e6a594a3b10d305",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip": "39507883359b3df454878a407be11224a7a550853da00570a13123b60536325c"
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-10-03T02:48:51.815834+00:00",
+    "host_name": "zbook",
+    "repo_root": "/home/lhl/hipEngine-gemma4",
+    "hipengine_commit": "ce6adf9b44b110d3f8694b63cd8560bca69f34ab",
+    "git_branch": "gemma4",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 3,
+    "dirty": true,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+      "size_bytes": 17010980576,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8504966000,
+        17009932000
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/gemma4_attention_input_diagnostic.py",
+      "--packet-directory",
+      "/tmp/priority-quality-full-v2",
+      "--case",
+      "general_en_plan",
+      "--out",
+      "/tmp/priority-identical-inputs-final-public-general-en.json",
+      "--snapshots",
+      "/tmp/priority-identical-inputs-final-public-general-en",
+      "--per-phase-limit",
+      "4"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": null,
+    "warmups": null,
+    "repetitions": null,
+    "profiler": null
+  },
+  "captures": [
+    {
+      "phase": "prefill",
+      "variant": "gemma4_wmma_flash",
+      "selected_output_unchanged": true,
+      "selection_reason": "capability match",
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 0
+      },
+      "snapshot": "/tmp/priority-identical-inputs-final-public-general-en/00-prefill-256-512.npz",
+      "snapshot_sha256": "d5a91296f07306150bac4d6db94ff47603236b78743516cddeadfc9ee69a3b4a",
+      "comparison": {
+        "elements": 2097152,
+        "differing_elements": 73448,
+        "bitwise_equal": false,
+        "max_abs_diff": 0.0625,
+        "rms_diff": 0.0002728031815739567,
+        "relative_l2_diff": 0.0003596201455838856
+      },
+      "oracle_samples": [
+        {
+          "row": 0,
+          "head": 0,
+          "live_keys": 1,
+          "score_min": 13.553249206859618,
+          "score_max": 13.553249206859618,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.0,
+          "wmma_float64_reference_l2": 0.0
+        },
+        {
+          "row": 0,
+          "head": 7,
+          "live_keys": 1,
+          "score_min": 9.913567701354623,
+          "score_max": 9.913567701354623,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.0,
+          "wmma_float64_reference_l2": 0.0
+        },
+        {
+          "row": 0,
+          "head": 8,
+          "live_keys": 1,
+          "score_min": 9.780477552092634,
+          "score_max": 9.780477552092634,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.0,
+          "wmma_float64_reference_l2": 0.0
+        },
+        {
+          "row": 0,
+          "head": 15,
+          "live_keys": 1,
+          "score_min": 11.118007359094918,
+          "score_max": 11.118007359094918,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.0,
+          "wmma_float64_reference_l2": 0.0
+        },
+        {
+          "row": 256,
+          "head": 0,
+          "live_keys": 257,
+          "score_min": -10.908472459763288,
+          "score_max": 21.664519001249573,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 2,
+          "strict_float64_reference_l2": 0.024572087307849794,
+          "wmma_float64_reference_l2": 0.02457213897139334
+        },
+        {
+          "row": 256,
+          "head": 7,
+          "live_keys": 257,
+          "score_min": 4.762156881392002,
+          "score_max": 16.58458874747157,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 9,
+          "strict_float64_reference_l2": 0.016718392502666747,
+          "wmma_float64_reference_l2": 0.0167191569576359
+        },
+        {
+          "row": 256,
+          "head": 8,
+          "live_keys": 257,
+          "score_min": -7.088314359076321,
+          "score_max": 11.202695584943285,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 8,
+          "strict_float64_reference_l2": 0.01830320126634136,
+          "wmma_float64_reference_l2": 0.01830324702140894
+        },
+        {
+          "row": 256,
+          "head": 15,
+          "live_keys": 257,
+          "score_min": -0.6065079160034657,
+          "score_max": 13.567455295007676,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 10,
+          "strict_float64_reference_l2": 0.021383424580425525,
+          "wmma_float64_reference_l2": 0.021383703652970546
+        },
+        {
+          "row": 511,
+          "head": 0,
+          "live_keys": 512,
+          "score_min": -12.836205064260866,
+          "score_max": 17.943689162668306,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 4,
+          "strict_float64_reference_l2": 0.02109639812908302,
+          "wmma_float64_reference_l2": 0.021097191719880767
+        },
+        {
+          "row": 511,
+          "head": 7,
+          "live_keys": 512,
+          "score_min": 0.4652897072955966,
+          "score_max": 15.236232109367847,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 7,
+          "strict_float64_reference_l2": 0.009758927769940189,
+          "wmma_float64_reference_l2": 0.009761562386823658
+        },
+        {
+          "row": 511,
+          "head": 8,
+          "live_keys": 512,
+          "score_min": -4.923439685255289,
+          "score_max": 10.23999535269104,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 22,
+          "strict_float64_reference_l2": 0.01651135186941869,
+          "wmma_float64_reference_l2": 0.01651163606583568
+        },
+        {
+          "row": 511,
+          "head": 15,
+          "live_keys": 512,
+          "score_min": -7.008231248706579,
+          "score_max": 10.503989139106125,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 7,
+          "strict_float64_reference_l2": 0.007564806642723131,
+          "wmma_float64_reference_l2": 0.0075653033848817105
+        }
+      ],
+      "input_tensor_sha256": "8ccf186fed218924375438acac732eab9fc2ec4dc7dfa9439f3f901a8e1fe2d5"
+    },
+    {
+      "phase": "prefill",
+      "variant": "gemma4_wmma_flash_full",
+      "selected_output_unchanged": true,
+      "selection_reason": "capability match",
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 512,
+        "row_offset": 0
+      },
+      "snapshot": "/tmp/priority-identical-inputs-final-public-general-en/01-prefill-512-512.npz",
+      "snapshot_sha256": "0b170b9ab62e91201f1765998437515388f37ff96ffe47fda0f815718d84c9b9",
+      "comparison": {
+        "elements": 4194304,
+        "differing_elements": 853584,
+        "bitwise_equal": false,
+        "max_abs_diff": 0.125,
+        "rms_diff": 0.0008330682313472951,
+        "relative_l2_diff": 0.001423430140097865
+      },
+      "oracle_samples": [
+        {
+          "row": 0,
+          "head": 0,
+          "live_keys": 1,
+          "score_min": 6.110049987677485,
+          "score_max": 6.110049987677485,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.0,
+          "wmma_float64_reference_l2": 0.0
+        },
+        {
+          "row": 0,
+          "head": 7,
+          "live_keys": 1,
+          "score_min": 6.998214625651599,
+          "score_max": 6.998214625651599,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.0,
+          "wmma_float64_reference_l2": 0.0
+        },
+        {
+          "row": 0,
+          "head": 8,
+          "live_keys": 1,
+          "score_min": 5.42614994890755,
+          "score_max": 5.42614994890755,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.0,
+          "wmma_float64_reference_l2": 0.0
+        },
+        {
+          "row": 0,
+          "head": 15,
+          "live_keys": 1,
+          "score_min": 4.044628169060161,
+          "score_max": 4.044628169060161,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.0,
+          "wmma_float64_reference_l2": 0.0
+        },
+        {
+          "row": 256,
+          "head": 0,
+          "live_keys": 257,
+          "score_min": -1.8992389515042305,
+          "score_max": 5.720144523307681,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 113,
+          "strict_float64_reference_l2": 0.01701926757307041,
+          "wmma_float64_reference_l2": 0.017904869272575948
+        },
+        {
+          "row": 256,
+          "head": 7,
+          "live_keys": 257,
+          "score_min": -2.9841174222528934,
+          "score_max": 6.708841112529626,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 132,
+          "strict_float64_reference_l2": 0.012232655635674808,
+          "wmma_float64_reference_l2": 0.012754180311794554
+        },
+        {
+          "row": 256,
+          "head": 8,
+          "live_keys": 257,
+          "score_min": -5.229654208524153,
+          "score_max": 4.348539583734237,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 87,
+          "strict_float64_reference_l2": 0.015875807944011323,
+          "wmma_float64_reference_l2": 0.01627938093159211
+        },
+        {
+          "row": 256,
+          "head": 15,
+          "live_keys": 257,
+          "score_min": -4.327125587093178,
+          "score_max": 4.458959620445967,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 78,
+          "strict_float64_reference_l2": 0.018735045657271698,
+          "wmma_float64_reference_l2": 0.01930475544898892
+        },
+        {
+          "row": 511,
+          "head": 0,
+          "live_keys": 512,
+          "score_min": -5.841827915981412,
+          "score_max": 4.8466824763745535,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 141,
+          "strict_float64_reference_l2": 0.014831991196560706,
+          "wmma_float64_reference_l2": 0.026809392374112218
+        },
+        {
+          "row": 511,
+          "head": 7,
+          "live_keys": 512,
+          "score_min": -6.0101246882695705,
+          "score_max": 9.211984322406352,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 74,
+          "strict_float64_reference_l2": 0.02856777689711149,
+          "wmma_float64_reference_l2": 0.02893779514848671
+        },
+        {
+          "row": 511,
+          "head": 8,
+          "live_keys": 512,
+          "score_min": -6.237641496467404,
+          "score_max": 3.3983754565706477,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 95,
+          "strict_float64_reference_l2": 0.015587381731077586,
+          "wmma_float64_reference_l2": 0.01619997820095202
+        },
+        {
+          "row": 511,
+          "head": 15,
+          "live_keys": 512,
+          "score_min": -6.157996956259012,
+          "score_max": 4.290249063538795,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 166,
+          "strict_float64_reference_l2": 0.014549456190432339,
+          "wmma_float64_reference_l2": 0.015420027938054554
+        }
+      ],
+      "input_tensor_sha256": "51550ee1da26873cc9114de26f802aa5a48f414f2f34cac3ad9696129ae3ec4e"
+    },
+    {
+      "phase": "prefill",
+      "variant": "gemma4_wmma_flash",
+      "selected_output_unchanged": true,
+      "selection_reason": "capability match",
+      "geometry": {
+        "tokens": 512,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 512
+      },
+      "snapshot": "/tmp/priority-identical-inputs-final-public-general-en/02-prefill-256-1024.npz",
+      "snapshot_sha256": "0e9367f2aa1ae0e33310eadaa6087d8aaa703d692efe093b2595769736a65a03",
+      "comparison": {
+        "elements": 2097152,
+        "differing_elements": 67029,
+        "bitwise_equal": false,
+        "max_abs_diff": 0.0625,
+        "rms_diff": 0.00025359042160456153,
+        "relative_l2_diff": 0.0003488028110970039
+      },
+      "oracle_samples": [
+        {
+          "row": 0,
+          "head": 0,
+          "live_keys": 513,
+          "score_min": -13.40243966995331,
+          "score_max": 18.19495770917274,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 4,
+          "strict_float64_reference_l2": 0.025447376085017875,
+          "wmma_float64_reference_l2": 0.025447387235330698
+        },
+        {
+          "row": 0,
+          "head": 7,
+          "live_keys": 513,
+          "score_min": 0.4586435230448842,
+          "score_max": 15.353941970970482,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 3,
+          "strict_float64_reference_l2": 0.013452891792461091,
+          "wmma_float64_reference_l2": 0.013452952186109418
+        },
+        {
+          "row": 0,
+          "head": 8,
+          "live_keys": 513,
+          "score_min": -5.692795583978295,
+          "score_max": 10.260889524361119,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 5,
+          "strict_float64_reference_l2": 0.008944359265536597,
+          "wmma_float64_reference_l2": 0.008944373814227432
+        },
+        {
+          "row": 0,
+          "head": 15,
+          "live_keys": 513,
+          "score_min": -7.6209406442940235,
+          "score_max": 11.710806038230658,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 9,
+          "strict_float64_reference_l2": 0.025867814649185562,
+          "wmma_float64_reference_l2": 0.025868841510270787
+        },
+        {
+          "row": 256,
+          "head": 0,
+          "live_keys": 769,
+          "score_min": -13.677665866911411,
+          "score_max": 18.11934590525925,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 8,
+          "strict_float64_reference_l2": 0.02074037070787585,
+          "wmma_float64_reference_l2": 0.02074231634288925
+        },
+        {
+          "row": 256,
+          "head": 7,
+          "live_keys": 769,
+          "score_min": -1.1650333222933114,
+          "score_max": 12.993391170166433,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 12,
+          "strict_float64_reference_l2": 0.009675464112430457,
+          "wmma_float64_reference_l2": 0.009679852643433224
+        },
+        {
+          "row": 256,
+          "head": 8,
+          "live_keys": 769,
+          "score_min": -10.305324289947748,
+          "score_max": 9.300329169025645,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 11,
+          "strict_float64_reference_l2": 0.017861892945021236,
+          "wmma_float64_reference_l2": 0.017869658604609394
+        },
+        {
+          "row": 256,
+          "head": 15,
+          "live_keys": 769,
+          "score_min": -4.95030577480793,
+          "score_max": 9.874849951360375,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 14,
+          "strict_float64_reference_l2": 0.0056496344839129945,
+          "wmma_float64_reference_l2": 0.005650324487182056
+        },
+        {
+          "row": 511,
+          "head": 0,
+          "live_keys": 1024,
+          "score_min": -14.631981141399592,
+          "score_max": 18.84146152588073,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 3,
+          "strict_float64_reference_l2": 0.024302959131465757,
+          "wmma_float64_reference_l2": 0.02430344387148488
+        },
+        {
+          "row": 511,
+          "head": 7,
+          "live_keys": 1024,
+          "score_min": -1.046660688240081,
+          "score_max": 15.079742647707462,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 7,
+          "strict_float64_reference_l2": 0.014948379015069223,
+          "wmma_float64_reference_l2": 0.014949294607995595
+        },
+        {
+          "row": 511,
+          "head": 8,
+          "live_keys": 1024,
+          "score_min": -7.7217817306518555,
+          "score_max": 8.795889992266893,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 9,
+          "strict_float64_reference_l2": 0.013006211656410025,
+          "wmma_float64_reference_l2": 0.013008299686639753
+        },
+        {
+          "row": 511,
+          "head": 15,
+          "live_keys": 1024,
+          "score_min": -4.340175956487656,
+          "score_max": 10.758834554813802,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 2,
+          "strict_float64_reference_l2": 0.010486213251328855,
+          "wmma_float64_reference_l2": 0.01048626153153012
+        }
+      ],
+      "input_tensor_sha256": "03d171209c34a32e42e9f655f148a56295a60fa7aa4e18957437663793d51818"
+    },
+    {
+      "phase": "prefill",
+      "variant": "gemma4_wmma_flash_full",
+      "selected_output_unchanged": true,
+      "selection_reason": "capability match",
+      "geometry": {
+        "tokens": 512,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 512
+      },
+      "snapshot": "/tmp/priority-identical-inputs-final-public-general-en/03-prefill-512-1024.npz",
+      "snapshot_sha256": "43303d61fbb9f258364d2339fc671cd228339f214e2fedf98af2e911305093a2",
+      "comparison": {
+        "elements": 4194304,
+        "differing_elements": 652835,
+        "bitwise_equal": false,
+        "max_abs_diff": 0.125,
+        "rms_diff": 0.00066557786973496,
+        "relative_l2_diff": 0.00121675935018209
+      },
+      "oracle_samples": [
+        {
+          "row": 0,
+          "head": 0,
+          "live_keys": 513,
+          "score_min": -4.927094265818596,
+          "score_max": 8.809158621821553,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 92,
+          "strict_float64_reference_l2": 0.028641193863648114,
+          "wmma_float64_reference_l2": 0.03032036285794154
+        },
+        {
+          "row": 0,
+          "head": 7,
+          "live_keys": 513,
+          "score_min": -7.365671517327428,
+          "score_max": 9.711239269003272,
+          "strict_bf16_reference_mismatches": 2,
+          "wmma_bf16_reference_mismatches": 52,
+          "strict_float64_reference_l2": 0.026792541742103226,
+          "wmma_float64_reference_l2": 0.027158034465146808
+        },
+        {
+          "row": 0,
+          "head": 8,
+          "live_keys": 513,
+          "score_min": -8.359927531331778,
+          "score_max": 3.7902067708637333,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 130,
+          "strict_float64_reference_l2": 0.012954475830307524,
+          "wmma_float64_reference_l2": 0.017503566083589932
+        },
+        {
+          "row": 0,
+          "head": 15,
+          "live_keys": 513,
+          "score_min": -6.590056102024391,
+          "score_max": 5.680839649401605,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 74,
+          "strict_float64_reference_l2": 0.017266739857647477,
+          "wmma_float64_reference_l2": 0.017589622402216884
+        },
+        {
+          "row": 256,
+          "head": 0,
+          "live_keys": 769,
+          "score_min": -3.0331442710012197,
+          "score_max": 6.945898565463722,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 83,
+          "strict_float64_reference_l2": 0.011933129820287597,
+          "wmma_float64_reference_l2": 0.012123708178950532
+        },
+        {
+          "row": 256,
+          "head": 7,
+          "live_keys": 769,
+          "score_min": -6.128302613273263,
+          "score_max": 9.275573228485882,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 97,
+          "strict_float64_reference_l2": 0.016863458954541694,
+          "wmma_float64_reference_l2": 0.017609588626926825
+        },
+        {
+          "row": 256,
+          "head": 8,
+          "live_keys": 769,
+          "score_min": -5.740859531331807,
+          "score_max": 4.976948362396797,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 63,
+          "strict_float64_reference_l2": 0.015713671957920488,
+          "wmma_float64_reference_l2": 0.01581124437110765
+        },
+        {
+          "row": 256,
+          "head": 15,
+          "live_keys": 769,
+          "score_min": -6.023692751303315,
+          "score_max": 6.29600588825997,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 54,
+          "strict_float64_reference_l2": 0.017446879142736904,
+          "wmma_float64_reference_l2": 0.017557874314806966
+        },
+        {
+          "row": 511,
+          "head": 0,
+          "live_keys": 1024,
+          "score_min": -3.7416822812519968,
+          "score_max": 7.2281943537527695,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 69,
+          "strict_float64_reference_l2": 0.015003911864242171,
+          "wmma_float64_reference_l2": 0.01518397017809978
+        },
+        {
+          "row": 511,
+          "head": 7,
+          "live_keys": 1024,
+          "score_min": -7.346829447313212,
+          "score_max": 8.583462023292668,
+          "strict_bf16_reference_mismatches": 1,
+          "wmma_bf16_reference_mismatches": 99,
+          "strict_float64_reference_l2": 0.01593731648113525,
+          "wmma_float64_reference_l2": 0.016927361365176332
+        },
+        {
+          "row": 511,
+          "head": 8,
+          "live_keys": 1024,
+          "score_min": -6.382311717490666,
+          "score_max": 4.8841897245147265,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 64,
+          "strict_float64_reference_l2": 0.017601895896330565,
+          "wmma_float64_reference_l2": 0.017740146994545306
+        },
+        {
+          "row": 511,
+          "head": 15,
+          "live_keys": 1024,
+          "score_min": -7.148185847880086,
+          "score_max": 7.36838024421013,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 104,
+          "strict_float64_reference_l2": 0.01565111942716749,
+          "wmma_float64_reference_l2": 0.01585767078037681
+        }
+      ],
+      "input_tensor_sha256": "8304ddbc9755d79e23f550f7a36a0bb20e13cc6ec385b3c7e9aa2d6ece9fc705"
+    },
+    {
+      "phase": "decode",
+      "variant": "gemma4_plain",
+      "selected_output_unchanged": true,
+      "selection_reason": "decode: a 1-token block routes to the decode kernel, which is the faster path at 1024 keys",
+      "geometry": {
+        "tokens": 1,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 1023
+      },
+      "snapshot": "/tmp/priority-identical-inputs-final-public-general-en/04-decode-256-1024.npz",
+      "snapshot_sha256": "a1497b4e4d3425bb3f91a911ef301cfbe7e05f019fe2e450b024aaeb12715abb",
+      "comparison": {
+        "elements": 4096,
+        "differing_elements": 0,
+        "bitwise_equal": true,
+        "max_abs_diff": 0.0,
+        "rms_diff": 0.0,
+        "relative_l2_diff": 0.0
+      },
+      "oracle_samples": [
+        {
+          "row": 0,
+          "head": 0,
+          "live_keys": 1024,
+          "score_min": -15.934369713068008,
+          "score_max": 19.164139214437455,
+          "strict_bf16_reference_mismatches": 1,
+          "wmma_bf16_reference_mismatches": 1,
+          "strict_float64_reference_l2": 0.025465003863987153,
+          "wmma_float64_reference_l2": 0.025465003863987153
+        },
+        {
+          "row": 0,
+          "head": 7,
+          "live_keys": 1024,
+          "score_min": 2.6515167206525803,
+          "score_max": 15.223424632102251,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.016331389041388672,
+          "wmma_float64_reference_l2": 0.016331389041388672
+        },
+        {
+          "row": 0,
+          "head": 8,
+          "live_keys": 1024,
+          "score_min": -8.018224416300654,
+          "score_max": 13.831035481765866,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.02098422149727911,
+          "wmma_float64_reference_l2": 0.02098422149727911
+        },
+        {
+          "row": 0,
+          "head": 15,
+          "live_keys": 1024,
+          "score_min": -3.9206944620236754,
+          "score_max": 11.228571362793446,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 0,
+          "strict_float64_reference_l2": 0.010149702230269585,
+          "wmma_float64_reference_l2": 0.010149702230269585
+        }
+      ],
+      "input_tensor_sha256": "a9dbdeaba62fd80ff82dc83ec6e352bc671d84d5cf98b1dee0c213c9da900e86"
+    },
+    {
+      "phase": "decode",
+      "variant": "gemma4_wmma_flash_full",
+      "selected_output_unchanged": true,
+      "selection_reason": "capability match",
+      "geometry": {
+        "tokens": 1,
+        "keys": 8192,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 8192,
+        "row_offset": 8191
+      },
+      "snapshot": "/tmp/priority-identical-inputs-final-public-general-en/05-decode-512-8192.npz",
+      "snapshot_sha256": "18d2df25c7ff6a9c82546be59457cac3256a3ee46b7bba182a4deb5040bcbc31",
+      "comparison": {
+        "elements": 8192,
+        "differing_elements": 1598,
+        "bitwise_equal": false,
+        "max_abs_diff": 0.0625,
+        "rms_diff": 0.0010775916533556067,
+        "relative_l2_diff": 0.0018779744968418191
+      },
+      "oracle_samples": [
+        {
+          "row": 0,
+          "head": 0,
+          "live_keys": 8192,
+          "score_min": -5.6363843735307455,
+          "score_max": 8.376352443476208,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 111,
+          "strict_float64_reference_l2": 0.00959667354174213,
+          "wmma_float64_reference_l2": 0.009922756437203174
+        },
+        {
+          "row": 0,
+          "head": 7,
+          "live_keys": 8192,
+          "score_min": -7.296811071923003,
+          "score_max": 9.102005876629846,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 150,
+          "strict_float64_reference_l2": 0.013994378746877164,
+          "wmma_float64_reference_l2": 0.014271335224487099
+        },
+        {
+          "row": 0,
+          "head": 8,
+          "live_keys": 8192,
+          "score_min": -8.475511947413906,
+          "score_max": 6.209814845351502,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 113,
+          "strict_float64_reference_l2": 0.014025322121831918,
+          "wmma_float64_reference_l2": 0.014550671223568477
+        },
+        {
+          "row": 0,
+          "head": 15,
+          "live_keys": 8192,
+          "score_min": -8.203025679453276,
+          "score_max": 5.101783375110244,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 83,
+          "strict_float64_reference_l2": 0.01222618596947965,
+          "wmma_float64_reference_l2": 0.012516195196447859
+        }
+      ],
+      "input_tensor_sha256": "6e07c45bfb0b6f55e8bf13b67921070418869d8182c35979d4ed25a611bbec14"
+    },
+    {
+      "phase": "decode",
+      "variant": "gemma4_wmma_flash_full",
+      "selected_output_unchanged": true,
+      "selection_reason": "capability match",
+      "geometry": {
+        "tokens": 1,
+        "keys": 8193,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 8193,
+        "row_offset": 8192
+      },
+      "snapshot": "/tmp/priority-identical-inputs-final-public-general-en/06-decode-512-8193.npz",
+      "snapshot_sha256": "5351bae7162f1a9f3fb3fd6d9892e5530fb2f25db28eec2fac4ab8cd660eaab9",
+      "comparison": {
+        "elements": 8192,
+        "differing_elements": 1314,
+        "bitwise_equal": false,
+        "max_abs_diff": 0.0625,
+        "rms_diff": 0.0013095418911383062,
+        "relative_l2_diff": 0.0020469852466015923
+      },
+      "oracle_samples": [
+        {
+          "row": 0,
+          "head": 0,
+          "live_keys": 8193,
+          "score_min": -6.214782998897135,
+          "score_max": 8.305646600201726,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 121,
+          "strict_float64_reference_l2": 0.024885753312389916,
+          "wmma_float64_reference_l2": 0.029356820803792205
+        },
+        {
+          "row": 0,
+          "head": 7,
+          "live_keys": 8193,
+          "score_min": -7.202009444590658,
+          "score_max": 9.87711597373709,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 56,
+          "strict_float64_reference_l2": 0.02749420778942621,
+          "wmma_float64_reference_l2": 0.02767648593368459
+        },
+        {
+          "row": 0,
+          "head": 8,
+          "live_keys": 8193,
+          "score_min": -8.038448397303,
+          "score_max": 7.956960919313133,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 68,
+          "strict_float64_reference_l2": 0.029032284440512333,
+          "wmma_float64_reference_l2": 0.02924673380741011
+        },
+        {
+          "row": 0,
+          "head": 15,
+          "live_keys": 8193,
+          "score_min": -10.557113353861496,
+          "score_max": 6.081345118913305,
+          "strict_bf16_reference_mismatches": 0,
+          "wmma_bf16_reference_mismatches": 106,
+          "strict_float64_reference_l2": 0.014564997389217784,
+          "wmma_float64_reference_l2": 0.014911325094592094
+        }
+      ],
+      "input_tensor_sha256": "c8724c17c083b740661d42261dae036e8b21725ae3d701732ed71768061eff38"
+    }
+  ],
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. OPENBLAS_NUM_THREADS=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gemma4_attention_input_diagnostic.py --packet-directory /tmp/priority-quality-full-v2 --case general_en_plan --out /tmp/priority-identical-inputs-final-public-general-en.json --snapshots /tmp/priority-identical-inputs-final-public-general-en --per-phase-limit 4",
+  "evaluator_sha256": "bf8163851c6c07fd5354c9f377cf2dafc6eea0e62bb7031bea60c22fdf3cd1e2"
+}
