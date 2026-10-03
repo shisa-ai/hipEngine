@@ -51,6 +51,14 @@ def observe_attention_launches():
         layer.select_prefill_attention = original
 
 
+def summarize_attention_launches(records):
+    """Count by query width, not semantic phase: prefill can end in one row."""
+    counts = Counter((r["variant"], "singleton" if r["tokens"] == 1 else "multi_token")
+                     for r in records)
+    return [{"variant": variant, "query_width": width, "invocations": count}
+            for (variant, width), count in sorted(counts.items())]
+
+
 def main(argv=None):
     from scripts.gemma4_campaign_bench import DEFAULT_ARTIFACT, exact_prompt_ids
 
@@ -76,12 +84,12 @@ def main(argv=None):
             outputs = llm.generate(ids, SamplingParams(max_tokens=args.output,
                                                        temperature=0.0, ignore_eos=True))
             get_hip_runtime().device_synchronize()
-        counts = Counter((r["variant"], "decode" if r["tokens"] == 1 else "prefill")
-                         for r in records)
+        counts = summarize_attention_launches(records)
         profile = getattr(llm, "_resolved_execution_profile", None)
         sources = {}
-        for path in (_ROOT / "hipengine/kernels/hip_gfx1100/gemma4").glob("*wmma_full*.hip"):
-            sources[str(path.relative_to(_ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted((_ROOT / "hipengine/kernels/hip_gfx1100/gemma4").glob("gemma4_attention*")):
+            if path.suffix in (".hip", ".py"):
+                sources[str(path.relative_to(_ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
         report = {
             "kind": "gemma4_public_attention_route_observation",
             "performance_claim": False,
@@ -90,8 +98,7 @@ def main(argv=None):
             "execution_profile_manifest": getattr(profile, "manifest", None),
             "manifest_sha256": getattr(profile, "manifest_sha256", None),
             "source_sha256": sources,
-            "counts": [{"variant": variant, "phase": phase, "invocations": count}
-                       for (variant, phase), count in sorted(counts.items())],
+            "counts": counts,
             "launches": records,
             "outputs": outputs,
             "provenance": collect_artifact_provenance(

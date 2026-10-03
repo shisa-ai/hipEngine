@@ -538,6 +538,16 @@ def gemma4_attention_serves_keys(
         strict_reason = str(strict_miss)
     refusals = [strict_reason]
     for request in _requested_variants(requested_variant):
+        if request == PREFILL_ATTENTION_STAGED:
+            from .gemma4_attention_staged import staged_plan
+
+            try:
+                staged_plan(tokens=1, keys=keys, num_heads=num_heads,
+                            num_kv_heads=num_kv_heads, head_dim=head_dim)
+                return None
+            except (ValueError, NotImplementedError) as miss:
+                refusals.append(f"{request}: {miss}")
+            continue
         if request == PREFILL_ATTENTION_WMMA_FLASH:
             from .gemma4_attention_prefill_wmma import (
                 gemma4_attention_prefill_wmma_supported,
@@ -1096,6 +1106,7 @@ def register_gemma4_attention_kernels(*, replace: bool = False) -> None:
 # decision and not a licence to fail a request.
 
 PREFILL_ATTENTION_PLAIN = "gemma4_plain"
+PREFILL_ATTENTION_STAGED = "gemma4_staged"
 PREFILL_ATTENTION_WMMA_FLASH = "gemma4_wmma_flash"
 PREFILL_ATTENTION_WMMA_FLASH_FULL = "gemma4_wmma_flash_full"
 PREFILL_ATTENTION_QUANTS = ("gguf_q4_k_m", "gguf_q4_k_xl", "gguf_q8_0", "gguf")
@@ -1122,7 +1133,7 @@ class PrefillAttentionSelection:
 
     @property
     def is_strict(self) -> bool:
-        return self.variant == PREFILL_ATTENTION_PLAIN
+        return self.variant in (PREFILL_ATTENTION_PLAIN, PREFILL_ATTENTION_STAGED)
 
     def describe(self) -> str:
         """One line naming the variant and the reason, for diagnostics."""
@@ -1170,7 +1181,8 @@ def _select_prefill_attention(
             requested_variant=requested_variant,
             reason="strict",
         )
-    if tokens is not None and tokens <= 1 and _strict_decode_preferred(keys):
+    if (tokens is not None and tokens <= 1 and _strict_decode_preferred(keys)
+            and PREFILL_ATTENTION_STAGED not in requests):
         return PrefillAttentionSelection(
             variant=PREFILL_ATTENTION_PLAIN,
             launcher=gemma4_attention_prefill_bf16,
@@ -1190,6 +1202,23 @@ def _select_prefill_attention(
                 launcher=gemma4_attention_prefill_bf16,
                 requested_variant=requested_variant,
                 reason="strict",
+            )
+        if request == PREFILL_ATTENTION_STAGED:
+            from .gemma4_attention_staged import gemma4_attention_staged_bf16, staged_plan
+
+            try:
+                staged_plan(tokens=1 if tokens is None else tokens,
+                            keys=1 if keys is None else keys,
+                            num_heads=num_heads, num_kv_heads=num_kv_heads,
+                            head_dim=head_dim)
+            except (ValueError, NotImplementedError) as miss:
+                refusals.append(f"{PREFILL_ATTENTION_STAGED}: {miss}")
+                continue
+            return PrefillAttentionSelection(
+                variant=PREFILL_ATTENTION_STAGED,
+                launcher=gemma4_attention_staged_bf16,
+                requested_variant=requested_variant,
+                reason="strict staged capability match",
             )
         if request == PREFILL_ATTENTION_WMMA_FLASH:
             # Imported here so the candidate's module -- and the build of its

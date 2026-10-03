@@ -3,7 +3,16 @@ from dataclasses import dataclass
 
 import pytest
 
-from scripts.gemma4_public_route_probe import observe_attention_launches
+from scripts.gemma4_public_route_probe import observe_attention_launches, summarize_attention_launches
+
+
+def test_single_row_prefill_tail_is_not_claimed_as_decode():
+    records = [{"variant": "gemma4_staged", "tokens": width} for width in (512, 1, 1)]
+    assert summarize_attention_launches(records) == [
+        {"variant": "gemma4_staged", "query_width": "multi_token", "invocations": 1},
+        {"variant": "gemma4_staged", "query_width": "singleton", "invocations": 2},
+    ]
+
 
 
 @dataclass(frozen=True)

@@ -26,63 +26,51 @@ returns only the definition, the package export, and this entry, and the Gemma 4
 unit tier plus one public `LLM.generate()` request pass after the wrapper is
 gone. Removal should be its own unit, separate from the fusion that stranded it.
 
-## Gemma 4's WMMA prefill attention is on; the teacher-forced KL gate is met, the wider promotion set is not (found 2026-09-29)
+## Gemma 4 WMMA attention candidates are explicit evaluation paths (updated 2026-10-03)
 
-`gemma4_wmma_flash` and `gemma4_wmma_flash_full` are the `production` profile's
-selections for Gemma 4's prefill attention -- the sliding geometry (head_dim
-256, 16 query heads, 8 KV heads, 25 of 30 layers) and the full geometry
-(head_dim 512, 16 query heads, 2 KV heads, 5 of 30 layers) respectively -- and
-are therefore on by default. The layer matches each request against its own head
-geometry, so the two candidates cover all 30 layers between them; any geometry
-neither implements falls back to `gemma4_plain` on a capability miss rather than
-raising.
+Production requests `gemma4_staged` for sliding head_dim 256 and full head_dim
+512 attention; strict requests `gemma4_plain`. Staged attention preserves the
+strict score tree, 256-lane softmax denominator, and ascending-key FP32 P*V
+chain, with scores in global workspace and bounded LDS. The profile is the
+rollback lever: `HIPENGINE_EXECUTION_PROFILE=strict` selects plain attention.
 
-Both are changed-arithmetic paths: the score dot is reassociated through the
-16x16x16 F16 matrix unit and the softmax weights are rounded to FP16 before the
-P*V dot. Each candidate's evidence artifact carries its own kernel row against
-the strict kernel on the same bench buffers (13.64x at 4096 tokens for the
-sliding geometry, 9.19x for the full one) and its correctness cases at a
-declared four-BF16-ulp bound (20 and 19 cases respectively). The end-to-end
-ladder is measured in all three arms at four prompt lengths:
+`gemma4_wmma_flash` and `gemma4_wmma_flash_full` remain registered for explicit
+evaluation. They are not production defaults: the multicategory teacher-chain
+packet found KL failures, including chains on which the older full-attention
+parent also fails. Precision controls that preserve only strict scores or
+replace only the probability/value arithmetic also fail the frozen bars.
+The staged repair reproduces the two saved failing chains bitwise. Full packet
+and public-route evidence belong to
+`worklog/entries/20261003T040334.761582Z-lhl-gemma4-staged-exact-repair-c2e87f.md`.
 
-| prompt | strict only | sliding candidate | both candidates | llama.cpp |
-| ---: | ---: | ---: | ---: | ---: |
-| 512 | 870.0 | 1012.8 | 1078 | 1012.98 |
-| 1024 | 707.2 | 925.1 | 1042 | 1057.48 |
-| 2048 | 570.0 | 804.6 | 1007 | 1067.14 |
-| 4096 | 456.1 | 628.2 | 973 | 1039.85 |
-
-**The production numerical gate is met.**
+The 2026-09-29 single-chain result in
 `benchmarks/results/2026-09-29-gemma4-teacher-forced-gate-prefill-attention.json`
-records the `docs/EXECUTION-PROFILES.md` §6 verdict on the shipping path against
-a frozen strict baseline over the campaign chain (2048 prompt tokens, 1024
-prefilled, 1023 scored rows, vocab 262144): mean KL 4.68e-06, p95 1.09e-05, p99
-5.21e-05, max 1.74e-03 against limits 1e-3 / 5e-3 / 2e-2 / 5e-2, and top-1 100
-percent with zero flips. `passed: true`, `failed: []`, with the decode split
-observed on 30690 launches over keys 1024-2047. The first run of this gate
-failed with `no_decode_launches_observed` and a 1.39e-02 max KL, which is how
-the selection bug below was found.
+is historical evidence, not coverage of the failing categories or a performance
+claim for staged attention. Its original kernel-speed artifacts likewise measure
+WMMA, not the staged default.
 
-**What is still outstanding is the rest of the promotion set**: this evaluator
-is a single teacher-forced chain, so it supplies no category, isolation or task
-gates, and 1023 rows on one chain is not the 500-1000 *paired* row standard.
-Both routes are T2 association candidates, so that set is what their promotion
-evidence is made of. It is tracked in
-`docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`, not here.
+Removal condition: delete the WMMA wrappers, HIP sources and explicit routing
+branches once their remaining arithmetic-evaluation work is closed. Preserve
+strict plain attention as the registered fallback and parity oracle. Do not
+remove the execution-profile selection itself; it is a product API, not a
+candidate-only flag.
 
-The lever is the profile, not an env var: `HIPENGINE_EXECUTION_PROFILE=strict`
-restores `gemma4_plain` everywhere. Remove it when either candidate is
-superseded, or once the promotion set above is complete and the candidates
-carry default evidence.
+## Plain Gemma attention needs raw-coordinate boundary validation (found 2026-10-03)
 
-This candidate's routing is worth one note for whoever reads it next. The
-variant is selected by head geometry **and block width**: a one-token block is a
-decode step and keeps the strict kernel, because the candidates tile 16 query
-rows wide and the strict path has a dedicated decode kernel. A first cut matched
-on geometry alone, so decode ran the prefill tiling on all 30 layers and lost 10
-percent; `scripts/gemma4_teacher_forced_gate.py`'s route check is what caught it,
-because it asserts on observed launcher selections rather than the requested
-policy. A change that routes decode off the strict path re-fires it.
+The strict plain family's `gemma4_attn_first_kept` and window walk-end calculations
+in `gemma4_attention.hip` narrow caller-supplied int64 coordinates to `int` without
+clamping them to the key range. Its launchers also lack complete grid/product
+validation. The staged repair adds overflow-safe clamping and host/device shape
+checks, but leaves the plain oracle's ordinary arithmetic and launch contract
+unchanged. This is a direct raw-launch boundary issue, not a measured regression
+on model-generated coordinates. A matching pre-repair staged reproducer caused
+a GPU queue memory fault; it was run in an isolated process.
+
+Removal condition: add plain host/device coordinate and grid/product validation
+with focused tiny-coordinate and invalid-shape regressions, then run
+`tests/test_gpu_gemma4_attention_staged.py` to confirm ordinary strict/staged
+parity still passes. Reject or clamp unrepresentable inputs before a launch;
+do not reproduce an unchecked device read merely to obtain a RED crash.
 
 ## Gemma prefill attention tiled variant is a dead route (found 2026-09-28)
 
