@@ -1452,9 +1452,17 @@ class LLM:
         if self._resolved_backend is not None:
             return self._resolved_backend
 
-        from hipengine.kernels.backends import resolve_backend
+        from hipengine.kernels.backends import (
+            require_backend_device_compatibility,
+            resolve_backend,
+        )
 
-        self._resolved_backend = resolve_backend(self.backend)
+        resolved = resolve_backend(self.backend)
+        # Refuse an explicit backend the selected device cannot execute before
+        # any model load or kernel launch, so a mismatch fails with a named
+        # capability error instead of a HIP segmentation fault at first launch.
+        require_backend_device_compatibility(resolved)
+        self._resolved_backend = resolved
         return self._resolved_backend
 
     @property
