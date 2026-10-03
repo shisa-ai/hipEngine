@@ -1334,11 +1334,24 @@ identical resources and launch geometry (256 VGPRs, 55,296 bytes of LDS, grid
 20480x4) and differ by 1.93x; a timing-only probe of the same kernel reading a
 pre-converted f16 activation runs **1.303 ms**, at the comparator's 1.339 ms
 kernel time, which attributes the remainder to the activation representation
-rather than the kernel. It is registered but not a default: f16 operands put it
-at 2.83e-03 against the exact float64 reference, the same arithmetic class the
-registered `wmma_prefill` family already has, and no production gate has been
-run.
+rather than the kernel. When that packet was written the route was registered but
+not a default: f16 operands put it at 2.83e-03 against the exact float64
+reference, the same arithmetic class the registered `wmma_prefill` family already
+has, and no production gate had been run.
 [Wide-row Q8_0 prefill candidate](results/2026-09-16-dense-wide-q8-prefill-candidate/README.md).
+
+**That gate has since been run, and the route is the production default for layers
+16-47.** The certified plan for `gguf_ud_q4_k_xl` binds
+`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE=1` with
+`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS` at 16-47, so the wide kernel replaces
+the coltile chain on two thirds of this model's Q8 projections and the exact
+coltile chain keeps every layer below 16 as the registered strict fallback. The
+same plan clears `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`, because both families
+selectable for the same layers is the contention the 2026-09-17 route fix had to
+resolve. **The consequence for how this file's per-operation table should be
+read:** the dense-projection rows below are a 2026-09-16 capture taken before
+that certification, so they price the exact chain on all 48 layers and are an
+upper bound on the current prefill rather than a description of it.
 
 ## Current Qwen3.6-35B quantization quality
 
