@@ -333,6 +333,7 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
     runtime: HipRuntime | None = None,
     _wave_scale: bool = False,
     _no_gate: bool = False,
+    _row_batch: int = 4,
 ) -> None:
     """Launch exact raw-Q8 GR up, sigmoid gate, and branch mean.
 
@@ -340,6 +341,15 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
     gate values are already in registers and already feed ``mixed``, so ``mixed``
     is bit-identical and ``gate_ptr`` may be 0. See
     :func:`gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32`.
+
+    ``_row_batch`` selects the row-reuse width of the same kernel body: 4 is the
+    production value. It is a strict retile, not an arithmetic change, so every
+    value is bit-identical to 4 at every shape. **8 and 16 are measured dead**
+    (0.833-0.844x and 0.430-0.437x against the production wave-scale parent on two
+    real Q8_0 banks, occupancy-bound: 130 and 256 VGPR against the parent's 72) and
+    exist only so the screen and a wider-register-file machine class can name them;
+    they are not registered for dispatch. See
+    ``benchmarks/results/2026-10-04-qwen4exp-gr-row-batch-width/``.
     """
 
     _validate("gguf_q8_0", rows, in_features, branches * hidden, threads)
@@ -347,18 +357,22 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
         raise ValueError("branches must equal 4")
     if hidden <= 0 or hidden % 2:
         raise ValueError("hidden must be a positive multiple of 2")
+    if _row_batch not in (4, 8, 16):
+        raise ValueError("row_batch must be one of 4, 8, 16")
+    if _no_gate and _row_batch != 4:
+        raise ValueError("no_gate exists only for row_batch 4")
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     if _no_gate:
-        symbol = (
-            "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32"
-        )
+        tail = "no_gate_f32"
     elif _wave_scale:
-        symbol = (
-            "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32"
-        )
+        tail = "wave_scale_f32"
     else:
-        symbol = "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32"
+        tail = "f32"
+    symbol = (
+        "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_"
+        f"rowbatch{_row_batch}_{tail}"
+    )
     fn = _cached_fn(
         library,
         symbol,
@@ -383,6 +397,28 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
 
 def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32(*args, **kwargs):
     gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(*args, **kwargs, _wave_scale=True)
+
+
+def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_f32(*args, **kwargs):
+    """Widened row reuse (ROW_BATCH 8, HIDDEN_TILE 2); bit-identical and measured slower."""
+
+    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(*args, **kwargs, _row_batch=8)
+
+
+def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_wave_scale_f32(*args, **kwargs):
+    """Wave-scale decode with widened row reuse; bit-identical and measured slower."""
+
+    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+        *args, **kwargs, _row_batch=8, _wave_scale=True
+    )
+
+
+def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch16_wave_scale_f32(*args, **kwargs):
+    """ROW_BATCH 16 screen arm; bit-identical and measured slower."""
+
+    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+        *args, **kwargs, _row_batch=16, _wave_scale=True
+    )
 
 
 def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32(
@@ -1024,6 +1060,12 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
                        "coltile2_branch4_rowbatch4_wave_scale_f32_exact"),
              gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32,
              replace=replace)
+    # ROW_BATCH 8/16 are deliberately NOT registered. They are bit-exact and measured
+    # slower at every shape (0.833-0.844x / 0.430-0.437x, occupancy-bound: 130 and 256
+    # VGPR against the parent's 72), so they are a rejected lever, not a selectable
+    # variant, and a registry key would make a dead path reachable from dispatch. They
+    # stay exported because the screen names them and a wider-register-file machine
+    # class may want to re-measure them; see docs/REFACTOR.md.
     register(
         KernelKey(
             "hip_gfx1100",
@@ -1776,6 +1818,9 @@ __all__ = [
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_f32",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_wave_scale_f32",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch16_wave_scale_f32",
     "gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out",
     "gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out",

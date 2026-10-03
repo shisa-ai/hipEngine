@@ -33,11 +33,21 @@ def main():
     p.add_argument("--tensor", action="append")
     p.add_argument("--pressure-mib", type=int, default=0)
     p.add_argument("--gr-composite", action="store_true")
+    p.add_argument(
+        "--gr-candidate",
+        help="GR composite candidate symbol override (requires --gr-composite)",
+    )
+    p.add_argument(
+        "--gr-parent",
+        help="GR composite parent symbol override (requires --gr-composite)",
+    )
     args = p.parse_args()
     if args.pairs < 1 or args.pressure_mib < 0 or any(rows < 1 for rows in args.rows):
         p.error("positive rows and pair count required")
     if args.pairs > 1 and args.pairs % 2:
         p.error("use an even pair count to balance first/second arm order")
+    if (args.gr_parent or args.gr_candidate) and not args.gr_composite:
+        p.error("--gr-parent/--gr-candidate require --gr-composite")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     runtime = get_hip_runtime()
@@ -48,6 +58,10 @@ def main():
         from tests.test_gpu_qwen4exp_gr_wave_scale import PARENT as GR_PARENT
 
         parent_name, candidate_name = GR_PARENT, GR_CANDIDATE
+        if args.gr_candidate:
+            candidate_name = args.gr_candidate
+        if args.gr_parent:
+            parent_name = args.gr_parent
     readers = [GGUFReader(path) for path in discover_gguf_files(args.model_root)]
     report = {
         "schema": 1,

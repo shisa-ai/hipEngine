@@ -1131,7 +1131,30 @@ void q8_0_iu8_wmma_prefill_f32_f32_kernel(
 // because no production consumer reads the GR result's gate field (census in
 // ``docs/QWEN4EXP-OPTIMIZATION-LEDGER.md`` HC-3); the only reader in the tree is
 // a unit test on a synthetic result.
-template <bool WAVE_SCALE = false, bool WRITE_GATE = true>
+// ``ROW_BATCH`` is a template parameter rather than a constant so the row reuse of
+// the dequantized weight can be widened without touching any arithmetic: the
+// per-output K order, the shuffle tree, the four-wave LDS publication, the serial
+// wave sum and the epilogue are unchanged, so every ROW_BATCH instantiation is
+// bit-identical. 4 is the production value.
+//
+// MEASURED DEAD - DO NOT WIDEN (2026-10-04). ROW_BATCH 8 with HIDDEN_TILE 2 keeps
+// every operand load count per FMA at the parent's and halves only the weight
+// decodes per output (8 decodes per k-step per thread for 64 FMAs instead of 32),
+// yet it runs at 0.833-0.844x and ROW_BATCH 16 at 0.430-0.437x against the
+// production wave-scale parent, on two real Q8_0 banks at rows 512/1024, 20
+// order-balanced pairs per case, bit-identical throughout. The mechanism is
+// occupancy, not spills: ``acc[ROW_BATCH][4][2]`` is a direct register cost, and a
+// static census of this profile gives VGPR 72/130/256 and 28/15/8 waves per CU
+// (87.5%/46.9%/25.0%) at widths 4/8/16, scratch 0. The kernel is latency-bound and
+// 130 VGPR crosses the 128-VGPR granule. This also refutes the weight-traffic
+// reading of this kernel's cost: halving a DRAM-served 256x re-read cannot cost
+// 16%. The 2026-09-06 ``gr-row-reuse`` rejection (0.848x) measured ROW_BATCH 8 with
+// HIDDEN_TILE 1, a *constant* 32-accumulator budget that halved weight decodes while
+// doubling activation loads; this parameterization removes that confound and the
+// width still loses. Reopen only on a machine class where 130 VGPR still buys 32
+// waves/CU, or with a body change that lowers the accumulator cost.
+// Evidence: benchmarks/results/2026-10-04-qwen4exp-gr-row-batch-width/
+template <bool WAVE_SCALE = false, bool WRITE_GATE = true, int ROW_BATCH = 4>
 __launch_bounds__(128, 2)
 __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
     const float* __restrict__ x,
@@ -1143,7 +1166,7 @@ __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
     int in_features,
     int branches,
     int hidden) {
-  constexpr int ROW_BATCH = 4;
+  static_assert(ROW_BATCH > 0 && ROW_BATCH % 4 == 0, "ROW_BATCH must be a positive multiple of 4");
   constexpr int HIDDEN_TILE = 2;
   constexpr int BRANCHES = 4;
   const int hidden_base = static_cast<int>(blockIdx.x) * HIDDEN_TILE;
@@ -5295,7 +5318,7 @@ HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(32)
 
 #undef HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT
 
-template <bool WAVE_SCALE, bool WRITE_GATE = true>
+template <bool WAVE_SCALE, bool WRITE_GATE = true, int ROW_BATCH = 4>
 int launch_q8_gr_up_scale(
     const float* x,
     const uint8_t* qweight,
@@ -5316,10 +5339,11 @@ int launch_q8_gr_up_scale(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      (q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<WAVE_SCALE, WRITE_GATE>),
+      (q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<WAVE_SCALE, WRITE_GATE,
+                                                                      ROW_BATCH>),
       dim3(
           static_cast<unsigned int>(hidden / 2),
-          static_cast<unsigned int>((rows + 3) / 4)),
+          static_cast<unsigned int>((rows + ROW_BATCH - 1) / ROW_BATCH)),
       dim3(128),
       0,
       stream,
@@ -5335,18 +5359,26 @@ int launch_q8_gr_up_scale(
   return static_cast<int>(hipGetLastError());
 }
 
-#define Q8_GR_SCALE_ENTRY(NAME, WAVE, GATE) \
+#define Q8_GR_SCALE_ENTRY(NAME, WAVE, GATE, RB) \
 extern "C" int NAME(const float* x, const uint8_t* qweight, const float* normalized, \
     float* gate, float* mixed, int64_t rows, int64_t in_features, int64_t branches, \
     int64_t hidden, int64_t threads, hipStream_t stream) { \
-  return launch_q8_gr_up_scale<WAVE, GATE>(x, qweight, normalized, gate, mixed, rows, \
+  return launch_q8_gr_up_scale<WAVE, GATE, RB>(x, qweight, normalized, gate, mixed, rows, \
       in_features, branches, hidden, threads, stream); \
 }
-Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32, false, true)
-Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32, true, true)
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32, false, true, 4)
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32, true, true, 4)
 // Strict no-gate variant: identical arithmetic and identical ``mixed``, with the
 // dead gate store removed. ``gate`` may be null.
-Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32, false, false)
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32, false, false, 4)
+// Widened row reuse, kept only as the measured record of a rejected lever: bit-identical
+// to the rowbatch4 parent at every shape (the per-output reduction order is unchanged)
+// and slower at every shape measured (0.833-0.844x at RB8, 0.430-0.437x at RB16), because
+// the wider accumulator array costs occupancy. Not registered for production; see the
+// template comment above and benchmarks/results/2026-10-04-qwen4exp-gr-row-batch-width/.
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_f32, false, true, 8)
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_wave_scale_f32, true, true, 8)
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch16_wave_scale_f32, true, true, 16)
 #undef Q8_GR_SCALE_ENTRY
 
 #define HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(COL_TILE, ROW_BATCH) \
