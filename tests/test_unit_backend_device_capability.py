@@ -35,6 +35,7 @@ monkeypatched, so no ROCm runtime or device is required.
 from __future__ import annotations
 
 import ctypes
+import os
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -243,6 +244,78 @@ def test_auto_selection_falls_back_when_the_device_is_unknown(
     assert llm.resolved_backend == "hip_gfx1100"
 
 
+def test_known_unsupported_device_does_not_borrow_another_device() -> None:
+    """A known execution arch with no native backend must not select another
+    device's backend.
+
+    Physical ``(gfx1102, gfx1151)`` with ``ROCR_VISIBLE_DEVICES=0`` selects a
+    gfx1102. Ambient-first selection would pick ``hip_gfx1151`` from device 1,
+    which validation then refuses. The selected device takes the
+    unsupported-architecture fallback instead.
+    """
+
+    env = {"ROCR_VISIBLE_DEVICES": "0"}
+    with pytest.warns(RuntimeWarning, match="gfx1102"):
+        resolved = resolve_backend(
+            "auto",
+            execution_device=True,
+            physical_arches=("gfx1102", "gfx1151"),
+            env=env,
+            current_device=0,
+        )
+
+    assert resolved == CPU_BACKEND
+
+
+def test_auto_selection_unsupported_selected_device_is_cpu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public auto on a known, unmapped selected device stays runnable.
+
+    It must not resolve another device's backend and then refuse it.
+    """
+
+    llm = _llm(
+        monkeypatch,
+        "auto",
+        ("gfx1102", "gfx1151"),
+        env={"ROCR_VISIBLE_DEVICES": "0"},
+    )
+
+    with pytest.warns(RuntimeWarning, match="gfx1102"):
+        assert llm.resolved_backend == CPU_BACKEND
+
+
+def test_ambient_fallback_is_only_for_unresolved_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A supported arch elsewhere on the host is not borrowed when identity is
+    resolved, but is still offered when identity is unresolved."""
+
+    host = ("gfx1102", "gfx1151")
+    with pytest.warns(RuntimeWarning, match="gfx1102"):
+        assert (
+            resolve_backend(
+                "auto", execution_device=True, physical_arches=host, env={}, current_device=0
+            )
+            == CPU_BACKEND
+        )
+
+    # Unresolved: no current device can be established, so the ambient probe
+    # still offers a supported architecture and validation stays permissive.
+    monkeypatch.setattr(
+        "hipengine.kernels.backends._current_hip_device_ordinal", lambda: None
+    )
+    monkeypatch.setattr(
+        "hipengine.kernels.backends.detect_hip_hardware_target_arches",
+        lambda: ("gfx1102", "gfx1151"),
+    )
+    assert (
+        resolve_backend("auto", execution_device=True, physical_arches=host, env={})
+        == "hip_gfx1151"
+    )
+
+
 def test_execution_device_selection_is_opt_in() -> None:
     """Without the flag, automatic selection stays ambient for registry use."""
 
@@ -358,9 +431,18 @@ class _FakeHipLibrary:
         self.hipGetDevice = _FakeHipFunction(rc, ordinal)
 
 
+def _no_process_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep ``_current_hip_device_ordinal`` from mutating the real environment."""
+
+    monkeypatch.setattr(
+        "hipengine.kernels.backends.configure_hip_process_environment", lambda *a, **k: {}
+    )
+
+
 def test_current_device_query_reports_success_and_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _no_process_env(monkeypatch)
     monkeypatch.setattr(
         "ctypes.CDLL", lambda *a, **k: _FakeHipLibrary(rc=0, ordinal=1)
     )
@@ -374,11 +456,62 @@ def test_current_device_query_reports_success_and_failure(
 
 
 def test_missing_rocm_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    _no_process_env(monkeypatch)
+
     def _no_runtime(*args, **kwargs):
         raise OSError("libamdhip64.so not found")
 
     monkeypatch.setattr("ctypes.CDLL", _no_runtime)
     assert _current_hip_device_ordinal() is None
+
+
+def test_process_env_is_configured_before_hip_is_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HIP reads its queue policy during initialization, so the process defaults
+    must be applied before the library load, as ``core/hip.py`` does."""
+
+    from hipengine.kernels import backends
+
+    monkeypatch.delenv("GPU_MAX_HW_QUEUES", raising=False)
+    monkeypatch.setattr(backends, "detect_hip_target_arches", lambda: ("gfx1151", "gfx1102"))
+    events: list[object] = []
+    real_configure = backends.configure_hip_process_environment
+
+    def _configure(*args, **kwargs):
+        events.append("configure")
+        return real_configure(*args, **kwargs)
+
+    def _cdll(*args, **kwargs):
+        events.append("cdll")
+        events.append(("queue", os.environ.get("GPU_MAX_HW_QUEUES")))
+        return _FakeHipLibrary(rc=0, ordinal=0)
+
+    monkeypatch.setattr(backends, "configure_hip_process_environment", _configure)
+    monkeypatch.setattr("ctypes.CDLL", _cdll)
+
+    assert _current_hip_device_ordinal() == 0
+    # gfx1151's documented process default is applied before the load.
+    assert events == ["configure", "cdll", ("queue", "2")]
+
+
+def test_process_env_explicit_override_is_preserved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.kernels import backends
+
+    monkeypatch.setenv("GPU_MAX_HW_QUEUES", "4")
+    monkeypatch.setattr(backends, "detect_hip_target_arches", lambda: ("gfx1151",))
+    seen: dict[str, str | None] = {}
+
+    def _cdll(*args, **kwargs):
+        seen["queue"] = os.environ.get("GPU_MAX_HW_QUEUES")
+        return _FakeHipLibrary(rc=0, ordinal=0)
+
+    monkeypatch.setattr("ctypes.CDLL", _cdll)
+
+    assert _current_hip_device_ordinal() == 0
+    assert seen["queue"] == "4"
 
 
 def test_non_hip_and_unregistered_backends_are_not_gated() -> None:
@@ -473,10 +606,11 @@ def test_homogeneous_host_does_not_query_the_hip_runtime(
 
     from hipengine.kernels import backends
 
-    def _forbidden() -> int:
-        raise AssertionError("hipGetDevice ran on a homogeneous host")
+    def _forbidden(*args, **kwargs):
+        raise AssertionError("HIP work ran on a homogeneous host")
 
     monkeypatch.setattr(backends, "_current_hip_device_ordinal", _forbidden)
+    monkeypatch.setattr(backends, "configure_hip_process_environment", _forbidden)
     assert selected_device_arches(detected_arches=TWO_CARD_GFX1100, env={}) == ("gfx1100",)
     assert selected_device_arches(detected_arches=("gfx1151",), env={}) == ("gfx1151",)
 
