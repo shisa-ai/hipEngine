@@ -120,7 +120,12 @@ def _app(engine: Any, **config_overrides) -> Any:
 
 
 def _post(
-    app: Any, path: str, payload: dict | None = None, *, raise_app_exceptions: bool = True
+    app: Any,
+    path: str,
+    payload: dict | None = None,
+    *,
+    headers: dict | None = None,
+    raise_app_exceptions: bool = True,
 ) -> httpx.Response:
     async def run() -> httpx.Response:
         async with httpx.AsyncClient(
@@ -129,7 +134,7 @@ def _post(
             ),
             base_url="http://test",
         ) as client:
-            return await client.post(path, json=payload)
+            return await client.post(path, json=payload, headers=headers)
 
     return asyncio.run(run())
 
@@ -420,6 +425,66 @@ def test_the_cli_accepts_the_companion_decoder(monkeypatch) -> None:
 
     with pytest.raises(ValueError):
         ServerConfig(model="m", vae_model="")
+
+
+# ---------------------------------------------------------------------------
+# cancellation
+# ---------------------------------------------------------------------------
+
+
+def test_the_cancellation_watcher_follows_the_connection() -> None:
+    """A disconnect flips the flag the pipeline polls; a live one leaves it alone."""
+
+    from hipengine.server.api import _SongRequestCancellation
+
+    class FakeRequest:
+        def __init__(self, disconnected_after: int | None = None, error=None) -> None:
+            self.calls = 0
+            self._after = disconnected_after
+            self._error = error
+
+        async def is_disconnected(self) -> bool:
+            self.calls += 1
+            if self._error is not None:
+                raise self._error
+            return self._after is not None and self.calls >= self._after
+
+    async def watch(request) -> tuple[Any, Any]:
+        watcher = _SongRequestCancellation(request)
+        watcher.POLL_SECONDS = 0.01
+        await watcher.start()
+        for _ in range(100):
+            if watcher.cancelled() or watcher._task.done():
+                break
+            await asyncio.sleep(0.01)
+        cancelled = watcher.cancelled()
+        await watcher.stop()
+        return cancelled, request
+
+    dropped, request = asyncio.run(watch(FakeRequest(disconnected_after=1)))
+    assert dropped is True
+    assert request.calls >= 1
+
+    kept, _ = asyncio.run(watch(FakeRequest()))
+    assert kept is False
+
+    # A connection that cannot be polled is not evidence of a disconnect.
+    unreadable, _ = asyncio.run(watch(FakeRequest(error=RuntimeError("closed"))))
+    assert unreadable is False
+
+
+def test_the_song_route_is_authenticated() -> None:
+    app = _app(FakeSongEngine(), api_key="secret")
+    payload = {"model": "fake-model", "style": "s", "lyrics": "l"}
+
+    assert _post(app, "/v1/audio/songs", payload).status_code == 401
+    authorized = _post(
+        app,
+        "/v1/audio/songs",
+        payload,
+        headers={"Authorization": "Bearer secret"},
+    )
+    assert authorized.status_code == 200, authorized.text
 
 
 # ---------------------------------------------------------------------------
