@@ -1,0 +1,25 @@
+{
+ "schema": 1,
+ "kind": "gfx1151_qwen36_35b_a3b_int8_decode_kv_memory",
+ "date": "2026-10-03",
+ "status": "diagnostic_complete",
+ "publishable": false,
+ "performance_claim": false,
+ "context_rows": 18688,
+ "accounting": {
+  "bf16_decode_scratch_bytes": 462951952,
+  "int8_decode_scratch_bytes": 273081872,
+  "int8_kv_payload_plus_scale_bytes": 192860160,
+  "bf16_kv_bytes": 382730240,
+  "int8_kv_reduction_pct": 49.61,
+  "bf16_owned_session_bytes": 22827360664,
+  "int8_owned_session_bytes": 22680598936,
+  "net_owned_saving_bytes": 146761728,
+  "bf16_run_peak_bytes": 22827360664,
+  "int8_run_peak_bytes": 22718871960,
+  "bf16_graph_run_peak_bytes": 23367704984,
+  "int8_graph_run_peak_bytes": 23259216280,
+  "note": "no-mirror prefill_full_sequence_hidden grows +42991616 bytes on the INT8 route"
+ },
+ "reading": "The retained KV payload halves (-49.61%), but KV is a small share of the owned session at this depth, so the net owned-session reduction is 146,761,728 B (0.64%) and the graph run peak falls 108,488,704 B (0.101 GiB). The no-mirror prefill hidden buffer grows 42,991,616 B on the INT8 route. This is a bandwidth play, not a capacity play, on a host with 125 GiB of unified memory."
+}
