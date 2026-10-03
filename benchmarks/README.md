@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-26**
+Last updated: **2026-10-03**
 
 Qwen3.8-27B Q4_K_M sampling on **zbook / Radeon 8060S (gfx1151)**:
 full-vocabulary GPU sampling achieves **11.61 decode tok/s and 9.63 engine
@@ -370,6 +370,50 @@ three times the context of four.
 
 [Full comparison and source review](results/2026-09-08-rx7900xtx-engine-comparison.md)
 and [commands, samples and checks](results/2026-09-08-rx7900xtx-engine-comparison.json).
+
+### Gemma 4 five-length BF16 comparison — diagnostic
+
+On 2026-10-03, host `epyc`, physical GPU1 RX 7900 XTX, both engines ran
+`gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf` with identical frozen mixed-corpus
+prompt IDs, BF16 KV, greedy autoregressive decode and 128 output tokens.
+Each engine has six measured samples per completed shape in two
+counterbalanced order blocks, each preceded by one full-shape warmup.
+Rates are medians of the six per-sample rates, in tokens per second.
+
+| Prompt tokens | hipEngine prefill | llama.cpp prefill | hipEngine decode | llama.cpp decode |
+| --- | ---: | ---: | ---: | ---: |
+| 512 | 2388.9 | 3596.7 | 78.39 | 83.18 |
+| 1024 | 2341.5 | 3881.4 | 83.10 | 80.30 |
+| 4096 | 1435.7 | 3934.3 | 79.88 | 76.41 |
+| 8192 | 1126.9 | 3995.7 | 75.63 | 75.49 |
+| 16384 | shared-memory capability failure | 3510.2 | not run | 71.39 |
+
+hipEngine uses source `ab89f293c`, plus the context-propagation harness repair
+`37732bb78` for the 8192-token rows; llama.cpp uses native HIP build `8cfc315`
+with `-ngl 99 -fa on -ctk bf16 -ctv bf16 -b 4096 -ub 1024 -np 1`.
+Both engines use capacity 8192 for the first three shapes, 8448 for the 8192
+prompt, and 16640 for the 16384 prompt. hipEngine selects prefill block 256.
+Its corrected 16640-capacity probe fails before full prefill because the
+sliding attention kernel requires 68672 shared-memory bytes versus 65536
+available. The initial probes that silently retained capacity 8192 are
+invalid for larger requested capacities and are excluded.
+
+These are diagnostic timings, not a production numerical promotion. The
+recorded BF16 continuation-profile failure is still open. hipEngine's phase
+rates use the instrumented host-logits path; an untouched public device-argmax
+generation separately matches its token IDs for every completed run. Decode
+uses 127 subsequent forwards; llama.cpp's timed interval also includes the
+first greedy sample. This is not HTTP serving throughput, cross-engine output
+parity, or task-quality evidence.
+
+Commands are `scripts/gemma4_campaign_bench.py` and
+`scripts/gemma4_llamacpp_reference_bench.py`, each with `--prompt P --output
+128 --samples 3 --warmup 1 --context C`, run twice in opposite engine orders.
+The [comparison artifact](results/2026-10-03-gemma4-llamacpp-five-length-bf16.json)
+records commands, prompt hashes, samples and ranges, source/toolchain/hardware
+provenance, capacity verdicts, and public-route checks. The following campaign
+rows are earlier measurements with their own protocols, not the comparator
+for this table.
 
 ### Gemma 4 26B-A4B `UD-Q4_K_XL` — RX 7900 XTX
 
