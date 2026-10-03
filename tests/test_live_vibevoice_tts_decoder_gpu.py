@@ -21,9 +21,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests._vibevoice_tts_guard import resolve_tts_snapshot
+
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "vibevoice_tts"
 MANIFEST = FIXTURE_DIR / "manifest.json"
-PINNED_MODEL_ID = "microsoft/VibeVoice-1.5B"
 
 if not MANIFEST.is_file():
     pytest.skip("VibeVoice-TTS trace fixtures not present", allow_module_level=True)
@@ -39,12 +40,6 @@ def _hip_available() -> bool:
 
 if not _hip_available():
     pytest.skip("ROCm/HIP runtime not available", allow_module_level=True)
-
-
-def _snapshot():
-    from hipengine.loading.hf_cache import resolve_model_path
-
-    return resolve_model_path(PINNED_MODEL_ID)
 
 
 def _speech_resets(lm, request):
@@ -73,10 +68,7 @@ def _load_latents(name):
 def bundle():
     from hipengine.loading.vibevoice_tts import load_vibevoice_tts_decoder
 
-    try:
-        return load_vibevoice_tts_decoder(_snapshot())
-    except (FileNotFoundError, ValueError):
-        pytest.skip(f"{PINNED_MODEL_ID} not in local HF cache", allow_module_level=True)
+    return load_vibevoice_tts_decoder(resolve_tts_snapshot())
 
 
 @pytest.fixture(scope="module")

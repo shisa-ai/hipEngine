@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from tests._rocm_guard import hip_runtime_available
+from tests._vibevoice_tts_guard import resolve_tts_snapshot
 
 if not hip_runtime_available():
     pytest.skip("no usable HIP runtime for VibeVoice TTS session tests", allow_module_level=True)
@@ -25,19 +26,9 @@ from hipengine.runtime.vibevoice_encoder import reference_frame_count
 from hipengine.runtime.vibevoice_tts_session import VibevoiceTtsSession, SessionTrace
 
 FIXTURES = Path(__file__).parent / "fixtures" / "vibevoice_tts"
-PINNED_HF_MODEL_ID = "microsoft/VibeVoice-1.5B"
 
 if not FIXTURES.is_dir():
     pytest.skip("VibeVoice TTS fixtures not present", allow_module_level=True)
-
-
-def _hf_snapshot_or_skip():
-    from hipengine.loading.hf_cache import resolve_model_path
-
-    try:
-        return resolve_model_path(PINNED_HF_MODEL_ID)
-    except Exception:
-        pytest.skip(f"{PINNED_HF_MODEL_ID} not in local HF cache")
 
 
 def _npz(name: str) -> dict[str, np.ndarray]:
@@ -47,7 +38,7 @@ def _npz(name: str) -> dict[str, np.ndarray]:
 
 @pytest.fixture(scope="module")
 def weights():
-    yield load_vibevoice_tts_session(_hf_snapshot_or_skip())
+    yield load_vibevoice_tts_session(resolve_tts_snapshot())
 
 
 @pytest.fixture(scope="module")
