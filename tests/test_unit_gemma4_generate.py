@@ -53,7 +53,9 @@ def _write_generate_fixture(directory: pathlib.Path) -> pathlib.Path:
 
 
 @_needs_hip
-def test_llm_generate_reaches_the_gemma4_generator(tmp_path: pathlib.Path) -> None:
+def test_llm_generate_reaches_the_gemma4_generator(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """``LLM.generate`` runs Gemma 4 and returns detokenized text.
 
     The weights are synthetic, so the text itself carries no meaning. What is
@@ -65,7 +67,23 @@ def test_llm_generate_reaches_the_gemma4_generator(tmp_path: pathlib.Path) -> No
     import hipengine
     from hipengine.generation.engine_loop import SubmitPollTextGenerator
     from hipengine.llm import SamplingParams
+    from hipengine.runtime.gemma4 import Gemma4Runner
+    import numpy as np
 
+    from hipengine.core.memory import copy_device_to_host, host_array_ptr
+
+    seen = []
+    original = Gemma4Runner.forward_argmax
+
+    def checked_argmax(runner, token_ids, **kwargs):
+        result = original(runner, token_ids, **kwargs)
+        logits = np.empty(int(runner.weights.config.vocab_size), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(logits), runner._logits, logits.nbytes)
+        assert np.isfinite(logits).all(), "public Gemma generation produced non-finite logits"
+        seen.append(len(token_ids))
+        return result
+
+    monkeypatch.setattr(Gemma4Runner, "forward_argmax", checked_argmax)
     model_path = _write_generate_fixture(tmp_path)
     llm = hipengine.LLM(model=str(model_path))
     try:
@@ -76,6 +94,8 @@ def test_llm_generate_reaches_the_gemma4_generator(tmp_path: pathlib.Path) -> No
         )
 
         outputs = llm.generate("Hello", SamplingParams(max_tokens=16))
+        llm.generate([1, 2, 3, 4], SamplingParams(max_tokens=4))
+        assert 4 in seen, "public generation did not reach the four-row device prefill"
     finally:
         llm.close()
 

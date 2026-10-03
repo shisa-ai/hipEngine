@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11398,
-    "current": 4166,
+    "entries": 11400,
+    "current": 4168,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1363,
+    "rows": 1364,
     "by_rule": {
       "dependency": 51,
       "legacy-next": 109,
-      "status": 1203
+      "status": 1204
     }
   },
   "rows": [
@@ -51703,6 +51703,44 @@
       },
       "id": "worklog/20261003T064944.699355Z-lhl-audit-flagbranch-triage-613ad2",
       "evidence_hash": "44320cc00166"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261003T112735.003583Z-lhl-specdec2-gfx1100-bridge-staged-float-assertion-2a8c80",
+      "title": "Fix float-exact bridge aggregate assertion for staged complete_request_seconds",
+      "location": "worklog/entries/20261003T112735.003583Z-lhl-specdec2-gfx1100-bridge-staged-float-assertion-2a8c80.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "specdec2-gfx1100-bridge-staged-float-assertion",
+        "written": "2026-10-03",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Parent owns staging and commit of this entry plus the test edit.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261003T112735.003583Z-lhl-specdec2-gfx1100-bridge-staged-float-assertion-2a8c80.md",
+        "refs": [],
+        "tokens": [
+          "aggregate",
+          "assertion",
+          "bridge",
+          "complete_request_seconds",
+          "exact",
+          "fix",
+          "float",
+          "staged"
+        ]
+      },
+      "id": "worklog/20261003T112735.003583Z-lhl-specdec2-gfx1100-bridge-staged-float-assertion-2a8c80",
+      "evidence_hash": "7a5f520f4815"
     }
   ]
 }
