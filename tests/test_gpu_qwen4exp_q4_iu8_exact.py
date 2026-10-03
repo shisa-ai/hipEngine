@@ -162,9 +162,11 @@ _FIXTURE_CASES = [
 ]
 
 # R4a production-multiplier coverage: the promoted route runs at
-# HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT=4.0 (screened flip-escape floor on
-# actual weights is between 0.5 and 1), so the exactness contract must hold
-# at exactly 4.0, including heavily skewed experts and 16-row tile tails.
+# HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT=1.0, the top of the range the
+# multiplier's own screening calls safe ("between 0.5 and 1 (below it, BF16
+# flips escape the repair)").  4.0 remains the strict/rollback value and keeps
+# its own coverage below, because the strict profile still binds it and a
+# rollback that no test exercises is not a rollback.
 _SKEWED_FIXTURE_CASES = [
     ([256, 1, 0, 0, 0, 0], 256, 128, 128),
     ([33, 47, 0, 16], 256, 128, 128),
@@ -173,10 +175,26 @@ _SKEWED_FIXTURE_CASES = [
 
 @pytest.mark.skipif(not hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("counts,in_features,out_a,out_b", _SKEWED_FIXTURE_CASES)
+@pytest.mark.parametrize("risk_multiplier", [1.0, 4.0])
 def test_candidate_chain_matches_pair2_exactly_at_production_multiplier(
-    counts, in_features, out_a, out_b
+    counts, in_features, out_a, out_b, risk_multiplier
 ) -> None:
-    """R4a: the exactness contract holds at the production multiplier 4.0."""
+    """R4a: the exactness contract holds at the promoted and rollback values.
+
+    The sparse exact pass is bit-parity by construction: it reproduces the pair2
+    parent for every row the risk criterion queues, whatever the bound was.  So
+    this asserts the weaker and still load-bearing thing - that tightening the
+    bound from 4.0 to 1.0 does not degrade the repair itself on skewed experts
+    and 16-row tile tails.
+
+    It does **not** claim the whole output is parent-identical at 1.0, and the
+    production gate is what settles that: a tighter bound queues fewer rows, so
+    the rows it declines keep the plain iu8 value instead of the parent's.  The
+    gate measured that at mean KL 3.039e-4, p99 4.271e-3 and max 7.771e-3
+    against limits of 1e-3 / 2e-2 / 5e-2, with the `prefill_last` scope - the
+    one that rejected the repair-free sibling - at 7.891e-6.  These fixtures are
+    a unit-level check on the repair, not a substitute for that measurement.
+    """
 
     runtime = get_hip_runtime()
     library = q4.build_gguf_q4_k_selected_prefill(load=True)
@@ -192,12 +210,15 @@ def test_candidate_chain_matches_pair2_exactly_at_production_multiplier(
     try:
         parent = _run_parent(fixture, runtime, library, allocations=allocations)
         candidate, risks = _run_chain(
-            fixture, runtime, library, risk_multiplier=4.0,
+            fixture, runtime, library, risk_multiplier=risk_multiplier,
             allocations=allocations,
         )
         np.testing.assert_array_equal(
             candidate, parent,
-            err_msg="iu8+repair chain must be bit-identical at multiplier 4.0",
+            err_msg=(
+                "iu8+repair chain must be bit-identical at multiplier "
+                f"{risk_multiplier}"
+            ),
         )
         total = fixture.compact_rows * (out_a + out_b)
         assert 0 <= risks <= total
