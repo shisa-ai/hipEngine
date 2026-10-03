@@ -908,6 +908,7 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_MOONSHINE_CHECKPOINT` | local default | Moonshine model checkpoint override for the Moonshine GPU tests. |
 | `HIPENGINE_MOONSHINE_SNAPSHOT` | local default | Moonshine HuggingFace snapshot directory override for the Moonshine GPU tests. |
 | `HIPENGINE_MOONSHINE_FIXTURE_DIR` / `HIPENGINE_MOONSHINE_FIXTURES_SIX` / `HIPENGINE_MOONSHINE_SIX_FIXTURE_DIR` | local defaults | Moonshine audio fixture directory overrides for the single- and six-fixture suites. |
+| `HIPENGINE_TEST_VIBEVOICE_TTS_MODEL` | unset | Local checkpoint directory for the live VibeVoice-TTS tests. Overrides the cached `microsoft/VibeVoice-1.5B` snapshot. An explicitly named missing directory raises `FileNotFoundError`; an absent default snapshot skips checkpoint-dependent tests. |
 | `VIBEVOICE_STANDALONE_GGUF` / `VIBEVOICE_STANDALONE_REPORT` | local defaults | VibeVoice standalone-encoder GGUF and report fixture paths for the VibeVoice tests. |
 | `HIPENGINE_TORCH_ABSENCE_CHILD` | unset | Internal re-execution flag set by `tests/_torch_absence.py` to the pytest node id running in a fresh interpreter; the clean child detects it and runs the real test body instead of recursing. |
 | `VIBEVOICE_REFERENCE_HF` / `VIBEVOICE_REFERENCE_AUDIO` | local defaults | VibeVoice HuggingFace reference snapshot and reference audio fixture paths for the encoder comparison tests. |
