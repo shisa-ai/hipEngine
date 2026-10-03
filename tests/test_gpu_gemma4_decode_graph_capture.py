@@ -22,6 +22,7 @@ requires (a cold route would load modules while capture is active).
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 from pathlib import Path
 
@@ -58,6 +59,35 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@contextlib.contextmanager
+def _owned_llm(model: str):
+    """Open a public ``LLM`` and release its device owner on every exit path.
+
+    The graph session closes itself, but the model weights and KV cache belong
+    to the ``LLM``'s text generator. A bare ``LLM(...)`` that is never closed
+    keeps those buffers resident for the rest of the process, and a later large
+    model load in the same process can then fail with a HIP out-of-memory
+    error. The ``finally`` releases the owner on success, assertion failure, or
+    any other exception.
+    """
+
+    import hipengine
+
+    llm = hipengine.LLM(model=model)
+    try:
+        yield llm
+    finally:
+        llm.close()
+
+
+@pytest.fixture
+def gemma4_llm():
+    """A loaded public ``LLM`` whose device owner is always closed."""
+
+    with _owned_llm(str(_TARGET)) as llm:
+        yield llm
+
+
 def _launched(runner, prompt, decode):
     """Run the reference sequence: prefill, then one forward per token."""
 
@@ -66,12 +96,10 @@ def _launched(runner, prompt, decode):
     return [runner.forward([token]) for token in decode]
 
 
-def test_gemma4_decode_graph_replay_matches_launched_decode():
-    import hipengine
-
+def test_gemma4_decode_graph_replay_matches_launched_decode(gemma4_llm):
     from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
 
-    llm = hipengine.LLM(model=str(_TARGET))
+    llm = gemma4_llm
     runner = llm._get_text_generator()._ensure_runner()
     vocab = int(runner.weights.config.vocab_size or 0)
     assert vocab > 0
