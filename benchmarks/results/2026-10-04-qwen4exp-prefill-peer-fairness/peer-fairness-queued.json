@@ -1,0 +1,321 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_prefill_peer_fairness",
+  "performance_claim": false,
+  "numerics_evaluated": false,
+  "policy": "protect_decode",
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "host": {
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governor": "performance"
+  },
+  "arms": [
+    {
+      "arm": "g1024_l1024",
+      "generator_chunk": 1024,
+      "loop_cap": 1024,
+      "returncode": 0,
+      "process_seconds": 73.50149439740926,
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3",
+        "/home/lhl/hipEngine/scripts/qwen4exp_prefill_peer_fairness.py",
+        "--child",
+        "--arm",
+        "g1024_l1024",
+        "--generator-chunk",
+        "1024",
+        "--loop-cap",
+        "1024",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--fixture",
+        "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+        "--peer-max-tokens",
+        "64",
+        "--order",
+        "queued",
+        "--peer-primer-tokens",
+        "8",
+        "--timeout-seconds",
+        "600.0",
+        "--max-sequence-length",
+        "4097",
+        "--output",
+        "/tmp/qwen4exp-peer-fairness-q/g1024_l1024/child.json",
+        "--compiler-version-file",
+        "/tmp/reprof/compiler.txt"
+      ],
+      "log": "/tmp/qwen4exp-peer-fairness-q/g1024_l1024/process.log",
+      "status": "measured",
+      "summary": {
+        "arm": "g1024_l1024",
+        "status": "completed",
+        "order": "queued",
+        "generator_chunk_requested": 1024,
+        "loop_cap_requested": 1024,
+        "session_chunks_after_set": [
+          1024,
+          1024
+        ],
+        "session_workspace_chunks": [
+          [
+            1024
+          ],
+          [
+            1024
+          ]
+        ],
+        "session_count": 2,
+        "workspace_chunk_observed_at_prefill": [
+          1024
+        ],
+        "loop_prefill_chunk_size": 1024,
+        "context_admission": {
+          "mode": "auto",
+          "device_free_bytes": 128844787712,
+          "device_total_bytes": 128849018880,
+          "vision_weight_reserve_bytes": 0,
+          "plan": {
+            "available_device_bytes": 128844787712,
+            "required_bytes": 112624398688,
+            "device_weight_bytes": 82523491840,
+            "staging_bytes": 20971520,
+            "kv_bytes": 12884901888,
+            "index_bytes": 4071064416,
+            "runtime_state_bytes": 239067136,
+            "scratch_bytes": 8589934592,
+            "reserve_bytes": 4294967296,
+            "context_tokens": 262144,
+            "resident_capacity": 2
+          },
+          "scratch_policy": "max(4GiB floor, mandatory runner scratch and repair queues) per runner; optional resources require separate qualification"
+        },
+        "session_max_sequence_length": [
+          262144,
+          262144
+        ],
+        "prefill_token_ids_nbytes": [
+          8192,
+          8192
+        ],
+        "loop_prefill_batch_calls": 5,
+        "loop_prefill_batch_chunks": [
+          1024,
+          1024,
+          1024,
+          1024,
+          16
+        ],
+        "session_prefill_calls": [
+          {
+            "n_tokens": 4096,
+            "prefill_chunk_size": 1024,
+            "workspace_chunks": [
+              1024
+            ]
+          },
+          {
+            "n_tokens": 16,
+            "prefill_chunk_size": 1024,
+            "workspace_chunks": [
+              1024
+            ]
+          }
+        ],
+        "peer_tokens": 64,
+        "peer_ttft_s": 16.860421960242093,
+        "prefill_wall_s": 15.998633125796914,
+        "prefill_window_s": null,
+        "peer_itl_all": {
+          "n": 63,
+          "min_ms": 0.27226004749536514,
+          "median_ms": 49.07281696796417,
+          "max_ms": 151.70313883572817,
+          "mean_ms": 53.47856713665856
+        },
+        "peer_itl_during_prefill": {
+          "n": 0
+        },
+        "peer_itl_outside_prefill": {
+          "n": 63,
+          "min_ms": 0.27226004749536514,
+          "median_ms": 49.07281696796417,
+          "max_ms": 151.70313883572817,
+          "mean_ms": 53.47856713665856
+        },
+        "peer_max_gap_ms": 151.70313883572817,
+        "work_kinds": [
+          "prefill",
+          "decode",
+          "prefill",
+          "decode"
+        ],
+        "env": {
+          "HIPENGINE_MAX_ACTIVE_REQUESTS": "2",
+          "HIPENGINE_PREFILL_DECODE_POLICY": "protect_decode",
+          "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "1024",
+          "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/reprof/compiler.txt"
+        },
+        "host": {
+          "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+          "tuned_active": "Current active profile: accelerator-performance",
+          "cpu_governor": "performance"
+        },
+        "elapsed_seconds": 72.62973708473146
+      }
+    },
+    {
+      "arm": "g1024_l4096",
+      "generator_chunk": 1024,
+      "loop_cap": 4096,
+      "returncode": 0,
+      "process_seconds": 73.20057579036802,
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3",
+        "/home/lhl/hipEngine/scripts/qwen4exp_prefill_peer_fairness.py",
+        "--child",
+        "--arm",
+        "g1024_l4096",
+        "--generator-chunk",
+        "1024",
+        "--loop-cap",
+        "4096",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--fixture",
+        "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+        "--peer-max-tokens",
+        "64",
+        "--order",
+        "queued",
+        "--peer-primer-tokens",
+        "8",
+        "--timeout-seconds",
+        "600.0",
+        "--max-sequence-length",
+        "4097",
+        "--output",
+        "/tmp/qwen4exp-peer-fairness-q/g1024_l4096/child.json",
+        "--compiler-version-file",
+        "/tmp/reprof/compiler.txt"
+      ],
+      "log": "/tmp/qwen4exp-peer-fairness-q/g1024_l4096/process.log",
+      "status": "measured",
+      "summary": {
+        "arm": "g1024_l4096",
+        "status": "completed",
+        "order": "queued",
+        "generator_chunk_requested": 1024,
+        "loop_cap_requested": 4096,
+        "session_chunks_after_set": [
+          1024,
+          1024
+        ],
+        "session_workspace_chunks": [
+          [
+            1024
+          ],
+          [
+            1024
+          ]
+        ],
+        "session_count": 2,
+        "workspace_chunk_observed_at_prefill": [
+          1024
+        ],
+        "loop_prefill_chunk_size": 4096,
+        "context_admission": {
+          "mode": "auto",
+          "device_free_bytes": 128844787712,
+          "device_total_bytes": 128849018880,
+          "vision_weight_reserve_bytes": 0,
+          "plan": {
+            "available_device_bytes": 128844787712,
+            "required_bytes": 112624398688,
+            "device_weight_bytes": 82523491840,
+            "staging_bytes": 20971520,
+            "kv_bytes": 12884901888,
+            "index_bytes": 4071064416,
+            "runtime_state_bytes": 239067136,
+            "scratch_bytes": 8589934592,
+            "reserve_bytes": 4294967296,
+            "context_tokens": 262144,
+            "resident_capacity": 2
+          },
+          "scratch_policy": "max(4GiB floor, mandatory runner scratch and repair queues) per runner; optional resources require separate qualification"
+        },
+        "session_max_sequence_length": [
+          262144,
+          262144
+        ],
+        "prefill_token_ids_nbytes": [
+          8192,
+          8192
+        ],
+        "loop_prefill_batch_calls": 2,
+        "loop_prefill_batch_chunks": [
+          4096,
+          16
+        ],
+        "session_prefill_calls": [
+          {
+            "n_tokens": 4096,
+            "prefill_chunk_size": 1024,
+            "workspace_chunks": [
+              1024
+            ]
+          },
+          {
+            "n_tokens": 16,
+            "prefill_chunk_size": 1024,
+            "workspace_chunks": [
+              1024
+            ]
+          }
+        ],
+        "peer_tokens": 64,
+        "peer_ttft_s": 16.84134899545461,
+        "prefill_wall_s": 16.01247851829976,
+        "prefill_window_s": 16.010537586174905,
+        "peer_itl_all": {
+          "n": 63,
+          "min_ms": 0.29368046671152115,
+          "median_ms": 49.10735134035349,
+          "max_ms": 128.4021232277155,
+          "mean_ms": 52.142179837184294
+        },
+        "peer_itl_during_prefill": {
+          "n": 0
+        },
+        "peer_itl_outside_prefill": {
+          "n": 63,
+          "min_ms": 0.29368046671152115,
+          "median_ms": 49.10735134035349,
+          "max_ms": 128.4021232277155,
+          "mean_ms": 52.142179837184294
+        },
+        "peer_max_gap_ms": 128.4021232277155,
+        "work_kinds": [
+          "prefill",
+          "decode",
+          "prefill",
+          "decode"
+        ],
+        "env": {
+          "HIPENGINE_MAX_ACTIVE_REQUESTS": "2",
+          "HIPENGINE_PREFILL_DECODE_POLICY": "protect_decode",
+          "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "4096",
+          "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/reprof/compiler.txt"
+        },
+        "host": {
+          "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+          "tuned_active": "Current active profile: accelerator-performance",
+          "cpu_governor": "performance"
+        },
+        "elapsed_seconds": 72.24271160922945
+      }
+    }
+  ]
+}
