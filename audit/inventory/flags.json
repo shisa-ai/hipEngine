@@ -27718,7 +27718,8 @@
       "evidence": {
         "default": "off",
         "sites_by_root": {
-          "hipengine": 3
+          "hipengine": 3,
+          "tests": 1
         },
         "runtime_sites": [
           "hipengine/generation/yue2_song.py:26",
@@ -27745,7 +27746,7 @@
         ]
       },
       "id": "flag/HIPENGINE_YUE2_VAE_DIR",
-      "evidence_hash": "9067fd198011"
+      "evidence_hash": "4333de420881"
     },
     {
       "kind": "flag",
