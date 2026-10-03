@@ -1,0 +1,76 @@
+{
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "prompt_tokens": 4096,
+ "reps": 3,
+ "settle_s": 3.0,
+ "sizes": {
+  "256": {
+   "effective": [
+    256,
+    256
+   ],
+   "target_arch": "gfx1151",
+   "reason": "geometry_prefill_chunk_policy",
+   "file_type": "MOSTLY_Q4_K_M",
+   "ms_samples": [
+    10270.9,
+    10276.0,
+    10277.2
+   ],
+   "ms_median": 10276.0,
+   "prefill_tok_s": 398.6,
+   "delta_pct_vs_first": 0.0
+  },
+  "512": {
+   "effective": [
+    512,
+    512
+   ],
+   "target_arch": "gfx1151",
+   "reason": "geometry_prefill_chunk_policy",
+   "file_type": "MOSTLY_Q4_K_M",
+   "ms_samples": [
+    10322.1,
+    10321.3,
+    10307.2
+   ],
+   "ms_median": 10321.3,
+   "prefill_tok_s": 396.8,
+   "delta_pct_vs_first": -0.44
+  },
+  "1024": {
+   "effective": [
+    1024,
+    1024
+   ],
+   "target_arch": "gfx1151",
+   "reason": "geometry_prefill_chunk_policy",
+   "file_type": "MOSTLY_Q4_K_M",
+   "ms_samples": [
+    10566.2,
+    10575.4,
+    10560.4
+   ],
+   "ms_median": 10566.2,
+   "prefill_tok_s": 387.7,
+   "delta_pct_vs_first": -2.75
+  },
+  "2048": {
+   "effective": [
+    2048,
+    2048
+   ],
+   "target_arch": "gfx1151",
+   "reason": "geometry_prefill_chunk_policy",
+   "file_type": "MOSTLY_Q4_K_M",
+   "ms_samples": [
+    11446.6,
+    11441.9,
+    11437.2
+   ],
+   "ms_median": 11441.9,
+   "prefill_tok_s": 358.0,
+   "delta_pct_vs_first": -10.19
+  }
+ }
+}

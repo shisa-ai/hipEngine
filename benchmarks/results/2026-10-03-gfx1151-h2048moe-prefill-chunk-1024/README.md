@@ -77,6 +77,18 @@ the chunk alone. Long-context decode is 2.9% (32K) and 4.8% (64K) below the
 published rows and remains unexplained; it also varies about 1% between
 sessions, so it needs its own host-state investigation.
 
+## H5120 dense arch-profile evidence (27B Q4_K_M)
+
+This artifact also carries `h5120-dense-arch-profile-sweep-27b-4096.json`, the
+sweep behind the `target_arch` wiring in the preceding resolver change. On
+Qwen3.8-27B-Q4_K_M at 4096 tokens (3 reps, 3 s settle, shipping AR route) the
+gfx1151 arch profile's 256 is the fastest value and the lane degrades
+monotonically above it: **256 = 398.6 tok/s**, 512 = 396.8 (-0.45%),
+1024 = 387.7 (-2.73%), 2048 = 358.0 (-10.19%). This is the opposite ordering
+from the H2048-MoE geometry, which is why the geometry layer has to sit above
+the arch layer, and why the arch profile is geometry-blind and needs keying by
+geometry (see `docs/REFACTOR.md`).
+
 ## Reproduce
 
 ```bash
