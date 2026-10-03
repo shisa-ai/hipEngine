@@ -216,16 +216,15 @@ def save_findings(kind: str, rows: list[Row], meta: dict[str, Any]) -> pathlib.P
 def _ref_identity(refs: set[str]) -> set[str]:
     """Refs with their line number dropped.
 
-    A finding's ref is ``path:line``, and inserting a line above it moves every ref
-    below. The referent is the same code, so identity must not depend on the line
-    number: without this, adding a method to a scanned file un-triaged every finding
-    beneath it and the budget gate failed on a shift nobody decided anything about.
+    A finding's ref is ``path:line`` or ``path:line:detail``. Inserting a
+    line above moves either form without changing its referent. Strip only the
+    first line-number field so numeric fields in the detail remain distinct.
     """
 
-    return {_LINE_REF.sub("", ref) for ref in refs}
+    return {_LINE_REF.sub("", ref, count=1) for ref in refs}
 
 
-_LINE_REF = re.compile(r":\d+$")
+_LINE_REF = re.compile(r":\d+(?=:|$)")
 
 
 def similarity(a: dict[str, Any], b: dict[str, Any]) -> float:
@@ -280,15 +279,32 @@ def rebind(rows: list[Row], decisions: dict[str, Triage],
     homeless = [d for d in decisions.values() if d.id not in live and not d.resolved and d.hints]
     free = [r for r in rows if r.id not in decisions]
     moved: list[tuple[str, str, float]] = []
+    # Require a unique best match in both directions. Choosing the first tied
+    # site would silently transfer a decision according to extraction order.
+    candidates = list(free)
+    scores = {
+        (decision.id, row.id): similarity(decision.hints, row.hints)
+        for decision in homeless
+        for row in free
+        if row.kind == decision.id.split("/", 1)[0]
+    }
     for decision in sorted(homeless, key=lambda d: d.id):
-        best, best_score = None, threshold
-        for row in free:
-            if row.kind != decision.id.split("/", 1)[0]:
-                continue
-            score = similarity(decision.hints, row.hints)
-            if score > best_score:
-                best, best_score = row, score
-        if best is None:
+        eligible = [(row, scores[(decision.id, row.id)]) for row in candidates
+                    if scores.get((decision.id, row.id), 0.0) > threshold]
+        if not eligible:
+            continue
+        best_score = max(score for _, score in eligible)
+        best_rows = [row for row, score in eligible if score == best_score]
+        if len(best_rows) != 1:
+            continue
+        best = best_rows[0]
+        if best not in free:
+            continue
+        competing = [(other.id, scores[(other.id, best.id)]) for other in homeless
+                     if scores.get((other.id, best.id), 0.0) > threshold]
+        row_best = max(score for _, score in competing)
+        winners = [old_id for old_id, score in competing if score == row_best]
+        if winners != [decision.id]:
             continue
         old = decision.id
         decisions.pop(old, None)
