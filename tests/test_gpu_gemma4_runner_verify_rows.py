@@ -1,28 +1,10 @@
-"""Multi-row logits and rewind, on the synthetic fixture artifact.
+"""Multi-row logits and rewind on the synthetic fixture artifact.
 
-A speculative verify pass forwards a whole draft in one call and reads the
-target's own distribution at every drafted position, then gives back the
-rejected tail. Greedy output survives that only if both operations are exact: a
-row's logits must not depend on how many rows accompany it, and a rewound cache
-must recompute what it would have computed had the rejected tokens never been
-appended.
-
-**The first of those does not hold today, and this file records it rather than
-asserting it.** A one-row block is bit-exact against a one-row forward, but a
-block of two or more rows is not: the hidden state after the layers already
-differs, at every row including the first, and the difference is the same
-whatever the block width is, so each row is computed independently of its
-companions and the divergence is between a one-row block and a wider one. That
-is a route selected by batch shape somewhere in the layers, the same class of
-defect ``tests/test_gpu_gemma4_attention_decode_parity.py`` and
-``test_incremental_decode_matches_a_dense_prefill`` already catch. It predates
-the ``logits_rows`` plumbing here, which only changes the final norm and head.
-
-The consequence for speculative decoding is that a verify pass is an arithmetic
-change and not a free one, so it needs the ``docs/EXECUTION-PROFILES.md`` gate
-before it can be a default. The top-1 token still agrees at every position on
-this fixture, which is what greedy acceptance actually reads, but one fixture is
-not that gate.
+A speculative verify pass reads the target distribution at every drafted
+position and gives back rejected tail tokens. These tests require exact
+single-row versus multi-row logits, trailing-row selection, and rewind
+recomputation on this fixture. The default exact expert-down owner now satisfies
+these assertions; this fixture does not certify other artifacts or profiles.
 """
 
 import numpy as np
@@ -61,7 +43,9 @@ def runner(tmp_path_factory):
 
 def test_verification_phase_keeps_decode_attention_without_changing_prefill(runner, monkeypatch):
     from hipengine.runtime import gemma4 as module
-    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import PREFILL_ATTENTION_WMMA_FLASH
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        PREFILL_ATTENTION_PLAIN, PREFILL_ATTENTION_WMMA_FLASH,
+    )
 
     requested = (PREFILL_ATTENTION_WMMA_FLASH,)
     requests = []
@@ -79,7 +63,9 @@ def test_verification_phase_keeps_decode_attention_without_changing_prefill(runn
             runner.reset()
             requests.clear()
             runner.forward(_TOKENS, logits_rows=5, verification=verification)
-            expected = None if verification else requested
+            # None requests automatic attention and can select a tiled route;
+            # verification must explicitly request the decode's strict owner.
+            expected = (PREFILL_ATTENTION_PLAIN,) if verification else requested
             assert requests and all(value == expected for value in requests)
             assert runner.prefill_attention_variants == requested
     finally:
@@ -87,12 +73,7 @@ def test_verification_phase_keeps_decode_attention_without_changing_prefill(runn
 
 
 def test_one_row_matches_a_one_row_forward(runner) -> None:
-    """The control: at width one the two paths are the same computation.
-
-    This is what makes the wider-row failure below a route difference rather
-    than a bug in the multi-row plumbing. The hidden state is compared too,
-    because that is where the divergence starts.
-    """
+    """At width one, both public forwarding forms are the same computation."""
 
     runner.reset()
     runner.forward(_TOKENS[:1])
@@ -106,21 +87,8 @@ def test_one_row_matches_a_one_row_forward(runner) -> None:
     np.testing.assert_array_equal(in_one_call, one_at_a_time)
 
 
-@pytest.mark.xfail(
-    reason="a two-or-wider block takes a different layer route than a one-row "
-    "forward; the divergence is in the hidden state, not in logits_rows",
-    strict=False,
-)
 def test_multi_row_logits_are_bit_equal_to_one_row_forwards(runner) -> None:
-    """The verify's premise, which does not hold yet.
-
-    The mask is built from absolute positions, so row ``i`` of a five-row block
-    should attend over exactly what the ``i``-th one-row forward attended over.
-    It does not: the hidden state after the layers already differs, so some
-    kernel in the layers picks its route from the block width. Fixing that is
-    what would make a speculative verify bit-exact; until then it is an
-    arithmetic change.
-    """
+    """Require identical logits at identical absolute positions and contexts."""
 
     runner.reset()
     runner.forward(_TOKENS[:1])
@@ -135,14 +103,7 @@ def test_multi_row_logits_are_bit_equal_to_one_row_forwards(runner) -> None:
 
 
 def test_multi_row_logits_agree_on_the_sampled_token(runner) -> None:
-    """What greedy acceptance actually reads, and it holds today.
-
-    Acceptance compares the target's argmax at each drafted position against
-    the draft. The values differ by up to 2.5 on this fixture while the top-1
-    token agrees everywhere, which is why the route difference is a promotion
-    question and not an immediate correctness failure -- but it is only one
-    fixture, so it is not the gate either.
-    """
+    """Require greedy acceptance to see the same winners on this fixture."""
 
     runner.reset()
     runner.forward(_TOKENS[:1])
@@ -157,11 +118,6 @@ def test_multi_row_logits_agree_on_the_sampled_token(runner) -> None:
     ]
 
 
-@pytest.mark.xfail(
-    reason="the trailing rows come from a narrower block than the full set, and "
-    "a narrower block takes a different layer route",
-    strict=False,
-)
 def test_a_partial_multi_row_request_returns_the_trailing_rows(runner) -> None:
     """``logits_rows=k`` means the last k rows, which is what acceptance reads.
 
@@ -170,9 +126,7 @@ def test_a_partial_multi_row_request_returns_the_trailing_rows(runner) -> None:
     the seed token produced, so the rows the caller wants are the trailing ones
     and the mapping has to be by offset rather than by row index.
 
-    The shape is the plumbing contract and holds; the values are subject to the
-    same block-width route difference as the bit-equality test above, because a
-    two-row block and a four-row block are not the same computation today.
+    Both shape and values must match the trailing rows of the wider request.
     """
 
     runner.reset()
