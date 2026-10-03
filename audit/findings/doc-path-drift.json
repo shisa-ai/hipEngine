@@ -673,9 +673,9 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:175:attention/aotriton.py",
+      "key": "docs/KERNELS.md:176:attention/aotriton.py",
       "title": "names `attention/aotriton.py`, which is actually at `hipengine/kernels/hip_gfx1100/attention/aotriton.py`",
-      "location": "docs/KERNELS.md:175",
+      "location": "docs/KERNELS.md:176",
       "evidence": {
         "fix": "Change `attention/aotriton.py` to `hipengine/kernels/hip_gfx1100/attention/aotriton.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -691,7 +691,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:175:attention/aotriton.py"
+          "docs/KERNELS.md:176:attention/aotriton.py"
         ],
         "tokens": [
           "actually",
@@ -704,14 +704,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:175:attention/aotriton.py",
-      "evidence_hash": "5569e86e185d"
+      "id": "doc-path-drift/docs/KERNELS.md:176:attention/aotriton.py",
+      "evidence_hash": "c117f58b636b"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:175:attention/aotriton_wrap.py",
+      "key": "docs/KERNELS.md:176:attention/aotriton_wrap.py",
       "title": "names `attention/aotriton_wrap.py`, which is actually at `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.py`",
-      "location": "docs/KERNELS.md:175",
+      "location": "docs/KERNELS.md:176",
       "evidence": {
         "fix": "Change `attention/aotriton_wrap.py` to `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -727,7 +727,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:175:attention/aotriton_wrap.py"
+          "docs/KERNELS.md:176:attention/aotriton_wrap.py"
         ],
         "tokens": [
           "actually",
@@ -740,14 +740,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:175:attention/aotriton_wrap.py",
-      "evidence_hash": "b33ac945d17f"
+      "id": "doc-path-drift/docs/KERNELS.md:176:attention/aotriton_wrap.py",
+      "evidence_hash": "9833ae00337e"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:190:cpu_reference/dms.py",
+      "key": "docs/KERNELS.md:191:cpu_reference/dms.py",
       "title": "names `cpu_reference/dms.py`, which is actually at `hipengine/kernels/cpu_reference/dms.py`",
-      "location": "docs/KERNELS.md:190",
+      "location": "docs/KERNELS.md:191",
       "evidence": {
         "fix": "Change `cpu_reference/dms.py` to `hipengine/kernels/cpu_reference/dms.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -763,7 +763,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:190:cpu_reference/dms.py"
+          "docs/KERNELS.md:191:cpu_reference/dms.py"
         ],
         "tokens": [
           "actually",
@@ -775,14 +775,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:190:cpu_reference/dms.py",
-      "evidence_hash": "9e3fa8472a15"
+      "id": "doc-path-drift/docs/KERNELS.md:191:cpu_reference/dms.py",
+      "evidence_hash": "7a3734f1a043"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:218:models/qwen35.py",
+      "key": "docs/KERNELS.md:219:models/qwen35.py",
       "title": "names `models/qwen35.py`, which is actually at `hipengine/models/qwen35.py`",
-      "location": "docs/KERNELS.md:218",
+      "location": "docs/KERNELS.md:219",
       "evidence": {
         "fix": "Change `models/qwen35.py` to `hipengine/models/qwen35.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -798,7 +798,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:218:models/qwen35.py"
+          "docs/KERNELS.md:219:models/qwen35.py"
         ],
         "tokens": [
           "actually",
@@ -809,14 +809,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:218:models/qwen35.py",
-      "evidence_hash": "9bb79019fd86"
+      "id": "doc-path-drift/docs/KERNELS.md:219:models/qwen35.py",
+      "evidence_hash": "60f4d5a0a799"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:219:kernels/backends.py",
+      "key": "docs/KERNELS.md:220:kernels/backends.py",
       "title": "names `kernels/backends.py`, which is actually at `hipengine/kernels/backends.py`",
-      "location": "docs/KERNELS.md:219",
+      "location": "docs/KERNELS.md:220",
       "evidence": {
         "fix": "Change `kernels/backends.py` to `hipengine/kernels/backends.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -832,7 +832,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:219:kernels/backends.py"
+          "docs/KERNELS.md:220:kernels/backends.py"
         ],
         "tokens": [
           "actually",
@@ -843,14 +843,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:219:kernels/backends.py",
-      "evidence_hash": "6eb5cc97d46f"
+      "id": "doc-path-drift/docs/KERNELS.md:220:kernels/backends.py",
+      "evidence_hash": "999359ead808"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:220:generation/registry.py",
+      "key": "docs/KERNELS.md:221:generation/registry.py",
       "title": "names `generation/registry.py`, which is actually at `hipengine/generation/registry.py`",
-      "location": "docs/KERNELS.md:220",
+      "location": "docs/KERNELS.md:221",
       "evidence": {
         "fix": "Change `generation/registry.py` to `hipengine/generation/registry.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -866,7 +866,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:220:generation/registry.py"
+          "docs/KERNELS.md:221:generation/registry.py"
         ],
         "tokens": [
           "actually",
@@ -877,14 +877,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:220:generation/registry.py",
-      "evidence_hash": "8264348bb9d3"
+      "id": "doc-path-drift/docs/KERNELS.md:221:generation/registry.py",
+      "evidence_hash": "c620cae19a43"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:222:loading/qwen35_gguf_materialize.py",
+      "key": "docs/KERNELS.md:223:loading/qwen35_gguf_materialize.py",
       "title": "names `loading/qwen35_gguf_materialize.py`, which is actually at `hipengine/loading/qwen35_gguf_materialize.py`",
-      "location": "docs/KERNELS.md:222",
+      "location": "docs/KERNELS.md:223",
       "evidence": {
         "fix": "Change `loading/qwen35_gguf_materialize.py` to `hipengine/loading/qwen35_gguf_materialize.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -900,7 +900,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:222:loading/qwen35_gguf_materialize.py"
+          "docs/KERNELS.md:223:loading/qwen35_gguf_materialize.py"
         ],
         "tokens": [
           "actually",
@@ -911,14 +911,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:222:loading/qwen35_gguf_materialize.py",
-      "evidence_hash": "2f37eb532693"
+      "id": "doc-path-drift/docs/KERNELS.md:223:loading/qwen35_gguf_materialize.py",
+      "evidence_hash": "20421aef6cc3"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:223:runtime/gguf_linear.py",
+      "key": "docs/KERNELS.md:224:runtime/gguf_linear.py",
       "title": "names `runtime/gguf_linear.py`, which is actually at `hipengine/runtime/gguf_linear.py`",
-      "location": "docs/KERNELS.md:223",
+      "location": "docs/KERNELS.md:224",
       "evidence": {
         "fix": "Change `runtime/gguf_linear.py` to `hipengine/runtime/gguf_linear.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -934,7 +934,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:223:runtime/gguf_linear.py"
+          "docs/KERNELS.md:224:runtime/gguf_linear.py"
         ],
         "tokens": [
           "actually",
@@ -945,14 +945,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:223:runtime/gguf_linear.py",
-      "evidence_hash": "7c319bd5fcb1"
+      "id": "doc-path-drift/docs/KERNELS.md:224:runtime/gguf_linear.py",
+      "evidence_hash": "ee44ab2aaa86"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:224:kernels/registry.py",
+      "key": "docs/KERNELS.md:225:kernels/registry.py",
       "title": "names `kernels/registry.py`, which is actually at `hipengine/kernels/registry.py`",
-      "location": "docs/KERNELS.md:224",
+      "location": "docs/KERNELS.md:225",
       "evidence": {
         "fix": "Change `kernels/registry.py` to `hipengine/kernels/registry.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -968,7 +968,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:224:kernels/registry.py"
+          "docs/KERNELS.md:225:kernels/registry.py"
         ],
         "tokens": [
           "actually",
@@ -979,14 +979,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:224:kernels/registry.py",
-      "evidence_hash": "d892812a18a8"
+      "id": "doc-path-drift/docs/KERNELS.md:225:kernels/registry.py",
+      "evidence_hash": "435f41faf723"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:230:runtime/qwen35_gguf_runner.py",
+      "key": "docs/KERNELS.md:231:runtime/qwen35_gguf_runner.py",
       "title": "names `runtime/qwen35_gguf_runner.py`, which is actually at `hipengine/runtime/qwen35_gguf_runner.py`",
-      "location": "docs/KERNELS.md:230",
+      "location": "docs/KERNELS.md:231",
       "evidence": {
         "fix": "Change `runtime/qwen35_gguf_runner.py` to `hipengine/runtime/qwen35_gguf_runner.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1002,7 +1002,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:230:runtime/qwen35_gguf_runner.py"
+          "docs/KERNELS.md:231:runtime/qwen35_gguf_runner.py"
         ],
         "tokens": [
           "actually",
@@ -1013,14 +1013,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:230:runtime/qwen35_gguf_runner.py",
-      "evidence_hash": "6c1fe1c10eb9"
+      "id": "doc-path-drift/docs/KERNELS.md:231:runtime/qwen35_gguf_runner.py",
+      "evidence_hash": "8c2ea9f15fc1"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:230:runtime/qwen35_paro.py",
+      "key": "docs/KERNELS.md:231:runtime/qwen35_paro.py",
       "title": "names `runtime/qwen35_paro.py`, which is actually at `hipengine/runtime/qwen35_paro.py`",
-      "location": "docs/KERNELS.md:230",
+      "location": "docs/KERNELS.md:231",
       "evidence": {
         "fix": "Change `runtime/qwen35_paro.py` to `hipengine/runtime/qwen35_paro.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1036,7 +1036,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:230:runtime/qwen35_paro.py"
+          "docs/KERNELS.md:231:runtime/qwen35_paro.py"
         ],
         "tokens": [
           "actually",
@@ -1047,14 +1047,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:230:runtime/qwen35_paro.py",
-      "evidence_hash": "5f34cdb9c92d"
+      "id": "doc-path-drift/docs/KERNELS.md:231:runtime/qwen35_paro.py",
+      "evidence_hash": "1a9e09553a58"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:269:hip_gfx1100/__init__.py",
+      "key": "docs/KERNELS.md:270:hip_gfx1100/__init__.py",
       "title": "names `hip_gfx1100/__init__.py`, which is actually at `hipengine/kernels/hip_gfx1100/__init__.py`",
-      "location": "docs/KERNELS.md:269",
+      "location": "docs/KERNELS.md:270",
       "evidence": {
         "fix": "Change `hip_gfx1100/__init__.py` to `hipengine/kernels/hip_gfx1100/__init__.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1070,7 +1070,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:269:hip_gfx1100/__init__.py"
+          "docs/KERNELS.md:270:hip_gfx1100/__init__.py"
         ],
         "tokens": [
           "__init__",
@@ -1082,14 +1082,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:269:hip_gfx1100/__init__.py",
-      "evidence_hash": "0ec225fdb535"
+      "id": "doc-path-drift/docs/KERNELS.md:270:hip_gfx1100/__init__.py",
+      "evidence_hash": "53117182f696"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:323:kernels/cpu_reference/timesfm.py",
+      "key": "docs/KERNELS.md:324:kernels/cpu_reference/timesfm.py",
       "title": "names `kernels/cpu_reference/timesfm.py`, which is actually at `hipengine/kernels/cpu_reference/timesfm.py`",
-      "location": "docs/KERNELS.md:323",
+      "location": "docs/KERNELS.md:324",
       "evidence": {
         "fix": "Change `kernels/cpu_reference/timesfm.py` to `hipengine/kernels/cpu_reference/timesfm.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1105,7 +1105,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:323:kernels/cpu_reference/timesfm.py"
+          "docs/KERNELS.md:324:kernels/cpu_reference/timesfm.py"
         ],
         "tokens": [
           "actually",
@@ -1117,14 +1117,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:323:kernels/cpu_reference/timesfm.py",
-      "evidence_hash": "9ef458643904"
+      "id": "doc-path-drift/docs/KERNELS.md:324:kernels/cpu_reference/timesfm.py",
+      "evidence_hash": "808c84498ea9"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:323:loading/timesfm.py",
+      "key": "docs/KERNELS.md:324:loading/timesfm.py",
       "title": "names `loading/timesfm.py`, which is actually at `hipengine/loading/timesfm.py`",
-      "location": "docs/KERNELS.md:323",
+      "location": "docs/KERNELS.md:324",
       "evidence": {
         "fix": "Change `loading/timesfm.py` to `hipengine/loading/timesfm.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1140,7 +1140,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:323:loading/timesfm.py"
+          "docs/KERNELS.md:324:loading/timesfm.py"
         ],
         "tokens": [
           "actually",
@@ -1151,14 +1151,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:323:loading/timesfm.py",
-      "evidence_hash": "81c225a3461a"
+      "id": "doc-path-drift/docs/KERNELS.md:324:loading/timesfm.py",
+      "evidence_hash": "0c78b67c92a5"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:323:models/timesfm.py",
+      "key": "docs/KERNELS.md:324:models/timesfm.py",
       "title": "names `models/timesfm.py`, which is actually at `hipengine/models/timesfm.py`",
-      "location": "docs/KERNELS.md:323",
+      "location": "docs/KERNELS.md:324",
       "evidence": {
         "fix": "Change `models/timesfm.py` to `hipengine/models/timesfm.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1174,7 +1174,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:323:models/timesfm.py"
+          "docs/KERNELS.md:324:models/timesfm.py"
         ],
         "tokens": [
           "actually",
@@ -1185,14 +1185,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:323:models/timesfm.py",
-      "evidence_hash": "588d305b95f0"
+      "id": "doc-path-drift/docs/KERNELS.md:324:models/timesfm.py",
+      "evidence_hash": "c9ddce307520"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:324:runtime/timesfm_decode.py",
+      "key": "docs/KERNELS.md:325:runtime/timesfm_decode.py",
       "title": "names `runtime/timesfm_decode.py`, which is actually at `hipengine/runtime/timesfm_decode.py`",
-      "location": "docs/KERNELS.md:324",
+      "location": "docs/KERNELS.md:325",
       "evidence": {
         "fix": "Change `runtime/timesfm_decode.py` to `hipengine/runtime/timesfm_decode.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1208,7 +1208,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:324:runtime/timesfm_decode.py"
+          "docs/KERNELS.md:325:runtime/timesfm_decode.py"
         ],
         "tokens": [
           "actually",
@@ -1219,14 +1219,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:324:runtime/timesfm_decode.py",
-      "evidence_hash": "4e7817b490e8"
+      "id": "doc-path-drift/docs/KERNELS.md:325:runtime/timesfm_decode.py",
+      "evidence_hash": "d41b04632696"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:341:kernels/cpu_reference/timesfm3.py",
+      "key": "docs/KERNELS.md:342:kernels/cpu_reference/timesfm3.py",
       "title": "names `kernels/cpu_reference/timesfm3.py`, which is actually at `hipengine/kernels/cpu_reference/timesfm3.py`",
-      "location": "docs/KERNELS.md:341",
+      "location": "docs/KERNELS.md:342",
       "evidence": {
         "fix": "Change `kernels/cpu_reference/timesfm3.py` to `hipengine/kernels/cpu_reference/timesfm3.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1242,7 +1242,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:341:kernels/cpu_reference/timesfm3.py"
+          "docs/KERNELS.md:342:kernels/cpu_reference/timesfm3.py"
         ],
         "tokens": [
           "actually",
@@ -1254,14 +1254,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:341:kernels/cpu_reference/timesfm3.py",
-      "evidence_hash": "94f98ef94118"
+      "id": "doc-path-drift/docs/KERNELS.md:342:kernels/cpu_reference/timesfm3.py",
+      "evidence_hash": "760b5fae05ff"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:341:loading/timesfm3.py",
+      "key": "docs/KERNELS.md:342:loading/timesfm3.py",
       "title": "names `loading/timesfm3.py`, which is actually at `hipengine/loading/timesfm3.py`",
-      "location": "docs/KERNELS.md:341",
+      "location": "docs/KERNELS.md:342",
       "evidence": {
         "fix": "Change `loading/timesfm3.py` to `hipengine/loading/timesfm3.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1277,7 +1277,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:341:loading/timesfm3.py"
+          "docs/KERNELS.md:342:loading/timesfm3.py"
         ],
         "tokens": [
           "actually",
@@ -1288,14 +1288,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:341:loading/timesfm3.py",
-      "evidence_hash": "a609de4c0b1c"
+      "id": "doc-path-drift/docs/KERNELS.md:342:loading/timesfm3.py",
+      "evidence_hash": "36dad45a01e2"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:341:models/timesfm3.py",
+      "key": "docs/KERNELS.md:342:models/timesfm3.py",
       "title": "names `models/timesfm3.py`, which is actually at `hipengine/models/timesfm3.py`",
-      "location": "docs/KERNELS.md:341",
+      "location": "docs/KERNELS.md:342",
       "evidence": {
         "fix": "Change `models/timesfm3.py` to `hipengine/models/timesfm3.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1311,7 +1311,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:341:models/timesfm3.py"
+          "docs/KERNELS.md:342:models/timesfm3.py"
         ],
         "tokens": [
           "actually",
@@ -1322,14 +1322,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:341:models/timesfm3.py",
-      "evidence_hash": "638db0fb7eff"
+      "id": "doc-path-drift/docs/KERNELS.md:342:models/timesfm3.py",
+      "evidence_hash": "82c0a359f1fe"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:342:runtime/timesfm3_decode.py",
+      "key": "docs/KERNELS.md:343:runtime/timesfm3_decode.py",
       "title": "names `runtime/timesfm3_decode.py`, which is actually at `hipengine/runtime/timesfm3_decode.py`",
-      "location": "docs/KERNELS.md:342",
+      "location": "docs/KERNELS.md:343",
       "evidence": {
         "fix": "Change `runtime/timesfm3_decode.py` to `hipengine/runtime/timesfm3_decode.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1345,7 +1345,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:342:runtime/timesfm3_decode.py"
+          "docs/KERNELS.md:343:runtime/timesfm3_decode.py"
         ],
         "tokens": [
           "actually",
@@ -1356,14 +1356,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:342:runtime/timesfm3_decode.py",
-      "evidence_hash": "897f4b876faa"
+      "id": "doc-path-drift/docs/KERNELS.md:343:runtime/timesfm3_decode.py",
+      "evidence_hash": "1663d65a51e6"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:367:runtime/surya.py",
+      "key": "docs/KERNELS.md:368:runtime/surya.py",
       "title": "names `runtime/surya.py`, which is actually at `hipengine/runtime/surya.py`",
-      "location": "docs/KERNELS.md:367",
+      "location": "docs/KERNELS.md:368",
       "evidence": {
         "fix": "Change `runtime/surya.py` to `hipengine/runtime/surya.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1379,7 +1379,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:367:runtime/surya.py"
+          "docs/KERNELS.md:368:runtime/surya.py"
         ],
         "tokens": [
           "actually",
@@ -1390,14 +1390,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:367:runtime/surya.py",
-      "evidence_hash": "89f8e5497622"
+      "id": "doc-path-drift/docs/KERNELS.md:368:runtime/surya.py",
+      "evidence_hash": "156c5a5f17a0"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:374:kernels/cpu_reference/surya.py",
+      "key": "docs/KERNELS.md:375:kernels/cpu_reference/surya.py",
       "title": "names `kernels/cpu_reference/surya.py`, which is actually at `hipengine/kernels/cpu_reference/surya.py`",
-      "location": "docs/KERNELS.md:374",
+      "location": "docs/KERNELS.md:375",
       "evidence": {
         "fix": "Change `kernels/cpu_reference/surya.py` to `hipengine/kernels/cpu_reference/surya.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1413,7 +1413,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:374:kernels/cpu_reference/surya.py"
+          "docs/KERNELS.md:375:kernels/cpu_reference/surya.py"
         ],
         "tokens": [
           "actually",
@@ -1425,14 +1425,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:374:kernels/cpu_reference/surya.py",
-      "evidence_hash": "d50429649082"
+      "id": "doc-path-drift/docs/KERNELS.md:375:kernels/cpu_reference/surya.py",
+      "evidence_hash": "8c756ed9b860"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:374:loading/surya.py",
+      "key": "docs/KERNELS.md:375:loading/surya.py",
       "title": "names `loading/surya.py`, which is actually at `hipengine/loading/surya.py`",
-      "location": "docs/KERNELS.md:374",
+      "location": "docs/KERNELS.md:375",
       "evidence": {
         "fix": "Change `loading/surya.py` to `hipengine/loading/surya.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1448,7 +1448,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:374:loading/surya.py"
+          "docs/KERNELS.md:375:loading/surya.py"
         ],
         "tokens": [
           "actually",
@@ -1459,14 +1459,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:374:loading/surya.py",
-      "evidence_hash": "c9e1c6bffa9a"
+      "id": "doc-path-drift/docs/KERNELS.md:375:loading/surya.py",
+      "evidence_hash": "6fc349c1b496"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:374:models/surya.py",
+      "key": "docs/KERNELS.md:375:models/surya.py",
       "title": "names `models/surya.py`, which is actually at `hipengine/models/surya.py`",
-      "location": "docs/KERNELS.md:374",
+      "location": "docs/KERNELS.md:375",
       "evidence": {
         "fix": "Change `models/surya.py` to `hipengine/models/surya.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1482,7 +1482,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:374:models/surya.py"
+          "docs/KERNELS.md:375:models/surya.py"
         ],
         "tokens": [
           "actually",
@@ -1493,14 +1493,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:374:models/surya.py",
-      "evidence_hash": "dd7ab2728bea"
+      "id": "doc-path-drift/docs/KERNELS.md:375:models/surya.py",
+      "evidence_hash": "abdbd45a643c"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:384:speculative/dflash2_drafter.py",
+      "key": "docs/KERNELS.md:385:speculative/dflash2_drafter.py",
       "title": "names `speculative/dflash2_drafter.py`, which is actually at `hipengine/speculative/dflash2_drafter.py`",
-      "location": "docs/KERNELS.md:384",
+      "location": "docs/KERNELS.md:385",
       "evidence": {
         "fix": "Change `speculative/dflash2_drafter.py` to `hipengine/speculative/dflash2_drafter.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1516,7 +1516,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:384:speculative/dflash2_drafter.py"
+          "docs/KERNELS.md:385:speculative/dflash2_drafter.py"
         ],
         "tokens": [
           "actually",
@@ -1527,8 +1527,8 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:384:speculative/dflash2_drafter.py",
-      "evidence_hash": "563c20f4dd59"
+      "id": "doc-path-drift/docs/KERNELS.md:385:speculative/dflash2_drafter.py",
+      "evidence_hash": "bef0b89d7476"
     },
     {
       "kind": "doc-path-drift",

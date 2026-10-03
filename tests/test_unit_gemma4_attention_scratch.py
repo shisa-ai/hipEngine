@@ -128,3 +128,40 @@ def test_wrapper_without_owner_releases_temporary_even_on_launch_error(monkeypat
     assert runtime.live == {}
     assert runtime.events[-2][0] == "sync"
     assert runtime.events[-1][0] == "free"
+
+
+@pytest.mark.parametrize("tokens", [1, 3, 9])
+@pytest.mark.parametrize("head_dim", [256, 512])
+@pytest.mark.parametrize("keys", [15857, 16640, 32771])
+def test_large_context_uses_owned_global_logits(monkeypatch, tokens, head_dim, keys):
+    runtime = Runtime()
+    calls = []
+    monkeypatch.setattr(attention, "split_workspace_bytes", lambda *args, **kw: 8192)
+
+    def launch(*args):
+        calls.append(args)
+        assert runtime.live, "global logits require owned scratch even without split"
+        assert args[-2].value != 0
+        return 0
+
+    monkeypatch.setattr(attention, "signed_kernel_fn", lambda lib, symbol, *args: (
+        calls.append(symbol) or launch
+    ))
+    attention.gemma4_attention_prefill_f32(
+        1, 2, 3, 4, 5, tokens=tokens, num_heads=2, num_kv_heads=1,
+        head_dim=head_dim, scale=1.0, keys=keys, library=object(), runtime=runtime,
+    )
+    assert calls[0] == attention._SYMBOL_DECODE_F32
+    launches = [call for call in calls if isinstance(call, tuple)]
+    assert sum(call[5] for call in launches) == tokens
+    assert all(call[5] <= 4 for call in launches)
+    for index, call in enumerate(launches):
+        assert call[0] == 1 + index * 4 * 2 * head_dim * 4
+        assert call[3] == 4 + index * 4 * keys
+    assert runtime.live == {}
+
+
+@pytest.mark.parametrize("head_dim", [256, 512])
+@pytest.mark.parametrize("keys", [15857, 16640, 32771])
+def test_large_context_has_bounded_shared_memory(head_dim, keys):
+    assert attention.gemma4_attention_shared_bytes(head_dim=head_dim, keys=keys) <= 65536

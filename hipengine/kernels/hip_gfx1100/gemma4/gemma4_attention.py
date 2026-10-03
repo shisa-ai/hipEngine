@@ -435,32 +435,37 @@ def gemma4_attention_decode_variant(library: ctypes.CDLL | None = None) -> str:
     ``"class"`` is the single key-class kernel, ``"split"`` separates its
     weights and dimension-partitioned value passes, ``"flash"`` is the
     KV-sliced flash route with its combine, and ``"block"`` is the original
-    block kernel. Introspection only; selection is not a quality gate.
+    block kernel. ``"global_class"`` keeps the
+    strict class arithmetic with owned global logits when a resident row would
+    exceed LDS capacity. Introspection only; selection is not a quality gate.
     """
 
     library = library or build_gemma4_attention(load=True)
     fn = signed_kernel_fn(library, _SYMBOL_DECODE_VARIANT, [], ctypes.c_int)
-    return {0: "block", 1: "class", 2: "split", 3: "flash"}[int(fn())]
+    return {0: "block", 1: "class", 2: "split", 3: "flash", 4: "global_class"}[int(fn())]
+
+
+def _resident_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
+    threads = min(256, 1 << (int(head_dim) - 1).bit_length())
+    return max(
+        (int(head_dim) + int(keys) + threads) * 4,
+        (int(keys) + 256 * 2 + 16) * 4,
+    )
 
 
 def gemma4_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
-    """Validate the resident-logit kernel's gfx1100 shared-memory requirement.
+    """LDS requirement of the selected strict attention implementation.
 
-    This implementation stores one logit per live key in LDS. Larger contexts
-    need a tiled attention implementation, not a larger prefill scratch block.
+    The 256/512-dimension class kernel moves logits to request-owned global
+    scratch when the resident row would exceed 64 KiB. Its reduction order and
+    mask semantics are unchanged; other head geometries retain the LDS bound.
     """
 
     if head_dim <= 0 or keys <= 0:
         raise ValueError("head_dim and keys must be positive")
-    threads = min(256, 1 << (int(head_dim) - 1).bit_length())
-    # The multi-token route runs the decode family, whose key-class kernel holds
-    # the logits plus a 256-lane partial per 256-thread group plus one max slot
-    # per warp: keys + 512 + 16 floats at its 512-thread block. Take the larger
-    # of that and the block kernel's own requirement.
-    required = max(
-        (int(head_dim) + int(keys) + threads) * 4,
-        (int(keys) + 256 * 2 + 16) * 4,
-    )
+    required = _resident_attention_shared_bytes(head_dim=head_dim, keys=keys)
+    if required > 64 * 1024 and head_dim in (256, 512):
+        return (256 * 2 + 16) * 4
     if required > 64 * 1024:
         raise NotImplementedError(
             f"Gemma 4 gfx1100 attention requires {required} bytes of shared memory "
@@ -531,6 +536,39 @@ def _launch_prefill(
     if key_count <= 0:
         raise ValueError("keys must be positive")
     gemma4_attention_shared_bytes(head_dim=head_dim, keys=key_count)
+    global_logits = _resident_attention_shared_bytes(
+        head_dim=head_dim, keys=key_count,
+    ) > 64 * 1024
+    if global_logits:
+        # Bound resident global scratch as well as LDS: allocating a full
+        # 128-query block independently in every model layer exhausts VRAM.
+        # Query rows are independent, so batches of four preserve all arithmetic
+        # and reuse the same stream-owned arena across the block.
+        if tokens > 4:
+            owner = scratch if scratch is not None else Gemma4AttentionScratch()
+            item_bytes = 2 if symbol in (_SYMBOL_PREFILL_BF16, _SYMBOL_DECODE_BF16) else 4
+            try:
+                for begin in range(0, tokens, 4):
+                    offset = begin * num_heads * head_dim * item_bytes
+                    _launch_prefill(
+                        symbol, query_ptr + offset, key_ptr, value_ptr,
+                        keep_mask_ptr + begin * key_count, out_ptr + offset,
+                        tokens=min(4, tokens - begin), num_heads=num_heads,
+                        num_kv_heads=num_kv_heads, head_dim=head_dim, scale=scale,
+                        keys=key_count, stream=stream, library=library,
+                        runtime=runtime, scratch=owner,
+                    )
+            finally:
+                if scratch is None:
+                    owner.close()
+            return
+        # The decode ABI carries owned scratch and also admits multi-row class
+        # launches. The legacy prefill ABI has no workspace argument.
+        symbol = (
+            _SYMBOL_DECODE_BF16
+            if symbol in (_SYMBOL_PREFILL_BF16, _SYMBOL_DECODE_BF16)
+            else _SYMBOL_DECODE_F32
+        )
     library = library or build_gemma4_attention(load=True)
     runtime = runtime or get_hip_runtime()
     if symbol in _DECODE_SYMBOLS:
@@ -539,7 +577,7 @@ def _launch_prefill(
         # slice of the key range, and a combine sums the slices. Selected by
         # context length, because the kernel's parallelism is structurally low
         # (grid = tokens * num_heads is 16 blocks on a 96-CU GPU).
-        slices = decode_slices(key_count, head_dim)
+        slices = 1 if global_logits else decode_slices(key_count, head_dim)
         # Flash-decoding (D2) replaces the split for the sliding geometry when
         # admitted: a negative slice count is the flash request, and the
         # workspace is sized for whichever route is larger so a host-side
@@ -552,10 +590,11 @@ def _launch_prefill(
         )
         request = -flash_slices(key_count) if flash else slices
         workspace = 0
-        temporary = Gemma4AttentionScratch() if slices > 1 and scratch is None else None
+        needs_workspace = slices > 1 or global_logits
+        temporary = Gemma4AttentionScratch() if needs_workspace and scratch is None else None
         owner = scratch if scratch is not None else temporary
         try:
-            if slices > 1:
+            if needs_workspace:
                 need = split_workspace_bytes(
                     tokens, num_heads, head_dim, key_count, slices, library=library
                 )

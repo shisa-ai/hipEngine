@@ -456,18 +456,22 @@ def test_int8_storage_refuses_a_context_past_its_own_bound(
         )
 
 
-def test_bf16_storage_still_refuses_past_its_own_bound(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("capacity", [15700, 15856, 16640, 32771])
+def test_bf16_storage_admits_global_logit_scratch_past_resident_bound(
+    monkeypatch: pytest.MonkeyPatch, capacity: int,
 ) -> None:
-    """The fix picks the right bound; it does not loosen either consumer's limit."""
-
-    with pytest.raises(NotImplementedError, match="shared memory"):
-        _fake_allocated_runner(
-            monkeypatch,
-            config=_wide_config(),
-            capacity=15700,
-            kv_storage="bf16",
-        )
+    """BF16 can move logits to global scratch; INT8 still has its own bound."""
+    runner, runner_allocator, _ = _fake_allocated_runner(
+        monkeypatch,
+        config=_wide_config(),
+        capacity=capacity,
+        kv_storage="bf16",
+    )
+    try:
+        assert runner.kv_storage_resolved == "bf16"
+        assert runner_allocator.allocated
+    finally:
+        runner.close()
 
 
 def test_close_releases_an_unused_runner_without_loading_the_hip_runtime(

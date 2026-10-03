@@ -19,8 +19,8 @@ def test_oversized_attention_is_rejected_before_build_or_launch(monkeypatch):
     monkeypatch.setattr(module, "build_gemma4_attention", unexpected)
     with pytest.raises(NotImplementedError, match="shared memory"):
         module.gemma4_attention_prefill_f32(
-            1, 2, 3, 4, 5, tokens=1, keys=15617,
-            num_heads=1, num_kv_heads=1, head_dim=512, scale=1.0,
+            1, 2, 3, 4, 5, tokens=1, keys=16640,
+            num_heads=1, num_kv_heads=1, head_dim=768, scale=1.0,
         )
 
 
@@ -41,7 +41,7 @@ def test_runner_names_unsupported_context_before_allocating(monkeypatch):
     from types import SimpleNamespace
     from hipengine.runtime import gemma4 as module
 
-    config = SimpleNamespace(attention=(SimpleNamespace(head_dim=512),))
+    config = SimpleNamespace(attention=(SimpleNamespace(head_dim=768),))
     def unexpected(*args, **kwargs):
         raise AssertionError("unsupported geometry reached allocation")
     monkeypatch.setattr(module, "malloc", unexpected)

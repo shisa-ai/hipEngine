@@ -15,6 +15,112 @@ from tests._rocm_guard import hip_runtime_available
 
 pytestmark = pytest.mark.skipif(not hip_runtime_available(), reason="HIP runtime unavailable")
 
+@pytest.mark.parametrize("live_keys", [257, 4096, None], ids=["short-span", "window-4k", "full-context"])
+@pytest.mark.parametrize("dtype", ["f32", "bf16"])
+@pytest.mark.parametrize("head_dim", [256, 512])
+@pytest.mark.parametrize("tokens,keys", [(1, 15857), (3, 16640), (9, 16640), (2, 32771)])
+def test_global_logits_preserve_strict_output_and_cpu_oracle(
+    attention_library, dtype, head_dim, tokens, keys, live_keys,
+):
+    """Masked padding crosses LDS capacity without changing any live term.
+
+    Holes, a displaced window, and an empty row exercise the exact mask ABI
+    used by the layer's live-span materializer; poisoned masked K/V must not
+    influence output. Short and long paths use the same 256-lane denominator.
+    """
+    from hipengine.core.memory import (
+        malloc, free, copy_host_array_to_device, copy_device_to_host, host_array_ptr,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        _SYMBOL_PREFILL_F32, _SYMBOL_PREFILL_BF16,
+        gemma4_attention_prefill_f32, gemma4_attention_prefill_bf16,
+        gemma4_attention_decode_variant,
+    )
+    rng = np.random.default_rng(4711)
+    heads, kv_heads = 2, 1
+    live_keys = keys if live_keys is None else live_keys
+    q = rng.normal(0, .1, (tokens, heads, head_dim)).astype(np.float32)
+    k = rng.normal(0, .1, (keys, kv_heads, head_dim)).astype(np.float32)
+    v = rng.normal(0, .5, k.shape).astype(np.float32)
+    mask = np.zeros((tokens, keys), np.uint8)
+    mask[:, 32:live_keys] = 1
+    mask[:, 47:73] = 0
+    if tokens > 1:
+        mask[-1] = 0
+    # Masked tails contain NaNs: the strict skip must prevent propagation.
+    k[live_keys:] = np.nan
+    v[live_keys:] = np.nan
+    cast = (lambda a: np.ascontiguousarray(a)) if dtype == "f32" else _bf16_bits
+    q, k, v = map(cast, (q, k, v))
+    launch = gemma4_attention_prefill_f32 if dtype == "f32" else gemma4_attention_prefill_bf16
+    buffers = []
+
+    def run(nkeys):
+        arrays = [q, np.ascontiguousarray(k[:nkeys]), np.ascontiguousarray(v[:nkeys]),
+                  np.ascontiguousarray(mask[:, :nkeys]), np.zeros_like(q)]
+        local = [malloc(a.nbytes) for a in arrays]
+        buffers.extend(local)
+        for buf, array in zip(local[:4], arrays[:4]):
+            copy_host_array_to_device(buf, array)
+        if nkeys < keys:
+            # Compare to the strict block oracle, not automatic decode's flash
+            # variant (which changes arithmetic on short shape-admitted rows).
+            symbol = _SYMBOL_PREFILL_F32 if dtype == "f32" else _SYMBOL_PREFILL_BF16
+            _raw_launch(attention_library, symbol, local, tokens=tokens, keys=nkeys,
+                        num_heads=heads, num_kv_heads=kv_heads, head_dim=head_dim, scale=1.)
+        else:
+            launch(*(b.ptr for b in local), tokens=tokens, keys=nkeys, num_heads=heads,
+                   num_kv_heads=kv_heads, head_dim=head_dim, scale=1., library=attention_library)
+        copy_device_to_host(host_array_ptr(arrays[-1]), local[-1], arrays[-1].nbytes)
+        return arrays[-1]
+
+    try:
+        short = run(live_keys) if live_keys < keys else None
+        long = run(keys)
+        assert gemma4_attention_decode_variant(attention_library) == "global_class"
+        if short is not None:
+            np.testing.assert_array_equal(short.view(np.uint32 if dtype == "f32" else np.uint16),
+                                          long.view(np.uint32 if dtype == "f32" else np.uint16))
+        def f32(a):
+            return a if dtype == "f32" else (a.astype(np.uint32) << 16).view(np.float32)
+        reference = np.zeros(q.shape, np.float32)
+        for row in range(tokens):
+            active = np.flatnonzero(mask[row, :live_keys])
+            if not len(active):
+                continue
+            for head in range(heads):
+                logits = f32(k)[active, 0] @ f32(q)[row, head]
+                weights = np.exp(logits - logits.max())
+                reference[row, head] = weights @ f32(v)[active, 0] / weights.sum()
+        # The incumbent represents an entirely masked row as NaNs; exact
+        # parity above pins that contract separately from finite live rows.
+        live_rows = mask[:, :live_keys].any(axis=1)
+        np.testing.assert_allclose(f32(long)[live_rows], reference[live_rows],
+                                   rtol=.02 if dtype == "bf16" else 2e-5,
+                                   atol=5e-4 if dtype == "bf16" else 1e-6)
+        if not live_rows.all():
+            assert np.isnan(f32(long)[~live_rows]).all()
+        actual_rows = f32(long)[live_rows].reshape(-1, head_dim).astype(np.float64)
+        expected_rows = reference[live_rows].reshape(-1, head_dim).astype(np.float64)
+        def probabilities(rows):
+            exp = np.exp(rows - rows.max(axis=1, keepdims=True))
+            return exp / exp.sum(axis=1, keepdims=True)
+        teacher, candidate = probabilities(expected_rows), probabilities(actual_rows)
+        kl = np.sum(teacher * np.log(teacher / candidate), axis=1)
+        assert float(kl.max()) <= .05
+        top_reference = expected_rows
+        if dtype == "bf16":
+            # CPU oracle at the declared BF16 output boundary: RNE ties select
+            # the same first index as the device output, not an unrounded F32
+            # winner hidden inside that tie.
+            bits = reference[live_rows].copy().view(np.uint32)
+            rounded = ((bits + 0x7fff + ((bits >> 16) & 1)) >> 16).astype(np.uint16)
+            top_reference = f32(rounded).reshape(-1, head_dim)
+        assert np.mean(actual_rows.argmax(axis=1) == top_reference.argmax(axis=1)) >= .9
+    finally:
+        for buf in buffers:
+            free(buf)
+
 _SHAPES = [
     # (num_heads, num_kv_heads, head_dim, keys)
     (1, 1, 128, 1),  # single live key
