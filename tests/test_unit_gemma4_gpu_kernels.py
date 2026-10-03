@@ -1135,6 +1135,7 @@ def test_weighted_accumulate_is_bitwise_grid_independent(device) -> None:
     # The numpy oracle replicates the kernel's f32 slot-order sum by hand so
     # the comparison can be bitwise, not allclose.
     l2r = device.get(l2r_ptr, (total_lanes,), np.int32)
+    expert_out_bf16 = _from_bf16_bits(_to_bf16_bits(expert_out))
     expected = np.zeros((tokens, hidden), dtype=np.float32)
     for token in range(tokens):
         for col in range(hidden):
@@ -1146,8 +1147,7 @@ def test_weighted_accumulate_is_bitwise_grid_independent(device) -> None:
                     continue
                 acc = np.float32(
                     acc
-                    + np.float32(_from_bf16_bits(_to_bf16_bits(expert_out[row, col])))
-                    * np.float32(weights[row])
+                    + expert_out_bf16[row, col] * np.float32(weights[row])
                 )
             expected[token, col] = acc
     expected_bits = _to_bf16_bits(expected)
