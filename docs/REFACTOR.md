@@ -8415,6 +8415,24 @@ Two consequences worth knowing:
   regardless of `risk_count`. Making it proportional to the queued count is worth
   more than the multiplier and is orthogonal to the numerics question. This is the
   entry to act on; the multiplier is parked behind it.
+- **The first measurement the launch-geometry unit should make, before building
+  anything.** `gguf_q4_k_selected_dual_sparse_exact_repair_bf16` takes
+  `grid_blocks` defaulting to **1024** (`gguf_q4_k_selected_prefill.py:600,1161`)
+  and the runner never passes it, so every call launches 1024 blocks whatever the
+  risk count is. The kernel's loop is `for (slot = blockIdx.x; slot < bounded; slot
+  += gridDim.x)` with `bounded = min(risk_count, max_risks)`, so the *work* is
+  already proportional - 46.6k slots per call at 4.0 against 13.7k at 1.0, ~46
+  against ~13 iterations per block. A 3.4x cut in inner work showing up as 2.11% of
+  wall is the anomaly to explain, and the cheapest explanations to distinguish are:
+  (a) **the 1370 ms share is inflated** - it is from a 2026-09-16 capture whose own
+  README says its per-kernel times are diagnostic, and if the true share is nearer
+  500 ms then 359 ms saved is most of it and there is no anomaly; (b) the 4.0-only
+  extra rows are not uniformly spread across calls, so the aggregate ratio
+  overstates the wall effect; (c) empty-block cost, which should be nearly free on a
+  GPU but is a one-line experiment. **Measure (a) first** by profiling the repair
+  kernel with `--kernel-trace` at both multipliers rather than inferring from the old
+  capture - it is the explanation that would make this whole lever smaller than the
+  1370 ms figure promises, so it decides whether the unit is worth building.
 - Removal condition for the explicit pin: once the repair pass is proportional to
   `risk_count`, re-measure the multiplier on the canonical protocol in the same
   session as the change, and either bind the winner or delete the env var and make
