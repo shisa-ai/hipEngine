@@ -1126,8 +1126,12 @@ probe reaches 96.0% of that 29696, so the denominator is honest.
 **The tile space is exhausted; the kernel is not.** Every registered
 coltile/rowbatch instantiation was swept on identical operands across five real
 GDN layers and row counts 1 to 1024: the production instantiation is already the
-fastest, and the next best is 12-14% slower. The kernel has no spills and sits
-at the register-only occupancy maximum.
+fastest, and the next best is 12-14% slower. The kernel has no spills. An earlier
+revision of this file added "and sits at the register-only occupancy maximum",
+which is wrong for the leaf that is actually promoted: a census of the compiled
+profile gives it **76 VGPR at 25 waves per CU (78.1%)**, and 32 waves would need
+64. The tile conclusion is unaffected, but the occupancy claim should not be
+quoted as a property of this leaf.
 
 **Scheduling, not tiling, is where the time is.** Keeping the same tile shape
 and issuing the next K iteration's Q8_0 weight-block and activation loads before
@@ -1140,6 +1144,36 @@ point moves. The promoted kernel is
 `coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out`; the wave-scale parent and
 the unscaled exact parent both stay registered as the rollback chain.
 [Promotion, gate and artifacts](results/2026-09-29-qwen4exp-q8-coltile-pipeline/README.md).
+
+**The wave reduction was the largest single instruction class, and it was a
+`__shfl_down` tree.** Disassembling the promoted leaf gives 378 static
+instructions, of which 128 are `ds_bpermute_b32` - the five reduction levels, one
+LDS round trip each - plus 32 `ds_swizzle_b32` and 113 `s_waitcnt` (mostly
+`lgkmcnt`), against only 55 FMA-class instructions. The tree is `4 rows x 8 cols x
+5 levels = 160` shuffle ops per thread for 32 accumulators, about 40% of the
+static stream. Folding the same pairs in VALU instead
+(`v_permlanex16`, then `v_mov_dpp` row shifts 8/4/2, then `v_add_f32_dpp
+row_shl:1`) removes every LDS access without changing the tree or the arithmetic:
+**15.8936 / 15.8694 / 15.8689 / 15.8438 / 15.8465 ms against 16.1395 / 16.1421 /
+16.1266 / 16.1177 / 16.1191 on five real `attn_qkv` layers, mean -1.64%, all
+five winning, bit-identical with 0.0 max absolute difference**, and 378 -> 309
+static instructions at identical VGPR and identical occupancy. It is promoted as
+the preferred leaf behind `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` (default on),
+with the state gate's five hashes identical across three arms and the leaf's call
+count recorded as 0 / 1072 / 0.
+[DPP reduction](results/2026-10-04-qwen4exp-q8-prefill-dpp-reduction/README.md).
+
+**The launch geometry above is not the binding cost, and that is now measured
+rather than argued.** Swapping which grid axis carries the column tile keeps one
+21.8 KB weight slice resident across the row sweep instead of streaming all 27.85
+MB per row batch against a 32 MB MALL. It is free - identical VGPR, identical
+instruction count, bit-identical output - and it is **2.1-2.9% slower on all five
+layers**. If the weight re-read were the binding cost this could not lose;
+sequential column-major streaming is better because it is what the hardware
+prefetches. That is the third independent refutation of the traffic reading of
+this family, after the GR up retile (halving a modelled 90.3% re-read costs 16%)
+and the `HC-3` dead-store result (removing 4.2% of modelled traffic costs 2%).
+The 6.2x gap this kernel sits inside is not closable by any locality change.
 
 The limit is therefore not the tile shape. A probe holding the projection's own
 instruction mix (40 FMA and 105 integer instructions per iteration, from its

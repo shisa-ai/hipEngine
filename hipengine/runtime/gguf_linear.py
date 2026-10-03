@@ -3368,15 +3368,43 @@ def _raw_k_coltile_pipelined_dispatch(dispatch: GGUFLinearDispatch) -> GGUFLinea
     faster on the production ``attn_qkv`` shape, so it is the preferred leaf.
     The parent stays selected whenever the pipelined key is absent, which keeps
     the registered strict fallback chain intact.
+
+    ``coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out`` is preferred over
+    the shuffle-tree pipelined leaf while ``HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION``
+    is not ``0`` (default on). It replaces the five ``__shfl_down`` levels of the
+    wave reduction with the VALU-only DPP sequence the q6_k prefill kernels use
+    (``v_permlanex16``, then ``v_mov_dpp`` row shifts 8/4/2 and
+    ``v_add_f32_dpp row_shl:1``). Those DPP steps pair lanes in exactly the same
+    order the shuffle tree does - 16, 8, 4, 2, 1 - so the arithmetic is unchanged
+    and the variant is bit-identical to the pipelined leaf, verified on the raw
+    ``uint32`` bits at eight shapes and against the wave-scale grandparent. It
+    removes every LDS round trip from the epilogue: 378 -> 309 static instructions
+    at identical VGPR (76) and occupancy (25 waves/CU), and 1.5-1.7% faster on the
+    production shape. Evidence:
+    ``benchmarks/results/2026-10-04-qwen4exp-q8-prefill-dpp-reduction/``.
+
+    Both rewrites are ``is_registered``-guarded, so the chain degrades in order:
+    DPP -> pipelined -> wave-scale parent -> unscaled exact parent.
     """
     if dispatch.abi != "raw" or dispatch.key.variant != "coltile8_rowbatch4_wave_scale_f32_f32_out":
         return dispatch
-    key = KernelKey(dispatch.key.backend, dispatch.key.layer, dispatch.key.quant,
-                    "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out")
-    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
+    preferred = (
+        "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out",
+        "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+    )
+    if os.environ.get(_Q8_DPP_REDUCTION_ENV, "1") == "0":
+        preferred = preferred[1:]
+    for variant in preferred:
+        key = KernelKey(dispatch.key.backend, dispatch.key.layer, dispatch.key.quant, variant)
+        if is_registered(key):
+            return GGUFLinearDispatch(key, "raw")
+    return dispatch
 
 
 _Q8_STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
+
+# Read here so the dispatch memoization key can see it; see the cache key note.
+_Q8_DPP_REDUCTION_ENV = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
 
 # Kept as a literal rather than imported from the backend package, which
 # ``hipengine.runtime`` must not import eagerly. The registration site is
@@ -4069,6 +4097,9 @@ def launch_gguf_linear(
         f_rowtile,
         raw_k_rowbatch,
         raw_k_variant,
+        # Read by ``_raw_k_coltile_pipelined_dispatch``; without it in the key a
+        # flag flip inside one process would replay the other arm's leaf.
+        os.environ.get(_Q8_DPP_REDUCTION_ENV, "1"),
         bool(use_q4_pack8_wmma),
         os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0",
         registered_variant,
