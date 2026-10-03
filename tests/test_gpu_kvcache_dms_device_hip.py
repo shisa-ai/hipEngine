@@ -161,6 +161,26 @@ def _compare_metadata(a: DMSCompactBackend, b: DMSCompactBackend) -> None:
         assert sa.logical_tokens == sb.logical_tokens
 
 
+def _live_k_payload(backend: DMSCompactBackend, rid: int, layer: int) -> list[np.ndarray]:
+    """The written K payload for one layer, one array per head.
+
+    Only ``[base_offset, base_offset + live_count)`` holds defined bytes: the
+    slot planes are allocated lazily without initialization and the pack kernel
+    writes only live rows. Comparing whole planes would compare unwritten
+    allocation bytes, which no contract defines.
+    """
+
+    state = backend.state_for_request(rid)
+    view = backend.device_layer_view(rid, layer)
+    return [
+        view.k_bits[
+            int(state.base_offsets[layer, h]) : int(state.base_offsets[layer, h])
+            + int(state.live_counts[layer, h])
+        ].copy()
+        for h in range(state.live_counts.shape[1])
+    ]
+
+
 def _softmax_kl_max(ref: np.ndarray, cand: np.ndarray) -> float:
     ref64 = ref.astype(np.float64)
     cand64 = cand.astype(np.float64)
@@ -413,15 +433,21 @@ def test_device_determinism_across_backends() -> None:
                 b.append_decode(
                     0, kn, vn, flags_per_request[0], position=int(k.shape[0]) + step
                 )
-            view = b.device_layer_view(0, 0)
             q = np.random.default_rng(555).standard_normal(
                 (heads * 4, dim)
             ).astype(np.float32)
-            outs.append((view.k_bits.copy(), b.compact_decode_attention(0, 0, q)))
+            outs.append(
+                (
+                    _live_k_payload(b, 0, 0),
+                    b.compact_decode_attention(0, 0, q),
+                )
+            )
         finally:
             b.close()
     (k1, o1), (k2, o2) = outs
-    np.testing.assert_array_equal(k1, k2, err_msg="payload non-deterministic")
+    assert len(k1) == len(k2) == heads
+    for h, (a, b) in enumerate(zip(k1, k2)):
+        np.testing.assert_array_equal(a, b, err_msg=f"live K payload H{h} non-deterministic")
     np.testing.assert_array_equal(o1, o2, err_msg="attention non-deterministic")
 
 
