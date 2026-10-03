@@ -91,3 +91,52 @@ def test_tokenizer_probe_reports_the_first_divergence():
     short = tokenizer_probe([5, 6], [5, 6, 7])
     assert short["match"] is False and short["expected"] == 3
     assert short["first_divergence"] == 2
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
+def test_reference_cli_rejects_invalid_timeout_before_loading(value, capsys):
+    from scripts.gemma4_llamacpp_reference_bench import main
+    with pytest.raises(SystemExit) as raised:
+        main(["--request-timeout", value])
+    assert raised.value.code == 2
+    assert "finite positive seconds" in capsys.readouterr().err
+
+
+def test_reference_forwards_timeout_to_warmup_and_sample(monkeypatch, tmp_path):
+    import json
+    from types import SimpleNamespace
+    from scripts import gemma4_llamacpp_reference_bench as bench
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.tokenization.gguf import Gemma4GGUFTokenizer
+    from hipengine.util import amdgpu_vram
+
+    ids = [5, 6, 7, 8]
+    artifact = tmp_path / "model.gguf"
+    artifact.write_bytes(b"fixture")
+    used = tmp_path / "used"
+    used.write_text("0")
+    tokenizer = SimpleNamespace(encode=lambda text: ids, decode=lambda tokens: "text")
+    monkeypatch.setattr(GGUFReader, "__init__", lambda self, path: setattr(self, "info", None))
+    monkeypatch.setattr(Gemma4GGUFTokenizer, "from_gguf_info", lambda info: tokenizer)
+    monkeypatch.setattr(bench, "exact_prompt_ids", lambda tokenize, count: ids)
+    monkeypatch.setattr(amdgpu_vram, "select_card", lambda **kw: SimpleNamespace(vram_used_path=used, pci_id="fixture"))
+    monkeypatch.setattr(bench.subprocess, "check_output", lambda *a, **kw: "fixture-commit")
+    monkeypatch.setattr(bench.subprocess, "Popen", lambda *a, **kw: object())
+    monkeypatch.setattr(bench, "_wait_health", lambda *a: None)
+    monkeypatch.setattr(bench, "_stop", lambda *a: None)
+    monkeypatch.setattr(bench, "_tokenize", lambda *a: ids)
+    timeouts = []
+    def post(base, body, timeout=600.0):
+        timeouts.append(timeout)
+        return {"tokens_evaluated": 4, "tokens": [1, 2], "timings": {
+            "prompt_ms": 100., "predicted_ms": 200., "predicted_n": 2}}
+    monkeypatch.setattr(bench, "_post", post)
+    output = tmp_path / "result.json"
+    assert bench.main(["--artifact", str(artifact), "--prompt", "4", "--output", "2",
+                       "--context", "6", "--samples", "1", "--warmup", "1",
+                       "--port", "0", "--out", str(output),
+                       "--request-timeout", "2400"]) == 0
+    assert timeouts == [2400., 2400.]
+    recorded = json.loads(output.read_text())
+    assert recorded["request_timeout_s"] == 2400.
+    assert len(recorded["warmups"]) == len(recorded["samples"]) == 1
