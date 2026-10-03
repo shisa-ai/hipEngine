@@ -7,12 +7,12 @@ shipped UD-Q4_K_XL artifact (measured, not inferred from the filename) -- so
 that an explicit profile resolves to one immutable variant manifest at LLM
 construction and applies its route policy before the first forward.
 
-``production`` is the incumbent default path, recorded from a resolve-spy trace
-of a real generate on the shipped artifact with no route pin set: the grouped
-int8 MMQ gate_up with the WMMA down owner, ``wmma_prefill`` dense prefill and
-the pack8/selected decode GEMVs. Its binder pins
-``HIPENGINE_GEMMA4_MOE_PREFILL=auto``, which is the state the default path
-already resolves to, so registering production does not move arithmetic.
+``production`` keeps the dense prefill and decode owners and uses the exact
+expert-down owner by default after an observed generated-history failure of the
+lossy MMQ down path. Its binder pins ``HIPENGINE_GEMMA4_MOE_PREFILL=auto``.
+Tiled Q4_K weights use the registered exact selected owner when the default
+MMQ family lacks a serving leaf for that resident layout. Explicit MMQ controls
+remain available; diagnostic overrides must be recorded with their captures.
 
 ``strict`` pins ``HIPENGINE_GEMMA4_MOE_PREFILL=grouped``, the exact arm
 ``gemma4_experts.py::_prefill_route_flags`` documents as the rollback lever,
@@ -89,7 +89,7 @@ _Q4_K_T16 = "gguf_q4_k_t16_v1"
 # Production (measured, no route pin) MoE owners.
 _MMQ32 = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 _GROUPED_DUAL = "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
-_WMMA_DOWN = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+_GROUPED_DOWN_PRODUCTION = "selected_grouped_prefill_staged_out4_bf16_bf16_out"
 # The T16-converted gate_up scope's exact owner (registered at moe_linear;
 # the dense-key ``selected_gemv`` chain lands on the same function).
 _T16_DECODE = "selected_t16_gemv_decode_bf16_bf16_out"
@@ -176,7 +176,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             layer="moe_linear", scope="gate_up_q4_k",
-            selected_variant=_MMQ32, strict_fallback_variant=_T16_DECODE,
+            selected_variant=_T16_DECODE, strict_fallback_variant=_T16_DECODE,
             registry_quant=_Q4_K_T16,
         ),
         _selection(
@@ -186,7 +186,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             layer="moe_linear", scope="down_q5_1",
-            selected_variant=_WMMA_DOWN,
+            selected_variant=_GROUPED_DOWN_PRODUCTION,
             strict_fallback_variant=_GROUPED_DOWN_Q5_1,
             registry_quant=_Q5_1,
         ),

@@ -2271,6 +2271,7 @@ def test_the_expert_block_counts_one_gate_up_route_per_projection(
     scratch = _AccountingScratch(
         tokens=8, top_k=1, hidden_size=256, intermediate=64, num_experts=4
     )
+    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", "1")
     before = gemma4_moe_expert_route_counts()
     experts.gemma4_experts_forward_bf16(
         0x1000,
@@ -2332,3 +2333,51 @@ def test_the_expert_block_counts_the_ladder_route_when_the_mmq_leaves_decline(
         "both projections fell to the ladder, so its route is the only name "
         f"that may move; the counters moved by {delta}"
     )
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_auto_t16_uses_default_mmq_family_and_honors_rollback(monkeypatch, enabled):
+    """A tiled allocation must not pin the one-plane diagnostic MMQ owner."""
+    import hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts as experts
+
+    calls = []
+    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", "auto")
+    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", "1" if enabled else "0")
+    # Isolate gate/up dispatch from the independent down-owner default.
+    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", "1")
+    for name in (
+        "_zero", "qwen35_moe_group_compact_active",
+        "qwen35_moe_gather_packed_hidden_lowp", "gemma4_gelu_tanh_mul_bf16",
+        "gemma4_moe_lane_to_row_i32", "gemma4_moe_weighted_accumulate_bf16",
+    ):
+        monkeypatch.setattr(experts, name, lambda *a, **k: None)
+    monkeypatch.setattr(experts, "_build_mmq_tile_plan", lambda *a, **k: 256)
+    monkeypatch.setattr(experts, "_build_wmma_tile_plan", lambda *a, **k: 256)
+    monkeypatch.setattr(experts, "_mmq_dual_route", lambda *a, **k: True)
+    monkeypatch.setattr(experts, "gemma4_project_experts_mmq_dual",
+                        lambda *a, **k: calls.append("diagnostic_mmq") or True)
+    monkeypatch.setattr(experts, "gemma4_project_experts_gate_up_mmq",
+                        lambda *a, **k: calls.append("default_mmq") or True)
+    monkeypatch.setattr(experts, "gemma4_project_experts_rows",
+                        lambda *a, **k: calls.append("ladder") or "selected_gemv")
+    monkeypatch.setattr(experts, "gemma4_project_experts_wmma", lambda *a, **k: True)
+    monkeypatch.setattr(experts, "gemma4_project_experts_down_mmq", lambda *a, **k: True)
+    scratch = _AccountingScratch(
+        tokens=128, top_k=1, hidden_size=256, intermediate=64, num_experts=4
+    )
+    weight = SimpleNamespace(spec=SimpleNamespace(layout="gguf_q4_k_t16_v1"))
+    experts.gemma4_experts_forward_bf16(
+        0x1000, 0x2000, 0x3000, weight, SimpleNamespace(), 0x4000,
+        scratch=scratch, rows=128,
+    )
+    assert calls == ["default_mmq" if enabled else "ladder"]
+
+
+@pytest.mark.parametrize("value, expected", [(None, False), ("0", False), ("1", True)])
+def test_down_mmq_defaults_to_exact_after_observed_continuation_failure(monkeypatch, value, expected):
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import gemma4_moe_down_mmq_enabled
+    if value is None:
+        monkeypatch.delenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", value)
+    assert gemma4_moe_down_mmq_enabled() is expected

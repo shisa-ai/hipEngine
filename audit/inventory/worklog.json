@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11400,
-    "current": 4168,
+    "entries": 11401,
+    "current": 4169,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1364,
+    "rows": 1365,
     "by_rule": {
       "dependency": 51,
       "legacy-next": 109,
-      "status": 1204
+      "status": 1205
     }
   },
   "rows": [
@@ -51741,6 +51741,43 @@
       },
       "id": "worklog/20261003T112735.003583Z-lhl-specdec2-gfx1100-bridge-staged-float-assertion-2a8c80",
       "evidence_hash": "7a5f520f4815"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2",
+      "title": "Repair tiled expert default dispatch after Gemma merge",
+      "location": "worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "repair-tiled-expert-default-dispatch-after-gemma",
+        "written": "2026-10-03",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Commit this validated repair, then complete full-suite closure and push only\n  after inspecting remaining failures.\n- INT8 KV remains a separate numerical failure: the read-only diagnosis found\n  no writer/consumer/alignment defect and reproduced representation error with\n  a CPU oracle. Do not claim this dispatch repair fixes INT8 KV.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md",
+        "refs": [],
+        "tokens": [
+          "default",
+          "dispatch",
+          "expert",
+          "gemma",
+          "merge",
+          "repair",
+          "tiled"
+        ]
+      },
+      "id": "worklog/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2",
+      "evidence_hash": "a0945b9742ca"
     }
   ]
 }

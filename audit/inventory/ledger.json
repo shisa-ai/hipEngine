@@ -4743,6 +4743,53 @@
     },
     {
       "kind": "ledger",
+      "key": "gemma-4-expert-down-mmq-exact-automatic-default-af-37b7b38e8b35",
+      "title": "Gemma 4 expert down MMQ: exact automatic default after continuation failure (open 2026-10-03)",
+      "location": "docs/REFACTOR.md:9353",
+      "evidence": {
+        "paths_named": [
+          "benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json",
+          "tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py",
+          "tests/test_unit_gemma4_expert_route.py",
+          "worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md"
+        ],
+        "paths_missing": [],
+        "flags_named": [
+          "HIPENGINE_GEMMA4_MOE_DOWN_MMQ"
+        ],
+        "flags_unread": [],
+        "age_days": 0,
+        "body_chars": 4415
+      },
+      "signals": [],
+      "hints": {
+        "anchor": "docs/REFACTOR.md",
+        "refs": [
+          "HIPENGINE_GEMMA4_MOE_DOWN_MMQ",
+          "benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json",
+          "tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py",
+          "tests/test_unit_gemma4_expert_route.py",
+          "worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md"
+        ],
+        "tokens": [
+          "2026",
+          "automatic",
+          "continuation",
+          "default",
+          "down",
+          "exact",
+          "expert",
+          "failure",
+          "gemma",
+          "mmq",
+          "open"
+        ]
+      },
+      "id": "ledger/gemma-4-expert-down-mmq-exact-automatic-default-af-37b7b38e8b35",
+      "evidence_hash": "13819222a0d4"
+    },
+    {
+      "kind": "ledger",
       "key": "gemma-4-fused-mmq-gate-up-prefill-is-the-default-t-6220355182ae",
       "title": "Gemma 4 fused MMQ gate/up prefill is the default; the flag is a rollback lever (open 2026-09-27)",
       "location": "docs/REFACTOR.md:9286",
@@ -4794,7 +4841,7 @@
       "kind": "ledger",
       "key": "gemma-4-gate-up-split-allocation-resolved-2026-09-60ed92c0452f",
       "title": "Gemma 4 gate/up split allocation (resolved 2026-09-27)",
-      "location": "docs/REFACTOR.md:9516",
+      "location": "docs/REFACTOR.md:9538",
       "evidence": {
         "paths_named": [
           "benchmarks/results/2026-09-29-gemma4-moe-fused-stride-gate-w7900.json",
@@ -4830,58 +4877,13 @@
         ]
       },
       "id": "ledger/gemma-4-gate-up-split-allocation-resolved-2026-09-60ed92c0452f",
-      "evidence_hash": "e8854ed309dc"
-    },
-    {
-      "kind": "ledger",
-      "key": "gemma-4-q5-1-expert-down-prefill-is-the-default-th-be8f2c1c7c43",
-      "title": "Gemma 4 Q5_1 expert down prefill is the default; the flag is a rollback lever (open 2026-09-28)",
-      "location": "docs/REFACTOR.md:9353",
-      "evidence": {
-        "paths_named": [
-          "benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json",
-          "tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py",
-          "tests/test_unit_gemma4_expert_route.py"
-        ],
-        "paths_missing": [],
-        "flags_named": [
-          "HIPENGINE_GEMMA4_MOE_DOWN_MMQ"
-        ],
-        "flags_unread": [],
-        "age_days": 5,
-        "body_chars": 3385
-      },
-      "signals": [],
-      "hints": {
-        "anchor": "docs/REFACTOR.md",
-        "refs": [
-          "HIPENGINE_GEMMA4_MOE_DOWN_MMQ",
-          "benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json",
-          "tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py",
-          "tests/test_unit_gemma4_expert_route.py"
-        ],
-        "tokens": [
-          "2026",
-          "default",
-          "down",
-          "expert",
-          "flag",
-          "gemma",
-          "lever",
-          "open",
-          "prefill",
-          "q5_1",
-          "rollback"
-        ]
-      },
-      "id": "ledger/gemma-4-q5-1-expert-down-prefill-is-the-default-th-be8f2c1c7c43",
-      "evidence_hash": "bd8a68c14bdd"
+      "evidence_hash": "abfd7da22e15"
     },
     {
       "kind": "ledger",
       "key": "gemma-4-s-pack8-expert-layout-is-deleted-settled-a-540bbc0b2966",
       "title": "Gemma 4's pack8 expert layout is deleted (settled and removed 2026-09-28)",
-      "location": "docs/REFACTOR.md:9405",
+      "location": "docs/REFACTOR.md:9427",
       "evidence": {
         "paths_named": [
           "benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json",
@@ -4933,7 +4935,7 @@
         ]
       },
       "id": "ledger/gemma-4-s-pack8-expert-layout-is-deleted-settled-a-540bbc0b2966",
-      "evidence_hash": "fa265a65f5fd"
+      "evidence_hash": "c7df6c5034ed"
     },
     {
       "kind": "ledger",
@@ -6222,7 +6224,7 @@
       "kind": "ledger",
       "key": "hipengine-gemma4-moe-prefill-selects-a-prefill-rou-2dbb14d850b5",
       "title": "`HIPENGINE_GEMMA4_MOE_PREFILL` selects a prefill route that fails an absolute bar (open 2026-09-26)",
-      "location": "docs/REFACTOR.md:9495",
+      "location": "docs/REFACTOR.md:9517",
       "evidence": {
         "paths_named": [
           "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md"
@@ -6255,7 +6257,7 @@
         ]
       },
       "id": "ledger/hipengine-gemma4-moe-prefill-selects-a-prefill-rou-2dbb14d850b5",
-      "evidence_hash": "a1d77c202c4a"
+      "evidence_hash": "b5154b6af1b0"
     },
     {
       "kind": "ledger",
@@ -14860,7 +14862,7 @@
       "kind": "ledger",
       "key": "the-128-wide-mmq32-k-pass-is-implemented-correct-a-34ce9f35971f",
       "title": "The 128-wide MMQ32 K pass is implemented, correct and unwired (open 2026-09-28)",
-      "location": "docs/REFACTOR.md:9460",
+      "location": "docs/REFACTOR.md:9482",
       "evidence": {
         "paths_named": [
           "scripts/gemma4_mmq_k_width_leaf_bench.py",
@@ -14892,7 +14894,7 @@
         ]
       },
       "id": "ledger/the-128-wide-mmq32-k-pass-is-implemented-correct-a-34ce9f35971f",
-      "evidence_hash": "884f0227e40b"
+      "evidence_hash": "7b25ff1b5602"
     },
     {
       "kind": "ledger",

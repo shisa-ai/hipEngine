@@ -101,7 +101,7 @@ def test_production_manifest_matches_the_measured_routes() -> None:
         profile=ExecutionProfile.PRODUCTION,
     )
     rows = _by_scope(resolved)
-    assert rows[("moe_linear", "gate_up_q4_k")]["selected_variant"] == _MMQ32
+    assert rows[("moe_linear", "gate_up_q4_k")]["selected_variant"] == _T16_DECODE
     # The T16 conversion moves the registry key the rows resolve under:
     # gate_up dispatches as its tiles layout, both at prefill and decode.
     assert rows[("moe_linear", "gate_up_q4_k")]["registry_quant"] == (
@@ -111,7 +111,7 @@ def test_production_manifest_matches_the_measured_routes() -> None:
         "gguf_q4_k_t16_v1"
     )
     assert rows[("moe_linear", "gate_up_q5_k")]["selected_variant"] == _MMQ32
-    assert rows[("moe_linear", "down_q5_1")]["selected_variant"] == _WMMA_DOWN
+    assert rows[("moe_linear", "down_q5_1")]["selected_variant"] == "selected_grouped_prefill_staged_out4_bf16_bf16_out"
     assert rows[("linear", "dense_prefill_q8_0")]["selected_variant"] == (
         "wmma_prefill_bf16_bf16_out"
     )

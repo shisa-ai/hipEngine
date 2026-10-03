@@ -192,24 +192,29 @@ _GROUPED_VARIANT_COUNTS: dict[str, int] = {}
 _GEMMA4_MOE_GATE_UP_MMQ_ENV = "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"
 _GEMMA4_MOE_DOWN_MMQ_ENV = "HIPENGINE_GEMMA4_MOE_DOWN_MMQ"
 
-# Values that turn the route off. Anything else, including unset, leaves it on, so
-# a typo cannot silently downgrade the default path.
+# Values that turn a route off. Gate/up defaults on; down's documented
+# continuation failure makes its unset default the exact grouped owner.
 _MMQ_DISABLING_VALUES = frozenset(("0", "false", "no", "off", "disable", "disabled"))
 
 
 def gemma4_moe_down_mmq_enabled() -> bool:
     """Whether the Q5_1 DS4 MMQ down-projection route may be selected.
 
-    On by default. The down projection is the largest single route in gfx1151
-    prefill and has no MMQ path without this one, so it runs the fp32 grouped
-    family at 8.6 GB/s where the Q4_K gate/up MMQ on the same layer runs at
-    67 GB/s. ``HIPENGINE_GEMMA4_MOE_DOWN_MMQ`` set to a falsy value is the
-    rollback lever and restores the grouped route.
+    Automatic selection defaults to the exact grouped owner: one-plane MMQ
+    fails nine of ten paired generated-history screens, and three-plane error
+    feedback still fails seven. The exact-down control matches all 610 strict
+    rows. Explicit ``HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1`` keeps this implementation
+    runnable; a pinned ``mmq`` owner is also unaffected.
+
+    Clearing test: run the paired generated-history regression recorded in
+    worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md
+    with this lever enabled and pass the unchanged execution-profile envelope.
+    The full profile gate remains required for arithmetic promotion.
     """
 
     import os
 
-    return os.environ.get(_GEMMA4_MOE_DOWN_MMQ_ENV, "").strip().lower() not in (
+    return os.environ.get(_GEMMA4_MOE_DOWN_MMQ_ENV, "0").strip().lower() not in (
         _MMQ_DISABLING_VALUES
     )
 
@@ -569,11 +574,10 @@ def gemma4_experts_forward_bf16(
     mode = _prefill_mode()
     gate_up_wmma, compensated, use_mmq = _prefill_route_flags(mode)
     pinned = mode != "auto"
-    # The tiles-only fused stack is the local residency contract. Its MMQ32
-    # owner is registered directly for this layout, so auto uses the split
-    # projection ABI without reconstructing or duplicating raw expert weights.
-    if not pinned and getattr(getattr(gate_up_proj, "spec", None), "layout", None) == "gguf_q4_k_t16_v1":
-        use_mmq = True
+    # Storage layout does not pin an arithmetic owner. Default family dispatch
+    # honors its rollback lever and uses the registered ladder when its leaves
+    # cannot serve the allocation. Only an explicit ``mmq`` pin selects the
+    # diagnostic split-projection chain.
     # The MMQ gate reads the runner's declared width rather than this call's lane
     # count: the two routes are different arithmetic, so selecting by live width
     # would make a token's output depend on the batch it arrived in.
