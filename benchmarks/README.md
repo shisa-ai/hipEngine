@@ -1059,7 +1059,16 @@ is an engine that can actually open that file.
 | halo-box `strix-llama.cpp` | `69946438a` | f16 | 448.1 | 620.5 | 621.0 | 599.9 |
 | upstream llama.cpp | `6011c34ce` | f16 | 320.9 | 413.9 | 460.1 | 434.1 |
 | upstream llama.cpp | `6011c34ce` | bf16 | 316.4 | 419.7 | 452.9 | 429.9 |
-| **hipEngine current default** | `ddfc2a746` | bf16 | **185.2** | **190.6** | **183.6** | **185.0** |
+| hipEngine at `ddfc2a746` (2026-09-15) | `ddfc2a746` | bf16 | 185.2 | 190.6 | 183.6 | 185.0 |
+| **hipEngine current default** | `89264f901` | bf16 | **300.2** | **297.4** | **265.9** | **274.7** |
+
+The two hipEngine rows are the same engine at two commits and are both shown so
+the change is legible: the current default is **1.62x / 1.56x / 1.45x** the
+2026-09-15 row. That gain is the 6.74x wide-row Q8 prefill route, certified
+2026-09-17 for layers 16-47, plus the exact-coltile DPP wave reduction. The
+2026-09-15 commit has no `PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS` at all, so its
+row prices the exact coltile chain on all 48 layers.
+[Current baseline, per-category and reproduction](results/2026-10-04-qwen4exp-prefill-baseline-current/README.md).
 
 Every row is total prompt tokens over total prompt time, computed by
 `results/2026-09-15-flashnext-engine-comparison/comparison.py` from the raw
