@@ -1,0 +1,64 @@
+{
+  "down": {
+    "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short, 4, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)": {
+      "calls": 7,
+      "grid": [
+        4096,
+        512
+      ],
+      "lds": 0,
+      "scratch": 0,
+      "sgpr": 128,
+      "total_us": 13782.742999999999,
+      "us_per_call": 1968.9632857142856,
+      "vgpr": 48,
+      "workgroup": 32
+    },
+    "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_pair32_nwave_kernel<unsigned short, 4, false, 4>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)": {
+      "calls": 7,
+      "grid": [
+        4096,
+        256
+      ],
+      "lds": 1024,
+      "scratch": 0,
+      "sgpr": 128,
+      "total_us": 10575.823,
+      "us_per_call": 1510.8318571428572,
+      "vgpr": 104,
+      "workgroup": 128
+    }
+  },
+  "gate_up": {
+    "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)": {
+      "calls": 6,
+      "grid": [
+        1024,
+        512
+      ],
+      "lds": 0,
+      "scratch": 0,
+      "sgpr": 128,
+      "total_us": 22945.994,
+      "us_per_call": 3824.3323333333333,
+      "vgpr": 56,
+      "workgroup": 32
+    },
+    "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_kernel<unsigned short, false, 2>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)": {
+      "calls": 6,
+      "grid": [
+        2048,
+        256
+      ],
+      "lds": 1024,
+      "scratch": 0,
+      "sgpr": 128,
+      "total_us": 17355.879,
+      "us_per_call": 2892.6465000000003,
+      "vgpr": 88,
+      "workgroup": 64
+    }
+  },
+  "schema": 1,
+  "tool": "rocprofv3 --kernel-trace --output-format csv"
+}

@@ -61,6 +61,27 @@ _SYMBOLS = {
     ("gguf_q6_k_t16", "bf16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     ("gguf_q6_k_t16", "fp16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
 }
+
+# R12 ladder step 1: the ``pair32_nwave`` sibling of each compact selected
+# single-output kernel above.  Same ABI, same bytes, bit-identical output.
+_PAIR32_SYMBOLS = {
+    ("gguf_q4_k_t16", "bf16"): "hipengine_gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out",
+    ("gguf_q4_k_t16", "fp16"): "hipengine_gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out",
+    ("gguf_q5_k_t16", "bf16"): "hipengine_gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out",
+    ("gguf_q5_k_t16", "fp16"): "hipengine_gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out",
+    ("gguf_q5_k_qmicro_t16", "bf16"): "hipengine_gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out",
+    ("gguf_q5_k_qmicro_t16", "fp16"): "hipengine_gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out",
+    ("gguf_q6_k_t16", "bf16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out",
+    ("gguf_q6_k_t16", "fp16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out",
+}
+_PAIR32_VARIANT = "selected_wmma_prefill_pair32_nwave_bf16_bf16_out"
+_PAIR32_VARIANT_FP16 = "selected_wmma_prefill_pair32_nwave_fp16_fp16_out"
+_PAIR32_QUANT_KEYS = {
+    "gguf_q4_k_t16": "gguf_q4_k_t16_v1",
+    "gguf_q5_k_t16": "gguf_q5_k_t16_v1",
+    "gguf_q5_k_qmicro_t16": "gguf_q5_k_qmicro_t16_v1",
+    "gguf_q6_k_t16": "gguf_q6_k_t16_v1",
+}
 _Q4_DENSE_WMMA_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_bf16_bf16_out"
 )
@@ -370,8 +391,8 @@ def build_gguf_k_t16_selected_prefill(
     )
 
 
-def _make_wrapper(quant: str, dtype: str):
-    symbol = _SYMBOLS[(quant, dtype)]
+def _make_wrapper(quant: str, dtype: str, symbols: dict | None = None):
+    symbol = (symbols if symbols is not None else _SYMBOLS)[(quant, dtype)]
 
     def wrapper(
         x_ptr: int,
@@ -437,6 +458,32 @@ gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper
 )
 gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_q6_k_t16", "bf16")
 gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q6_k_t16", "fp16")
+
+# R12 ladder step 1: ``pair32_nwave`` siblings (same ABI, bit-identical).
+gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out = _make_wrapper(
+    "gguf_q4_k_t16", "bf16", _PAIR32_SYMBOLS
+)
+gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out = _make_wrapper(
+    "gguf_q4_k_t16", "fp16", _PAIR32_SYMBOLS
+)
+gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out = _make_wrapper(
+    "gguf_q5_k_t16", "bf16", _PAIR32_SYMBOLS
+)
+gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out = _make_wrapper(
+    "gguf_q5_k_t16", "fp16", _PAIR32_SYMBOLS
+)
+gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out = _make_wrapper(
+    "gguf_q5_k_qmicro_t16", "bf16", _PAIR32_SYMBOLS
+)
+gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out = _make_wrapper(
+    "gguf_q5_k_qmicro_t16", "fp16", _PAIR32_SYMBOLS
+)
+gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out = _make_wrapper(
+    "gguf_q6_k_t16", "bf16", _PAIR32_SYMBOLS
+)
+gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out = _make_wrapper(
+    "gguf_q6_k_t16", "fp16", _PAIR32_SYMBOLS
+)
 
 
 def gguf_q4_k_t16_wmma_prefill_bf16_bf16_out(
@@ -2048,6 +2095,43 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
                 quant_key,
                 "selected_wmma_prefill_compact_fp16_fp16_out",
             ),
+            fn_fp16,
+            replace=replace,
+        )
+
+    # R12 ladder step 1: register the ``pair32_nwave`` sibling of each compact
+    # selected kernel under its own variant name.  Same ABI and bytes as
+    # ``selected_wmma_prefill_compact_*``; the runner selects it by env flag.
+    for quant, fn_bf16, fn_fp16 in (
+        (
+            "gguf_q4_k_t16",
+            gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+            gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+        ),
+        (
+            "gguf_q5_k_t16",
+            gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+            gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+        ),
+        (
+            "gguf_q5_k_qmicro_t16",
+            gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+            gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+        ),
+        (
+            "gguf_q6_k_t16",
+            gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+            gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+        ),
+    ):
+        quant_key = _PAIR32_QUANT_KEYS[quant]
+        register(
+            KernelKey("hip_gfx1100", "moe_linear", quant_key, _PAIR32_VARIANT),
+            fn_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "moe_linear", quant_key, _PAIR32_VARIANT_FP16),
             fn_fp16,
             replace=replace,
         )

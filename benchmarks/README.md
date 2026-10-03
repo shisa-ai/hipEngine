@@ -1557,6 +1557,25 @@ A/B: `decode_ffn_moe_selected` **-6.83%** (125.727 -> 117.140 ms/32tok), decode
 **53.4247 -> 54.3652 tok/s (+1.760%)**, prefill flat. Evidence:
 [`selected Q4_K tile8 owner`](results/2026-10-03-gfx1151-selected-q4-tile8-owner/README.md).
 
+**Selected-expert prefill multi-wave pairing (2026-10-03).** The two
+selected-expert prefill kernels of this model launched one wave32 per output
+tile with **LDS = 0** and dequantized their weight fragment once per 16-row
+tile. Both now use a `NUM_WAVES`-wave block that stages a 32-row activation tile
+in 1 KiB of LDS and pairs two 16-row tiles per wave, so one dequantized weight
+fragment feeds two WMMA accumulators. Both bodies are **bit-identical** to the
+kernels they pair on all four T16 quants x BF16/FP16 and four shapes including
+expert-straddling row splits. Isolated at the real shape: gate+up **3.809 ->
+2.910 ms (1.309x)**, down Q4_K **1.983 -> 1.520 ms (1.305x)**. Same-protocol A/B
+at 4096 tokens, `--public-ar-profile`, chunk 1024: prefill **1450.8 -> 1603.7
+tok/s (+10.54%)** in one pair and **1454.0 -> 1639.3 tok/s (+12.75%)** in a
+second pair on the committed tree; the conservative pair is carried forward. By
+the design basis's FLOP accounting that puts the combined expert legs at
+**11.49 TFLOP/s from 8.51**, clearing the 11.3 TFLOP/s bar. `pair32` is a
+selector, not the automatic default: the gfx1151 selected-prefill LDS-staging
+family has an open repeated-128K lifecycle-stall precedent and the new bodies
+have not been through that gate. Evidence:
+[`selected-expert pair32`](results/2026-10-03-gfx1151-selected-prefill-pair32-nwave/README.md).
+
 ### Laguna S 2.1
 
 | Platform / format | Workload | Prefill | Decode | Evidence |

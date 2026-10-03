@@ -49,6 +49,16 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
     plan_gguf_k_t16_selected_prefill_build,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+    gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+    gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+    gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+    gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+    gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+    gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+    gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+    gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+)
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES, repack_gguf_q4_k_tile16
@@ -112,6 +122,18 @@ _WRAPPERS: dict[tuple[str, str], Any] = {
 _EXPERT_MAJOR_COMP_WRAPPERS = {
     "gguf_q4_k_t16_v1": gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
     "gguf_q6_k_t16_v1": gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
+}
+# R12 ladder step 1: ``pair32_nwave`` siblings, used only by the bit-exact
+# parity test against the shipping ``_WRAPPERS`` entries above.
+_PAIR32_WRAPPERS: dict[tuple[str, str], Any] = {
+    ("gguf_q4_k_t16_v1", "bf16"): gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+    ("gguf_q4_k_t16_v1", "fp16"): gguf_q4_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+    ("gguf_q5_k_t16_v1", "bf16"): gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+    ("gguf_q5_k_t16_v1", "fp16"): gguf_q5_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+    ("gguf_q5_k_qmicro_t16_v1", "bf16"): gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+    ("gguf_q5_k_qmicro_t16_v1", "fp16"): gguf_q5_k_qmicro_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
+    ("gguf_q6_k_t16_v1", "bf16"): gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_bf16_bf16_out,
+    ("gguf_q6_k_t16_v1", "fp16"): gguf_q6_k_t16_selected_wmma_prefill_pair32_nwave_fp16_fp16_out,
 }
 
 
@@ -390,14 +412,17 @@ def _build_compact_t16_fixture(
     )
 
 
-def _run_selected_t16_gpu(fixture: CompactT16Fixture) -> np.ndarray:
+def _run_selected_t16_gpu(
+    fixture: CompactT16Fixture, wrapper: Any | None = None
+) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
     library = build_gguf_k_t16_selected_prefill(load=True)
     out_dtype = np.uint16 if fixture.dtype == "bf16" else np.float16
     host_out = np.zeros((fixture.compact_rows, fixture.out_features), dtype=out_dtype)
-    wrapper = _WRAPPERS[(fixture.quant, fixture.dtype)]
+    if wrapper is None:
+        wrapper = _WRAPPERS[(fixture.quant, fixture.dtype)]
 
     bufs = []
     try:
@@ -649,6 +674,46 @@ def test_p10_b2_b3_k_t16_selected_wmma_fp16_matches_cpu_selected_reference(
     )
     actual = _run_selected_t16_gpu(fixture)
     np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCES[(quant, "fp16")])
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("quant", sorted({q for q, _ in _PAIR32_WRAPPERS}))
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features"),
+    [
+        ([5, 11, 0, 23], 256, 48),
+        ([0, 16, 17], 512, 64),
+        ([16, 16], 256, 32),
+        ([1, 31, 16, 16], 512, 48),
+    ],
+)
+def test_r12_pair32_nwave_is_bit_exact_with_compact_baseline(
+    quant: str, counts: list[int], in_features: int, out_features: int
+) -> None:
+    """R12 step 1: ``pair32_nwave`` must reproduce the shipping kernel bit for bit.
+
+    Both wrappers run on the same fixture in the same process.  The assertion
+    compares raw device bits, not a numerical tolerance: the paired kernel
+    keeps the baseline K traversal order and operand order, so any difference
+    is a scheduling/layout bug rather than reassociation.
+    """
+
+    for dtype in ("bf16", "fp16"):
+        fixture = _build_compact_t16_fixture(
+            quant=quant,
+            counts=counts,
+            in_features=in_features,
+            out_features=out_features,
+            dtype=dtype,
+            seed=23,
+        )
+        expected = _run_selected_t16_gpu(fixture)
+        actual = _run_selected_t16_gpu(fixture, wrapper=_PAIR32_WRAPPERS[(quant, dtype)])
+        assert np.array_equal(actual, expected), (
+            f"{quant}/{dtype} pair32_nwave is not bit-exact with the compact "
+            f"baseline (max abs diff "
+            f"{np.max(np.abs(actual - expected))!r})"
+        )
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

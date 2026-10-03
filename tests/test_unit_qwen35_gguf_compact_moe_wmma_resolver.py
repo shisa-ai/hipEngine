@@ -115,6 +115,34 @@ def test_t16_q4_explicit_shared_x_mode_resolves_candidate(
     assert "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out" in resolved_variants
 
 
+def test_t16_q4_explicit_pair32_mode_resolves_gate_up_and_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R12 step 1: ``pair32`` must select the paired kernel on both legs."""
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", "pair32")
+    resolved_variants: list[str] = []
+
+    def fake_resolve(*, backend, layer, quant, variant, missing="error"):
+        del backend, layer, quant, missing
+        resolved_variants.append(variant)
+        return lambda: None
+
+    monkeypatch.setattr(qgr, "resolve", fake_resolve)
+    plan = qgr._resolve_compact_moe_wmma_kernels(
+        _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151"),
+        _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151"),
+        _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151"),
+    )
+
+    assert plan is not None
+    assert (
+        "selected_dual_wmma_prefill_pair32_nwave_bf16_bf16_out" in resolved_variants
+    )
+    assert "selected_wmma_prefill_pair32_nwave_bf16_bf16_out" in resolved_variants
+    assert "selected_wmma_prefill_compact_bf16_bf16_out" not in resolved_variants
+
+
 def test_t16_q4_gfx1151_auto_resolves_baseline_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,0 +1,542 @@
+{
+  "campaign": "R12 selected-expert prefill ladder step 1",
+  "date_utc": "2026-10-03",
+  "design_basis": {
+    "baseline_expert_legs_ms": 993.4,
+    "baseline_expert_legs_tflops": 8.51,
+    "baseline_tok_s": 1458.4,
+    "expert_legs_gflop": 8452.5,
+    "primary_target_legs_tflops": 11.3,
+    "primary_target_tok_s": 1600.0
+  },
+  "end_to_end": [
+    {
+      "baseline": {
+        "effective_use_wmma_prefill": true,
+        "memory": {
+          "hip_used_peak_sampled_bytes": 22476255232,
+          "hip_used_peak_sampled_gib": 20.93264389038086,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ],
+          "owned_session_peak_bytes": 22191405240,
+          "owned_session_peak_gib": 20.66735666245222,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_bytes_before_close": 22191405240,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "tracked_current_allocated_gib_before_close": 20.66735666245222,
+          "tracked_peak_allocated_bytes": 22191405240,
+          "tracked_peak_allocated_gib": 20.66735666245222
+        },
+        "mode": "baseline",
+        "prefill_chunk_tuning": {
+          "applied": false,
+          "arch_profile_applied": false,
+          "base_chunk_sizes": {
+            "full_attn_post": 0,
+            "full_attn_query": 0,
+            "full_attn_rope": 0,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "chunk_sizes": {
+            "full_attn_post": 0,
+            "full_attn_query": 0,
+            "full_attn_rope": 0,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "enabled": true,
+          "geometry_profile_applied": false,
+          "int8_prefill_lifetime": {
+            "chunk_hidden_bytes": 8388608,
+            "chunk_token_bytes": 8192,
+            "int8_full_attention_layers": 0,
+            "layer_local_oracle_bytes": 0,
+            "layer_outer_hidden_bytes": 35651584,
+            "layer_outer_token_bytes": 34816,
+            "mode": "bf16",
+            "oracle_buffer_count": 0,
+            "oracle_pair_bytes": 0,
+            "projected_peak_delta_bytes": 0,
+            "projected_peak_saving_bytes": 0,
+            "required_hidden_capacity": 1024
+          },
+          "manual_chunk_sizes": [
+            "linear_chunk_size",
+            "moe_chunk_size"
+          ],
+          "max_sequence_length": 4352,
+          "memory_budget_gib": 0.0,
+          "reason": "manual_chunk_sizes",
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "target_arch": "gfx1151"
+        },
+        "prefill_seconds_runs": [
+          2.823267905972898,
+          2.8106598909944296,
+          2.8251040261238813
+        ],
+        "prefill_tok_s_median": 1450.8010349759984,
+        "prefill_tok_s_runs": [
+          1449.8581157097503,
+          1450.8010349759984,
+          1457.3090159801613
+        ],
+        "resolved_backend": "hip_gfx1151",
+        "token_id": [
+          9707
+        ]
+      },
+      "delta_pct": 10.538187763616369,
+      "id": "run1",
+      "pair32": {
+        "effective_use_wmma_prefill": true,
+        "memory": {
+          "hip_used_peak_sampled_bytes": 22476693504,
+          "hip_used_peak_sampled_gib": 20.93305206298828,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ],
+          "owned_session_peak_bytes": 22191405240,
+          "owned_session_peak_gib": 20.66735666245222,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_bytes_before_close": 22191405240,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "tracked_current_allocated_gib_before_close": 20.66735666245222,
+          "tracked_peak_allocated_bytes": 22191405240,
+          "tracked_peak_allocated_gib": 20.66735666245222
+        },
+        "mode": "pair32",
+        "prefill_chunk_tuning": {
+          "applied": false,
+          "arch_profile_applied": false,
+          "base_chunk_sizes": {
+            "full_attn_post": 0,
+            "full_attn_query": 0,
+            "full_attn_rope": 0,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "chunk_sizes": {
+            "full_attn_post": 0,
+            "full_attn_query": 0,
+            "full_attn_rope": 0,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "enabled": true,
+          "geometry_profile_applied": false,
+          "int8_prefill_lifetime": {
+            "chunk_hidden_bytes": 8388608,
+            "chunk_token_bytes": 8192,
+            "int8_full_attention_layers": 0,
+            "layer_local_oracle_bytes": 0,
+            "layer_outer_hidden_bytes": 35651584,
+            "layer_outer_token_bytes": 34816,
+            "mode": "bf16",
+            "oracle_buffer_count": 0,
+            "oracle_pair_bytes": 0,
+            "projected_peak_delta_bytes": 0,
+            "projected_peak_saving_bytes": 0,
+            "required_hidden_capacity": 1024
+          },
+          "manual_chunk_sizes": [
+            "linear_chunk_size",
+            "moe_chunk_size"
+          ],
+          "max_sequence_length": 4352,
+          "memory_budget_gib": 0.0,
+          "reason": "manual_chunk_sizes",
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "target_arch": "gfx1151"
+        },
+        "prefill_seconds_runs": [
+          2.5541109032928944,
+          2.552734081633389,
+          2.555667375214398
+        ],
+        "prefill_tok_s_median": 1603.6891721182587,
+        "prefill_tok_s_runs": [
+          1602.7124811797473,
+          1603.6891721182587,
+          1604.5541247207148
+        ],
+        "resolved_backend": "hip_gfx1151",
+        "token_id": [
+          9707
+        ]
+      },
+      "source_revision": "pre-commit; differs from the committed tree only in the unreachable FP16 gate+up sibling NUM_WAVES"
+    },
+    {
+      "baseline": {
+        "effective_use_wmma_prefill": true,
+        "memory": {
+          "hip_used_peak_sampled_bytes": 22476693504,
+          "hip_used_peak_sampled_gib": 20.93305206298828,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ],
+          "owned_session_peak_bytes": 22191405240,
+          "owned_session_peak_gib": 20.66735666245222,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_bytes_before_close": 22191405240,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "tracked_current_allocated_gib_before_close": 20.66735666245222,
+          "tracked_peak_allocated_bytes": 22191405240,
+          "tracked_peak_allocated_gib": 20.66735666245222
+        },
+        "mode": "baseline",
+        "prefill_chunk_tuning": {
+          "applied": false,
+          "arch_profile_applied": false,
+          "base_chunk_sizes": {
+            "full_attn_post": 0,
+            "full_attn_query": 0,
+            "full_attn_rope": 0,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "chunk_sizes": {
+            "full_attn_post": 0,
+            "full_attn_query": 0,
+            "full_attn_rope": 0,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "enabled": true,
+          "geometry_profile_applied": false,
+          "int8_prefill_lifetime": {
+            "chunk_hidden_bytes": 8388608,
+            "chunk_token_bytes": 8192,
+            "int8_full_attention_layers": 0,
+            "layer_local_oracle_bytes": 0,
+            "layer_outer_hidden_bytes": 35651584,
+            "layer_outer_token_bytes": 34816,
+            "mode": "bf16",
+            "oracle_buffer_count": 0,
+            "oracle_pair_bytes": 0,
+            "projected_peak_delta_bytes": 0,
+            "projected_peak_saving_bytes": 0,
+            "required_hidden_capacity": 1024
+          },
+          "manual_chunk_sizes": [
+            "linear_chunk_size",
+            "moe_chunk_size"
+          ],
+          "max_sequence_length": 4352,
+          "memory_budget_gib": 0.0,
+          "reason": "manual_chunk_sizes",
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "target_arch": "gfx1151"
+        },
+        "prefill_seconds_runs": [
+          2.817045853473246,
+          2.8069509817287326,
+          2.8179928436875343
+        ],
+        "prefill_tok_s_median": 1454.0054415336838,
+        "prefill_tok_s_runs": [
+          1453.5168210860702,
+          1454.0054415336838,
+          1459.234602478656
+        ],
+        "resolved_backend": "hip_gfx1151",
+        "token_id": [
+          9707
+        ]
+      },
+      "delta_pct": 12.74577615490573,
+      "id": "run2-committed",
+      "pair32": {
+        "effective_use_wmma_prefill": true,
+        "memory": {
+          "hip_used_peak_sampled_bytes": 22476693504,
+          "hip_used_peak_sampled_gib": 20.93305206298828,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ],
+          "owned_session_peak_bytes": 22191405240,
+          "owned_session_peak_gib": 20.66735666245222,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_bytes_before_close": 22191405240,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "tracked_current_allocated_gib_before_close": 20.66735666245222,
+          "tracked_peak_allocated_bytes": 22191405240,
+          "tracked_peak_allocated_gib": 20.66735666245222
+        },
+        "mode": "pair32",
+        "prefill_chunk_tuning": {
+          "applied": false,
+          "arch_profile_applied": false,
+          "base_chunk_sizes": {
+            "full_attn_post": 0,
+            "full_attn_query": 0,
+            "full_attn_rope": 0,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "chunk_sizes": {
+            "full_attn_post": 0,
+            "full_attn_query": 0,
+            "full_attn_rope": 0,
+            "linear": 1024,
+            "moe": 1024
+          },
+          "enabled": true,
+          "geometry_profile_applied": false,
+          "int8_prefill_lifetime": {
+            "chunk_hidden_bytes": 8388608,
+            "chunk_token_bytes": 8192,
+            "int8_full_attention_layers": 0,
+            "layer_local_oracle_bytes": 0,
+            "layer_outer_hidden_bytes": 35651584,
+            "layer_outer_token_bytes": 34816,
+            "mode": "bf16",
+            "oracle_buffer_count": 0,
+            "oracle_pair_bytes": 0,
+            "projected_peak_delta_bytes": 0,
+            "projected_peak_saving_bytes": 0,
+            "required_hidden_capacity": 1024
+          },
+          "manual_chunk_sizes": [
+            "linear_chunk_size",
+            "moe_chunk_size"
+          ],
+          "max_sequence_length": 4352,
+          "memory_budget_gib": 0.0,
+          "reason": "manual_chunk_sizes",
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "target_arch": "gfx1151"
+        },
+        "prefill_seconds_runs": [
+          2.4976058080792427,
+          2.498582163825631,
+          2.499231359921396
+        ],
+        "prefill_tok_s_median": 1639.3297203917157,
+        "prefill_tok_s_runs": [
+          1638.9038908862062,
+          1639.3297203917157,
+          1639.9705617076481
+        ],
+        "resolved_backend": "hip_gfx1151",
+        "token_id": [
+          9707
+        ]
+      },
+      "source_revision": "committed tree"
+    }
+  ],
+  "host": {
+    "gpu": "AMD Radeon 8060S (gfx1151)",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "physical_host": "gfx1151",
+    "quant": "gguf_ud_q4_k_m"
+  },
+  "isolated_down": {
+    "q4": {
+      "bit_exact": true,
+      "kernel": "gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact",
+      "sanity": {
+        "checksum_f64": 375558.0273988284,
+        "finite_output": true,
+        "max_abs": 84.0
+      },
+      "schema": 1,
+      "shape": {
+        "compact_rows": 8192,
+        "experts": 256,
+        "in_features": 512,
+        "out_features": 2048,
+        "rows_per_expert": 32,
+        "wmma_total_rows": 8192
+      },
+      "speedup_pair32_vs_baseline": 1.305205880143446,
+      "timestamp": "2026-10-03T11:46:15.570286+00:00",
+      "timing": {
+        "iters": 50,
+        "logical_fma": 8589934592,
+        "logical_tflops": 8.661498954022534,
+        "ms_per_call": 1.9834752939641476,
+        "warmup": 10
+      },
+      "variants": {
+        "baseline": {
+          "logical_tflops": 8.661498954022534,
+          "ms_per_call": 1.9834752939641476
+        },
+        "pair32_nwave": {
+          "logical_tflops": 11.305039365646518,
+          "ms_per_call": 1.5196646936237812
+        }
+      },
+      "weight_bytes": 155189248,
+      "weight_gib": 0.14453125
+    },
+    "q5_qmicro": {
+      "bit_exact": true,
+      "kernel": "gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact",
+      "sanity": {
+        "checksum_f64": 780693.5823129932,
+        "finite_output": true,
+        "max_abs": 175.0
+      },
+      "schema": 1,
+      "shape": {
+        "compact_rows": 8192,
+        "experts": 256,
+        "in_features": 512,
+        "out_features": 2048,
+        "rows_per_expert": 32,
+        "wmma_total_rows": 8192
+      },
+      "speedup_pair32_vs_baseline": 1.1001478612938824,
+      "timestamp": "2026-10-03T11:46:14.835668+00:00",
+      "timing": {
+        "iters": 50,
+        "logical_fma": 8589934592,
+        "logical_tflops": 7.130639288756254,
+        "ms_per_call": 2.4093027971684933,
+        "warmup": 10
+      },
+      "variants": {
+        "baseline": {
+          "logical_tflops": 7.130639288756254,
+          "ms_per_call": 2.4093027971684933
+        },
+        "pair32_nwave": {
+          "logical_tflops": 7.844757563183325,
+          "ms_per_call": 2.1899808943271637
+        }
+      },
+      "weight_bytes": 184549376,
+      "weight_gib": 0.171875
+    }
+  },
+  "isolated_gate_up": {
+    "results": {
+      "compact32_baseline": {
+        "ms": 3.8090823777019978,
+        "row_tiles": 512,
+        "tflops": 9.020476577019863,
+        "weight_mb": 310.378496
+      },
+      "pair32_nwave": {
+        "ms": 2.9096893779933453,
+        "row_tiles": 512,
+        "tflops": 11.808730728396872,
+        "weight_mb": 310.378496
+      },
+      "speedup": 1.3091027538922093
+    },
+    "shape": {
+      "compact_rows": 8192,
+      "experts": 256,
+      "hidden": 2048,
+      "out_total": 1024,
+      "row_tiles": 512,
+      "rows_per_expert": 32,
+      "uneven": false,
+      "wmma_total_rows": 8192
+    }
+  },
+  "protocol": {
+    "flags": [
+      "--prompt-length 4096",
+      "--decode-tokens 0",
+      "--warmup-decode-tokens 0",
+      "--warmup-runs 1",
+      "--measured-runs 3",
+      "--public-ar-profile",
+      "--prefill-linear-chunk-size 1024",
+      "--prefill-moe-chunk-size 1024",
+      "--compiler-version-file /tmp/reprof/compiler.txt",
+      "--require-cached-build"
+    ],
+    "harness": "scripts/qwen35_gguf_bench.py",
+    "note": "one process per arm; each arm resolves its own JIT cache entry",
+    "selector": "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=baseline|pair32"
+  },
+  "retained": {
+    "conservative_delta_pct": 10.538187763616369,
+    "conservative_pair": "run1",
+    "expert_legs_ms_implied": 735.4741906389594,
+    "implied_expert_leg_rate_tflops": 11.49258547421862
+  },
+  "rocprof_kernel_trace": {
+    "down": {
+      "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short, 4, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)": {
+        "calls": 7,
+        "grid": [
+          4096,
+          512
+        ],
+        "lds": 0,
+        "scratch": 0,
+        "sgpr": 128,
+        "total_us": 13782.742999999999,
+        "us_per_call": 1968.9632857142856,
+        "vgpr": 48,
+        "workgroup": 32
+      },
+      "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_pair32_nwave_kernel<unsigned short, 4, false, 4>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)": {
+        "calls": 7,
+        "grid": [
+          4096,
+          256
+        ],
+        "lds": 1024,
+        "scratch": 0,
+        "sgpr": 128,
+        "total_us": 10575.823,
+        "us_per_call": 1510.8318571428572,
+        "vgpr": 104,
+        "workgroup": 128
+      }
+    },
+    "gate_up": {
+      "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)": {
+        "calls": 6,
+        "grid": [
+          1024,
+          512
+        ],
+        "lds": 0,
+        "scratch": 0,
+        "sgpr": 128,
+        "total_us": 22945.994,
+        "us_per_call": 3824.3323333333333,
+        "vgpr": 56,
+        "workgroup": 32
+      },
+      "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_kernel<unsigned short, false, 2>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)": {
+        "calls": 6,
+        "grid": [
+          2048,
+          256
+        ],
+        "lds": 1024,
+        "scratch": 0,
+        "sgpr": 128,
+        "total_us": 17355.879,
+        "us_per_call": 2892.6465000000003,
+        "vgpr": 88,
+        "workgroup": 64
+      }
+    },
+    "schema": 1,
+    "tool": "rocprofv3 --kernel-trace --output-format csv"
+  },
+  "schema": 1
+}

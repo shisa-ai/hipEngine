@@ -33727,6 +33727,15 @@ _COMPACT_MOE_Q4_DUAL_MODE_KEYS = {
             "gguf_q4_k_t16_v1",
             "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out",
         ),
+        # R12 ladder step 1: NUM_WAVES-wave block with an LDS-staged activation
+        # tile and two 16-row tiles per wave, so one Q4_K dequant feeds two
+        # WMMA accumulators. Bit-identical to ``baseline``.
+        "pair32": KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k_t16_v1",
+            "selected_dual_wmma_prefill_pair32_nwave_bf16_bf16_out",
+        ),
     },
 }
 _COMPACT_MOE_Q4_DUAL_DS4_KEYS = {
@@ -33778,6 +33787,24 @@ _COMPACT_MOE_DOWN_KEYS = {
         "gguf_q6_k_t16_v1",
         "selected_wmma_prefill_compact_bf16_bf16_out",
     ),
+}
+# R12 ladder step 1: mode-selected siblings of ``_COMPACT_MOE_DOWN_KEYS``.
+# ``pair32`` pairs two adjacent 16-row tiles per wave and stages the activation
+# tile in LDS so one dequantized weight column feeds two WMMA accumulators.
+# Bit-identical to ``baseline``; selected only by
+# ``HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE``.
+_COMPACT_MOE_DOWN_MODE_KEYS = {
+    quant_key: {
+        "baseline": key,
+        "pair32": KernelKey(
+            key.backend,
+            key.layer,
+            key.quant,
+            "selected_wmma_prefill_pair32_nwave_bf16_bf16_out",
+        ),
+    }
+    for quant_key, key in _COMPACT_MOE_DOWN_KEYS.items()
+    if quant_key.endswith("_t16_v1")
 }
 _COMPACT_MOE_Q4_DUAL_GEMV_KEYS = {
     ("gguf_q4_k", "gguf_q4_k"): KernelKey(
@@ -34174,7 +34201,7 @@ _GGUF_Q4_T16_SELECTED_PREFILL_MODE_ENV = (
     "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE"
 )
 _GGUF_Q4_T16_SELECTED_PREFILL_MODES = frozenset(
-    {"auto", "baseline", "shared_x"}
+    {"auto", "baseline", "shared_x", "pair32"}
 )
 
 
@@ -36151,6 +36178,13 @@ def _resolve_compact_moe_wmma_kernels(
         selected_gate_up_key = _COMPACT_MOE_Q4_DUAL_KEYS.get(gate_up_pair)
     gate_up_key = ds4_gate_up_key if use_ds4_gate_up else selected_gate_up_key
     down_key = _COMPACT_MOE_DOWN_KEYS.get(down_weight.spec.quant_key)
+    down_baseline_key = down_key
+    if selected_mode == "pair32":
+        down_mode_keys = _COMPACT_MOE_DOWN_MODE_KEYS.get(
+            down_weight.spec.quant_key
+        )
+        if down_mode_keys is not None:
+            down_key = down_mode_keys["pair32"]
     if gate_up_key is None or down_key is None:
         return None
     required = (*_COMPACT_MOE_SCHEDULER_KEYS, *_COMPACT_MOE_FUSED_KEYS, gate_up_key, down_key)
@@ -36168,6 +36202,7 @@ def _resolve_compact_moe_wmma_kernels(
         if mode_keys is None or selected_mode == "baseline":
             return None
         gate_up_key = mode_keys["baseline"]
+        down_key = down_baseline_key
         required = (
             *_COMPACT_MOE_SCHEDULER_KEYS,
             *_COMPACT_MOE_FUSED_KEYS,
