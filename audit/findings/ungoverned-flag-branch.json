@@ -1,7 +1,7 @@
 {
   "kind": "ungoverned-flag-branch",
   "meta": {
-    "suspect_flags": 49,
+    "suspect_flags": 50,
     "cross_reference": "inventory/flags.json"
   },
   "rows": [
@@ -341,6 +341,43 @@
       },
       "id": "ungoverned-flag-branch/hipengine/generation/qwen4_exp_profiles.py:571:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
       "evidence_hash": "8f05f022b4e1"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/generation/yue2_song.py:26:HIPENGINE_YUE2_VAE_DIR",
+      "title": "runtime branch on HIPENGINE_YUE2_VAE_DIR: default-off with no removal condition recorded",
+      "location": "hipengine/generation/yue2_song.py:26",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_YUE2_VAE_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_YUE2_VAE_DIR`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_YUE2_VAE_DIR",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/generation/yue2_song.py",
+        "refs": [
+          "hipengine/generation/yue2_song.py:26:HIPENGINE_YUE2_VAE_DIR"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_yue2_vae_dir",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/generation/yue2_song.py:26:HIPENGINE_YUE2_VAE_DIR",
+      "evidence_hash": "e29714881b6a"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -3201,13 +3238,50 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:336:HIPENGINE_VISION_MAX_PIXELS",
-      "title": "runtime branch on HIPENGINE_VISION_MAX_PIXELS: default-off with no removal condition recorded",
+      "key": "hipengine/server/__main__.py:333:HIPENGINE_YUE2_VAE_DIR",
+      "title": "runtime branch on HIPENGINE_YUE2_VAE_DIR: default-off with no removal condition recorded",
+      "location": "hipengine/server/__main__.py:333",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_YUE2_VAE_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_YUE2_VAE_DIR`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_YUE2_VAE_DIR",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/server/__main__.py",
+        "refs": [
+          "hipengine/server/__main__.py:333:HIPENGINE_YUE2_VAE_DIR"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_yue2_vae_dir",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:333:HIPENGINE_YUE2_VAE_DIR",
+      "evidence_hash": "2eea225202c7"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/server/__main__.py:336:HIPENGINE_YUE2_VAE_DIR",
+      "title": "runtime branch on HIPENGINE_YUE2_VAE_DIR: default-off with no removal condition recorded",
       "location": "hipengine/server/__main__.py:336",
       "evidence": {
-        "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_PIXELS to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_PIXELS`.",
+        "fix": "Decide the flag's fate: promote HIPENGINE_YUE2_VAE_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_YUE2_VAE_DIR`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
-        "flag": "HIPENGINE_VISION_MAX_PIXELS",
+        "flag": "HIPENGINE_YUE2_VAE_DIR",
         "default": "off",
         "flag_signals": [
           "reads as default-off",
@@ -3220,27 +3294,27 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:336:HIPENGINE_VISION_MAX_PIXELS"
+          "hipengine/server/__main__.py:336:HIPENGINE_YUE2_VAE_DIR"
         ],
         "tokens": [
           "branch",
           "condition",
           "default",
-          "hipengine_vision_max_pixels",
+          "hipengine_yue2_vae_dir",
           "off",
           "recorded",
           "removal",
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:336:HIPENGINE_VISION_MAX_PIXELS",
-      "evidence_hash": "0f05c41908d4"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:336:HIPENGINE_YUE2_VAE_DIR",
+      "evidence_hash": "401eaeb5c8eb"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:337:HIPENGINE_VISION_MAX_PIXELS",
+      "key": "hipengine/server/__main__.py:344:HIPENGINE_VISION_MAX_PIXELS",
       "title": "runtime branch on HIPENGINE_VISION_MAX_PIXELS: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:337",
+      "location": "hipengine/server/__main__.py:344",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_PIXELS to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_PIXELS`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3257,7 +3331,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:337:HIPENGINE_VISION_MAX_PIXELS"
+          "hipengine/server/__main__.py:344:HIPENGINE_VISION_MAX_PIXELS"
         ],
         "tokens": [
           "branch",
@@ -3270,14 +3344,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:337:HIPENGINE_VISION_MAX_PIXELS",
-      "evidence_hash": "ba5dc64c12e1"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:344:HIPENGINE_VISION_MAX_PIXELS",
+      "evidence_hash": "48db8122091a"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:342:HIPENGINE_VISION_MAX_PIXELS",
+      "key": "hipengine/server/__main__.py:345:HIPENGINE_VISION_MAX_PIXELS",
       "title": "runtime branch on HIPENGINE_VISION_MAX_PIXELS: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:342",
+      "location": "hipengine/server/__main__.py:345",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_PIXELS to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_PIXELS`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3294,7 +3368,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:342:HIPENGINE_VISION_MAX_PIXELS"
+          "hipengine/server/__main__.py:345:HIPENGINE_VISION_MAX_PIXELS"
         ],
         "tokens": [
           "branch",
@@ -3307,18 +3381,18 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:342:HIPENGINE_VISION_MAX_PIXELS",
-      "evidence_hash": "9401e558e95c"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:345:HIPENGINE_VISION_MAX_PIXELS",
+      "evidence_hash": "d7654c45ed5c"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:350:HIPENGINE_VISION_MAX_IMAGE_BYTES",
-      "title": "runtime branch on HIPENGINE_VISION_MAX_IMAGE_BYTES: default-off with no removal condition recorded",
+      "key": "hipengine/server/__main__.py:350:HIPENGINE_VISION_MAX_PIXELS",
+      "title": "runtime branch on HIPENGINE_VISION_MAX_PIXELS: default-off with no removal condition recorded",
       "location": "hipengine/server/__main__.py:350",
       "evidence": {
-        "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_IMAGE_BYTES to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_IMAGE_BYTES`.",
+        "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_PIXELS to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_PIXELS`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
-        "flag": "HIPENGINE_VISION_MAX_IMAGE_BYTES",
+        "flag": "HIPENGINE_VISION_MAX_PIXELS",
         "default": "off",
         "flag_signals": [
           "reads as default-off",
@@ -3331,27 +3405,27 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:350:HIPENGINE_VISION_MAX_IMAGE_BYTES"
+          "hipengine/server/__main__.py:350:HIPENGINE_VISION_MAX_PIXELS"
         ],
         "tokens": [
           "branch",
           "condition",
           "default",
-          "hipengine_vision_max_image_bytes",
+          "hipengine_vision_max_pixels",
           "off",
           "recorded",
           "removal",
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:350:HIPENGINE_VISION_MAX_IMAGE_BYTES",
-      "evidence_hash": "90722b5a9ed4"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:350:HIPENGINE_VISION_MAX_PIXELS",
+      "evidence_hash": "c201e1064923"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:351:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "key": "hipengine/server/__main__.py:358:HIPENGINE_VISION_MAX_IMAGE_BYTES",
       "title": "runtime branch on HIPENGINE_VISION_MAX_IMAGE_BYTES: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:351",
+      "location": "hipengine/server/__main__.py:358",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_IMAGE_BYTES to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_IMAGE_BYTES`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3368,7 +3442,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:351:HIPENGINE_VISION_MAX_IMAGE_BYTES"
+          "hipengine/server/__main__.py:358:HIPENGINE_VISION_MAX_IMAGE_BYTES"
         ],
         "tokens": [
           "branch",
@@ -3381,14 +3455,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:351:HIPENGINE_VISION_MAX_IMAGE_BYTES",
-      "evidence_hash": "75c4481e9159"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:358:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "evidence_hash": "2cd404611635"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:356:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "key": "hipengine/server/__main__.py:359:HIPENGINE_VISION_MAX_IMAGE_BYTES",
       "title": "runtime branch on HIPENGINE_VISION_MAX_IMAGE_BYTES: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:356",
+      "location": "hipengine/server/__main__.py:359",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_IMAGE_BYTES to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_IMAGE_BYTES`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3405,7 +3479,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:356:HIPENGINE_VISION_MAX_IMAGE_BYTES"
+          "hipengine/server/__main__.py:359:HIPENGINE_VISION_MAX_IMAGE_BYTES"
         ],
         "tokens": [
           "branch",
@@ -3418,14 +3492,51 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:356:HIPENGINE_VISION_MAX_IMAGE_BYTES",
-      "evidence_hash": "b6d2198c4edf"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:359:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "evidence_hash": "fd28ba7d8777"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:404:HIPENGINE_REPLAY_DIR",
+      "key": "hipengine/server/__main__.py:364:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "title": "runtime branch on HIPENGINE_VISION_MAX_IMAGE_BYTES: default-off with no removal condition recorded",
+      "location": "hipengine/server/__main__.py:364",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_IMAGE_BYTES to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_IMAGE_BYTES`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_VISION_MAX_IMAGE_BYTES",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/server/__main__.py",
+        "refs": [
+          "hipengine/server/__main__.py:364:HIPENGINE_VISION_MAX_IMAGE_BYTES"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_vision_max_image_bytes",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:364:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "evidence_hash": "3a230137f44c"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/server/__main__.py:412:HIPENGINE_REPLAY_DIR",
       "title": "runtime branch on HIPENGINE_REPLAY_DIR: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:404",
+      "location": "hipengine/server/__main__.py:412",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_REPLAY_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_REPLAY_DIR`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3442,7 +3553,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:404:HIPENGINE_REPLAY_DIR"
+          "hipengine/server/__main__.py:412:HIPENGINE_REPLAY_DIR"
         ],
         "tokens": [
           "branch",
@@ -3455,14 +3566,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:404:HIPENGINE_REPLAY_DIR",
-      "evidence_hash": "62503c5abbef"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:412:HIPENGINE_REPLAY_DIR",
+      "evidence_hash": "70c1d084316b"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:407:HIPENGINE_REPLAY_DIR",
+      "key": "hipengine/server/__main__.py:415:HIPENGINE_REPLAY_DIR",
       "title": "runtime branch on HIPENGINE_REPLAY_DIR: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:407",
+      "location": "hipengine/server/__main__.py:415",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_REPLAY_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_REPLAY_DIR`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3479,7 +3590,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:407:HIPENGINE_REPLAY_DIR"
+          "hipengine/server/__main__.py:415:HIPENGINE_REPLAY_DIR"
         ],
         "tokens": [
           "branch",
@@ -3492,14 +3603,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:407:HIPENGINE_REPLAY_DIR",
-      "evidence_hash": "1bbddc5ea409"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:415:HIPENGINE_REPLAY_DIR",
+      "evidence_hash": "6375b9097edf"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/api.py:2297:HIPENGINE_API_KEY",
+      "key": "hipengine/server/api.py:2528:HIPENGINE_API_KEY",
       "title": "runtime branch on HIPENGINE_API_KEY: default-off with no removal condition recorded",
-      "location": "hipengine/server/api.py:2297",
+      "location": "hipengine/server/api.py:2528",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_API_KEY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_API_KEY`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3516,7 +3627,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:2297:HIPENGINE_API_KEY"
+          "hipengine/server/api.py:2528:HIPENGINE_API_KEY"
         ],
         "tokens": [
           "branch",
@@ -3529,8 +3640,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/api.py:2297:HIPENGINE_API_KEY",
-      "evidence_hash": "398a6958dbf7"
+      "id": "ungoverned-flag-branch/hipengine/server/api.py:2528:HIPENGINE_API_KEY",
+      "evidence_hash": "ad93ce4a397f"
     }
   ]
 }

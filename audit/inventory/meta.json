@@ -4,7 +4,7 @@
     "candidates": 231
   },
   "flags": {
-    "names": 752,
+    "names": 753,
     "roots": "hipengine, scripts, tests, benchmarks"
   },
   "kernels": {
@@ -22,12 +22,12 @@
     "source": "docs/REFACTOR.md",
     "headings": 409
   },
-  "generated": "2026-09-26T14:22:30+00:00",
-  "commit": "f9d2389aa",
+  "generated": "2026-10-03T21:28:08+00:00",
+  "commit": "641090d70",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 10808,
-    "current": 3576,
+    "entries": 10811,
+    "current": 3579,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1149,
