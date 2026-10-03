@@ -1,0 +1,27 @@
+{
+ "schema": 1,
+ "protocol": "4096-token prefill, chunk 1024, --public-ar-profile, warmup 1, measured 3, one process per arm",
+ "arm_a_rollback": {
+  "selector": "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=baseline",
+  "median": 1450.7786195226017,
+  "samples": [
+   1450.673564990051,
+   1458.9229401018752,
+   1450.7786195226017
+  ],
+  "stdev": 4.732743811088313
+ },
+ "arm_b_promoted_default": {
+  "selector": "automatic (no override)",
+  "median": 1633.3328537758355,
+  "samples": [
+   1633.3328537758355,
+   1630.663172910995,
+   1634.4818115254513
+  ],
+  "stdev": 1.959136744347519
+ },
+ "delta_pct": 12.583190281181956,
+ "command": "source /tmp/reprof/env.sh && PYTHONPATH=/home/lhl/hipEngine $PY scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 1 --measured-runs 3 --public-ar-profile --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --compiler-version-file /tmp/reprof/compiler.txt --json <out>",
+ "note": "decode_tokens=0, so final_token_ids and finite_final_logits are empty by construction; output correctness is established by the 128K gates and the bit-exactness tests"
+}

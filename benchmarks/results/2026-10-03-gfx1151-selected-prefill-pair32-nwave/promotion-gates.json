@@ -1,0 +1,136 @@
+{
+ "schema": 1,
+ "gate": "three independent 128K warmup+3 processes, the documented bar from the compact32_shared_x precedent (docs/REFACTOR.md GPF-3A)",
+ "result": "PASSED on both profiles",
+ "conservative_set": {
+  "profile": "q4_pair32",
+  "workload": "128K/128",
+  "warmup_runs": 1,
+  "measured_runs": 3,
+  "processes": [
+   {
+    "process": 1,
+    "prefills_completed": 4,
+    "prefill_tok_s_median": 319.2505629770635,
+    "stdev": 0.03907700488786925,
+    "finite_logits": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "final_token_ids": [
+     9707,
+     9707,
+     9707,
+     9707
+    ]
+   },
+   {
+    "process": 2,
+    "prefills_completed": 4,
+    "prefill_tok_s_median": 319.21311332045724,
+    "stdev": 0.06431150098607456,
+    "finite_logits": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "final_token_ids": [
+     9707,
+     9707,
+     9707,
+     9707
+    ]
+   },
+   {
+    "process": 3,
+    "prefills_completed": 4,
+    "prefill_tok_s_median": 319.3015135450788,
+    "stdev": 0.10571434021255238,
+    "finite_logits": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "final_token_ids": [
+     9707,
+     9707,
+     9707,
+     9707
+    ]
+   }
+  ],
+  "total_prefills": 12
+ },
+ "production_shaped": {
+  "profile": "q4_pair32_production",
+  "workload": "128K/128",
+  "warmup_runs": 1,
+  "measured_runs": 3,
+  "processes": [
+   {
+    "process": 1,
+    "prefills_completed": 4,
+    "prefill_tok_s_median": 620.613439009357,
+    "stdev": 0.7139953423268599,
+    "finite_logits": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "final_token_ids": [
+     9707,
+     9707,
+     9707,
+     9707
+    ]
+   },
+   {
+    "process": 2,
+    "prefills_completed": 4,
+    "prefill_tok_s_median": 619.9948450911645,
+    "stdev": 0.22791675776491876,
+    "finite_logits": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "final_token_ids": [
+     9707,
+     9707,
+     9707,
+     9707
+    ]
+   },
+   {
+    "process": 3,
+    "prefills_completed": 4,
+    "prefill_tok_s_median": 619.5699696518802,
+    "stdev": 0.2793448874599096,
+    "finite_logits": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "final_token_ids": [
+     9707,
+     9707,
+     9707,
+     9707
+    ]
+   }
+  ],
+  "total_prefills": 12
+ },
+ "baseline_only_reference_tok_s": "575.180-580.626 (GPF-3A row, same 128K workload)",
+ "promotion": "hipengine/kernels/hip_gfx1151/__init__.py GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE baseline -> pair32",
+ "gfx1100": "unchanged (shared_x)",
+ "command": "source /tmp/reprof/env.sh && PYTHONPATH=/home/lhl/hipEngine $PY scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --workloads 128K/128 --prefill-kernel-profile {q4_pair32,q4_pair32_production} --backend hip_gfx1151 --compiler-version-file /tmp/reprof/compiler.txt --json <out>",
+ "selector_recorded": "every run's provenance records prefill_kernel_selectors HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=pair32, so the paired bodies were genuinely exercised"
+}

@@ -117,3 +117,44 @@ $PY -m pytest tests/test_gpu_gguf_k_t16_selected_wmma_prefill.py \
 
 - `pair32-nwave.json` — end-to-end A/B pairs, isolated legs, design-basis targets.
 - `rocprof-kernel-trace.json` — `rocprofv3 --kernel-trace` summary for both legs.
+
+## Promotion to the gfx1151 automatic route
+
+The paired bodies cleared the gate that blocked `shared_x`. `docs/REFACTOR.md`
+(GPF-3A) documents a silent repeated-128K lifecycle stall in this same
+LDS-staging family and sets the bar at three independent 128K warmup+3
+processes; both profiles pass it (`promotion-gates.json`).
+
+| profile | processes | prefills | tok/s | stdev | logits | IDs |
+| --- | --- | --- | --- | --- | --- | --- |
+| conservative set (`q4_pair32`) | 3 | **12/12** | 319.25 / 319.21 / 319.30 | <= 0.11 | finite | [9707,9707,9707] |
+| production-shaped (`q4_pair32_production`) | 3 | **12/12** | 620.61 / 619.99 / 619.57 | <= 0.71 | finite | [9707,9707,9707] |
+
+Every run's provenance records
+`prefill_kernel_selectors: {HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE: "pair32"}`,
+so the paired bodies were genuinely exercised rather than silently falling back.
+The production-shaped figure is above the **575.180-580.626** baseline-only
+number recorded for the same 128K workload in the GPF-3A row, so the pairing
+helps long context as well as 4K.
+
+`GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE` is therefore `"pair32"` on gfx1151
+(`hipengine/kernels/hip_gfx1151/__init__.py`); **gfx1100 is unchanged at
+`shared_x`**, which remains blocked. The compact `baseline` body and the
+`_COMPACT_MOE_DOWN_MODE_KEYS` map stay registered as the release-safety
+rollback.
+
+## Default-path A/B
+
+The selector A/B above measures the kernel. This measures what a user gets
+(`promoted-default-ab.json`), arm A being the explicit rollback and arm B the
+promoted automatic route with no override, 4096-token prefill, chunk 1024, three
+measured runs each:
+
+| arm | selector | tok/s | samples |
+| --- | --- | ---: | --- |
+| A (rollback) | `=baseline` | 1450.78 | 1450.7 / 1458.9 / 1450.8 |
+| **B (promoted default)** | automatic | **1633.33** | 1633.3 / 1630.7 / 1634.5 |
+
+**+12.58%.** Both arms ran `--decode-tokens 0`, so `final_token_ids` and
+`finite_final_logits` are empty by construction; output correctness rests on the
+128K gates above and on the bit-exactness tests, not on this pair.

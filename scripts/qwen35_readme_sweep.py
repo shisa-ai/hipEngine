@@ -83,6 +83,23 @@ _PREFILL_KERNEL_PROFILES = {
         **_CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
         "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "shared_x",
     },
+    # R12 ladder step 1 promotion gate: the paired multi-wave LDS-staged bodies
+    # for both selected-expert legs, under the same conservative selector set
+    # that characterized the compact32_shared_x repeated-128K stall.  Promotion
+    # to the gfx1151 automatic route requires this profile to pass three
+    # independent 128K warmup+3 processes, exactly as the baseline profile does.
+    "q4_pair32": {
+        **_CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
+        "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "pair32",
+    },
+    # Production-shaped pair32 gate: package defaults except the one family
+    # under test, mirroring the shape of q4_baseline.  This is the profile the
+    # gfx1151 automatic route would actually run, so it is the gate that
+    # authorizes promotion; q4_pair32 above is the conservative-set analogue of
+    # q4_shared_x used to reproduce the compact32_shared_x stall.
+    "q4_pair32_production": {
+        "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "pair32",
+    },
 }
 
 
