@@ -211,7 +211,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `quant/gguf_q6_k_t16_gemv.hip` | T16/qmicro Q6_K projections and head/residual composites. |
 | `quant/gguf_t16_selected_gemv.hip` | T16 selected-expert projections and weighted/residual composites. |
 | `quant/gguf_k_t16_selected_prefill.hip` | T16 Q5_K/Q6_K selected-expert prefill projections. |
-| `quant/gguf_q4_k_t16_selected_prefill.hip` | T16 Q4_K selected-expert prefill projections. |
+| `quant/gguf_q4_k_t16_selected_prefill.hip` | T16 Q4_K selected-expert prefill, including an LDS-transposed fused expert-major gate/up consumer. |
 | `quant/gguf_q5_k_qmicro_planar_gemv.hip` | Planar qmicro Q5_K selected-expert projections. |
 | `quant/gguf_q8_0_t16_gemv.hip` | T16 Q8_0 decode projections. |
 | `quant/gguf_q8_0_t16_prefill.hip` | T16 Q8_0 prefill projections with FP32 repair of non-finite WMMA accumulators. |
@@ -326,6 +326,7 @@ strict fallback; backend packages supply shape-specific choices. See
 | --- | --- | --- | --- |
 | Qwen/PARO `w4_paro` | Pack8 projections, separate rotation/SiLU/combine | Fused rotation/projection and selected feed-forward chains; matrix-tiled prefill | `quant/paro_awq_gemv`, `quant/paro_moe_ffn_fused`, `wmma/paro_awq_wmma` |
 | GGUF Q4/Q5/Q6 T16 | Scalar/row-tiled projections and primitive residual/weighted sums | Matrix-tiled prefill, dual+SiLU, weighted-down and residual composites | `quant/gguf_t16_selected_gemv`, `quant/gguf_k_t16_selected_prefill`, `quant/gguf_q4_k_t16_selected_prefill` |
+| GGUF Q4 T16 fused expert slab | Registered selected-row projection primitives and split-parent WMMA | `moe_linear` / `gguf_q4_k_t16_v1` / `selected_dual_wmma_prefill_fused_bf16_bf16_out`: one expert-major gate/up slab, explicit full expert stride, transient LDS transpose with split-parent arithmetic | `quant/gguf_q4_k_t16_selected_prefill` |
 | GGUF Q4/Q5/Q6 library routes | Exact raw/T16 projections | Dequantized FP16 rocBLAS and activation-quantized integer prefill | `quant/gguf_q6_k_f16_rocblas_prefill`, `quant/gguf_k_mmq_prefill`, `quant/gguf_q4_k_q8_1_selected_prefill` |
 | GGUF Q8_0 | Raw/T16 GEMV and exact row-batched variants | Matrix-tiled and integer prefill; packed-integer verifier projections | `quant/gguf_k_gemv`, `quant/gguf_q8_0_t16_*`, `quant/gguf_q8_0_mmq_prefill`, `quant/gguf_q8_0_dp4a_gemv` |
 | Qwen4Exp Q5_1 experts | Selected GEMV and exact grouped projections | `selected_grouped_wmma_prefill_compact_bf16_bf16_out` | `quant/qwen4_exp_q5_1` |

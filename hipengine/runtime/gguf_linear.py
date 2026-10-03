@@ -36,6 +36,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
     register_gguf_q4_k_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
+    register_gguf_q4_k_t16_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
     register_gguf_q4_k_pack8_gemv_kernels,
 )
@@ -9267,6 +9270,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_k_mmq_prefill_kernels()
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()
+    register_gguf_q4_k_t16_selected_prefill_kernels()
     register_gguf_q4_k_pack8_gemv_kernels()
     register_gguf_q5_k_f32_rocblas_prefill_kernels()
     register_gguf_q5_k_qmicro_planar_gemv_kernels()

@@ -348,9 +348,11 @@ bool valid_selected_dual_t16_common(
 // so the result is bit-identical to the original formulation.
 //
 // ``column_major`` selects the K-major weight decode, which requires the
-// matching K-major repack.  It changes only how the same tile bytes are read,
-// so a K-major run is bit-identical to a row-major run on the matching tiles.
-template <typename scalar_t, bool qmicro = false, bool column_major = false>
+// matching K-major repack. ``fused_stride`` keeps an expert-major gate|up slab
+// in row-major storage and transposes only its LDS window for the same decoder.
+// Both change addressing only; each accumulator keeps the split parent's math.
+template <typename scalar_t, bool qmicro = false, bool column_major = false,
+          bool fused_stride = false>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
     const scalar_t* __restrict__ x,
@@ -388,8 +390,8 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
   constexpr int q_subblock_bytes = Q4_SUBBLOCK * (T16_COLS / 2);
   constexpr int q_ktile_bytes = K_TILE * (T16_COLS / 2);
 
-  // K-major staging buffer.  Only the K-major path uses it; the row-major
-  // instantiation never touches it and allocates no group segment.
+  // Only vector-decode instantiations touch this staging buffer. The plain
+  // split row-major instantiation allocates no group segment.
   __shared__ uint8_t q_stage[Q4_T16_STAGE_BYTES];
 
   // Loop-invariant per lane.  A row outside the expert reads row 0 instead; its
@@ -413,8 +415,9 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
     stored[tm] = global_col_base < out_features_total && out_tile < out_tiles;
     if (out_tile >= out_tiles) out_tile = out_tiles - 1;
     const uint8_t* __restrict__ tiles = use_b ? tiles_b : tiles_a;
+    const int64_t expert_tiles = fused_stride ? out_features_total / T16_COLS : out_tiles;
     const uint8_t* __restrict__ base = q4_t16_tile_ptr<qmicro>(
-        tiles, expert_id, out_tile, 0, out_tiles, blocks_per_row);
+        tiles, expert_id, out_tile, 0, expert_tiles, blocks_per_row);
     // An out-of-range half re-reads the first half's tile rather than branching.
     // Its columns are all past ``out_features_total`` and are never stored, and
     // the first half is always in range for a block that reaches this point.
@@ -433,7 +436,7 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
     const int64_t g_k_base = blk * QK_K;
 #pragma unroll
     for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
-      if constexpr (column_major) {
+      if constexpr (column_major || fused_stride) {
         // Refill the window once every ``Q4_T16_STAGE_SUBBLOCKS`` sub-blocks.
         // The first barrier retires the previous window's readers before its
         // slot is overwritten; the second publishes the new bytes.  Both are
@@ -452,7 +455,21 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
 #pragma unroll
           for (int c = 0; c < Q4_T16_STAGE_HALF_BYTES / 16; c += 16) {
             const uint4 chunk = *reinterpret_cast<const uint4*>(fill_src + c);
-            *reinterpret_cast<uint4*>(fill_dst + c) = chunk;
+            if constexpr (fused_stride) {
+              // Keep the resident row-major layout shared with GEMV/MMQ.
+              // Only this scratch window is transposed for vector LDS reads.
+              const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&chunk);
+#pragma unroll
+              for (int j = 0; j < 16; ++j) {
+                const int offset = (tid & 15) * (Q4_T16_STAGE_HALF_BYTES / 16) + c + j;
+                const int k = offset / (T16_COLS / 2);
+                const int byte_col = offset % (T16_COLS / 2);
+                q_stage[fill_half * Q4_T16_STAGE_HALF_BYTES +
+                        (k / K_TILE) * q_ktile_bytes + byte_col * K_TILE + k % K_TILE] = bytes[j];
+              }
+            } else {
+              *reinterpret_cast<uint4*>(fill_dst + c) = chunk;
+            }
           }
           __builtin_amdgcn_s_barrier();
         }
@@ -463,7 +480,7 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
         const half16_t a_reg = load_compact_row_half16<scalar_t>(
             x, compact_row, in_features, k_base, true);
         half16_t b_reg;
-        if constexpr (column_major) {
+        if constexpr (column_major || fused_stride) {
           const uint8_t* __restrict__ window = q_stage +
               (sb % Q4_T16_STAGE_SUBBLOCKS) * q_subblock_bytes + kt * q_ktile_bytes;
           load_q4_t16_b_reg_column_major<qmicro>(tile0, window, sb, lane16, q_shift, b_reg);
@@ -471,7 +488,7 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
           load_q4_t16_b_reg<qmicro>(tile0, sb, kt, lane16, q_shift, b_reg);
         }
         acc[0] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc[0]);
-        if constexpr (column_major) {
+        if constexpr (column_major || fused_stride) {
           const uint8_t* __restrict__ window = q_stage +
               Q4_T16_STAGE_HALF_BYTES + (sb % Q4_T16_STAGE_SUBBLOCKS) * q_subblock_bytes +
               kt * q_ktile_bytes;
@@ -739,7 +756,8 @@ __global__ void gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_ke
   }
 }
 
-template <typename scalar_t, bool qmicro = false, bool column_major = false>
+template <typename scalar_t, bool qmicro = false, bool column_major = false,
+          bool fused_stride = false>
 int launch_selected_dual_t16_compact32(
     const scalar_t* x,
     const int64_t* expert_start_compact,
@@ -778,7 +796,7 @@ int launch_selected_dual_t16_compact32(
       static_cast<unsigned int>((out_features_total + 31) / 32),
       static_cast<unsigned int>(row_tiles));
   hipLaunchKernelGGL(
-      (gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<scalar_t, qmicro, column_major>),
+      (gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<scalar_t, qmicro, column_major, fused_stride>),
       grid,
       block,
       0,
@@ -971,6 +989,32 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16
       num_experts,
       wmma_total_rows,
       stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_fused_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (tiles == nullptr || in_features <= 0 || out_features_a <= 0 ||
+      in_features % QK_K || out_features_a % T16_COLS) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t half_bytes = (out_features_a / T16_COLS) *
+      (in_features / QK_K) * Q4_T16_BLOCK_BYTES;
+  return launch_selected_dual_t16_compact32<uint16_t, false, false, true>(
+      x, expert_start_compact, expert_start_wmma, tile_expert, tiles,
+      tiles + half_bytes, out, compact_rows, in_features, out_features_a,
+      out_features_b, num_experts, wmma_total_rows, stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out(
