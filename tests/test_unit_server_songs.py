@@ -50,9 +50,26 @@ def _song(**overrides) -> SimpleNamespace:
 class FakeSongGenerator:
     def __init__(self, *, song=None, error: BaseException | None = None) -> None:
         self.calls: list[tuple[Any, dict]] = []
+        self.session_calls = 0
+        self.closed = False
+        self._session: Any | None = None
         self._song = _song() if song is None else song
         self._error = error
-        self.loaded = True
+
+    @property
+    def loaded(self) -> bool:
+        return self._session is not None
+
+    def session(self):
+        """Build the resident pipeline, as the real generator does on first use."""
+
+        if self._session is None:
+            self._session = SimpleNamespace(reset_calls=0)
+            self.session_calls += 1
+        return self._session
+
+    def close(self) -> None:
+        self._session, self.closed = None, True
 
     def song_capabilities(self) -> dict[str, Any]:
         return {
@@ -76,6 +93,7 @@ class FakeSongEngine:
 
     def __init__(self, generator: FakeSongGenerator | None = None) -> None:
         self._text_generator = generator or FakeSongGenerator()
+        self.close_calls = 0
 
     @property
     def generator(self) -> FakeSongGenerator:
@@ -83,6 +101,9 @@ class FakeSongEngine:
 
     def song_generator(self):
         return self._text_generator
+
+    def close(self) -> None:
+        self.close_calls += 1
 
 
 class FakeTextEngine:
@@ -93,12 +114,8 @@ class FakeTextEngine:
 
 
 def _app(engine: Any, **config_overrides) -> Any:
-    config = ServerConfig(
-        model="fake",
-        served_model_name="fake-model",
-        eager_load=False,
-        **config_overrides,
-    )
+    settings = {"eager_load": False, **config_overrides}
+    config = ServerConfig(model="fake", served_model_name="fake-model", **settings)
     return create_app(config, llm=engine)
 
 
@@ -267,6 +284,142 @@ def test_the_wrong_model_id_is_a_404() -> None:
     )
     assert response.status_code == 404, response.text
     assert response.json()["error"]["code"] == "model_not_found"
+
+
+# ---------------------------------------------------------------------------
+# startup
+# ---------------------------------------------------------------------------
+
+
+def _lifespan_client(app: Any) -> Any:
+    """A client that runs the app's startup and shutdown, unlike ASGITransport."""
+
+    from fastapi.testclient import TestClient
+
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_a_song_model_builds_its_pipeline_at_startup() -> None:
+    """Startup follows the surface: the pipeline is what makes /ready honest."""
+
+    engine = FakeSongEngine()
+    app = _app(engine, eager_load=True)
+
+    with _lifespan_client(app) as client:
+        ready = client.get("/ready")
+        assert ready.status_code == 200, ready.text
+        body = ready.json()
+        assert body["status"] == "ready"
+        assert body["model"]["loaded"] is True
+
+    assert engine.generator.session_calls == 1
+    assert engine.generator.loaded is True
+
+
+def test_startup_skips_the_text_preparation_and_records_the_song_session() -> None:
+    """No resident KV prepare, no warmup prompt, no chat smoke on a song model."""
+
+    engine = FakeSongEngine()
+    app = _app(engine, eager_load=True)
+
+    with _lifespan_client(app) as client:
+        timings = client.get("/ready").json()["startup"]["last_timings_s"]
+
+    assert timings["song_session_s"] is not None
+    assert timings["resident_prepare_s"] is None
+    assert timings["warmup_s"] is None
+    assert timings["scratch_probe_s"] is None
+    assert timings["chat_smoke_s"] is None
+    assert timings["mtp_smoke_s"] is None
+    assert timings["startup_total_s"] >= timings["song_session_s"]
+
+
+def test_startup_publishes_the_surface_it_resolved() -> None:
+    engine = FakeSongEngine()
+    app = _app(engine, eager_load=True)
+
+    with _lifespan_client(app) as client:
+        assert client.get("/ready").json()["model"]["id"] == "fake-model"
+        assert app.state.hipengine_generation_surfaces == ("song",)
+        assert client.post(
+            "/v1/chat/completions",
+            json={"model": "fake-model", "messages": [{"role": "user", "content": "hi"}]},
+        ).status_code == 501
+
+
+def test_a_failed_song_session_ends_startup_instead_of_serving_503s() -> None:
+    """A pipeline that cannot be built is a startup failure, not a late 500."""
+
+    class FailingGenerator(FakeSongGenerator):
+        def session(self):
+            self.session_calls += 1
+            raise FileNotFoundError("the YuE2 tokenizer asset is missing")
+
+    engine = FakeSongEngine(FailingGenerator())
+    app = _app(engine, eager_load=True)
+
+    with pytest.raises(Exception) as excinfo:
+        with _lifespan_client(app):
+            pass
+
+    assert "tokenizer" in str(excinfo.value)
+    assert app.state.hipengine_readiness.startup_error is not None
+
+
+def test_a_text_model_does_not_take_the_song_branch() -> None:
+    """The song branch is a branch: a text model still runs its own startup stages.
+
+    This fake has no generation path, so the text startup fails at its warmup
+    stage -- which is the point: the run reached the text stages instead of
+    returning early through the song branch.
+    """
+
+    engine = FakeTextEngine()
+    app = _app(engine, eager_load=True)
+
+    from hipengine.server.api import StartupFailure
+
+    with pytest.raises(StartupFailure):
+        with _lifespan_client(app):
+            pass
+
+    assert app.state.hipengine_generation_surfaces == ("text",)
+    # A text stage, not the song branch's early return.
+    assert app.state.hipengine_readiness.startup_error["stage"] in {
+        "raw_warmup",
+        "resident_prepare",
+        "scratch_probe",
+        "chat_smoke",
+    }
+
+
+def test_a_song_model_reaches_readiness_without_a_generation_warmup() -> None:
+    """The same fake that fails a text startup is a complete song startup."""
+
+    engine = FakeSongEngine()
+    app = _app(engine, eager_load=True)
+
+    with _lifespan_client(app) as client:
+        assert client.get("/ready").status_code == 200
+
+    assert app.state.hipengine_readiness.startup_error is None
+    assert engine.generator.session_calls == 1
+
+
+def test_the_cli_accepts_the_companion_decoder(monkeypatch) -> None:
+    """--vae-model, its env fallback, and the empty-value rejection."""
+
+    from hipengine.server.__main__ import build_parser
+
+    args = build_parser().parse_args(["--model", "m", "--vae-model", "/tmp/vae"])
+    assert args.vae_model == "/tmp/vae"
+    assert ServerConfig(model="m", vae_model=args.vae_model).vae_model == "/tmp/vae"
+
+    monkeypatch.setenv("HIPENGINE_YUE2_VAE_DIR", "/tmp/from-env")
+    assert build_parser().parse_args(["--model", "m"]).vae_model == "/tmp/from-env"
+
+    with pytest.raises(ValueError):
+        ServerConfig(model="m", vae_model="")
 
 
 # ---------------------------------------------------------------------------
