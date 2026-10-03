@@ -14,7 +14,7 @@ the solver **1.25x** behind on matched stages and the decoder at parity. M8
 (hardware qualification) is **gfx1151 only**: no gfx1100 gate has been run, and
 the kernels registering under `kernels/hip_gfx1100/` is a code path, not
 evidence. No realtime claim.
-Last reviewed 2026-09-17 on branch `yue2`.
+Last reviewed 2026-09-17 on `gfx1151` (Radeon 8060S).
 
 Implement `m-a-p/YuE2-3B` plus `m-a-p/YuE2-Vae` as a torch-free HIP pipeline:
 lyrics/style → optional symbolic composition → semantic tokens → acoustic flow
@@ -193,9 +193,9 @@ manifest at session construction. Both backend trees remain peers. Use
 composition for NAR's cached-AR plus live-NAR attention; do not hide a private
 `(block_table, context_len)` ABI in the new runner.
 
-Proposed file layout (these files are deliverables, not existing APIs):
+File layout:
 
-| Proposed path | Responsibility |
+| Path | Responsibility |
 | --- | --- |
 | `hipengine/models/yue2.py` | Config, model plugin, request/phase contracts |
 | `hipengine/loading/yue2.py` | Safetensors inventory, tensor mapping, assets, owned weight handles |
@@ -206,16 +206,65 @@ Proposed file layout (these files are deliverables, not existing APIs):
 | `hipengine/runtime/yue2_vae.py` | FP32 decoder, bounded tiled output |
 | `hipengine/kernels/cpu_reference/yue2*.py` | Small NumPy reference operators |
 | `hipengine/kernels/{hip_gfx1100,hip_gfx1151}/yue2/` | Only missing/justified specialized HIP kernels |
-| `scripts/yue2_{fixtures,bench,quality}.py` | Separate oracle generation, timing, and task evaluation |
+| `scripts/yue2_*.py` | Oracle generation, gates, timing, and profiling harnesses |
 
-Start with a model-owned `YuE2Session` exposing `plan`, `generate_semantic`,
-`synthesize`, and `decode`, plus an end-to-end call. Register orchestration rather
-than putting model switches in the engine. Select any public `LLM` convenience
-method during API integration; do not overload the existing TTS script contract.
+Orchestration is model-owned: `Yue2Session` exposes `plan`, `generate_semantic`,
+`synthesize`, `decode`, and the end-to-end `generate`, so the engine keeps no
+model switch. There is no `LLM` convenience method for YuE2 yet, and the existing
+TTS script contract is not its surface.
 Results carry ABC IDs/text, raw semantic codes, latent/audio identities, sample
 rate, per-phase truncation, effective settings, timings, revisions, and manifest.
 Saved stages must validate hashes, configuration compatibility, shapes, and token
 domains on reload; tokens and tensors are data, not executable pickle objects.
+
+### Running it
+
+The entry point is the model-owned `Yue2Session`, built from the two checkpoints
+and the tokenizer. Nothing is downloaded automatically, so the loader takes local
+directories: the `m-a-p/YuE2-3B` snapshot and the `m-a-p/YuE2-Vae` snapshot.
+
+```python
+from hipengine.generation.yue2 import SongRequest
+from hipengine.loading.yue2 import load_yue2_vae_decoder, load_yue2_weights
+from hipengine.runtime.yue2_ar import Yue2ArRuntime
+from hipengine.runtime.yue2_nar import Yue2NarRuntime
+from hipengine.runtime.yue2_session import Yue2ArSession, Yue2Session
+from hipengine.runtime.yue2_vae import Yue2VaeRuntime
+from hipengine.tokenization.yue2 import YuE2TextTokenizer
+
+model_dir = "path/to/YuE2-3B"
+vae_dir = "path/to/YuE2-Vae"
+
+weights = load_yue2_weights(model_dir)
+weights_vae = load_yue2_vae_decoder(vae_dir)
+ar = Yue2ArRuntime(weights, branches=2)  # two classifier-free-guidance branches
+nar = Yue2NarRuntime(weights, ar)
+vae = Yue2VaeRuntime(weights_vae)
+tokenizer = YuE2TextTokenizer(f"{model_dir}/qwen.tiktoken")
+
+session = Yue2Session(
+    Yue2ArSession(ar, encode=tokenizer.encode, decode=tokenizer.decode), nar, vae
+)
+song = session.generate(
+    SongRequest(
+        style="Warm acoustic pop, clear lead vocal, fingerpicked guitar",
+        lyrics="[verse]\nMorning light across the floor",
+        cot="off",
+        seed=20260916,
+    )
+)
+
+song.audio       # [2, samples] float32 at 48 kHz, unclipped
+song.frames      # latent frames
+song.truncation  # {"abc": bool, "semantic": bool}
+song.save("out/song")  # result.json, plan.json, semantic.json, latents.npy, audio.npy
+```
+
+`cot` selects the mode (`off`, `melody`, `full`); `SongRequest.abc` supplies an
+external score in the symbolic modes. `generate` defaults to the product's 32 ODE
+steps (`GenerationConfig.ode_steps`); `steps=` overrides it, and `abc_sampling=` /
+`semantic_sampling=` override the phase sampling defaults. Requests are serialized
+per session: a second concurrent call raises `Yue2SessionBusy`.
 
 Weights own allocations; sessions borrow with explicit lifetimes. Session-local
 arenas, KV, sampler state, RNG, and graph buffers must not leak across requests.
