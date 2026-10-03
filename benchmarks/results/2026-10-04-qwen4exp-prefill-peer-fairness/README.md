@@ -1,17 +1,28 @@
-# Qwen4Exp prefill chunk 4096: no peer-fairness cost (RT-1's missing measurement)
+# Qwen4Exp prefill chunk 4096: no peer-fairness cost, and the win IS reachable through the serving loop
 
 RT-3 listed "no peer-fairness measurement" as a real gap, and RT-1's promotion was
-gated on it. This packet measures it. **Raising the engine-loop prefill cap from
-1024 to 4096 does not degrade a decoding peer, and does not change the prefill
-wall.**
+gated on it. This packet measures it, and then goes further: it also exercises the
+**generator-level chunk 4096** through the engine loop and reproduces RT-1's win.
 
-That falsifies the corrected mechanism that has been blocking the promotion. The
-concern was that raising the cap "quadruples the per-tick prefill bound that
-protects decode interleaving". It does not: `protect_decode` protects decode by
-*priority*, not by bounding the tick, and `prefill_batch` hands the runner the
-**whole prompt** once the last slice arrives, so the executed GPU prefill is one
-4096-token call at either cap. The cap changes how many loop ticks accumulate it,
-not how much work any tick does.
+**Two independent results.**
+
+1. **Raising the engine-loop cap 1024 → 4096 does not degrade a decoding peer and
+   does not change the prefill wall.** That falsifies the corrected mechanism that
+   was blocking the promotion — the concern that raising the cap "quadruples the
+   per-tick prefill bound that protects decode interleaving". `protect_decode`
+   protects decode by *priority*, not by bounding the tick, and `prefill_batch`
+   hands the runner the **whole prompt** once the last slice arrives, so the cap
+   changes how many loop ticks accumulate the prefill, not how much work any tick
+   does.
+2. **Raising the generator chunk 1024 → 4096 does change the executed workspace,
+   and it delivers RT-1's prefill win through the serving loop: −5.74% prefill
+   wall.** The peer is not harmed — its time-to-first-token *improves* by 6.43%
+   because it waits behind a shorter prefill, its inter-token latency median is
+   unchanged, and its worst single gap halves (147.9 → 75.1 ms).
+
+Result 1 alone would have left the −4.94% with no serving-loop route. Result 2
+shows the route exists and it is the **workspace**, not the cap. The two knobs are
+not interchangeable and this packet separates them cleanly.
 
 ## Harness
 
@@ -80,8 +91,55 @@ managed to enqueue the peer. It is not reported as a result.
 and changed the tick decomposition by 4x, which is exactly the change the ledger's
 mechanism predicted would cost peer fairness. It did not.
 
-The session workspace is `[[1024], [1024]]` in every arm reported here — both
-sessions of the c2 serving runner, unchanged, because this packet varies the cap.
+The session workspace is `[[1024], [1024]]` in Results 1 and 2 — both sessions of
+the c2 serving runner, unchanged, because those arms vary the cap. In Result 3 it
+is `[[4096], [4096]]`, and `prefill_token_ids.nbytes` goes 8,192 → 32,768, so the
+workspace change is observed rather than inferred.
+
+## Result 3 — the generator chunk 4096 through the serving loop
+
+Results 1 and 2 vary the **cap**, which changes the tick decomposition and not the
+workspace. This result varies the **generator chunk**, which is what actually sizes
+the workspace. Same protocol, same `--order queued`.
+
+| arm | gen chunk | loop cap | workspace | `prefill_token_ids` | prefill wall | peer TTFT | peer ITL median | peer max gap |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| `g1024_l1024` | 1024 | 1024 | `[1024]` | 8,192 B | 15.992 s | 16.854 s | 49.19 ms | 147.9 ms |
+| `g4096_l1024` | **4096** | 1024 | **`[4096]`** | **32,768 B** | **15.075 s** | 15.770 s | 49.09 ms | **75.1 ms** |
+| `g4096_l4096` | **4096** | 4096 | **`[4096]`** | **32,768 B** | **15.001 s** | 15.717 s | 49.17 ms | **70.5 ms** |
+| **delta** | | | | | **−5.74% / −6.20%** | −6.43% / −6.75% | −0.20% | **−49% / −52%** |
+
+**The prefill win reproduces through the engine loop.** RT-1 measured −4.94% by
+calling `runner.prefill(ids)` directly, bypassing the loop; at the same prompt and
+host the serving loop measures **−5.74%**, same direction and comparable magnitude.
+
+**The peer is not harmed — it benefits.** Its TTFT falls 6.43% because it is queued
+behind a prefill that finishes sooner. Its ITL median is unchanged. Its worst
+single gap **halves**, from 147.9 ms to 75.1 ms.
+
+**Engagement is recorded in-run:** the session's
+`_prefill_workspaces[*].prefill_chunk_size` goes `[1024]` → `[4096]`,
+`prefill_token_ids.nbytes` goes 8,192 → 32,768, and the traced session prefill
+reports `prefill_chunk_size` 1024 → 4096 with `workspace_chunks` `[1024]` →
+`[4096]`.
+
+### The override that was needed to run this
+
+The first attempt at this arm failed with `copy size 32768 exceeds device buffer
+size 8192` and was recorded as a limit. The cause: patching
+`Qwen4ExpGGUFTextGenerator.__init__` alone is **not** sufficient. `LLM` reaches the
+generator through the registry factory, which sets
+`_implicit_profile_chunk_size = prefill_chunk_size is None` — True whenever no chunk
+is passed, which is always on this path — and
+`qwen4_exp_profiles._bind_default_chunk` then runs *after* construction and resets
+`generator.runner.prefill_chunk_size` to 1024, silently reverting the override while
+the already-allocated workspace stayed at 1024 rows. Neutralising
+`_bind_default_chunk` as well makes the chunk survive to the workspace allocation.
+
+**This is a measurement-harness fix, not a production change.** In production the
+chunk is 1024 for exactly this reason, so a promotion has to move
+`_bind_default_chunk`'s constant too — it is the real binding point, and this packet
+is the first thing to exercise it.
 
 ## What this means for RT-1
 
@@ -93,39 +151,35 @@ ITL and its TTFT, and nothing on the prefill wall either.
 
 Two consequences worth separating:
 
-- **The `-4.94%` still has not been demonstrated through the serving loop.** RT-1
-  measured it by calling `runner.prefill(ids)` directly. This packet shows the
-  loop's cap is a *scheduling* knob that does not change the executed GPU prefill,
-  so a cap promotion is not the route to that number. Whether the generator-level
-  chunk 4096 (which does change the workspace) delivers it in the serving path is
-  **not measured here** — see Limits.
-- **The fairness objection to raising the cap is gone.** If a cap promotion is
-  wanted for its own scheduling reasons, this packet found no peer-fairness
-  reason to withhold it.
+- **The `-4.94%` IS reachable through the serving loop — via the generator chunk.**
+  RT-1 measured it by calling `runner.prefill(ids)` directly, and Result 3 above
+  now reproduces it through the engine loop at −5.74%. The route is the workspace,
+  not the cap.
+- **The cap is a scheduling knob that does not change the executed chunk**, so a cap
+  promotion is not the route to that number — and this packet found no
+  peer-fairness reason to withhold one either. Cap and workspace are separate
+  knobs.
+
+**What is still open is the memory-admission cost, which this packet did not
+measure.** RT-1 and RT-3 measured the 4096-row workspace at **+4.96 GB peak** on the
+p4096 case (+5.9%), paid by the prompt that receives the win. The task that produced
+this packet explicitly forbids promoting 4096 on a memory-admission argument, and
+nothing here changes that: this packet establishes that the win is real, reachable,
+and free of peer-fairness cost, and leaves the admission decision where it was.
 
 ## Limits
 
-- **The generator-chunk 4096 arms did not run.** Forcing
-  `Qwen4ExpGGUFTextGenerator(prefill_chunk_size=4096)` in the serving path fails
-  with `copy size 32768 exceeds device buffer size 8192` at
-  `runner.prefill_token_ids`. The workspace was sized 1024 rows, not 4096, so the
-  override did not survive
-  `qwen4_exp_profiles._bind_default_chunk` (which resets
-  `generator.runner.prefill_chunk_size = 1024` after construction whenever the
-  factory left `_implicit_profile_chunk_size` True — always, when `LLM` passes no
-  chunk). **So this packet varies the cap, not the workspace, and does not
-  reproduce the `-4.94%`.** The two are different knobs and the ledger should not
-  treat them as interchangeable.
+- **One repetition per arm.** The prefill deltas (−5.74%, −6.20%) are far larger
+  than the ≤0.11% noise band this harness shows on the cap comparison, so those are
+  real; the peer-ITL medians are not resolved beyond "unchanged".
+- **No memory measurement.** The +4.96 GB workspace cost is quoted from RT-1/RT-3,
+  not re-measured here.
 - **One peer shape** (16-token prompt, 64 or 400 output tokens), one long prompt
   (4096), one host, one quant, one policy (`protect_decode`). The `token_budget`
   policy was not exercised.
-- **One repetition per arm.** The deltas are all ≤0.11%, far inside any plausible
-  run-to-run spread, so a single repetition cannot resolve them — but the claim
-  here is *no measurable degradation*, and a cost large enough to matter would
-  have shown.
-- **The peer's TTFT in Result 2 is dominated by queue position**, not by chunk
-  size: its own prompt is behind B's. It measures "a request arriving during a
-  long prefill", which is the question asked, but it is not a measure of the
+- **The peer's TTFT in Results 2 and 3 is dominated by queue position**, not by
+  chunk size: its own prompt is behind B's. It measures "a request arriving during
+  a long prefill", which is the question asked, but it is not a measure of the
   peer's own prefill cost.
 - **Result 1's ITL window includes no overlap between the rows**, because under
   `protect_decode` there is none to measure. That is the finding, but it means

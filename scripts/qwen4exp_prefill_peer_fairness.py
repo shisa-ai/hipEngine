@@ -147,8 +147,20 @@ def _install_chunk_override(chunk: int) -> None:
     consistent.  A post-construction assignment cannot work, because
     ``_configure_prefill_workspace_selection`` rejects any extra workspace larger
     than the base one allocated at construction time.
+
+    The generator patch alone is **not** sufficient.  ``LLM`` reaches the
+    generator through the registry factory, which sets
+    ``_implicit_profile_chunk_size = prefill_chunk_size is None`` - True whenever
+    no chunk is passed, which is always here - and
+    ``qwen4_exp_profiles._bind_default_chunk`` then runs *after* construction and
+    resets ``generator.runner.prefill_chunk_size`` to 1024.  That silently
+    reverted the override: the workspace stayed 1024 rows and the chunk-4096 arms
+    died in ``copy_host_to_device`` with "copy size 32768 exceeds device buffer
+    size 8192".  ``_bind_default_chunk`` is therefore neutralised too, so the
+    chunk survives to the workspace allocation.
     """
 
+    from hipengine.generation import qwen4_exp_profiles
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 
     original_init = Qwen4ExpGGUFTextGenerator.__init__
@@ -158,6 +170,12 @@ def _install_chunk_override(chunk: int) -> None:
         return original_init(self, *positional, **keyword)
 
     Qwen4ExpGGUFTextGenerator.__init__ = patched_init
+
+    def patched_bind_default_chunk(generator, *, production):  # type: ignore[no-untyped-def]
+        # Re-assert the requested chunk rather than the factory's implicit 1024.
+        generator.runner.prefill_chunk_size = int(chunk)
+
+    qwen4_exp_profiles._bind_default_chunk = patched_bind_default_chunk
 
 
 def _install_instrumentation(trace: dict[str, list[dict[str, Any]]]) -> None:
