@@ -7341,6 +7341,34 @@ def launch_gguf_linear_pair_concat(
             or _dispatch_can_use_t16_wmma_prefill(dispatch_b, rows=rows, in_features=in_features)
         ):
             return False
+        if rows == 1:
+            # The resident rows==1 decode pair runs the wave-strided-loop
+            # ``q8_0_t16_dual_split_gemv_kernel`` instead of the thread-strided
+            # ``q8_0_t16_dual_gemv_kernel``. Both map the same (thread, K)
+            # partition -- lane = tid & 31, block_idx = tid/32 + waves*j -- so
+            # the FP32 accumulation and reduction are byte-identical, but the
+            # wave loop strength-reduces the tile address and measured ~21%
+            # faster on the gfx1151 shared gate+up shape (118 -> 143 GB/s at
+            # grid (64,1)). The split ABI takes two output pointers, so the
+            # two halves of the concatenated buffer are written directly. At
+            # rows>1 the concat kernel stays because its single-buffer layout
+            # is required for the row-strided output. See
+            # benchmarks/results/2026-10-03-gfx1151-35b-a3b-gufo-reconciliation.
+            gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
+                x_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_ptr,
+                out_ptr + out_features * DType.BF16.itemsize,
+                rows,
+                in_features,
+                out_features,
+                out_features,
+                threads=_resolve_q8_t16_threads(threads),
+                stream=stream,
+                runtime=runtime,
+            )
+            return True
         gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(
             x_ptr,
             weight_a.allocation("tiles").tensor.ptr,
