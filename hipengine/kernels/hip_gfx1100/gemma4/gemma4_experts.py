@@ -2426,6 +2426,23 @@ def _gemma4_t16_tiles_ready(weight: object) -> bool:
     return "t16_gate" in allocations and "t16_up" in allocations
 
 
+def _expert_tile_row_bound(
+    compact_rows: int, num_experts: int, tile_rows: int, tile_capacity: int,
+) -> int:
+    """Bound padded rows without copying the device tile total to the host.
+
+    Each nonempty expert pads at most tile_rows-1 rows. Unused map entries
+    are initialized to -1 and the consumers return before reading weights.
+    """
+    active = min(compact_rows, num_experts)
+    tiles = (compact_rows + (tile_rows - 1) * active) // tile_rows
+    if tiles <= 0 or tiles > tile_capacity:
+        raise RuntimeError(
+            f"gemma4 tile bound {tiles} is outside capacity {tile_capacity}"
+        )
+    return tiles * tile_rows
+
+
 def _gemma4_project_experts_gate_up_wmma_t16(
     weight: Gemma4Projection,
     x_ptr: int,
@@ -2466,11 +2483,6 @@ def _gemma4_project_experts_gate_up_wmma_t16(
     if not _gemma4_t16_tiles_ready(weight):
         return False
 
-    from hipengine.core.memory import (
-        DeviceBuffer,
-        copy_device_to_host,
-        host_array_ptr,
-    )
     from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
         qwen35_moe_wmma_tile_map,
     )
@@ -2479,8 +2491,6 @@ def _gemma4_project_experts_gate_up_wmma_t16(
         gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out
         as wmma_gate_up,
     )
-
-    import numpy as np
 
     wmma_starts = scratch.buffer("wmma_expert_start")
     tile_expert = scratch.buffer("wmma_tile_expert")
@@ -2501,24 +2511,7 @@ def _gemma4_project_experts_gate_up_wmma_t16(
         tile_capacity=tile_capacity,
         **kwargs,
     )
-    if stream:
-        from hipengine.core.hip import get_hip_runtime
-
-        (runtime or get_hip_runtime()).stream_synchronize(stream)
-    total_host = np.empty(1, dtype=np.int64)
-    copy_device_to_host(
-        host_array_ptr(total_host),
-        DeviceBuffer(ptr=wmma_total.ptr, nbytes=8),
-        8,
-        runtime=runtime,
-    )
-    total_rows = int(total_host[0])
-    # The T16 tile map pads to 16 rows per tile, where the MMQ32 map pads to 32.
-    if total_rows <= 0 or total_rows > tile_capacity * 16:
-        raise RuntimeError(
-            f"gemma4 T16 gate/up tile row count {total_rows} is outside "
-            f"capacity {tile_capacity * 16}"
-        )
+    total_rows = _expert_tile_row_bound(compact_rows, num_experts, 16, tile_capacity)
 
     wmma_gate_up(
         x_ptr,
@@ -2580,11 +2573,6 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
         return False
 
     from hipengine.core.hip import get_hip_runtime
-    from hipengine.core.memory import (
-        DeviceBuffer,
-        copy_device_to_host,
-        host_array_ptr,
-    )
     from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
         qwen35_moe_wmma_tile_map,
     )
@@ -2593,8 +2581,6 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
         gguf_q5_k_selected_dual_sparse_exact_repair_bf16 as sparse_exact_repair,
         gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out as iu8_risk_gate_up,
     )
-
-    import numpy as np
 
     wmma_starts = scratch.buffer("wmma_expert_start")
     tile_expert = scratch.buffer("wmma_tile_expert")
@@ -2617,21 +2603,7 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
         tile_capacity=tile_capacity,
         **kwargs,
     )
-    if stream:
-        (runtime or get_hip_runtime()).stream_synchronize(stream)
-    total_host = np.empty(1, dtype=np.int64)
-    copy_device_to_host(
-        host_array_ptr(total_host),
-        DeviceBuffer(ptr=wmma_total.ptr, nbytes=8),
-        8,
-        runtime=runtime,
-    )
-    total_rows = int(total_host[0])
-    if total_rows <= 0 or total_rows > tile_capacity * 16:
-        raise RuntimeError(
-            f"gemma4 iu8 gate/up tile row count {total_rows} is outside "
-            f"capacity {tile_capacity * 16}"
-        )
+    total_rows = _expert_tile_row_bound(compact_rows, num_experts, 16, tile_capacity)
 
     risk_capacity = compact_rows * 2 * intermediate
     if risk_indices.nbytes < risk_capacity * _I32_BYTES:

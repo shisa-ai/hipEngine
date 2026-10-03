@@ -79,7 +79,7 @@ def test_verification_phase_keeps_decode_attention_without_changing_prefill(runn
             runner.reset()
             requests.clear()
             runner.forward(_TOKENS, logits_rows=5, verification=verification)
-            expected = None if verification else requested
+            expected = ("gemma4_plain",) if verification else requested
             assert requests and all(value == expected for value in requests)
             assert runner.prefill_attention_variants == requested
     finally:

@@ -1,9 +1,13 @@
-"""Bitwise parity and oracle agreement for the staged Gemma 4 attention candidate.
+"""Bitwise parent parity and oracle agreement for staged Gemma 4 attention.
 
-Two independent checks, because the candidate exists to serve a shape the
-reference cannot launch:
+The bitwise oracle is the monolithic strict block entry point, including for
+singleton queries. The adaptive decode wrapper also selects split/flash
+implementations, which do not declare this parent accumulation-order contract.
+The staged candidate is checked against its original parent, not those routes.
 
-* **Parity.** The staged launcher and the shipped strict wrapper are driven from
+Two independent checks:
+
+* **Parity.** The staged launcher and monolithic strict block entry are driven from
   identical device buffers with identical arguments, and their outputs are
   compared bit for bit -- the ``uint16`` payloads for BF16 and the ``uint32``
   payloads for F32, so ``0.0`` and ``-0.0`` are different results and one NaN is
@@ -14,9 +18,8 @@ reference cannot launch:
   query token takes the singleton PV decomposition and every other shape takes
   the 256-thread one, so the parity table is also the check that the two
   decompositions agree bit for bit on the shapes they share.
-* **Oracle.** Past 15,872 keys at head_dim 256 (15,616 at 512) the strict
-  kernel's shared-memory requirement exceeds the 64 KB budget and it refuses to
-  launch, so no bitwise reference exists there. Those cases are compared against
+* **Oracle.** Above the monolithic block's resident-logit LDS ceiling,
+  results are compared against
   the independent float64 oracle in
   ``tests/test_unit_gemma4_attention_staged.py``, with the *exact* inputs the
   kernel was given (BF16-decoded where the buffers are BF16), so the tolerance
@@ -259,7 +262,7 @@ def _run_staged(
 def _run_both(
     shape, *, dtype, mask, scale, window, row_offset, library, scratch=None, seed=17
 ):
-    """The same launch through the strict wrapper and the staged candidate."""
+    """The same buffers through the monolithic parent and staged candidate."""
 
     tokens, keys, num_heads, num_kv_heads, head_dim = shape
     query, key, value = _inputs(
@@ -276,14 +279,12 @@ def _run_both(
         strict_buffer = device.take(out_strict)
         staged_buffer = device.take(out_staged)
         kwargs = _launch_kwargs(shape, scale=scale, window=window, row_offset=row_offset)
-        strict_entry = (
-            strict.gemma4_attention_prefill_bf16
-            if dtype == "bf16"
-            else strict.gemma4_attention_prefill_f32
-        )
-        strict_entry(
+        # Pin the declared monolithic parent even at tokens==1; the public
+        # wrapper may otherwise select the incoming split/flash decode route.
+        strict._launch_prefill(
+            strict._SYMBOL_PREFILL_BF16 if dtype == "bf16" else strict._SYMBOL_PREFILL_F32,
             query_buffer.ptr, key_buffer.ptr, value_buffer.ptr, mask_buffer.ptr,
-            strict_buffer.ptr, **kwargs,
+            strict_buffer.ptr, stream=0, library=None, runtime=None, **kwargs,
         )
         staged_entry = (
             staged.gemma4_attention_staged_bf16
@@ -823,22 +824,13 @@ def test_oracle_agrees_with_the_strict_kernel(staged_library):
     np.testing.assert_allclose(candidate, oracle, rtol=1e-5, atol=1e-6)
 
 
-def test_strict_kernel_refuses_the_context_the_candidate_serves():
-    """The reason this candidate exists, asserted rather than assumed.
+def test_strict_global_fallback_and_staged_plan_serve_long_contexts():
+    """Both bounded-LDS implementations admit the repaired head geometries.
 
-    No buffers are passed: the strict wrapper validates the shared-memory
-    requirement before it builds or launches anything, so this costs nothing and
-    documents the exact ceiling the staged path lifts.
+    Admission is host-only: never pass null pointers to a path that can launch.
     """
-
     for head_dim, keys in ((512, 17000), (256, 17000)):
-        with pytest.raises(NotImplementedError, match="shared memory"):
-            strict.gemma4_attention_prefill_bf16(
-                0, 0, 0, 0, 0,
-                tokens=1, keys=keys, num_heads=16, num_kv_heads=2, head_dim=head_dim,
-                scale=1.0,
-            )
-        # ...and the candidate plans the same shape without complaint.
+        assert strict.gemma4_attention_shared_bytes(head_dim=head_dim, keys=keys) <= 65536
         plan = staged.staged_plan(
             tokens=1, keys=keys, num_heads=16, num_kv_heads=2, head_dim=head_dim
         )

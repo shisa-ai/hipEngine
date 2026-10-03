@@ -1,7 +1,7 @@
 {
   "kind": "kernels",
   "meta": {
-    "sources": 291,
+    "sources": 294,
     "registry_keys": 313,
     "backends": [
       "cpu_reference",
@@ -177,7 +177,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 665,
-        "referrers": 193,
+        "referrers": 195,
         "runtime_referrers": [
           "hipengine/benchmark/execution_profiles.py",
           "hipengine/benchmark/prompts.py",
@@ -207,7 +207,7 @@
         ]
       },
       "id": "kernel/cpu_reference/evie.py",
-      "evidence_hash": "531bf1279ba0"
+      "evidence_hash": "03c74d4fb136"
     },
     {
       "kind": "kernel",
@@ -218,7 +218,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 134,
-        "referrers": 283,
+        "referrers": 284,
         "runtime_referrers": [
           "hipengine/benchmark/agentic_quality.py",
           "hipengine/benchmark/exact_tokens.py",
@@ -248,7 +248,7 @@
         ]
       },
       "id": "kernel/cpu_reference/fixtures.py",
-      "evidence_hash": "5f3ac7f57de7"
+      "evidence_hash": "60ce0db37c86"
     },
     {
       "kind": "kernel",
@@ -259,20 +259,20 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 807,
-        "referrers": 232,
+        "referrers": 256,
         "runtime_referrers": [
           "hipengine/chat/gemma4.py",
           "hipengine/generation/__init__.py",
+          "hipengine/generation/gemma4_mtp.py",
           "hipengine/generation/gemma4_profiles.py",
           "hipengine/generation/gemma4_gguf.py",
-          "hipengine/generation/gemma4_gguf_profiles.py",
-          "hipengine/generation/gemma4_mtp.py"
+          "hipengine/generation/gemma4_gguf_profiles.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_cpu_reference.py",
-          "tests/_gemma4_gguf_fixture.py",
-          "tests/test_unit_gemma4_gguf_loader.py",
-          "tests/test_unit_gemma4_gguf_tokenizer.py"
+          "tests/test_gpu_gemma4_attention_geometry.py",
+          "tests/test_gpu_gemma4_weight_geometry.py",
+          "tests/test_gpu_gguf_q5_1_selected_pack8_gemv_decode.py",
+          "tests/test_live_gemma4_gguf_tokenizer.py"
         ]
       },
       "signals": [],
@@ -289,7 +289,7 @@
         ]
       },
       "id": "kernel/cpu_reference/gemma4.py",
-      "evidence_hash": "113ac39d331e"
+      "evidence_hash": "a6adf830be75"
     },
     {
       "kind": "kernel",
@@ -305,10 +305,10 @@
           "hipengine/runtime/gemma4.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_int8_attention_consumer.py",
+          "tests/test_gpu_gemma4_d12_int8_kv_localize.py",
           "tests/test_gpu_gemma4_int8_attention_consumer.py",
-          "tests/test_unit_gemma4_int8_attention_prefill_consumer.py",
-          "tests/test_gpu_gemma4_int8_attention_prefill_consumer.py"
+          "tests/test_gpu_gemma4_int8_attention_prefill_consumer.py",
+          "tests/test_gpu_gemma4_int8_kv_route.py"
         ]
       },
       "signals": [],
@@ -325,7 +325,7 @@
         ]
       },
       "id": "kernel/cpu_reference/gemma4_int8.py",
-      "evidence_hash": "25955aa2d029"
+      "evidence_hash": "e732a1d80f50"
     },
     {
       "kind": "kernel",
@@ -370,11 +370,11 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 1164,
-        "referrers": 300,
+        "referrers": 301,
         "runtime_referrers": [
-          "hipengine/generation/__init__.py",
           "hipengine/generation/laguna_dflash.py",
           "hipengine/generation/laguna_gguf.py",
+          "hipengine/generation/__init__.py",
           "hipengine/loading/__init__.py",
           "hipengine/loading/dflash.py",
           "hipengine/loading/laguna_gguf.py"
@@ -400,7 +400,7 @@
         ]
       },
       "id": "kernel/cpu_reference/laguna.py",
-      "evidence_hash": "27929804e54a"
+      "evidence_hash": "4fdf0fb16999"
     },
     {
       "kind": "kernel",
@@ -411,10 +411,10 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 546,
-        "referrers": 58,
+        "referrers": 60,
         "runtime_referrers": [
-          "hipengine/generation/__init__.py",
           "hipengine/generation/maple.py",
+          "hipengine/generation/__init__.py",
           "hipengine/loading/maple.py",
           "hipengine/models/maple.py",
           "hipengine/models/__init__.py",
@@ -441,7 +441,7 @@
         ]
       },
       "id": "kernel/cpu_reference/maple.py",
-      "evidence_hash": "4924b362546e"
+      "evidence_hash": "b22694ed50b3"
     },
     {
       "kind": "kernel",
@@ -531,7 +531,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 3006,
-        "referrers": 319,
+        "referrers": 327,
         "runtime_referrers": [
           "hipengine/benchmark/session_replay.py",
           "hipengine/benchmark/speculative.py",
@@ -561,7 +561,7 @@
         ]
       },
       "id": "kernel/cpu_reference/ops.py",
-      "evidence_hash": "dee06f00a6b6"
+      "evidence_hash": "467035ac8a54"
     },
     {
       "kind": "kernel",
@@ -616,11 +616,11 @@
         "referrers": 209,
         "runtime_referrers": [
           "hipengine/chat/qwen4_exp.py",
-          "hipengine/generation/__init__.py",
           "hipengine/generation/qwen4_exp_gguf.py",
           "hipengine/generation/qwen4_exp_mtp.py",
           "hipengine/generation/qwen4_exp_multimodal.py",
-          "hipengine/generation/qwen4_exp_profiles.py"
+          "hipengine/generation/qwen4_exp_profiles.py",
+          "hipengine/generation/__init__.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_k_gemv.py",
@@ -643,7 +643,7 @@
         ]
       },
       "id": "kernel/cpu_reference/qwen4_exp.py",
-      "evidence_hash": "071a1b8d3a88"
+      "evidence_hash": "952b7a6f8599"
     },
     {
       "kind": "kernel",
@@ -656,10 +656,10 @@
         "lines": 734,
         "referrers": 49,
         "runtime_referrers": [
-          "hipengine/generation/__init__.py",
           "hipengine/generation/surya.py",
           "hipengine/generation/surya_contract.py",
           "hipengine/generation/surya_gpu.py",
+          "hipengine/generation/__init__.py",
           "hipengine/loading/surya.py",
           "hipengine/models/surya.py"
         ],
@@ -686,7 +686,7 @@
         ]
       },
       "id": "kernel/cpu_reference/surya.py",
-      "evidence_hash": "17b827eef998"
+      "evidence_hash": "4122938d9f19"
     },
     {
       "kind": "kernel",
@@ -783,9 +783,9 @@
         "lines": 336,
         "referrers": 53,
         "runtime_referrers": [
-          "hipengine/generation/__init__.py",
           "hipengine/generation/vibevoice_asr.py",
           "hipengine/generation/vibevoice_asr_q4.py",
+          "hipengine/generation/__init__.py",
           "hipengine/loading/vibevoice_asr.py",
           "hipengine/loading/vibevoice_asr_gguf.py",
           "hipengine/loading/vibevoice_assets.py"
@@ -811,7 +811,7 @@
         ]
       },
       "id": "kernel/cpu_reference/vibevoice_asr.py",
-      "evidence_hash": "6588d9ea7f49"
+      "evidence_hash": "f51b76064f78"
     },
     {
       "kind": "kernel",
@@ -824,8 +824,8 @@
         "lines": 460,
         "referrers": 32,
         "runtime_referrers": [
-          "hipengine/generation/__init__.py",
           "hipengine/generation/vibevoice_tts.py",
+          "hipengine/generation/__init__.py",
           "hipengine/loading/vibevoice_tts.py",
           "hipengine/loading/vibevoice_tts_prompt.py",
           "hipengine/loading/vibevoice_tts_session.py",
@@ -854,7 +854,7 @@
         ]
       },
       "id": "kernel/cpu_reference/vibevoice_tts.py",
-      "evidence_hash": "7c736c7bd72e"
+      "evidence_hash": "d709680978af"
     },
     {
       "kind": "kernel",
@@ -1251,8 +1251,8 @@
           "hipengine/dispatch/sampling.py",
           "hipengine/generation/qwen35_paro.py",
           "hipengine/generation/qwen35_paro_mtp2.py",
-          "hipengine/generation/gemma4_profiles.py",
-          "hipengine/generation/qwen35_gguf.py"
+          "hipengine/generation/qwen35_gguf.py",
+          "hipengine/generation/gemma4_profiles.py"
         ],
         "test_referrers": [
           "tests/test_gpu_cuda_sm120a_maple.py",
@@ -1276,7 +1276,7 @@
         ]
       },
       "id": "kernel/cuda_sm120a/linear/lm_head.py",
-      "evidence_hash": "d2604a373d23"
+      "evidence_hash": "725cf3f3437e"
     },
     {
       "kind": "kernel",
@@ -1363,7 +1363,7 @@
         "backend": "cuda_sm120a",
         "suffix": ".py",
         "lines": 138,
-        "referrers": 39,
+        "referrers": 40,
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/laguna_moe.py",
@@ -1394,7 +1394,7 @@
         ]
       },
       "id": "kernel/cuda_sm120a/moe/group_scatter.py",
-      "evidence_hash": "b176430a6f07"
+      "evidence_hash": "d67eca7442cf"
     },
     {
       "kind": "kernel",
@@ -2462,7 +2462,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 316,
-        "referrers": 298,
+        "referrers": 300,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/kvcache/dms_diagnostic.py",
@@ -2494,7 +2494,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/convert/cast.hip",
-      "evidence_hash": "a9e784a084f0"
+      "evidence_hash": "7815ef9e07e8"
     },
     {
       "kind": "kernel",
@@ -2505,7 +2505,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 398,
-        "referrers": 298,
+        "referrers": 300,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/kvcache/dms_diagnostic.py",
@@ -2536,7 +2536,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/convert/cast.py",
-      "evidence_hash": "0e4a488ab8d0"
+      "evidence_hash": "a75a80b47126"
     },
     {
       "kind": "kernel",
@@ -2552,8 +2552,8 @@
           "hipengine/generation/qwen35_gguf.py",
           "hipengine/loading/qwen35_gguf.py",
           "hipengine/loading/qwen4_exp_materialize.py",
-          "hipengine/loading/gemma4_gguf_device.py",
           "hipengine/loading/qwen35_gguf_admission.py",
+          "hipengine/loading/gemma4_gguf_device.py",
           "hipengine/models/qwen4_exp.py"
         ],
         "test_referrers": [
@@ -2581,7 +2581,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/convert/gather.hip",
-      "evidence_hash": "e11b23d4e745"
+      "evidence_hash": "972498f25822"
     },
     {
       "kind": "kernel",
@@ -2597,8 +2597,8 @@
           "hipengine/generation/qwen35_gguf.py",
           "hipengine/loading/qwen35_gguf.py",
           "hipengine/loading/qwen4_exp_materialize.py",
-          "hipengine/loading/gemma4_gguf_device.py",
           "hipengine/loading/qwen35_gguf_admission.py",
+          "hipengine/loading/gemma4_gguf_device.py",
           "hipengine/models/qwen4_exp.py"
         ],
         "test_referrers": [
@@ -2623,7 +2623,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/convert/gather.py",
-      "evidence_hash": "7b0eaa1acbd2"
+      "evidence_hash": "a4b9ee0656ac"
     },
     {
       "kind": "kernel",
@@ -2864,7 +2864,7 @@
           "hipengine/runtime/laguna_rope.py",
           "hipengine/runtime/qwen35_gguf_nextn.py",
           "hipengine/runtime/qwen4_exp_mtp.py",
-          "hipengine/runtime/gguf_linear.py"
+          "hipengine/runtime/qwen35_gguf_mtp.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_k_t16_dense_f16_activation_prefill.py",
@@ -2889,7 +2889,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/fused/gguf_ops.hip",
-      "evidence_hash": "760c6e2b9904"
+      "evidence_hash": "9bb6d7cedd7b"
     },
     {
       "kind": "kernel",
@@ -2907,7 +2907,7 @@
           "hipengine/runtime/laguna_rope.py",
           "hipengine/runtime/qwen35_gguf_nextn.py",
           "hipengine/runtime/qwen4_exp_mtp.py",
-          "hipengine/runtime/gguf_linear.py"
+          "hipengine/runtime/qwen35_gguf_mtp.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_k_t16_dense_f16_activation_prefill.py",
@@ -2931,7 +2931,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/fused/gguf_ops.py",
-      "evidence_hash": "61b7c1f7dfbe"
+      "evidence_hash": "33e3c4282920"
     },
     {
       "kind": "kernel",
@@ -3341,9 +3341,9 @@
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_k_selected_pack8_dp4a_gemv.py",
-          "tests/test_gpu_gguf_q4_k_gemv.py",
           "tests/test_gpu_gguf_q4_k_pack8_dual_rowtile_silu.py",
-          "tests/test_gpu_gguf_q4_k_t16_dense.py"
+          "tests/test_gpu_gguf_q4_k_t16_dense.py",
+          "tests/test_gpu_gguf_q4_k_wmma_prefill.py"
         ]
       },
       "signals": [],
@@ -3362,7 +3362,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/fused/paro_silu.hip",
-      "evidence_hash": "c324cf3b2c56"
+      "evidence_hash": "3220a387c671"
     },
     {
       "kind": "kernel",
@@ -3384,9 +3384,9 @@
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_k_selected_pack8_dp4a_gemv.py",
-          "tests/test_gpu_gguf_q4_k_gemv.py",
           "tests/test_gpu_gguf_q4_k_pack8_dual_rowtile_silu.py",
-          "tests/test_gpu_gguf_q4_k_t16_dense.py"
+          "tests/test_gpu_gguf_q4_k_t16_dense.py",
+          "tests/test_gpu_gguf_q4_k_wmma_prefill.py"
         ]
       },
       "signals": [],
@@ -3404,7 +3404,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/fused/paro_silu.py",
-      "evidence_hash": "c466660f8816"
+      "evidence_hash": "41ff70006c13"
     },
     {
       "kind": "kernel",
@@ -3571,19 +3571,19 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 2142,
-        "referrers": 72,
+        "referrers": 92,
         "runtime_referrers": [
           "hipengine/generation/gemma4_gguf_profiles.py",
-          "hipengine/runtime/gemma4_int8_kv.py",
+          "hipengine/runtime/gemma4_assistant.py",
           "hipengine/runtime/gemma4_decode_graph.py",
-          "hipengine/runtime/gemma4.py",
-          "hipengine/runtime/gemma4_assistant.py"
+          "hipengine/runtime/gemma4_int8_kv.py",
+          "hipengine/runtime/gemma4.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_cpu_reference.py",
-          "tests/test_unit_gemma4_attention_geometry.py",
+          "tests/test_gpu_gemma4_attention_geometry.py",
           "tests/test_unit_gemma4_attention_routing.py",
-          "tests/test_unit_gemma4_attention_scratch.py"
+          "tests/test_unit_gemma4_cpu_reference.py",
+          "tests/test_unit_gemma4_teacher_forced_gate.py"
         ]
       },
       "signals": [],
@@ -3602,7 +3602,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention.hip",
-      "evidence_hash": "886c5c2d5dcd"
+      "evidence_hash": "ce83d6007806"
     },
     {
       "kind": "kernel",
@@ -3612,20 +3612,20 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 1161,
-        "referrers": 72,
+        "lines": 1329,
+        "referrers": 92,
         "runtime_referrers": [
           "hipengine/generation/gemma4_gguf_profiles.py",
-          "hipengine/runtime/gemma4_int8_kv.py",
+          "hipengine/runtime/gemma4_assistant.py",
           "hipengine/runtime/gemma4_decode_graph.py",
-          "hipengine/runtime/gemma4.py",
-          "hipengine/runtime/gemma4_assistant.py"
+          "hipengine/runtime/gemma4_int8_kv.py",
+          "hipengine/runtime/gemma4.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_cpu_reference.py",
-          "tests/test_unit_gemma4_attention_geometry.py",
+          "tests/test_gpu_gemma4_attention_geometry.py",
           "tests/test_unit_gemma4_attention_routing.py",
-          "tests/test_unit_gemma4_attention_scratch.py"
+          "tests/test_unit_gemma4_cpu_reference.py",
+          "tests/test_unit_gemma4_teacher_forced_gate.py"
         ]
       },
       "signals": [],
@@ -3643,7 +3643,42 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention.py",
-      "evidence_hash": "9e28a5982e8b"
+      "evidence_hash": "738a8d30d3e1"
+    },
+    {
+      "kind": "kernel",
+      "key": "hip_gfx1100/gemma4/gemma4_attention_decode_wmma_full.hip",
+      "title": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_decode_wmma_full.hip",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_decode_wmma_full.hip",
+      "evidence": {
+        "backend": "hip_gfx1100",
+        "suffix": ".hip",
+        "lines": 34,
+        "referrers": 1,
+        "runtime_referrers": [],
+        "test_referrers": []
+      },
+      "signals": [
+        "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
+        "no test file names it",
+        "no __global__ entry point found"
+      ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gemma4_attention_decode_wmma_full"
+        ],
+        "tokens": [
+          "gemma4",
+          "gemma4_attention_decode_wmma_full",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
+      "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_decode_wmma_full.hip",
+      "evidence_hash": "7e2ca6286607"
     },
     {
       "kind": "kernel",
@@ -3659,10 +3694,10 @@
           "hipengine/runtime/gemma4_int8_kv.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_int8_attention_consumer.py",
           "tests/test_gpu_gemma4_int8_attention_consumer.py",
-          "tests/test_unit_gemma4_int8_attention_prefill_consumer.py",
-          "tests/test_gpu_gemma4_int8_attention_prefill_consumer.py"
+          "tests/test_gpu_gemma4_int8_attention_prefill_consumer.py",
+          "tests/test_unit_gemma4_int8_attention_consumer.py",
+          "tests/test_unit_gemma4_int8_attention_prefill_consumer.py"
         ]
       },
       "signals": [
@@ -3683,7 +3718,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_int8.hip",
-      "evidence_hash": "67f96a249015"
+      "evidence_hash": "4410f459991f"
     },
     {
       "kind": "kernel",
@@ -3699,10 +3734,10 @@
           "hipengine/runtime/gemma4_int8_kv.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_int8_attention_consumer.py",
           "tests/test_gpu_gemma4_int8_attention_consumer.py",
-          "tests/test_unit_gemma4_int8_attention_prefill_consumer.py",
-          "tests/test_gpu_gemma4_int8_attention_prefill_consumer.py"
+          "tests/test_gpu_gemma4_int8_attention_prefill_consumer.py",
+          "tests/test_unit_gemma4_int8_attention_consumer.py",
+          "tests/test_unit_gemma4_int8_attention_prefill_consumer.py"
         ]
       },
       "signals": [],
@@ -3720,7 +3755,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_int8.py",
-      "evidence_hash": "987f88331f22"
+      "evidence_hash": "9989664c6cd7"
     },
     {
       "kind": "kernel",
@@ -3731,13 +3766,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 503,
-        "referrers": 10,
+        "referrers": 16,
         "runtime_referrers": [
           "hipengine/generation/gemma4_gguf_profiles.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gemma4_attention_prefill_wmma.py",
           "tests/test_gpu_gemma4_attention_prefill_wmma_full.py",
+          "tests/test_unit_gemma4_attention_wmma_slices.py",
           "tests/test_unit_gemma4_prefill_attention_selection.py"
         ]
       },
@@ -3757,7 +3793,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.hip",
-      "evidence_hash": "270fdca66c7c"
+      "evidence_hash": "bcc6f582dc75"
     },
     {
       "kind": "kernel",
@@ -3768,13 +3804,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 215,
-        "referrers": 10,
+        "referrers": 16,
         "runtime_referrers": [
           "hipengine/generation/gemma4_gguf_profiles.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gemma4_attention_prefill_wmma.py",
           "tests/test_gpu_gemma4_attention_prefill_wmma_full.py",
+          "tests/test_unit_gemma4_attention_wmma_slices.py",
           "tests/test_unit_gemma4_prefill_attention_selection.py"
         ]
       },
@@ -3793,7 +3830,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py",
-      "evidence_hash": "4440f6c57ee3"
+      "evidence_hash": "496e0d39a24c"
     },
     {
       "kind": "kernel",
@@ -3803,14 +3840,16 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 587,
-        "referrers": 7,
+        "lines": 895,
+        "referrers": 13,
         "runtime_referrers": [
           "hipengine/generation/gemma4_gguf_profiles.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gemma4_attention_prefill_wmma_full.py",
-          "tests/test_unit_gemma4_prefill_attention_selection.py"
+          "tests/test_unit_gemma4_attention_wmma_slices.py",
+          "tests/test_unit_gemma4_prefill_attention_selection.py",
+          "tests/test_unit_gguf_capacity_probe.py"
         ]
       },
       "signals": [],
@@ -3829,7 +3868,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip",
-      "evidence_hash": "e6fc2fcbade1"
+      "evidence_hash": "9f8e655a4c78"
     },
     {
       "kind": "kernel",
@@ -3839,14 +3878,16 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 220,
-        "referrers": 7,
+        "lines": 482,
+        "referrers": 13,
         "runtime_referrers": [
           "hipengine/generation/gemma4_gguf_profiles.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gemma4_attention_prefill_wmma_full.py",
-          "tests/test_unit_gemma4_prefill_attention_selection.py"
+          "tests/test_unit_gemma4_attention_wmma_slices.py",
+          "tests/test_unit_gemma4_prefill_attention_selection.py",
+          "tests/test_unit_gguf_capacity_probe.py"
         ]
       },
       "signals": [],
@@ -3864,7 +3905,86 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py",
-      "evidence_hash": "ff1500cb62eb"
+      "evidence_hash": "33949c7d7775"
+    },
+    {
+      "kind": "kernel",
+      "key": "hip_gfx1100/gemma4/gemma4_attention_staged.hip",
+      "title": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.hip",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.hip",
+      "evidence": {
+        "backend": "hip_gfx1100",
+        "suffix": ".hip",
+        "lines": 1298,
+        "referrers": 13,
+        "runtime_referrers": [
+          "hipengine/generation/gemma4_gguf_profiles.py",
+          "hipengine/runtime/gemma4_decode_graph.py"
+        ],
+        "test_referrers": [
+          "tests/test_unit_gemma4_attention_staged_selection.py",
+          "tests/test_gpu_gemma4_attention_staged.py",
+          "tests/test_unit_gemma4_attention_staged.py",
+          "tests/test_unit_gemma4_decode_attribution.py"
+        ]
+      },
+      "signals": [
+        "4 __global__ entry point(s), none named elsewhere"
+      ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gemma4_attention_staged"
+        ],
+        "tokens": [
+          "gemma4",
+          "gemma4_attention_staged",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
+      "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_staged.hip",
+      "evidence_hash": "296f96e17a0b"
+    },
+    {
+      "kind": "kernel",
+      "key": "hip_gfx1100/gemma4/gemma4_attention_staged.py",
+      "title": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.py",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.py",
+      "evidence": {
+        "backend": "hip_gfx1100",
+        "suffix": ".py",
+        "lines": 803,
+        "referrers": 13,
+        "runtime_referrers": [
+          "hipengine/generation/gemma4_gguf_profiles.py",
+          "hipengine/runtime/gemma4_decode_graph.py"
+        ],
+        "test_referrers": [
+          "tests/test_unit_gemma4_attention_staged_selection.py",
+          "tests/test_gpu_gemma4_attention_staged.py",
+          "tests/test_unit_gemma4_attention_staged.py",
+          "tests/test_unit_gemma4_decode_attribution.py"
+        ]
+      },
+      "signals": [],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gemma4_attention_staged"
+        ],
+        "tokens": [
+          "gemma4",
+          "gemma4_attention_staged",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
+      "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_staged.py",
+      "evidence_hash": "001b45c408f7"
     },
     {
       "kind": "kernel",
@@ -3881,8 +4001,8 @@
         ],
         "test_referrers": [
           "tests/test_gpu_gemma4_attention_tiled_parity.py",
-          "tests/test_unit_gemma4_attention_tiled_admission.py",
           "tests/test_unit_gemma4_attention_prefill_routing.py",
+          "tests/test_unit_gemma4_attention_tiled_admission.py",
           "tests/test_unit_gemma4_decode_graph_bucket.py"
         ]
       },
@@ -3902,7 +4022,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_tiled.hip",
-      "evidence_hash": "d9978f64ecf7"
+      "evidence_hash": "7b7e228f7b3e"
     },
     {
       "kind": "kernel",
@@ -3919,8 +4039,8 @@
         ],
         "test_referrers": [
           "tests/test_gpu_gemma4_attention_tiled_parity.py",
-          "tests/test_unit_gemma4_attention_tiled_admission.py",
           "tests/test_unit_gemma4_attention_prefill_routing.py",
+          "tests/test_unit_gemma4_attention_tiled_admission.py",
           "tests/test_unit_gemma4_decode_graph_bucket.py"
         ]
       },
@@ -3939,7 +4059,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention_tiled.py",
-      "evidence_hash": "3dbe02ec284d"
+      "evidence_hash": "b276d8e4da55"
     },
     {
       "kind": "kernel",
@@ -3949,17 +4069,17 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 2808,
-        "referrers": 39,
+        "lines": 2780,
+        "referrers": 40,
         "runtime_referrers": [
           "hipengine/generation/gemma4_profiles.py",
           "hipengine/loading/gemma4_gguf_device.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_moe_prefill_routes.py",
-          "tests/test_unit_gemma4_mmq_route_guard.py",
+          "tests/test_gpu_gemma4_expert_row_invariance.py",
+          "tests/test_gpu_gemma4_expert_route_true_geometry.py",
           "tests/test_gpu_gemma4_moe_empty_lane_guard.py",
-          "tests/test_gpu_gguf_q5_k_mmq32_gate_up.py"
+          "tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py"
         ]
       },
       "signals": [],
@@ -3977,7 +4097,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_experts.py",
-      "evidence_hash": "4fbcd1ecb5a6"
+      "evidence_hash": "555c60ad27b0"
     },
     {
       "kind": "kernel",
@@ -3987,21 +4107,21 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 1139,
-        "referrers": 34,
+        "lines": 1154,
+        "referrers": 41,
         "runtime_referrers": [
           "hipengine/generation/gemma4_profiles.py",
           "hipengine/loading/gemma4_gguf_materialize.py",
           "hipengine/loading/gemma4_gguf_device.py",
           "hipengine/models/gemma4.py",
-          "hipengine/runtime/gemma4.py",
-          "hipengine/runtime/gemma4_assistant.py"
+          "hipengine/runtime/gemma4_assistant.py",
+          "hipengine/runtime/gemma4.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_attention_scratch.py",
-          "tests/test_unit_gemma4_attention_prefill_routing.py",
-          "tests/test_gpu_gemma4_qkv_fusion_parity.py",
-          "tests/test_unit_gemma4_int8_kv_owner.py"
+          "tests/test_gpu_gemma4_runner_verify_rows.py",
+          "tests/test_gpu_gemma4_attention_prefill_wmma.py",
+          "tests/test_gpu_gemma4_int8_kv_route.py",
+          "tests/test_gpu_gemma4_qkv_fusion_parity.py"
         ]
       },
       "signals": [],
@@ -4019,7 +4139,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_layer.py",
-      "evidence_hash": "e21ca0950404"
+      "evidence_hash": "a56bb4109871"
     },
     {
       "kind": "kernel",
@@ -4035,10 +4155,10 @@
           "hipengine/runtime/gemma4_assistant.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_moe_prefill_routes.py",
-          "tests/test_gpu_gemma4_moe_empty_lane_guard.py",
+          "tests/test_gpu_gemma4_expert_row_invariance.py",
           "tests/test_gpu_gemma4_expert_route_true_geometry.py",
-          "tests/test_gpu_gemma4_expert_row_invariance.py"
+          "tests/test_gpu_gemma4_moe_empty_lane_guard.py",
+          "tests/test_unit_gemma4_expert_route.py"
         ]
       },
       "signals": [],
@@ -4057,7 +4177,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_moe.hip",
-      "evidence_hash": "836a65094ade"
+      "evidence_hash": "2d9541e64599"
     },
     {
       "kind": "kernel",
@@ -4073,10 +4193,10 @@
           "hipengine/runtime/gemma4_assistant.py"
         ],
         "test_referrers": [
-          "tests/test_unit_gemma4_moe_prefill_routes.py",
-          "tests/test_gpu_gemma4_moe_empty_lane_guard.py",
+          "tests/test_gpu_gemma4_expert_row_invariance.py",
           "tests/test_gpu_gemma4_expert_route_true_geometry.py",
-          "tests/test_gpu_gemma4_expert_row_invariance.py"
+          "tests/test_gpu_gemma4_moe_empty_lane_guard.py",
+          "tests/test_unit_gemma4_expert_route.py"
         ]
       },
       "signals": [],
@@ -4094,7 +4214,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_moe.py",
-      "evidence_hash": "5f5f87fe8bae"
+      "evidence_hash": "4a9a1264b28a"
     },
     {
       "kind": "kernel",
@@ -4107,13 +4227,13 @@
         "lines": 1294,
         "referrers": 12,
         "runtime_referrers": [
-          "hipengine/runtime/gemma4.py",
-          "hipengine/runtime/gemma4_assistant.py"
+          "hipengine/runtime/gemma4_assistant.py",
+          "hipengine/runtime/gemma4.py"
         ],
         "test_referrers": [
+          "tests/test_gpu_gemma4_argmax_kernel.py",
           "tests/test_gpu_gemma4_qkv_fusion_parity.py",
           "tests/test_gpu_gemma4_softcap_kernel.py",
-          "tests/test_gpu_gemma4_argmax_kernel.py",
           "tests/test_unit_gemma4_gpu_kernels.py"
         ]
       },
@@ -4133,7 +4253,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_norm.hip",
-      "evidence_hash": "d0e24d0d2e91"
+      "evidence_hash": "4650e863a81d"
     },
     {
       "kind": "kernel",
@@ -4146,13 +4266,13 @@
         "lines": 737,
         "referrers": 11,
         "runtime_referrers": [
-          "hipengine/runtime/gemma4.py",
-          "hipengine/runtime/gemma4_assistant.py"
+          "hipengine/runtime/gemma4_assistant.py",
+          "hipengine/runtime/gemma4.py"
         ],
         "test_referrers": [
+          "tests/test_gpu_gemma4_argmax_kernel.py",
           "tests/test_gpu_gemma4_qkv_fusion_parity.py",
           "tests/test_gpu_gemma4_softcap_kernel.py",
-          "tests/test_gpu_gemma4_argmax_kernel.py",
           "tests/test_unit_gemma4_gpu_kernels.py"
         ]
       },
@@ -4171,7 +4291,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_norm.py",
-      "evidence_hash": "2b7584a50507"
+      "evidence_hash": "6d933dc8c829"
     },
     {
       "kind": "kernel",
@@ -4182,17 +4302,18 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 127,
-        "referrers": 12,
+        "referrers": 14,
         "runtime_referrers": [
           "hipengine/loading/gemma4_gguf.py",
           "hipengine/loading/gemma4_gguf_materialize.py",
-          "hipengine/runtime/gemma4.py",
-          "hipengine/runtime/gemma4_assistant.py"
+          "hipengine/runtime/gemma4_assistant.py",
+          "hipengine/runtime/gemma4.py"
         ],
         "test_referrers": [
           "tests/test_unit_gemma4_cpu_reference.py",
           "tests/test_unit_gemma4_gguf_loader.py",
-          "tests/test_unit_gemma4_gpu_kernels.py"
+          "tests/test_unit_gemma4_gpu_kernels.py",
+          "tests/test_unit_gguf_capacity_probe.py"
         ]
       },
       "signals": [],
@@ -4210,7 +4331,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_rope.py",
-      "evidence_hash": "94bd8edfc36b"
+      "evidence_hash": "a8f32906cd3e"
     },
     {
       "kind": "kernel",
@@ -4530,8 +4651,8 @@
           "hipengine/dispatch/sampling.py",
           "hipengine/generation/qwen35_paro.py",
           "hipengine/generation/qwen35_paro_mtp2.py",
-          "hipengine/generation/gemma4_profiles.py",
-          "hipengine/generation/qwen35_gguf.py"
+          "hipengine/generation/qwen35_gguf.py",
+          "hipengine/generation/gemma4_profiles.py"
         ],
         "test_referrers": [
           "tests/test_gpu_cuda_sm120a_maple.py",
@@ -4556,7 +4677,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear/lm_head.hip",
-      "evidence_hash": "6031dc4035c1"
+      "evidence_hash": "1e76c1486393"
     },
     {
       "kind": "kernel",
@@ -4573,8 +4694,8 @@
           "hipengine/dispatch/sampling.py",
           "hipengine/generation/qwen35_paro.py",
           "hipengine/generation/qwen35_paro_mtp2.py",
-          "hipengine/generation/gemma4_profiles.py",
-          "hipengine/generation/qwen35_gguf.py"
+          "hipengine/generation/qwen35_gguf.py",
+          "hipengine/generation/gemma4_profiles.py"
         ],
         "test_referrers": [
           "tests/test_gpu_cuda_sm120a_maple.py",
@@ -4598,7 +4719,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear/lm_head.py",
-      "evidence_hash": "17475ee01c8e"
+      "evidence_hash": "8ad62c41b277"
     },
     {
       "kind": "kernel",
@@ -4771,13 +4892,13 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1726,
-        "referrers": 621,
+        "referrers": 622,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/benchmark/session_replay.py",
           "hipengine/chat/poolside_v1.py",
-          "hipengine/core/build.py",
           "hipengine/core/cudnn.py",
+          "hipengine/core/build.py",
           "hipengine/generation/qwen35_paro.py"
         ],
         "test_referrers": [
@@ -4803,7 +4924,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear_attn/conv.hip",
-      "evidence_hash": "69c9ebad58d2"
+      "evidence_hash": "45e52c860ef7"
     },
     {
       "kind": "kernel",
@@ -4814,13 +4935,13 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 1276,
-        "referrers": 621,
+        "referrers": 622,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/benchmark/session_replay.py",
           "hipengine/chat/poolside_v1.py",
-          "hipengine/core/build.py",
           "hipengine/core/cudnn.py",
+          "hipengine/core/build.py",
           "hipengine/generation/qwen35_paro.py"
         ],
         "test_referrers": [
@@ -4845,7 +4966,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear_attn/conv.py",
-      "evidence_hash": "91312d85f61e"
+      "evidence_hash": "c86d7b670f24"
     },
     {
       "kind": "kernel",
@@ -4856,7 +4977,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 8496,
-        "referrers": 345,
+        "referrers": 347,
         "runtime_referrers": [
           "hipengine/generation/qwen36_gguf_profiles.py",
           "hipengine/generation/qwen38_gguf_profiles.py",
@@ -4888,7 +5009,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear_attn/gdn.hip",
-      "evidence_hash": "f3bad81e2171"
+      "evidence_hash": "3d1094d5ad1c"
     },
     {
       "kind": "kernel",
@@ -4899,7 +5020,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 5403,
-        "referrers": 345,
+        "referrers": 347,
         "runtime_referrers": [
           "hipengine/generation/qwen36_gguf_profiles.py",
           "hipengine/generation/qwen38_gguf_profiles.py",
@@ -4930,7 +5051,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear_attn/gdn.py",
-      "evidence_hash": "3117c5283c3a"
+      "evidence_hash": "6456acfc8fce"
     },
     {
       "kind": "kernel",
@@ -5018,7 +5139,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1184,
-        "referrers": 39,
+        "referrers": 40,
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/laguna_moe.py",
@@ -5050,7 +5171,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/moe/group_scatter.hip",
-      "evidence_hash": "8da36cf1ca2f"
+      "evidence_hash": "50a08d42e56b"
     },
     {
       "kind": "kernel",
@@ -5061,7 +5182,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 871,
-        "referrers": 39,
+        "referrers": 40,
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/laguna_moe.py",
@@ -5092,7 +5213,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/moe/group_scatter.py",
-      "evidence_hash": "5961ca82aeec"
+      "evidence_hash": "e20a6a30f410"
     },
     {
       "kind": "kernel",
@@ -5257,14 +5378,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 39,
-        "referrers": 1381,
+        "referrers": 1402,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
           "hipengine/benchmark/agentic.py",
           "hipengine/benchmark/agentic_live.py",
-          "hipengine/benchmark/control_capture.py",
-          "hipengine/benchmark/execution_profiles.py"
+          "hipengine/benchmark/execution_profiles.py",
+          "hipengine/benchmark/dms_campaign.py"
         ],
         "test_referrers": [
           "tests/_laguna_policy_pin.py",
@@ -5288,7 +5409,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/moe/prefill.py",
-      "evidence_hash": "a5148d43f97c"
+      "evidence_hash": "4f18356685c6"
     },
     {
       "kind": "kernel",
@@ -5469,7 +5590,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 604,
-        "referrers": 378,
+        "referrers": 379,
         "runtime_referrers": [
           "hipengine/generation/qwen38_gguf_profiles.py",
           "hipengine/generation/qwen35_gguf_mtp2.py",
@@ -5501,7 +5622,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/norm/rmsnorm.hip",
-      "evidence_hash": "02f1710663ac"
+      "evidence_hash": "638680f71b0e"
     },
     {
       "kind": "kernel",
@@ -5512,7 +5633,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 329,
-        "referrers": 378,
+        "referrers": 379,
         "runtime_referrers": [
           "hipengine/generation/qwen38_gguf_profiles.py",
           "hipengine/generation/qwen35_gguf_mtp2.py",
@@ -5543,7 +5664,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/norm/rmsnorm.py",
-      "evidence_hash": "372629ffce5d"
+      "evidence_hash": "779ab529697b"
     },
     {
       "kind": "kernel",
@@ -5959,8 +6080,8 @@
         "lines": 837,
         "referrers": 19,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_iq_dense_mmq_route.py",
@@ -5985,7 +6106,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_source_mmq_prefill.hip",
-      "evidence_hash": "782febbc59ca"
+      "evidence_hash": "60c21ebcd833"
     },
     {
       "kind": "kernel",
@@ -5998,8 +6119,8 @@
         "lines": 594,
         "referrers": 18,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_iq_dense_mmq_route.py",
@@ -6023,7 +6144,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_iq_source_mmq_prefill.py",
-      "evidence_hash": "72dc8df67fdc"
+      "evidence_hash": "d28b459a2cb8"
     },
     {
       "kind": "kernel",
@@ -6109,8 +6230,8 @@
           "hipengine/quant/gguf_k.py",
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen4_exp_runner.py",
-          "hipengine/runtime/gguf_linear.py",
           "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py",
           "hipengine/speculative/mtp_resident_draft.py"
         ],
         "test_referrers": [
@@ -6136,7 +6257,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_k_gemv.hip",
-      "evidence_hash": "e5b51f8edca3"
+      "evidence_hash": "f7ed4d2c3fdd"
     },
     {
       "kind": "kernel",
@@ -6152,8 +6273,8 @@
           "hipengine/quant/gguf_k.py",
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen4_exp_runner.py",
-          "hipengine/runtime/gguf_linear.py",
           "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py",
           "hipengine/speculative/mtp_resident_draft.py"
         ],
         "test_referrers": [
@@ -6178,7 +6299,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_k_gemv.py",
-      "evidence_hash": "0ef0547b9337"
+      "evidence_hash": "46f42ef9c41b"
     },
     {
       "kind": "kernel",
@@ -6191,8 +6312,8 @@
         "lines": 2633,
         "referrers": 19,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_iq_source_mmq_prefill.py",
@@ -6217,7 +6338,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_k_mmq_prefill.hip",
-      "evidence_hash": "561c99c8bb9c"
+      "evidence_hash": "5a4f16c153f4"
     },
     {
       "kind": "kernel",
@@ -6230,8 +6351,8 @@
         "lines": 887,
         "referrers": 18,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_iq_source_mmq_prefill.py",
@@ -6255,7 +6376,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_k_mmq_prefill.py",
-      "evidence_hash": "2db91ae01e00"
+      "evidence_hash": "b9b8541f92ce"
     },
     {
       "kind": "kernel",
@@ -6416,8 +6537,8 @@
         "lines": 3509,
         "referrers": 28,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_k_t16_dense_f16_activation_prefill.py",
@@ -6442,7 +6563,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_k_t16_selected_prefill.hip",
-      "evidence_hash": "c8a63f437ddc"
+      "evidence_hash": "601ac7ecaa38"
     },
     {
       "kind": "kernel",
@@ -6455,8 +6576,8 @@
         "lines": 2651,
         "referrers": 27,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_k_t16_dense_f16_activation_prefill.py",
@@ -6480,7 +6601,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_k_t16_selected_prefill.py",
-      "evidence_hash": "2ec0022a643d"
+      "evidence_hash": "40d58fadcd69"
     },
     {
       "kind": "kernel",
@@ -6572,14 +6693,14 @@
           "hipengine/quant/gguf_q4_k.py",
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen4_exp_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_benchmark_pn3_laq_gemv_red.py",
           "tests/test_gpu_gguf_dense_down_residual_fusion.py",
           "tests/test_gpu_gguf_k_selected_pack8_dp4a_gemv.py",
-          "tests/test_gpu_gguf_q4_k_gemv.py"
+          "tests/test_gpu_gguf_q4_k_pack8_dual_rowtile_silu.py"
         ]
       },
       "signals": [],
@@ -6598,7 +6719,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_gemv.hip",
-      "evidence_hash": "c0f2612bddfd"
+      "evidence_hash": "ba3a469e1328"
     },
     {
       "kind": "kernel",
@@ -6615,14 +6736,14 @@
           "hipengine/quant/gguf_q4_k.py",
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen4_exp_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_benchmark_pn3_laq_gemv_red.py",
           "tests/test_gpu_gguf_dense_down_residual_fusion.py",
           "tests/test_gpu_gguf_k_selected_pack8_dp4a_gemv.py",
-          "tests/test_gpu_gguf_q4_k_gemv.py"
+          "tests/test_gpu_gguf_q4_k_pack8_dual_rowtile_silu.py"
         ]
       },
       "signals": [],
@@ -6640,7 +6761,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_gemv.py",
-      "evidence_hash": "f0551f8aa8c5"
+      "evidence_hash": "659cd534f4f3"
     },
     {
       "kind": "kernel",
@@ -6729,9 +6850,9 @@
         ],
         "test_referrers": [
           "tests/test_benchmark_pn3_laq_gemv_red.py",
-          "tests/test_gpu_gguf_q4_k_gemv.py",
           "tests/test_gpu_gguf_q4_k_pack8_dual_rowtile_silu.py",
-          "tests/test_gpu_gguf_q4_k_pack8_gemv_decode.py"
+          "tests/test_gpu_gguf_q4_k_pack8_gemv_decode.py",
+          "tests/test_gpu_gguf_q4_k_pack8_gemv_row_guard.py"
         ]
       },
       "signals": [],
@@ -6750,7 +6871,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_pack8_gemv.hip",
-      "evidence_hash": "d81ee4c8b9a8"
+      "evidence_hash": "abda2f11d249"
     },
     {
       "kind": "kernel",
@@ -6768,9 +6889,9 @@
         ],
         "test_referrers": [
           "tests/test_benchmark_pn3_laq_gemv_red.py",
-          "tests/test_gpu_gguf_q4_k_gemv.py",
           "tests/test_gpu_gguf_q4_k_pack8_dual_rowtile_silu.py",
-          "tests/test_gpu_gguf_q4_k_pack8_gemv_decode.py"
+          "tests/test_gpu_gguf_q4_k_pack8_gemv_decode.py",
+          "tests/test_gpu_gguf_q4_k_pack8_gemv_row_guard.py"
         ]
       },
       "signals": [],
@@ -6788,7 +6909,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_pack8_gemv.py",
-      "evidence_hash": "86a68ae003bd"
+      "evidence_hash": "dafce50feb59"
     },
     {
       "kind": "kernel",
@@ -7020,14 +7141,14 @@
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen4_exp_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_q4_k_q8_1_mmq_prefill.py",
           "tests/test_gpu_qwen38_b5_q6_integer_mmq.py",
           "tests/test_unit_qwen38_q6_mmq_phase_scope.py",
-          "tests/test_unit_gemma4_mmq_route_guard.py"
+          "tests/test_gpu_gguf_dual_column_independence.py"
         ]
       },
       "signals": [],
@@ -7046,7 +7167,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip",
-      "evidence_hash": "d66a284f7df1"
+      "evidence_hash": "46368b87c75e"
     },
     {
       "kind": "kernel",
@@ -7061,14 +7182,14 @@
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen4_exp_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_q4_k_q8_1_mmq_prefill.py",
           "tests/test_gpu_qwen38_b5_q6_integer_mmq.py",
           "tests/test_unit_qwen38_q6_mmq_phase_scope.py",
-          "tests/test_unit_gemma4_mmq_route_guard.py"
+          "tests/test_gpu_gguf_dual_column_independence.py"
         ]
       },
       "signals": [],
@@ -7086,7 +7207,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
-      "evidence_hash": "c5711661780b"
+      "evidence_hash": "3558094d5de7"
     },
     {
       "kind": "kernel",
@@ -7315,14 +7436,15 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1156,
-        "referrers": 12,
+        "referrers": 13,
         "runtime_referrers": [
           "hipengine/runtime/qwen35_gguf_runner.py"
         ],
         "test_referrers": [
-          "tests/test_unit_qwen35_gguf_compact_moe_wmma_resolver.py",
           "tests/test_gpu_gguf_q4_k_t16_selected_wmma_prefill.py",
-          "tests/test_unit_gemma4_gguf_device.py"
+          "tests/test_unit_qwen35_gguf_compact_moe_wmma_resolver.py",
+          "tests/test_unit_gemma4_gguf_device.py",
+          "tests/test_unit_gemma4_expert_tile_bound.py"
         ]
       },
       "signals": [],
@@ -7341,7 +7463,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.hip",
-      "evidence_hash": "2313477cd151"
+      "evidence_hash": "28f0e3bbac68"
     },
     {
       "kind": "kernel",
@@ -7352,14 +7474,15 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 695,
-        "referrers": 11,
+        "referrers": 12,
         "runtime_referrers": [
           "hipengine/runtime/qwen35_gguf_runner.py"
         ],
         "test_referrers": [
-          "tests/test_unit_qwen35_gguf_compact_moe_wmma_resolver.py",
           "tests/test_gpu_gguf_q4_k_t16_selected_wmma_prefill.py",
-          "tests/test_unit_gemma4_gguf_device.py"
+          "tests/test_unit_qwen35_gguf_compact_moe_wmma_resolver.py",
+          "tests/test_unit_gemma4_gguf_device.py",
+          "tests/test_unit_gemma4_expert_tile_bound.py"
         ]
       },
       "signals": [],
@@ -7377,7 +7500,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.py",
-      "evidence_hash": "573e51a1db8b"
+      "evidence_hash": "75541ad7937a"
     },
     {
       "kind": "kernel",
@@ -7605,7 +7728,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 754,
-        "referrers": 13,
+        "referrers": 14,
         "runtime_referrers": [
           "hipengine/runtime/qwen4_exp_runner.py",
           "hipengine/runtime/qwen35_gguf_runner.py"
@@ -7613,7 +7736,8 @@
         "test_referrers": [
           "tests/test_gpu_qwen4exp_q5_k_iu8_exact.py",
           "tests/test_gpu_gguf_q5_k_mmq32_gate_up.py",
-          "tests/test_unit_gemma4_merge_ownership.py"
+          "tests/test_unit_gemma4_merge_ownership.py",
+          "tests/test_unit_gemma4_expert_tile_bound.py"
         ]
       },
       "signals": [
@@ -7634,7 +7758,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_q8_1_selected_prefill.hip",
-      "evidence_hash": "f090e8337158"
+      "evidence_hash": "1ea03c2e85b7"
     },
     {
       "kind": "kernel",
@@ -7645,7 +7769,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 415,
-        "referrers": 12,
+        "referrers": 13,
         "runtime_referrers": [
           "hipengine/runtime/qwen4_exp_runner.py",
           "hipengine/runtime/qwen35_gguf_runner.py"
@@ -7653,7 +7777,8 @@
         "test_referrers": [
           "tests/test_gpu_qwen4exp_q5_k_iu8_exact.py",
           "tests/test_gpu_gguf_q5_k_mmq32_gate_up.py",
-          "tests/test_unit_gemma4_merge_ownership.py"
+          "tests/test_unit_gemma4_merge_ownership.py",
+          "tests/test_unit_gemma4_expert_tile_bound.py"
         ]
       },
       "signals": [],
@@ -7671,7 +7796,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_q8_1_selected_prefill.py",
-      "evidence_hash": "02c27afdec7e"
+      "evidence_hash": "e07a3ea3200b"
     },
     {
       "kind": "kernel",
@@ -7684,8 +7809,8 @@
         "lines": 331,
         "referrers": 6,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_q5_k_planar_q8_1_grouped_gemv.py",
@@ -7710,7 +7835,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_qmicro_planar_gemv.hip",
-      "evidence_hash": "052b2090d0c5"
+      "evidence_hash": "2e89c160bee5"
     },
     {
       "kind": "kernel",
@@ -7723,8 +7848,8 @@
         "lines": 216,
         "referrers": 5,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_q5_k_planar_q8_1_grouped_gemv.py",
@@ -7746,7 +7871,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_k_qmicro_planar_gemv.py",
-      "evidence_hash": "a70a4c6e12cd"
+      "evidence_hash": "a3ed09d0fd67"
     },
     {
       "kind": "kernel",
@@ -7836,8 +7961,8 @@
         "lines": 851,
         "referrers": 4,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_live_gguf_q6_k_f16_rocblas_prefill.py"
@@ -7859,7 +7984,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.hip",
-      "evidence_hash": "6d328a07bdb1"
+      "evidence_hash": "6fc7f5608bc6"
     },
     {
       "kind": "kernel",
@@ -7872,8 +7997,8 @@
         "lines": 922,
         "referrers": 3,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_live_gguf_q6_k_f16_rocblas_prefill.py"
@@ -7894,7 +8019,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.py",
-      "evidence_hash": "9e9a4af064d4"
+      "evidence_hash": "6be2d2bbde40"
     },
     {
       "kind": "kernel",
@@ -7909,8 +8034,8 @@
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen35_gguf_nextn.py",
-          "hipengine/runtime/gguf_linear.py",
           "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py",
           "hipengine/speculative/mtp_resident_draft.py"
         ],
         "test_referrers": [
@@ -7936,7 +8061,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.hip",
-      "evidence_hash": "74be3ded0901"
+      "evidence_hash": "d1ca35586d8e"
     },
     {
       "kind": "kernel",
@@ -7951,8 +8076,8 @@
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen35_gguf_nextn.py",
-          "hipengine/runtime/gguf_linear.py",
           "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py",
           "hipengine/speculative/mtp_resident_draft.py"
         ],
         "test_referrers": [
@@ -7977,7 +8102,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py",
-      "evidence_hash": "8f225961b27c"
+      "evidence_hash": "e2db74b4208a"
     },
     {
       "kind": "kernel",
@@ -7992,8 +8117,8 @@
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen35_gguf_nextn.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_q6_k_t16_gemv_decode.py",
@@ -8020,7 +8145,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_t16_gemv.hip",
-      "evidence_hash": "2e75bc689ffe"
+      "evidence_hash": "a9bac8013c8c"
     },
     {
       "kind": "kernel",
@@ -8035,8 +8160,8 @@
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/qwen35_gguf_nextn.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_q6_k_t16_gemv_decode.py",
@@ -8060,7 +8185,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q6_k_t16_gemv.py",
-      "evidence_hash": "5a33380f3f85"
+      "evidence_hash": "ec0b51a89721"
     },
     {
       "kind": "kernel",
@@ -8150,9 +8275,9 @@
         "runtime_referrers": [
           "hipengine/runtime/gguf_q8_mmq_sidecars.py",
           "hipengine/runtime/qwen4_exp_runner.py",
-          "hipengine/runtime/gemma4.py",
+          "hipengine/runtime/qwen35_gguf_runner.py",
           "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/gemma4.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_iq2_xs_mmq_prefill.py",
@@ -8177,7 +8302,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip",
-      "evidence_hash": "be1841f9f13b"
+      "evidence_hash": "671b11f8b178"
     },
     {
       "kind": "kernel",
@@ -8192,9 +8317,9 @@
         "runtime_referrers": [
           "hipengine/runtime/gguf_q8_mmq_sidecars.py",
           "hipengine/runtime/qwen4_exp_runner.py",
-          "hipengine/runtime/gemma4.py",
+          "hipengine/runtime/qwen35_gguf_runner.py",
           "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/gemma4.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_iq2_xs_mmq_prefill.py",
@@ -8218,7 +8343,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py",
-      "evidence_hash": "a1400d6b0a62"
+      "evidence_hash": "12746e448847"
     },
     {
       "kind": "kernel",
@@ -8305,8 +8430,8 @@
         "test_referrers": [
           "tests/test_gpu_gguf_k_gemv.py",
           "tests/test_gpu_gguf_q5_q6_mixed_attention_decode.py",
-          "tests/test_gpu_gguf_q8_0_pack8_gemv_decode.py",
-          "tests/test_unit_gguf_gemv_decode_dispatch.py"
+          "tests/test_unit_gguf_gemv_decode_dispatch.py",
+          "tests/test_unit_qwen35_gguf_rocprof_summary.py"
         ]
       },
       "signals": [],
@@ -8325,7 +8450,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_pack8_gemv.hip",
-      "evidence_hash": "105265a7a033"
+      "evidence_hash": "8a2ec4d0c026"
     },
     {
       "kind": "kernel",
@@ -8344,8 +8469,8 @@
         "test_referrers": [
           "tests/test_gpu_gguf_k_gemv.py",
           "tests/test_gpu_gguf_q5_q6_mixed_attention_decode.py",
-          "tests/test_gpu_gguf_q8_0_pack8_gemv_decode.py",
-          "tests/test_unit_gguf_gemv_decode_dispatch.py"
+          "tests/test_unit_gguf_gemv_decode_dispatch.py",
+          "tests/test_unit_qwen35_gguf_rocprof_summary.py"
         ]
       },
       "signals": [],
@@ -8363,7 +8488,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_pack8_gemv.py",
-      "evidence_hash": "d99e02c51684"
+      "evidence_hash": "7cc7c071afc3"
     },
     {
       "kind": "kernel",
@@ -8523,8 +8648,8 @@
         "lines": 1317,
         "referrers": 17,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_benchmark_pn4_laq1b_red.py",
@@ -8551,7 +8676,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip",
-      "evidence_hash": "a89b45b39306"
+      "evidence_hash": "961f295f86b3"
     },
     {
       "kind": "kernel",
@@ -8564,8 +8689,8 @@
         "lines": 978,
         "referrers": 17,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_benchmark_pn4_laq1b_red.py",
@@ -8589,7 +8714,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py",
-      "evidence_hash": "ccd0766724e8"
+      "evidence_hash": "7608504a5198"
     },
     {
       "kind": "kernel",
@@ -8602,14 +8727,14 @@
         "lines": 706,
         "referrers": 13,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_q8_0_t16_wmma_prefill.py",
           "tests/test_unit_qwen35_gguf_rocprof_summary.py",
-          "tests/test_gpu_gemma4_dense_wmma_range.py",
-          "tests/test_unit_gfx1151_backend.py"
+          "tests/test_unit_gfx1151_backend.py",
+          "tests/test_gpu_gemma4_dense_wmma_range.py"
         ]
       },
       "signals": [],
@@ -8628,7 +8753,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip",
-      "evidence_hash": "506895e71c8a"
+      "evidence_hash": "c7f491bd0020"
     },
     {
       "kind": "kernel",
@@ -8641,14 +8766,14 @@
         "lines": 571,
         "referrers": 13,
         "runtime_referrers": [
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_q8_0_t16_wmma_prefill.py",
           "tests/test_unit_qwen35_gguf_rocprof_summary.py",
-          "tests/test_gpu_gemma4_dense_wmma_range.py",
-          "tests/test_unit_gfx1151_backend.py"
+          "tests/test_unit_gfx1151_backend.py",
+          "tests/test_gpu_gemma4_dense_wmma_range.py"
         ]
       },
       "signals": [],
@@ -8666,7 +8791,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py",
-      "evidence_hash": "0ad949327bfe"
+      "evidence_hash": "038f94bae2cc"
     },
     {
       "kind": "kernel",
@@ -8680,8 +8805,8 @@
         "referrers": 53,
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_benchmark_pn3_laq_gemv_red.py",
@@ -8708,7 +8833,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_t16_selected_gemv.hip",
-      "evidence_hash": "897da7c68eee"
+      "evidence_hash": "6471f67ef268"
     },
     {
       "kind": "kernel",
@@ -8722,8 +8847,8 @@
         "referrers": 52,
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/qwen35_gguf_runner.py"
+          "hipengine/runtime/qwen35_gguf_runner.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_benchmark_pn3_laq_gemv_red.py",
@@ -8747,7 +8872,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_t16_selected_gemv.py",
-      "evidence_hash": "a1625e1977a7"
+      "evidence_hash": "f47512be16cc"
     },
     {
       "kind": "kernel",
@@ -9546,14 +9671,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1005,
-        "referrers": 1051,
+        "referrers": 1062,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
           "hipengine/benchmark/__init__.py",
           "hipengine/benchmark/agentic.py",
           "hipengine/benchmark/agentic_live.py",
-          "hipengine/benchmark/control_capture.py"
+          "hipengine/benchmark/execution_profiles.py"
         ],
         "test_referrers": [
           "tests/_poison_probe.py",
@@ -9578,7 +9703,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/runtime/state.hip",
-      "evidence_hash": "969a10904e0d"
+      "evidence_hash": "19de58dbd5e4"
     },
     {
       "kind": "kernel",
@@ -9589,14 +9714,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 1247,
-        "referrers": 1051,
+        "referrers": 1062,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
           "hipengine/benchmark/__init__.py",
           "hipengine/benchmark/agentic.py",
           "hipengine/benchmark/agentic_live.py",
-          "hipengine/benchmark/control_capture.py"
+          "hipengine/benchmark/execution_profiles.py"
         ],
         "test_referrers": [
           "tests/_poison_probe.py",
@@ -9620,7 +9745,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/runtime/state.py",
-      "evidence_hash": "354a5f54b7dc"
+      "evidence_hash": "58489e257ac1"
     },
     {
       "kind": "kernel",
@@ -9637,8 +9762,8 @@
           "hipengine/benchmark/agentic_live.py",
           "hipengine/dispatch/__init__.py",
           "hipengine/dispatch/sampling.py",
-          "hipengine/generation/__init__.py",
-          "hipengine/generation/batch_scheduler.py"
+          "hipengine/generation/batch_scheduler.py",
+          "hipengine/generation/finish.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gfx1100_gdn_indexed_singleton.py",
@@ -9665,7 +9790,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/sampling/sampler.hip",
-      "evidence_hash": "96b28b402d83"
+      "evidence_hash": "023e57ea451c"
     },
     {
       "kind": "kernel",
@@ -9682,8 +9807,8 @@
           "hipengine/benchmark/agentic_live.py",
           "hipengine/dispatch/__init__.py",
           "hipengine/dispatch/sampling.py",
-          "hipengine/generation/__init__.py",
-          "hipengine/generation/batch_scheduler.py"
+          "hipengine/generation/batch_scheduler.py",
+          "hipengine/generation/finish.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gfx1100_gdn_indexed_singleton.py",
@@ -9707,7 +9832,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/sampling/sampler.py",
-      "evidence_hash": "e33d45cfb496"
+      "evidence_hash": "290e1b912cbc"
     },
     {
       "kind": "kernel",
@@ -10133,14 +10258,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 664,
-        "referrers": 906,
+        "referrers": 908,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
           "hipengine/benchmark/speculative.py",
-          "hipengine/generation/__init__.py",
           "hipengine/generation/batch_scheduler.py",
-          "hipengine/generation/engine_service.py"
+          "hipengine/generation/engine_service.py",
+          "hipengine/generation/laguna_dflash.py"
         ],
         "test_referrers": [
           "tests/test_gpu_dflash2_native_forward.py",
@@ -10167,7 +10292,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/speculative/mtp.hip",
-      "evidence_hash": "376b1f492ed5"
+      "evidence_hash": "3692c91b6be3"
     },
     {
       "kind": "kernel",
@@ -10178,14 +10303,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 453,
-        "referrers": 906,
+        "referrers": 908,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
           "hipengine/benchmark/speculative.py",
-          "hipengine/generation/__init__.py",
           "hipengine/generation/batch_scheduler.py",
-          "hipengine/generation/engine_service.py"
+          "hipengine/generation/engine_service.py",
+          "hipengine/generation/laguna_dflash.py"
         ],
         "test_referrers": [
           "tests/test_gpu_dflash2_native_forward.py",
@@ -10209,7 +10334,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/speculative/mtp.py",
-      "evidence_hash": "23457b7b275d"
+      "evidence_hash": "6ca822500f74"
     },
     {
       "kind": "kernel",
@@ -10899,7 +11024,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 433,
-        "referrers": 688,
+        "referrers": 690,
         "runtime_referrers": [
           "hipengine/core/specdec2_scope.py",
           "hipengine/generation/laguna_dflash.py",
@@ -10929,7 +11054,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/vibevoice/q4.py",
-      "evidence_hash": "aa1499d91376"
+      "evidence_hash": "da2e108c0a5b"
     },
     {
       "kind": "kernel",
@@ -10940,7 +11065,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 62,
-        "referrers": 504,
+        "referrers": 506,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -10971,7 +11096,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/vibevoice/registered.py",
-      "evidence_hash": "b893a3fb5dff"
+      "evidence_hash": "54ce34c9298e"
     },
     {
       "kind": "kernel",
@@ -11138,14 +11263,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 509,
-        "referrers": 589,
+        "referrers": 600,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
           "hipengine/benchmark/agentic_quality2.py",
           "hipengine/benchmark/agentic_quality_oracle.py",
-          "hipengine/benchmark/control_capture.py",
-          "hipengine/benchmark/execution_profiles.py"
+          "hipengine/benchmark/execution_profiles.py",
+          "hipengine/benchmark/session_replay.py"
         ],
         "test_referrers": [
           "tests/test_gpu_cuda_sm120a_maple.py",
@@ -11170,7 +11295,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/yue2/nar.hip",
-      "evidence_hash": "a7554f0677b0"
+      "evidence_hash": "08a40d8aefd3"
     },
     {
       "kind": "kernel",
@@ -11181,14 +11306,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 246,
-        "referrers": 589,
+        "referrers": 600,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
           "hipengine/benchmark/agentic_quality2.py",
           "hipengine/benchmark/agentic_quality_oracle.py",
-          "hipengine/benchmark/control_capture.py",
-          "hipengine/benchmark/execution_profiles.py"
+          "hipengine/benchmark/execution_profiles.py",
+          "hipengine/benchmark/session_replay.py"
         ],
         "test_referrers": [
           "tests/test_gpu_cuda_sm120a_maple.py",
@@ -11212,7 +11337,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/yue2/nar.py",
-      "evidence_hash": "c9ae190b7287"
+      "evidence_hash": "b74f1129b12e"
     },
     {
       "kind": "kernel",
@@ -11351,7 +11476,7 @@
         "backend": "unknown",
         "suffix": ".py",
         "lines": 165,
-        "referrers": 499,
+        "referrers": 501,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -11380,7 +11505,7 @@
         ]
       },
       "id": "kernel/policy.py",
-      "evidence_hash": "bcc1caf285e6"
+      "evidence_hash": "c4c5e68a0677"
     },
     {
       "kind": "kernel",
@@ -11391,14 +11516,14 @@
         "backend": "unknown",
         "suffix": ".py",
         "lines": 204,
-        "referrers": 734,
+        "referrers": 737,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
           "hipengine/dispatch/fusion.py",
-          "hipengine/dispatch/kv.py",
           "hipengine/dispatch/projection.py",
-          "hipengine/generation/__init__.py"
+          "hipengine/dispatch/kv.py",
+          "hipengine/generation/batch_scheduler.py"
         ],
         "test_referrers": [
           "tests/_laguna_policy_pin.py",
@@ -11420,7 +11545,7 @@
         ]
       },
       "id": "kernel/registry.py",
-      "evidence_hash": "621c164a18e5"
+      "evidence_hash": "68ec796c382f"
     },
     {
       "kind": "kernel",
@@ -11433,11 +11558,11 @@
         "lines": 66,
         "referrers": 99,
         "runtime_referrers": [
-          "hipengine/generation/__init__.py",
           "hipengine/generation/vibevoice_asr.py",
           "hipengine/generation/vibevoice_asr_q4.py",
           "hipengine/generation/vibevoice_protocol.py",
           "hipengine/generation/vibevoice_tts.py",
+          "hipengine/generation/__init__.py",
           "hipengine/loading/vibevoice_asr.py"
         ],
         "test_referrers": [
@@ -11460,7 +11585,7 @@
         ]
       },
       "id": "kernel/vibevoice.py",
-      "evidence_hash": "6fae03dddd33"
+      "evidence_hash": "cf6a1b65d703"
     }
   ]
 }

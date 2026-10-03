@@ -1,5 +1,4 @@
 """Cross-history graph capacity, replay metadata and drafter ownership."""
-import ctypes
 from types import SimpleNamespace
 
 import pytest
@@ -37,7 +36,7 @@ def test_cached_mtp_drafter_rebinds_before_reading_hidden_or_shared_kv():
     assert drafter.runner is new
 
 
-def test_iu8_map_readback_and_risk_reset_follow_the_producer_stream(monkeypatch):
+def test_iu8_device_map_and_risk_reset_follow_the_producer_stream(monkeypatch):
     from hipengine.core import memory
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts as experts
     from hipengine.kernels.hip_gfx1100.moe import group_scatter
@@ -58,10 +57,8 @@ def test_iu8_map_readback_and_risk_reset_follow_the_producer_stream(monkeypatch)
     monkeypatch.setattr(group_scatter, 'qwen35_moe_wmma_tile_map',
                         lambda *a, **kw: events.append(('map', kw['stream'])))
 
-    def readback(dst, src, count, **kw):
-        assert events[-1] == ('sync', 7)
-        events.append(('read', 7))
-        ctypes.c_int64.from_address(dst).value = 16
+    def readback(*args, **kwargs):
+        raise AssertionError("device tile map must not be read on host during capture")
 
     monkeypatch.setattr(memory, 'copy_device_to_host', readback)
     monkeypatch.setattr(leaf, 'gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out',
@@ -71,4 +68,4 @@ def test_iu8_map_readback_and_risk_reset_follow_the_producer_stream(monkeypatch)
     assert experts._gemma4_project_experts_gate_up_wmma_iu8(
         weight, 10, 20, SimpleNamespace(ptr=30), 1, 1, 256, 16,
         scratch=scratch, stream=7, runtime=runtime)
-    assert events == [('map',7), ('sync',7), ('read',7), ('reset',7), ('risk',7), ('repair',7)]
+    assert events == [('map',7), ('reset',7), ('risk',7), ('repair',7)]

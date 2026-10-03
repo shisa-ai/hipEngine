@@ -23,13 +23,13 @@ requires (a cold route would load modules while capture is active).
 from __future__ import annotations
 
 import ctypes
-from pathlib import Path
 
 import numpy as np
 import pytest
 
-_MODEL_DIR = Path("/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF")
-_TARGET = _MODEL_DIR / "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+from scripts.gemma4_campaign_bench import resolve_artifact
+
+_TARGET = resolve_artifact()
 
 # Sequence 1: 60 prompt tokens + 6 decode steps puts steps 60..63 in bucket
 # [0, 64) and 64..65 in the clamped bucket [64, 127) — one width-grid
