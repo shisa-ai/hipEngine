@@ -17,10 +17,10 @@ Timing boundaries, stated once and recorded in every artifact:
 
 - ``prefill_s``: ``forward(prompt)`` plus an explicit device synchronize.
   Greedy sampling of the first token is excluded.
-- ``first_sample_s``: the host greedy argmax that produces token one.
+- ``first_sample_s``: the host finite-logit check and greedy argmax that produce token one.
 - ``first_token_s``: request start to token one available (prefill + sample).
 - ``decode_s``: the output-1 subsequent single-token forwards, each with its
-  greedy sample and an explicit device synchronize.
+  finite-logit check, greedy sample and an explicit device synchronize.
 - ``wall_s``: instrumented request start to last token, phases above combined.
 - ``public_wall_s``: an untouched ``generate_detailed`` call on the same ids.
 
@@ -257,6 +257,8 @@ def run_instrumented(
         device_synchronize = get_hip_runtime().device_synchronize
         sync = device_synchronize
 
+    import numpy as np
+
     runner.reset()
     sync_count = 0
 
@@ -271,6 +273,8 @@ def run_instrumented(
     timed_sync()
     t1 = clock()
     prefill_s = t1 - t0
+    if not np.all(np.isfinite(logits)):
+        raise ValueError("prefill must return finite logits")
 
     token_id = runner.next_token(logits)
     t_first = clock()
@@ -282,6 +286,8 @@ def run_instrumented(
     for _ in range(1, max_tokens):
         step_start = clock()
         logits = runner.forward([generated[-1]])
+        if not np.all(np.isfinite(logits)):
+            raise ValueError("decode must return finite logits")
         token_id = runner.next_token(logits)
         timed_sync()
         step_end = clock()
@@ -305,8 +311,27 @@ def run_instrumented(
         "syncs": sync_count,
         "finish_reason": "length",
         "eos_ignored": True,
+        "finite_logits": True,
         "generated_token_ids": generated,
     }
+
+
+def validate_generation_rows(
+    warmups: Sequence[dict[str, Any]], samples: Sequence[dict[str, Any]],
+    public: dict[str, Any], outputs: int,
+) -> None:
+    """Require fixed-shape repeatability and public-route identity, not cross-engine parity."""
+    expected = samples[0]["generated_token_ids"]
+    rows = [*warmups, *samples, public]
+    for row in rows:
+        ids = row.get("generated_token_ids")
+        if (not isinstance(ids, list) or len(ids) != outputs
+                or any(type(token) is not int or token < 0 for token in ids)
+                or ids != expected):
+            raise ValueError("generation output count, token IDs, repeatability or public parity failed")
+    wall = public["public_wall_s"]
+    if not math.isfinite(wall) or wall <= 0:
+        raise ValueError("generation public wall must be finite and positive")
 
 
 def _median(values: Sequence[float]) -> float:
@@ -332,6 +357,13 @@ def summarize(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
     if len(shapes) != 1:
         raise ValueError(f"samples disagree on shape: {sorted(shapes)}")
     prompt_tokens, generated_tokens, decode_forwards = next(iter(shapes))
+    for record in records:
+        for field in ("prefill_s", "first_token_s", "wall_s", "first_sample_s", "decode_s"):
+            value = record[field]
+            zero_allowed = field == "first_sample_s" or (field == "decode_s" and decode_forwards == 0)
+            if (type(value) not in (int, float) or not math.isfinite(value)
+                    or value < 0 or (value == 0 and not zero_allowed)):
+                raise ValueError(f"{field} must be a finite {'nonnegative' if zero_allowed else 'positive'} duration")
 
     decode_tps_values = [
         r["decode_forwards"] / r["decode_s"]
@@ -425,6 +457,7 @@ def _provenance(artifact: Path) -> dict[str, Any]:
     )
     clock_report = _run(["rocm-smi", "--showclock", "--showpower", "--showtemp"])
     return {
+        "host": platform.node(),
         "git_commit": commit,
         "git_dirty": bool(dirty),
         "git_dirty_files": dirty.splitlines()[:40],
@@ -491,6 +524,7 @@ def _public_wall(llm: Any, prompt_ids: Sequence[int], max_tokens: int) -> dict[s
         "generated_tokens": len(output.generated_token_ids or ()),
         "finish_reason": getattr(output.finish_details, "reason", None),
         "sampler_mode": getattr(output.finish_details, "sampler_mode", None),
+        "finite_logits": None,  # public API exposes IDs, not every intermediate logit row
         "generated_token_ids": list(output.generated_token_ids or ()),
     }
 
@@ -655,6 +689,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     public["public_path_parity"] = parity_index is None
     public["public_path_first_divergence"] = parity_index
     public["public_generated_equals_expected"] = len(public_ids) == args.output
+    validate_generation_rows(warmups, samples, public, args.output)
     print(
         f"[gemma4_campaign_bench] public wall {public['public_wall_s']:.2f}s "
         f"({public['public_tps']:.2f} tok/s incl. prefill), "
@@ -665,6 +700,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     mem_samples.append(("after_runs", *get_hip_runtime().mem_get_info()))
 
     artifact = {
+        "schema": 1,
+        "status": "ok",
+        "correctness": {"instrumented_finite_logits": True, "public_finite_logits": None,
+                        "all_replays_and_public_ids_equal": True},
         "label": args.label,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "command": shlex.join([sys.executable, *sys.argv]),
@@ -690,7 +729,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "public": public,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(artifact, indent=2) + "\n")
+    args.out.write_text(json.dumps(artifact, indent=2, allow_nan=False) + "\n")
 
     metric_name = f"decode_tps_{args.prompt}p{args.output}o"
     decode_value = stats["decode_tps"]

@@ -40,7 +40,7 @@ class _FakeRunner:
 
     def forward(self, token_ids, **kwargs):
         self.forward_calls.append([int(t) for t in token_ids])
-        return object()  # opaque logits handle for the fake sampler
+        return [0.0, 1.0]  # finite host logits for the fake sampler
 
     def next_token(self, logits) -> int:
         self.next_token_calls += 1
@@ -398,3 +398,46 @@ def test_resolve_generator_passes_the_context_to_the_llm_factory(monkeypatch, tm
     )
     assert loading["runner_capacity"] == 8320
     assert loading["context_length"] == 8320
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize("bad_step", [0, 1])
+def test_instrumented_rejects_nonfinite_logits_before_sampling(bad, bad_step):
+    runner = _FakeRunner(token_ids=(3,))
+    original = runner.forward
+    def forward(ids):
+        result = original(ids)
+        return [bad, 1.] if len(runner.forward_calls) - 1 == bad_step else result
+    runner.forward = forward
+    with pytest.raises(ValueError, match="finite logits"):
+        run_instrumented(runner, [1], 2, clock=_FakeClock(), sync=lambda: None)
+    assert runner.next_token_calls == bad_step
+
+
+@pytest.mark.parametrize("field", ["prefill_s", "decode_s", "wall_s", "first_token_s"])
+@pytest.mark.parametrize("bad", [0., -1., float("nan"), float("inf")])
+def test_summarize_rejects_every_invalid_sample(field, bad):
+    with pytest.raises(ValueError, match=field):
+        summarize([_record(), _record(**{field: bad}), _record()])
+
+
+@pytest.mark.parametrize("field", ["first_sample_s", "decode_s"])
+def test_summarize_rejects_nonfinite_zero_length_phase(field):
+    row = _record(generated_tokens=1, decode_forwards=0, decode_s=0.)
+    row[field] = float("nan")
+    with pytest.raises(ValueError, match=field):
+        summarize([row])
+
+
+def test_public_and_all_replays_must_match():
+    from scripts.gemma4_campaign_bench import validate_generation_rows
+    sample = {"generated_token_ids": [1, 2]}
+    public = {"generated_token_ids": [1, 2], "public_wall_s": 1.}
+    validate_generation_rows([sample], [sample, sample], public, 2)
+    for rows, output in [([sample, {"generated_token_ids": [1, 3]}], public),
+                         ([sample], {**public, "generated_token_ids": [1]}),
+                         ([sample], {**public, "generated_token_ids": [1, 3]})]:
+        with pytest.raises(ValueError, match="generation"):
+            validate_generation_rows([], rows, output, 2)
+    with pytest.raises(ValueError, match="generation"):
+        validate_generation_rows([{"generated_token_ids": [0, 2]}], [sample], public, 2)
