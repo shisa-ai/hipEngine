@@ -1,0 +1,302 @@
+{
+ "schema": 1,
+ "note": "gfx1151 Radeon 8060S, 40 CU, Qwen3.6-35B-A3B-UD-Q4_K_M, M=1024 rows, int8 TFLOP/s = 2*M*K*N/median_s",
+ "dispatch_selection": {
+  "quant": "gguf_ud_q4_k_m",
+  "q8_mmq_prefill_policy": "None (not registered for this quant; only gguf_ud_q3_k_m / gguf_ud_q4_k_xl carry one)",
+  "selected_for_all_four_shapes": "KernelKey(hip_gfx1100, linear, gguf_q8_0_t16_v1, t16_wmma_prefill_bf16_bf16_out) -> gfx1151 override gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out"
+ },
+ "t16_owner_4wave": {
+  "attn_qkv": {
+   "k": 2048,
+   "n": 8192,
+   "ms": 1.4427769929170609,
+   "tf": 23.815002967665976,
+   "kernel": "gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out"
+  },
+  "attn_gate": {
+   "k": 2048,
+   "n": 4096,
+   "ms": 0.8130660280585289,
+   "tf": 21.12973435259959,
+   "kernel": "gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out"
+  },
+  "lm_head": {
+   "k": 2048,
+   "n": 248320,
+   "ms": 84.36909504234791,
+   "tf": 12.3449181096137,
+   "kernel": "gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out"
+  },
+  "ssm_out": {
+   "k": 4096,
+   "n": 2048,
+   "ms": 0.8504558354616165,
+   "tf": 20.20077759202509,
+   "kernel": "gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out"
+  }
+ },
+ "mmq_candidate": {
+  "attn_qkv": {
+   "k": 2048,
+   "n": 8192,
+   "ms": 4.529868718236685,
+   "tf": 7.585151028698026,
+   "kernel": "gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
+  },
+  "attn_gate": {
+   "k": 2048,
+   "n": 4096,
+   "ms": 2.4291323497891426,
+   "tf": 7.072430279680428,
+   "kernel": "gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
+  },
+  "lm_head": {
+   "k": 2048,
+   "n": 248320,
+   "ms": 151.02645615115762,
+   "tf": 6.8963385344721715,
+   "kernel": "gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
+  },
+  "ssm_out": {
+   "k": 4096,
+   "n": 2048,
+   "ms": 2.6822835206985474,
+   "tf": 6.404941554994845,
+   "kernel": "gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
+  }
+ },
+ "wide_n_at_K2048": {
+  "t16": {
+   "N4096": 21.12973435259959,
+   "N8192": 23.815002967665976,
+   "pct_change_N8192_vs_N4096": 12.7
+  },
+  "mmq": {
+   "N4096": 7.072430279680428,
+   "N8192": 7.585151028698026,
+   "pct_change_N8192_vs_N4096": 7.2
+  },
+  "verdict": "wide-N penalty REFUTED: N=8192 is FASTER per FLOP than N=4096 in both families"
+ },
+ "wide_n_cliff_t16_K2048_M1024": {
+  "n8192": {
+   "N": 8192,
+   "ms": 1.4359978958964348,
+   "tf": 23.92742946642733
+  },
+  "n16384": {
+   "N": 16384,
+   "ms": 3.1582890078425407,
+   "tf": 21.758451036418283
+  },
+  "n32768": {
+   "N": 32768,
+   "ms": 10.942663066089153,
+   "tf": 12.559918243111904
+  },
+  "n65536": {
+   "N": 65536,
+   "ms": 22.542994935065508,
+   "tf": 12.193495484330207
+  }
+ },
+ "occupancy": {
+  "t16_nwave32x4": {
+   "threads": 128,
+   "vgpr": 80,
+   "lds": 1024,
+   "name": "gguf_q8_0_t16_prefill_wmma_nwave_kernel<32, 4>",
+   "occupancy": {
+    "waves_per_block": 4,
+    "waves_cu_by_vgpr": 32,
+    "blocks_cu_by_waves": 8,
+    "blocks_cu_by_threads": 8,
+    "blocks_cu_by_lds": 64,
+    "blocks_cu_by_vgpr": 8,
+    "blocks_cu": 8,
+    "wave_occupancy_pct": 100.0,
+    "blocks_cu_vgpr_file_1024": 6
+   }
+  },
+  "mmq128x128_d4x3": {
+   "threads": 256,
+   "vgpr": 184,
+   "lds": 57856,
+   "name": "q8_0_raw_mmq_tile_q8_1_d4_kernel<128,128,false,3,...>",
+   "occupancy": {
+    "waves_per_block": 8,
+    "waves_cu_by_vgpr": 16,
+    "blocks_cu_by_waves": 4,
+    "blocks_cu_by_threads": 4,
+    "blocks_cu_by_lds": 1,
+    "blocks_cu_by_vgpr": 2,
+    "blocks_cu": 1,
+    "wave_occupancy_pct": 25.0,
+    "blocks_cu_vgpr_file_1024": 1
+   }
+  }
+ },
+ "roofline_cases": [
+  {
+   "geometry": "attn_qkv",
+   "family": "t16",
+   "k": 2048,
+   "n": 8192,
+   "rows": 1024,
+   "median_ms": 1.443,
+   "tf_s": 23.8113225003465,
+   "weight_bytes": 17830000.0,
+   "grid_y": 32,
+   "out_bytes": 16777216,
+   "gbs_no_reuse": 407.0250977130977,
+   "gbs_full_reuse": 23.98282467082467,
+   "kernel": "t16_nwave32x4",
+   "blocks_per_cu": 8,
+   "wave_occupancy_pct": 100.0,
+   "bandwidth_bound_no_reuse": true
+  },
+  {
+   "geometry": "attn_gate",
+   "family": "t16",
+   "k": 2048,
+   "n": 4096,
+   "rows": 1024,
+   "median_ms": 0.813,
+   "tf_s": 21.131450410824108,
+   "weight_bytes": 8920000.0,
+   "grid_y": 32,
+   "out_bytes": 8388608,
+   "gbs_no_reuse": 361.4128019680197,
+   "gbs_full_reuse": 21.289800738007383,
+   "kernel": "t16_nwave32x4",
+   "blocks_per_cu": 8,
+   "wave_occupancy_pct": 100.0,
+   "bandwidth_bound_no_reuse": true
+  },
+  {
+   "geometry": "lm_head",
+   "family": "t16",
+   "k": 2048,
+   "n": 248320,
+   "rows": 1024,
+   "median_ms": 84.369,
+   "tf_s": 12.344932016261897,
+   "weight_bytes": 540400000.0,
+   "grid_y": 32,
+   "out_bytes": 508559360,
+   "gbs_no_reuse": 210.99407791961502,
+   "gbs_full_reuse": 12.432995057426306,
+   "kernel": "t16_nwave32x4",
+   "blocks_per_cu": 8,
+   "wave_occupancy_pct": 100.0,
+   "bandwidth_bound_no_reuse": true
+  },
+  {
+   "geometry": "ssm_out",
+   "family": "t16",
+   "k": 4096,
+   "n": 2048,
+   "rows": 1024,
+   "median_ms": 0.85,
+   "tf_s": 20.211610804705884,
+   "weight_bytes": 8920000.0,
+   "grid_y": 32,
+   "out_bytes": 4194304,
+   "gbs_no_reuse": 340.74624,
+   "gbs_full_reuse": 15.428592941176472,
+   "kernel": "t16_nwave32x4",
+   "blocks_per_cu": 8,
+   "wave_occupancy_pct": 100.0,
+   "bandwidth_bound_no_reuse": true
+  },
+  {
+   "geometry": "attn_qkv",
+   "family": "mmq",
+   "k": 2048,
+   "n": 8192,
+   "rows": 1024,
+   "median_ms": 4.53,
+   "tf_s": 7.584931207064018,
+   "weight_bytes": 17830000.0,
+   "grid_y": 8,
+   "out_bytes": 33554432,
+   "gbs_no_reuse": 38.89501810154525,
+   "gbs_full_reuse": 11.343141721854304,
+   "kernel": "mmq128x128_d4x3",
+   "blocks_per_cu": 1,
+   "wave_occupancy_pct": 25.0,
+   "bandwidth_bound_no_reuse": false
+  },
+  {
+   "geometry": "attn_gate",
+   "family": "mmq",
+   "k": 2048,
+   "n": 4096,
+   "rows": 1024,
+   "median_ms": 2.429,
+   "tf_s": 7.072815637710993,
+   "weight_bytes": 8920000.0,
+   "grid_y": 8,
+   "out_bytes": 16777216,
+   "gbs_no_reuse": 36.28539151914369,
+   "gbs_full_reuse": 10.579339645944835,
+   "kernel": "mmq128x128_d4x3",
+   "blocks_per_cu": 1,
+   "wave_occupancy_pct": 25.0,
+   "bandwidth_bound_no_reuse": false
+  },
+  {
+   "geometry": "lm_head",
+   "family": "mmq",
+   "k": 2048,
+   "n": 248320,
+   "rows": 1024,
+   "median_ms": 150.925,
+   "tf_s": 6.900974452741428,
+   "weight_bytes": 540400000.0,
+   "grid_y": 8,
+   "out_bytes": 1017118720,
+   "gbs_no_reuse": 35.38392393572967,
+   "gbs_full_reuse": 10.319819247970846,
+   "kernel": "mmq128x128_d4x3",
+   "blocks_per_cu": 1,
+   "wave_occupancy_pct": 25.0,
+   "bandwidth_bound_no_reuse": false
+  },
+  {
+   "geometry": "ssm_out",
+   "family": "mmq",
+   "k": 4096,
+   "n": 2048,
+   "rows": 1024,
+   "median_ms": 2.682,
+   "tf_s": 6.405618636838181,
+   "weight_bytes": 8920000.0,
+   "grid_y": 8,
+   "out_bytes": 8388608,
+   "gbs_no_reuse": 29.73475316927666,
+   "gbs_full_reuse": 6.453619686800895,
+   "kernel": "mmq128x128_d4x3",
+   "blocks_per_cu": 1,
+   "wave_occupancy_pct": 25.0,
+   "bandwidth_bound_no_reuse": false
+  }
+ ],
+ "binding_constraints": {
+  "t16_dense_legs_N<=16384": "compute/issue-bound at full occupancy (8 workgroups/CU, 32/32 waves); implied no-reuse weight bandwidth 340-407 GB/s exceeds 237 GB/s so the weight is cache-served",
+  "t16_lm_head_N248320": "DRAM-bandwidth-bound: 17.8 GB no-reuse traffic (540 MB weight re-read once per row-tile, M/tile_n=1024/32=32) at 211 GB/s = 89% of the 237 GB/s achievable",
+  "mmq128x128_all": "LDS-capacity-bound occupancy: 57,856 B dynamic LDS per 256-thread block -> 1 workgroup/CU (8/32 waves = 25%); achieved bandwidth only 30-39 GB/s so not bandwidth-bound"
+ },
+ "candidate_change": {
+  "name": "raise the t16 nwave row-tile AWQ_TILE_N 32 -> 64 for weight-exceeds-cache wide-N shapes",
+  "changes": [
+   "accumulator TN 2 -> 4 (16 -> 32 fp32 per lane, ~+16 VGPR -> ~96)",
+   "activation LDS 1 KiB -> 2 KiB",
+   "grid.y (row tiles) 32 -> 16",
+   "weight re-reads 32 -> 16"
+  ],
+  "why": "binding constraint at lm_head is DRAM bandwidth from weight re-reads; halving the re-read count halves the 17.3 GB weight traffic",
+  "predicted": "12.34 -> ~24 int8 TF/s on the lm_head-like geometry (compute ceiling measured at 23.9 TF/s for N=8192); no gain for the shipped N<=16384 legs which already sit at that ceiling"
+ }
+}
