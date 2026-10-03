@@ -113,6 +113,20 @@
     single larger owner), which is admission accounting, not this selector. Any
     removal must keep the chunk-1024 default's own tests
     (`tests/test_unit_engine_loop_prefill_chunk.py`) intact.
+  - **The capacity question is necessary but not sufficient (2026-10-03).** Owner
+    admission alone cannot reach the measured `chunk 1024 -> 4096` step
+    (`-4.94%`), because the chunk the engine runs is
+    `min(prefill_chunk_size, round_prefill_token_budget)`
+    (`hipengine/generation/engine_loop.py:2266`) and the round budget is 1024 - a
+    4096-row owner under a 1024 budget still executes `4 x 1024`, the
+    measured-slow configuration. That is the same scratch-not-size mechanism this
+    section already records. Reaching 4096 requires raising
+    `round_prefill_token_budget` to 4096, which quadruples per-tick prefill work
+    and therefore the worst-case delay before a decoding peer gets its next step
+    - a real fairness trade, unlike the landed `256 -> 1024` promotion whose
+    per-tick work was unchanged. The missing measurement is decode interleaving
+    under concurrency at the raised round budget, not a capacity probe. See
+    `worklog/entries/20261003T152724.639601Z-lhl-rt-1-chunk-4096-is-gated-on-the-round-prefill-bu-3e7462.md`.
 
 ## GR Staged-F32 Selector (HC-1)
 
