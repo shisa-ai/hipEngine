@@ -59,14 +59,45 @@ from hipengine.loading.gemma4_assistant_device import (
     load_gemma4_assistant_device_weights,
 )
 from hipengine.loading.gemma4_gguf import gemma4_gguf_config_from_metadata
+from hipengine.loading.gemma4_mtp_gguf import discover_gemma4_mtp_artifacts
 from hipengine.runtime.gemma4 import Gemma4Runner, load_gemma4_device_weights
 from hipengine.runtime.gemma4_assistant import Gemma4AssistantHead, Gemma4MtpDrafter
 from tests._rocm_guard import hip_runtime_available
 
-BACKBONE = Path(
-    "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+# The artifact lived under /models/gguf until that mount moved, and the head now
+# sits under MTP/ beside the backbone. Resolve across the known locations -- the
+# same fallback scripts/gemma4_campaign_bench.py uses -- instead of pinning one,
+# so the node runs wherever the backbone actually is rather than failing on the
+# path. A box without the artifact still skips through ``_needs`` below.
+_ARTIFACT_ROOTS = (
+    Path("/models/gguf/gemma-4-26B-A4B-it-GGUF"),
+    Path("/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF"),
 )
-HEAD = Path("/models/gguf/gemma-4-26B-A4B-it-GGUF/mtp-gemma-4-26B-A4B-it-Q8_0.gguf")
+_BACKBONE_NAME = "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+_HEAD_NAME = "mtp-gemma-4-26B-A4B-it-Q8_0.gguf"
+
+
+def _resolve_backbone() -> Path:
+    for root in _ARTIFACT_ROOTS:
+        candidate = root / _BACKBONE_NAME
+        if candidate.is_file():
+            return candidate
+    return _ARTIFACT_ROOTS[0] / _BACKBONE_NAME
+
+
+def _resolve_head(backbone: Path) -> Path:
+    discovered = discover_gemma4_mtp_artifacts(backbone)
+    if discovered:
+        return discovered[0]
+    for root in _ARTIFACT_ROOTS:
+        candidate = root / _HEAD_NAME
+        if candidate.is_file():
+            return candidate
+    return _ARTIFACT_ROOTS[0] / _HEAD_NAME
+
+
+BACKBONE = _resolve_backbone()
+HEAD = _resolve_head(BACKBONE)
 
 _needs = pytest.mark.skipif(
     not (hip_runtime_available() and BACKBONE.exists() and HEAD.exists()),
@@ -311,6 +342,7 @@ def test_the_drafter_proposes_tokens_the_backbone_accepts() -> None:
         )
 
 
+@_needs
 def test_the_adapter_cycle_agrees_with_a_token_by_token_decode() -> None:
     """The adapter's batch verify must decide what a one-at-a-time walk decides.
 
