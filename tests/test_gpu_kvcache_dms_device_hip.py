@@ -415,16 +415,26 @@ def test_device_transaction_rollback_restores_payload_bytes_and_counters() -> No
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
-def test_device_determinism_across_backends() -> None:
+@pytest.mark.parametrize("poison_bytes", [None, (0x35, 0x6A)], ids=["allocator", "poisoned"])
+def test_device_determinism_across_backends(poison_bytes) -> None:
     layers, heads, dim, window = 1, 2, 16, 2
     data = _fixture_data([6], layers, heads, dim, seed=7)
     outs = []
-    for _ in range(2):
+    for instance in range(2):
         b = _make_backend(
             num_layers=layers, heads=heads, dim=dim, window=window, slots=64,
             device=True,
         )
         try:
+            if poison_bytes is not None:
+                # Unwritten allocation bytes differ deliberately. Only live
+                # payload and attention output have a determinism contract.
+                from hipengine.core.hip import get_hip_runtime
+
+                store = b._device_store
+                store._ensure_layer(0)
+                for plane in (store._k_slot[0], store._v_slot[0]):
+                    get_hip_runtime().memset(plane.ptr, poison_bytes[instance], plane.nbytes)
             k, v, evict = data[0][0]
             steps = data[1]
             _admit(b, request_id=0, tokens=int(k.shape[0]))
