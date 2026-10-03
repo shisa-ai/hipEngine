@@ -348,21 +348,23 @@ class Gemma4DecodeGraphSession:
                 return_hidden=False,
             )
 
-        # Pre-touch the decode route's per-stream split workspace before any
-        # capture: AttentionScratch is keyed per stream, and hipMalloc inside
-        # an active Global capture is rejected (HIP error 900). Sizes are not
-        # monotonic in the key count (measured: keys=1088 needs 69760 B where
-        # keys=8192 needs 65728 B), so the max-bucket warm-up above cannot
-        # cover every smaller bucket. This workspace is the decode route's only
-        # lazy allocation, and touching it costs one small malloc per layer
-        # instead of a launch chain per bucket crossing.
+        # Reserve workspace on the capture stream for the selected route. The
+        # owner is shared across layers, but each stream has its own allocation;
+        # warming eager decode on another stream cannot prepare this one.
+        # Split sizes are not monotonic in the key count, and staged attention
+        # needs global scores even below the split threshold.
         from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+            PREFILL_ATTENTION_STAGED,
             build_gemma4_attention,
             decode_slices,
             flash_admits,
             flash_slices,
             flash_workspace_bytes,
+            select_prefill_attention,
             split_workspace_bytes,
+        )
+        from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
+            staged_workspace_bytes,
         )
 
         library = build_gemma4_attention(load=True)
@@ -370,6 +372,20 @@ class Gemma4DecodeGraphSession:
             attention = runner.weights.config.geometry(index)
             key_begin = self._frozen_key_begin(attention, bucket)
             keys = frozen_write + 1 - key_begin
+            if runner.prefill_attention_variants is not None:
+                selected = select_prefill_attention(
+                    requested_variant=runner.prefill_attention_variants,
+                    tokens=1, keys=keys, head_dim=attention.head_dim,
+                    num_heads=attention.num_heads, num_kv_heads=attention.num_kv_heads,
+                )
+                if selected.variant == PREFILL_ATTENTION_STAGED:
+                    runner._scratches[index].attention.buffer(
+                        staged_workspace_bytes(1, attention.num_heads, keys),
+                        stream=self._stream, runtime=runtime,
+                    )
+                    continue
+                if not selected.is_strict:
+                    continue
             slices = decode_slices(keys, attention.head_dim)
             if slices > 1:
                 need = split_workspace_bytes(
