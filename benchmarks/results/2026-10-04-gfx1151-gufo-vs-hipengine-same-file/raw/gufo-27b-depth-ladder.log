@@ -1,0 +1,24 @@
+=== DEPTH LADDER 15:39:04 ===
+HIP: found 1 ROCm devices (Total VRAM: 122880 MiB):
+  Device 0: AMD Radeon 8060S Graphics, gfx1151, Wave Size: 32, VRAM: 122880 MiB
+[Model Load]: 2.53135 s
+| model                          |       size |     params | backend    |            test |                   t/s |
+| ------------------------------ | ---------- | ---------- | ---------- | --------------- | --------------------- |
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |          pp2048 |        393.30 ± 0.21 |
+[QwenBenchTrace]: depth=0 count=128 sha256=28bd5a172b3d921b1f9ccfcbe464b8cd6562d713c97591aa09bafbc9fdcc0e00
+[QwenBenchTrace]: depth=0 count=128 sha256=28bd5a172b3d921b1f9ccfcbe464b8cd6562d713c97591aa09bafbc9fdcc0e00
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |           tg128 |         12.12 ± 0.00 |
+Preparing context depth 4096...
+Prepared 4096 new tokens in 10.708 s; cached depth 4096 in 67.12 ms
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |  pp2048 @ d4096 |        386.21 ± 0.34 |
+[QwenBenchTrace]: depth=4096 count=128 sha256=a90d04bc16650f97ca194fe040aadb5f6b9d9819adffdd0659a7d716e19ad40c
+[QwenBenchTrace]: depth=4096 count=128 sha256=a90d04bc16650f97ca194fe040aadb5f6b9d9819adffdd0659a7d716e19ad40c
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |   tg128 @ d4096 |         11.98 ± 0.00 |
+Preparing context depth 16384...
+Prepared 12288 new tokens in 33.232 s; cached depth 16384 in 172.51 ms after restoring depth 4096 in 5.05 ms
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) | pp2048 @ d16384 |        366.24 ± 0.19 |
+[QwenBenchTrace]: depth=16384 count=128 sha256=538b6e6dd5150c8a20ee7a75234bef4d80b72b5bc7bd912d7ff387a52af71db6
+[QwenBenchTrace]: depth=16384 count=128 sha256=538b6e6dd5150c8a20ee7a75234bef4d80b72b5bc7bd912d7ff387a52af71db6
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |  tg128 @ d16384 |         11.52 ± 0.00 |
+
+DEPTH_LADDER_EXIT=0

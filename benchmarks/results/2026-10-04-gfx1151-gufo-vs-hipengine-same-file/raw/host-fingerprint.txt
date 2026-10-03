@@ -1,0 +1,11 @@
+=== host fingerprint ===
+7.1.6-1-cachyos
+32
+  Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S
+  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S
+  Vendor Name:             CPU                                
+  Name:                    gfx1151                            
+  Marketing Name:          AMD Radeon 8060S Graphics          
+  Vendor Name:             AMD                                
+model name	: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S
+55ea6c509d0b49eea8de7094a1023668

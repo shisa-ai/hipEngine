@@ -1,0 +1,1 @@
+HOSTSTATE tuned=Current active profile: accelerator-performance gov=performance start=15:49:57

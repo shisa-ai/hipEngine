@@ -1,0 +1,19 @@
+[Model Load]: 45.2571 s
+| model                            |       size | backend    |               test |                   t/s |
+| -------------------------------- | ---------- | ---------- | ------------------ | --------------------- |
+| Qwen3.8 Flash Next               | 103.69 GiB | ROCm (HIP) |              pp512 |       1168.78 ± 2.61 |
+| Qwen3.8 Flash Next               | 103.69 GiB | ROCm (HIP) |             pp1024 |       1510.14 ± 0.01 |
+| Qwen3.8 Flash Next               | 103.69 GiB | ROCm (HIP) |             pp2048 |       1717.60 ± 1.22 |
+| Qwen3.8 Flash Next               | 103.69 GiB | ROCm (HIP) |             pp4096 |       1695.37 ± 0.61 |
+Qwen3.8-Flash-Next tg depth=0 cycles=0 drafted=0 accepted=0 output_sha256=98c708d7827afad9912654dfce06b561fadec8de7ea62a3e7c33902f9b5d1402 text= 10-step program:
+
+Step 1: Reverse the entire text.
+Step 2: Remove all spaces from the text.
+Step 3: For each consonant in the text (letters that are not vowels and not
+Qwen3.8-Flash-Next tg depth=0 cycles=0 drafted=0 accepted=0 output_sha256=98c708d7827afad9912654dfce06b561fadec8de7ea62a3e7c33902f9b5d1402 text= 10-step program:
+
+Step 1: Reverse the entire text.
+Step 2: Remove all spaces from the text.
+Step 3: For each consonant in the text (letters that are not vowels and not
+| Qwen3.8 Flash Next               | 103.69 GiB | ROCm (HIP) |              tg128 |         26.71 ± 0.24 |
+

@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "kind": "gufo_vs_hipengine_flashnext_token_identity",
+  "protocol": "greedy (temperature 0), 16 generated tokens, raw joined message text (no chat template), 10-prompt committed category suite sha256 fac920be...",
+  "gufo_head": "gufo shared Q8_0 (5ff540...) for both AR and MTP",
+  "hipengine_head": "our Q8_0 sidecar (9db03a...)",
+  "rows": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "split": "train",
+      "gufo_ar_sha256": "0a7b82e50ac21d9236ef1b767b3583a2cdb58e5a558d5473e8a715e7db0863d5",
+      "gufo_mtp_sha256": "0a7b82e50ac21d9236ef1b767b3583a2cdb58e5a558d5473e8a715e7db0863d5",
+      "hipengine_ar_sha256": "0a7b82e50ac21d9236ef1b767b3583a2cdb58e5a558d5473e8a715e7db0863d5",
+      "hipengine_mtp_sha256": "0a7b82e50ac21d9236ef1b767b3583a2cdb58e5a558d5473e8a715e7db0863d5",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": true
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "split": "train",
+      "gufo_ar_sha256": "048ed2ad45a19023e1713a75fc2bf6344945c72f244d7058585a1135a23e0299",
+      "gufo_mtp_sha256": "048ed2ad45a19023e1713a75fc2bf6344945c72f244d7058585a1135a23e0299",
+      "hipengine_ar_sha256": "048ed2ad45a19023e1713a75fc2bf6344945c72f244d7058585a1135a23e0299",
+      "hipengine_mtp_sha256": "048ed2ad45a19023e1713a75fc2bf6344945c72f244d7058585a1135a23e0299",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": true
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "split": "train",
+      "gufo_ar_sha256": "f9e3540d86c50f7afaf8cd9a9b6c17b8d6353987f22e63d05843e023abed6041",
+      "gufo_mtp_sha256": "f9e3540d86c50f7afaf8cd9a9b6c17b8d6353987f22e63d05843e023abed6041",
+      "hipengine_ar_sha256": "f9e3540d86c50f7afaf8cd9a9b6c17b8d6353987f22e63d05843e023abed6041",
+      "hipengine_mtp_sha256": "f9e3540d86c50f7afaf8cd9a9b6c17b8d6353987f22e63d05843e023abed6041",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": true
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "split": "heldout",
+      "gufo_ar_sha256": "aed953abe7b320ee8213fe50530dc13c1abada7a9b067cd27903d995d5f8552e",
+      "gufo_mtp_sha256": "aed953abe7b320ee8213fe50530dc13c1abada7a9b067cd27903d995d5f8552e",
+      "hipengine_ar_sha256": "aed953abe7b320ee8213fe50530dc13c1abada7a9b067cd27903d995d5f8552e",
+      "hipengine_mtp_sha256": "aed953abe7b320ee8213fe50530dc13c1abada7a9b067cd27903d995d5f8552e",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": true
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "split": "train",
+      "gufo_ar_sha256": "5b0f0525e8acc341d9b59434eefde468064087167b4a7ebeae7067fb9e7afb1d",
+      "gufo_mtp_sha256": "5b0f0525e8acc341d9b59434eefde468064087167b4a7ebeae7067fb9e7afb1d",
+      "hipengine_ar_sha256": "5b0f0525e8acc341d9b59434eefde468064087167b4a7ebeae7067fb9e7afb1d",
+      "hipengine_mtp_sha256": "5b0f0525e8acc341d9b59434eefde468064087167b4a7ebeae7067fb9e7afb1d",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": true
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "split": "heldout",
+      "gufo_ar_sha256": "5086c1c083e32b200e35fdadc0976da6dc3d68ae1d16e71b4c999fa45fa52a4b",
+      "gufo_mtp_sha256": "5086c1c083e32b200e35fdadc0976da6dc3d68ae1d16e71b4c999fa45fa52a4b",
+      "hipengine_ar_sha256": "5086c1c083e32b200e35fdadc0976da6dc3d68ae1d16e71b4c999fa45fa52a4b",
+      "hipengine_mtp_sha256": "5086c1c083e32b200e35fdadc0976da6dc3d68ae1d16e71b4c999fa45fa52a4b",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": true
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "split": "train",
+      "gufo_ar_sha256": "f63489f74f4484e49c325bf782c2aba880af1f53acca602fd8aba168c9991da9",
+      "gufo_mtp_sha256": "f63489f74f4484e49c325bf782c2aba880af1f53acca602fd8aba168c9991da9",
+      "hipengine_ar_sha256": "f63489f74f4484e49c325bf782c2aba880af1f53acca602fd8aba168c9991da9",
+      "hipengine_mtp_sha256": "f63489f74f4484e49c325bf782c2aba880af1f53acca602fd8aba168c9991da9",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": true
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "split": "heldout",
+      "gufo_ar_sha256": "86426b56cf540cc9dcdea30e1d5c270c74f947d1f05e5ef8f5c58bb604793805",
+      "gufo_mtp_sha256": "86426b56cf540cc9dcdea30e1d5c270c74f947d1f05e5ef8f5c58bb604793805",
+      "hipengine_ar_sha256": "2a5cc8f895addc3b4e9b9ef0a30d3ff97e63329b55c5ecbd6804b21bf920e895",
+      "hipengine_mtp_sha256": "2a5cc8f895addc3b4e9b9ef0a30d3ff97e63329b55c5ecbd6804b21bf920e895",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": false
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "split": "train",
+      "gufo_ar_sha256": "e9be796a68ffd6f14f7283d75c00342d5157bbfe685ee3e1fa276836de231895",
+      "gufo_mtp_sha256": "e9be796a68ffd6f14f7283d75c00342d5157bbfe685ee3e1fa276836de231895",
+      "hipengine_ar_sha256": "e9be796a68ffd6f14f7283d75c00342d5157bbfe685ee3e1fa276836de231895",
+      "hipengine_mtp_sha256": "e9be796a68ffd6f14f7283d75c00342d5157bbfe685ee3e1fa276836de231895",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": true
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "split": "heldout",
+      "gufo_ar_sha256": "511dc55d21701c460f6ef4a0baa522f01d27489afa469b1d595381316e4a1acc",
+      "gufo_mtp_sha256": "511dc55d21701c460f6ef4a0baa522f01d27489afa469b1d595381316e4a1acc",
+      "hipengine_ar_sha256": "511dc55d21701c460f6ef4a0baa522f01d27489afa469b1d595381316e4a1acc",
+      "hipengine_mtp_sha256": "511dc55d21701c460f6ef4a0baa522f01d27489afa469b1d595381316e4a1acc",
+      "gufo_ar_eq_gufo_mtp": true,
+      "he_ar_eq_he_mtp": true,
+      "gufo_ar_eq_he_ar": true
+    }
+  ],
+  "summary": {
+    "gufo_ar_eq_gufo_mtp": true,
+    "he_ar_eq_he_mtp": true,
+    "gufo_ar_eq_he_ar": 9,
+    "prompt_count": 10,
+    "cross_engine_divergence": [
+      "general_ja_explain"
+    ],
+    "cross_engine_first_divergence": {
+      "id": "general_ja_explain",
+      "generated_token_index": 15,
+      "hipengine": "\u3084 (id 67813)",
+      "gufo": "\uff09 (closing paren, id not exposed by gufo CLI)",
+      "note": "tokens 0-14 identical; divergence at the 16th generated token; text compared byte-for-byte because gufo's CLI exposes only a sha256 of generated IDs"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+{"rep": 0, "prompt_n": 2481, "prompt_ms": 6522.588338, "prompt_per_second": 380.3704712661264, "predicted_n": 0, "predicted_per_second": 0, "cache_n": 0}
+{"rep": 1, "prompt_n": 0, "prompt_ms": 0, "prompt_per_second": 0, "predicted_n": 0, "predicted_per_second": 0, "cache_n": 2481}
+{"rows": [{"rep": 0, "prompt_n": 2481, "prompt_ms": 6522.588338, "prompt_per_second": 380.3704712661264, "predicted_n": 0, "predicted_per_second": 0, "cache_n": 0}, {"rep": 1, "prompt_n": 0, "prompt_ms": 0, "prompt_per_second": 0, "predicted_n": 0, "predicted_per_second": 0, "cache_n": 2481}]}

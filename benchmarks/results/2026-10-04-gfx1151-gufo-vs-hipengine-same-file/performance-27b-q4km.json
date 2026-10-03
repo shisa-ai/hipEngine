@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "kind": "gufo_vs_hipengine_27b_q4km_performance",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M"
+  },
+  "protocol": {
+    "gufo": "gufo bench -p <len> -n 128 -d 0 -r 2 -v (synthetic cycle tokens ((i%1000)+100)); pp = marginal rate of one batch at depth 0",
+    "hipengine_all_in_one": "scripts/qwen35_readme_sweep.py --workloads 512/128..64K/128 in ONE resident process (session sized 65666); token-id 9707 repeated; 1 warmup + 2 measured",
+    "hipengine_per_shape": "same harness, one process per shape (right-sized session)",
+    "hipengine_committed": "2026-09-12 artifact, one process per shape, 1 warmup + 3 measured",
+    "gufo_reps": 2,
+    "hipengine_reps": 2,
+    "caveat": "gufo pp512/1K/2K use context 4096, pp32K context 32769, pp64K context 65537; hipEngine all-in-one uses a 65666 session for every point. Prompt token sequences differ (synthetic cycle vs repeated id 9707)."
+  },
+  "host_state": "tuned=accelerator-performance governor=performance at start",
+  "rows": {
+    "512/128": {
+      "gufo_pp_tok_s": 383.53,
+      "gufo_pp_sd": 0.22,
+      "hipengine_all_in_one_pp_tok_s": 407.9891696084052,
+      "hipengine_all_in_one_pp_min": 407.69704381024644,
+      "hipengine_all_in_one_pp_max": 408.28129540656397,
+      "hipengine_all_in_one_tg_tok_s": 12.184935811574192,
+      "hipengine_per_shape_pp_tok_s": 357.10174390685944,
+      "hipengine_per_shape_pp_min": 357.03145348702384,
+      "hipengine_per_shape_pp_max": 357.17203432669504,
+      "hipengine_per_shape_tg_tok_s": 12.188755991759358,
+      "hipengine_committed_pp_tok_s": 380.366,
+      "hipengine_committed_tg_tok_s": 12.213
+    },
+    "1K/128": {
+      "gufo_pp_tok_s": 392.36,
+      "gufo_pp_sd": 0.1,
+      "hipengine_all_in_one_pp_tok_s": 405.904814287524,
+      "hipengine_all_in_one_pp_min": 405.8216561481937,
+      "hipengine_all_in_one_pp_max": 405.9879724268543,
+      "hipengine_all_in_one_tg_tok_s": 11.9532340966467,
+      "hipengine_per_shape_pp_tok_s": 406.18430681591576,
+      "hipengine_per_shape_pp_min": 406.10316292764674,
+      "hipengine_per_shape_pp_max": 406.26545070418473,
+      "hipengine_per_shape_tg_tok_s": 11.960003959171736,
+      "hipengine_committed_pp_tok_s": 377.605,
+      "hipengine_committed_tg_tok_s": 11.98
+    },
+    "4K/128": {
+      "gufo_pp_tok_s": 382.74,
+      "gufo_pp_sd": 0.01,
+      "hipengine_all_in_one_pp_tok_s": 398.56082873716105,
+      "hipengine_all_in_one_pp_min": 398.53080845123765,
+      "hipengine_all_in_one_pp_max": 398.59084902308444,
+      "hipengine_all_in_one_tg_tok_s": 12.107231071089801,
+      "hipengine_per_shape_pp_tok_s": 398.81964514422987,
+      "hipengine_per_shape_pp_min": 398.68849092101107,
+      "hipengine_per_shape_pp_max": 398.9507993674487,
+      "hipengine_per_shape_tg_tok_s": 12.112807383346158,
+      "hipengine_committed_pp_tok_s": 361.497,
+      "hipengine_committed_tg_tok_s": 12.13
+    },
+    "32K/128": {
+      "gufo_pp_tok_s": 360.22,
+      "gufo_pp_sd": 0.03,
+      "hipengine_all_in_one_pp_tok_s": 293.9479697293339,
+      "hipengine_all_in_one_pp_min": 293.859800957575,
+      "hipengine_all_in_one_pp_max": 294.03613850109286,
+      "hipengine_all_in_one_tg_tok_s": 10.71588494934231
+    },
+    "64K/128": {
+      "gufo_pp_tok_s": 336.92,
+      "gufo_pp_sd": 0.09,
+      "hipengine_all_in_one_pp_tok_s": 256.990905399246,
+      "hipengine_all_in_one_pp_min": 256.92787646280686,
+      "hipengine_all_in_one_pp_max": 257.0539343356851,
+      "hipengine_all_in_one_tg_tok_s": 9.641944458651
+    }
+  },
+  "decode_at_depth": {
+    "gufo_tg128_d0": 12.11,
+    "gufo_tg128_d4096": 11.98,
+    "gufo_tg128_d16384": 11.52,
+    "gufo_pp2048_d4096": 386.21,
+    "gufo_pp2048_d16384": 366.24,
+    "hipengine_tg_4K": 12.107231071089801,
+    "hipengine_tg_32K": 10.71588494934231,
+    "hipengine_tg_64K": 9.641944458651,
+    "caveat": "gufo tg is at the depth prefix; hipEngine tg is after a full prompt of the named length"
+  }
+}

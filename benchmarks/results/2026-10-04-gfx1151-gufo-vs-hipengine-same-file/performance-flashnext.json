@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "kind": "gufo_vs_hipengine_flashnext_performance",
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "target_shard_sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082",
+  "our_sidecar_sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d",
+  "gufo_sidecar_sha256": "5ff54097406a905cf3a724c709124ceb0e3e10235ee862298969e91c96fa96e6",
+  "protocol": {
+    "gufo_ar": "gufo bench -p 512,1024,2048,4096 -n 128 -d 0 -r 2 -v",
+    "gufo_mtp": "same + --speculative mtp --mtp-model <gufo shared Q8_0> --draft-tokens 7",
+    "hipengine_ar": "qwen4exp_canonical_ar_bench.py hipengine (4 categories x p512/1K/4K, warm PLE cache, 1 warmup + 2 measured)",
+    "hipengine_mtp": "qwen4exp_journey_mtp_bench.py --engine hipengine --max-tokens 16 --budget 2 --repetitions 3 (10 category prompts, request wall incl. prefill)",
+    "note": "gufo pp/tg and hipEngine canonical pp/tg are same-shape but different harnesses; hipEngine journey MTP is request-wall, not pp/tg."
+  },
+  "gufo_sidecar_compat": "gufo REJECTED our sidecar: 'missing tensor blk.48.nextn.hc_head_norm.weight'; gufo's published shared sidecar was fetched (sha256 verified) and used for gufo MTP.",
+  "rows": {
+    "512": {
+      "gufo_ar_pp_tok_s": 1168.78,
+      "gufo_mtp_pp_tok_s": 1162.83,
+      "hipengine_ar_pp_mean_tok_s": 254.31421642292466,
+      "hipengine_ar_pp_range": [
+        252.59768652016226,
+        257.03371315681613
+      ],
+      "hipengine_ar_tg_mean_tok_s": 19.872405842311828,
+      "hipengine_ar_tg_range": [
+        19.68694752613149,
+        20.057563049606436
+      ]
+    },
+    "1024": {
+      "gufo_ar_pp_tok_s": 1510.14,
+      "gufo_mtp_pp_tok_s": 1494.8,
+      "hipengine_ar_pp_mean_tok_s": 251.64592598197856,
+      "hipengine_ar_pp_range": [
+        248.54218901149812,
+        255.29040238135946
+      ],
+      "hipengine_ar_tg_mean_tok_s": 17.774658107735593,
+      "hipengine_ar_tg_range": [
+        16.952494426266185,
+        18.229649869795878
+      ]
+    },
+    "2048": {
+      "gufo_ar_pp_tok_s": 1717.6,
+      "gufo_mtp_pp_tok_s": 1699.47
+    },
+    "4096": {
+      "gufo_ar_pp_tok_s": 1695.37,
+      "gufo_mtp_pp_tok_s": 1674.76,
+      "hipengine_ar_pp_mean_tok_s": 241.52891995275368,
+      "hipengine_ar_pp_range": [
+        238.77839409369506,
+        244.34920329509072
+      ],
+      "hipengine_ar_tg_mean_tok_s": 15.067975190915822,
+      "hipengine_ar_tg_range": [
+        13.88151403105271,
+        16.610440840030485
+      ]
+    }
+  },
+  "decode_d0": {
+    "gufo_ar_tg128": 26.71,
+    "gufo_mtp_tg128": 39.24,
+    "gufo_mtp_over_ar": 1.469112691875702
+  },
+  "hipengine_journey_request_wall": {
+    "deterministic": true,
+    "exact_vs_own_ar": true,
+    "full": {
+      "ar_seconds": 30.297087016515434,
+      "mtp_seconds": 37.825941974297166,
+      "ar_request_tok_s": 15.843107284153893,
+      "mtp_request_tok_s": 12.689703810315189,
+      "mtp_over_ar": 0.8009605428227641
+    },
+    "train": {
+      "ar_seconds": 17.925755468197167,
+      "mtp_seconds": 22.25469653401524,
+      "ar_request_tok_s": 16.06626847671513,
+      "mtp_request_tok_s": 12.94108861739839,
+      "mtp_over_ar": 0.8054819098880323
+    },
+    "category:code": {
+      "ar_seconds": 11.963023851625621,
+      "mtp_seconds": 14.896650675684214,
+      "ar_request_tok_s": 16.049453915776457,
+      "mtp_request_tok_s": 12.888803273973618,
+      "mtp_over_ar": 0.8030680259659208
+    },
+    "heldout": {
+      "ar_seconds": 12.371331548318267,
+      "mtp_seconds": 15.571245440281928,
+      "ar_request_tok_s": 15.519752198873054,
+      "mtp_request_tok_s": 12.330420243926469,
+      "mtp_over_ar": 0.7944985258734882
+    },
+    "category:general_en": {
+      "ar_seconds": 5.730189158581197,
+      "mtp_seconds": 6.963947854936123,
+      "ar_request_tok_s": 16.75337363972287,
+      "mtp_request_tok_s": 13.785284151999235,
+      "mtp_over_ar": 0.8228363103723667
+    },
+    "category:general_ja": {
+      "ar_seconds": 5.740495030768216,
+      "mtp_seconds": 7.0739561682567,
+      "ar_request_tok_s": 16.72329642050973,
+      "mtp_request_tok_s": 13.570906818844223,
+      "mtp_over_ar": 0.8114971162145183
+    },
+    "category:mixed_ja_en": {
+      "ar_seconds": 6.8633789755403996,
+      "mtp_seconds": 8.89138727542013,
+      "ar_request_tok_s": 13.987279493398699,
+      "mtp_request_tok_s": 10.79696531331933,
+      "mtp_over_ar": 0.7719131742820297
+    }
+  }
+}
