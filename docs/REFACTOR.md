@@ -690,6 +690,53 @@
 - Diagnostic layer/shape hooks live only in scripts and must clear both
   graph and host dispatch caches. Remove the temporary hooks after the
   remaining arithmetic families have been independently qualified.
+- **Per-selector cost is now measured, and it does not match the recovery's
+  headline cost (2026-10-04).**
+  `benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/` ran the
+  nine disabled selectors individually and all eight prefill ones together on
+  `code-p4096` (source `aa49c0850`, 2 measured reps, `accelerator-performance`):
+  baseline median prefill **15.544 s**, `GR_WIDE` **+1.841 s (1.1344x)**,
+  `GR_IU8`+`GR_IU8_DOWN` **+1.717 s (1.1241x)**, `GR_IU8` +1.590 s,
+  `GR_IU8_DOWN` +0.146 s, and every other selector a loss or inside +/-0.4%
+  (`Q8_MMQ_PREFILL` -0.539 s, `PRODUCTION_MOE_PREFILL` -0.550 s,
+  `Q4_IU8_PREFILL` -2.822 s). **Enabling all of them at once is worth +1.7%.**
+  The recorded recovery cost is `-40.94/-41.89/-54.53%` prefill
+  (`docs/EXECUTION-PROFILES.md` §2.9). The two are not the same measurement
+  (§2.9 is weighted p512/p1024/p4096 on the `gguf_q4_k_m` profile; this is one
+  case under post-binder overrides on the UD profile), so the discrepancy is
+  **unresolved**, but the recovery baseline itself improved 1.52x since the
+  2026-09-16 sweep (23.648 s -> 15.544 s) and the recovery profile's own
+  optimization appears to have closed most of the gap. **Re-derive §2.9 at
+  HEAD before treating its product-policy framing as current.** No selector is
+  re-admitted: the three material wins are all blocked on numerics (see the
+  GR sections above), and the remaining six are losses or noise. The reachable
+  value is the wide tile's bit-exact retile, not a re-admission.
+
+## Disabled-Selector Sweep Harness Duplication (2026-10-04)
+
+- **Two harnesses answer the same question and only one was ever run.**
+  `scripts/qwen4exp_disabled_family_sweep.py` produced the 2026-09-16
+  recoverable-time artifacts; `scripts/qwen4exp_disabled_selector_ranking.py`
+  (written 2026-09-15, with unit guards in
+  `tests/test_unit_qwen4exp_disabled_selector_ranking.py`) had never been run
+  until 2026-10-04. They carry different arm sets and different report schemas
+  (`qwen4exp_profile_gap_window` children vs a `ranking.json` roll-up).
+- The ranking harness is the one now used, because it records the per-arm
+  `effective_route` and `effective_route_missing_keys` and writes a roll-up
+  report; the family sweep writes per-arm JSON only. **Remove the family sweep
+  once its 2026-09-16 artifacts are no longer the cited evidence for anything**,
+  or fold its extra arms (`Q8_IU8_WMM`, `Q4_DP4A64`, `Q8_WMMA_LAYERS_*`) into
+  the ranking harness. Do not delete it while
+  `benchmarks/results/2026-09-16-disabled-family-recoverable-time/README.md`
+  and `2026-09-16-q8-wmma-layers-recoverable-time/README.md` still cite it as
+  their driver.
+- **The 2026-09-16 ranking must not be read as an opportunity list.** Its
+  fallback was 23.648 s against 15.544 s today, and its ordering inverted:
+  `Q8_MMQ_PREFILL` 1.203x -> **0.9665x**, `Q4_IU8_PREFILL` 0.997x ->
+  **0.8463x**, the GDN pair 1.010x/1.005x -> 0.9988x/0.9960x. Its top entry
+  `Q8_IU8_WMM` (1.388x) is closed independently. The artifact's 2026-09-30
+  correction already says the savings are "the difference between the recovery
+  profile and the production profile", which is the same warning.
 
 ## Journey Q8 Residual-Weight Candidate: Removed
 
