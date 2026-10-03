@@ -1978,6 +1978,48 @@ numeric 128K row is carried forward. Evidence:
 
 ### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
 
+#### Staged-attention PV specialization (2026-10-03)
+
+Production uses strict-order staged attention. Specializing the resident GQA
+query rows removes dynamic row checks from its weighted-sum stage without
+changing arithmetic, allocation, or the three-stage launch sequence. On physical
+host **zbook / Radeon 8060S (gfx1151)**, synthetic BF16 causal blocks measure:
+
+| Query rows / keys | Head dim / KV heads / window | Baseline ms | Specialized ms | Latency reduction |
+| --- | --- | ---: | ---: | ---: |
+| 512 / 513 | 256 / 8 / 1024 | 3.667 | 2.722 | 25.8% |
+| 512 / 513 | 512 / 2 / 0 | 5.158 | 3.947 | 23.5% |
+| 512 / 2053 | 256 / 8 / 1024 | 16.242 | 13.266 | 18.3% |
+| 512 / 2053 | 512 / 2 / 0 | 26.403 | 22.686 | 14.1% |
+| 512 / 8191 | 256 / 8 / 1024 | 16.155 | 13.424 | 16.9% |
+| 512 / 8191 | 512 / 2 / 0 | 112.772 | 100.557 | 10.8% |
+| 127 / 17000 | 256 / 8 / 1024 | 3.931 | 3.032 | 22.9% |
+| 127 / 17000 | 512 / 2 / 0 | 61.799 | 54.468 | 11.9% |
+
+Each row has 16 query heads. Values are pooled medians from three seven-pair
+AB/BA blocks, timed with default-stream HIP events on shared buffers and reusable
+workspace, with two configured warmups plus untimed setup/capture launches per
+arm. The baseline is the prior staged library,
+not WMMA attention. Independent captures poison output and workspace with NaNs;
+all outputs are finite and bit-identical. These are synthetic kernel-subwindow
+measurements, not model throughput or a context-scaling curve.
+
+A same-residency, fixed-one-output-token runner diagnostic measures prefill at
+513/2053/8191 tokens as **0.542 → 0.524 s**, **3.072 → 2.844 s** and
+**16.573 → 15.232 s** (3.3/7.4/8.1% lower latency), three paired samples per
+arm after a full-shape warmup. Both arms use frozen-library bindings and produce
+the same IDs. A separate unmodified `LLM.generate()` request at 1537/4 confirms
+staged selection; a public profiler names the specialized two-/eight-row PV
+kernels. The 100 primitive checks pass, and two saved 64-row strict teacher
+chains match full logits bit-for-bit. No new decode, model-topline, llama.cpp
+comparison or 256K performance result is claimed.
+[Commands, samples and checks](results/2026-10-03-gemma4-gfx1151-staged-pv-resident-rows.json).
+
+#### Model-throughput measurement (2026-09-29)
+
+The following model-throughput row was measured before the 2026-10-03 staged-PV
+specialization; it is not a measurement of that change.
+
 Dense T16 Q8 WMMA prefill recomputes non-finite accumulator elements in FP32
 from the original activation, so oversized GeGLU inputs do not require disabling
 the dense down-projection fast path. A same-residency 512–4096 prompt diagnostic

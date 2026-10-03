@@ -420,6 +420,130 @@ def test_returned_plan_names_the_decomposition_that_ran(staged_library):
     assert "pv_grid=3x2x1" in plan.describe()
 
 
+# --- the PV variant dispatch -------------------------------------------------
+
+# The variant the PV launcher selects is a host-visible fact: the kernel exports
+# the resident row count it dispatches on. Declared here rather than in the
+# wrapper module because it is a diagnostic for this test, not part of the
+# launcher's calling contract.
+_SYMBOL_PV_RESIDENT_ROWS = "hipengine_gemma4_attention_staged_pv_resident_rows"
+
+
+def _pv_resident_rows(library, num_heads: int, num_kv_heads: int) -> int:
+    """The resident row count the PV launcher would use for this geometry."""
+
+    import ctypes
+
+    from hipengine.core.ctypes_cache import signed_kernel_fn
+
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_PV_RESIDENT_ROWS,
+        (ctypes.c_int64, ctypes.c_int64),
+        ctypes.c_int64,
+    )
+    return int(fn(int(num_heads), int(num_kv_heads)))
+
+
+# (num_heads, num_kv_heads, the resident row count the launcher must select)
+_PV_VARIANT_TABLE = [
+    (4, 4, 1),  # ratio 1: one row per CTA, the degenerate exact case
+    (16, 16, 1),
+    (16, 8, 2),  # the sliding layer's geometry, whole group resident
+    (2, 1, 2),
+    (4, 1, 4),
+    (16, 2, 8),  # the full layer's geometry, whole group resident
+    (8, 1, 8),
+    (32, 2, 8),  # ratio 16: two full groups, generic kernel
+    (24, 2, 8),  # ratio 12: a full group then a partial one, generic kernel
+    (6, 2, 8),  # ratio 3: a single partial group, generic kernel
+    (20, 2, 8),  # ratio 10, generic kernel
+]
+
+
+def test_pv_variant_dispatch_is_pinned(staged_library):
+    """Which PV kernel runs is read from the kernel, not inferred from timing.
+
+    The GQA ratios 1, 2, 4 and 8 fill the resident tile exactly, so their whole
+    group is in one CTA, their row count is a compile-time constant and the
+    per-key ``r >= rows`` predicate is dead. Every other ratio keeps the generic
+    kernel with its runtime row count. The launcher dispatches on the same table
+    this export reads, so the variant a caller names here is the variant that
+    ran -- and ``resident == rows_per_head`` is the test for the exact kind.
+    """
+
+    for num_heads, num_kv_heads, resident in _PV_VARIANT_TABLE:
+        rows_per_head = num_heads // num_kv_heads
+        assert _pv_resident_rows(staged_library, num_heads, num_kv_heads) == resident
+        plan = staged.staged_plan(
+            tokens=1, keys=64, num_heads=num_heads, num_kv_heads=num_kv_heads,
+            head_dim=256,
+        )
+        # The variant changes the kernel body only: the grid the plan reports is
+        # the one the launch uses either way.
+        assert plan.rows_per_head == rows_per_head
+        assert plan.row_groups == -(-rows_per_head // staged.MAX_ROWS_PER_BLOCK)
+        assert plan.pv_grid == (1, num_kv_heads, plan.row_groups)
+        assert (resident == rows_per_head) == (rows_per_head in (1, 2, 4, 8))
+    # A geometry the launcher refuses answers 0, like the workspace export's
+    # invalid sentinel, instead of naming a variant that cannot run.
+    for num_heads, num_kv_heads in ((3, 2), (0, 1), (2, 0), (-2, 1), (2**31, 1)):
+        assert _pv_resident_rows(staged_library, num_heads, num_kv_heads) == 0
+    # Every exact variant has a bitwise parity case above, and at least one
+    # generic ratio does too, so no dispatch path is without a reference.
+    parity_ratios = {
+        num_heads // num_kv_heads for _, _, num_heads, num_kv_heads, *_ in _PARITY_SHAPES
+    }
+    assert {1, 2, 4, 8} <= parity_ratios
+    assert parity_ratios - {1, 2, 4, 8}
+
+
+def test_exact_and_generic_variants_agree_on_one_row_group(staged_library):
+    """The specialization is a code shape, not a different result.
+
+    A 16q/2kv launch (ratio 8) runs the exact variant over its single row group.
+    A 32q/2kv launch (ratio 16) runs the generic kernel over two full groups,
+    whose runtime row count is 8 as well, so its per-key ``r >= rows`` predicate
+    never fires either. Query heads 0..7 of both launches read KV head 0 (the
+    ratio is wider than the group in one and not the other, but the first group
+    starts at head 0 either way) and the same Q, K and V values, so the two
+    variants must produce the same bits for them. That makes "only the predicate
+    differs" a checked statement about the two compiled kernels rather than a
+    claim about the source they share.
+    """
+
+    tokens, keys, head_dim, kv_heads = 2, 257, 512, 2
+    exact_heads, generic_heads = 16, 32
+    # The premise: one launch is exact and the other is not.
+    assert _pv_resident_rows(staged_library, exact_heads, kv_heads) == exact_heads // kv_heads
+    assert _pv_resident_rows(staged_library, generic_heads, kv_heads) == staged.MAX_ROWS_PER_BLOCK
+    assert generic_heads // kv_heads != staged.MAX_ROWS_PER_BLOCK
+
+    rng = np.random.default_rng(41)
+    key = rng.standard_normal((keys, kv_heads, head_dim), dtype=np.float32) * 0.7
+    value = rng.standard_normal((keys, kv_heads, head_dim), dtype=np.float32) * 0.7
+    query = rng.standard_normal((tokens, generic_heads, head_dim), dtype=np.float32) * 0.7
+    mask = _mask(tokens, keys, "holes", 0, 0, seed=8)
+
+    exact, exact_plan, _, _ = _run_staged(
+        (tokens, keys, exact_heads, kv_heads, head_dim), dtype="f32", mask=mask,
+        scale=1.0, window=0, row_offset=0, library=staged_library,
+        query=query[:, :exact_heads].copy(), key=key, value=value,
+    )
+    generic, generic_plan, _, _ = _run_staged(
+        (tokens, keys, generic_heads, kv_heads, head_dim), dtype="f32", mask=mask,
+        scale=1.0, window=0, row_offset=0, library=staged_library,
+        query=query, key=key, value=value,
+    )
+    assert exact_plan.pv_grid == (tokens, kv_heads, 1)
+    assert generic_plan.pv_grid == (tokens, kv_heads, 2)
+    assert np.isfinite(generic[:, :exact_heads]).all()
+    assert np.isfinite(exact).all()
+    # The shared row group: heads 0..7, KV head 0, in both launches.
+    _assert_bit_identical(exact[:, :exact_heads // kv_heads],
+                          generic[:, :exact_heads // kv_heads], "f32")
+
+
 # --- the oracle, past the strict kernel's ceiling ---------------------------
 
 
