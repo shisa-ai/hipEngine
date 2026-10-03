@@ -50,11 +50,19 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_live_gemma4_return_hidden_states_and_single_row_equivalence():
+@pytest.fixture
+def live_llm():
     import hipengine
 
     llm = hipengine.LLM(model=str(_TARGET))
-    runner = llm._get_text_generator()._ensure_runner()
+    try:
+        yield llm
+    finally:
+        llm.close()
+
+
+def test_live_gemma4_return_hidden_states_and_single_row_equivalence(live_llm):
+    runner = live_llm._get_text_generator()._ensure_runner()
     config = runner.weights.config
     hidden = int(config.hidden_size)
     vocab = int(config.vocab_size or 0)

@@ -34,8 +34,17 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_live_gemma4_explicit_mtp_request_fails_naming_the_capability():
+@pytest.fixture
+def live_llm():
     llm = LLM(model=str(_TARGET))
+    try:
+        yield llm
+    finally:
+        llm.close()
+
+
+def test_live_gemma4_explicit_mtp_request_fails_naming_the_capability(live_llm):
+    llm = live_llm
 
     with pytest.raises(NotImplementedError, match="speculative MTP"):
         llm.generate("Name one colour.", SamplingParams(speculative_mtp=True))
