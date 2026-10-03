@@ -318,7 +318,7 @@
       }
     },
     {
-      "name": "parallel_tool_calls_without_opt_in_non_streaming",
+      "name": "parallel_tool_calls_default_on_non_streaming",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
       "fake_outputs": [
@@ -327,6 +327,50 @@
       "request": {
         "model": "fake-model",
         "messages": [{"role": "user", "content": "Read two files."}],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "strict": true,
+              "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": false
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "tool_calls",
+        "finish_details": {
+          "reason": "tool_calls",
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "tool_call_tokens": 2
+        },
+        "tool_calls": [
+          {"name": "read", "arguments": {"path": "README.md"}},
+          {"name": "read", "arguments": {"path": "WORKLOG.md"}}
+        ],
+        "response_excludes": ["<tool_call>"]
+      }
+    },
+    {
+      "name": "parallel_tool_calls_false_rejected_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call><tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"WORKLOG.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Read two files."}],
+        "parallel_tool_calls": false,
         "tools": [
           {
             "type": "function",
