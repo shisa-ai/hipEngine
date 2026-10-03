@@ -1,0 +1,605 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_profile_gap_window",
+  "command": [
+    "qwen4exp_profile_gap.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--mode",
+    "prefill",
+    "--case-id",
+    "code-p4096",
+    "--execution-profile",
+    "production",
+    "--risk-diagnostics",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--output",
+    "/tmp/risk-mult-4.0.json"
+  ],
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "89264f9019d8ccacfb1d7acf6d46a1b3acd5796b",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "mode": "prefill",
+  "decode_output": null,
+  "profile": false,
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "prompt_file": null,
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "case": {
+    "id": "code-p4096",
+    "category": "code",
+    "prompt_tokens": 4096,
+    "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75"
+  },
+  "manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+  "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+  "fell_back_to_strict": false,
+  "execution_profile_requested": "production",
+  "execution_profile": "production",
+  "configuration_class": "named_profile",
+  "named_profile_intact": true,
+  "overrides": {},
+  "override_stage": "post_profile_binder_pre_measurement",
+  "bound_route_env": {
+    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "4.0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES": null,
+    "HIPENGINE_QWEN4_EXP_PLE_WARM": null,
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": "0,2,5,6,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_MOE_GRAPH": null,
+    "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_token_tile4_dense_exact"
+  },
+  "route_env": {
+    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "4.0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES": null,
+    "HIPENGINE_QWEN4_EXP_PLE_WARM": null,
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": "0,2,5,6,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_MOE_GRAPH": null,
+    "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_token_tile4_dense_exact"
+  },
+  "wall_seconds": [
+    17.04303993564099,
+    17.003437714651227,
+    16.99391768220812
+  ],
+  "lifecycle": {
+    "after_warmup": {
+      "current_allocated_bytes": 83612430088,
+      "peak_allocated_bytes": 83612430088,
+      "total_allocated_bytes": 83664858896,
+      "total_freed_bytes": 52428808,
+      "active_allocations": 1622,
+      "peak_allocations": 1622
+    },
+    "after_measurement": {
+      "current_allocated_bytes": 83612430088,
+      "peak_allocated_bytes": 83612430088,
+      "total_allocated_bytes": 83664858896,
+      "total_freed_bytes": 52428808,
+      "active_allocations": 1622,
+      "peak_allocations": 1622
+    },
+    "after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 83612430088,
+      "total_allocated_bytes": 83664858896,
+      "total_freed_bytes": 83664858896,
+      "active_allocations": 0,
+      "peak_allocations": 1622
+    },
+    "steady_allocation_growth": 0,
+    "steady_allocated_byte_growth": 0,
+    "passed": true
+  },
+  "token_id": 248068,
+  "logits_sha256": "ab7e836698b1b395a1dba2bd3cb85068109f67e4c250de14db70e46a943b7ba0",
+  "runtime_census": {
+    "calls": {
+      "memset": 4575,
+      "memcpy": 2526,
+      "memcpy_async": 288,
+      "device_synchronize": 6
+    },
+    "bytes": {
+      "memset": 665317968,
+      "memcpy": 131338656,
+      "memcpy_async": 2363328
+    },
+    "sizes": {
+      "memset": {
+        "2048": 2304,
+        "4": 2184,
+        "4194304": 72,
+        "113246208": 3,
+        "5898240": 3,
+        "368640": 3,
+        "20480": 3,
+        "16": 3
+      },
+      "memcpy": {
+        "4": 1128,
+        "8": 768,
+        "4096": 600,
+        "5242880": 24,
+        "20480": 3,
+        "993280": 3
+      },
+      "memcpy_async": {
+        "16408": 144,
+        "4": 144
+      }
+    },
+    "memcpy_kinds": {
+      "memcpy": {
+        "1": 1272,
+        "2": 1251,
+        "3": 3
+      },
+      "memcpy_async": {
+        "3": 288
+      }
+    },
+    "memcpy_size_kinds": {
+      "memcpy": {
+        "4:2": 1128,
+        "8:1": 648,
+        "4096:1": 600,
+        "8:2": 120,
+        "5242880:1": 24,
+        "20480:3": 3,
+        "993280:2": 3
+      },
+      "memcpy_async": {
+        "16408:3": 144,
+        "4:3": 144
+      }
+    }
+  },
+  "risk_diagnostics": {
+    "calls": 1504,
+    "by_role": {
+      "q4_iu8_exact:expert_gate_up": {
+        "calls": 1504,
+        "outputs": 9856614400,
+        "risk": 70167220,
+        "max_repair_rate": 0.008057403564453124,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007118795273151804
+      }
+    },
+    "by_layer": {
+      "q4_iu8_exact:expert_gate_up:layers.0.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1553520,
+        "max_repair_rate": 0.007439117431640625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007407760620117188
+      },
+      "q4_iu8_exact:expert_gate_up:layers.1.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1427712,
+        "max_repair_rate": 0.006832122802734375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006807861328125
+      },
+      "q4_iu8_exact:expert_gate_up:layers.10.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1442420,
+        "max_repair_rate": 0.007031097412109375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006877994537353516
+      },
+      "q4_iu8_exact:expert_gate_up:layers.11.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1481456,
+        "max_repair_rate": 0.007193756103515625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007064132690429687
+      },
+      "q4_iu8_exact:expert_gate_up:layers.12.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1521200,
+        "max_repair_rate": 0.0074066162109375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.0072536468505859375
+      },
+      "q4_iu8_exact:expert_gate_up:layers.13.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1476864,
+        "max_repair_rate": 0.007307586669921875,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007042236328125
+      },
+      "q4_iu8_exact:expert_gate_up:layers.14.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1463120,
+        "max_repair_rate": 0.007144927978515625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006976699829101563
+      },
+      "q4_iu8_exact:expert_gate_up:layers.15.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1450168,
+        "max_repair_rate": 0.007088775634765625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006914939880371094
+      },
+      "q4_iu8_exact:expert_gate_up:layers.16.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1538064,
+        "max_repair_rate": 0.0075018310546875,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007334060668945312
+      },
+      "q4_iu8_exact:expert_gate_up:layers.17.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1554640,
+        "max_repair_rate": 0.007661895751953125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007413101196289062
+      },
+      "q4_iu8_exact:expert_gate_up:layers.18.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1551748,
+        "max_repair_rate": 0.007556610107421875,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007399311065673828
+      },
+      "q4_iu8_exact:expert_gate_up:layers.19.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1561388,
+        "max_repair_rate": 0.0076171875,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007445278167724609
+      },
+      "q4_iu8_exact:expert_gate_up:layers.20.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1583388,
+        "max_repair_rate": 0.007696685791015625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.0075501823425292965
+      },
+      "q4_iu8_exact:expert_gate_up:layers.21.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1571020,
+        "max_repair_rate": 0.007635345458984375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007491207122802735
+      },
+      "q4_iu8_exact:expert_gate_up:layers.22.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1625184,
+        "max_repair_rate": 0.007940216064453125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007749481201171875
+      },
+      "q4_iu8_exact:expert_gate_up:layers.23.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1592980,
+        "max_repair_rate": 0.007678375244140625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.00759592056274414
+      },
+      "q4_iu8_exact:expert_gate_up:layers.24.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1500104,
+        "max_repair_rate": 0.007363128662109375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007153053283691407
+      },
+      "q4_iu8_exact:expert_gate_up:layers.25.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1538136,
+        "max_repair_rate": 0.007672882080078125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007334403991699219
+      },
+      "q4_iu8_exact:expert_gate_up:layers.26.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1509340,
+        "max_repair_rate": 0.00747161865234375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007197093963623047
+      },
+      "q4_iu8_exact:expert_gate_up:layers.27.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1540488,
+        "max_repair_rate": 0.007628021240234375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007345619201660156
+      },
+      "q4_iu8_exact:expert_gate_up:layers.28.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1635148,
+        "max_repair_rate": 0.008057403564453124,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007796993255615234
+      },
+      "q4_iu8_exact:expert_gate_up:layers.29.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1485916,
+        "max_repair_rate": 0.00746368408203125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007085399627685547
+      },
+      "q4_iu8_exact:expert_gate_up:layers.3.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1464460,
+        "max_repair_rate": 0.00710479736328125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.0069830894470214845
+      },
+      "q4_iu8_exact:expert_gate_up:layers.30.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1482188,
+        "max_repair_rate": 0.0073809814453125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007067623138427734
+      },
+      "q4_iu8_exact:expert_gate_up:layers.31.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1495080,
+        "max_repair_rate": 0.00745819091796875,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007129096984863281
+      },
+      "q4_iu8_exact:expert_gate_up:layers.32.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1547128,
+        "max_repair_rate": 0.007676849365234375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007377281188964844
+      },
+      "q4_iu8_exact:expert_gate_up:layers.33.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1549508,
+        "max_repair_rate": 0.00763824462890625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007388629913330078
+      },
+      "q4_iu8_exact:expert_gate_up:layers.34.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1537764,
+        "max_repair_rate": 0.0077093505859375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007332630157470703
+      },
+      "q4_iu8_exact:expert_gate_up:layers.35.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1540208,
+        "max_repair_rate": 0.007600860595703125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.0073442840576171875
+      },
+      "q4_iu8_exact:expert_gate_up:layers.36.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1487092,
+        "max_repair_rate": 0.007312774658203125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007091007232666016
+      },
+      "q4_iu8_exact:expert_gate_up:layers.37.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1504424,
+        "max_repair_rate": 0.007368316650390625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007173652648925781
+      },
+      "q4_iu8_exact:expert_gate_up:layers.38.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1558300,
+        "max_repair_rate": 0.0076019287109375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007430553436279297
+      },
+      "q4_iu8_exact:expert_gate_up:layers.39.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1509412,
+        "max_repair_rate": 0.0073187255859375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.0071974372863769535
+      },
+      "q4_iu8_exact:expert_gate_up:layers.4.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1419700,
+        "max_repair_rate": 0.0068951416015625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006769657135009766
+      },
+      "q4_iu8_exact:expert_gate_up:layers.40.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1456164,
+        "max_repair_rate": 0.00706787109375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006943531036376953
+      },
+      "q4_iu8_exact:expert_gate_up:layers.41.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1465496,
+        "max_repair_rate": 0.007158660888671875,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006988029479980468
+      },
+      "q4_iu8_exact:expert_gate_up:layers.42.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1452404,
+        "max_repair_rate": 0.00698883056640625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006925601959228516
+      },
+      "q4_iu8_exact:expert_gate_up:layers.43.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1482512,
+        "max_repair_rate": 0.007264556884765625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007069168090820313
+      },
+      "q4_iu8_exact:expert_gate_up:layers.44.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1414060,
+        "max_repair_rate": 0.006967926025390625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.0067427635192871095
+      },
+      "q4_iu8_exact:expert_gate_up:layers.45.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1378032,
+        "max_repair_rate": 0.006837921142578125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006570968627929687
+      },
+      "q4_iu8_exact:expert_gate_up:layers.46.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1333724,
+        "max_repair_rate": 0.00651153564453125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006359691619873047
+      },
+      "q4_iu8_exact:expert_gate_up:layers.47.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1286624,
+        "max_repair_rate": 0.006245269775390625,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006135101318359375
+      },
+      "q4_iu8_exact:expert_gate_up:layers.5.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1508792,
+        "max_repair_rate": 0.007300872802734375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.007194480895996094
+      },
+      "q4_iu8_exact:expert_gate_up:layers.6.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1435588,
+        "max_repair_rate": 0.00691925048828125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006845417022705078
+      },
+      "q4_iu8_exact:expert_gate_up:layers.7.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1455384,
+        "max_repair_rate": 0.00713165283203125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006939811706542969
+      },
+      "q4_iu8_exact:expert_gate_up:layers.8.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1371220,
+        "max_repair_rate": 0.00678009033203125,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006538486480712891
+      },
+      "q4_iu8_exact:expert_gate_up:layers.9.expert_gate": {
+        "calls": 32,
+        "outputs": 209715200,
+        "risk": 1427952,
+        "max_repair_rate": 0.00700531005859375,
+        "over_capacity_calls": 0,
+        "aggregate_repair_rate": 0.006809005737304688
+      }
+    }
+  },
+  "wall_summary": {
+    "count": 3,
+    "sum": 51.04039533250034,
+    "mean": 17.013465110833447,
+    "median": 17.003437714651227,
+    "min": 16.99391768220812,
+    "max": 17.04303993564099,
+    "tok_s": 240.7504863540022
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83612430088,
+    "total_allocated_bytes": 83664858896,
+    "total_freed_bytes": 83664858896,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  }
+}
