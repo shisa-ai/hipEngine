@@ -1,0 +1,69 @@
+{
+ "host": "gfx1151 Strix Halo Radeon 8060S",
+ "route": "shipping AR (--public-ar-profile)",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "quant": "gguf_ud_q4_k_m",
+ "protocol": "one persistent session, warmup 1, measured 1, prompt 512, 32 decode tokens, GPU stage recorder",
+ "ab_mechanism": "HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8=0 (baseline) vs =1 (patched); one tree, one session shape",
+ "runs": {
+  "baseline": {
+   "decode_tok_s": 53.42468143576902,
+   "prefill_tok_s": 1410.501005140994,
+   "stages_ms_per_32tok": {
+    "decode_input_setup": 2.8605851117122536,
+    "decode_linear_attn_norm": 2.898887886985272,
+    "decode_linear_attn_qkv_gate": 137.18216611561968,
+    "decode_linear_attn_alpha_beta": 9.700230437831884,
+    "decode_linear_attn_conv": 6.353030758441041,
+    "decode_linear_attn_gdn": 20.644624787095484,
+    "decode_linear_attn_ssm_out": 49.583408476104594,
+    "decode_ffn_post_norm_residual": 12.111291453762146,
+    "decode_ffn_moe_router": 24.513054804127844,
+    "decode_ffn_moe_selected": 125.72736198777672,
+    "decode_ffn_moe_shared_gate_up": 26.122633002705136,
+    "decode_ffn_moe_shared_down": 15.904177938082357,
+    "decode_ffn_moe_combine": 14.923995591624076,
+    "decode_full_attn_norm": 0.5967738703536719,
+    "decode_full_attn_qkv_head_norm_rope": 39.58100390742411,
+    "decode_full_attn_kv_write": 1.5840096182747214,
+    "decode_full_attn_core_gate": 23.12986674681895,
+    "decode_full_attn_output": 17.038332832381524,
+    "decode_output_norm": 0.2548442039875764,
+    "decode_lm_head_sample": 60.416020438833776
+   }
+  },
+  "patched": {
+   "decode_tok_s": 54.365188880470974,
+   "prefill_tok_s": 1410.4725140914463,
+   "stages_ms_per_32tok": {
+    "decode_input_setup": 2.4937080452860436,
+    "decode_linear_attn_norm": 2.773359382827372,
+    "decode_linear_attn_qkv_gate": 137.1119226530408,
+    "decode_linear_attn_alpha_beta": 9.675583608856831,
+    "decode_linear_attn_conv": 6.223464582707145,
+    "decode_linear_attn_gdn": 20.584871255385234,
+    "decode_linear_attn_ssm_out": 49.262759242560854,
+    "decode_ffn_post_norm_residual": 12.036108606352066,
+    "decode_ffn_moe_router": 24.4598336839996,
+    "decode_ffn_moe_selected": 117.13960524997498,
+    "decode_ffn_moe_shared_gate_up": 25.84382326420198,
+    "decode_ffn_moe_shared_down": 15.864823164011627,
+    "decode_ffn_moe_combine": 14.891734295160798,
+    "decode_full_attn_norm": 0.5953712052900508,
+    "decode_full_attn_qkv_head_norm_rope": 39.62112012824367,
+    "decode_full_attn_kv_write": 1.5731089069231539,
+    "decode_full_attn_core_gate": 23.067107504258093,
+    "decode_full_attn_output": 17.02647029355776,
+    "decode_output_norm": 0.2562468690511973,
+    "decode_lm_head_sample": 60.32448652439634
+   }
+  }
+ },
+ "selected_stage_delta_pct": -6.830459656535737,
+ "decode_delta_pct": 1.7604362242809035,
+ "prefill_delta_pct": -0.0020199240868268298,
+ "stage_saving_us_per_token": 268.3673980563044,
+ "predicted_step_delta_pct": 1.433744274890428,
+ "note": "delegated run independently read 125.715 -> 117.215 ms/32tok (-6.76%) and 53.598 -> 54.327 tok/s (+1.36%)",
+ "command": "source /tmp/reprof/env.sh && PYTHONPATH=/home/lhl/hipEngine $PY /tmp/reprof/run_q4tile8_ab.py {baseline,patched} --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --prompt-length 512 --decode-tokens 32 --warmup-runs 1 --measured-runs 1 --persistent-session --gpu-stage-timings --public-ar-profile"
+}

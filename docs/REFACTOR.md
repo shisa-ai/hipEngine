@@ -8237,3 +8237,28 @@ Two consequences worth knowing:
 - Removal condition: keep the conservative resolution, but make the effective
   route visible on the session (it already is, via `fastpath_safety`) and state
   the required kwargs in the resident-session docstring.
+
+## Selected Q4_K T16 gate+up tile8 owner (2026-10-03)
+
+- Added `HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8` (default on) in
+  `qwen35_gguf_runner._launch_selected_raw_gguf_moe_pair_silu`. It routes the
+  c1 selected Q4_K gate+up pair to
+  `gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out` instead of the
+  16-column `gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out`. Setting the
+  variable to `0` restores the 16-column owner.
+- The two owners are byte-identical: both launch 128 threads, so thread K
+  ownership (`k = tid`, `k = tid + 128`), the per-column
+  `d * scale * q - dmin * minv` expression, the 32-lane butterfly wave
+  reduction, the 4-sub-group cross-wave sum order, the BF16 round-trip, and the
+  fused SiLU are unchanged. The tile8 owner only covers 8 columns per
+  workgroup instead of 16. rocprofv3 at the production 2048x512x8 shape records
+  VGPR 200 -> 88, LDS 1024 -> 512, workgroups 32 -> 64.
+- The selector is read through `_env_flag`, which is not memoized, so the flag
+  costs one `os.environ.get` plus a strip and a set lookup per layer per step
+  (40/step on this model). The measured A/B already includes that cost and is
+  net positive, and the existing repo convention is per-call reads, so it is not
+  hoisted here.
+- Removal condition: keep the `=0` rollback through one decode campaign
+  checkpoint for bisection, then drop the selector, hoist the (now constant)
+  owner choice out of the per-layer path, and remove the 16-column wrapper once
+  the tile8 owner is the only qualified gfx1151 owner.

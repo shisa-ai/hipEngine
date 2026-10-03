@@ -62,6 +62,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_qmicro_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_q8_1x2_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out,
@@ -2710,6 +2711,49 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
     np.testing.assert_array_equal(q6_fused_down, q6_parallel)
     np.testing.assert_array_equal(q6_weighted, q6_weighted_ref)
     assert q6_counter == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_qwen_c1_selected_q4_tile8_matches_col16_production_bits(t16_selected_library) -> None:
+    """The tile8 owner splits each 16-column T16 tile across two workgroups; every
+    output column keeps the 16-column owner's thread K ownership, FMA order, wave
+    reduction, BF16 round-trip, and fused SiLU, so the output is byte-identical."""
+
+    x_rows = 1
+    rows = 8
+    in_features, out_features, num_experts = 2048, 512, 8
+    rng = np.random.default_rng(20261003)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.2, size=(x_rows, in_features)).astype(np.float32)
+    )
+    selected = np.array([0, 1, 2, 3, 4, 5, 6, 7], dtype=np.int64)
+    qa = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=29)
+    qb = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=43)
+    ta = repack_gguf_q4_k_tile16(qa).tiles
+    tb = repack_gguf_q4_k_tile16(qb).tiles
+
+    control = _run_direct_dual_silu(
+        gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    tile8 = _run_direct_dual_silu(
+        gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    assert rows == int(selected.size)
+    np.testing.assert_array_equal(tile8, control)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
