@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-02 UTC**
+Last updated: **2026-10-03 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -1501,6 +1501,17 @@ campaign completion gate, not a claim that its final step improved every row.
 Repeated 128K remains blocked by the documented later-pass lifecycle stall; no
 numeric 128K row is carried forward. Evidence:
 [`SH14-C1 completion gate`](results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
+
+**Host-state re-measurement (2026-10-03).** The rows above were measured while
+this host's `accelerator-performance` tuned profile was inactive, a state that
+drifted after 2026-09-05 and that X-8 also recorded. Re-measured on the same
+physical host (`55ea6c50...`) under the restored profile, prefill is higher at
+every depth (**+1.5% / +2.0% / +4.8% / +3.5%** at 512 / 4K / 32K / 64K) while
+decode is higher only at short context (**+4.5% / +2.7%**) and is **1.9-3.5%
+lower** at 32K / 64K. The two columns therefore have different signs and the
+published values above are left as measured rather than replaced; the prefill
+column is the one the host state explains. Evidence:
+[`host-state re-measurement`](results/2026-10-03-gfx1151-35b-a3b-gufo-reconciliation/README.md).
 
 ### Laguna S 2.1
 

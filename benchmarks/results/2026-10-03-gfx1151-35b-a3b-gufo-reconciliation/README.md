@@ -72,6 +72,18 @@ Harness rows, 3 measured runs:
 | --- | --- | --- |
 | 512/128 | 1369.49 -> **1390.25** (+1.5%) | 54.33 -> **56.78** (+4.5%) |
 | 4K/128 | 1430.21 -> **1459.48** (+2.0%) | 54.80 -> **56.29** (+2.7%) |
+| 32K/128 | 1144.71 -> **1199.62** (+4.8%) | 46.405 -> **45.54** (-1.9%) |
+| 64K/128 | 936.22 -> **969.26** (+3.5%) | 40.180 -> **38.78** (-3.5%) |
+
+**The host-state change is not uniformly positive, and the published rows must
+not be replaced wholesale.** Prefill improves at every depth measured
+(+1.5 / +2.0 / +4.8 / +3.5%), the direction expected if the fix removes
+host-side chunk-dispatch cost, but decode improves only at short context
+(+4.5 / +2.7%) and is **1.9-3.5% below** the published rows at 32K and 64K. The
+three samples span 0.05% (prefill) and 0.3% (decode) at 32K/64K, so both signs
+are outside the in-session spread. The long-context decode column is therefore
+not explained by the host state and the published 32K/64K decode values stand as
+measured.
 
 ### Decode is kernel-bound
 
@@ -179,7 +191,7 @@ fewer bytes/token) and ~1.06x achieved bandwidth.
 | `decode-route-stage-ab.json` | route x recorder 2x2 with full stage attribution |
 | `decode-graph-replay-ab-4k.json` | graph replay vs eager, 4K/128 |
 | `prefill-chunk-sweep-4k.json` | 512/1024/2048 chunk sweep with per-rep clocks |
-| `harness-512.json`, `harness-4k.json` | harness summaries under the fixed host state |
+| `harness-512.json`, `harness-4k.json`, `harness-32768.json`, `harness-65536.json` | harness summaries under the fixed host state |
 
 ## Limits
 
