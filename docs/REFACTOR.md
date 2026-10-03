@@ -8390,3 +8390,33 @@ Two consequences worth knowing:
   pipelined leaf, delete the `ROW_FIRST` parameter and its arm/test cases, and
   drop the flag once the DPP leaf is the only qualified gfx1151 owner for this
   tile shape.
+
+## Exact-iu8 risk multiplier: pinned at 4.0 in production, and why
+
+- `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is now **explicitly bound to `"4.0"`** in
+  `hipengine/generation/qwen4_exp_profiles.py`, which is the value the code default
+  already had. The binding is a pin, not a change: it stops a future edit to the
+  default in `_qwen4_exp_q4_iu8_risk_multiplier()` from silently moving the
+  production profile, and it puts the measured alternative at the binding site.
+- **The alternative was measured, gated and deliberately not taken.** 1.0 cuts the
+  repaired share of rows 3.40x and passes the production numerical gate with
+  3.3-6.4x margin, but its wall benefit does not survive the canonical protocol
+  (isolating harness -2.11%, canonical interleaved A/B/A flat with the 4.0 arm's
+  clean repetitions slightly ahead). Evidence and both halves of the reading:
+  `benchmarks/results/2026-10-04-qwen4exp-q4-iu8-risk-mult-1/README.md`.
+- **The gate candidate `q4_iu8_risk_mult_1` stays in
+  `scripts/qwen4exp_layer2_profile_gate.py`**, but note that its recorded artifact
+  was produced while production was still 4.0, so its teacher arm is the pre-change
+  default. Re-gating 1.0 or 0.5 later needs production bound back to 4.0 or an
+  explicitly different teacher.
+- **The real lever this exposed is the repair kernel's launch geometry.** The wall
+  falls 2.11% where a proportional model over the recorded 1370 ms share predicts
+  5.7%, because the pass launches over `risk_capacity = compact * 2 * ffn`
+  regardless of `risk_count`. Making it proportional to the queued count is worth
+  more than the multiplier and is orthogonal to the numerics question. This is the
+  entry to act on; the multiplier is parked behind it.
+- Removal condition for the explicit pin: once the repair pass is proportional to
+  `risk_count`, re-measure the multiplier on the canonical protocol in the same
+  session as the change, and either bind the winner or delete the env var and make
+  the chosen bound a named constant (keeping the strict path's 4.0 as a constant
+  rather than an environment string).

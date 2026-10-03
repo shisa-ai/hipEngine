@@ -1184,6 +1184,28 @@ this family, after the GR up retile (halving a modelled 90.3% re-read costs 16%)
 and the `HC-3` dead-store result (removing 4.2% of modelled traffic costs 2%).
 The 6.2x gap this kernel sits inside is not closable by any locality change.
 
+**The routed MoE block is the largest remaining prefill cost, and its repair pass is
+mostly fixed cost.** The block is 40.6% of a 4K prefill, and inside it a sparse exact
+repair pass costs 1370 ms - 8.6% of the whole prefill. That pass serves a Kahan-bound
+criterion whose multiplier defaulted to 4.0 against a screened safe floor of 0.5-1.
+Tightening it to 1.0 cuts the repaired share of rows from **0.7119% to 0.2092%,
+3.40x fewer**, and passes the production numerical gate with 3.3-6.4x aggregate
+margin (mean KL 3.039e-4 against 1e-3, p99 4.271e-3 against 2e-2, max 7.771e-3
+against 5e-2, top-1 0.99556), including **274x better mean KL than a previously
+rejected repair-free candidate on the `prefill_last` scope that rejected it**.
+**It is not the production default, because the wall benefit does not transfer:**
+the isolating harness reads -2.11% on `code-p4096` (17.014 -> 16.655 s, 0.2-0.3%
+within-arm spread), while an interleaved A/B/A over the four 4K cases in one session
+reads flat, with the 4.0 arm's clean repetitions about 0.6% above the 1.0 arms and a
+0.82% same-arm drift - no between-arm effect is resolvable. **The two readings
+reconcile, and that is the finding: the incidence is linear in the multiplier and the
+wall is not.** 3.40x fewer flagged rows buys 2.11% where a proportional model over
+the recorded 1370 ms share predicts 5.7%, because the repair kernel launches over
+`risk_capacity` regardless of `risk_count`. **A mostly fixed-cost pass cannot yield
+3.4x of anything, so the lever is the repair pass's launch geometry, not its
+threshold.**
+[Risk multiplier](results/2026-10-04-qwen4exp-q4-iu8-risk-mult-1/README.md).
+
 The limit is therefore not the tile shape. A probe holding the projection's own
 instruction mix (40 FMA and 105 integer instructions per iteration, from its
 disassembly) sustains **16467 GFLOP/s, 57.7% of the measured FP32 peak**. The

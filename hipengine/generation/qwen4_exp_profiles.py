@@ -812,6 +812,44 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             if production
             else ""
         ),
+        # `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is deliberately left at the
+        # code default 4.0, and the measured-and-gated alternative is recorded
+        # here so it is not re-derived.
+        #
+        # Tightening the Kahan risk bound to 1.0 - the top of the range the
+        # multiplier's own screening calls safe ("between 0.5 and 1 (below it,
+        # BF16 flips escape the repair)") - cuts the repaired share of rows
+        # **0.7119% -> 0.2092%** (3.40x fewer, over 1504 calls and 9.86e9
+        # outputs, with zero over-capacity calls) and passes the production
+        # numerical gate with 3.3-6.4x aggregate margin: mean KL 3.039e-4
+        # against 1e-3, p99 4.271e-3 against 2e-2, max 7.771e-3 against 5e-2,
+        # top-1 0.99556, `scope_failures: null`, determinism and isolation clean,
+        # including a 274x improvement on the `prefill_last` scope that rejected
+        # the repair-free sibling.
+        #
+        # It is still NOT bound, because the wall benefit does not survive the
+        # canonical protocol.  The isolating harness reads -2.11% on `code-p4096`
+        # (17.014 -> 16.655 s, three repetitions per arm, 0.2-0.3% within-arm
+        # spread), but the canonical twelve-case harness reads flat: an
+        # interleaved A/B/A over the four 4K cases gave A(1.0) 264.11, B(4.0)
+        # 259.46 and C(1.0) 266.30 tokens/s, where B's tail degraded 6%
+        # progressively (245.8 / 249.7 / 252.5 / 247.0 on its third repetitions),
+        # its clean repetitions read about 0.6% *above* the 1.0 arms, and the
+        # same-arm A-against-C drift is 0.82%.  No between-arm effect is
+        # resolvable at that spread.
+        #
+        # That is consistent with what this change itself measured: the incidence
+        # is linear in the multiplier and the wall is not, because the repair
+        # kernel launches over `risk_capacity` regardless of `risk_count`.  A
+        # mostly fixed-cost pass cannot yield 3.4x of anything, so -2.11% is
+        # harness-specific and **the real lever is the pass's launch geometry,
+        # not its threshold**.  Revisit this binding only alongside that fix, or
+        # with a longer interleaved run that rejects per-repetition outliers on a
+        # quiet machine.
+        #
+        # Evidence: benchmarks/results/2026-10-04-qwen4exp-q4-iu8-risk-mult-1/
+        # and the worklog entries 20261003T225747 and 20261003T234213.
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "4.0",
         # Certified column-warp GDN prefill suffix (supersedes peer-GDN).
         # Decode retains its separately tuned rows==1 owner.
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
