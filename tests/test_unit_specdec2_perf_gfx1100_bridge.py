@@ -141,7 +141,7 @@ def test_bridge_contract_accepts_complete_clean_strict_packet() -> None:
     cell = aggregate["cells"]["gguf:strict:c1:k3"]
     assert cell["arms"]["true_ar"]["complete_request_seconds"] == 60.0
     assert cell["arms"]["direct"]["complete_request_seconds"] == 30.0
-    assert cell["arms"]["staged"]["complete_request_seconds"] == 33.0
+    assert cell["arms"]["staged"]["complete_request_seconds"] == pytest.approx(33.0)
     assert cell["complete_speedup_vs_true_ar"]["direct"] == 2.0
     assert cell["complete_speedup_vs_true_ar"]["staged"] == pytest.approx(
         60.0 / 33.0
