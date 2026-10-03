@@ -1,0 +1,157 @@
+{
+  "kind": "gemma4_strict_score_localization",
+  "sources": {
+    "diagnostic_scores.hip": "2e315bca9853bacfa21001755ac782d914441b769916dcc9dbd8185c9300374d",
+    "gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+    "gemma4_attention_prefill_wmma.hip": "5a3f7fcc8a94fcaee6c4bafccd748396d259d1b82dcea4e3ebad146439a7c05b",
+    "gemma4_attention_prefill_wmma_full.hip": "e84bd60d0b14da25af4da8cad406d9d8613a5515e58366b0082539a9833eb511"
+  },
+  "loading": {
+    "resolve_s": 0.46692524303216487,
+    "load_s": 15.260109072900377,
+    "internal_load_s": 15.007942156982608,
+    "resolution": {
+      "_resolved_backend": "hip_gfx1151",
+      "_resolved_quant": "gguf_q4_k_m",
+      "_resolved_execution_profile": {
+        "profile": "production",
+        "manifest_sha256": "11bd3c240c725a4e9330801feff134153098d7ba2748a39c0fe9548a3a10ccf3",
+        "fell_back_to_strict": false
+      },
+      "generator_type": "SubmitPollTextGenerator"
+    },
+    "context_length": 8255,
+    "runner_capacity": 8255,
+    "max_block": 512
+  },
+  "arms": [
+    {
+      "arm": "strict_scores_residual_both",
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0021658251208135793,
+            "kl_p95": 0.004423581915822492,
+            "kl_p99": 0.08739575872005333,
+            "kl_max": 0.08739575872005333,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p99",
+              "kl_max"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 576,
+          "calls": 1950
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.011162708387856442,
+            "kl_p95": 0.07821869173431888,
+            "kl_p99": 0.193131108582796,
+            "kl_max": 0.193131108582796,
+            "top1_rate": 0.9375,
+            "top1_flips": 4,
+            "top1_flip_rows": [
+              9,
+              34,
+              46,
+              47
+            ],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 1,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max",
+              "top1_rate"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 1094,
+          "calls": 1980
+        }
+      ]
+    }
+  ],
+  "performance_claim": false,
+  "parent_commit": "be64fb573c50ca98df2161134f5a878d0fa92d2b",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. OPENBLAS_NUM_THREADS=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python /tmp/priority_exact_score.py",
+  "driver_sha256": "ce73205499a36b08e603263871523bdbcd8e4ad93eb7f95542029278d59db639",
+  "scope": "Two64-row saved strict teacher chains, identical prompts verified. Diagnostic only. Strict scoretree + residual P*V; online softmax and splitcombine retain changedarithmetic.",
+  "helper_checks": [
+    {
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "scale": 1.0,
+        "window": 1024,
+        "row_offset": 0
+      },
+      "sample": "lastqueryrow,allheads,allkeys",
+      "elements": 8192,
+      "bitwise_equal": true,
+      "maxabs": 0.0
+    },
+    {
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "scale": 1.0,
+        "window": 512,
+        "row_offset": 0
+      },
+      "sample": "lastqueryrow,allheads,allkeys",
+      "elements": 8192,
+      "bitwise_equal": true,
+      "maxabs": 0.0
+    }
+  ],
+  "helper_check_command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. OPENBLAS_NUM_THREADS=1 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python /tmp/priority_score_check.py",
+  "score_helper_source": "// External score-localization control; retains the in-tree strict dot helper.\n#include \"gemma4_attention.hip\"\ntemplate<int DIM>\n__global__ void diagnostic_strict_scores_kernel(const uint16_t* query, const uint16_t* key,\n    const uint8_t* mask, float* out, int64_t tokens, int64_t heads, int64_t kv_heads, int64_t keys) {\n  const int row=blockIdx.z, head=blockIdx.y, pos=blockIdx.x;\n  const int lane=threadIdx.x;\n  const int64_t idx=(static_cast<int64_t>(row)*heads+head)*keys+pos;\n  if (!mask[static_cast<int64_t>(row)*keys+pos]) {if(lane==0)out[idx]=-INFINITY;return;}\n  __shared__ float q[DIM];\n  for(int d=lane; d<DIM; d+=32) q[d]=gemma4_attn_bf16_bits_to_float(query[(static_cast<int64_t>(row)*heads+head)*DIM+d]);\n  __syncthreads();\n  const uint16_t* k=key+(static_cast<int64_t>(pos)*kv_heads+head/(heads/kv_heads))*DIM;\n  const float score=gemma4_warp_key_logit<uint16_t,DIM/32>(q,k,lane);\n  if(lane==0) out[idx]=score;\n}\nextern \"C\" int diagnostic_strict_scores(const uint16_t* query,const uint16_t* key,\n const uint8_t* mask,float* out,int64_t tokens,int64_t heads,int64_t kv_heads,int64_t dim,int64_t keys) {\n dim3 grid(keys,heads,tokens);\n if(dim==512)hipLaunchKernelGGL((diagnostic_strict_scores_kernel<512>),grid,dim3(32),0,0,query,key,mask,out,tokens,heads,kv_heads,keys);\n else if(dim==256)hipLaunchKernelGGL((diagnostic_strict_scores_kernel<256>),grid,dim3(32),0,0,query,key,mask,out,tokens,heads,kv_heads,keys);\n else return hipErrorInvalidValue;\n return hipGetLastError();\n}\n",
+  "patches_against_probability_residual": {
+    "gemma4_attention_prefill_wmma.hip": "--- residual/gemma4_attention_prefill_wmma.hip\n+++ exact_score/gemma4_attention_prefill_wmma.hip\n@@ -63,6 +63,7 @@\n #include <stdint.h>\n \n namespace {\n+__device__ float* diagnostic_exact_scores = nullptr;\n \n using half_t = _Float16;\n using half2_t = half_t __attribute__((ext_vector_type(2)));\n@@ -345,6 +346,10 @@\n         if (visible) {\n           visible = mask_row[k_base + key_local] != 0;\n         }\n+        if (visible && diagnostic_exact_scores != nullptr) {\n+          scores[key_tile][element] = diagnostic_exact_scores[\n+              (static_cast<int64_t>(query_row) * num_heads + query_head) * keys + k_base + key_local];\n+        }\n         scores[key_tile][element] =\n             visible ? scores[key_tile][element] * scale : -INFINITY;\n         local_max = fmaxf(local_max, scores[key_tile][element]);\n@@ -457,6 +462,11 @@\n }\n \n }  // namespace\n+\n+extern \"C\" hipError_t diagnostic_set_exact_scores(void* pointer) {\n+  float* ptr = static_cast<float*>(pointer);\n+  return hipMemcpyToSymbol(HIP_SYMBOL(diagnostic_exact_scores), &ptr, sizeof(ptr));\n+}\n \n extern \"C\" int hipengine_gemma4_attention_prefill_wmma_bf16(\n     const uint16_t* query,\n",
+    "gemma4_attention_prefill_wmma_full.hip": "--- residual/gemma4_attention_prefill_wmma_full.hip\n+++ exact_score/gemma4_attention_prefill_wmma_full.hip\n@@ -96,6 +96,7 @@\n #include <stdint.h>\n \n namespace {\n+__device__ float* diagnostic_exact_scores = nullptr;\n \n using bf16_t = __bf16;\n using bf16x2_t = bf16_t __attribute__((ext_vector_type(2)));\n@@ -568,6 +569,10 @@\n           const int byte_index = key_local + mask_shift;\n           visible = (mask_word[byte_index >> 2] >> (8 * (byte_index & 3))) & 0xFF;\n         }\n+        if (visible && diagnostic_exact_scores != nullptr) {\n+          scores[key_tile][element] = diagnostic_exact_scores[\n+              (static_cast<int64_t>(query_row) * num_heads + query_head) * keys + k_base + key_local];\n+        }\n         scores[key_tile][element] =\n             visible ? scores[key_tile][element] * scale : -INFINITY;\n         local_max = fmaxf(local_max, scores[key_tile][element]);\n@@ -803,6 +808,11 @@\n }\n \n }  // namespace\n+\n+extern \"C\" hipError_t diagnostic_set_exact_scores(void* pointer) {\n+  float* ptr = static_cast<float*>(pointer);\n+  return hipMemcpyToSymbol(HIP_SYMBOL(diagnostic_exact_scores), &ptr, sizeof(ptr));\n+}\n \n extern \"C\" int GEMMA4_WMMA_FULL_SYMBOL(\n     const uint16_t* query,\n"
+  },
+  "result": "Strictscore override still fails KL/categorybars. Code maxKL.0874, mixedsummary.1931/top1.9375. Strictscoretree alone is not a sufficient repair. No shippedcode/default changed."
+}
