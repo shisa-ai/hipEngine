@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11445,
-    "current": 4213,
+    "entries": 11446,
+    "current": 4214,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1382,
+    "rows": 1383,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1221
+      "status": 1222
     }
   },
   "rows": [
@@ -52444,6 +52444,45 @@
       },
       "id": "worklog/20261003T173738.012260Z-integration-gemma4-fused-t16-prefill-2a6440",
       "evidence_hash": "abcbb113838d"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261003T190631.654325Z-integration-gemma4-short-prefill-diagnostics-a57b3c",
+      "title": "Gemma short-prefill critical-path diagnostics and rejected router candidates",
+      "location": "worklog/entries/20261003T190631.654325Z-integration-gemma4-short-prefill-diagnostics-a57b3c.md:8",
+      "evidence": {
+        "status": "blocked",
+        "worker": "integration",
+        "topic": "gemma4-short-prefill-diagnostics",
+        "written": "2026-10-03",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Diagnose exposed host time or required compact expert tile rows without changing\n  arithmetic or resident allocation contracts. Do not promote either rejected router\n  candidate, repeat the broad unit suite, or push with the short-point blocker open.\n- Preserve default staged attention, fused projections, and single-slab tiles-only\n  expert residency. The earlier validated correctness and longer-length gains stand.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as blocked \u2014 the entry says the unit is blocked",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261003T190631.654325Z-integration-gemma4-short-prefill-diagnostics-a57b3c.md",
+        "refs": [],
+        "tokens": [
+          "candidates",
+          "critical",
+          "diagnostics",
+          "gemma",
+          "path",
+          "prefill",
+          "rejected",
+          "router",
+          "short"
+        ]
+      },
+      "id": "worklog/20261003T190631.654325Z-integration-gemma4-short-prefill-diagnostics-a57b3c",
+      "evidence_hash": "03dcb01586e7"
     }
   ]
 }

@@ -5421,7 +5421,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1517,
-        "referrers": 350,
+        "referrers": 351,
         "runtime_referrers": [
           "hipengine/benchmark/prompts.py",
           "hipengine/core/build.py",
@@ -5453,7 +5453,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/moe/router.hip",
-      "evidence_hash": "dd7c68fb3c97"
+      "evidence_hash": "d7fe3702e90a"
     },
     {
       "kind": "kernel",
@@ -5464,7 +5464,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 1268,
-        "referrers": 350,
+        "referrers": 351,
         "runtime_referrers": [
           "hipengine/benchmark/prompts.py",
           "hipengine/core/build.py",
@@ -5495,7 +5495,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/moe/router.py",
-      "evidence_hash": "1405c4aba1b1"
+      "evidence_hash": "9b0b928d23d3"
     },
     {
       "kind": "kernel",
