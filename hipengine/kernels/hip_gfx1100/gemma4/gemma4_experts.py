@@ -1579,6 +1579,13 @@ def gemma4_project_experts_by_offset(
             "the layout-aware selected owner must serve it"
         )
 
+    # The compact-prefix producer may run on the nonblocking MoE stream.
+    # A synchronous default-stream D2H copy does not wait for that producer.
+    # Drain its stream before reading offsets used to size each expert launch.
+    if stream != 0:
+        from hipengine.core.hip import get_hip_runtime
+
+        get_hip_runtime().stream_synchronize(stream)
     starts = _read_int64(expert_start, num_experts + 1)
     for expert in range(num_experts):
         start = int(starts[expert])
