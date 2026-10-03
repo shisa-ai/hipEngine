@@ -1457,10 +1457,11 @@ class LLM:
             resolve_backend,
         )
 
-        resolved = resolve_backend(self.backend)
+        resolved = resolve_backend(self.backend, execution_device=True)
         # Refuse an explicit backend the selected device cannot execute before
         # any model load or kernel launch, so a mismatch fails with a named
         # capability error instead of a HIP segmentation fault at first launch.
+        # Automatic selection above already used the same device identity.
         require_backend_device_compatibility(resolved)
         self._resolved_backend = resolved
         return self._resolved_backend

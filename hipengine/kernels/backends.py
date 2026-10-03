@@ -30,6 +30,7 @@ _ENV_HSA_SCRATCH_SINGLE_LIMIT = "HSA_SCRATCH_SINGLE_LIMIT"
 _ENV_ROCR_VISIBLE_DEVICES = "ROCR_VISIBLE_DEVICES"
 _ENV_HIP_VISIBLE_DEVICES = "HIP_VISIBLE_DEVICES"
 _VISIBILITY_ENV_VARS = (_ENV_ROCR_VISIBLE_DEVICES, _ENV_HIP_VISIBLE_DEVICES)
+_ENV_ROCM_TARGET_LST = "ROCM_TARGET_LST"
 
 HIP_BACKEND_TARGET_ARCH: dict[str, str] = {
     "hip_gfx1100": "gfx1100",
@@ -57,9 +58,19 @@ HIP_BACKEND_PROCESS_ENV_DEFAULTS: dict[str, dict[str, str]] = {
 }
 
 _ARCH_PATTERN = re.compile(r"\bgfx[0-9a-fA-F]+(?:[-_:][^\s]*)?")
-_ARCH_COMMANDS: tuple[tuple[str, ...], ...] = (
+# Hardware-only architecture probes. ``rocm_agent_enumerator`` is deliberately
+# absent: its installed implementation reads ``ROCM_TARGET_LST`` or an adjacent
+# ``target.lst`` *before* querying hardware, so its output can be an offline
+# target list rather than the installed devices. It stays in ``_ARCH_COMMANDS``
+# for ambient reporting (auto-selection diagnostics, provenance, scripts), which
+# is not a hardware-evidence claim; execution decisions use the hardware list.
+_HARDWARE_ARCH_COMMANDS: tuple[tuple[str, ...], ...] = (
     ("amdgpu-arch",),
+    ("/opt/rocm/llvm/bin/amdgpu-arch",),
     ("/opt/rocm/bin/amdgpu-arch",),
+)
+_ARCH_COMMANDS: tuple[tuple[str, ...], ...] = (
+    *_HARDWARE_ARCH_COMMANDS,
     ("rocm_agent_enumerator",),
     ("/opt/rocm/bin/rocm_agent_enumerator",),
 )
@@ -208,6 +219,9 @@ def select_backend(
     detected_arches: Sequence[str] | None = None,
     env: Mapping[str, str] | None = None,
     fallback_backend: str = CPU_BACKEND,
+    execution_device: bool = False,
+    physical_arches: Sequence[str] | None = None,
+    current_device: int | None = None,
 ) -> BackendSelection:
     """Resolve ``backend`` to a concrete backend key.
 
@@ -219,6 +233,17 @@ def select_backend(
 
     Explicit backend strings are returned unchanged so tests and future plugin
     backends can register their own keys without editing this module.
+
+    ``execution_device=True`` resolves automatic selection for the device this
+    process will execute on, sharing one device identity with
+    :func:`require_backend_device_compatibility`: the current logical device,
+    derived from the physical per-device list (``physical_arches`` or
+    :func:`detect_hip_physical_device_arches`) and the visibility variables.
+    Without it, automatic selection takes the first ambient architecture, which
+    is correct for registry resolution but can name a device other than the one
+    the engine runs on. When the current device is unknown, selection falls back
+    to the hardware-only ambient probe so an offline target list is never
+    accepted as installed hardware.
     """
 
     requested = (backend or AUTO_BACKEND).strip() or AUTO_BACKEND
@@ -230,7 +255,28 @@ def select_backend(
     if env_backend and env_backend != AUTO_BACKEND:
         return BackendSelection(requested=requested, backend=env_backend, source=_ENV_BACKEND)
 
-    raw_arches = detected_arches if detected_arches is not None else detect_hip_target_arches()
+    if execution_device:
+        device_arches = selected_device_arches(
+            detected_arches=physical_arches,
+            env=env_map,
+            current_device=current_device,
+        )
+        for arch in device_arches:
+            resolved = HIP_TARGET_ARCH_BACKEND.get(arch)
+            if resolved is not None:
+                return BackendSelection(
+                    requested=requested,
+                    backend=resolved,
+                    source="execution_device",
+                    detected_arches=device_arches,
+                )
+
+    if detected_arches is not None:
+        raw_arches = detected_arches
+    elif execution_device:
+        raw_arches = detect_hip_hardware_target_arches()
+    else:
+        raw_arches = detect_hip_target_arches()
     arches = tuple(_normalize_arch(arch) for arch in raw_arches)
     arches = tuple(dict.fromkeys(arch for arch in arches if arch))
     for arch in arches:
@@ -259,29 +305,43 @@ def resolve_backend(
     detected_arches: Sequence[str] | None = None,
     env: Mapping[str, str] | None = None,
     fallback_backend: str = CPU_BACKEND,
+    execution_device: bool = False,
+    physical_arches: Sequence[str] | None = None,
+    current_device: int | None = None,
 ) -> str:
-    """Return a concrete backend key, optionally emitting auto-fallback warnings."""
+    """Return a concrete backend key, optionally emitting auto-fallback warnings.
+
+    ``execution_device=True`` makes automatic selection agree with
+    :func:`require_backend_device_compatibility` about which device the engine
+    will execute on. See :func:`select_backend`.
+    """
 
     selection = select_backend(
         backend,
         detected_arches=detected_arches,
         env=env,
         fallback_backend=fallback_backend,
+        execution_device=execution_device,
+        physical_arches=physical_arches,
+        current_device=current_device,
     )
     if warn and selection.warning:
         warnings.warn(selection.warning, RuntimeWarning, stacklevel=2)
     return selection.backend
 
 
-def detect_hip_target_arches() -> tuple[str, ...]:
-    """Detect visible HIP GPU target architectures without importing torch.
+def _probe_arches(
+    commands: Sequence[Sequence[str]], *, env: Mapping[str, str] | None = None
+) -> tuple[str, ...]:
+    """Run the first working architecture probe and return its arches in order.
 
-    The ROCm command-line probes are intentionally outside import-time paths and
-    cheap compared with model loading. They also avoid depending on the exact
-    ``hipDeviceProp_t`` ABI layout across ROCm releases.
+    ``env=None`` inherits the process environment. The ROCm command-line probes
+    are intentionally outside import-time paths and cheap compared with model
+    loading. They also avoid depending on the exact ``hipDeviceProp_t`` ABI
+    layout across ROCm releases.
     """
 
-    for command in _ARCH_COMMANDS:
+    for command in commands:
         try:
             result = subprocess.run(
                 command,
@@ -290,46 +350,7 @@ def detect_hip_target_arches() -> tuple[str, ...]:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 timeout=2.0,
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if result.returncode != 0:
-            continue
-        arches = _parse_arches(result.stdout)
-        if arches:
-            return arches
-    return ()
-
-
-def detect_hip_physical_device_arches() -> tuple[str, ...]:
-    """Per-device HIP target architectures in physical device order.
-
-    One entry per physical GPU, in device order, with duplicates preserved:
-    ``("gfx1100", "gfx1100", "gfx1151")`` is three devices, not two. The probe
-    runs with the visibility variables removed, so the result is the physical
-    device list whether or not a given ROCm release makes the arch tool
-    visibility-aware; the caller applies the visibility remap exactly once over
-    this list. Verified producer semantics on ROCm 7.2: ``amdgpu-arch`` and
-    ``rocm_agent_enumerator`` print one architecture per line in device order,
-    keep duplicates, and ignore ``ROCR_VISIBLE_DEVICES``/``HIP_VISIBLE_DEVICES``.
-
-    This differs from :func:`detect_hip_target_arches`, which deduplicates and
-    reports the ambient (possibly filtered) set for auto backend selection.
-    """
-
-    probe_env = dict(os.environ)
-    for name in _VISIBILITY_ENV_VARS:
-        probe_env.pop(name, None)
-    for command in _ARCH_COMMANDS:
-        try:
-            result = subprocess.run(
-                command,
-                check=False,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                timeout=2.0,
-                env=probe_env,
+                env=None if env is None else dict(env),
             )
         except (OSError, subprocess.SubprocessError):
             continue
@@ -339,6 +360,65 @@ def detect_hip_physical_device_arches() -> tuple[str, ...]:
         if arches:
             return arches
     return ()
+
+
+def _hardware_probe_env() -> dict[str, str]:
+    """Environment for a hardware-only probe.
+
+    Removes the visibility variables so the result is the physical device list,
+    and points ``ROCM_TARGET_LST`` at a path that cannot exist so a producer that
+    consults an offline target list (including an adjacent ``target.lst``, which
+    is only read when the variable is unset) cannot substitute a target list for
+    installed hardware.
+    """
+
+    env = dict(os.environ)
+    for name in _VISIBILITY_ENV_VARS:
+        env.pop(name, None)
+    env[_ENV_ROCM_TARGET_LST] = os.path.join(os.sep, "nonexistent", "hipengine-target.lst")
+    return env
+
+
+def detect_hip_target_arches() -> tuple[str, ...]:
+    """Detect visible HIP GPU target architectures without importing torch.
+
+    Ambient and deduplicated, for auto-selection diagnostics, provenance, and
+    scripts. Execution decisions use :func:`detect_hip_hardware_target_arches`
+    and :func:`detect_hip_physical_device_arches`, which do not accept a
+    producer that can read an offline target list as hardware evidence.
+    """
+
+    return tuple(dict.fromkeys(_probe_arches(_ARCH_COMMANDS)))
+
+
+def detect_hip_hardware_target_arches() -> tuple[str, ...]:
+    """Deduplicated HIP target architectures from hardware-only probes.
+
+    Same as :func:`detect_hip_target_arches` but restricted to producers that
+    enumerate installed devices, so an offline ``ROCM_TARGET_LST``/``target.lst``
+    cannot masquerade as hardware.
+    """
+
+    return tuple(dict.fromkeys(_probe_arches(_HARDWARE_ARCH_COMMANDS)))
+
+
+def detect_hip_physical_device_arches() -> tuple[str, ...]:
+    """Per-device HIP target architectures in physical device order.
+
+    One entry per physical GPU, in device order, with duplicates preserved:
+    ``("gfx1100", "gfx1100", "gfx1151")`` is three devices, not two. The probe
+    runs with the visibility variables removed and the offline target list
+    neutralized, so the result is the installed hardware whether or not a given
+    ROCm release makes the arch tool visibility-aware; the caller applies the
+    visibility remap exactly once over this list. Verified producer semantics on
+    ROCm 7.2: ``amdgpu-arch`` prints one architecture per line in device order,
+    keeps duplicates, and ignores ``ROCR_VISIBLE_DEVICES``/``HIP_VISIBLE_DEVICES``.
+
+    This differs from :func:`detect_hip_target_arches`, which deduplicates and
+    reports the ambient set for auto-selection diagnostics.
+    """
+
+    return _probe_arches(_HARDWARE_ARCH_COMMANDS, env=_hardware_probe_env())
 
 
 def _parse_visible_device_indices(raw: str | None) -> tuple[int, ...] | None:
@@ -435,10 +515,11 @@ def selected_device_arches(
 
     ``current_device`` overrides the logical ordinal. When it is omitted and the
     visible devices disagree on architecture, the ordinal is read with
-    ``hipGetDevice``; a homogeneous visible set never loads the HIP runtime, and
-    a host without ROCm falls back to logical device 0. An empty tuple means the
-    device could not be resolved, so incompatibility is not proven and callers
-    must not refuse the request.
+    ``hipGetDevice``; a homogeneous visible set never loads the HIP runtime. If
+    that query is unavailable or fails on a heterogeneous host, the current
+    device is genuinely unknown: this returns an empty tuple rather than
+    assuming ordinal zero, because an unresolved device is not evidence of
+    incompatibility. An empty tuple means callers must not refuse the request.
     """
 
     env_map = os.environ if env is None else env
@@ -456,11 +537,13 @@ def selected_device_arches(
     if current_device is not None:
         index = int(current_device)
     elif len(set(visible)) == 1:
+        # Every visible device has the same architecture, so the ordinal cannot
+        # change the answer and the HIP runtime is not needed.
         index = 0
     else:
         index = _current_hip_device_ordinal()
         if index is None:
-            index = 0
+            return ()
     if index < 0 or index >= len(visible):
         return ()
     return (visible[index],)
