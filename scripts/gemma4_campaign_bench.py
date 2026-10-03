@@ -453,10 +453,14 @@ def _resolve_generator(artifact: Path, context: int) -> tuple[Any, Any, dict[str
     resolve_start = time.perf_counter()
     # Set capacity through the public factory contract. The generator may be
     # wrapped by SubmitPollTextGenerator: assigning context_length on that
-    # wrapper shadows the inner field and leaves the runner at its default.
+    # wrapper shadows the inner field and leaves the runner at its default, so
+    # the factory argument is what actually sizes the runner's KV cache. The
+    # explicit assignment below is kept so the wrapper and the inner generator
+    # cannot disagree about the capacity the run was measured at.
     llm = hipengine.LLM(model=str(artifact), max_sequence_length=int(context))
     generator = llm._get_text_generator()
     resolve_s = time.perf_counter() - resolve_start
+    generator.context_length = int(context)
     load_start = time.perf_counter()
     runner = generator._ensure_runner()
     load_s = time.perf_counter() - load_start

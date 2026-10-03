@@ -144,7 +144,8 @@ def main(argv=None):
     from hipengine.benchmark.provenance import collect_artifact_provenance
     from hipengine.runtime.gemma4 import Gemma4Runner
     from hipengine.generation.gemma4_gguf_profiles import (
-        GEMMA4_GGUF_MODEL, GEMMA4_GGUF_BACKEND, GEMMA4_GGUF_QUANT)
+        GEMMA4_GGUF_MODEL, GEMMA4_GGUF_BACKEND, GEMMA4_GGUF_QUANT,
+        PREFILL_ATTENTION_PRODUCTION_VARIANTS)
     from hipengine.execution_profiles import resolve_runtime_profile
 
     parser = argparse.ArgumentParser(description=__doc__)
@@ -166,16 +167,18 @@ def main(argv=None):
     context = max(DEPTHS) + max(args.rows, 64)
     llm, production, loading = _resolve_generator(args.artifact, context)
     generator = llm._get_text_generator()
-    if not production.prefill_attention_variants or "gemma4_wmma_flash_full" not in production.prefill_attention_variants:
+    if tuple(production.prefill_attention_variants) != PREFILL_ATTENTION_PRODUCTION_VARIANTS:
         llm.close()
-        raise RuntimeError("production full WMMA variant is not selected; refusing self-comparison")
+        raise RuntimeError("shipping production variants are not selected; refusing self-comparison")
     strict = Gemma4Runner(weights=production.weights, capacity=context,
                           prefill_attention_variants=("gemma4_plain",))
     manifests = {profile: resolve_runtime_profile(model=GEMMA4_GGUF_MODEL,
                  backend=GEMMA4_GGUF_BACKEND, quant=GEMMA4_GGUF_QUANT,
                  profile=profile).manifest for profile in ("strict", "production")}
     report = {"kind": "gemma4_attention_multicategory_quality_packet",
-              "performance_claim": False, "arithmetic_class": "T2",
+              "performance_claim": False, "arithmetic_class": "T0",
+              # The staged production path preserves strict arithmetic. The
+              # same numerical bars still apply; class is not a tolerance lever.
               "scope": "single-slot eager; attention strict fallback vs shipping production",
               "manifests": manifests, "sources": source_hashes(), "loading": loading,
               "evaluator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -200,6 +203,8 @@ def main(argv=None):
             with observe_attention_launches() as launches:
                 candidate = replay_capture(production, ids, chain)
             replay_position = production.position
+            selected_route_ran = any(r['variant'] in PREFILL_ATTENTION_PRODUCTION_VARIANTS
+                                     for r in launches)
             np.save(args.directory / f"{name}-production.npy", candidate)
             verdict = paired_summary(baseline, candidate, scope=args.limit is None)
             repeats = []
@@ -246,10 +251,11 @@ def main(argv=None):
                                "noninferior": int(task_c) >= int(task_b),
                                "strict_text": strict_text, "candidate_text": candidate_text},
                       "route_counts": dict(Counter(r["variant"] for r in launches)),
+                      "selected_route_ran": selected_route_ran,
                       "controls": {"position_after_replay": replay_position,
                                    "expected_position_after_replay": depth + len(chain) - 1,
                                    "all_forward_position_checks_passed": True},
-                      "passed": verdict["passed"] and not verdict["requires_review"] and all(repeats)
+                      "passed": selected_route_ran and verdict["passed"] and not verdict["requires_review"] and all(repeats)
                                 and isolation and int(task_c) >= int(task_b)}
             report["cases"].append(record)
             overall_b.append(baseline)

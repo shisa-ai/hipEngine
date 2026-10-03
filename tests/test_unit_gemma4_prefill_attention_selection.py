@@ -8,9 +8,10 @@ Three contracts, and they are separate ones:
   anywhere else keeps the strict kernel and says why. This is a capability
   match, so it is exercised on values on both sides of the boundary and on
   values unrelated to it, rather than at the boundary alone.
-* **Profile.** ``production`` requests both variants, ``strict`` requests
-  neither, and an unset profile resolves to the shipped default. Registering
-  both plans is what makes that default ``production``.
+* **Profile.** ``production`` requests the strict-parity staged variant,
+  ``strict`` requests plain attention, and an unset profile resolves to production.
+  The WMMA routing matrix below uses an explicit candidate request, not the
+  shipping production plan.
 * **Fallback.** An unknown variant name, a missing plan, or an unregistered
   backend must reach the strict kernel rather than raise, because a profile is a
   performance decision and not a licence to fail a request.
@@ -53,9 +54,10 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma_full imp
 # The sliding geometry, the full geometry, and shapes unrelated to either.
 SLIDING = dict(num_heads=16, num_kv_heads=8, head_dim=256)
 FULL = dict(num_heads=16, num_kv_heads=2, head_dim=512)
-# What a production run requests, taken from the module that declares it so the
-# resolver and the constant cannot drift apart.
-PRODUCTION = PREFILL_ATTENTION_PRODUCTION_VARIANTS
+# Explicit WMMA candidate request used by the geometry/crossover matrix below.
+# It is not the current shipping production request.
+PRODUCTION = (PREFILL_ATTENTION_WMMA_FLASH, PREFILL_ATTENTION_WMMA_FLASH_FULL)
+SHIPPED_PRODUCTION = PREFILL_ATTENTION_PRODUCTION_VARIANTS
 
 
 def test_an_unrequested_variant_is_the_strict_kernel():
@@ -88,7 +90,7 @@ def test_the_full_geometry_gets_the_full_wmma_variant():
     assert "capability match" in selection.describe()
 
 
-def test_a_production_request_covers_both_geometries():
+def test_a_wmma_candidate_request_covers_both_geometries():
     """One request list, one layer at a time: each geometry gets its own variant.
 
     This is the contract that matters in production, where both geometries occur
@@ -158,7 +160,7 @@ def test_a_geometry_the_full_variant_does_not_implement_keeps_the_strict_kernel(
     assert str(geometry["head_dim"]) in selection.reason
 
 
-def test_a_production_request_keeps_the_strict_kernel_off_both_geometries():
+def test_a_wmma_candidate_request_keeps_the_strict_kernel_off_both_geometries():
     """A geometry neither variant implements still runs, and says both misses."""
 
     selection = select_prefill_attention(
@@ -225,8 +227,8 @@ def test_the_profiles_register_and_make_production_the_default():
     ("requested", "expected"),
     [
         (ExecutionProfile.STRICT, (PREFILL_ATTENTION_PLAIN,)),
-        (ExecutionProfile.PRODUCTION, PRODUCTION),
-        (None, PRODUCTION),
+        (ExecutionProfile.PRODUCTION, SHIPPED_PRODUCTION),
+        (None, SHIPPED_PRODUCTION),
     ],
 )
 def test_the_profile_selects_the_variants(requested, expected):
@@ -239,8 +241,8 @@ def test_the_environment_variable_selects_the_variants():
     ) == (PREFILL_ATTENTION_PLAIN,)
     assert resolve_gemma4_prefill_attention_variants(
         environ={"HIPENGINE_EXECUTION_PROFILE": "production"}
-    ) == PRODUCTION
-    assert resolve_gemma4_prefill_attention_variants(environ={}) == PRODUCTION
+    ) == SHIPPED_PRODUCTION
+    assert resolve_gemma4_prefill_attention_variants(environ={}) == SHIPPED_PRODUCTION
 
 
 def test_an_unregistered_backend_keeps_the_strict_kernel():
@@ -304,7 +306,7 @@ def test_the_production_plan_carries_one_selection_per_geometry():
 
     register_gemma4_gguf_profiles()
     for profile, expected in (
-        (ExecutionProfile.PRODUCTION, PRODUCTION),
+        (ExecutionProfile.PRODUCTION, SHIPPED_PRODUCTION),
         (ExecutionProfile.STRICT, (PREFILL_ATTENTION_PLAIN,)),
     ):
         resolved = resolve_runtime_profile(

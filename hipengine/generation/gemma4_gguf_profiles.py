@@ -1,29 +1,18 @@
 """Gemma 4 GGUF execution-profile plans.
 
-Gemma 4's attention family has two prefill entry points. ``gemma4_plain`` is the
-strict kernel and is the only unconditional one. The two WMMA flash prefills are
-BF16 matrix-core candidates that each implement one geometry:
-``gemma4_wmma_flash`` is the sliding geometry (head_dim 256, 16 query heads, 8 KV
-heads) and ``gemma4_wmma_flash_full`` is the full geometry (head_dim 512, 16
-query heads, 2 KV heads). Between them they cover every attention layer of the
-model. This module is where a profile chooses them.
+Production requests ``gemma4_staged``, an FP32 score/softmax/PV implementation
+that preserves the strict reduction order while moving scores out of LDS.
+Strict requests ``gemma4_plain``. Both plans declare sliding (head_dim 256) and
+full (head_dim 512) geometries. A layer matches capabilities against its own
+geometry; model identities and measured-artifact lists do not gate execution.
 
-A selection names a variant *and* the geometry scope it was measured on, so the
-production plan carries one selection per scope. The layer resolves the request
-against its own head geometry, which is the only place that knows whether it is
-a sliding or a full layer.
+The BF16 WMMA variants remain registered for explicit candidate evaluation.
+Their saved teacher-chain KL failures are recorded in the staged repair
+worklog; they are not the production default.
 
-The plans are registered for both the ``hip_gfx1100`` key space, where the
-kernels are authored, and the ``hip_gfx1151`` alias, where the Strix Halo
-generator runs. The alias is the package's own convention: ``hip_gfx1151``
-re-registers the gfx1100 key space under its own backend name, so the attention
-variants are registered first and then mirrored by calling that package's
-``register_gfx1151_kernels`` again.
-
-Registering both a strict and a production plan is what makes the default
-profile ``production`` (see ``resolve_default_execution_profile``), so the WMMA
-variants are on unless a caller asks for ``strict`` or sets
-``HIPENGINE_EXECUTION_PROFILE``.
+Plans and variants are registered in the authoring ``hip_gfx1100`` key space
+and the ``hip_gfx1151`` alias used by the Strix Halo generator. Registering the
+strict and production plans makes ``production`` the unset-profile default.
 """
 
 from __future__ import annotations
@@ -49,16 +38,17 @@ GEMMA4_GGUF_QUANT = "gguf_q4_k_m"
 GEMMA4_GGUF_SOURCE_BACKEND = "hip_gfx1100"
 
 PREFILL_ATTENTION_LAYER = "prefill_attention"
-# One scope per attention geometry the family serves. A selection names the
-# geometry it was measured on; the layer matches the request against its own.
+# One declared scope per attention geometry. The layer matches each request
+# against its own head dimensions.
 PREFILL_ATTENTION_SCOPE = "sliding_head_dim_256"
 PREFILL_ATTENTION_SCOPE_FULL = "full_head_dim_512"
 PREFILL_ATTENTION_PLAIN = "gemma4_plain"
+PREFILL_ATTENTION_STAGED = "gemma4_staged"
 PREFILL_ATTENTION_WMMA_FLASH = "gemma4_wmma_flash"
 PREFILL_ATTENTION_WMMA_FLASH_FULL = "gemma4_wmma_flash_full"
 
-# Each candidate's measured evidence. A selection names it so the profile's
-# performance claim and the artifact that carries it cannot drift apart.
+# Historical WMMA candidate evidence for explicit evaluation; the staged
+# production selections below do not claim these candidates' performance.
 PREFILL_ATTENTION_EVIDENCE = (
     "benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-candidate.json"
 )
@@ -66,13 +56,10 @@ PREFILL_ATTENTION_EVIDENCE_FULL = (
     "benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-full-candidate.json"
 )
 
-# The variants a production run requests. The manifest orders its selections by
-# (layer, scope, variant), so the request is sorted by name here to make it
-# independent of that ordering; the geometries are disjoint, so the order is not
-# significant, only deterministic.
-PREFILL_ATTENTION_PRODUCTION_VARIANTS = tuple(
-    sorted((PREFILL_ATTENTION_WMMA_FLASH, PREFILL_ATTENTION_WMMA_FLASH_FULL))
-)
+# Both production geometry scopes request the same strict-parity launcher.
+# WMMA candidates remain registered, but saved teacher-chain KL failures
+# prevent using them as the shipped arithmetic choice.
+PREFILL_ATTENTION_PRODUCTION_VARIANTS = (PREFILL_ATTENTION_STAGED,)
 
 KV_POLICY = "paged_bf16"
 GRAPH_POLICY = "eager_blocks"
@@ -86,6 +73,7 @@ __all__ = [
     "PREFILL_ATTENTION_EVIDENCE_FULL",
     "PREFILL_ATTENTION_LAYER",
     "PREFILL_ATTENTION_PLAIN",
+    "PREFILL_ATTENTION_STAGED",
     "PREFILL_ATTENTION_PRODUCTION_VARIANTS",
     "PREFILL_ATTENTION_SCOPE",
     "PREFILL_ATTENTION_SCOPE_FULL",
@@ -117,25 +105,9 @@ def _selections(*, production: bool) -> tuple[VariantSelection, ...]:
     has to say which geometry each strict row is the fallback for.
     """
 
-    if production:
-        return (
-            _selection(
-                selected=PREFILL_ATTENTION_WMMA_FLASH,
-                fallback=PREFILL_ATTENTION_PLAIN,
-                quant=GEMMA4_GGUF_QUANT,
-                evidence=PREFILL_ATTENTION_EVIDENCE,
-            ),
-            _selection(
-                selected=PREFILL_ATTENTION_WMMA_FLASH_FULL,
-                fallback=PREFILL_ATTENTION_PLAIN,
-                quant=GEMMA4_GGUF_QUANT,
-                evidence=PREFILL_ATTENTION_EVIDENCE_FULL,
-                scope=PREFILL_ATTENTION_SCOPE_FULL,
-            ),
-        )
     return tuple(
         _selection(
-            selected=PREFILL_ATTENTION_PLAIN,
+            selected=PREFILL_ATTENTION_STAGED if production else PREFILL_ATTENTION_PLAIN,
             fallback=PREFILL_ATTENTION_PLAIN,
             quant=GEMMA4_GGUF_QUANT,
             evidence=None,
@@ -149,9 +121,8 @@ def _binder(generator: Any, resolved: Any) -> None:
     """Bind the resolved prefill-attention variants onto a generator.
 
     The request is the ordered set of variants the plan selected for this layer,
-    deduplicated, so a strict plan binds the single strict variant and a
-    production plan binds both candidates. Which one a given layer runs is still
-    the layer's decision, taken against its own head geometry.
+    deduplicated. A strict plan binds plain attention and a production plan
+    binds staged attention. Each layer resolves capabilities for its geometry.
     """
 
     variants = tuple(
@@ -168,7 +139,7 @@ def _binder(generator: Any, resolved: Any) -> None:
 
 
 def _register_attention_variants() -> None:
-    """Put both prefill-attention variants in the registry, under both backends.
+    """Register plain, staged and explicit WMMA candidates under both backends.
 
     ``_verify_registered_variants`` refuses a plan that names a variant the
     registry does not hold, so this runs before the plans are registered. The
@@ -194,6 +165,10 @@ def _register_attention_variants() -> None:
         register_gemma4_attention_prefill_wmma_full_kernels,
     )
 
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
+        gemma4_attention_staged_bf16,
+    )
+
     register_gemma4_attention_kernels()
     register_gemma4_attention_prefill_wmma_kernels()
     register_gemma4_attention_prefill_wmma_full_kernels()
@@ -202,6 +177,7 @@ def _register_attention_variants() -> None:
         for quant in PREFILL_ATTENTION_QUANTS:
             for variant, fn in (
                 (_PLAIN, gemma4_attention_prefill_bf16),
+                (PREFILL_ATTENTION_STAGED, gemma4_attention_staged_bf16),
                 (PREFILL_ATTENTION_WMMA_FLASH, gemma4_attention_prefill_wmma_bf16),
                 (
                     PREFILL_ATTENTION_WMMA_FLASH_FULL,
