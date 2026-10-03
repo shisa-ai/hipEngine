@@ -17,6 +17,10 @@ import pathlib
 
 import pytest
 
+# Collect the generator's kernel dependencies before conftest snapshots the
+# registry. Function-local imports leave cached modules registered only in the
+# first test; teardown then restores a baseline that never contained them.
+from hipengine.generation.gemma4_gguf import make_gemma4_generator_gfx1100
 from tests._rocm_guard import hip_runtime_available
 
 _HIP_AVAILABLE = hip_runtime_available()
@@ -95,8 +99,6 @@ def test_gemma4_chat_tokenization_does_not_double_the_bos(
     prompt the reference implementations never produce.
     """
 
-    from hipengine.generation.gemma4_gguf import make_gemma4_generator_gfx1100
-
     model_path = _write_generate_fixture(tmp_path)
     generator = make_gemma4_generator_gfx1100(
         model_path=model_path,
@@ -124,8 +126,6 @@ def test_gemma4_factory_forwards_max_sequence_length() -> None:
     still got a runner sized for the default -- and on the real 26B artifact
     that default needs more device memory than the card has.
     """
-
-    from hipengine.generation.gemma4_gguf import make_gemma4_generator_gfx1100
 
     generator = make_gemma4_generator_gfx1100(
         model_path="/nonexistent/gemma4.gguf",
@@ -182,3 +182,20 @@ def test_llm_generate_honours_max_tokens(tmp_path: pathlib.Path) -> None:
     assert len(long[0]) >= len(short[0]), (
         f"a larger token budget produced less text ({len(long[0])} < {len(short[0])})"
     )
+
+
+@pytest.mark.parametrize("profile", ["strict", "production"])
+def test_gemma4_profile_kernel_dependencies_survive_test_isolation(profile):
+    """Every declared owner remains available after prior tests restore registries."""
+    from hipengine.generation import gemma4_profiles
+    from hipengine.kernels.registry import KernelKey, is_registered
+
+    selections = getattr(gemma4_profiles, f"_{profile}_selections")()
+    keys = {
+        KernelKey("hip_gfx1100", s.layer, s.registry_quant, variant)
+        for s in selections
+        for variant in (s.selected_variant, s.strict_fallback_variant)
+        if variant is not None
+    }
+    assert keys
+    assert not [key.display() for key in keys if not is_registered(key)]
