@@ -462,6 +462,214 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kern
   }
 }
 
+// R12 ladder step 1: multi-wave block + LDS-staged activation reuse + 32-row
+// pairing for the selected-expert gate+up leg.
+//
+// Geometry.  The shipping ``compact32`` kernel launches one wave32 per
+// (16-row, 32-column) output tile, reads the compact activation fragment from
+// global memory once per column half, and dequantizes every Q4_K column tile
+// once per 16-row tile.  Measured on gfx1151 at the real shape this leaves the
+// gate+up leg at 9.03 TFLOP/s against 22.22 TFLOP/s for the dense ``nwave``
+// kernel, which differs in exactly two ways: a NUM_WAVES-wave block that shares
+// one LDS-staged activation tile, and TM=2 row tiles per wave so each
+// dequantized weight fragment feeds two WMMA accumulators.
+//
+// This kernel mirrors that design for the compact selected-MoE layout.  A wave
+// owns TM=2 sixteen-column slabs and TN=2 sixteen-row tiles (32 rows).  The
+// block's NUM_WAVES waves all consume the same 32-row activation tile staged in
+// LDS, and each dequantized weight fragment is reused across both row tiles.
+//
+// The two 16-row tiles of a wave need not belong to the same expert: the
+// compact layout pads every expert's row count to a multiple of 16, so adjacent
+// tiles straddle an expert boundary roughly half the time.  The weight fragment
+// is shared only when both tiles resolve to the same expert id; otherwise each
+// tile is dequantized against its own expert's tile.  The branch is uniform
+// across the wave.
+//
+// Arithmetic contract: bit-identical to
+// ``gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel``.  Every output
+// accumulator keeps the baseline K traversal order (blk, subblock, k-tile) and
+// the baseline operand order (activation first, weight second).  The activation
+// staged through LDS is converted with the same bf16/fp16 -> half path, so the
+// WMMA operand bits are unchanged.
+template <typename scalar_t, bool qmicro = false, int NUM_WAVES = 4>
+__launch_bounds__(NUM_WAVES * 32, 8 / NUM_WAVES)
+__global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_wmma,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows) {
+  constexpr int TN = 2;  // 16-row tiles per wave (32 rows)
+  constexpr int TM = 1;  // 16-column slabs per wave
+  constexpr int BLOCK_COLS = NUM_WAVES * (TM * 16);
+
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int wave_lane = tid & 31;
+  const int lane16 = wave_lane & 15;
+  const int half_id = wave_lane >> 4;
+
+  const int64_t out_features_total = out_features_a + out_features_b;
+  const int64_t block_col_start = static_cast<int64_t>(blockIdx.x) * BLOCK_COLS;
+  const int64_t row_tile0 = static_cast<int64_t>(blockIdx.y) * TN;
+  const int64_t row_tiles_total = wmma_total_rows / 16;
+  // Block-uniform guards: every thread in the block must reach __syncthreads().
+  if (block_col_start >= out_features_total) return;
+  if (row_tile0 >= row_tiles_total) return;
+
+  const int64_t col_start = block_col_start + static_cast<int64_t>(wave) * (TM * 16);
+
+  const int64_t row_tile_of[TN] = {row_tile0, row_tile0 + 1};
+  // int32 bookkeeping keeps the live per-tile state small enough for a second
+  // resident block per CU; the layout sizes that reach this kernel (compact
+  // rows, tile counts) all fit comfortably in 31 bits.
+  int32_t expert_id[TN];
+  int32_t compact_base[TN];
+  int32_t expert_count[TN];
+  int32_t tile_row_in_expert[TN];
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    const int64_t e = (row_tile_of[tn] < row_tiles_total) ? tile_expert[row_tile_of[tn]] : -1;
+    expert_id[tn] = static_cast<int32_t>(e);
+    if (e < 0 || e >= num_experts) {
+      compact_base[tn] = 0;
+      expert_count[tn] = 0;
+      tile_row_in_expert[tn] = 0;
+    } else {
+      compact_base[tn] = static_cast<int32_t>(expert_start_compact[e]);
+      expert_count[tn] =
+          static_cast<int32_t>(expert_start_compact[e + 1] - expert_start_compact[e]);
+      tile_row_in_expert[tn] =
+          static_cast<int32_t>(row_tile_of[tn] * 16 - expert_start_wmma[e]);
+    }
+  }
+  const bool expert0_valid = expert_id[0] >= 0 && expert_id[0] < num_experts;
+  const bool expert1_valid = expert_id[1] >= 0 && expert_id[1] < num_experts;
+  const bool same_expert = expert0_valid && expert1_valid && (expert_id[0] == expert_id[1]);
+
+  // Per-column-slab bookkeeping, identical to the compact32 baseline.
+  int32_t out_tile[TM];
+  int32_t out_tiles[TM];
+  bool valid_col[TM];
+  const uint8_t* tile_base0[TM];
+  const uint8_t* tile_base1[TM];
+  constexpr int32_t TILE_BYTES = qmicro ? Q4_QMICRO_T16_BLOCK_BYTES : Q4_T16_BLOCK_BYTES;
+  const int32_t blocks_per_row32 = static_cast<int32_t>(in_features / QK_K);
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+    const int64_t global_col_base = col_start + tm * 16;
+    const bool use_b = global_col_base >= out_features_a;
+    const int64_t local_col_base = use_b ? (global_col_base - out_features_a) : global_col_base;
+    const int64_t local_out_features = use_b ? out_features_b : out_features_a;
+    const int64_t global_col = global_col_base + lane16;
+    const int64_t local_col = local_col_base + lane16;
+    out_tiles[tm] = static_cast<int32_t>(local_out_features / T16_COLS);
+    out_tile[tm] = static_cast<int32_t>(local_col_base / T16_COLS);
+    valid_col[tm] = (global_col < out_features_total) && (local_col < local_out_features);
+    const uint8_t* __restrict__ sel = use_b ? tiles_b : tiles_a;
+    // Hoist the (expert, out_tile, block 0) base pointer: the K loop then only
+    // adds blk * TILE_BYTES.
+    tile_base0[tm] = (valid_col[tm] && expert0_valid)
+        ? sel + (static_cast<int64_t>(expert_id[0]) * out_tiles[tm] + out_tile[tm]) *
+                    blocks_per_row32 * TILE_BYTES
+        : sel;
+    tile_base1[tm] = (valid_col[tm] && expert1_valid)
+        ? sel + (static_cast<int64_t>(expert_id[1]) * out_tiles[tm] + out_tile[tm]) *
+                    blocks_per_row32 * TILE_BYTES
+        : sel;
+  }
+
+  const int32_t blocks_per_row = blocks_per_row32;
+
+  __shared__ half16_t activation_tile[TN * 16];
+
+  float8_t acc[TM][TN];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+    for (int tn = 0; tn < TN; ++tn) {
+      acc[tm][tn] = float8_t{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    }
+  }
+
+  for (int32_t blk = 0; blk < blocks_per_row; ++blk) {
+    const int32_t g_k_base = blk * QK_K;
+#pragma unroll
+    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+#pragma unroll
+      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+        const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+        const int32_t k_base = g_k_base + k_off;
+
+        // One wave stages the whole 32-row activation tile for the block.
+        half16_t a_reg[TN];
+        {
+          if (wave == 0) {
+            const int tn_s = wave_lane >> 4;
+            const int lr = wave_lane & 15;
+            const bool ok = (tile_row_in_expert[tn_s] + lr) < expert_count[tn_s];
+            const int32_t crow =
+                ok ? (compact_base[tn_s] + tile_row_in_expert[tn_s] + lr) : 0;
+            activation_tile[wave_lane] =
+                load_compact_row_half16<scalar_t>(x, crow, in_features, k_base, ok);
+          }
+          __syncthreads();
+#pragma unroll
+          for (int tn = 0; tn < TN; ++tn) {
+            a_reg[tn] = activation_tile[tn * 16 + lane16];
+          }
+          // Every wave has copied the shared tile before wave 0 may overwrite it.
+          __syncthreads();
+        }
+
+#pragma unroll
+        for (int tm = 0; tm < TM; ++tm) {
+          half16_t b_reg;
+          load_q4_t16_b_reg<qmicro>(tile_base0[tm] + blk * TILE_BYTES, sb, kt, lane16, valid_col[tm] && expert0_valid, b_reg);
+          acc[tm][0] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg[0], b_reg, acc[tm][0]);
+          if (same_expert) {
+            acc[tm][1] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg[1], b_reg, acc[tm][1]);
+          } else {
+            half16_t b_reg1;
+            load_q4_t16_b_reg<qmicro>(tile_base1[tm] + blk * TILE_BYTES, sb, kt, lane16, valid_col[tm] && expert1_valid, b_reg1);
+            acc[tm][1] =
+                __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg[1], b_reg1, acc[tm][1]);
+          }
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+#pragma unroll
+    for (int tm = 0; tm < TM; ++tm) {
+      const int64_t global_out_col = col_start + tm * 16 + lane16;
+      if (global_out_col >= out_features_total) continue;
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int64_t local_out_row = tile_row_in_expert[tn] + half_id + j * 2;
+        if (local_out_row < expert_count[tn]) {
+          const int64_t compact_out_row = compact_base[tn] + local_out_row;
+          if (compact_out_row < compact_rows) {
+            out[compact_out_row * out_features_total + global_out_col] =
+                float_to_scalar<scalar_t>(acc[tm][tn][j]);
+          }
+        }
+      }
+    }
+  }
+}
+
 __launch_bounds__(64, 1)
 __global__ void gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel(
     const block_q8_1_mmq_ds4* __restrict__ x_q8,
@@ -711,6 +919,68 @@ int launch_selected_dual_t16_compact32_shared_x(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename scalar_t, bool qmicro = false, int NUM_WAVES = 4>
+int launch_selected_dual_t16_pair32_nwave(
+    const scalar_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    scalar_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (!valid_selected_dual_t16_common(
+          x,
+          expert_start_compact,
+          expert_start_wmma,
+          tile_expert,
+          tiles_a,
+          tiles_b,
+          out,
+          compact_rows,
+          in_features,
+          out_features_a,
+          out_features_b,
+          num_experts,
+          wmma_total_rows)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_features_total = out_features_a + out_features_b;
+  const int64_t row_tiles = wmma_total_rows / 16;
+  constexpr int BLOCK_COLS = NUM_WAVES * 16;
+  const dim3 block(NUM_WAVES * 32);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features_total + BLOCK_COLS - 1) / BLOCK_COLS),
+      static_cast<unsigned int>((row_tiles + 1) / 2));
+  hipLaunchKernelGGL(
+      (gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_kernel<
+          scalar_t, qmicro, NUM_WAVES>),
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      tiles_a,
+      tiles_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_selected_dual_t16_q8_1_ds4_wmma32_compact32(
     const block_q8_1_mmq_ds4* x_q8,
     const int64_t* expert_start_compact,
@@ -841,6 +1111,74 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shar
     int64_t wmma_total_rows,
     hipStream_t stream) {
   return launch_selected_dual_t16_compact32_shared_x<uint16_t>(
+      x,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      tiles_a,
+      tiles_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows,
+      stream);
+}
+
+// R12 ladder step 1.  NUM_WAVES is a schedule knob only; the BF16 owner below
+// is the measured one (NUM_WAVES = 2, 88 VGPR, 1 KiB LDS, 64-thread block) and
+// the FP16 sibling carries the same value so the two exports differ only in the
+// activation staging type.
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_t16_pair32_nwave<uint16_t, false, 2>(
+      x,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      tiles_a,
+      tiles_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_fp16_fp16_out(
+    const half_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    half_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_t16_pair32_nwave<half_t, false, 2>(
       x,
       expert_start_compact,
       expert_start_wmma,
