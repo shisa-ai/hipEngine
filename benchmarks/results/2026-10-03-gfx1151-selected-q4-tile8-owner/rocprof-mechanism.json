@@ -1,0 +1,27 @@
+{
+ "shape": {
+  "in_features": 2048,
+  "out_features": 512,
+  "rows": 8,
+  "quant": "Q4_K t16 selected gate+up"
+ },
+ "note": "Grid_Size_X in the rocprofv3 csv is total threads; divide by Workgroup_Size_X for the block count",
+ "col16_owner": {
+  "kernel": "q4_k_t16_selected_dual_silu_direct_gemv_kernel",
+  "VGPR": 200,
+  "LDS_bytes": 1024,
+  "block": 128,
+  "grid_x_blocks": 32,
+  "dispatches": 3
+ },
+ "tile8_owner": {
+  "kernel": "q4_k_t16_selected_dual_silu_tile8_gemv_kernel",
+  "VGPR": 88,
+  "LDS_bytes": 512,
+  "block": 128,
+  "grid_x_blocks": 64,
+  "dispatches": 200
+ },
+ "bit_identity_precondition": "both owners launch block(128), so thread K ownership and the 4-sub-group reduction tree are identical",
+ "source": "/tmp/reprof/tile8trace and /tmp/reprof/tile8trace2 kernel traces"
+}

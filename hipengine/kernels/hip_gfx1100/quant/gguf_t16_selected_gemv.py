@@ -131,6 +131,9 @@ _Q4_DENSE_DUAL_INTERLEAVED_TILE2_LOCAL32_SILU_BF16 = (
 _Q4_DUAL_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out"
 _Q4_DUAL_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out"
 _Q4_DUAL_SILU_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out"
+_Q4_DUAL_SILU_TILE8_DIRECT_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out"
+)
 _Q4_QMICRO_DUAL_DIRECT_BF16 = (
     "hipengine_gguf_q4_k_qmicro_t16_selected_dual_gemv_bf16_bf16_out"
 )
@@ -2466,6 +2469,47 @@ def gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
 
     _launch_dual_silu_direct(
         _Q4_DUAL_SILU_DIRECT_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Byte-identical tile8 owner for the BF16 selected Q4T16 dual SiLU GEMV.
+
+    Splits each 16-column T16 tile across two 128-thread workgroups
+    (grid ``out_features/8``) while preserving every column's thread K
+    ownership, FMA order, wave reduction, BF16 round-trip, and fused SiLU.
+    """
+
+    _launch_dual_silu_direct(
+        _Q4_DUAL_SILU_TILE8_DIRECT_BF16,
         x_ptr,
         selected_ptr,
         tiles_a_ptr,

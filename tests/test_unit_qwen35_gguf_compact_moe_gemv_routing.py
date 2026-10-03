@@ -356,7 +356,7 @@ def test_t16_weights_route_direct_selected_tiles_allocations(monkeypatch: pytest
     monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
     monkeypatch.setattr(
         qgr,
-        "gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out",
+        "gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out",
         lambda *args, **kwargs: calls.append(("t16_pair_silu", (args[2], args[3], args[4], args[5:10]))),
     )
     monkeypatch.setattr(
@@ -371,6 +371,49 @@ def test_t16_weights_route_direct_selected_tiles_allocations(monkeypatch: pytest
     assert ("t16_pair_silu", (1012, 1013, 160, (1, 2, 4, 256, 256))) in calls
     assert ("t16_down", (1014, 180, (2, 2, 4, 256, 256))) in calls
     assert ("weighted_shared", None) in calls
+
+
+def test_t16_c1_tile8_env_falls_back_to_col16_gate_up_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The selected Q4 gate+up tile8 owner is the default; ``=0`` restores the
+    16-column local128 owner."""
+
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8", "0")
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_exps"] = _FakeWeight(
+        "ffn_gate_exps", "gguf_q4_k_t16_v1", 12, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_up_exps"] = _FakeWeight(
+        "ffn_up_exps", "gguf_q4_k_t16_v1", 13, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", "gguf_q6_k_t16_v1", 14, experts=4, out_features=256, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out",
+        _fail_if_called("t16_pair_silu_tile8"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("t16_pair_silu_col16", args[:10])),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q6_k_t16_selected_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("t16_down", (args[2], args[3], args[4:9]))),
+    )
+    set_gemv_decode_enabled(True)
+
+    runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
+
+    assert ("t16_pair_silu_col16", (100, 130, 1012, 1013, 160, 1, 2, 4, 256, 256)) in calls
 
 
 def test_t16_c1_dp4a_env_keeps_fused_silu_on_float_path(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -391,7 +434,7 @@ def test_t16_c1_dp4a_env_keeps_fused_silu_on_float_path(monkeypatch: pytest.Monk
     monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
     monkeypatch.setattr(
         qgr,
-        "gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out",
+        "gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out",
         lambda *args, **kwargs: calls.append(("t16_pair_silu", args[:10])),
     )
     monkeypatch.setattr(
@@ -435,7 +478,7 @@ def test_t16_c1_selected_dp4a_env_routes_down_through_q8_workspace(monkeypatch: 
     monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
     monkeypatch.setattr(
         qgr,
-        "gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out",
+        "gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out",
         lambda *args, **kwargs: calls.append(("t16_pair_silu", args[:10])),
     )
     monkeypatch.setattr(
@@ -475,7 +518,7 @@ def test_x8_c1_routes_down_through_q8_workspace(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
     monkeypatch.setattr(
         qgr,
-        "gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out",
+        "gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out",
         lambda *args, **kwargs: calls.append(("t16_pair_silu", args[:10])),
     )
     monkeypatch.setattr(

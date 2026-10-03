@@ -1544,6 +1544,19 @@ identical (VGPR 56, SGPR 128, LDS 512). Isolated: **117.9 -> 142.5 GB/s
 (+0.741%)**. Evidence:
 [`shared-expert wave loop`](results/2026-10-03-gfx1151-shexp-wave-loop/README.md).
 
+**Selected Q4_K gate+up tile8 owner (2026-10-03).** `decode_ffn_moe_selected` was
+the largest remaining bandwidth-efficiency gap in the decode step (597.8
+MiB/token at 170.4 GB/s, 72% of the 237 GB/s ceiling, 3.678 ms of 17.81 ms) and
+its Q4_K gate+up leaf was register/occupancy-limited rather than
+bandwidth-limited: rocprofv3 at the production 2048x512x8 shape records **VGPR
+200 -> 88, LDS 1024 -> 512, grid.x 32 -> 64 blocks**, all at 128 threads. A new
+owner covers **8 columns per workgroup instead of 16** and is **byte-identical**
+— both launch `dim3 block(128)`, so thread K ownership, the reduction tree, the
+BF16 round-trip and the fused SiLU are unchanged. Real decode step, same-session
+A/B: `decode_ffn_moe_selected` **-6.83%** (125.727 -> 117.140 ms/32tok), decode
+**53.4247 -> 54.3652 tok/s (+1.760%)**, prefill flat. Evidence:
+[`selected Q4_K tile8 owner`](results/2026-10-03-gfx1151-selected-q4-tile8-owner/README.md).
+
 ### Laguna S 2.1
 
 | Platform / format | Workload | Prefill | Decode | Evidence |
