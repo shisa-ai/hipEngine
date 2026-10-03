@@ -17,9 +17,9 @@ import numpy as np
 import pytest
 
 from tests._rocm_guard import hip_runtime_available
+from tests._vibevoice_tts_guard import resolve_tts_snapshot
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "vibevoice_tts"
-MODEL = "microsoft/VibeVoice-1.5B"
 SCRIPT = "Speaker 1: The quick brown fox jumps over the lazy dog."
 SEED = 20260915
 
@@ -38,7 +38,7 @@ def engine():
         pytest.skip("vibevoice TTS synthesize: HIP runtime unavailable")
     from hipengine import LLM
 
-    instance = LLM(MODEL)
+    instance = LLM(str(resolve_tts_snapshot()))
     try:
         yield instance
     finally:
