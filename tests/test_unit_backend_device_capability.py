@@ -115,9 +115,10 @@ def test_mixed_host_current_device_decides() -> None:
         )
 
 
-def test_mixed_host_defaults_to_logical_device_zero() -> None:
-    """With no ordinal supplied, the engine default (device 0) is validated."""
+def test_mixed_host_defaults_to_logical_device_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the runtime is unavailable, validate default logical device 0."""
 
+    monkeypatch.setattr("hipengine.kernels.backends._current_hip_device_ordinal", lambda: None)
     with pytest.raises(BackendDeviceCapabilityError):
         require_backend_device_compatibility(
             "hip_gfx1151", detected_arches=MIXED_HOST, env={}
