@@ -1,0 +1,165 @@
+{
+  "schema": 3,
+  "status": "passed",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "3ae8a9266ba4aab1a903662d8bd584bbe491200d",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "command": [
+    "scripts/qwen4exp_chunk_memory_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/reprof/compiler.txt",
+    "--capacity",
+    "2",
+    "--chunk-size",
+    "4096",
+    "--context-length",
+    "131072",
+    "--output",
+    "benchmarks/results/2026-10-04-qwen4exp-native-context-chunk-memory/ctx-131072-chunk4096.json"
+  ],
+  "chunk_size": 4096,
+  "resident_capacity": 2,
+  "requested_context_length": 131072,
+  "manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+  "limits": "Allocation/admission only; constructor and worst-case grouped repair queues. No inference, hidden-seed export, graph capture or driver-owned scratch certificate. Existing reserve remains.",
+  "admission": {
+    "mode": "explicit",
+    "device_free_bytes": 128844787712,
+    "device_total_bytes": 128849018880,
+    "vision_weight_reserve_bytes": 0,
+    "plan": {
+      "available_device_bytes": 128844787712,
+      "required_bytes": 109918667184,
+      "device_weight_bytes": 82523491840,
+      "staging_bytes": 83886080,
+      "kv_bytes": 6442450944,
+      "index_bytes": 2035778400,
+      "runtime_state_bytes": 239067136,
+      "scratch_bytes": 14299025488,
+      "reserve_bytes": 4294967296,
+      "context_tokens": 131072,
+      "resident_capacity": 2
+    },
+    "scratch_policy": "max(4GiB floor, mandatory runner scratch and repair queues) per runner; optional resources require separate qualification"
+  },
+  "first_runner_memory": {
+    "current_allocated_bytes": 93108905936,
+    "peak_allocated_bytes": 93108905936,
+    "total_allocated_bytes": 93108905936,
+    "total_freed_bytes": 0,
+    "active_allocations": 1617,
+    "peak_allocations": 1617
+  },
+  "before_lazy_memory": {
+    "current_allocated_bytes": 103694320032,
+    "peak_allocated_bytes": 103694320032,
+    "total_allocated_bytes": 103694320032,
+    "total_freed_bytes": 0,
+    "active_allocations": 2011,
+    "peak_allocations": 2011
+  },
+  "lazy_group_risk": [
+    {
+      "runner_index": 0,
+      "queues": [
+        {
+          "owner": "gdn_prefill_scratch",
+          "rows": 4096,
+          "compact_rows": 40960,
+          "output_width": 2560,
+          "nbytes": 419430404
+        },
+        {
+          "owner": "qsa_prefill_scratch",
+          "rows": 4096,
+          "compact_rows": 40960,
+          "output_width": 2560,
+          "nbytes": 419430404
+        }
+      ]
+    },
+    {
+      "runner_index": 1,
+      "queues": [
+        {
+          "owner": "gdn_prefill_scratch",
+          "rows": 4096,
+          "compact_rows": 40960,
+          "output_width": 2560,
+          "nbytes": 419430404
+        },
+        {
+          "owner": "qsa_prefill_scratch",
+          "rows": 4096,
+          "compact_rows": 40960,
+          "output_width": 2560,
+          "nbytes": 419430404
+        }
+      ]
+    }
+  ],
+  "prepared_context": 131072,
+  "prepared_runners": 2,
+  "prepared_memory": {
+    "current_allocated_bytes": 105372041648,
+    "peak_allocated_bytes": 105372041648,
+    "total_allocated_bytes": 105372041648,
+    "total_freed_bytes": 0,
+    "active_allocations": 2019,
+    "peak_allocations": 2019
+  },
+  "allocation_margins": {
+    "explicit_components_bytes": 91324674400,
+    "observed_remainder_bytes": 14047367248,
+    "scratch_allowance_bytes": 14299025488,
+    "scratch_margin_bytes": 251658240,
+    "including_reserve_margin_bytes": 4546625536
+  },
+  "device_allocation_margins": {
+    "device_components_bytes": 91240788320,
+    "host_staging_reservation_bytes": 83886080,
+    "observed_device_scratch_bytes": 14131253328,
+    "device_scratch_margin_bytes": 167772160
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 105372041648,
+    "total_allocated_bytes": 105372041648,
+    "total_freed_bytes": 105372041648,
+    "active_allocations": 0,
+    "peak_allocations": 2019
+  },
+  "elapsed_seconds": 51.888800657354295
+}
