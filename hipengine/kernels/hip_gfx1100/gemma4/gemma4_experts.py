@@ -554,12 +554,10 @@ def gemma4_experts_forward_bf16(
     # 3. One gate_up projection for every compact row, then GeGLU over the whole
     #    compact buffer in a single launch.
     #
-    #    Which owner runs is a mode decision, and the two owner families never
-    #    stack. The unpinned default runs the fused-stack int8-dp4a MMQ gate/up --
-    #    the measured faster path, with HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ as its
-    #    rollback lever -- and falls back to the ladder in
-    #    :func:`gemma4_project_experts_rows`. A pinned
-    #    HIPENGINE_GEMMA4_MOE_PREFILL mode selects one of the other owners
+    # The unpinned default first tries the registered fused-slab T16 WMMA
+    # owner for wide calls. Other layouts retain the int8 MMQ gate/up and
+    # fallback ladder in :func:`gemma4_project_experts_rows`. A pinned
+    # HIPENGINE_GEMMA4_MOE_PREFILL mode selects one of the other owners
     #    instead: the split-weight grouped int8 leaf, the WMMA owners, or the
     #    exact grouped/selected arms. A pin is a selection rather than an
     #    addition, so pinning an exact owner cannot leave an MMQ leaf running
@@ -569,9 +567,11 @@ def gemma4_experts_forward_bf16(
     mode = _prefill_mode()
     gate_up_wmma, compensated, use_mmq = _prefill_route_flags(mode)
     pinned = mode != "auto"
-    # The tiles-only fused stack is the local residency contract. Its MMQ32
-    # owner is registered directly for this layout, so auto uses the split
-    # projection ABI without reconstructing or duplicating raw expert weights.
+    fused_wmma_leaf = None if pinned else _fused_wmma_owner(
+        gate_up_proj, lanes, hidden_size, intermediate, num_experts
+    )
+    # Tiles-only layouts retain their MMQ route when no fused WMMA owner
+    # supports this shape; neither route reconstructs raw expert weights.
     if not pinned and getattr(getattr(gate_up_proj, "spec", None), "layout", None) == "gguf_q4_k_t16_v1":
         use_mmq = True
     # The MMQ gate reads the runner's declared width rather than this call's lane
@@ -596,7 +596,7 @@ def gemma4_experts_forward_bf16(
     # this route and only the gate_up uses the int8 leaf.
     down_wmma = gate_up_wmma or use_mmq
     mmq_rows = 0
-    if use_mmq:
+    if use_mmq and fused_wmma_leaf is None:
         # The grouped int8 MMQ leaf reads Gemma's fused ``ffn_gate_up_exps``
         # stack directly through an explicit expert stride, addressing the up
         # half one half into each expert's block, so no split layout is
@@ -612,7 +612,7 @@ def gemma4_experts_forward_bf16(
     # Building it here under ``down_wmma`` alone would overwrite that plan before
     # the gate_up ran and fault the MMQ leaf.
     if (
-        gate_up_wmma
+        (gate_up_wmma or fused_wmma_leaf is not None)
         and lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts
     ):
         wmma_rows = _build_wmma_tile_plan(
@@ -661,6 +661,16 @@ def gemma4_experts_forward_bf16(
                 fused,
                 **kwargs,
             )
+    elif fused_wmma_leaf is not None:
+        fused_wmma_leaf(
+            packed_hidden.ptr, expert_start.ptr,
+            scratch.buffer("wmma_expert_start").ptr,
+            scratch.buffer("wmma_tile_expert").ptr,
+            gate_up_proj.allocation().buffer.ptr, gate_up_out.ptr,
+            lanes, hidden_size, intermediate, intermediate, num_experts,
+            wmma_rows, stream=stream, runtime=runtime,
+        )
+        _record_moe_route("gate_up_fused_t16")
     elif use_mmq and mmq_rows and gemma4_project_experts_mmq_dual(
         gate_up_proj,
         hidden_ptr,
@@ -773,6 +783,7 @@ def gemma4_experts_forward_bf16(
     if (
         use_mmq
         and down_wmma
+        and not wmma_rows
         and lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts
     ):
         wmma_rows = _build_wmma_tile_plan(
@@ -1148,6 +1159,30 @@ def _prefill_route_flags(mode: str) -> tuple[bool, bool, bool]:
     if mode == "mmq":
         return False, False, True
     return False, False, False
+
+
+def _fused_wmma_owner(
+    weight: Gemma4Projection, compact_rows: int, in_features: int,
+    out_features: int, num_experts: int,
+):
+    """Exact registered fused-slab consumer, or None for unsupported shapes.
+
+    The consumer preserves the split WMMA parent's arithmetic and reads the
+    primary resident slab. Narrow calls keep their existing selected path.
+    """
+    if (isinstance(weight, int) or in_features % 256 or out_features % 16 or
+            compact_rows < _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts):
+        return None
+    from hipengine.kernels.registry import KernelKey, is_registered, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key,
+                    "selected_dual_wmma_prefill_fused_bf16_bf16_out")
+    _ensure_linear_kernel_registered(key)
+    if not is_registered(key):
+        return None
+    return resolve(backend=key.backend, layer=key.layer, quant=key.quant,
+                   variant=key.variant)
 
 
 def gemma4_project_experts_wmma_dual(

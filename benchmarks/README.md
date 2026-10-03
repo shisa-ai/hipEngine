@@ -2003,6 +2003,31 @@ lead both metrics at these four depths. No full-depth 16K–256K measurement of
 this default is established by the fixed-context replay results below.
 [Protocol, samples, identities and rejected 8K outputs](results/2026-10-03-gemma4-gfx1151-depth-checkpoint.json).
 
+#### Rebase integration check (2026-10-03)
+
+On zbook/Radeon 8060S, the integrated production path and the pre-rebase
+checkout use Gemma `UD-Q4_K_XL`, BF16 KV, equal context capacities,
+128 greedy outputs ignoring EOS, and identical uncached prompt IDs.
+Three measured requests follow one full-shape warmup per checkout.
+These phase timings are not HTTP throughput or a llama.cpp comparison.
+
+| Prompt tokens | Pre-rebase prefill s | Integrated prefill s | Latency change |
+| ---: | ---: | ---: | ---: |
+| 512 | 0.4956 | 0.4976 | +0.39% |
+| 2053 | 2.8351 | 2.7353 | −3.52% |
+| 8192 | 15.1967 | 14.7111 | −3.19% |
+| 16384 | 40.1761 | 38.1657 | −5.00% |
+
+All four public/instrumented output checks pass, and each integrated run
+matches the pre-rebase 128 output IDs. A seven-sample 512-token confirmation
+measures **0.4873 → 0.4990 s (+2.39%)**: the short-prefill regression is not
+cleared. This is an integration diagnostic, not an overall non-regression
+finding or a replacement model topline. Kernel parent/CPU-reference and
+stream/sentinel tests pass; the fresh unit tier has only two inherited
+VibeVoice failures. Saved measurements predate a repaired variant-manifest
+label; the artifact separates actual traced execution from that stale label.
+[Commands, samples, provenance and limitations](results/2026-10-03-gemma4-gfx1151-rebase-fused-t16.json).
+
 #### Shared transient attention workspace (2026-10-03)
 
 On zbook/Radeon 8060S, Gemma 4 26B-A4B `UD-Q4_K_XL` with BF16 KV and

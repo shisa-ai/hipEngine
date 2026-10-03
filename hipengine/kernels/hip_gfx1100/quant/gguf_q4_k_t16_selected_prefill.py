@@ -188,6 +188,39 @@ def gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_t16_selected_dual_wmma_prefill_fused_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Read one expert-major gate|up T16 slab with the split parent's math."""
+    _check_common(compact_rows, in_features, out_features_a, out_features_b,
+                  num_experts, wmma_total_rows)
+    library = library or build_gguf_q4_k_t16_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = library.hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_fused_bf16_bf16_out
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 6 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(x_ptr, expert_start_compact_ptr, expert_start_wmma_ptr, tile_expert_ptr,
+             tiles_ptr, out_ptr, compact_rows, in_features, out_features_a,
+             out_features_b, num_experts, wmma_total_rows, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -650,6 +683,12 @@ def register_gguf_q4_k_t16_selected_prefill_kernels(*, replace: bool = True) -> 
         gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q4_k_t16_v1",
+                  "selected_dual_wmma_prefill_fused_bf16_bf16_out"),
+        gguf_q4_k_t16_selected_dual_wmma_prefill_fused_bf16_bf16_out,
+        replace=replace,
+    )
     # Alias the raw-Q4 variant spelling so dispatch can swap quant keys without
     # adding a runtime/backend branch when this prototype graduates.
     register(
@@ -684,6 +723,7 @@ __all__ = [
     "gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_dual_wmma_prefill_fused_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out",

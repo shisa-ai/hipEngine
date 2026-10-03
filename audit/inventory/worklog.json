@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11444,
-    "current": 4212,
+    "entries": 11445,
+    "current": 4213,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1381,
+    "rows": 1382,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1220
+      "status": 1221
     }
   },
   "rows": [
@@ -52405,6 +52405,45 @@
       },
       "id": "worklog/20261003T081954.711360Z-lhl-gemma4-capacity-probe-review-corrections-94a1b1",
       "evidence_hash": "fb644b647ae7"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261003T173738.012260Z-integration-gemma4-fused-t16-prefill-2a6440",
+      "title": "Recover fused T16 Gemma prefill without duplicate weights",
+      "location": "worklog/entries/20261003T173738.012260Z-integration-gemma4-fused-t16-prefill-2a6440.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "integration",
+        "topic": "gemma4-fused-t16-prefill",
+        "written": "2026-10-03",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- This fused-consumer unit is ready to commit independently of task #3 closure.\n  Continue diagnosing the remaining 512 prefill regression before further\n  tuning. Task #3 and push stay blocked until that regression is resolved;\n  the completed unit-tier run needs no repeat for a kernel-only follow-up.\n- Preserve the restored capacity-probe files, two worklogs, original stash,\n  backup branch and immutable source snapshots.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "Next also names a dependency: 'blocked until'",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261003T173738.012260Z-integration-gemma4-fused-t16-prefill-2a6440.md",
+        "refs": [],
+        "tokens": [
+          "duplicate",
+          "fused",
+          "gemma",
+          "prefill",
+          "recover",
+          "t16",
+          "weights",
+          "without"
+        ]
+      },
+      "id": "worklog/20261003T173738.012260Z-integration-gemma4-fused-t16-prefill-2a6440",
+      "evidence_hash": "abcbb113838d"
     }
   ]
 }

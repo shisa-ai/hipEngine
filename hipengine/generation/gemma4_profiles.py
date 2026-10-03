@@ -7,12 +7,12 @@ shipped UD-Q4_K_XL artifact (measured, not inferred from the filename) -- so
 that an explicit profile resolves to one immutable variant manifest at LLM
 construction and applies its route policy before the first forward.
 
-``production`` is the incumbent default path, recorded from a resolve-spy trace
-of a real generate on the shipped artifact with no route pin set: the grouped
-int8 MMQ gate_up with the WMMA down owner, ``wmma_prefill`` dense prefill and
-the pack8/selected decode GEMVs. Its binder pins
-``HIPENGINE_GEMMA4_MOE_PREFILL=auto``, which is the state the default path
-already resolves to, so registering production does not move arithmetic.
+``production`` selects fused-stride T16 WMMA for wide Q4 gate/up prefill,
+with narrow calls retaining their selected decode route. Other quant layouts
+keep grouped int8 gate/up and WMMA down owners. Dense prefill uses
+``wmma_prefill`` and decode uses pack8/selected GEMVs. The binder pins
+``HIPENGINE_GEMMA4_MOE_PREFILL=auto``; the manifest names the wide Q4 owner
+and its strict selected-row fallback.
 
 ``strict`` pins ``HIPENGINE_GEMMA4_MOE_PREFILL=grouped``, the exact arm
 ``gemma4_experts.py::_prefill_route_flags`` documents as the rollback lever,
@@ -87,6 +87,7 @@ _Q5_K = "gguf_q5_k"
 _Q4_K_T16 = "gguf_q4_k_t16_v1"
 
 # Production (measured, no route pin) MoE owners.
+_T16_FUSED_WMMA = "selected_dual_wmma_prefill_fused_bf16_bf16_out"
 _MMQ32 = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 _GROUPED_DUAL = "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
 _WMMA_DOWN = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
@@ -176,7 +177,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             layer="moe_linear", scope="gate_up_q4_k",
-            selected_variant=_MMQ32, strict_fallback_variant=_T16_DECODE,
+            selected_variant=_T16_FUSED_WMMA, strict_fallback_variant=_T16_DECODE,
             registry_quant=_Q4_K_T16,
         ),
         _selection(

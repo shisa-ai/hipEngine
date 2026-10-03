@@ -9,32 +9,33 @@
   },
   "kernels": {
     "sources": 294,
-    "registry_keys": 313,
+    "registry_keys": 314,
     "backends": [
       "cpu_reference",
       "cuda_sm120a",
       "cuda_sm86",
       "hip_gfx1100",
-      "hip_gfx1151"
+      "hip_gfx1151",
+      "test_fused_backend"
     ]
   },
   "ledger": {
     "source": "docs/REFACTOR.md",
     "headings": 421
   },
-  "generated": "2026-10-03T17:03:57+00:00",
-  "commit": "6339dd866",
+  "generated": "2026-10-03T18:36:01+00:00",
+  "commit": "1b1c141f5",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 11444,
-    "current": 4212,
+    "entries": 11445,
+    "current": 4213,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1381,
+    "rows": 1382,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1220
+      "status": 1221
     }
   }
 }

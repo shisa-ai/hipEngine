@@ -183,9 +183,9 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1222:quant/maple_ternary.cu",
+      "key": "docs/KERNELS.md:1223:quant/maple_ternary.cu",
       "title": "names `quant/maple_ternary.cu`, which is actually at `hipengine/kernels/cuda_sm120a/quant/maple_ternary.cu`",
-      "location": "docs/KERNELS.md:1222",
+      "location": "docs/KERNELS.md:1223",
       "evidence": {
         "fix": "Change `quant/maple_ternary.cu` to `hipengine/kernels/cuda_sm120a/quant/maple_ternary.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -201,7 +201,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1222:quant/maple_ternary.cu"
+          "docs/KERNELS.md:1223:quant/maple_ternary.cu"
         ],
         "tokens": [
           "actually",
@@ -214,14 +214,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1222:quant/maple_ternary.cu",
-      "evidence_hash": "d385e6846b4c"
+      "id": "doc-path-drift/docs/KERNELS.md:1223:quant/maple_ternary.cu",
+      "evidence_hash": "38e0680d76e4"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1223:attention/maple_attention.cu",
+      "key": "docs/KERNELS.md:1224:attention/maple_attention.cu",
       "title": "names `attention/maple_attention.cu`, which is actually at `hipengine/kernels/cuda_sm120a/attention/maple_attention.cu`",
-      "location": "docs/KERNELS.md:1223",
+      "location": "docs/KERNELS.md:1224",
       "evidence": {
         "fix": "Change `attention/maple_attention.cu` to `hipengine/kernels/cuda_sm120a/attention/maple_attention.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -237,7 +237,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1223:attention/maple_attention.cu"
+          "docs/KERNELS.md:1224:attention/maple_attention.cu"
         ],
         "tokens": [
           "actually",
@@ -250,14 +250,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1223:attention/maple_attention.cu",
-      "evidence_hash": "2e99ec0951f5"
+      "id": "doc-path-drift/docs/KERNELS.md:1224:attention/maple_attention.cu",
+      "evidence_hash": "597868fc12d4"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1224:moe/maple_moe.cu",
+      "key": "docs/KERNELS.md:1225:moe/maple_moe.cu",
       "title": "names `moe/maple_moe.cu`, which is actually at `hipengine/kernels/cuda_sm120a/moe/maple_moe.cu`",
-      "location": "docs/KERNELS.md:1224",
+      "location": "docs/KERNELS.md:1225",
       "evidence": {
         "fix": "Change `moe/maple_moe.cu` to `hipengine/kernels/cuda_sm120a/moe/maple_moe.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -273,7 +273,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1224:moe/maple_moe.cu"
+          "docs/KERNELS.md:1225:moe/maple_moe.cu"
         ],
         "tokens": [
           "actually",
@@ -286,14 +286,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1224:moe/maple_moe.cu",
-      "evidence_hash": "a3dee0b3c4df"
+      "id": "doc-path-drift/docs/KERNELS.md:1225:moe/maple_moe.cu",
+      "evidence_hash": "38ac98f353b5"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1225:moe/group_scatter.cu",
+      "key": "docs/KERNELS.md:1226:moe/group_scatter.cu",
       "title": "names `moe/group_scatter.cu`, which is actually at `hipengine/kernels/cuda_sm120a/moe/group_scatter.cu`",
-      "location": "docs/KERNELS.md:1225",
+      "location": "docs/KERNELS.md:1226",
       "evidence": {
         "fix": "Change `moe/group_scatter.cu` to `hipengine/kernels/cuda_sm120a/moe/group_scatter.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -309,7 +309,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1225:moe/group_scatter.cu"
+          "docs/KERNELS.md:1226:moe/group_scatter.cu"
         ],
         "tokens": [
           "actually",
@@ -322,14 +322,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1225:moe/group_scatter.cu",
-      "evidence_hash": "9f9a54b4c78e"
+      "id": "doc-path-drift/docs/KERNELS.md:1226:moe/group_scatter.cu",
+      "evidence_hash": "868f269681f1"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1226:norm/maple_rmsnorm.cu",
+      "key": "docs/KERNELS.md:1227:norm/maple_rmsnorm.cu",
       "title": "names `norm/maple_rmsnorm.cu`, which is actually at `hipengine/kernels/cuda_sm120a/norm/maple_rmsnorm.cu`",
-      "location": "docs/KERNELS.md:1226",
+      "location": "docs/KERNELS.md:1227",
       "evidence": {
         "fix": "Change `norm/maple_rmsnorm.cu` to `hipengine/kernels/cuda_sm120a/norm/maple_rmsnorm.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -345,7 +345,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1226:norm/maple_rmsnorm.cu"
+          "docs/KERNELS.md:1227:norm/maple_rmsnorm.cu"
         ],
         "tokens": [
           "actually",
@@ -358,14 +358,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1226:norm/maple_rmsnorm.cu",
-      "evidence_hash": "4777ca874bd0"
+      "id": "doc-path-drift/docs/KERNELS.md:1227:norm/maple_rmsnorm.cu",
+      "evidence_hash": "9adb2629bbc1"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1227:linear/maple_lm_head.cu",
+      "key": "docs/KERNELS.md:1228:linear/maple_lm_head.cu",
       "title": "names `linear/maple_lm_head.cu`, which is actually at `hipengine/kernels/cuda_sm120a/linear/maple_lm_head.cu`",
-      "location": "docs/KERNELS.md:1227",
+      "location": "docs/KERNELS.md:1228",
       "evidence": {
         "fix": "Change `linear/maple_lm_head.cu` to `hipengine/kernels/cuda_sm120a/linear/maple_lm_head.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -381,7 +381,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1227:linear/maple_lm_head.cu"
+          "docs/KERNELS.md:1228:linear/maple_lm_head.cu"
         ],
         "tokens": [
           "actually",
@@ -394,14 +394,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1227:linear/maple_lm_head.cu",
-      "evidence_hash": "d9054a386b0b"
+      "id": "doc-path-drift/docs/KERNELS.md:1228:linear/maple_lm_head.cu",
+      "evidence_hash": "533d9cd8adb2"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1228:linear/moonshine_projection.cu",
+      "key": "docs/KERNELS.md:1229:linear/moonshine_projection.cu",
       "title": "names `linear/moonshine_projection.cu`, which is actually at `hipengine/kernels/cuda_sm120a/linear/moonshine_projection.cu`",
-      "location": "docs/KERNELS.md:1228",
+      "location": "docs/KERNELS.md:1229",
       "evidence": {
         "fix": "Change `linear/moonshine_projection.cu` to `hipengine/kernels/cuda_sm120a/linear/moonshine_projection.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -417,7 +417,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1228:linear/moonshine_projection.cu"
+          "docs/KERNELS.md:1229:linear/moonshine_projection.cu"
         ],
         "tokens": [
           "actually",
@@ -430,14 +430,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1228:linear/moonshine_projection.cu",
-      "evidence_hash": "a3a41977b7dc"
+      "id": "doc-path-drift/docs/KERNELS.md:1229:linear/moonshine_projection.cu",
+      "evidence_hash": "8ac3983e4260"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1229:linear/lm_head.cu",
+      "key": "docs/KERNELS.md:1230:linear/lm_head.cu",
       "title": "names `linear/lm_head.cu`, which is actually at `hipengine/kernels/cuda_sm120a/linear/lm_head.cu`",
-      "location": "docs/KERNELS.md:1229",
+      "location": "docs/KERNELS.md:1230",
       "evidence": {
         "fix": "Change `linear/lm_head.cu` to `hipengine/kernels/cuda_sm120a/linear/lm_head.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -453,7 +453,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1229:linear/lm_head.cu"
+          "docs/KERNELS.md:1230:linear/lm_head.cu"
         ],
         "tokens": [
           "actually",
@@ -466,14 +466,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1229:linear/lm_head.cu",
-      "evidence_hash": "9ec3a5796bc1"
+      "id": "doc-path-drift/docs/KERNELS.md:1230:linear/lm_head.cu",
+      "evidence_hash": "e28ebf83e094"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1230:norm/moonshine_layernorm.cu",
+      "key": "docs/KERNELS.md:1231:norm/moonshine_layernorm.cu",
       "title": "names `norm/moonshine_layernorm.cu`, which is actually at `hipengine/kernels/cuda_sm120a/norm/moonshine_layernorm.cu`",
-      "location": "docs/KERNELS.md:1230",
+      "location": "docs/KERNELS.md:1231",
       "evidence": {
         "fix": "Change `norm/moonshine_layernorm.cu` to `hipengine/kernels/cuda_sm120a/norm/moonshine_layernorm.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -489,7 +489,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1230:norm/moonshine_layernorm.cu"
+          "docs/KERNELS.md:1231:norm/moonshine_layernorm.cu"
         ],
         "tokens": [
           "actually",
@@ -502,14 +502,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1230:norm/moonshine_layernorm.cu",
-      "evidence_hash": "fc78c1a5f0a3"
+      "id": "doc-path-drift/docs/KERNELS.md:1231:norm/moonshine_layernorm.cu",
+      "evidence_hash": "e7c8a0ea1c6a"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1231:fused/moonshine_mlp.cu",
+      "key": "docs/KERNELS.md:1232:fused/moonshine_mlp.cu",
       "title": "names `fused/moonshine_mlp.cu`, which is actually at `hipengine/kernels/cuda_sm120a/fused/moonshine_mlp.cu`",
-      "location": "docs/KERNELS.md:1231",
+      "location": "docs/KERNELS.md:1232",
       "evidence": {
         "fix": "Change `fused/moonshine_mlp.cu` to `hipengine/kernels/cuda_sm120a/fused/moonshine_mlp.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -525,7 +525,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1231:fused/moonshine_mlp.cu"
+          "docs/KERNELS.md:1232:fused/moonshine_mlp.cu"
         ],
         "tokens": [
           "actually",
@@ -538,14 +538,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1231:fused/moonshine_mlp.cu",
-      "evidence_hash": "674b7d55281f"
+      "id": "doc-path-drift/docs/KERNELS.md:1232:fused/moonshine_mlp.cu",
+      "evidence_hash": "8356c0cb911b"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1232:fused/moonshine_glue.cu",
+      "key": "docs/KERNELS.md:1233:fused/moonshine_glue.cu",
       "title": "names `fused/moonshine_glue.cu`, which is actually at `hipengine/kernels/cuda_sm120a/fused/moonshine_glue.cu`",
-      "location": "docs/KERNELS.md:1232",
+      "location": "docs/KERNELS.md:1233",
       "evidence": {
         "fix": "Change `fused/moonshine_glue.cu` to `hipengine/kernels/cuda_sm120a/fused/moonshine_glue.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -561,7 +561,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1232:fused/moonshine_glue.cu"
+          "docs/KERNELS.md:1233:fused/moonshine_glue.cu"
         ],
         "tokens": [
           "actually",
@@ -574,14 +574,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1232:fused/moonshine_glue.cu",
-      "evidence_hash": "5fc418ad2a44"
+      "id": "doc-path-drift/docs/KERNELS.md:1233:fused/moonshine_glue.cu",
+      "evidence_hash": "b9c0ad0592b6"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1233:attention/moonshine_attention.cu",
+      "key": "docs/KERNELS.md:1234:attention/moonshine_attention.cu",
       "title": "names `attention/moonshine_attention.cu`, which is actually at `hipengine/kernels/cuda_sm120a/attention/moonshine_attention.cu`",
-      "location": "docs/KERNELS.md:1233",
+      "location": "docs/KERNELS.md:1234",
       "evidence": {
         "fix": "Change `attention/moonshine_attention.cu` to `hipengine/kernels/cuda_sm120a/attention/moonshine_attention.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -597,7 +597,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1233:attention/moonshine_attention.cu"
+          "docs/KERNELS.md:1234:attention/moonshine_attention.cu"
         ],
         "tokens": [
           "actually",
@@ -610,14 +610,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1233:attention/moonshine_attention.cu",
-      "evidence_hash": "3dbe08d19303"
+      "id": "doc-path-drift/docs/KERNELS.md:1234:attention/moonshine_attention.cu",
+      "evidence_hash": "37aee4a3dba8"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1234:attention/moonshine_attention_cutlass.cu",
+      "key": "docs/KERNELS.md:1235:attention/moonshine_attention_cutlass.cu",
       "title": "names `attention/moonshine_attention_cutlass.cu`, which is actually at `hipengine/kernels/cuda_sm120a/attention/moonshine_attention_cutlass.cu`",
-      "location": "docs/KERNELS.md:1234",
+      "location": "docs/KERNELS.md:1235",
       "evidence": {
         "fix": "Change `attention/moonshine_attention_cutlass.cu` to `hipengine/kernels/cuda_sm120a/attention/moonshine_attention_cutlass.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -633,7 +633,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1234:attention/moonshine_attention_cutlass.cu"
+          "docs/KERNELS.md:1235:attention/moonshine_attention_cutlass.cu"
         ],
         "tokens": [
           "actually",
@@ -646,14 +646,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1234:attention/moonshine_attention_cutlass.cu",
-      "evidence_hash": "18bb51ab0d80"
+      "id": "doc-path-drift/docs/KERNELS.md:1235:attention/moonshine_attention_cutlass.cu",
+      "evidence_hash": "9398d3d76956"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1235:encoder/moonshine_encoder.cu",
+      "key": "docs/KERNELS.md:1236:encoder/moonshine_encoder.cu",
       "title": "names `encoder/moonshine_encoder.cu`, which is actually at `hipengine/kernels/cuda_sm120a/encoder/moonshine_encoder.cu`",
-      "location": "docs/KERNELS.md:1235",
+      "location": "docs/KERNELS.md:1236",
       "evidence": {
         "fix": "Change `encoder/moonshine_encoder.cu` to `hipengine/kernels/cuda_sm120a/encoder/moonshine_encoder.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -669,7 +669,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1235:encoder/moonshine_encoder.cu"
+          "docs/KERNELS.md:1236:encoder/moonshine_encoder.cu"
         ],
         "tokens": [
           "actually",
@@ -682,14 +682,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1235:encoder/moonshine_encoder.cu",
-      "evidence_hash": "97f1adce51f3"
+      "id": "doc-path-drift/docs/KERNELS.md:1236:encoder/moonshine_encoder.cu",
+      "evidence_hash": "6ca37566e8ca"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1236:encoder/moonshine_encoder_lt.cu",
+      "key": "docs/KERNELS.md:1237:encoder/moonshine_encoder_lt.cu",
       "title": "names `encoder/moonshine_encoder_lt.cu`, which is actually at `hipengine/kernels/cuda_sm120a/encoder/moonshine_encoder_lt.cu`",
-      "location": "docs/KERNELS.md:1236",
+      "location": "docs/KERNELS.md:1237",
       "evidence": {
         "fix": "Change `encoder/moonshine_encoder_lt.cu` to `hipengine/kernels/cuda_sm120a/encoder/moonshine_encoder_lt.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -705,7 +705,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1236:encoder/moonshine_encoder_lt.cu"
+          "docs/KERNELS.md:1237:encoder/moonshine_encoder_lt.cu"
         ],
         "tokens": [
           "actually",
@@ -718,14 +718,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1236:encoder/moonshine_encoder_lt.cu",
-      "evidence_hash": "a5dc19484ecb"
+      "id": "doc-path-drift/docs/KERNELS.md:1237:encoder/moonshine_encoder_lt.cu",
+      "evidence_hash": "9eb78896f674"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1237:encoder/moonshine_encoder_cudnn.cu",
+      "key": "docs/KERNELS.md:1238:encoder/moonshine_encoder_cudnn.cu",
       "title": "names `encoder/moonshine_encoder_cudnn.cu`, which is actually at `hipengine/kernels/cuda_sm120a/encoder/moonshine_encoder_cudnn.cu`",
-      "location": "docs/KERNELS.md:1237",
+      "location": "docs/KERNELS.md:1238",
       "evidence": {
         "fix": "Change `encoder/moonshine_encoder_cudnn.cu` to `hipengine/kernels/cuda_sm120a/encoder/moonshine_encoder_cudnn.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -741,7 +741,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1237:encoder/moonshine_encoder_cudnn.cu"
+          "docs/KERNELS.md:1238:encoder/moonshine_encoder_cudnn.cu"
         ],
         "tokens": [
           "actually",
@@ -754,14 +754,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1237:encoder/moonshine_encoder_cudnn.cu",
-      "evidence_hash": "c9de9407a472"
+      "id": "doc-path-drift/docs/KERNELS.md:1238:encoder/moonshine_encoder_cudnn.cu",
+      "evidence_hash": "9f57af220d88"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:1238:smoke/smoke_add.cu",
+      "key": "docs/KERNELS.md:1239:smoke/smoke_add.cu",
       "title": "names `smoke/smoke_add.cu`, which is actually at `hipengine/kernels/cuda_sm120a/smoke/smoke_add.cu`",
-      "location": "docs/KERNELS.md:1238",
+      "location": "docs/KERNELS.md:1239",
       "evidence": {
         "fix": "Change `smoke/smoke_add.cu` to `hipengine/kernels/cuda_sm120a/smoke/smoke_add.cu`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -777,7 +777,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:1238:smoke/smoke_add.cu"
+          "docs/KERNELS.md:1239:smoke/smoke_add.cu"
         ],
         "tokens": [
           "actually",
@@ -790,8 +790,8 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:1238:smoke/smoke_add.cu",
-      "evidence_hash": "c5fe742d1215"
+      "id": "doc-path-drift/docs/KERNELS.md:1239:smoke/smoke_add.cu",
+      "evidence_hash": "1fe92a2b581e"
     },
     {
       "kind": "doc-path-drift",
@@ -4897,9 +4897,9 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:338:vibevoice/registered.py",
+      "key": "docs/KERNELS.md:339:vibevoice/registered.py",
       "title": "names `vibevoice/registered.py`, which is actually at `hipengine/kernels/hip_gfx1100/vibevoice/registered.py`",
-      "location": "docs/KERNELS.md:338",
+      "location": "docs/KERNELS.md:339",
       "evidence": {
         "fix": "Change `vibevoice/registered.py` to `hipengine/kernels/hip_gfx1100/vibevoice/registered.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -4915,7 +4915,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:338:vibevoice/registered.py"
+          "docs/KERNELS.md:339:vibevoice/registered.py"
         ],
         "tokens": [
           "actually",
@@ -4928,14 +4928,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:338:vibevoice/registered.py",
-      "evidence_hash": "39e4e875565e"
+      "id": "doc-path-drift/docs/KERNELS.md:339:vibevoice/registered.py",
+      "evidence_hash": "add7dfbb80e2"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:341:yue2/nar",
+      "key": "docs/KERNELS.md:342:yue2/nar",
       "title": "names `yue2/nar`, which is actually at `tests/fixtures/yue2/nar`",
-      "location": "docs/KERNELS.md:341",
+      "location": "docs/KERNELS.md:342",
       "evidence": {
         "fix": "Change `yue2/nar` to `tests/fixtures/yue2/nar`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -4951,7 +4951,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:341:yue2/nar"
+          "docs/KERNELS.md:342:yue2/nar"
         ],
         "tokens": [
           "actually",
@@ -4963,8 +4963,8 @@
           "yue2"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:341:yue2/nar",
-      "evidence_hash": "fb274b5dc7c1"
+      "id": "doc-path-drift/docs/KERNELS.md:342:yue2/nar",
+      "evidence_hash": "2ea85266edc7"
     },
     {
       "kind": "doc-path-drift",
