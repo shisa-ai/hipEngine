@@ -108,7 +108,7 @@ def client():
         "--model",
         str(MODEL),
         "--backend",
-        "hip_gfx1151",
+        "auto",
         "--quant",
         "gguf_q4_k_m",
         "--kv-storage",
