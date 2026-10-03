@@ -2325,7 +2325,18 @@ GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "tile32x128"
 # repeated-128K split reproduces the gfx1151 queue no-progress state only when
 # this route is enabled. Keep the explicit diagnostic, and use the established
 # baseline body automatically until shared-X passes the long-context gate.
-GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "baseline"
+#
+# R12 ladder step 1: the paired multi-wave LDS-staged bodies for BOTH
+# selected-expert legs (`pair32`) are raw-bit identical to the compact baseline
+# and clear the gate that shared-X failed. Three independent conservative-set
+# 128K warmup+3 processes passed 12/12 (319.25/319.21/319.30 tok/s, stdev
+# <= 0.11, finite logits, IDs [9707,9707,9707]) and three independent
+# production-shaped processes passed 12/12 at 620.61/619.99/619.57 tok/s, above
+# the 575.180-580.626 baseline-only figure on the same workload. The compact
+# `baseline` body stays registered as the release-safety rollback and `shared_x`
+# stays blocked. See docs/REFACTOR.md and
+# worklog/entries/20261003T112247.855338Z-lhl-gfx1151-prefill-r12-design-basis-c1eb0a.md.
+GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "pair32"
 # LCP-4's exact router primitive and full-model gates admit the 256-thread
 # reduction geometry for BF16-hidden/F32-weight GGUF router logits on gfx1151.
 GGUF_ROUTER_F32_BF16_HIDDEN_THREADS = 256

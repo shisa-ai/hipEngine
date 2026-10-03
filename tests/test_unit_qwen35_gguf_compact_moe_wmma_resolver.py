@@ -143,9 +143,16 @@ def test_t16_q4_explicit_pair32_mode_resolves_gate_up_and_down(
     assert "selected_wmma_prefill_compact_bf16_bf16_out" not in resolved_variants
 
 
-def test_t16_q4_gfx1151_auto_resolves_baseline_fallback(
+def test_t16_q4_gfx1151_auto_resolves_paired_nwave(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """gfx1151 automatic selection is the paired multi-wave body.
+
+    The paired bodies are raw-bit identical to the compact baseline and passed
+    the repeated-128K gate that blocked ``shared_x``, so they are now the
+    automatic route on gfx1151; ``shared_x`` stays blocked.
+    """
+
     monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", raising=False)
     gate = _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151")
     up = _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151")
@@ -162,8 +169,35 @@ def test_t16_q4_gfx1151_auto_resolves_baseline_fallback(
     plan = qgr._resolve_compact_moe_wmma_kernels(gate, up, down)
 
     assert plan is not None
-    assert "selected_dual_wmma_prefill_compact_bf16_bf16_out" in resolved_variants
+    assert "selected_dual_wmma_prefill_pair32_nwave_bf16_bf16_out" in resolved_variants
+    assert "selected_wmma_prefill_pair32_nwave_bf16_bf16_out" in resolved_variants
     assert not any("shared_x" in variant for variant in resolved_variants)
+
+
+def test_t16_q4_gfx1151_explicit_baseline_still_resolves_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The compact baseline body stays registered as the release-safety rollback."""
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", "baseline")
+    gate = _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151")
+    up = _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151")
+    down = _fake_weight("gguf_q5_k_t16_v1", backend="hip_gfx1151")
+    resolved_variants: list[str] = []
+
+    def fake_resolve(*, backend, layer, quant, variant, missing="error"):
+        del backend, layer, quant, missing
+        resolved_variants.append(variant)
+        return lambda: None
+
+    monkeypatch.setattr(qgr, "resolve", fake_resolve)
+
+    plan = qgr._resolve_compact_moe_wmma_kernels(gate, up, down)
+
+    assert plan is not None
+    assert "selected_dual_wmma_prefill_compact_bf16_bf16_out" in resolved_variants
+    assert "selected_wmma_prefill_compact_bf16_bf16_out" in resolved_variants
+    assert not any("pair32" in variant for variant in resolved_variants)
 
 
 def test_t16_q4_invalid_explicit_mode_fails_closed(

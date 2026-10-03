@@ -1570,10 +1570,15 @@ at 4096 tokens, `--public-ar-profile`, chunk 1024: prefill **1450.8 -> 1603.7
 tok/s (+10.54%)** in one pair and **1454.0 -> 1639.3 tok/s (+12.75%)** in a
 second pair on the committed tree; the conservative pair is carried forward. By
 the design basis's FLOP accounting that puts the combined expert legs at
-**11.49 TFLOP/s from 8.51**, clearing the 11.3 TFLOP/s bar. `pair32` is a
-selector, not the automatic default: the gfx1151 selected-prefill LDS-staging
-family has an open repeated-128K lifecycle-stall precedent and the new bodies
-have not been through that gate. Evidence:
+**11.49 TFLOP/s from 8.51**, clearing the 11.3 TFLOP/s bar. **This is now the
+gfx1151 automatic route** (`GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "pair32"`;
+gfx1100 is unchanged), after clearing the gate that blocked `shared_x`: three
+independent conservative-set 128K warmup+3 processes and three independent
+production-shaped ones each passed **12/12** with finite logits and IDs
+`[9707,9707,9707]`, the latter at **620.61/619.99/619.57 tok/s** against the
+575.180-580.626 baseline-only figure on the same workload. **Default-path A/B**
+(explicit `=baseline` rollback vs the promoted automatic route, 4096 tokens,
+chunk 1024, 3 measured runs each): **1450.78 -> 1633.33 tok/s (+12.58%)**. Evidence:
 [`selected-expert pair32`](results/2026-10-03-gfx1151-selected-prefill-pair32-nwave/README.md).
 
 ### Laguna S 2.1
