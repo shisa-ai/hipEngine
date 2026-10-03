@@ -41,13 +41,17 @@ pytestmark = pytest.mark.skipif(
 _DECODE_STEPS = 4
 
 
-def _build_runner():
+@pytest.fixture
+def live_runner():
     import hipengine
 
     llm = hipengine.LLM(model=str(_TARGET))
-    generator = llm._get_text_generator()
-    runner = generator._ensure_runner()
-    return llm, runner
+    try:
+        generator = llm._get_text_generator()
+        runner = generator._ensure_runner()
+        yield llm, runner
+    finally:
+        llm.close()
 
 
 def _prompt(vocab: int) -> list[int]:
@@ -56,8 +60,8 @@ def _prompt(vocab: int) -> list[int]:
     return [pid % vocab for pid in (101, 202, 303, 404, 505)]
 
 
-def test_live_gemma4_session_matches_direct_forward_chain():
-    llm, runner = _build_runner()
+def test_live_gemma4_session_matches_direct_forward_chain(live_runner):
+    llm, runner = live_runner
     vocab = int(runner.weights.config.vocab_size or 0)
     assert vocab > 0, "fixture carries no vocab_size"
     prompt = _prompt(vocab)
@@ -112,9 +116,9 @@ def test_live_gemma4_session_matches_direct_forward_chain():
         )
 
 
-def test_live_gemma4_session_reset_starts_a_second_prompt():
+def test_live_gemma4_session_reset_starts_a_second_prompt(live_runner):
     """reset() must rewind the runner, since the smoke runs several prompts."""
-    _, runner = _build_runner()
+    _, runner = live_runner
     vocab = int(runner.weights.config.vocab_size or 0)
     first = _prompt(vocab)
 
