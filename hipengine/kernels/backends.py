@@ -241,9 +241,11 @@ def select_backend(
     :func:`detect_hip_physical_device_arches`) and the visibility variables.
     Without it, automatic selection takes the first ambient architecture, which
     is correct for registry resolution but can name a device other than the one
-    the engine runs on. When the current device is unknown, selection falls back
-    to the hardware-only ambient probe so an offline target list is never
-    accepted as installed hardware.
+    the engine runs on. When the current device is *known* but has no native
+    backend, selection takes the unsupported-architecture fallback for that
+    device rather than another device's backend, which validation would refuse.
+    Only an *unresolved* device identity falls back to the hardware-only ambient
+    probe, so an offline target list is never accepted as installed hardware.
     """
 
     requested = (backend or AUTO_BACKEND).strip() or AUTO_BACKEND
@@ -261,15 +263,28 @@ def select_backend(
             env=env_map,
             current_device=current_device,
         )
-        for arch in device_arches:
-            resolved = HIP_TARGET_ARCH_BACKEND.get(arch)
-            if resolved is not None:
-                return BackendSelection(
-                    requested=requested,
-                    backend=resolved,
-                    source="execution_device",
-                    detected_arches=device_arches,
-                )
+        if device_arches:
+            for arch in device_arches:
+                resolved = HIP_TARGET_ARCH_BACKEND.get(arch)
+                if resolved is not None:
+                    return BackendSelection(
+                        requested=requested,
+                        backend=resolved,
+                        source="execution_device",
+                        detected_arches=device_arches,
+                    )
+            # The execution device is known but has no native backend. Use the
+            # unsupported-architecture fallback for that device rather than
+            # another device's backend, which validation would then refuse.
+            return BackendSelection(
+                requested=requested,
+                backend=fallback_backend,
+                source="execution_device_fallback",
+                detected_arches=device_arches,
+                warning=_auto_backend_warning(device_arches, fallback_backend),
+            )
+        # Device identity is unresolved, so fall back to the ambient probe
+        # below; compatibility validation stays permissive in this case.
 
     if detected_arches is not None:
         raw_arches = detected_arches
@@ -480,8 +495,14 @@ def _current_hip_device_ordinal() -> int | None:
     caller falls back to the default logical device. This is consulted only when
     the visible devices disagree on architecture, so a homogeneous host never
     initializes the HIP runtime from this path.
+
+    HIP reads its queue/scratch policy during initialization, so the process
+    defaults are applied before the library load or ``hipGetDevice`` call, the
+    same ordering the runtime entry point in ``core/hip.py`` uses. Existing
+    environment values are never overwritten.
     """
 
+    configure_hip_process_environment()
     try:
         library = ctypes.CDLL("libamdhip64.so")
     except OSError:
