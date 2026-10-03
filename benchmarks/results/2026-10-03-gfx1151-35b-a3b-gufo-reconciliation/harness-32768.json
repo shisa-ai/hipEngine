@@ -1,0 +1,95 @@
+{
+ "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "quant": "gguf_ud_q4_k_m",
+ "public_ar_profile": true,
+ "summary": {
+  "prefill_tok_s": {
+   "median": 1199.615,
+   "samples": [
+    1200.042,
+    1198.528,
+    1199.615
+   ]
+  },
+  "decode_tok_s": {
+   "median": 45.538,
+   "samples": [
+    45.61,
+    45.492,
+    45.538
+   ]
+  },
+  "prefill_seconds": {
+   "median": 27.315,
+   "samples": [
+    27.306,
+    27.34,
+    27.315
+   ]
+  },
+  "decode_seconds": {
+   "median": 2.811,
+   "samples": [
+    2.806,
+    2.814,
+    2.811
+   ]
+  },
+  "graph_capture_seconds": {
+   "median": 0.0,
+   "samples": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "tracked_peak_allocated_gib": {
+   "median": 21.57,
+   "samples": [
+    21.57,
+    21.57,
+    21.57
+   ]
+  },
+  "tracked_current_allocated_gib_before_close": {
+   "median": 21.57,
+   "samples": [
+    21.57,
+    21.57,
+    21.57
+   ]
+  },
+  "owned_session_peak_gib": {
+   "median": 21.57,
+   "samples": [
+    21.57,
+    21.57,
+    21.57
+   ]
+  },
+  "hip_used_peak_sampled_gib": {
+   "median": 21.905,
+   "samples": [
+    21.905,
+    21.905,
+    21.905
+   ]
+  }
+ },
+ "measured_run": {
+  "prompt_length": 32768,
+  "decode_tokens": 128,
+  "effective_use_wmma_prefill": true,
+  "effective_use_gemv_decode": true,
+  "prefill_chunk_sizes": {
+   "linear": 512,
+   "moe": 512,
+   "full_attn_query": 4096,
+   "full_attn_post": 1024,
+   "full_attn_rope": 1024,
+   "attn_aotriton_min_tokens": 512,
+   "auto_tune": true,
+   "chunk_tune_min_tokens": 1025
+  }
+ }
+}
