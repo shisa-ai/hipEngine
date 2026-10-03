@@ -76,6 +76,17 @@ class BackendSelection:
         return self.detected_arches[0] if self.detected_arches else None
 
 
+class BackendDeviceCapabilityError(RuntimeError):
+    """An explicit HIP backend targets an architecture the selected device lacks.
+
+    Raised at execution selection, before any model load or kernel launch. The
+    requested backend's kernels are compiled for its declared target arch; the
+    selected visible HIP device reports a different architecture, so those code
+    objects cannot execute there. The class is a ``RuntimeError`` so existing
+    callers keep working while tests and diagnostics can name the condition.
+    """
+
+
 def hip_target_arch_for_backend(backend: str) -> str:
     """Return the HIP offload arch for a supported HIP backend key."""
 
@@ -282,6 +293,100 @@ def detect_hip_target_arches() -> tuple[str, ...]:
         if arches:
             return arches
     return ()
+
+
+def _visible_device_indices(env: Mapping[str, str]) -> tuple[int, ...] | None:
+    """Selected visible HIP device indices.
+
+    ``None`` means neither visibility variable is set, so every host device is
+    visible. An empty tuple means a variable *is* set but its value cannot be
+    mapped to device indices (a UUID or MIG-style handle, or an empty list), so
+    the selected device is unknown and incompatibility is not proven.
+    ``HIP_VISIBLE_DEVICES`` wins over ``ROCR_VISIBLE_DEVICES``, matching the
+    server's reporting.
+    """
+
+    for name in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
+        raw = env.get(name)
+        if raw is None:
+            continue
+        parts = [part.strip() for part in str(raw).split(",") if part.strip()]
+        if not parts:
+            return ()
+        indices: list[int] = []
+        for part in parts:
+            try:
+                indices.append(int(part))
+            except ValueError:
+                return ()
+        return tuple(indices)
+    return None
+
+
+def selected_device_arches(
+    *,
+    detected_arches: Sequence[str] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> tuple[str, ...]:
+    """Architectures of the selected visible HIP device(s).
+
+    ``detected_arches`` is the host device list in device order, as returned by
+    :func:`detect_hip_target_arches`. When ``HIP_VISIBLE_DEVICES`` or
+    ``ROCR_VISIBLE_DEVICES`` selects a subset by index, only those entries are
+    returned, so a mixed host does not excuse a backend that the selected device
+    cannot run. An empty tuple means the selected device could not be resolved,
+    so incompatibility is not proven and callers must not refuse the request.
+    """
+
+    env_map = os.environ if env is None else env
+    raw = tuple(detected_arches) if detected_arches is not None else detect_hip_target_arches()
+    host = tuple(dict.fromkeys(arch for arch in (_normalize_arch(entry) for entry in raw) if arch))
+    if not host:
+        return ()
+    indices = _visible_device_indices(env_map)
+    if indices is None:
+        return host
+    if not indices:
+        # A visibility variable is set but cannot be mapped to a device.
+        return ()
+    selected: list[str] = []
+    for index in indices:
+        if index < 0 or index >= len(host):
+            return ()
+        selected.append(host[index])
+    return tuple(dict.fromkeys(selected))
+
+
+def require_backend_device_compatibility(
+    backend: str,
+    *,
+    detected_arches: Sequence[str] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> None:
+    """Refuse an explicit HIP backend that the selected device cannot execute.
+
+    A non-HIP backend, an unrecognized backend key, or an unresolved device set
+    is left alone: only a HIP backend whose declared target architecture is
+    absent from a known selected-device set raises. ``HIPENGINE_HIP_ARCH`` is a
+    build-time cross-compilation override and is deliberately not consulted as
+    hardware evidence.
+    """
+
+    target_arch = HIP_BACKEND_TARGET_ARCH.get(backend)
+    if target_arch is None:
+        return
+    arches = selected_device_arches(detected_arches=detected_arches, env=env)
+    if not arches or target_arch in arches:
+        return
+    raise BackendDeviceCapabilityError(
+        f"backend {backend!r} targets HIP architecture {target_arch!r}, which is "
+        f"not present on the selected HIP device(s) {arches!r}. Kernels built "
+        f"for {target_arch!r} cannot execute on those devices, so this request "
+        f"is refused before any model load or kernel launch. Select a backend "
+        f"that matches the device or run on a {target_arch!r} device; "
+        f"HIPENGINE_HIP_ARCH only cross-compiles offline and is not a device "
+        f"override."
+    )
 
 
 @contextmanager
