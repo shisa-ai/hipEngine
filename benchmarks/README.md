@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-03 UTC**
+Last updated: **2026-10-04 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -1176,6 +1176,29 @@ pwilkin `master` and halogen cannot be included: the former has no `qwen4exp`
 architecture, and the latter refuses this quant family by name and publishes its
 figures on `UD-IQ4_XS` instead.
 [Full comparison, kernel attribution and excluded engines](results/2026-09-15-flashnext-engine-comparison/README.md).
+
+A fourth engine family, **gufo** (a dedicated Strix Halo engine), opens the same
+four shards - its own `docs/models/qwen3.8-flash-next/artifacts/model-identities.json`
+records the same sha256 for all four - and is the fastest engine measured on this
+file. It is deliberately **not** a row of the table above: those rows are
+validated by `comparison.py` against the canonical twelve cases and their shared
+prompt hashes, and gufo was measured on its own `-p` prompt sequence, so its
+rates are a reference point rather than a validated row. On the prebuilt edge
+binary `8ca63994...` (reports commit `98641a6`) it reaches **1168.78 / 1510.14 /
+1695.37 tok/s at 512 / 1K / 4K** and **26.71 tok/s** decode at depth 0, against
+hipEngine **254.31 / 251.65 / 241.53** and **19.87** measured on the canonical
+twelve in the same session: **4.6x / 6.0x / 7.0x** prefill and **1.34x** decode.
+gufo's own MTP path is **1.47x** its AR rate on its bench prompt and its output
+sha256 is byte-identical between the two, but it **cannot load our MTP sidecar**
+(`missing tensor blk.48.nextn.hc_head_norm.weight`), so no cross-engine MTP
+comparison exists. The same binary also **cannot open our Qwen3.6-35B-A3B**
+(`Missing required Qwen tensor: blk.0.ffn_gate.weight`) because it has no MoE
+weight loader, so no same-file 35B row is possible. That hipEngine figure comes
+from a different harness than the table's source and sits above the table's
+published `185.2 / 190.6 / 183.6` row at `ddfc2a746`; the two protocols are not
+identical (this run used a warm PLE cache and two measured repetitions), so the
+table row is **not** replaced here.
+[Same-file comparison](results/2026-10-04-gfx1151-gufo-vs-hipengine-same-file/README.md).
 
 ### Long context 8K-256K on the same file
 

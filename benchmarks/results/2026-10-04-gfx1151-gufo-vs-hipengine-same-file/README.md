@@ -225,6 +225,13 @@ Measured with the prebuilt `98641a6` binary on this host:
   rate. That single axis brackets the published 656.33.
   `Qwen3.8-27B-UD-Q4_K_S.gguf` fails to load in gufo entirely
   (`Invalid GGUF tensor shape or unsupported storage type: blk.0.ffn_gate.weight`).
+- **Mechanism — the axis is quant-layout dispatch, not bytes.** On the same
+  binary, same host and same `-p` ladder, the IQ4_XS file ramps **1.57x** from
+  pp512 (484.99) to pp2048 (761.90) while standard `Q4_K_M` is **flat**
+  (383.53 -> 393.31, **+2.5%**). A 4% file-size difference cannot produce that
+  contrast, so the two files select different prefill kernels and gufo's
+  published 656.33 is a property of the path its file selects as much as of the
+  file. The ramp contrast is measured; the kernel-path reading is an inference.
 - **Build hypothesis — untestable.** The published revision `628ed18e` is not in
   the local 409-commit history or the shallow clone, so its binary cannot be
   rebuilt or measured. Its contribution is not separable from the file axis.
