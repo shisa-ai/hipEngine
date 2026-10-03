@@ -75,6 +75,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w,
+    qwen35_router_logits_bf16_f32w_token_tile_8,
     qwen35_router_logits_bf16_f32w_token_tile_16,
     qwen35_router_select,
 )
@@ -323,6 +324,7 @@ def gemma4_router_topk_bf16(
     scratch: Gemma4RouterScratch,
     eps: float = 1e-6,
     stream: int = 0,
+    backend: str | None = None,
 ) -> None:
     """Route ``tokens`` rows of BF16 hidden state to ``top_k`` of ``num_experts``.
 
@@ -405,22 +407,70 @@ def gemma4_router_topk_bf16(
         root_size=hidden_size**-0.5,
         stream=stream,
     )
-    # Prefill-size token counts take one of two projection tiers: a full
-    # 1024-row block routes through the F32 SGEMM (see
-    # ``_ROUTER_SGEMM_MIN_TOKENS``) and narrower blocks take token_tile_16
-    # at 128 threads rather than
-    # the generic bf16_f32w entry point, which defaults to threads=512 with a
-    # four-token tile. At this shape (hidden 2816) that leaves threads 352..511
-    # with no K range at all, so 31% of every block idles behind a nine-round
-    # barrier tree for 64 FLOPs of work per useful thread. Measured on the
-    # production shape: 0.2309 ms -> 0.0666 ms per launch (1.60 -> 5.43
-    # TFLOP/s), 3.5x, and both land within 4e-06 of a float64 reference.
-    # Smaller token counts keep the untiled path -- see
-    # ``_TOKEN_TILE_16_MIN_TOKENS`` -- and the width is not the binding's
-    # default of 256 -- see ``_TOKEN_TILE_16_THREADS``.
-    # Neither choice is bit-identical to what it replaces: the tiling and the
-    # width both change the reduction, so the teacher-forced gate gates this.
-    if tokens >= _ROUTER_SGEMM_MIN_TOKENS:
+    # Which logits schedule runs is a registered backend capability, not a
+    # correctness question. The untiled kernel launches one block per
+    # (expert-row, token), so it reads each F32 weight row once per token; an
+    # N-token tiling launches one block per (expert-row, N tokens) and reads each
+    # weight row once per N. gfx1151 declares "token_tile_8", so resolving the
+    # capability turns it on without a backend branch. The router is 17.5 ms of
+    # the prefill (worklog/entries/20260929T083000).
+    #
+    # EXACTNESS IS PER SCHEDULE, MEASURED, AND NOT UNIFORM
+    # (scripts/gemma4_router_tile_equivalence.py):
+    #   token_tile_8   bit-identical to the untiled kernel at tokens
+    #                  1/512/777/4096 and an unrelated geometry.
+    #   token_tile_16  NOT bit-identical -- 7.2e-07 max absolute delta on the
+    #                  same inputs, so it reassociates. It runs when asked for by
+    #                  name, and being asked for by name is the whole reason it is
+    #                  reachable here; no backend declares it as a default.
+    #   token_tile_4   the baseline, and has no tiled kernel -- the untiled
+    #                  launch is what it denotes.
+    # The logits feed top-k selection, so a changed logit can change which experts
+    # a token routes to. That is why each schedule's exactness is recorded here
+    # rather than assumed from the family.
+    from hipengine.runtime.laguna_moe import resolve_laguna_router_logits_mode
+
+    # The resolver rejects an unknown mode and the tiled schedules are named
+    # explicitly, so a mode this cannot serve is a named miss rather than a
+    # silent fall back to the untiled kernel.
+    mode = resolve_laguna_router_logits_mode(
+        backend if backend is not None else "hip_gfx1100"
+    )
+    if mode != "token_tile_4":
+        # The backend names a tiled schedule, so run exactly that one at the
+        # binding's default width.
+        logits_kernel = {
+            "token_tile_8": qwen35_router_logits_bf16_f32w_token_tile_8,
+            "token_tile_16": qwen35_router_logits_bf16_f32w_token_tile_16,
+        }[mode]
+        logits_kernel(
+            prescaled.ptr,
+            proj_ptr,
+            logits.ptr,
+            tokens,
+            hidden_size,
+            num_experts,
+            threads=512,
+            stream=stream,
+        )
+    elif tokens >= _ROUTER_SGEMM_MIN_TOKENS:
+        # The backend declares the baseline schedule (gfx1100 declares no tiled
+        # mode), so the projection is size-tiered by measurement. A full
+        # 1024-row block routes through the F32 SGEMM (see
+        # ``_ROUTER_SGEMM_MIN_TOKENS``); narrower blocks take token_tile_16 at
+        # 128 threads rather than the generic bf16_f32w entry point, which
+        # defaults to threads=512 with a four-token tile. At this shape (hidden
+        # 2816) that leaves threads 352..511 with no K range at all, so 31% of
+        # every block idles behind a nine-round barrier tree for 64 FLOPs of
+        # work per useful thread. Measured on the production shape: 0.2309 ms
+        # -> 0.0666 ms per launch (1.60 -> 5.43 TFLOP/s), 3.5x, and both land
+        # within 4e-06 of a float64 reference. Smaller token counts keep the
+        # untiled path -- see ``_TOKEN_TILE_16_MIN_TOKENS`` -- and the width is
+        # not the binding's default of 256 -- see ``_TOKEN_TILE_16_THREADS``.
+        # Neither choice is bit-identical to what it replaces: the tiling and
+        # the width both change the reduction, so the teacher-forced gate gates
+        # this.
+        #
         # Full prefill block: F32 weights through rocBLAS SGEMM. The cast is
         # a bit-exact bf16 -> f32 of the prescaled row; only the accumulation
         # order changes versus the tile (maxabs 4.7e-05 against a float64

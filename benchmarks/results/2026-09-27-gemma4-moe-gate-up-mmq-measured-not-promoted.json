@@ -1,0 +1,75 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "measured, not promoted",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B Q4_K expert gate/up MMQ prefill",
+ "candidate": "route Gemma 4's Q4_K expert gate/up prefill through the int8-dp4a MMQ32 leaf the Qwen4 expert prefill already uses on this backend, reading the artifact's per-expert fused (num_experts, 2 * intermediate, hidden) gate | up row block directly instead of running two fp32 grouped launches. The leaf gained a fused-layout template flag so an expert's stride is the full fused width rather than one half's width; the flag defaults to false and every existing instantiation is unchanged.",
+ "reason": "the route is 1.27x faster on the campaign's headline prefill row and passes four of the five production numerical bars with margin, but it exceeds the binding kl_max bar on 2 of 1022 rows. That bar is already exceeded on this chain by the shipped 4-slice attention split at 1 row, on the same repeated-context rows, and docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md records the applicability of an absolute kl_max to a peaked reference on a greedy workload as an open lead decision rather than a taken one. This change lands in that decision rather than settling it, so it is implemented, tested, and selectable through HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ but does not become the default path until the decision lands. Raising the activation precision cannot clear the bar: the split breaches at 2, 4, 8, and 16 slices alike, so the breach is not a quantization budget that can be bought down.",
+ "mechanism": {
+  "structure": "the leaf is one launch over (out_features / 32) x (routed rows / 32) tiles, with a device-side tile map that assigns each 32-row tile to one expert. Gemma 4's gate/up prefill currently spends two fp32 grouped launches per layer (one for the gate half, one for the up half), 58 launches for a 512-token prefill; the fused route spends one pack, one tile map, one readback, and one MMQ launch per projection call.",
+  "fused_stride": "the leaf computed an expert's stride as its own out_features, which is correct for two expert-major weight tensors and wrong for one fused block. A template flag FUSED_EXPERT_LAYOUT makes the stride out_features_a + out_features_b and defaults to false, so the existing Qwen4 call sites keep the old arithmetic and only the new symbol instantiates the fused variant. The gate half is read at the fused base and the up half at base + intermediate * weight_row_bytes.",
+  "arithmetic": "the block's activations are quantized to DS4 Q8_1 (4-bit, 128-element groups) before the packed dot, so this is a changed-arithmetic route and not a scheduling change: its difference from the fp32 grouped route is the activation quantization step, not a reassociation.",
+  "refuted_alternative": "a three-plane activation pack (gguf_q8_1_mmq_ds4_pack_bf16_d4x3, ACTIVATION_PASSES = 3) was built, measured, and removed. It cost +8% (6.56 -> 7.08 ms) and returned byte-identical output: this leaf's ACTIVATION_PASSES template parameter is unused in its body, which reads plane 0 only. The residual planes are real for the T16/WMMA families, not for this one, so no precision lever exists here."
+ },
+ "correctness": {
+  "gate": "scripts/gemma4_teacher_forced_gate.py gate --artifact <UD-Q4_K_XL> --baseline /tmp/gemma4-gate-strict-gfx1151.npz --prompt 2048 --prefill 1024, 1022 paired rows at keys 1025-2047: kl_mean 1.438e-04 (bar 1e-3), kl_p95 1.329e-05 (bar 5e-3), kl_p99 1.489e-04 (bar 2e-2), kl_max 6.510e-02 (bar 5e-2, FAILED on 2 rows), top-1 rate 1.0000 with zero flips (bar 0.99). Verdict passed false, failed [kl_max], promotion_qualified false.",
+  "breach_rows": "row 863 (key 1889): baseline top-1 0.9955 -> candidate 1.0000, KL 0.0651, decision unchanged. Row 600 (key 1626): baseline top-1 1.0000 -> candidate 0.9381 with 0.0171 on the runner-up, KL 0.0639, decision unchanged. Both are near-certain repeated-context rows, and 1019 of 1022 rows are below 1e-3 KL with a median of 1.5e-07.",
+  "breach_is_shared": "the shipped 4-slice split breaches the same bar on the same chain at the same rows: kl_max 0.055589 on 1 of 1023 rows, its row 864 being this route's row 863 (teacher p_top1 0.995465, same top-1 token), per docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md iteration 37. The campaign's iteration 38 established the mechanism as irreducible association reordering rather than a precision defect, and measured 2/4/8/16-slice arms breaching at 0.0556-0.1765 alike.",
+  "logit_perturbation": "max|delta logit| is not the discriminator: its median is 2.49 across all 1022 rows and 2.49 across the 1019 rows below 1e-3 KL, p95 6.61, max 22.14, and it lands on the baseline argmax in only 6 of 1022 rows. The two breaching rows carry 18.1 and 19.2, but row 863's own |delta| median is 7.77 and much of that is a softmax-invariant global shift.",
+  "kernel_level": "a scratch harness at the artifact's exact geometry (in 2816, out 704 + 704 fused, 128 experts, 4096 compact rows) compared the fused MMQ route against the fp32 grouped route over both halves: 0 NaN, normalised max|diff| 2.09e-2 and mean 1.09e-3 against outputs of mean magnitude 611.6, which is the envelope the Q5_1 MMQ selected-prefill test already asserts against its strict owner.",
+  "unit_test": "tests/test_unit_gemma4_expert_route.py adds test_fused_gate_up_mmq_route_matches_a_dequantized_reference, which builds a per-expert fused gate | up buffer whose halves are made distinguishable, runs the route, and checks both halves against a dequantized reference inside the family envelope; three decline cases pin that the capability test is the geometry and the quant key rather than a name, and a bf16 weight declines. 36 tests pass in the file.",
+  "generation_parity": "both arms report public_path_parity true at 512/128 and 2048/128; the route counts confirm the intended path ran (gate_up_mmq32 58 of 58 gate/up projections on a 512-token prefill, with the Q5_1 down projection staying on grouped_prefill).",
+  "decision_stability_probes": "ad-hoc single-run probes through the public runner, recorded as diagnostics rather than as a benchmark row. Natural English paragraph (120 tokens): the two arms emit identical 16-token greedy chains (first-token p_top1 0.5587 incumbent against 0.6281 route). Python snippet (121 tokens): the chains agree for two tokens and then diverge (incumbent 20470, route 236772), after which the route emits 236772 fourteen times in a row while the incumbent continues with varied tokens. A 60-fold repeated sentence (721 tokens): the first greedy token flips (108 against 107) at a position where the incumbent's own top-1 is only 0.2532 (top four 0.2532/0.1775/0.1665/0.1328), the route's is 0.5877, and the top logit moves from 1.005 to 14.029 - an offset-dominated shift with the top-five span widening from 2.44 to 3.65. Pinning the attention split to one slice changes none of these numbers, because a 721-key context never engages the split. So the route changes decisions at low-margin positions, and the frozen 1022-row chain - whose rows are near-one-hot repeated prose - is nearly blind to that class: it reports zero top-1 flips. This is the strongest reason the route does not select by default, and it is a measurement for the lead rather than a defect: the flips are at positions where the incumbent's own margin is small, and the natural-text chain agrees exactly."
+ },
+ "performance": {
+  "platform": "zbook, Strix Halo, Radeon 8060S Graphics, gfx1151, 125 GiB unified memory, HIPENGINE_HIP_ARCH=gfx1151",
+  "protocol": "scripts/gemma4_campaign_bench.py --samples 3 --warmup 1 --context 8192 --expect-gpu 8060S, one process per arm, GPU otherwise idle",
+  "primary": {
+   "row": "512 prompt / 128 output",
+   "prefill_s_incumbent": [
+    4.177,
+    4.201,
+    4.223
+   ],
+   "prefill_s_candidate": [
+    3.294,
+    3.319,
+    3.327
+   ],
+   "prefill_tok_s_incumbent": 121.9,
+   "prefill_tok_s_candidate": 154.26,
+   "prefill_delta": "+26.5% (1.265x)",
+   "public_wall_s": "10.240 -> 9.311",
+   "decode_tok_s": "21.14 -> 21.19 (unchanged within run-to-run spread)"
+  },
+  "secondary": {
+   "row": "2048 prompt / 128 output",
+   "prefill_s_incumbent": [
+    21.804,
+    21.822,
+    21.883
+   ],
+   "prefill_s_candidate": [
+    18.198,
+    18.276,
+    18.329
+   ],
+   "prefill_tok_s_incumbent": 93.85,
+   "prefill_tok_s_candidate": 112.06,
+   "prefill_delta": "+19.4% (1.195x)",
+   "decode_tok_s": "19.75 -> 19.76 (unchanged)"
+  },
+  "kernel_level": {
+   "geometry": "in 2816, out 704 + 704 fused, 128 experts, 4096 compact rows",
+   "raw_fp32_grouped_two_launches_ms": 36.94,
+   "fused_mmq_pack_tilemap_one_launch_ms": 6.56,
+   "delta": "5.6x at the leaf"
+  },
+  "limits": "the 1.27x is the gate/up half of the expert prefill only. The Q5_1 down projection (23.0% of prefill kernel time) has no qualifying MMQ variant because its ffn width 704 is not a multiple of 256, and the dense Q8_0 projections would need their own route change, so llama.cpp prefill parity remains a multi-unit route-port project with this as its first measured step."
+ },
+ "selection": {
+  "default": "unchanged: the fp32 grouped route",
+  "enable": "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=1",
+  "clearing_condition": "re-run scripts/gemma4_teacher_forced_gate.py gate against the campaign's frozen evaluator once the kl_max applicability decision lands, then make the route the default and delete the flag; docs/REFACTOR.md carries the entry"
+ },
+ "performance_claim": true
+}

@@ -27,8 +27,15 @@ import sys
 
 
 def main() -> int:
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from scripts.gemma4_campaign_bench import resolve_artifact
+
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf")
+    ap.add_argument("--model", default=str(resolve_artifact()))
     ap.add_argument("--prompt", type=int, default=8)
     ap.add_argument("--output", type=int, default=4)
     ap.add_argument("--json-out", default="")

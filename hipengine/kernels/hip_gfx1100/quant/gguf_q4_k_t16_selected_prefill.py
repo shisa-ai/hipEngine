@@ -19,6 +19,9 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_q4_k_t16_selected_prefill.hip")
 _OUTPUT_NAME = "gguf_q4_k_t16_selected_prefill.so"
 _SYMBOL_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out"
+_SYMBOL_COLUMN_MAJOR_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out"
+)
 _SYMBOL_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out"
 _SYMBOL_QMICRO_BF16 = (
     "hipengine_gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out"
@@ -159,10 +162,65 @@ def gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch BF16 selected compact Q4T16 dual gate+up WMMA prefill."""
+    """Launch BF16 selected compact Q4T16 dual gate+up WMMA prefill.
+
+    Reads row-major Q region tiles: the ``repack_gguf_q4_k_tile16`` default.
+    """
 
     _launch(
         _SYMBOL_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the same leaf over K-major Q region tiles.
+
+    Requires tiles from ``repack_gguf_q4_k_tile16(..., column_major=True)``.
+    The tile size and every decoded value are unchanged, so the output is
+    bit-identical to the row-major launch on matching tiles.
+
+    This launch stages each sub-block's Q region in LDS and reads one weight
+    fragment per 128-bit load from there, instead of sixteen scalar global byte
+    loads.  The staged bytes are the same bytes; only where they are read from
+    differs.
+    """
+
+    _launch(
+        _SYMBOL_COLUMN_MAJOR_BF16,
         x_ptr,
         expert_start_compact_ptr,
         expert_start_wmma_ptr,
@@ -557,6 +615,16 @@ def register_gguf_q4_k_t16_selected_prefill_kernels(*, replace: bool = True) -> 
             "hip_gfx1100",
             "moe_linear",
             "gguf_q4_k_t16_v1",
+            "selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k_t16_v1",
             "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out",
         ),
         gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out,
@@ -617,6 +685,7 @@ __all__ = [
     "gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out",

@@ -1,0 +1,49 @@
+{
+ "kind": "gemma4_prefill_kernel_counter_profile",
+ "verdict": "diagnostic - names the binding constraint on the largest prefill kernel; no metric change",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL",
+ "performance_claim": false,
+ "candidate": "collect hardware counters on q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<4,4,256>, the largest single prefill line at 714.91 ms and 35.5% of prefill kernel time, because its tile space is closed and iteration 18 established that the matmul side runs at about 7% of peak while being neither compute-bound nor bandwidth-bound.",
+ "method": "rocprofv3 1.3.5 --pmc with --kernel-include-regex on that one kernel, over two 512-token prefills through the public path (scripts.gemma4_campaign_bench._public_wall), after a non-profiled warmup so the profiled process does not spawn hipcc (docs/OPTIMIZATION.md section 7). 58 dispatches = 2 prefills x 29 layers. A first attempt without the warm cache failed for exactly that reason and was rerun.",
+ "measured": {
+  "grid_size_threads": 11534336,
+  "workgroup_size": 128,
+  "vgpr_count": 112,
+  "sgpr_count": 128,
+  "scratch_size": 0,
+  "lds_block_size_bytes": 8704,
+  "waves_per_dispatch": 354233,
+  "blocks_per_dispatch": 88558,
+  "per_wave": {
+   "SQ_INSTS_VALU": 4221,
+   "SQ_INSTS_LDS": 814,
+   "SQ_INSTS_VMEM_RD": 0
+  },
+  "note_on_vmem": "SQ_INSTS_VMEM_RD returned 0, which most likely means the counter name is not valid on gfx1151 rather than that the kernel issues no global loads; the source has explicit global byte loads. Treat that one as unmeasured, not as zero."
+ },
+ "derived": {
+  "simd_issue_utilization": "18.1%. 2214 waves per SIMD x (4221 VALU + 814 LDS) = 11.15M issue cycles against 61.6M available in the 24.65 ms per-layer dispatch at 2.5 GHz. RDNA3 SIMDs issue one instruction per cycle.",
+  "occupancy": "not the binding constraint. 112 VGPRs is 3584 per wave, so a 65536-entry per-CU register file holds 18 waves against a 32-wave maximum, 56%. The kernel asks for 2 blocks per CU via __launch_bounds__(128, 2), which is a floor, not a cap.",
+  "barriers_per_block": "104, from the source: 8 row-batches x (3 chunks x 2 per-chunk barriers + 7 tree-reduce barriers). Each barrier synchronizes the block's 4 waves.",
+  "instruction_mix": "5 loads per 8 FMAs in the inner loop: per (chunk, out) the code issues 2 global byte loads for the packed nibbles and 3 shared loads for weight_d, weight_m and weight_qh, against 8 FMAs. The measured 814 LDS to 4221 VALU, 0.193, matches that 3:14 ratio."
+ },
+ "findings": [
+  "The kernel is barrier-bound. It issues an instruction on only 18.1% of SIMD cycles, and the structural cause is 104 __syncthreads() per block against roughly 5035 issue instructions per wave. If a barrier costs on the order of 50 cycles of drain and refill for 4 waves, the 104 barriers account for about 5200 cycles per block, comparable to the issue work itself. That is the missing 82%.",
+  "Occupancy is not the limit, which refutes the hypothesis I brought in. At 112 VGPRs the register file holds 18 waves of the 32 possible, 56%, and the kernel only asks for 2 blocks per CU as a floor.",
+  "The rejected tile-space artifact reasoned about occupancy from an estimated '~40 registers' for the incumbent. The measured count is 112, 2.8x higher. Any occupancy conclusion drawn from that estimate is unsound, including the one that dismissed the row-batch variants for register pressure. The variants' own times stand, since those were measured.",
+  "The inner loop re-loads its weights from shared memory once per row batch even though they are loop-invariant across all 8 row-batches of an expert. The staging exists to transpose: threads below 64 load by (out, sub) while the compute reads by (out, warp-sub), so shared memory is doing a real broadcast job rather than being redundant. It is the per-chunk barrier pair around that staging that is the cost, not the staging.",
+  "The weight and activation traffic this route pays are both trivial: 1.59 GB of weights over 714.91 ms is 2.2 GB/s and the roughly 4 GB of L2 activation traffic is 5.6 GB/s. Neither is close to a DRAM or L2 bound, which is why the earlier refutations of the traffic hypotheses were correct and why the constraint had to be found in issue behaviour instead."
+ ],
+ "validation": [
+  "Counters came from a real run, not a model: 58 dispatches matching 2 prefills x 29 layers, with grid, workgroup, VGPR, SGPR, scratch and LDS read from the collection's own metadata columns.",
+  "The measured LDS:VALU ratio of 0.193 independently matches the 3 shared loads to 14 arithmetic operations the source shows per (chunk, out), so the counter data and the code agree.",
+  "The public path was used and the prefill measured 1.952-1.956 s in the profiled runs against the recorded 1.99 s, so the profiled workload is the production one."
+ ],
+ "limits": [
+  "One kernel, one geometry, one box, one artifact, one profiling session. The barrier-cost figure is inferred from cycle accounting, not measured directly; no barrier-stall counter was collected.",
+  "SQ_INSTS_VMEM_RD reported 0 and is treated as unmeasured. The global-load side of the inner loop is therefore characterised from the source only.",
+  "This is a diagnostic and makes no promotion claim. It locates the next unit.",
+  "The 2.5 GHz clock used for the cycle arithmetic is nominal, not measured."
+ ],
+ "next_unit": "Reduce the barrier count on this route. The two barriers around each per-chunk weight staging are the target, since they run 8 row-batches x 3 chunks = 24 times per block and exist only to broadcast the transposed weight tile. Options that keep the contraction order, which is what makes this route bit-exact: hoist the staging out of the row-batch loop so it runs 3 times per block instead of 24, or replace the shared-memory transpose with a shuffle. Any variant must be measured for VGPR count rather than estimated, and the bit-exactness contract must hold, since this route's acceptance rests on 0 of 11534336 outputs differing."
+}

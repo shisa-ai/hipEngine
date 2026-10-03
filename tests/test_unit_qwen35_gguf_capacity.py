@@ -10,6 +10,7 @@ real allocation path.
 from __future__ import annotations
 
 import inspect
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -488,7 +489,7 @@ def test_gguf_capacity_excludes_deferred_kv_from_scratch() -> None:
     assert resident.scratch_bytes - deferred.scratch_bytes == resident.kv_pool_bytes
 
 
-def test_gguf_capacity_workspace_lease_mirrors_the_declared_context() -> None:
+def test_gguf_capacity_workspace_lease_is_bounded_and_growth_is_priced() -> None:
     plain = gguf_runner.qwen35_gguf_resident_breakdown(
         _real_qwen38_27b_cfg(),
         context_tokens=16_384,
@@ -505,11 +506,37 @@ def test_gguf_capacity_workspace_lease_mirrors_the_declared_context() -> None:
         kv_scale_dtype="fp32",
         workspace_lease_needed=True,
     )
-    # 16,384 tokens is 64 pages, which is above the 1,024-token packed floor.
+    # Reserve only the packed floor eagerly; full private fallback is priced
+    # separately because the pinned arena remains live during growth.
     assert plain.workspace_lease_pages == 0
-    assert leased.workspace_lease_pages == 64
-    assert leased.workspace_lease_bytes == 64 * leased.page_bytes
-    assert leased.total_bytes - plain.total_bytes == leased.workspace_lease_bytes
+    assert leased.workspace_lease_pages == 4
+    assert leased.workspace_lease_bytes == 4 * leased.page_bytes
+    assert leased.private_workspace_bytes == 64 * leased.page_bytes
+    assert leased.total_bytes - plain.total_bytes == (
+        leased.workspace_lease_bytes + leased.private_workspace_bytes
+    )
+
+
+@pytest.mark.parametrize("context", [511, 1025, 5379])
+@pytest.mark.parametrize("capacity", [1, 4, 8])
+def test_workspace_slots_are_independent_of_request_kv(context, capacity):
+    kwargs = dict(
+        context_tokens=context, **_QWEN38_27B_GEOMETRY,
+        kv_storage_dtype="bf16", workspace_lease_needed=True,
+        max_batch_size=1,
+    )
+    single = gguf_runner.qwen35_gguf_resident_breakdown(_real_qwen38_27b_cfg(), **kwargs)
+    concurrent = gguf_runner.qwen35_gguf_resident_breakdown(
+        _real_qwen38_27b_cfg(), workspace_lease_slots=capacity, **kwargs,
+    )
+    assert concurrent.workspace_lease_pages == gguf_runner.packed_verify_workspace_lease_pages(
+        capacity, concurrent.max_positions,
+    )
+    assert concurrent.kv_pool_bytes == single.kv_pool_bytes
+    assert concurrent.scratch_bytes == single.scratch_bytes
+    assert concurrent.total_bytes - single.total_bytes == (
+        (capacity - 1) * (single.workspace_lease_bytes + single.private_workspace_bytes)
+    )
 
 
 def test_gguf_capacity_reserve_and_transient_overrides_are_respected() -> None:
@@ -657,8 +684,8 @@ def test_auto_context_honours_explicit_pool_memory_budget(monkeypatch) -> None:
     assert generator._auto_context_estimate.usable_bytes <= 4096 * 1024**2
 
 
-def test_auto_context_is_independent_of_batch_size(monkeypatch) -> None:
-    """Scheduler concurrency does not shrink the per-request context ceiling."""
+def test_auto_context_prices_serving_workspace_capacity(monkeypatch) -> None:
+    """Concurrency changes the pinned lease, not per-request elastic KV."""
 
     monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB", raising=False)
@@ -672,8 +699,11 @@ def test_auto_context_is_independent_of_batch_size(monkeypatch) -> None:
         runner, max_batch_size=8, defer_kv_allocation=True
     )
 
-    assert single is not None and batched == single
-    assert generator._auto_resolved_max_sequence_length == single
+    assert single is not None and batched is not None and batched < single
+    assert generator._auto_resolved_max_sequence_length == batched
+    assert generator._auto_context_estimate.workspace_lease_pages == (
+        gguf_runner.packed_verify_workspace_lease_pages(8, batched)
+    )
 
 
 def test_auto_context_honours_the_disable_flag(monkeypatch) -> None:
@@ -1070,3 +1100,68 @@ def test_server_explicit_int8_uses_qualified_scale_defaults(monkeypatch) -> None
     matches = [row for row in _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE if row.key == key]
     assert matches, "explicit INT8 with default scales matches no qualification contract"
     assert matches[0].decision == "qualified"
+
+
+def test_a_declared_context_is_what_the_session_is_sized_to(monkeypatch) -> None:
+    """The incident this pins: a declared 4096 was replaced by 183808.
+
+    ``LLM(model, max_sequence_length=N)`` is a declaration about the resident
+    session, and the session used to be sized by automatic selection unless the
+    caller also called ``prepare``. Auto-selection takes the largest context that
+    fits; on this APU the KV pool is host memory, so the substitution allocated
+    tens of GiB the caller never asked for and the machine ran out of RAM.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    runner = _auto_context_runner(free_gib=100.0)
+    generator = _auto_context_generator()
+    auto = generator._resolve_auto_context(
+        runner, max_batch_size=1, defer_kv_allocation=False
+    )
+    assert auto is not None and auto > 4096, "the fixture must offer a large context"
+
+    requested: list[int | None] = []
+
+    def _construct(self, shared_runner, *, max_sequence_length, **kwargs):
+        requested.append(max_sequence_length)
+        return SimpleNamespace(max_sequence_length=max_sequence_length)
+
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_construct_shared_session",
+        _construct,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_configure_session",
+        lambda self, session: None,
+        raising=False,
+    )
+    generator._shared_session_pool = {}
+    generator._shared_session_pool_lock = threading.Lock()
+
+    # Without a declaration the automatic selection decides, as before.
+    generator._acquire_shared_session(runner, pool_name="auto")
+    assert requested == [auto]
+
+    # With one, the declaration decides -- whatever auto-selection would have
+    # chosen.
+    pinned = _auto_context_generator()
+    pinned._shared_session_pool = {}
+    pinned._shared_session_pool_lock = threading.Lock()
+    pinned.declare_max_sequence_length(4096)
+    pinned._acquire_shared_session(runner, pool_name="pinned")
+    assert requested == [auto, 4096]
+
+
+def test_prepare_and_declaration_agree_on_the_pin() -> None:
+    generator = _auto_context_generator()
+    generator.declare_max_sequence_length(4096)
+    assert generator._prepared_max_sequence_length == 4096
+    # A later, smaller declaration must not shrink the pin, and a non-positive
+    # one is a caller error rather than a silent no-op.
+    assert generator.declare_max_sequence_length(1024) == 4096
+    assert generator._prepared_max_sequence_length == 4096
+    with pytest.raises(ValueError):
+        generator.declare_max_sequence_length(0)

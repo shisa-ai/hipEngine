@@ -1,0 +1,119 @@
+{
+ "kind": "gemma4_numerical_correction",
+ "performance_claim": false,
+ "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, MMQ gate/up prefill",
+ "supersedes": {
+  "artifact": "benchmarks/results/2026-09-28-gemma4-mmq-divergence-distribution-dump.json",
+  "sections_void": [
+   "gate_up_error_is_length_independent",
+   "root_cause_is_the_quantization_budget_not_a_defect",
+   "task15_answer",
+   "task18_premises_corrected.finding_1",
+   "task18_unresolved_contradiction.side_b"
+  ],
+  "sections_still_valid": [
+   "reproduction (the KL-by-length probe is a whole-forward comparison and does not use the broken harness)",
+   "distribution_dump",
+   "tile_map_verified_well_formed",
+   "leaf_contract_cleared_this_pass",
+   "fine_structure_remeasured",
+   "reframing_the_question (the perturbation is not a per-row constant)",
+   "task18_premises_corrected.finding_2 (the stored-sum correction does not telescope)",
+   "task18_premises_corrected.finding_3 (the staging shape)",
+   "task18_unresolved_contradiction.side_a (the body does have a multi-pass path)"
+  ]
+ },
+ "the_harness_bug": {
+  "where": "the ad-hoc gate/up comparison harness used for every error number in the superseded sections",
+  "what": "the fp32-arm wrapper captured the shared gate_up_out buffer BEFORE calling the route, while the MMQ-arm wrapper captured it AFTER. The fp32 arm was therefore never captured at all.",
+  "why_it_was_not_obvious": "the resulting numbers looked like a plausible error and were internally consistent across lengths, so they read as a measurement rather than as an artifact. The tell was that max |delta| was exactly 38.75 in every arm of every plane count, which a real activation-quantization error would not produce.",
+  "verified_not_inferred": {
+   "method": "reproduced the old wrapper pattern exactly, with both captures instrumented to report their own magnitude and nonzero count",
+   "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/mmq_oldcheck.py",
+   "ids_64": {
+    "fp32_capture_grabbed_before_the_call": {"mean_abs": 0.0, "max_abs": 0.0, "nonzero": 0},
+    "mmq_capture_grabbed_after_the_call": {"mean_abs": 0.82261, "max_abs": 38.75},
+    "reported_error_abs_b_minus_a": {"mean": 0.82261, "max": 38.75},
+    "reading": "the fp32 capture is a zero buffer, so the reported 'error' is exactly the MMQ arm's own output magnitude. The recorded mean 0.8225 and max 38.75 at 64 ids are the output magnitude, not an error."
+   },
+   "ids_96": {
+    "fp32_capture_grabbed_before_the_call": {"mean_abs": 0.548407, "max_abs": 38.75, "nonzero": 720896},
+    "mmq_capture_grabbed_after_the_call": {"mean_abs": 0.772754, "max_abs": 38.75},
+    "reported_error_abs_b_minus_a": {"mean": 0.99043, "max": 38.5703},
+    "reading": "the fp32 capture holds 720896 nonzero elements, which is 512 x 1408 - exactly the previous 64-id run's output size. The 96-id 'error' is a comparison against stale data from a different length, not against the fp32 arm."
+   }
+  }
+ },
+ "corrected_measurement": {
+  "method": "both arms capture the shared gate_up_out buffer AFTER their call, at the first layer, on the same input. Armes: A = fp32 grouped route (reference), 1 = MMQ with one activation plane, 3 = MMQ with three planes.",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/mmq_realerr.py",
+  "ids_64": {
+   "fp32_reference_output": {"mean_abs": 0.8225, "rms": 1.3808, "max_abs": 38.75, "nonzero": "720896/720896"},
+   "mmq_1_plane_vs_fp32": {"mean_abs_delta": 0.00538551, "max_abs_delta": 0.25, "relative": 0.00654785, "identical_elements": "160297/720896"},
+   "mmq_3_plane_vs_fp32": {"mean_abs_delta": 0.00498658, "max_abs_delta": 0.25, "relative": 0.00606282, "identical_elements": "170279/720896"}
+  },
+  "ids_96": {
+   "fp32_reference_output": {"mean_abs": 0.7729, "rms": 1.277, "max_abs": 38.75, "nonzero": "1081344/1081344"},
+   "mmq_1_plane_vs_fp32": {"mean_abs_delta": 0.00514396, "max_abs_delta": 0.25, "relative": 0.00665568, "identical_elements": "241331/1081344"},
+   "mmq_3_plane_vs_fp32": {"mean_abs_delta": 0.00472368, "max_abs_delta": 0.25, "relative": 0.00611187, "identical_elements": "263251/1081344"}
+  },
+  "reading": "The MMQ gate/up route's real error is 0.655 percent relative at one plane and 0.606 percent at three, not the 0.82 and 0.99 absolute that the superseded sections reported. Those numbers were the output magnitude. Three planes improve the error by 1.08x, not by the three orders of magnitude predicted from the pack arithmetic."
+ },
+ "error_decomposition": {
+  "claim": "the one-plane error is the quadrature sum of a non-activation term and an activation term, and the activation term is only about 41 percent of it",
+  "inputs": {
+   "one_plane_mean_abs_delta": 0.00538551,
+   "three_plane_mean_abs_delta": 0.00498658,
+   "effect_of_planes_1_and_2_mean_abs": 0.00220461
+  },
+  "arithmetic": "0.00498658^2 + 0.00220461^2 = 2.9732e-05, whose square root is 5.453e-03 against a measured one-plane value of 5.386e-03, a 1.2 percent agreement",
+  "reading": "The three-plane arm isolates the non-activation error at 0.00499, because three planes make the activation reconstruction error negligible (see the pack measurement below). The difference the planes make, 0.00220, is the activation term. So the activation quantization the three-plane change removes is 41 percent of the route's error and the other 0.00499 - 0.61 percent relative - is a source that more activation planes cannot touch.",
+  "what_this_changes": "The superseded conclusion was that the route's entire error IS the DS4 activation quantization budget and that no correctness work on the route could improve it. Both halves are wrong. The activation budget is real but minor; the dominant term is unidentified and is therefore a live lead rather than a floor."
+ },
+ "pack_three_plane_is_correct_and_the_payoff_is_real": {
+  "why": "The three-plane route's error does not collapse, so the pack, the leaf and the plane stride were each tested in isolation rather than argued about.",
+  "pack_in_isolation": {
+   "method": "pack a known bf16 activation block with gguf_q8_1_mmq_ds4_pack_bf16 and gguf_q8_1_mmq_ds4_pack_bf16_d4x3, reconstruct sum_p q_p * fp16(d_p) in numpy with the 144-byte block layout (8 uint16 ds4 header, then 128 int8), and compare against the bf16 input. No leaf involved.",
+   "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/mmq_packtest.py",
+   "measured": {
+    "signal_rms": 0.327222,
+    "one_plane": {"err_rms": 0.00249983, "relative": 0.007639543, "max_abs": 0.015625},
+    "three_plane": {"err_rms": 0.00000133, "relative": 0.000004079, "max_abs": 0.00000376},
+    "plane_scales": {"plane_0_median": 5.276e-3, "plane_1_median": 2.044e-5, "plane_2_median": 5.96e-8}
+   },
+   "reading": "the pack's error feedback works and the payoff is real: three planes cut the reconstruction error 1873x, matching the 1630x predicted from the pack arithmetic. The scale decay across planes is 5.3e-3, 2.0e-5, 6.0e-8."
+  },
+  "leaf_consumes_all_three_planes": {
+   "method": "three arms on the same input and layer: (1) d4x3 pack intact with the three-plane leaf, (2) d4x3 pack with planes 1 and 2 zeroed in the workspace with the three-plane leaf, (3) one-plane pack with the one-plane leaf.",
+   "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/mmq_zero.py",
+   "measured": {
+    "arm2_equals_arm3": "bit-identical, 0 of 720896 elements differ",
+    "arm1_equals_arm2": "false, 435886 of 720896 differ",
+    "arm1_equals_arm3": "false, 435886 of 720896 differ"
+   },
+   "reading": "arm2 == arm3 is bit-identical, so the three-plane leaf reads its planes at exactly the stride the pack writes and its pass accumulation collapses to the one-plane result when the extra planes are zero. arm1 != arm2, so planes 1 and 2 do contribute. The leaf's multi-pass path is live and correct; the earlier claim that the body has no multi-pass path, and the later claim that ACTIVATION_PASSES does not reach the body, are both refuted.",
+   "in_kernel_confirmation": "a temporary printf inside the body's pass loop printed per-pass xd, xsum, dot, dscale and dmin at k32 0-5. Pass 0 contributes about 0.05 to 0.16 per k32 iteration, pass 1 about 2e-4, pass 2 about 1e-6 - the decay the pack's scales predict. The instrumentation was reverted."
+  },
+  "why_the_earlier_ab_test_said_the_leaves_were_identical": "The scratch script bound the three-plane symbol to a name and then called the one-plane symbol twice, comparing it against itself. The three-plane leaf was never called. The measurement that contradicted the source reading was not a measurement."
+ },
+ "decision": {
+  "route_stays_on_one_plane": true,
+  "reason_measured": "three planes buy a 1.08x error reduction (0.655 to 0.606 percent relative) for three times the activation bytes and three times the pack work, because the activation term they remove is only 41 percent of the error. This replaces the superseded reason, which was that the leaf does not read the extra planes. The leaf does read them.",
+  "what_would_change_it": "identifying the 0.00499 non-activation term. If that term is fixable, the activation term becomes the whole error and three planes become the natural next step; if it is not, neither one nor three planes is the lever."
+ },
+ "open_lead": {
+  "question": "what produces the 0.00499 mean absolute - 0.61 percent relative - non-activation gate/up error?",
+  "candidates_not_yet_tested": [
+   "the weight cache's fp16 rounding. The leaf stores packed_scale = fp16(d * scale) and packed_min = fp16(dmin * min) in q4_k_mmq32_cache.dm, and computes acc += xd * dscale * dot - dmin * xsum from those halves. The fp32 route uses the same d, scale and min in fp32. The Q4_K weight is w = d*scale*q - dmin*min, so the two terms are comparable and opposite; an absolute error of order 2^-12 * (|A| + |B|) becomes a larger relative error in their difference. A rough estimate puts this at a few times 1e-4 relative, which is short of the measured 6e-3, so the estimate may be wrong or the candidate may not be the source.",
+   "the scale and min field extraction: gguf_q4_k_scale(scales, subblock) and gguf_q4_k_min(scales, subblock) against whatever the fp32 grouped route uses.",
+   "the bf16 output rounding. Both arms round the output to bf16, so a common rounding cannot create a difference, but the measured mean absolute delta of 0.005 is the same order as one bf16 ulp at the output rms of 1.38 (0.0039 at magnitude 1), so the underlying difference may be smaller than the measured delta by the rounding-amplification factor."
+  ],
+  "next_step": "compute the gate/up projection for one layer in float64 from the dequantized Q4_K weights and the bf16 activations, and compare each arm against that independent reference. That separates the weight representation from the activation quantization directly, without needing a kernel change.",
+  "limits": [
+   "the fp32 grouped route is treated as the reference. It is not an independently computed high-precision reference; it is the strict owner the route is compared against everywhere else, and this correction does not re-derive it.",
+   "only the first layer was instrumented, at two lengths (64 and 96 ids).",
+   "the decomposition assumes the three-plane arm's activation error is negligible. The pack measurement supports that (4e-6 relative) but does not measure the three-plane leaf's effective activation error end to end."
+  ]
+ },
+ "cost_not_measured": "The three-plane route's pack cost and activation bytes were not measured here. The decision not to adopt it rests on the accuracy gain being 1.08x, not on a cost measurement."
+}

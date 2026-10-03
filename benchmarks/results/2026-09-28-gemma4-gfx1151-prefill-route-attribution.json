@@ -1,0 +1,43 @@
+{
+  "kind": "gemma4_gfx1151_prefill_route_attribution",
+  "performance_claim": false,
+  "recorded": "2026-09-28, gfx1151 Strix Halo (AMD Radeon 8060S), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "why": "The campaign's prefill attribution is gfx1100 and does not carry over: gfx1151 is a separate lane and its prefill is 3.74x the same-host llama.cpp reference at 512 tokens (271.0 against 1012.98) and 4.85x at 2048 (220.0 against 1067.14). This run attributes the gfx1151 prefill so the gap has a target instead of a ratio.",
+  "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/gemma4_prefill_route_ablation.py --prompt 2048 --repeats 2",
+  "method": "Each arm skips one route's launches and times the remaining prefill with the benchmark's own wall clock. rocprofv3 --kernel-trace is not usable on this host: it serializes dispatches and inflates kernel durations about 19x. The skip is a diagnostic, not a candidate; outputs are wrong on purpose and only the timing is read.",
+  "condition": "2048-token prompt, output 1, two repeats per arm, one warmup, one process image",
+  "baseline": {
+    "prefill_s": 7.536,
+    "prefill_tps": 271.8
+  },
+  "shares": [
+    { "arm": "no_experts", "saves_s": 3.07, "share_pct": 40.7 },
+    { "arm": "no_attention", "saves_s": 2.295, "share_pct": 30.5 },
+    { "arm": "no_router", "saves_s": -0.028, "share_pct": -0.4 },
+    { "arm": "no_norm_rope", "saves_s": -0.001, "share_pct": -0.0 },
+    { "arm": "no_moe_elementwise", "saves_s": -0.011, "share_pct": -0.1 }
+  ],
+  "finding": "Two routes are the prefill: the routed-expert projections at 40.7% (3.070 s) and prefill attention at 30.5% (2.295 s). Together they are 71.2% of a 7.536 s, 2048-token prefill. The router, the normalization and rotary chain, and the MoE elementwise chain each save nothing measurable, and the dense projections did not show up because the arm that was meant to skip them does not hook the funnels the prefill leaves use (see caveats).",
+  "attention_isolation": {
+    "script": "scripts/gemma4_attention_prefill_bench.py",
+    "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/gemma4_attention_prefill_bench.py --tokens 2048",
+    "geometry": "the artifact's own: 16 query heads, 8 KV heads and head_dim 256 on the 25 sliding-window layers (window 1024), 2 KV heads and head_dim 512 on the 5 full layers",
+    "rows": [
+      { "case": "swa 256d 16q/8kv window=1024", "ms_per_launch": 89.99, "gflops": 286.4, "all_25_layers_ms": 2249.8 },
+      { "case": "swa 256d 16q/8kv window=0", "ms_per_launch": 109.30, "gflops": 314.5, "all_25_layers_ms": 2732.4 },
+      { "case": "full 512d 16q/2kv window=0", "ms_per_launch": 189.24, "gflops": 363.3, "all_5_layers_ms": 946.2 }
+    ],
+    "reading": "2249.8 ms across the 25 sliding-window layers reproduces the ablation's 2295 ms for the whole attention route, so the ablation arm is measuring the kernel and not a wrapper. The rate is 286 to 363 GFLOP/s, under 1.3% of this part's 29.7 TFLOP/s fp32 FMA peak."
+  },
+  "mechanism": {
+    "observation": "The prefill kernel launches one block per (token, head) -- grid = tokens * num_heads, 32768 blocks at 2048 tokens and 16 heads -- and each block walks the keys for its own query row.",
+    "consequence": "K and V are read once per query row rather than once per query tile. At 2048 tokens the windowed K/V working set is about 16.8 MB, which fits this part's L2, so the kernel is bound by L2 rather than DRAM and the re-reads still cost. This is the shape flash-attention tiling exists to remove: one block per (query tile, head) reads a K/V tile once for the whole tile.",
+    "not_established": "The split between the K/V re-read cost and the per-key reduction cost. The kernel's own comment records the reduction tree as the pre-fix bottleneck (eight __syncthreads rounds per key, 147 GFLOP/s) and the register-tree rewrite as the fix; the measured 286 GFLOP/s is after that fix. A profile would separate the two and this run did not take one."
+  },
+  "caveats": [
+    "The no_dense_q8 and no_all_gemv arms both saved about -1%, which cannot be right: no_experts alone saves 40.7% and the expert projections are GEMVs, so skipping every GEMV must save at least as much. Both arms hook gguf_k_gemv._launch and gguf_q4_k_gemv._launch_selected, and the prefill leaves for the dense Q8_0 route and for the grouped expert route do not go through either funnel. The dense share of prefill is therefore unmeasured here, not zero.",
+    "The arms are wall-clock deltas on a pipeline, so they are not additive: skipping one route changes how the rest overlaps.",
+    "No correctness gate applies: no production code changed and no performance claim is made. The attention numbers are diagnostic rates for a kernel that is already the default."
+  ],
+  "next": "Prefill attention is the better-scoped of the two targets: it is one kernel, its geometry is fixed by the artifact, and the mechanism is a missing query tile rather than a missing route. A query-tile kernel that reads a K/V tile once per tile is the standard fix and would be compared against the 2249.8 ms this run records for the 25 sliding-window layers. The expert half is 40.7% but its mechanism is not yet measured."
+}

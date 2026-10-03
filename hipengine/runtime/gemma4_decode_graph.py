@@ -225,8 +225,10 @@ class Gemma4DecodeGraphSession:
             raise ValueError(f"one token from position {position} exceeds capacity {runner.capacity}")
 
         bucket = _Bucket.for_position(position)
+        bucket = _Bucket(bucket.start, min(bucket.end, runner.capacity))
         tables, masks = runner._stage_block_content(
-            [int(token)], stream=self._stream, keys_extent=bucket.end
+            [int(token)], stream=self._stream, keys_extent=bucket.end,
+            key_begin_at=lambda attention: self._frozen_key_begin(attention, bucket),
         )
         key = self._capture_key(bucket, tables, masks)
         if key != self._key or self._exec == 0:
@@ -235,6 +237,8 @@ class Gemma4DecodeGraphSession:
         # frozen slot, and only this call knows the live position.
         self._retarget_appends(int(position))
         get_hip_runtime().graph_launch(self._exec, self._stream)
+        runner._last_logits_rows = 1
+        runner._normalized_hidden_rows = 0
         return runner._collect_block(
             [int(token)],
             apply_softcap=apply_softcap,

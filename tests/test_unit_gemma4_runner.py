@@ -222,6 +222,78 @@ def test_runner_prefill_matches_the_reference(artifact: GGUFReader) -> None:
 
 
 @_needs_hip
+def test_the_shared_kv_read_view_tracks_what_the_backbone_wrote(
+    artifact: GGUFReader,
+) -> None:
+    """The assistant head's read side of the backbone's cache.
+
+    The head allocates no KV of its own and attends against this model's last two
+    layers, so the two things it needs from the runner are the buffer addresses
+    and how many positions are live. Both are checked here against a real
+    forward, including the case that matters most: a prefill followed by a decode
+    leaves one *new* live position, not the accumulated total, so a reader that
+    attended over ``position`` would attend over the wrong range.
+    """
+
+    weights = load_gemma4_device_weights(artifact)
+    runner = Gemma4Runner(weights=weights, capacity=32)
+    try:
+        assert runner.layer_count == len(runner.weights.config.attention) == 2
+        assert runner.position == 0
+        # Nothing has been written, so a reader sees zero live positions rather
+        # than an uninitialized cache.
+        assert runner.shared_kv(0).live == 0
+
+        token_ids = [1, 5, 9, 13]
+        runner.forward(token_ids, apply_softcap=False)
+
+        for index, attention in enumerate(runner.weights.config.attention):
+            view = runner.shared_kv(index)
+            assert view.layer_index == index
+            assert view.live == len(token_ids)
+            assert view.capacity == 32
+            assert view.num_kv_heads == attention.num_kv_heads
+            assert view.head_dim == attention.head_dim
+            assert view.kv_width == attention.num_kv_heads * attention.head_dim
+            assert view.live_bytes == view.live * view.kv_width * 2
+            assert view.key_cache != 0 and view.value_cache != 0
+            assert view.key_cache != view.value_cache
+
+        # The two layers must not share one buffer, or the binding would be
+        # reading layer 0's KV for both.
+        assert runner.shared_kv(0).key_cache != runner.shared_kv(1).key_cache
+
+        # A decode appends one position; the reader must see one, not five.
+        runner.forward([2], apply_softcap=False)
+        assert runner.position == len(token_ids) + 1
+        assert runner.shared_kv(0).live == len(token_ids) + 1
+
+        # The hidden state is the last row of the most recent forward, which is
+        # the decode's single row -- not the accumulated fifth position.
+        hidden = runner.hidden_state()
+        assert hidden.nbytes == int(runner.weights.config.hidden_size) * 2
+        assert runner.hidden_state(0) == hidden
+        with pytest.raises(IndexError):
+            runner.hidden_state(1)
+        with pytest.raises(IndexError):
+            runner.hidden_state(-2)
+
+        with pytest.raises(IndexError):
+            runner.shared_kv(2)
+        with pytest.raises(IndexError):
+            runner.shared_kv(-1)
+
+        # A reset leaves no live positions and no valid hidden row.
+        runner.reset()
+        assert runner.shared_kv(0).live == 0
+        with pytest.raises(ValueError):
+            runner.hidden_state()
+    finally:
+        runner.close()
+        weights.free()
+
+
+@_needs_hip
 def test_incremental_decode_matches_a_dense_prefill(artifact: GGUFReader) -> None:
     """Decode one token at a time and prefill the same sequence in one call.
 
@@ -260,7 +332,9 @@ def test_incremental_decode_matches_a_dense_prefill(artifact: GGUFReader) -> Non
 
 
 @_needs_hip
-def test_a_prompt_wider_than_max_block_is_chunked_exactly(artifact: GGUFReader) -> None:
+def test_a_prompt_wider_than_max_block_is_chunked_exactly(
+    artifact: GGUFReader, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A prompt wider than the block bound must not need a wider scratch.
 
     The per-layer scratch is sized from ``max_block``, so a runner that refused
@@ -272,8 +346,16 @@ def test_a_prompt_wider_than_max_block_is_chunked_exactly(artifact: GGUFReader) 
     The fixture is 12 tokens long, so the wide side is what a real 8192-token
     context would be relative to a 512-token block -- a prompt several times the
     block bound.
+
+    The subject here is scratch sizing and absolute-position masking, not
+    arithmetic equality, so the exact route is pinned. The fixture's weights are
+    synthetic, which puts it far off any trained manifold where a changed
+    arithmetic association amplifies instead of staying bounded; arithmetic
+    equality between the routes belongs to the campaign teacher-forced gate,
+    which measures it on the real artifact.
     """
 
+    monkeypatch.setenv("HIPENGINE_GGUF_WMMA_PREFILL", "0")
     token_ids = [3, 7, 11, 2, 5, 9, 1, 4, 6, 8, 10, 12]
     weights = load_gemma4_device_weights(artifact)
     try:

@@ -177,6 +177,7 @@ __global__ void gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     int64_t in_features,
     int64_t out_features_a,
     int64_t out_features_b,
+    int64_t expert_stride,
     int64_t num_experts,
     int64_t wmma_total_rows) {
   constexpr int IU8_ACT_PLANES = 3;  // residual quantization planes (ds4 class)
@@ -221,8 +222,15 @@ __global__ void gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_kernel(
   const int64_t blocks_per_row = in_features / QK_K;
   const int64_t row_bytes = blocks_per_row * Q5_K_BLOCK_BYTES;
   const bool wcol_valid = col_valid && local_col < local_out_features;
+  // The two halves are addressed through one buffer or two. Gemma 4 stores
+  // ``ffn_gate_up_exps`` as ``(num_experts, 2 * intermediate, hidden)`` with the
+  // gate rows first *per expert*, so its expert stride is the fused width while
+  // each half's own width is still what bounds a column. Passing 0 keeps the
+  // two-separate-buffers layout, where the stride is the half's own width.
+  const int64_t expert_stride_eff =
+      expert_stride > 0 ? expert_stride : local_out_features;
   const uint8_t* block_base = wcol_valid
-      ? (qweight + expert_id * (local_out_features * row_bytes) +
+      ? (qweight + expert_id * (expert_stride_eff * row_bytes) +
          local_col * row_bytes)
       : nullptr;
 
@@ -461,6 +469,7 @@ __global__ void gguf_q5_k_selected_dual_sparse_exact_repair_bf16_kernel(
     int64_t in_features,
     int64_t out_features_a,
     int64_t out_features_b,
+    int64_t expert_stride,
     int64_t num_experts) {
   __shared__ float wave_sums[4];
   const int64_t out_features_total = out_features_a + out_features_b;
@@ -500,9 +509,11 @@ __global__ void gguf_q5_k_selected_dual_sparse_exact_repair_bf16_kernel(
         use_b ? (global_col - out_features_a) : global_col;
     const int64_t local_out_features = use_b ? out_features_b : out_features_a;
     if (local_col >= local_out_features) continue;
+    const int64_t expert_stride_eff =
+        expert_stride > 0 ? expert_stride : local_out_features;
     const uint8_t* __restrict__ weight_row =
         (use_b ? qweight_b : qweight_a) +
-        expert * (local_out_features * row_bytes) + local_col * row_bytes;
+        expert * (expert_stride_eff * row_bytes) + local_col * row_bytes;
     const uint16_t* x_row = input + compact_row * in_features;
 
     // Parent arithmetic: strided per-thread k, fp32 element product.
@@ -589,6 +600,7 @@ static int launch_selected_dual_wmma_iu8_risk(
     int64_t in_features,
     int64_t out_features_a,
     int64_t out_features_b,
+    int64_t expert_stride,
     int64_t num_experts,
     int64_t wmma_total_rows,
     hipStream_t stream) {
@@ -598,7 +610,14 @@ static int launch_selected_dual_wmma_iu8_risk(
           out_features_b, num_experts, wmma_total_rows, 64, 16)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  if ((out_features_a % 128) != 0 || (out_features_b % 128) != 0) {
+  // The column block is 128 wide, but the half is resolved per column, so a
+  // block that straddles the gate/up seam already reads the right weight for
+  // each of its columns and a half does not have to be a multiple of 128. The
+  // real requirement is the 16-wide WMMA tile.
+  if ((out_features_a % 16) != 0 || (out_features_b % 16) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (expert_stride < 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   if (risk_count == nullptr || risk_indices == nullptr || max_risks < 0 ||
@@ -616,8 +635,8 @@ static int launch_selected_dual_wmma_iu8_risk(
       grid, block, 0, stream,
       x, expert_start_compact, expert_start_wmma, tile_expert, qweight_a,
       qweight_b, out, risk_count, risk_indices, max_risks, risk_multiplier,
-      compact_rows, in_features, out_features_a, out_features_b, num_experts,
-      wmma_total_rows);
+      compact_rows, in_features, out_features_a, out_features_b, expert_stride,
+      num_experts, wmma_total_rows);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -634,6 +653,7 @@ static int launch_selected_dual_sparse_exact_repair_bf16(
     int64_t in_features,
     int64_t out_features_a,
     int64_t out_features_b,
+    int64_t expert_stride,
     int64_t num_experts,
     int64_t grid_blocks,
     hipStream_t stream) {
@@ -649,7 +669,7 @@ static int launch_selected_dual_sparse_exact_repair_bf16(
       dim3(static_cast<unsigned int>(grid_blocks)), dim3(128), 0, stream,
       input, expert_start, qweight_a, qweight_b, out, risk_count,
       risk_indices, max_risks, compact_rows, in_features, out_features_a,
-      out_features_b, num_experts);
+      out_features_b, expert_stride, num_experts);
   return static_cast<int>(hipGetLastError());
 }
 }  // namespace
@@ -670,6 +690,7 @@ extern "C" int hipengine_gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16
     int64_t in_features,
     int64_t out_features_a,
     int64_t out_features_b,
+    int64_t expert_stride,
     int64_t num_experts,
     int64_t wmma_total_rows,
     hipStream_t stream) {
@@ -689,6 +710,7 @@ extern "C" int hipengine_gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16
       in_features,
       out_features_a,
       out_features_b,
+      expert_stride,
       num_experts,
       wmma_total_rows,
       stream);
@@ -707,6 +729,7 @@ extern "C" int hipengine_gguf_q5_k_selected_dual_sparse_exact_repair_bf16(
     int64_t in_features,
     int64_t out_features_a,
     int64_t out_features_b,
+    int64_t expert_stride,
     int64_t num_experts,
     int64_t grid_blocks,
     hipStream_t stream) {
@@ -723,6 +746,7 @@ extern "C" int hipengine_gguf_q5_k_selected_dual_sparse_exact_repair_bf16(
       in_features,
       out_features_a,
       out_features_b,
+      expert_stride,
       num_experts,
       grid_blocks,
       stream);

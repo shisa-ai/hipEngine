@@ -1,0 +1,1646 @@
+{
+  "schema_version": 1,
+  "kind": "bfcl96_diagnostic",
+  "date": "2026-09-26",
+  "official_mlperf_result": false,
+  "host": {
+    "name": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm_version": "HIP version: 7.15.26333-0000000"
+  },
+  "hipengine_commit": "c450472a9ad575662f9f2185c05a75a1418185da",
+  "configuration_provenance": [
+    "2026-09-25-gfx1151-edge-speculative-140.json",
+    "2026-09-25-gfx1151-gufo-dflash-edge-140.json"
+  ],
+  "harness_revision": "e71b928f8a72fd0c9d850dc5ddd8fd7760356354",
+  "dependencies": {
+    "bfcl-eval": "2026.3.23",
+    "pandas": "3.0.6",
+    "msgspec": "0.20.0",
+    "transformers": "5.16.1",
+    "inference-endpoint": "0.1.0"
+  },
+  "selection": {
+    "selection": "8 smallest SHA256(edge-bfcl-diagnostic-v1:42:<sample_id>) per subset of prescribed995 draw; no answers inspected",
+    "full_count": 995,
+    "count": 96,
+    "ids": [
+      "irrelevance_9",
+      "irrelevance_17",
+      "irrelevance_5",
+      "irrelevance_0",
+      "irrelevance_16",
+      "irrelevance_18",
+      "irrelevance_21",
+      "irrelevance_15",
+      "live_irrelevance_18-2-6",
+      "live_irrelevance_78-2-66",
+      "live_irrelevance_76-2-64",
+      "live_irrelevance_50-2-38",
+      "live_irrelevance_4-0-4",
+      "live_irrelevance_86-2-74",
+      "live_irrelevance_56-2-44",
+      "live_irrelevance_21-2-9",
+      "live_multiple_35-11-1",
+      "live_multiple_0-0-0",
+      "live_multiple_87-38-4",
+      "live_multiple_97-42-1",
+      "live_multiple_83-38-0",
+      "live_multiple_40-15-0",
+      "live_multiple_48-18-3",
+      "live_multiple_3-2-0",
+      "live_parallel_6-3-0",
+      "live_parallel_15-11-0",
+      "live_parallel_8-4-0",
+      "live_parallel_4-1-0",
+      "live_parallel_9-5-0",
+      "live_parallel_10-6-0",
+      "live_parallel_7-3-1",
+      "live_parallel_11-7-0",
+      "live_parallel_multiple_18-16-0",
+      "live_parallel_multiple_9-8-0",
+      "live_parallel_multiple_4-3-0",
+      "live_parallel_multiple_12-10-1",
+      "live_parallel_multiple_14-12-0",
+      "live_parallel_multiple_16-14-0",
+      "live_parallel_multiple_13-11-0",
+      "live_parallel_multiple_1-1-0",
+      "live_simple_21-4-1",
+      "live_simple_23-5-1",
+      "live_simple_15-3-11",
+      "live_simple_19-3-15",
+      "live_simple_9-3-5",
+      "live_simple_17-3-13",
+      "live_simple_3-2-1",
+      "live_simple_4-3-0",
+      "multiple_94",
+      "multiple_82",
+      "multiple_79",
+      "multiple_9",
+      "multiple_33",
+      "multiple_105",
+      "multiple_54",
+      "multiple_80",
+      "parallel_115",
+      "parallel_48",
+      "parallel_59",
+      "parallel_19",
+      "parallel_38",
+      "parallel_104",
+      "parallel_98",
+      "parallel_93",
+      "parallel_multiple_13",
+      "parallel_multiple_15",
+      "parallel_multiple_21",
+      "parallel_multiple_3",
+      "parallel_multiple_7",
+      "parallel_multiple_55",
+      "parallel_multiple_116",
+      "parallel_multiple_49",
+      "simple_java_60",
+      "simple_java_59",
+      "simple_java_40",
+      "simple_java_28",
+      "simple_java_5",
+      "simple_java_26",
+      "simple_java_0",
+      "simple_java_7",
+      "simple_javascript_5",
+      "simple_javascript_26",
+      "simple_javascript_8",
+      "simple_javascript_17",
+      "simple_javascript_18",
+      "simple_javascript_14",
+      "simple_javascript_7",
+      "simple_javascript_20",
+      "simple_python_83",
+      "simple_python_61",
+      "simple_python_102",
+      "simple_python_66",
+      "simple_python_211",
+      "simple_python_222",
+      "simple_python_48",
+      "simple_python_235"
+    ],
+    "subsets": {
+      "irrelevance": [
+        "irrelevance_9",
+        "irrelevance_17",
+        "irrelevance_5",
+        "irrelevance_0",
+        "irrelevance_16",
+        "irrelevance_18",
+        "irrelevance_21",
+        "irrelevance_15"
+      ],
+      "live_irrelevance": [
+        "live_irrelevance_18-2-6",
+        "live_irrelevance_78-2-66",
+        "live_irrelevance_76-2-64",
+        "live_irrelevance_50-2-38",
+        "live_irrelevance_4-0-4",
+        "live_irrelevance_86-2-74",
+        "live_irrelevance_56-2-44",
+        "live_irrelevance_21-2-9"
+      ],
+      "live_multiple": [
+        "live_multiple_35-11-1",
+        "live_multiple_0-0-0",
+        "live_multiple_87-38-4",
+        "live_multiple_97-42-1",
+        "live_multiple_83-38-0",
+        "live_multiple_40-15-0",
+        "live_multiple_48-18-3",
+        "live_multiple_3-2-0"
+      ],
+      "live_parallel": [
+        "live_parallel_6-3-0",
+        "live_parallel_15-11-0",
+        "live_parallel_8-4-0",
+        "live_parallel_4-1-0",
+        "live_parallel_9-5-0",
+        "live_parallel_10-6-0",
+        "live_parallel_7-3-1",
+        "live_parallel_11-7-0"
+      ],
+      "live_parallel_multiple": [
+        "live_parallel_multiple_18-16-0",
+        "live_parallel_multiple_9-8-0",
+        "live_parallel_multiple_4-3-0",
+        "live_parallel_multiple_12-10-1",
+        "live_parallel_multiple_14-12-0",
+        "live_parallel_multiple_16-14-0",
+        "live_parallel_multiple_13-11-0",
+        "live_parallel_multiple_1-1-0"
+      ],
+      "live_simple": [
+        "live_simple_21-4-1",
+        "live_simple_23-5-1",
+        "live_simple_15-3-11",
+        "live_simple_19-3-15",
+        "live_simple_9-3-5",
+        "live_simple_17-3-13",
+        "live_simple_3-2-1",
+        "live_simple_4-3-0"
+      ],
+      "multiple": [
+        "multiple_94",
+        "multiple_82",
+        "multiple_79",
+        "multiple_9",
+        "multiple_33",
+        "multiple_105",
+        "multiple_54",
+        "multiple_80"
+      ],
+      "parallel": [
+        "parallel_115",
+        "parallel_48",
+        "parallel_59",
+        "parallel_19",
+        "parallel_38",
+        "parallel_104",
+        "parallel_98",
+        "parallel_93"
+      ],
+      "parallel_multiple": [
+        "parallel_multiple_13",
+        "parallel_multiple_15",
+        "parallel_multiple_21",
+        "parallel_multiple_3",
+        "parallel_multiple_7",
+        "parallel_multiple_55",
+        "parallel_multiple_116",
+        "parallel_multiple_49"
+      ],
+      "simple_java": [
+        "simple_java_60",
+        "simple_java_59",
+        "simple_java_40",
+        "simple_java_28",
+        "simple_java_5",
+        "simple_java_26",
+        "simple_java_0",
+        "simple_java_7"
+      ],
+      "simple_javascript": [
+        "simple_javascript_5",
+        "simple_javascript_26",
+        "simple_javascript_8",
+        "simple_javascript_17",
+        "simple_javascript_18",
+        "simple_javascript_14",
+        "simple_javascript_7",
+        "simple_javascript_20"
+      ],
+      "simple_python": [
+        "simple_python_83",
+        "simple_python_61",
+        "simple_python_102",
+        "simple_python_66",
+        "simple_python_211",
+        "simple_python_222",
+        "simple_python_48",
+        "simple_python_235"
+      ]
+    },
+    "full_draw_ids_sha256": "40b6afd214d9d6dd7b3f178f9e10d0b2c1ef3b6cdfa8c51143467d99fb853511"
+  },
+  "arms": {
+    "hipengine": {
+      "published": {
+        "dataset_name": "bfcl_v4::function_calling",
+        "extractor": "FunctionCallExtractor",
+        "ground_truth_column": "ground_truth",
+        "score": 0.5416666666666666,
+        "unit_samples": 96,
+        "num_repeats": 1,
+        "total_samples": 96,
+        "duration_s": 493.062,
+        "complete": true,
+        "dataset_type": "accuracy",
+        "breakdown": {
+          "overall_accuracy": 54.17,
+          "normalized_single_turn_score": 58.33,
+          "category_scores": {
+            "non_live": 40.62,
+            "live": 46.88,
+            "hallucination": 87.5
+          },
+          "subset_scores": {
+            "irrelevance": 87.5,
+            "live_irrelevance": 87.5,
+            "live_multiple": 87.5,
+            "live_parallel": 0.0,
+            "live_parallel_multiple": 0.0,
+            "live_simple": 100.0,
+            "multiple": 100.0,
+            "parallel": 0.0,
+            "parallel_multiple": 0.0,
+            "simple_java": 50.0,
+            "simple_javascript": 37.5,
+            "simple_python": 100.0
+          },
+          "unscored_subsets": {},
+          "total_samples": 96,
+          "issued_samples": 96
+        },
+        "response_counts": {
+          "issued": 96,
+          "scored": 96,
+          "empty": 0,
+          "missing": 0
+        },
+        "osl_tokenize_s": 0.005
+      },
+      "event_counts": {
+        "session.started": 1,
+        "sample.issued": 96,
+        "sample.recv_first": 96,
+        "sample.complete": 96,
+        "session.ended": 1
+      },
+      "counts": {
+        "irrelevance": {
+          "correct": 7.0,
+          "n": 8
+        },
+        "live_irrelevance": {
+          "correct": 7.0,
+          "n": 8
+        },
+        "live_multiple": {
+          "correct": 7.0,
+          "n": 8
+        },
+        "live_parallel": {
+          "correct": 0.0,
+          "n": 8
+        },
+        "live_parallel_multiple": {
+          "correct": 0.0,
+          "n": 8
+        },
+        "live_simple": {
+          "correct": 8.0,
+          "n": 8
+        },
+        "multiple": {
+          "correct": 8.0,
+          "n": 8
+        },
+        "parallel": {
+          "correct": 0.0,
+          "n": 8
+        },
+        "parallel_multiple": {
+          "correct": 0.0,
+          "n": 8
+        },
+        "simple_java": {
+          "correct": 4.0,
+          "n": 8
+        },
+        "simple_javascript": {
+          "correct": 3.0,
+          "n": 8
+        },
+        "simple_python": {
+          "correct": 8.0,
+          "n": 8
+        }
+      },
+      "parallel_call_counts": {
+        "1": 32
+      },
+      "server_command": [
+        "bash",
+        "/tmp/t17-env.sh",
+        "python",
+        "/home/lhl/gate-runs/mlperf-edge-speculative-20260925/capture-server-v2.py",
+        "--model",
+        "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-original-target-plus-MTP-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--served-model-name",
+        "Qwen3.6-27B-Q4_K_M",
+        "--max-context-tokens",
+        "32768",
+        "--kv-storage",
+        "bf16",
+        "--execution-profile",
+        "production",
+        "--metrics",
+        "prometheus",
+        "--info",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8098",
+        "--log-level",
+        "info",
+        "--speculative-mtp-serving",
+        "enabled"
+      ],
+      "runner_command": [
+        "/home/lhl/mlperf-edge-endpoints/.venv/bin/python",
+        "/home/lhl/gate-runs/edge-bfcl-quality-20260925/run-frozen.py",
+        "benchmark",
+        "from-config",
+        "--config",
+        "/home/lhl/gate-runs/edge-bfcl-quality-20260925/hipengine-v2/config.yaml",
+        "--accuracy-only"
+      ],
+      "config": "name: diagnostic-bfcl96-hipengine\nversion: '1.0'\ntype: online\nmodel_params:\n  name: Qwen3.6-27B-Q4_K_M\n  tokenizer_name: /home/lhl/models/mlperf-edge/tokenizer\n  temperature: 0\n  seed: 42\n  max_new_tokens: 1024\n  chat_template_kwargs:\n    enable_thinking: false\ndatasets:\n- name: bfcl_v4::function_calling\n  type: accuracy\n  generate_params:\n    categories:\n    - non_live\n    - live\n    - hallucination\n    category_sample_pct:\n      non_live: 62\n      live: 10\n      hallucination: 10\n    subset_floor: 25\n  accuracy_config:\n    eval_method: bfcl_v4\n    ground_truth: ground_truth\n    extractor: function_call_extractor\n    num_repeats: 1\nsettings:\n  runtime:\n    max_issue_duration_ms: 14400000\n    dataloader_random_seed: 42\n  timeouts:\n    run_timeout_s: 5400\n  load_pattern:\n    type: concurrency\n    target_concurrency: 1\n  client:\n    num_workers: 1\n    max_connections: 1\n    warmup_connections: 0\nendpoint_config:\n  endpoints:\n  - http://127.0.0.1:8098\n  api_type: openai\n  api_key: null\nreport_dir: /home/lhl/gate-runs/edge-bfcl-quality-20260925/hipengine-v2/harness\n",
+      "start_utc": "2026-09-25T16:31:27Z",
+      "end_utc": "2026-09-25T16:39:59Z",
+      "finish_counts": {
+        "stop": 15,
+        "tool_calls": 81
+      },
+      "raw_xml_content_ids": [],
+      "speculating_requests": 96
+    },
+    "llamacpp": {
+      "published": {
+        "dataset_name": "bfcl_v4::function_calling",
+        "extractor": "FunctionCallExtractor",
+        "ground_truth_column": "ground_truth",
+        "score": 0.7916666666666666,
+        "unit_samples": 96,
+        "num_repeats": 1,
+        "total_samples": 96,
+        "duration_s": 601.186,
+        "complete": true,
+        "dataset_type": "accuracy",
+        "breakdown": {
+          "overall_accuracy": 79.17,
+          "normalized_single_turn_score": 84.38,
+          "category_scores": {
+            "non_live": 75.0,
+            "live": 84.38,
+            "hallucination": 93.75
+          },
+          "subset_scores": {
+            "irrelevance": 100.0,
+            "live_irrelevance": 87.5,
+            "live_multiple": 87.5,
+            "live_parallel": 75.0,
+            "live_parallel_multiple": 75.0,
+            "live_simple": 100.0,
+            "multiple": 100.0,
+            "parallel": 62.5,
+            "parallel_multiple": 75.0,
+            "simple_java": 50.0,
+            "simple_javascript": 37.5,
+            "simple_python": 100.0
+          },
+          "unscored_subsets": {},
+          "total_samples": 96,
+          "issued_samples": 96
+        },
+        "response_counts": {
+          "issued": 96,
+          "scored": 96,
+          "empty": 0,
+          "missing": 0
+        },
+        "osl_tokenize_s": 0.016
+      },
+      "event_counts": {
+        "session.started": 1,
+        "sample.issued": 96,
+        "sample.recv_first": 96,
+        "sample.complete": 96,
+        "session.ended": 1
+      },
+      "counts": {
+        "irrelevance": {
+          "correct": 8.0,
+          "n": 8
+        },
+        "live_irrelevance": {
+          "correct": 7.0,
+          "n": 8
+        },
+        "live_multiple": {
+          "correct": 7.0,
+          "n": 8
+        },
+        "live_parallel": {
+          "correct": 6.0,
+          "n": 8
+        },
+        "live_parallel_multiple": {
+          "correct": 6.0,
+          "n": 8
+        },
+        "live_simple": {
+          "correct": 8.0,
+          "n": 8
+        },
+        "multiple": {
+          "correct": 8.0,
+          "n": 8
+        },
+        "parallel": {
+          "correct": 5.0,
+          "n": 8
+        },
+        "parallel_multiple": {
+          "correct": 6.0,
+          "n": 8
+        },
+        "simple_java": {
+          "correct": 4.0,
+          "n": 8
+        },
+        "simple_javascript": {
+          "correct": 3.0,
+          "n": 8
+        },
+        "simple_python": {
+          "correct": 8.0,
+          "n": 8
+        }
+      },
+      "parallel_call_counts": {
+        "2": 22,
+        "4": 3,
+        "3": 4,
+        "1": 3
+      },
+      "server_command": [
+        "bash",
+        "/tmp/t17-env.sh",
+        "/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-server",
+        "--model",
+        "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-original-target-plus-MTP-Q4_K_M.gguf",
+        "--alias",
+        "Qwen3.6-27B-Q4_K_M",
+        "--ctx-size",
+        "32768",
+        "--parallel",
+        "1",
+        "--n-gpu-layers",
+        "99",
+        "--cache-type-k",
+        "bf16",
+        "--cache-type-v",
+        "bf16",
+        "--reasoning",
+        "off",
+        "--metrics",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8098",
+        "--spec-type",
+        "draft-mtp",
+        "--log-verbosity",
+        "5"
+      ],
+      "runner_command": [
+        "/home/lhl/mlperf-edge-endpoints/.venv/bin/python",
+        "/home/lhl/gate-runs/edge-bfcl-quality-20260925/run-frozen.py",
+        "benchmark",
+        "from-config",
+        "--config",
+        "/home/lhl/gate-runs/edge-bfcl-quality-20260925/llamacpp-v2/config.yaml",
+        "--accuracy-only"
+      ],
+      "config": "name: diagnostic-bfcl96-llamacpp\nversion: '1.0'\ntype: online\nmodel_params:\n  name: Qwen3.6-27B-Q4_K_M\n  tokenizer_name: /home/lhl/models/mlperf-edge/tokenizer\n  temperature: 0\n  seed: 42\n  max_new_tokens: 1024\n  chat_template_kwargs:\n    enable_thinking: false\ndatasets:\n- name: bfcl_v4::function_calling\n  type: accuracy\n  generate_params:\n    categories:\n    - non_live\n    - live\n    - hallucination\n    category_sample_pct:\n      non_live: 62\n      live: 10\n      hallucination: 10\n    subset_floor: 25\n  accuracy_config:\n    eval_method: bfcl_v4\n    ground_truth: ground_truth\n    extractor: function_call_extractor\n    num_repeats: 1\nsettings:\n  runtime:\n    max_issue_duration_ms: 14400000\n    dataloader_random_seed: 42\n  timeouts:\n    run_timeout_s: 5400\n  load_pattern:\n    type: concurrency\n    target_concurrency: 1\n  client:\n    num_workers: 1\n    max_connections: 1\n    warmup_connections: 0\nendpoint_config:\n  endpoints:\n  - http://127.0.0.1:8098\n  api_type: openai\n  api_key: null\nreport_dir: /home/lhl/gate-runs/edge-bfcl-quality-20260925/llamacpp-v2/harness\n",
+      "start_utc": "2026-09-25T16:40:10Z",
+      "end_utc": "2026-09-25T16:50:35Z",
+      "finish_counts": {
+        "stop": 16,
+        "tool_calls": 80
+      },
+      "raw_xml_content_ids": [],
+      "speculation_evidence": "Final draft-mtp statistics:96 begins,7530 generated draft tokens,6785 accepted tokens; see server.log"
+    },
+    "gufo": {
+      "published": {
+        "dataset_name": "bfcl_v4::function_calling",
+        "extractor": "FunctionCallExtractor",
+        "ground_truth_column": "ground_truth",
+        "score": 0.7604166666666666,
+        "unit_samples": 96,
+        "num_repeats": 1,
+        "total_samples": 96,
+        "duration_s": 918.504,
+        "complete": true,
+        "dataset_type": "accuracy",
+        "breakdown": {
+          "overall_accuracy": 76.04,
+          "normalized_single_turn_score": 81.25,
+          "category_scores": {
+            "non_live": 75.0,
+            "live": 75.0,
+            "hallucination": 93.75
+          },
+          "subset_scores": {
+            "irrelevance": 100.0,
+            "live_irrelevance": 87.5,
+            "live_multiple": 75.0,
+            "live_parallel": 62.5,
+            "live_parallel_multiple": 62.5,
+            "live_simple": 100.0,
+            "multiple": 100.0,
+            "parallel": 62.5,
+            "parallel_multiple": 75.0,
+            "simple_java": 50.0,
+            "simple_javascript": 37.5,
+            "simple_python": 100.0
+          },
+          "unscored_subsets": {},
+          "total_samples": 96,
+          "issued_samples": 96
+        },
+        "response_counts": {
+          "issued": 96,
+          "scored": 96,
+          "empty": 0,
+          "missing": 0
+        },
+        "osl_tokenize_s": 0.015
+      },
+      "event_counts": {
+        "session.started": 1,
+        "sample.issued": 96,
+        "sample.recv_first": 96,
+        "sample.complete": 96,
+        "session.ended": 1
+      },
+      "counts": {
+        "irrelevance": {
+          "correct": 8.0,
+          "n": 8
+        },
+        "live_irrelevance": {
+          "correct": 7.0,
+          "n": 8
+        },
+        "live_multiple": {
+          "correct": 6.0,
+          "n": 8
+        },
+        "live_parallel": {
+          "correct": 5.0,
+          "n": 8
+        },
+        "live_parallel_multiple": {
+          "correct": 5.0,
+          "n": 8
+        },
+        "live_simple": {
+          "correct": 8.0,
+          "n": 8
+        },
+        "multiple": {
+          "correct": 8.0,
+          "n": 8
+        },
+        "parallel": {
+          "correct": 5.0,
+          "n": 8
+        },
+        "parallel_multiple": {
+          "correct": 6.0,
+          "n": 8
+        },
+        "simple_java": {
+          "correct": 4.0,
+          "n": 8
+        },
+        "simple_javascript": {
+          "correct": 3.0,
+          "n": 8
+        },
+        "simple_python": {
+          "correct": 8.0,
+          "n": 8
+        }
+      },
+      "parallel_call_counts": {
+        "2": 20,
+        "4": 3,
+        "1": 3,
+        "3": 4,
+        "0": 2
+      },
+      "server_command": [
+        "bash",
+        "/tmp/t17-env.sh",
+        "/home/lhl/gate-runs/gufo-edge-20260925/build/gufo",
+        "serve",
+        "llm",
+        "--model",
+        "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-Q4_K_M.gguf",
+        "--served-model-name",
+        "Qwen3.6-27B-Q4_K_M",
+        "--context",
+        "32768",
+        "--sessions",
+        "1",
+        "--speculative",
+        "dflash2",
+        "--dflash-model",
+        "/home/lhl/models/mlperf-edge/drafts/Qwen3.8-27B-DFlash2-Q4_K_M.gguf",
+        "--preserve-thinking",
+        "off",
+        "--think",
+        "off",
+        "--temperature",
+        "0",
+        "--seed",
+        "42",
+        "--max-tokens",
+        "1024",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8098"
+      ],
+      "runner_command": [
+        "/home/lhl/mlperf-edge-endpoints/.venv/bin/python",
+        "/home/lhl/gate-runs/edge-bfcl-quality-20260925/run-frozen.py",
+        "benchmark",
+        "from-config",
+        "--config",
+        "/home/lhl/gate-runs/edge-bfcl-quality-20260925/gufo-v3/config.yaml",
+        "--accuracy-only"
+      ],
+      "config": "name: diagnostic-bfcl96-gufo\nversion: '1.0'\ntype: online\nmodel_params:\n  name: Qwen3.6-27B-Q4_K_M\n  tokenizer_name: /home/lhl/models/mlperf-edge/tokenizer\n  temperature: 0\n  seed: 42\n  max_new_tokens: 1024\n  chat_template_kwargs:\n    enable_thinking: false\ndatasets:\n- name: bfcl_v4::function_calling\n  type: accuracy\n  generate_params:\n    categories:\n    - non_live\n    - live\n    - hallucination\n    category_sample_pct:\n      non_live: 62\n      live: 10\n      hallucination: 10\n    subset_floor: 25\n  accuracy_config:\n    eval_method: bfcl_v4\n    ground_truth: ground_truth\n    extractor: function_call_extractor\n    num_repeats: 1\nsettings:\n  runtime:\n    max_issue_duration_ms: 14400000\n    dataloader_random_seed: 42\n  timeouts:\n    run_timeout_s: 5400\n  load_pattern:\n    type: concurrency\n    target_concurrency: 1\n  client:\n    num_workers: 1\n    max_connections: 1\n    warmup_connections: 0\nendpoint_config:\n  endpoints:\n  - http://127.0.0.1:8098\n  api_type: openai\n  api_key: null\nreport_dir: /home/lhl/gate-runs/edge-bfcl-quality-20260925/gufo-v3/harness\n",
+      "start_utc": "2026-09-25T16:59:31Z",
+      "end_utc": "2026-09-25T17:15:13Z",
+      "finish_counts": {
+        "stop": 21,
+        "tool_calls": 75
+      },
+      "raw_xml_content_ids": [
+        "live_multiple_97-42-1",
+        "parallel_104",
+        "parallel_multiple_55",
+        "simple_java_7",
+        "simple_javascript_5"
+      ],
+      "speculating_requests": 96
+    }
+  },
+  "paired": [
+    {
+      "id": "irrelevance_9",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_17",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_5",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_16",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_18",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_21",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_15",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_18-2-6",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_78-2-66",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_76-2-64",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_50-2-38",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_4-0-4",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_irrelevance_86-2-74",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_56-2-44",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_21-2-9",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_35-11-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_0-0-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_87-38-4",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_multiple_97-42-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_multiple_83-38-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_40-15-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_48-18-3",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_3-2-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_6-3-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_15-11-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_8-4-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_4-1-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_9-5-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_10-6-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_7-3-1",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_11-7-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_18-16-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_9-8-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_4-3-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_12-10-1",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_14-12-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_16-14-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_13-11-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_1-1-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_21-4-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_23-5-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_15-3-11",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_19-3-15",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_9-3-5",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_17-3-13",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_3-2-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_4-3-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_94",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_82",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_79",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_9",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_33",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_105",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_54",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "multiple_80",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_115",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_48",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_59",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_19",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_38",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_104",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_98",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_93",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_13",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_15",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_21",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_multiple_3",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_7",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_55",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "parallel_multiple_116",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_49",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_60",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_59",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_java_40",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_28",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_java_5",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_26",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_java_0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_7",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_5",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_26",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_javascript_8",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_javascript_17",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_18",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_14",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_7",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_javascript_20",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0
+      }
+    },
+    {
+      "id": "simple_python_83",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_61",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_102",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_66",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_211",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_222",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_48",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_235",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0
+      }
+    }
+  ],
+  "raw_root": "/home/lhl/gate-runs/edge-bfcl-quality-20260925",
+  "limitations": [
+    "96 balanced-subset diagnostic cases, not the full995 gate; no threshold verdict or accuracy-parity claim.",
+    "Original Qwen3.6 target tensor bytes; MTP arms add NextN weights, gufo uses Qwen3.8 DFlash2. Target KV BF16 vs FP16.",
+    "No gufo AR control; do not attribute quality differences to DFlash2.",
+    "Harness omits parallel_tool_calls. hipEngine requires explicit true and returns one call on all32 parallel cases.",
+    "Initial hipengine config rejected before inference. Gufo-v2 interrupted after35cases by harness control message; fresh gufo-v3 alone is scored. Partial evidence preserved."
+  ],
+  "files": {
+    "freeze.py": {
+      "sha256": "08931053a21a9391ac9c1a21cf0f30d27391540c93b8c50b2f018d0a83ee0a14",
+      "bytes": 1214
+    },
+    "run-frozen.py": {
+      "sha256": "5f8898b350c6421b7039e1cdb25567c82d0484457f85be1abf57d4c8b32df5fa",
+      "bytes": 894
+    },
+    "run-all.py": {
+      "sha256": "a70fc7f2a061a2a385c2b44acd2fdae262fcdcebef8c190a97ffd12445903bd0",
+      "bytes": 2993
+    },
+    "run-gufo.py": {
+      "sha256": "cfd6775bc1f45aabf11c070e0f3ca5dbbd673c8696444b59a751d1e56036717e",
+      "bytes": 3004
+    },
+    "analyze.py": {
+      "sha256": "fb6e3d73eb329a804c64b432cf4bee182ecf05c51f34b12a586eef0fffbe7eef",
+      "bytes": 3190
+    },
+    "manifest.json": {
+      "sha256": "ed383343a2d60c8b0cb0df67c1dc88aa4b6c7b88fc64725e3354fa5c8696540f",
+      "bytes": 5838
+    },
+    "full-draw.pkl": {
+      "sha256": "bc88f4557b784136ffe0c469468a277e44734d4a59aa757299e7bfaf93a2d6c1",
+      "bytes": 2442905
+    },
+    "quality-analysis.json": {
+      "sha256": "2a22736f2c00b4af47d690993f837d121b59777dace9345fab0c479f7eb3a97c",
+      "bytes": 239216
+    },
+    "datasets/bfcl_v4/bfcl_v4_single_turn.parquet": {
+      "sha256": "32dc7c1c1a7d2d46f71acfda59c16b0cc43d3dbcf2fe842216e1437729a17c3e",
+      "bytes": 2672273
+    },
+    "hipengine-v2/config.yaml": {
+      "sha256": "c011f50cbb7c888a28876fd9a59e9cbdaf258d55668d313f9a583a0ac55bce34",
+      "bytes": 1078
+    },
+    "hipengine-v2/server-command.json": {
+      "sha256": "80d4bd05fe6cddb0ef31550a5948f34ed460827dc7e80b1da877175bd66f1aee",
+      "bytes": 578
+    },
+    "hipengine-v2/runner-command.json": {
+      "sha256": "7da6c848b3f332d11a80e081e3696656e3b5dcb5b8752270167b010f14e3580e",
+      "bytes": 266
+    },
+    "hipengine-v2/server.log": {
+      "sha256": "c3dca7e5d1c4564fa554d1ace165c0aa66aa9fad279c0e7d9f37491237f2fc62",
+      "bytes": 189391
+    },
+    "hipengine-v2/runner.log": {
+      "sha256": "63e6149bd9726ac87b8948d9159877aa5a195abb548c9dc89ccdff655b9d6b29",
+      "bytes": 27000
+    },
+    "hipengine-v2/harness/events.jsonl": {
+      "sha256": "c7983de01458e0086b159a8cd9dd02f225b1226140109014c8c191b235e6d55a",
+      "bytes": 284978
+    },
+    "hipengine-v2/harness/sample_idx_map.json": {
+      "sha256": "83145b6c523978ce8eedf842827ecad015e73c66559aad313e01d8ecb4be009d",
+      "bytes": 4253
+    },
+    "hipengine-v2/harness/accuracy/accuracy_results.json": {
+      "sha256": "5a3db367be0c9037f02f28e15e3b103ebdc7883aa113c6b4d3c4de0a7bf64502",
+      "bytes": 5297
+    },
+    "llamacpp-v2/config.yaml": {
+      "sha256": "75d66eb899eea22ab55b8507ff379643f2da4ddf8911a29bbca9cf38368b3c98",
+      "bytes": 1076
+    },
+    "llamacpp-v2/server-command.json": {
+      "sha256": "82bf2179177c905bfc5a0022c0f75cb5a07de7efc0f9dfe751e33e8b3f192ba4",
+      "bytes": 536
+    },
+    "llamacpp-v2/runner-command.json": {
+      "sha256": "2ba122093bd37fcb0d426f8035a683e074ee5628e9346422d0310d741e67c722",
+      "bytes": 265
+    },
+    "llamacpp-v2/server.log": {
+      "sha256": "d7eb85a43cde7cd5165a2c2b328213d8159ebf4221efe9780c1895dac13a4954",
+      "bytes": 12430795
+    },
+    "llamacpp-v2/runner.log": {
+      "sha256": "c326aa9de77cfcc8bfee81991d87dfc287b2e50e3fc3e1f1b14be8ecc903f3f0",
+      "bytes": 23673
+    },
+    "llamacpp-v2/harness/events.jsonl": {
+      "sha256": "12a562be6ff65cd23c05e9de9af0af4949d4aabd30ead347750e57197cda2cb3",
+      "bytes": 283092
+    },
+    "llamacpp-v2/harness/sample_idx_map.json": {
+      "sha256": "ce19c2b24ac7bb56400856c84266884fad970c2865efca3a61cfe63dc095435c",
+      "bytes": 4253
+    },
+    "llamacpp-v2/harness/accuracy/accuracy_results.json": {
+      "sha256": "80e11844ed4ec597651ac709b6ab5602dec8315f09540fd221bd53afd74b3de8",
+      "bytes": 5284
+    },
+    "gufo-v3/config.yaml": {
+      "sha256": "697b1ac0f7c8befae0ac2dee7bd21d10bd6c4a0d297296a5ef3216f1ec1dd13f",
+      "bytes": 1068
+    },
+    "gufo-v3/server-command.json": {
+      "sha256": "1f712c8817dcee298846baca4695a1ece6246548962f26459f92d39f16693adf",
+      "bytes": 589
+    },
+    "gufo-v3/runner-command.json": {
+      "sha256": "dbbc13a46945be635d9470cb45af6beac3ca51baf814a0e6796d6fcae5e62f31",
+      "bytes": 261
+    },
+    "gufo-v3/server.log": {
+      "sha256": "b7fb878fa4fe303dca2f952e4ff942b772e59e6791c90779095e730b8b33b337",
+      "bytes": 70243
+    },
+    "gufo-v3/runner.log": {
+      "sha256": "70120ab305c6794c3304bc3d1b3dabdcc0bd2e3cfe0f162b05db78083c82e98a",
+      "bytes": 23665
+    },
+    "gufo-v3/harness/events.jsonl": {
+      "sha256": "159854def18b983e1b1607e7b59ca0e2f04995f4020f4105cd41bec894f43df2",
+      "bytes": 213556
+    },
+    "gufo-v3/harness/sample_idx_map.json": {
+      "sha256": "51c04b94f7d5ee832750f032e33b2937685a55380d2c937f4f5aab34c87ff246",
+      "bytes": 4253
+    },
+    "gufo-v3/harness/accuracy/accuracy_results.json": {
+      "sha256": "65ad9d99396730bed92fb6f55adbe1589dcd9cb9e8320d5e4e9f2cd3b6b2994e",
+      "bytes": 5297
+    }
+  }
+}

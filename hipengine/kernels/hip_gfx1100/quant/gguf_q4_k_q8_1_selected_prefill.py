@@ -26,11 +26,25 @@ _SYMBOL_DS4_MMQ32_BF16 = (
 _SYMBOL_Q5_K_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 )
+# The 128-wide K pass of the same leaf. Four Q4_K subblocks are staged per pass,
+# so the __syncthreads() count divides by four at unchanged arithmetic.
+_SYMBOL_DS4_MMQ32X128_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out"
+)
+_SYMBOL_FUSED_DS4_MMQ32_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out"
+)
+_SYMBOL_FUSED_DS4X3_MMQ32_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out"
+)
 _SYMBOL_X8_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 )
 _SYMBOL_T16_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
+)
+_SYMBOL_T16_FUSED_DS4_MMQ32_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out"
 )
 _SYMBOL_T16_DS4X3_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out"
@@ -387,8 +401,12 @@ def gguf_q8_1_mmq_ds4_pack_bf16(
 
     _check_positive(rows, "rows")
     _check_positive(hidden, "hidden")
-    # No divisibility requirement: a partial final DS4 block is zero-filled by
-    # the kernel, so K=704 (the down projection) packs exactly like K=640.
+    # 32, not 128: a width that is not a multiple of the 128-wide DS4 block is
+    # packed with a partial trailing block, which the kernel fills from the
+    # elements that exist and zeroes for the rest. The _f32 pack variants use a
+    # different kernel and keep the 128-wide requirement.
+    if hidden % 32 != 0:
+        raise ValueError("hidden must be a multiple of the 32-wide Q5_1 block")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DS4_PACK_BF16)
@@ -485,8 +503,12 @@ def gguf_q8_1_mmq_ds4_pack_bf16_d4x3(
 
     _check_positive(rows, "rows")
     _check_positive(hidden, "hidden")
-    # No divisibility requirement: the kernel zero-fills the partial final
-    # DS4 block, so K=704 (the down projection) packs exactly like K=640.
+    # 32, not 128: a width that is not a multiple of the 128-wide DS4 block is
+    # packed with a partial trailing block, which the kernel fills from the
+    # elements that exist and zeroes for the rest. The _f32 pack variants use a
+    # different kernel and keep the 128-wide requirement.
+    if hidden % 32 != 0:
+        raise ValueError("hidden must be a multiple of the 32-wide Q5_1 block")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DS4X3_PACK_BF16)
@@ -523,12 +545,17 @@ def gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Pack BF16 rows as three residual DS4 planes with FP32 metadata."""
+    """Pack BF16 rows as ``residual_passes`` DS4 planes with FP32 metadata.
+
+    The name says d4x3 because three planes is what this family was built for,
+    but ``residual_passes`` selects the plane count and 1 is the one-plane D4
+    case the expert down route uses.
+    """
 
     _check_positive(rows, "rows")
     _check_positive(hidden, "hidden")
-    if hidden % _Q8_1_MMQ_BLOCK != 0:
-        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    if hidden % 32 != 0:
+        raise ValueError("hidden must be a multiple of the 32-wide weight block")
     if residual_passes not in _SYMBOL_DS4_F32_PACK_BF16:
         raise ValueError("residual_passes must be 1, 2, or 3")
     if split16 and residual_passes != 1:
@@ -1865,6 +1892,165 @@ def gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the 128-wide K pass of the 32x32 Q4_K x DS4-Q8_1 MMQ leaf.
+
+    Identical arithmetic to the 32-wide route; only the number of staging passes
+    and the ``__syncthreads()`` count differ. ``in_features`` must be a whole
+    number of 128-element groups, which the caller checks before selecting this
+    route -- the narrow route stays the default.
+    """
+
+    if in_features % 128:
+        raise ValueError(
+            f"the 128-wide K pass needs in_features divisible by 128, got {in_features}"
+        )
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+        x_q8_ptr,
+        compact_to_source_ptr,
+        expert_start_compact_ptr,
+        expert_start_mmq32_ptr,
+        mmq_tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        _symbol=_SYMBOL_DS4_MMQ32X128_BF16,
+    )
+
+
+def gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the MMQ32 leaf for a per-expert fused gate | up weight block.
+
+    Same arithmetic and layout as
+    :func:`gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out`,
+    but the two weight pointers address the gate and up slices of one per-expert
+    row block, so an expert's stride is ``out_features_a + out_features_b``
+    rather than one half's width. Gemma 4's ``ffn_gate_up_exps`` is stored this
+    way, and the fused ``gate | up`` row output is exactly what its gelu-tanh-mul
+    consumer reads.
+    """
+
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+        x_q8_ptr,
+        compact_to_source_ptr,
+        expert_start_compact_ptr,
+        expert_start_mmq32_ptr,
+        mmq_tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        _symbol=_SYMBOL_FUSED_DS4_MMQ32_BF16,
+    )
+
+
+def gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the three-activation-plane twin of the fused MMQ32 leaf.
+
+    Same weight layout and output as
+    :func:`gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out`,
+    but the activation buffer holds three DS4 Q8_1 planes instead of one and
+    must be sized accordingly. The extra planes carry the pack's error
+    feedback, so this variant trades three times the activation bytes for a
+    large reduction in the activation quantization error.
+    """
+
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+        x_q8_ptr,
+        compact_to_source_ptr,
+        expert_start_compact_ptr,
+        expert_start_mmq32_ptr,
+        mmq_tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        _symbol=_SYMBOL_FUSED_DS4X3_MMQ32_BF16,
+    )
+
+
 def gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     x_q8_ptr: int,
     compact_to_source_ptr: int,
@@ -1979,6 +2165,56 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         library=library,
         runtime=runtime,
         _symbol=_SYMBOL_T16_DS4_MMQ32_BF16,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch MMQ32 against resident T16 weights in a fused gate | up row block.
+
+    Both changes at once: the weights are 16-wide output tiles rather than raw
+    GGUF blocks, and the two weight pointers address the gate and up slices of
+    one per-expert row block, so the tile run covers the fused width and the up
+    half's tiles start after the gate half's.
+    """
+
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+        x_q8_ptr,
+        compact_to_source_ptr,
+        expert_start_compact_ptr,
+        expert_start_mmq32_ptr,
+        mmq_tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        _symbol=_SYMBOL_T16_FUSED_DS4_MMQ32_BF16,
     )
 
 

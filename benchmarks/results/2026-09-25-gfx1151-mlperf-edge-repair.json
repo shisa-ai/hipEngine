@@ -1,0 +1,406 @@
+{
+  "kind": "hipengine_mlperf_edge_integration_smoke",
+  "schema_version": 1,
+  "date": "2026-09-25",
+  "status": "passed_integration_smoke",
+  "integration_pass": true,
+  "performance_claim": false,
+  "official_mlperf_result": false,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-25T06:16:23.910367+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "d4d5080840c13e32be3099aaf95cacc79d044762",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 6,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-Q4_K_M.gguf",
+    "model_revision": "82d411acf4a06cfb8d9b073a5211bf410bfc29bf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "3609fb4ea4bc3f281eedad5c380ff77a5339a469a062c49815ff82a7443f7a25",
+      "size_bytes": 16817244384,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8408097904,
+        16816195808
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/mlperf-edge-endpoints/.venv/bin/inference-endpoint",
+      "benchmark",
+      "from-config",
+      "--config",
+      "/home/lhl/gate-runs/mlperf-edge-repair-20260925/replay-2/smoke.yaml"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "production",
+    "timing_protocol": "mlperf-edge-27-turn-integration-diagnostic-coordinator-arrival",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "source_hashes_after_validation": {
+    "hipengine/generation/constraints.py": "9d90fd8ee8886caa13e5cf2467cd7185e5ec493e6ddfbd169ece35f3ddcb24be",
+    "hipengine/generation/xml_tools.py": "a233ef78f3d80987edf555e1870607a49c94624cc09830e279b19ef4e9536d73",
+    "hipengine/server/api.py": "6c4a1c1c0a948a1d2e9bf8f055afa1e79aee014ec99c1b93f77fe894d06fb989",
+    "hipengine/server/tool_stream.py": "4eacf41c80657c6518dfe0650a5249b8849f25b9cb1666782259e7ea9d17ae93"
+  },
+  "source_note": "Replay ran the working-tree repair. Subsequent source edits only updated the constraint docstring and removed an unused legacy schema-prefix helper.",
+  "previous_attempt": "2026-09-25-gfx1151-mlperf-edge-smoke.json",
+  "model_download": {
+    "model_repo": "unsloth/Qwen3.6-27B-GGUF",
+    "model_revision": "82d411acf4a06cfb8d9b073a5211bf410bfc29bf",
+    "tokenizer_repo": "Qwen/Qwen3.6-27B",
+    "tokenizer_revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+    "files": {
+      "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-Q4_K_M.gguf": {
+        "bytes": 16817244384,
+        "sha256": "5ed60d0af4650a854b1755bd392f9aef4872643dc25a254bc68043fa638392a0"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/chat_template.jinja": {
+        "bytes": 7764,
+        "sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/config.json": {
+        "bytes": 4308,
+        "sha256": "69db4eb7196bc8190813231b3018ca05d8c2e3abc7b1af19d55c157af44a9d9c"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/configuration.json": {
+        "bytes": 51,
+        "sha256": "2d4464e2ead06bc9bc718c781309ad1e7baded626d66e8dcdc8b469ba185faf0"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/generation_config.json": {
+        "bytes": 202,
+        "sha256": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/merges.txt": {
+        "bytes": 3353259,
+        "sha256": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/model.safetensors.index.json": {
+        "bytes": 112216,
+        "sha256": "a8ad2c26fb707ff8c245806315b03e3b4b74595528492423af5dae0ce39b4d9b"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/preprocessor_config.json": {
+        "bytes": 390,
+        "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/tokenizer.json": {
+        "bytes": 12807982,
+        "sha256": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/tokenizer_config.json": {
+        "bytes": 16718,
+        "sha256": "5186f0defcd7f232382c7f0aebcd2252d073bb921ab240e407b7ae8745d2b29b"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/video_preprocessor_config.json": {
+        "bytes": 385,
+        "sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/vocab.json": {
+        "bytes": 6722759,
+        "sha256": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+      }
+    }
+  },
+  "workload": {
+    "conversation": "pallets__flask-5014",
+    "source_rows": 54,
+    "generated_turns": 27,
+    "concurrency": 1,
+    "served_context": 32768,
+    "temperature": 0,
+    "seed": 42,
+    "max_new_tokens": 1024,
+    "reasoning_requested": false,
+    "inject_tool_delay": false,
+    "cache": "radix default",
+    "mtp_policy": "auto default",
+    "actual_route": "AR host sampler,27/27 request counter delta",
+    "prior_probes": 0,
+    "harness_warmup": false,
+    "subset_manifest": {
+      "source_sha256": "b7da8c4ffbe1cabd79c4d8169e5201541e006364b4bfc016d01d893e20ee6f70",
+      "subset_sha256": "f8b7dcb551a6fc15e829bbeb96465f3f7bce7a4a3da9cb8f95a02c50f1eca85f",
+      "conversation_ids": [
+        "pallets__flask-5014"
+      ],
+      "generated_turns": 27,
+      "rows": 54,
+      "config_sha256": "d5c2eb981da2e2439b0b713699a1d31a0a1727e20bba1f9f99d7a6f4c85602e9",
+      "harness_revision": "e71b928f8a72fd0c9d850dc5ddd8fd7760356354"
+    }
+  },
+  "harness": {
+    "repo": "https://github.com/mlcommons/endpoints",
+    "revision": "e71b928f8a72fd0c9d850dc5ddd8fd7760356354",
+    "modified_source": true,
+    "command": "cd ~/mlperf-edge-endpoints && .venv/bin/inference-endpoint benchmark from-config --config ~/gate-runs/mlperf-edge-repair-20260925/replay-2/smoke.yaml",
+    "bfcl_eval": "2026.3.23",
+    "torch": "2.14.0+cpu",
+    "dependency_check": "uv pip check passed; upstream bfcl_import_smoke.py passed",
+    "patch": "benchmarks/mlperf-edge/coordinator-timestamps.patch",
+    "patch_sha256": "a5670a361173a27bd95c532a16dbf4a9f4dfb4945192acfc9a90feed3869eda5",
+    "timestamp_basis": "All response events use coordinator arrival timestamps; worker completed_at is not mixed with coordinator first-receive. Workload, scoring and token denominators unchanged.",
+    "unit_test": "57 session tests passed"
+  },
+  "observed": {
+    "issued": 27,
+    "completed": 27,
+    "http_failed": 0,
+    "dropped": 0,
+    "missing_turns": 0,
+    "empty_outputs": 0,
+    "structured_valid_calls": 27,
+    "markup_in_content_turns": [],
+    "finish_reason_counts": {
+      "stop": 0,
+      "length": 0,
+      "tool_calls": 27,
+      "content_filter": 0,
+      "function_call": 0,
+      "other": 0
+    },
+    "negative_event_windows": 0,
+    "measured_duration_s": 225.361703759,
+    "mean_turn_latency_s": 8.346624769185185,
+    "inline_executable_iou": 0.6574,
+    "harness_output_tokens": 1586,
+    "harness_tpot_avg_ns": 65059355.37266263,
+    "route_counters_delta": {
+      "hipengine_requests_total": 27.0,
+      "hipengine_mtp_requests_total": 0.0,
+      "hipengine_resident_route_total{route=\"host_sampler_requests\"}": 27.0,
+      "hipengine_resident_route_total{route=\"native_c1_decode_steps\"}": 1587.0,
+      "hipengine_resident_route_total{route=\"native_full_prefill_groups\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_full_prefill_rows\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_incremental_prefill_chunks\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_incremental_prefill_unsampled_chunks\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_packed_decode_steps\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_packed_graph_captures\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_packed_graph_replays\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_sampled_prefill_rows\"}": 27.0,
+      "hipengine_resident_route_total{route=\"native_sampler_batch_launches\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_sampler_requests\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_sampler_row_launches\"}": 0.0,
+      "hipengine_resident_route_total{route=\"resident_fallback_requests\"}": 0.0,
+      "hipengine_resident_route_total{route=\"serial_c1_row_steps\"}": 0.0,
+      "hipengine_resident_route_total{route=\"serial_decode_fallback_steps\"}": 0.0
+    }
+  },
+  "correctness": {
+    "transport_complete": true,
+    "output_nonempty_all_turns": true,
+    "structured_call_arguments_valid_all_turns": true,
+    "timestamp_order_valid": true,
+    "bfcl_gate": "not_run",
+    "numerical_gate": "not_run; no arithmetic changes",
+    "inline_score_is_bfcl": false,
+    "decode_speed_comparison_valid": false
+  },
+  "focused_live_probes": [
+    {
+      "request_turn": 1,
+      "sse_events": 55,
+      "first_visible_s": 12.914403005037457,
+      "last_visible_s": 19.110040393657982,
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 1383,
+        "completion_tokens": 73,
+        "total_tokens": 1456,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "request_turn": 45,
+      "sse_events": 19,
+      "first_visible_s": 44.213382808025926,
+      "last_visible_s": 46.84354224195704,
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 12794,
+        "completion_tokens": 37,
+        "total_tokens": 12831,
+        "prompt_tokens_details": {
+          "cached_tokens": 1280
+        }
+      }
+    }
+  ],
+  "validation": {
+    "server_api": "Full API run:673 passed,one obsolete close-stop assertion failed; repaired node then passed. No production edit to repair that assertion.",
+    "harness_session_tests": "57 passed",
+    "cpu_unit_suite": "Four failures,all reproduced on unchanged detached d4d508084 baseline:missing transformers,empty Yue2 command provenance,two torch import contamination assertions. Other unit tests passed.",
+    "cpu_bundle": "compileall,fixture checker,registry smoke,cpu-fixtures,smoke-add-plan passed",
+    "docs": "All four documentation gates passed, with existing warnings.",
+    "audit": "Blocked by stale inventories and existing budget overruns; unchanged detached d4d508084 reproduces the same errors and counts. No budget changes or audit files staged.",
+    "scope": "No kernel or arithmetic changes;no generated tool was executed."
+  },
+  "artifacts": [
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/capabilities.json",
+      "sha256": "11c2c426296b8ebdd6ec2f44643fd3a1cf2acf5d1e533a8936c94b517c1eeef6",
+      "bytes": 28803
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/command.json",
+      "sha256": "4fc10fad413eb48b22c4c6ef818b5b0105215b901b67d4ea168d3ddb11d8af3a",
+      "bytes": 175
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/exit-status.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness/accuracy/accuracy_results.json",
+      "sha256": "9112c3ca078cd96f0594cf291c33e9dd7ae0d01bb9378bd4e69bbde3825b38b6",
+      "bytes": 328
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness/config.yaml",
+      "sha256": "0175c64bc7eab52939cb77116e6408142bce5dd094adc39563cf7a7faba06241",
+      "bytes": 2107
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness/events.jsonl",
+      "sha256": "fab7c9844e947faa660d3e15ad0cd982119f24c6bf25207f10336c207c7d443c",
+      "bytes": 1108905
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness/metrics/.ready",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness/metrics/final_snapshot.json",
+      "sha256": "13d40d33f2054e4614415f3fa96c392aa3aec6624d1f738366490b30af9fbfc1",
+      "bytes": 23730
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness/performance/result_summary.json",
+      "sha256": "40735b9789bb0c1878c8b5d471bb5604b7a55831222e99670ffc46f4f2049e1e",
+      "bytes": 21811
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness/report.txt",
+      "sha256": "3c44686b06825c36cf111c3ddc5ea1a9b87db412c1b77c3c4a9d990b8decc460",
+      "bytes": 9712
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness/sample_idx_map.json",
+      "sha256": "7278011eb1a9588d9ba83eb1f50c1f2d9d73c892f625ef3066224171fd45e893",
+      "bytes": 1203
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness/scores.json",
+      "sha256": "6f33952ad3a2124520b4e2b6b7cd07ff8302806d897f91d6ff7b16bcf263a6b8",
+      "bytes": 6891
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/harness.patch",
+      "sha256": "30d49149a747f2f8be4418cbe50cdcc28dbec396c8470ddad257ab2f5404a5c6",
+      "bytes": 2119
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/health.json",
+      "sha256": "c0f3bee75ce9b5fe61a6fd116b3e7fed8561fc2bd4c162d9bcd9a5261f7a22b0",
+      "bytes": 72
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/installed.txt",
+      "sha256": "b6c41a18b00a18ab121db112fe48e450d2ab99fd2d1203a74a43fbd6d3885f63",
+      "bytes": 2759
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/metrics-after.txt",
+      "sha256": "41d81b371fb2732b1b022009767e307de0479cc6a7e96f02ea90aaa3723937f0",
+      "bytes": 21057
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/metrics-before.txt",
+      "sha256": "f94439115ffbf4af2ddb01db4b6af0e96b18adcfb84eb4c7ba77cdbbc6f324f5",
+      "bytes": 20961
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/provenance.json",
+      "sha256": "a6498a3a10714023830bd8b1ddde172f0cba98b15bf8c30d43f357b207bc8d49",
+      "bytes": 2197
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/repair-source.diff",
+      "sha256": "64e2137a7aa7586511957b847d9fbe5fc7f3e41a3b4aec90cfb80b21803e88c5",
+      "bytes": 14316
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/replay-2/smoke.yaml",
+      "sha256": "d5c2eb981da2e2439b0b713699a1d31a0a1727e20bba1f9f99d7a6f4c85602e9",
+      "bytes": 975
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/closure-fix/diagnostic-turn-1-request.json",
+      "sha256": "02000be9aee9631a40cfd1e10a67d7f966cc4bc7b1dbf810d08708b5436bdfaf",
+      "bytes": 5736
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/closure-fix/diagnostic-turn-1-timed.json",
+      "sha256": "9babad589343eddcab6717948a6f5614abc88174aa9d16f1929fcf863ed38d6f",
+      "bytes": 209069
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/closure-fix/diagnostic-turn-1.sse",
+      "sha256": "e083662d221d9952cb8a2388de2c1926e3c568ff58f7e45eb67013cfee8059cc",
+      "bytes": 121728
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/closure-fix/diagnostic-turn-45-request.json",
+      "sha256": "92259d629e19c2dcb85241d64cb0970bbc0ee2826bf8c9706c5ed5977b37c9be",
+      "bytes": 60298
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/closure-fix/diagnostic-turn-45-timed.json",
+      "sha256": "0d88b92088dea4f1b2d90bb67144b88596ad2a9454231d797e019d7abe240b05",
+      "bytes": 73818
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-repair-20260925/closure-fix/diagnostic-turn-45.sse",
+      "sha256": "6f18dffa8a19b04ee84068ae0407af17ae9aecbcce214f7ece014cbdc5773220",
+      "bytes": 42454
+    }
+  ],
+  "limits": [
+    "27-turn integration diagnostic only;140-turn screen and full BFCL not run.",
+    "Client-visible argument tokens differ from engine token counts;TPOT must not be inverted into a kernel decode-rate comparison.",
+    "Earlier failure and initial repair probes are retained;all servers stopped after checks."
+  ]
+}

@@ -1,0 +1,154 @@
+{
+  "cases": {
+    "english-full-s1234": {
+      "frames": 1871,
+      "hip_nar_seconds": 13.92,
+      "hip_vae_seconds": 29.86,
+      "nar_ratio_per_step": 5.46,
+      "nar_ratio_raw": 0.34,
+      "ref_ar_seconds": 63.82,
+      "ref_nar_seconds": 40.78,
+      "ref_vae_seconds": 168.1,
+      "vae_speedup": 5.63
+    },
+    "english-full-s5678": {
+      "frames": 1704,
+      "hip_nar_seconds": 11.17,
+      "hip_vae_seconds": 26.65,
+      "nar_ratio_per_step": 2.16,
+      "nar_ratio_raw": 0.14,
+      "ref_ar_seconds": 101.36,
+      "ref_nar_seconds": 82.62,
+      "ref_vae_seconds": 132.44,
+      "vae_speedup": 4.97
+    },
+    "english-melody-s1234": {
+      "frames": 2061,
+      "hip_nar_seconds": 15.91,
+      "hip_vae_seconds": 33.52,
+      "nar_ratio_per_step": 6.61,
+      "nar_ratio_raw": 0.41,
+      "ref_ar_seconds": 67.4,
+      "ref_nar_seconds": 38.52,
+      "ref_vae_seconds": 163.72,
+      "vae_speedup": 4.88
+    },
+    "english-melody-s5678": {
+      "frames": 1499,
+      "hip_nar_seconds": 8.32,
+      "hip_vae_seconds": 23.17,
+      "nar_ratio_per_step": 4.53,
+      "nar_ratio_raw": 0.28,
+      "ref_ar_seconds": 48.34,
+      "ref_nar_seconds": 29.37,
+      "ref_vae_seconds": 86.36,
+      "vae_speedup": 3.73
+    },
+    "english-off-s1234": {
+      "frames": 1517,
+      "hip_nar_seconds": 6.09,
+      "hip_vae_seconds": 23.58,
+      "nar_ratio_per_step": 4.07,
+      "nar_ratio_raw": 0.25,
+      "ref_ar_seconds": 49.15,
+      "ref_nar_seconds": 23.92,
+      "ref_vae_seconds": 204.68,
+      "vae_speedup": 8.68
+    },
+    "english-off-s5678": {
+      "frames": 2192,
+      "hip_nar_seconds": 11.46,
+      "hip_vae_seconds": 35.1,
+      "nar_ratio_per_step": 4.75,
+      "nar_ratio_raw": 0.3,
+      "ref_ar_seconds": 71.08,
+      "ref_nar_seconds": 38.65,
+      "ref_vae_seconds": 175.82,
+      "vae_speedup": 5.01
+    },
+    "mandarin-full-s1234": {
+      "frames": 1920,
+      "hip_nar_seconds": 13.64,
+      "hip_vae_seconds": 30.71,
+      "nar_ratio_per_step": 2.72,
+      "nar_ratio_raw": 0.17,
+      "ref_ar_seconds": 153.43,
+      "ref_nar_seconds": 80.09,
+      "ref_vae_seconds": 332.97,
+      "vae_speedup": 10.84
+    },
+    "mandarin-full-s5678": {
+      "frames": 1692,
+      "hip_nar_seconds": 11.63,
+      "hip_vae_seconds": 26.63,
+      "nar_ratio_per_step": 4.21,
+      "nar_ratio_raw": 0.26,
+      "ref_ar_seconds": 75.43,
+      "ref_nar_seconds": 44.24,
+      "ref_vae_seconds": 162.46,
+      "vae_speedup": 6.1
+    },
+    "mandarin-melody-s1234": {
+      "frames": 1807,
+      "hip_nar_seconds": 10.96,
+      "hip_vae_seconds": 28.49,
+      "nar_ratio_per_step": 3.75,
+      "nar_ratio_raw": 0.23,
+      "ref_ar_seconds": 79.07,
+      "ref_nar_seconds": 46.81,
+      "ref_vae_seconds": 169.46,
+      "vae_speedup": 5.95
+    },
+    "mandarin-melody-s5678": {
+      "frames": 1943,
+      "hip_nar_seconds": 13.09,
+      "hip_vae_seconds": 30.84,
+      "nar_ratio_per_step": 4.22,
+      "nar_ratio_raw": 0.26,
+      "ref_ar_seconds": 113.54,
+      "ref_nar_seconds": 49.58,
+      "ref_vae_seconds": 210.58,
+      "vae_speedup": 6.83
+    },
+    "mandarin-off-s1234": {
+      "frames": 1297,
+      "hip_nar_seconds": 4.73,
+      "hip_vae_seconds": 20.02,
+      "nar_ratio_per_step": 2.77,
+      "nar_ratio_raw": 0.17,
+      "ref_ar_seconds": 40.6,
+      "ref_nar_seconds": 27.32,
+      "ref_vae_seconds": 69.09,
+      "vae_speedup": 3.45
+    },
+    "mandarin-off-s5678": {
+      "frames": 1497,
+      "hip_nar_seconds": 6.0,
+      "hip_vae_seconds": 23.19,
+      "nar_ratio_per_step": 2.7,
+      "nar_ratio_raw": 0.17,
+      "ref_ar_seconds": 64.46,
+      "ref_nar_seconds": 35.62,
+      "ref_vae_seconds": 173.55,
+      "vae_speedup": 7.49
+    }
+  },
+  "provenance": {
+    "command_line": "scripts/yue2_reference_comparison.py /tmp/yue2_wmma12_final.json --steps 2 --json benchmarks/results/yue2_reference_comparison_geometry_20260917.json",
+    "gate_json": "/tmp/yue2_wmma12_final.json",
+    "hipengine_steps": 2,
+    "note": "decoder ratios are matched (step-independent); solver ratios are reported raw and per step because the step counts differ",
+    "oracle_dir": "/home/lhl/hipEngine/artifacts/yue2/oracle/cases",
+    "reference_steps": 32,
+    "revision": "1ed52356bd3cf534ac788703d7f0fa23ff427dfc"
+  },
+  "total": {
+    "hip_nar_seconds": 126.92,
+    "hip_vae_seconds": 331.76,
+    "nar_ratio_per_step": 3.78,
+    "nar_ratio_raw": 0.24,
+    "ref_nar_seconds": 537.52,
+    "ref_vae_seconds": 2049.23,
+    "vae_speedup": 6.18
+  }
+}

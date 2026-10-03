@@ -99,10 +99,85 @@ __device__ inline float gemma4_attn_block_sum(float* partial, float value) {
   return partial[0];
 }
 
+// Warp-per-key logit for one key. kLeaves is head_dim / 32: 8 for a 256-wide
+// head, 16 for a 512-wide one. Lane l holds logical threads l + 32k, so the
+// kLeaves/2 down to 1 stages and the final stride-1 stage are intra-lane, and
+// strides 16..1 are warp shuffles. Every pair added is the pair
+// gemma4_attn_block_sum adds, in the same descending order, so the sum is
+// bit-identical to the block kernel's over the same values.
+//
+// The leaves reproduce the block and decode kernels' per-thread accumulation,
+//   dot = 0; for (d = tid; d < head_dim; d += threads) dot += q[d] * k[d];
+// which leaves contraction on. At head_dim 512 with blockDim at the 256 thread
+// cap that is two leaves per thread, and the second is a fused multiply-add
+// into the first; at head_dim 256 it is one leaf, and fma(a, b, 0) is exact, so
+// a single rounded multiply is already what the block kernel computes. Getting
+// this wrong costs the last few mantissa bits and the parity test catches it.
+template <typename scalar_t, int kLeaves>
+__device__ __forceinline__ float gemma4_warp_key_logit(
+    const float* q_s, const scalar_t* k_row, int lane) {
+  float p[kLeaves];
+  {
+    // Contraction off for the first-half leaves. Letting the compiler fuse a
+    // leaf into a tree add rounds once instead of twice and the logits stop
+    // being bit-identical.
+#pragma clang fp contract(off)
+#pragma unroll
+    for (int k = 0; k < 8; ++k) {
+      const int d = lane + 32 * k;
+      p[k] = q_s[d] * gemma4_attn_to_float(k_row[d]);
+    }
+  }
+  if (kLeaves == 16) {
+#pragma unroll
+    for (int k = 0; k < 8; ++k) {
+      const int d = lane + 32 * (k + 8);
+      p[k] = fmaf(q_s[d], gemma4_attn_to_float(k_row[d]), p[k]);
+    }
+  }
+#pragma unroll
+  for (int k = 0; k < 4; ++k) {
+    p[k] += p[k + 4];
+  }
+#pragma unroll
+  for (int k = 0; k < 2; ++k) {
+    p[k] += p[k + 2];
+  }
+  p[0] += p[1];
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    p[0] += __shfl_down(p[0], offset);
+  }
+  return __shfl_sync(0xffffffffull, p[0], 0);
+}
+
 // One block per (token, head). Shared layout:
 //   q_s      [head_dim]     the query row, loaded once
 //   logits_s [tokens]       per-key logits, written in pass 1 and reused
 //   partial  [blockDim]     reduction scratch
+// The first column this row can keep. A sliding layer's mask zeroes every key
+// more than `window` positions behind the query, so a row's leading columns are
+// all zero and its walk can start at the first one that is not. `row_offset` is
+// this block's start in the mask's column frame, so the row's own position is
+// `row_offset + token`. `window == 0` means the caller makes no such promise
+// about the mask, and the walk starts at column 0.
+__device__ __forceinline__ int64_t gemma4_attn_first_kept(
+    int64_t window, int64_t row_offset, int64_t token) {
+  const int64_t first = row_offset + token - window + 1;
+  return (window > 0 && first > 0) ? first : 0;
+}
+
+// The first column at or after `from` that lane `lane` owns when the block
+// strides over columns by `stride`. This preserves the lane-to-column
+// partition, so a walk narrowed with it adds exactly the terms the full walk
+// added minus the leading ones, which are zero and cannot change a sum.
+// Callers guard the call with `lane < from`, so the common `from == 0` case
+// costs one compare and the division stays off the hot path.
+__device__ __forceinline__ int64_t gemma4_attn_stride_first(
+    int64_t from, int64_t lane, int64_t stride) {
+  return lane + ((from - lane + stride - 1) / stride) * stride;
+}
+
 template <typename scalar_t>
 __global__ void gemma4_attention_prefill_kernel(
     const scalar_t* __restrict__ query,
@@ -115,7 +190,9 @@ __global__ void gemma4_attention_prefill_kernel(
     int64_t head_dim,
     float scale,
     int64_t tokens,
-    int64_t keys) {
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset) {
   extern __shared__ float shared[];
   float* q_s = shared;
   float* logits_s = q_s + head_dim;
@@ -136,54 +213,366 @@ __global__ void gemma4_attention_prefill_kernel(
   // both a dense prefill block (keys == tokens) and a decode step reading a
   // KV cache (tokens == 1, keys == live context).
   const uint8_t* mask_row = keep_mask + token * keys;
+  // ``first_kept`` and ``walk_end`` are key indices, so they are bounded by the
+  // context length rather than by a byte offset: 32 bits is enough for any
+  // context this kernel can be launched with, and a 32-bit compare is one
+  // scalar instruction where the 64-bit form is three. The 64-bit forms were
+  // part of the 1,640 `s_cselect_b32`/`s_or_b32` instructions the strict
+  // kernel's SASS dump shows.
+  const int first_kept = static_cast<int>(gemma4_attn_first_kept(window, row_offset, token));
+  // The last column this row can keep. `window > 0` already promises the mask
+  // is sliding-causal -- the same promise `gemma4_attn_first_kept` spends on
+  // the leading run -- and a sliding-causal mask is zero above the row's own
+  // position as well as below its window. Column 0 is key `key_begin`, so the
+  // row's position is `row_offset + token`, and every column past it is zero.
+  //
+  // Walking those columns costs what walking real ones costs: pass 1 loads a
+  // key row and runs the whole warp-key reduction to produce -infinity, and
+  // passes 2 and 3 read the shared logit it left behind. `first_kept` trims
+  // the leading masked run; this trims the trailing one, which the same
+  // promise licenses.
+  //
+  // Dropping a column whose logit is -infinity cannot change a result: it does
+  // not move `running_max`, and expf(-infinity - max) is 0, so it contributes
+  // nothing to the denominator or the numerator. The output is bit-identical,
+  // not merely close. The tests that pass an arbitrary mask use `window == 0`,
+  // which is the documented "caller makes no such promise" case and keeps the
+  // full walk, so this cannot trim a column those shapes need.
+  const int walk_end = (window > 0 && row_offset + token + 1 < keys)
+                           ? static_cast<int>(row_offset + token + 1)
+                           : static_cast<int>(keys);
 
   // Pass 1: logits and their running maximum. A masked-out key is -inf so it
   // contributes nothing to either the denominator or the numerator.
+  //
+  // At head_dim 256 or 512 with a full block, the block-wide tree sums at most
+  // 256 values, which a single warp can hold. Doing that per key costs eight
+  // __syncthreads rounds per key, which is the whole cost of this kernel
+  // (measured 147 GFLOP/s and ~5.3 us per key at 512 tokens, invariant to the
+  // work inside the key iteration). One warp per key runs the same tree in
+  // registers instead: lane *l* holds logical threads l + 32k, so the
+  // 128/64/32 stages and the final stride-1 stage are intra-lane, and strides
+  // 16..1 are warp shuffles. Every pair added is the pair the block tree adds,
+  // in the same order, so the logits are bit-identical. Both widths share the
+  // body; see gemma4_warp_key_logit for the one stage a 512-wide head adds.
   float running_max = -INFINITY;
-  for (int64_t j = 0; j < keys; ++j) {
-    float logit = -INFINITY;
-    if (mask_row[j] != 0) {
-      const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
-      float dot = 0.0f;
-      for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
-        dot += q_s[d] * gemma4_attn_to_float(k_row[d]);
+  if ((head_dim == 256 || head_dim == 512) && blockDim.x == 256) {
+    const int lane = static_cast<int>(threadIdx.x) & 31;
+    int j = static_cast<int>(threadIdx.x) >> 5;
+    if (j < first_kept) {
+      j = static_cast<int>(gemma4_attn_stride_first(first_kept, j, 8));
+    }
+    // ``k_row`` is hoisted out of the walk and advanced by the same
+    // loop-invariant stride the pass-3 V read uses. The mask test is per key, so
+    // the advance is unconditional and the logits are unchanged.
+    const int64_t k_stride = num_kv_heads * head_dim;
+    const scalar_t* k_row =
+        key + (static_cast<int64_t>(j) * num_kv_heads + kv_head) * head_dim;
+#pragma unroll 2
+    for (; j < walk_end; j += 8) {
+      float logit = -INFINITY;
+      if (mask_row[j] != 0) {
+        logit = (head_dim == 512)
+                    ? gemma4_warp_key_logit<scalar_t, 16>(q_s, k_row, lane)
+                    : gemma4_warp_key_logit<scalar_t, 8>(q_s, k_row, lane);
+        logit *= scale;
+        if (lane == 0) {
+          logits_s[j] = logit;
+        }
+      } else if (lane == 0) {
+        logits_s[j] = logit;
       }
-      logit = gemma4_attn_block_sum(partial, dot) * scale;
+      running_max = fmaxf(running_max, logit);
+      k_row += 8 * k_stride;
+    }
+  } else {
+    const int64_t k_stride = num_kv_heads * head_dim;
+    const scalar_t* k_row = key + (first_kept * num_kv_heads + kv_head) * head_dim;
+    for (int j = first_kept; j < walk_end; ++j) {
+      float logit = -INFINITY;
+      if (mask_row[j] != 0) {
+        float dot = 0.0f;
+        for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
+          dot += q_s[d] * gemma4_attn_to_float(k_row[d]);
+        }
+        logit = gemma4_attn_block_sum(partial, dot) * scale;
+        __syncthreads();
+      }
+      if (threadIdx.x == 0) {
+        logits_s[j] = logit;
+      }
+      running_max = fmaxf(running_max, logit);
       __syncthreads();
+      k_row += k_stride;
     }
-    if (threadIdx.x == 0) {
-      logits_s[j] = logit;
-    }
-    running_max = fmaxf(running_max, logit);
-    __syncthreads();
   }
   const float row_max = gemma4_attn_block_max(partial, running_max);
   __syncthreads();
 
-  // Pass 2: denominator.
+  // Pass 2: denominator, storing each weight back over its logit for pass 3.
+  //
+  // The stride is blockDim.x and thread t only ever touches j == t (mod
+  // blockDim.x), so a thread's writes never race another thread's reads of
+  // `logits_s`, and no key is visited twice. Coverage of [first_kept, keys) is
+  // complete either way: a thread with t >= first_kept starts at t, and one
+  // with t < first_kept starts at the first value congruent to t at or above
+  // first_kept.
+  //
+  // Pass 3 then reads the weight instead of recomputing expf per (element,
+  // key), which was head_dim redundant evaluations per key -- 256 per key at
+  // this artifact's sliding-window geometry, and the whole of the kernel's
+  // inner loop. The stored value is expf of the same arguments on the same
+  // device, so it is the same bits pass 3 used to recompute. The decode twin
+  // already does exactly this.
   float local_sum = 0.0f;
-  for (int64_t j = threadIdx.x; j < keys; j += blockDim.x) {
-    local_sum += expf(logits_s[j] - row_max);
+  const int threads = static_cast<int>(blockDim.x);
+  int j = static_cast<int>(threadIdx.x);
+  if (j < first_kept) {
+    j = static_cast<int>(gemma4_attn_stride_first(first_kept, j, threads));
+  }
+  for (; j < walk_end; j += threads) {
+    const float weight = expf(logits_s[j] - row_max);
+    local_sum += weight;
+    logits_s[j] = weight;
   }
   const float denominator = gemma4_attn_block_sum(partial, local_sum);
   __syncthreads();
 
-  // Pass 3: weighted sum of V, then the normalise.
-  for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
+  // Pass 3: weighted sum of V, then the normalise. Reads the weight pass 2
+  // stored over its logit rather than recomputing expf.
+  //
+  // A four-key manual unroll with all four loads issued before the first is
+  // consumed was tried here and measured neutral (4.90 against 4.66 ms/launch
+  // on the sliding case, with the window=0 probe moving the other way), so the
+  // loop below is unchanged. Pass 3's global load is therefore not the exposed
+  // latency the 3.4 percent issue figure was read as; the compiler's own
+  // "loop not unrolled" warning on pass 1's `#pragma unroll 2` is the open
+  // thread, since that interleave was written deliberately and is not
+  // happening.
+  // Pass 3 reads V one row at a time with a stride that does not depend on the
+  // key index, so it is computed once here rather than inside the walk.
+  const int64_t v_stride = num_kv_heads * head_dim;
+  for (int d = threadIdx.x; d < head_dim; d += blockDim.x) {
     float acc = 0.0f;
-    for (int64_t j = 0; j < keys; ++j) {
-      const float weight = expf(logits_s[j] - row_max);
-      if (weight == 0.0f) {
-        continue;
+    // ``v_row`` used to be re-derived inside this loop as
+    // ``value + (j * num_kv_heads + kv_head) * head_dim``, which is a 64-bit
+    // multiply per (dim, key) pair. The dim loop is the outer one, so that was
+    // ``head_dim * keys`` 64-bit multiplies per row. Both indices are bounded by
+    // the context length and the head width, so they are 32-bit here, and the
+    // row pointer is hoisted and advanced by a loop-invariant 64-bit stride.
+    // The accumulation order is unchanged, so the result is bit-identical.
+    const scalar_t* v_row =
+        value + (static_cast<int64_t>(first_kept) * num_kv_heads + kv_head) * head_dim + d;
+    for (int j = static_cast<int>(first_kept); j < walk_end; ++j) {
+      const float weight = logits_s[j];
+      if (weight != 0.0f) {
+        acc += weight * gemma4_attn_to_float(*v_row);
       }
-      const scalar_t* v_row = value + (j * num_kv_heads + kv_head) * head_dim;
-      acc += weight * gemma4_attn_to_float(v_row[d]);
+      v_row += v_stride;
     }
     out[(token * num_heads + head) * head_dim + d] =
         gemma4_attn_to_scalar<scalar_t>(acc / denominator);
   }
 }
 
+// Tiled production variant of the prefill kernel.
+//
+// The strict kernel materialises one logit per key in shared memory, so its
+// shared footprint grows with the context and it makes four LDS accesses per
+// key visit (write the logit; read it for the max; write the weight back over
+// it; read the weight for the PV accumulation). This kernel keeps only one tile
+// of logits resident, which makes the footprint independent of context -- and
+// therefore the occupancy independent of context -- and lets the weight stay in
+// a register for the output element it multiplies, for two LDS accesses per key
+// visit.
+//
+// The price is that the row max is not known until the walk is over, so the
+// numerator and denominator must be rescaled as the max grows. That reassociates
+// the accumulation, which is why this is a registered production variant with a
+// tolerance gate rather than a replacement for the strict kernel, whose output
+// is bit-exact against decode.
+//
+// The per-key logit still comes from gemma4_warp_key_logit, so the logits
+// themselves are the same bits the strict kernel produces; only the softmax
+// accumulation differs.
+template <typename scalar_t, int kTile, int kDPerThread>
+__global__ void gemma4_attention_prefill_tiled_kernel(
+    const scalar_t* query,
+    const scalar_t* key,
+    const scalar_t* value,
+    const uint8_t* keep_mask,
+    scalar_t* out,
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset) {
+  extern __shared__ float shared[];
+  float* q_s = shared;
+  float* tile_s = q_s + head_dim;
+  float* partial = tile_s + kTile;
+
+  const int64_t token = static_cast<int64_t>(blockIdx.x) / num_heads;
+  const int64_t head = static_cast<int64_t>(blockIdx.x) - token * num_heads;
+  const int64_t kv_groups = num_heads / num_kv_heads;
+  const int64_t kv_head = head / kv_groups;
+
+  const scalar_t* q_row = query + (token * num_heads + head) * head_dim;
+  for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
+    q_s[d] = gemma4_attn_to_float(q_row[d]);
+  }
+  __syncthreads();
+
+  const uint8_t* mask_row = keep_mask + token * keys;
+  const int64_t first_kept = gemma4_attn_first_kept(window, row_offset, token);
+
+  // Online softmax state. running_max and running_sum are per-thread partials
+  // that every thread updates with the same max, so the rescale is uniform.
+  float running_max = -INFINITY;
+  float running_sum = 0.0f;
+  float acc[kDPerThread];
+#pragma unroll
+  for (int t = 0; t < kDPerThread; ++t) {
+    acc[t] = 0.0f;
+  }
+
+  for (int64_t t0 = first_kept; t0 < keys; t0 += kTile) {
+    const int64_t tile = (keys - t0 < kTile) ? (keys - t0) : kTile;
+
+    // Phase 1: tile logits. One warp per key, the same mapping and the same
+    // reduction the strict kernel uses, so the logits are identical.
+    {
+      const int lane = static_cast<int>(threadIdx.x) & 31;
+      for (int64_t i = static_cast<int64_t>(threadIdx.x) >> 5; i < tile; i += 8) {
+        const int64_t j = t0 + i;
+        float logit = -INFINITY;
+        if (mask_row[j] != 0) {
+          const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
+          logit = (head_dim == 512)
+                      ? gemma4_warp_key_logit<scalar_t, 16>(q_s, k_row, lane)
+                      : gemma4_warp_key_logit<scalar_t, 8>(q_s, k_row, lane);
+          logit *= scale;
+        }
+        if (lane == 0) {
+          tile_s[i] = logit;
+        }
+      }
+    }
+    __syncthreads();
+
+    // Phase 2: tile max. The first tile starts from -inf, so the rescale factor
+    // is guarded rather than computed: expf(-inf - -inf) is NaN.
+    float local_max = -INFINITY;
+    for (int64_t i = threadIdx.x; i < tile; i += blockDim.x) {
+      local_max = fmaxf(local_max, tile_s[i]);
+    }
+    const float tile_max = gemma4_attn_block_max(partial, local_max);
+    __syncthreads();
+
+    const float new_max = fmaxf(running_max, tile_max);
+    const float alpha = isfinite(running_max) ? expf(running_max - new_max) : 0.0f;
+    running_sum *= alpha;
+#pragma unroll
+    for (int t = 0; t < kDPerThread; ++t) {
+      acc[t] *= alpha;
+    }
+
+    // Phase 3a: weights, strided over the tile, written back over their logits.
+    // running_sum stays a strided PARTIAL -- the block sum at the end adds the
+    // per-thread partials, so accumulating the full tile here would count every
+    // weight once per thread.
+    for (int64_t i = threadIdx.x; i < tile; i += blockDim.x) {
+      const float weight = expf(tile_s[i] - new_max);
+      tile_s[i] = weight;
+      running_sum += weight;
+    }
+    __syncthreads();
+
+    // Phase 3b: the PV accumulation. EVERY thread visits EVERY key, because the
+    // output element a thread owns needs the weight of every key -- not the
+    // strided subset it happened to compute. Merging this into 3a would leave
+    // each output dimension summed over a different subset of keys.
+    for (int64_t i = 0; i < tile; ++i) {
+      const float weight = tile_s[i];
+      if (weight == 0.0f) {
+        continue;
+      }
+      const int64_t j = t0 + i;
+      const scalar_t* v_row = value + (j * num_kv_heads + kv_head) * head_dim;
+#pragma unroll
+      for (int t = 0; t < kDPerThread; ++t) {
+        const int64_t d = static_cast<int64_t>(threadIdx.x) + t * blockDim.x;
+        if (d < head_dim) {
+          acc[t] += weight * gemma4_attn_to_float(v_row[d]);
+        }
+      }
+    }
+    running_max = new_max;
+    __syncthreads();
+  }
+
+  const float denominator = gemma4_attn_block_sum(partial, running_sum);
+#pragma unroll
+  for (int t = 0; t < kDPerThread; ++t) {
+    const int64_t d = static_cast<int64_t>(threadIdx.x) + t * blockDim.x;
+    if (d < head_dim) {
+      out[(token * num_heads + head) * head_dim + d] =
+          gemma4_attn_to_scalar<scalar_t>(acc[t] / denominator);
+    }
+  }
+}
+
+template <typename scalar_t>
+int launch_gemma4_attention_prefill_tiled(
+    const scalar_t* query,
+    const scalar_t* key,
+    const scalar_t* value,
+    const uint8_t* keep_mask,
+    scalar_t* out,
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream,
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset) {
+  if (tokens <= 0 || keys <= 0 || num_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (num_heads % num_kv_heads != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (head_dim != 256 && head_dim != 512) {
+    // The warp-per-key logit is specialised for these two widths.
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kTile = 1024;
+  const int threads = kGemma4AttentionMaxThreads;
+  const size_t shared_bytes =
+      static_cast<size_t>(head_dim + kTile + threads) * sizeof(float);
+  if (shared_bytes > 64 * 1024) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(tokens * num_heads));
+  const dim3 block(static_cast<unsigned int>(threads));
+  if (head_dim == 512) {
+    hipLaunchKernelGGL(
+        (gemma4_attention_prefill_tiled_kernel<scalar_t, kTile, 2>), grid, block,
+        shared_bytes, stream, query, key, value, keep_mask, out, tokens,
+        num_heads, num_kv_heads, head_dim, scale, keys, window, row_offset);
+  } else {
+    hipLaunchKernelGGL(
+        (gemma4_attention_prefill_tiled_kernel<scalar_t, kTile, 1>), grid, block,
+        shared_bytes, stream, query, key, value, keep_mask, out, tokens,
+        num_heads, num_kv_heads, head_dim, scale, keys, window, row_offset);
+  }
+  return static_cast<int>(hipGetLastError());
+}
 // Defined below; the prefill launcher routes multi-token blocks into it.
 template <typename scalar_t>
 int launch_gemma4_attention_decode(
@@ -215,7 +604,9 @@ int launch_gemma4_attention_prefill(
     int64_t head_dim,
     float scale,
     hipStream_t stream,
-    int64_t keys) {
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset) {
   if (tokens <= 0 || keys <= 0 || num_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -264,7 +655,9 @@ int launch_gemma4_attention_prefill(
       head_dim,
       scale,
       tokens,
-      keys);
+      keys,
+      window,
+      row_offset);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1593,10 +1986,52 @@ extern "C" int hipengine_gemma4_attention_prefill_bf16(
     int64_t head_dim,
     float scale,
     hipStream_t stream,
-    int64_t keys) {
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset) {
   return launch_gemma4_attention_prefill<uint16_t>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys);
+      stream, keys, window, row_offset);
+}
+
+extern "C" int hipengine_gemma4_attention_prefill_tiled_bf16(
+    const uint16_t* query,
+    const uint16_t* key,
+    const uint16_t* value,
+    const uint8_t* keep_mask,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream,
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset) {
+  return launch_gemma4_attention_prefill_tiled<uint16_t>(
+      query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
+      stream, keys, window, row_offset);
+}
+
+extern "C" int hipengine_gemma4_attention_prefill_tiled_f32(
+    const float* query,
+    const float* key,
+    const float* value,
+    const uint8_t* keep_mask,
+    float* out,
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream,
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset) {
+  return launch_gemma4_attention_prefill_tiled<float>(
+      query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
+      stream, keys, window, row_offset);
 }
 
 // F32 entry point for validation against the CPU reference: the reference works
@@ -1614,10 +2049,12 @@ extern "C" int hipengine_gemma4_attention_prefill_f32(
     int64_t head_dim,
     float scale,
     hipStream_t stream,
-    int64_t keys) {
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset) {
   return launch_gemma4_attention_prefill<float>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys);
+      stream, keys, window, row_offset);
 }
 
 // Decode entry points: tokens == 1 routes here from the Python wrapper. Same

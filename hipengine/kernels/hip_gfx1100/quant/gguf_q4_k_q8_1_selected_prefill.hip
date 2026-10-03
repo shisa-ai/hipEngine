@@ -148,6 +148,19 @@ __device__ inline float bf16_rounding_boundary_distance(float value) {
       fminf(value - lower_boundary, upper_boundary - value));
 }
 
+// fp16's largest finite value. A DS4 block stores its per-32 scale and its
+// block sum as fp16, and a value past this range converts to inf. The consumer
+// then evaluates `d * inf * dot`, which is inf where the dot is nonzero and NaN
+// where it is zero -- and a NaN here does not stay local to this projection: it
+// propagates through the residual stream and the next layer's router turns the
+// whole sequence into its no-expert sentinel. Clamping before the conversion
+// makes the quantized value saturate instead, so the reconstruction stays
+// finite and its error stays bounded by the quantization step, which is the
+// contract the MMQ family claims. Reachable in practice: a down projection's
+// input is a GeGLU output, and a small model's can exceed this range while the
+// fp32 grouped fallback it replaces stays perfectly finite.
+constexpr float kDs4Fp16Max = 65504.0f;
+
 __device__ inline uint16_t float_to_fp16_bits(float value) {
   union {
     half_t f16;
@@ -643,8 +656,12 @@ __global__ void gguf_q8_1_mmq_ds4_pack_bf16_kernel(
     const float sum = wave32_sum(residual);
     const float max_abs = wave32_max(fabsf(residual));
     if (lane == 0) {
-      scale_shared[ds4_idx] = max_abs / 127.0f;
-      sum_shared[ds4_idx] = sum;
+      // Both fields are fp16 and both must stay finite; see kDs4Fp16Max. The
+      // scale feeds the quantization below as well as the consumer, so clamping
+      // it here is what makes the saturated `q` and the stored scale agree.
+      scale_shared[ds4_idx] = fminf(kDs4Fp16Max, max_abs / 127.0f);
+      sum_shared[ds4_idx] =
+          fminf(kDs4Fp16Max, fmaxf(-kDs4Fp16Max, sum));
     }
     __syncthreads();
 
@@ -721,8 +738,12 @@ __global__ void gguf_q8_1_mmq_gather_ds4_pack_bf16_kernel(
     const float sum = wave32_sum(residual);
     const float max_abs = wave32_max(fabsf(residual));
     if (lane == 0) {
-      scale_shared[ds4_idx] = max_abs / 127.0f;
-      sum_shared[ds4_idx] = sum;
+      // Both fields are fp16 and both must stay finite; see kDs4Fp16Max. The
+      // scale feeds the quantization below as well as the consumer, so clamping
+      // it here is what makes the saturated `q` and the stored scale agree.
+      scale_shared[ds4_idx] = fminf(kDs4Fp16Max, max_abs / 127.0f);
+      sum_shared[ds4_idx] =
+          fminf(kDs4Fp16Max, fmaxf(-kDs4Fp16Max, sum));
     }
     __syncthreads();
 
@@ -764,15 +785,22 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel(
   const int tid = threadIdx.x;
   const int ds4_idx = tid >> 5;
   const int lane = tid & 31;
-  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  // Round up, as the fp16 DS4 pack does. A down projection's contraction is
+  // rarely a multiple of 128 -- Gemma 4 26B-A4B's expert intermediate width is
+  // 704 = 5 * 128 + 64 -- and flooring here drops those last 64 columns of the
+  // contraction, which is a silently wrong answer rather than a refusal. The
+  // elements past `hidden` are zero, so they cannot raise the block's max or
+  // move its sum: the real elements get the scale they would have got anyway.
+  const int64_t blocks_per_row =
+      (hidden + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   if (row >= rows || q8_block >= blocks_per_row) return;
   static_assert(
       !Q6_HALF_SUMS || residual_passes == 1,
       "Q6 half-sum packing supports the one-plane D4 path");
 
-  const int64_t in_idx =
-      row * hidden + q8_block * Q8_1_MMQ_BLOCK + tid;
-  float residual = bf16_bits_to_float(x[in_idx]);
+  const int64_t column = q8_block * Q8_1_MMQ_BLOCK + tid;
+  float residual =
+      column < hidden ? bf16_bits_to_float(x[row * hidden + column]) : 0.0f;
 
   __shared__ float scale_shared[4];
   __shared__ float sum_shared[4];
@@ -958,7 +986,11 @@ bool valid_q8_1_mmq_ds4_pack(
     const void* out,
     int64_t rows,
     int64_t hidden) {
-  return x != nullptr && out != nullptr && rows > 0 && hidden > 0;
+  // 32, not 128: a width that is not a multiple of the 128-wide DS4 block is
+  // packed with a partial trailing block, which the kernel writes from the
+  // elements that exist and zeroes for the rest.
+  return x != nullptr && out != nullptr && rows > 0 && hidden > 0 &&
+      (hidden % 32) == 0;
 }
 
 bool valid_q8_1_mmq_gather_ds4_pack(
@@ -1217,6 +1249,7 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel(
 // of the 16 required by a literal two-wave mapping. WMITER remains one,
 // matching Vulkan's K-quant pressure control.
 template <int WEIGHT_LAYOUT, int ACTIVATION_PASSES, bool COLLECT_RISKS,
+          bool FUSED_EXPERT_LAYOUT = false, int MMQ_K = 32,
           class WEIGHT_CACHE = q4_k_mmq32_cache,
           int WEIGHT_QUANT = Q4_K_QUANT>
 __device__ __forceinline__ void
@@ -1243,9 +1276,15 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
     float risk_threshold,
     WEIGHT_CACHE* __restrict__ weight_tile,
     q8_1_mmq32_cache* __restrict__ activation_tile) {
-  constexpr int MMQ_M = 32;
   constexpr int MMQ_N = 32;
-  constexpr int MMQ_K = 32;
+  // K elements staged per pass. 32 is one Q4_K subblock and one ds4 group; 64,
+  // 128 and 256 span several. KSUB is how many 32-element subblocks a pass
+  // covers, and it is what the tile arrays are indexed by, so a wider pass
+  // needs no new struct -- q4_k_mmq32_cache already holds exactly one
+  // subblock. MMQ_K is a template parameter rather than a constant so that 32
+  // stays the default for every existing call site.
+  static_assert(MMQ_K % 32 == 0, "MMQ_K must be a whole number of Q4_K subblocks");
+  constexpr int KSUB = MMQ_K / 32;
   constexpr int THREADS = 128;
   constexpr int TM = 1;
   constexpr int WNITER = 8;
@@ -1257,6 +1296,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
       (WEIGHT_QUANT == Q5_K_QUANT) ? Q5_K_BLOCK_BYTES : Q4_K_BLOCK_BYTES;
   constexpr int QUANT_QS_OFFSET =
       (WEIGHT_QUANT == Q5_K_QUANT) ? Q5_K_QS_OFFSET : Q4_K_QS_OFFSET;
+  constexpr int MMQ_M = 32;
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -1299,8 +1339,18 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   // half; the leaf then reads both halves out of the one allocation. The X8
   // layout still carries its own half-tensor indexing; the T16 branch applies
   // this stride below.
+  //
+  // FUSED_EXPERT_LAYOUT: the two weight halves are the gate and up slices of one
+  // per-expert fused row block (Gemma 4's ``ffn_gate_up_exps`` is
+  // ``(num_experts, 2 * intermediate, hidden)`` with the gate first), so an
+  // expert's stride is the full fused width rather than one half's width. The
+  // runtime stride wins when the caller supplies it; the compile-time flag is
+  // the fallback for callers that select the fused kernel directly.
   const int64_t expert_stride =
-      expert_stride_rows > 0 ? expert_stride_rows : local_out_features;
+      expert_stride_rows > 0
+          ? expert_stride_rows
+          : (FUSED_EXPERT_LAYOUT ? (out_features_a + out_features_b)
+                                 : local_out_features);
   const int64_t expert_bytes = expert_stride * weight_row_bytes;
   const uint8_t* __restrict__ expert_base =
       qweight + expert_id * expert_bytes;
@@ -1315,16 +1365,25 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   const int load_weight_col = tid >> 2;
   const int load_activation_part = tid & 3;
   const int load_activation_row = tid >> 2;
-  const int k32_iters = static_cast<int>(in_features / MMQ_K);
+  // The staging loop walks one Q4_K subblock per iteration, so its trip count is
+  // fixed by the subblock width and NOT by MMQ_K. MMQ_K controls how many
+  // subblocks a pass accumulates before it syncs and consumes them.
+  constexpr int SUBBLOCK_K = 32;
+  const int k32_iters = static_cast<int>(in_features / SUBBLOCK_K);
 
   for (int k32 = 0; k32 < k32_iters; ++k32) {
     const int weight_block = k32 >> 3;
     const int subblock = k32 & 7;
+    // Which 32-element slot inside the wide pass this iteration fills. A pass of
+    // KSUB slots stages KSUB subblocks into shared memory and only then syncs
+    // and consumes them, so the __syncthreads() count divides by KSUB while the
+    // arithmetic is unchanged.
+    const int kslot = k32 % KSUB;
 
 #pragma unroll
     for (int col_offset = load_weight_col;
          col_offset < MMQ_M;
-         col_offset += THREADS * 8 / MMQ_K) {
+         col_offset += THREADS * 8 / SUBBLOCK_K) {
       const int64_t local_col = local_col_base + col_offset;
       const bool valid_col = local_col < local_out_features;
       uint32_t packed_q4 = 0;
@@ -1348,9 +1407,18 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
               col_in_pack;
           block = qweight + x8_block * QUANT_BLOCK_BYTES;
         } else if constexpr (WEIGHT_LAYOUT == Q4_K_LAYOUT_T16) {
-          const int64_t out_tiles =
-              local_out_features / Q4_K_TILE16_COLS;
-          const int64_t out_tile = local_col / Q4_K_TILE16_COLS;
+          // A fused per-expert row block (gate | up) is packed as one run of
+          // 16-wide output tiles, so the tile count is the fused width and the
+          // second half's tiles start after the first half's. Without this the
+          // T16 branch would index each half as though it were its own expert.
+          const int64_t out_tiles = FUSED_EXPERT_LAYOUT
+              ? (out_features_a + out_features_b) / Q4_K_TILE16_COLS
+              : local_out_features / Q4_K_TILE16_COLS;
+          const int64_t tile_base = FUSED_EXPERT_LAYOUT && use_b
+              ? out_features_a / Q4_K_TILE16_COLS
+              : 0;
+          const int64_t out_tile =
+              tile_base + local_col / Q4_K_TILE16_COLS;
           t16_col =
               static_cast<int>(local_col % Q4_K_TILE16_COLS);
           // The same expert-stride contract as the raw branch: a fused
@@ -1433,13 +1501,13 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
               dmin * static_cast<float>(min));
         }
       }
-      weight_tile[col_offset].qs[load_weight_part] = packed_q4;
+      weight_tile[col_offset * KSUB + kslot].qs[load_weight_part] = packed_q4;
       if constexpr (WEIGHT_QUANT == Q5_K_QUANT) {
-        weight_tile[col_offset].qh[load_weight_part] = packed_mask;
+        weight_tile[col_offset * KSUB + kslot].qh[load_weight_part] = packed_mask;
       }
       if (load_weight_part == 0) {
-        weight_tile[col_offset].dm[0] = packed_scale;
-        weight_tile[col_offset].dm[1] = packed_min;
+        weight_tile[col_offset * KSUB + kslot].dm[0] = packed_scale;
+        weight_tile[col_offset * KSUB + kslot].dm[1] = packed_min;
       }
     }
 
@@ -1466,87 +1534,105 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
                 load_activation_part * 8);
 #pragma unroll
         for (int word = 0; word < 2; ++word) {
-          activation_tile[load_activation_row]
+          activation_tile[load_activation_row * KSUB + kslot]
               .qs[load_activation_part * 2 + word] = x_words[word];
         }
         if (load_activation_part == 0) {
-          activation_tile[load_activation_row].ds[0] =
+          activation_tile[load_activation_row * KSUB + kslot].ds[0] =
               xb.ds4[2 * ds4_idx + 0];
-          activation_tile[load_activation_row].ds[1] =
+          activation_tile[load_activation_row * KSUB + kslot].ds[1] =
               xb.ds4[2 * ds4_idx + 1];
         }
       } else {
 #pragma unroll
         for (int word = 0; word < 2; ++word) {
-          activation_tile[load_activation_row]
+          activation_tile[load_activation_row * KSUB + kslot]
               .qs[load_activation_part * 2 + word] = 0;
         }
         if (load_activation_part == 0) {
-          activation_tile[load_activation_row].ds[0] = 0;
-          activation_tile[load_activation_row].ds[1] = 0;
+          activation_tile[load_activation_row * KSUB + kslot].ds[0] = 0;
+          activation_tile[load_activation_row * KSUB + kslot].ds[1] = 0;
         }
+      }
+      // Every slot of the wide pass must have landed before any thread reads
+      // one, so the sync and the consume happen on the last slot only. The slots
+      // live in shared memory and survive the intervening iterations.
+      if (kslot != KSUB - 1) {
+        continue;
       }
       __syncthreads();
 
       WEIGHT_CACHE weight_cache[TM];
-#pragma unroll
-      for (int cr = 0; cr < TM; ++cr) {
-        weight_cache[cr] = weight_tile[tiwr * TM + cr];
-      }
 
 #pragma unroll
       for (int wsic = 0; wsic < WNITER; ++wsic) {
         if (wsic * 4 + tiwc >= valid_rows) continue;
-        const q8_1_mmq32_cache activation_cache =
-            activation_tile[wsic * 4 + tiwc];
-        const float xd =
-            fp16_bits_to_float(activation_cache.ds[0]);
-        const float xsum =
-            fp16_bits_to_float(activation_cache.ds[1]);
 #pragma unroll
-        for (int cr = 0; cr < TM; ++cr) {
-          int dot = 0;
-          int mask_dot = 0;
+        for (int s = 0; s < KSUB; ++s) {
+          const q8_1_mmq32_cache activation_cache =
+              activation_tile[(wsic * 4 + tiwc) * KSUB + s];
+          const float xd =
+              fp16_bits_to_float(activation_cache.ds[0]);
+          const float xsum =
+              fp16_bits_to_float(activation_cache.ds[1]);
 #pragma unroll
-          for (int qword = 0; qword < 8; ++qword) {
-            const uint32_t q4_word =
-                (weight_cache[cr].qs[qword >> 1] >>
-                 ((qword & 1) * 4)) &
-                0x0F0F0F0Fu;
-            dot = gguf_q4_k_mmq_dp4a(
-                q4_word,
-                static_cast<uint32_t>(
-                    activation_cache.qs[qword]),
-                dot);
-            if constexpr (WEIGHT_QUANT == Q5_K_QUANT) {
-              const uint32_t mask_word =
-                  (weight_cache[cr].qh[qword >> 1] >>
+          for (int cr = 0; cr < TM; ++cr) {
+            weight_cache[cr] = weight_tile[(tiwr * TM + cr) * KSUB + s];
+            int dot = 0;
+            int mask_dot = 0;
+#pragma unroll
+            for (int qword = 0; qword < 8; ++qword) {
+              const uint32_t q4_word =
+                  (weight_cache[cr].qs[qword >> 1] >>
                    ((qword & 1) * 4)) &
                   0x0F0F0F0Fu;
-              mask_dot = gguf_q4_k_mmq_dp4a(
-                  mask_word,
+              dot = gguf_q4_k_mmq_dp4a(
+                  q4_word,
                   static_cast<uint32_t>(
                       activation_cache.qs[qword]),
-                  mask_dot);
+                  dot);
+              if constexpr (WEIGHT_QUANT == Q5_K_QUANT) {
+                const uint32_t mask_word =
+                    (weight_cache[cr].qh[qword >> 1] >>
+                     ((qword & 1) * 4)) &
+                    0x0F0F0F0Fu;
+                mask_dot = gguf_q4_k_mmq_dp4a(
+                    mask_word,
+                    static_cast<uint32_t>(
+                        activation_cache.qs[qword]),
+                    mask_dot);
+              }
+            }
+            float dot_value = static_cast<float>(dot);
+            if constexpr (WEIGHT_QUANT == Q5_K_QUANT) {
+              // Fifth weight bit: value = low4 + 16*bit5, so the product sum
+              // gains exactly 16 * (mask . activation).  The mask is 0/1 and
+              // sudot4 treats the weight operand as unsigned, so it is in
+              // range; the activation words are already resident, so this is
+              // a second dot over the same registers rather than a wider
+              // operand.
+              dot_value += 16.0f * static_cast<float>(mask_dot);
+            }
+            const float dscale =
+                fp16_bits_to_float(weight_cache[cr].dm[0]);
+            const float dmin =
+                fp16_bits_to_float(weight_cache[cr].dm[1]);
+            acc[wsic * TM + cr] +=
+                xd * dscale * dot_value;
+            // The Q4_K weight is ``d*scale*q - dmin*min``, so its min offset
+            // contributes ``-dmin*min*sum_k x[k]`` over the activation. That is a
+            // property of the activation, not of an activation plane: only the
+            // first plane stores the activation's own sum, and later planes store
+            // their residuals' sums. Applying the term once per plane over-counts
+            // it by about the size of the error the extra planes exist to remove,
+            // which is why three planes measured 1.08x better than one rather than
+            // 22x. Take it from the first plane only. With ACTIVATION_PASSES == 1
+            // this is the original expression, so the one-plane routes are
+            // unchanged.
+            if (activation_pass == 0) {
+              acc[wsic * TM + cr] -= dmin * xsum;
             }
           }
-          float dot_value = static_cast<float>(dot);
-          if constexpr (WEIGHT_QUANT == Q5_K_QUANT) {
-            // Fifth weight bit: value = low4 + 16*bit5, so the product sum
-            // gains exactly 16 * (mask . activation).  The mask is 0/1 and
-            // sudot4 treats the weight operand as unsigned, so it is in
-            // range; the activation words are already resident, so this is
-            // a second dot over the same registers rather than a wider
-            // operand.
-            dot_value += 16.0f * static_cast<float>(mask_dot);
-          }
-          const float dscale =
-              fp16_bits_to_float(weight_cache[cr].dm[0]);
-          const float dmin =
-              fp16_bits_to_float(weight_cache[cr].dm[1]);
-          acc[wsic * TM + cr] +=
-              xd * dscale * dot_value -
-              dmin * xsum;
         }
       }
       __syncthreads();
@@ -1592,9 +1678,21 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   }
 }
 
-template <int WEIGHT_QUANT = Q4_K_QUANT>
+// Fused-layout twin of the kernel below: the two weight pointers are the gate and
+// up slices of one per-expert row block, so an expert's stride is the full fused
+// width. Gemma 4's ``ffn_gate_up_exps`` is stored this way (gate first, then up,
+// per expert), which is the layout its gelu-tanh-mul consumer already expects.
+//
+// ACTIVATION_PASSES is the number of DS4 Q8_1 activation planes the caller
+// packed. The pack uses the extra planes for error feedback, so this is the
+// accuracy knob as well as the buffer size; the body already consumes them.
+//
+// WEIGHT_QUANT selects the raw weight geometry (Q4_K or Q5_K); the Q5_K path
+// carries the extra high-bit plane the body reads.
+template <int WEIGHT_QUANT = Q4_K_QUANT, int ACTIVATION_PASSES = 1>
 __launch_bounds__(128, 2)
-__global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
+__global__ void
+gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel(
     const block_q8_1_mmq_ds4* __restrict__ x_q8,
     const int64_t* __restrict__ compact_to_source,
     const int64_t* __restrict__ expert_start_compact,
@@ -1615,7 +1713,58 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
   __shared__ weight_cache_t weight_tile[32];
   __shared__ q8_1_mmq32_cache activation_tile[32];
   gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
-      Q4_K_LAYOUT_RAW, 1, false, weight_cache_t, WEIGHT_QUANT>(
+      Q4_K_LAYOUT_RAW, ACTIVATION_PASSES, false, true, 32, weight_cache_t, WEIGHT_QUANT>(
+      x_q8,
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      expert_stride_rows,
+      nullptr,
+      nullptr,
+      0,
+      0.0f,
+      weight_tile,
+      activation_tile);
+}
+
+template <int WEIGHT_QUANT = Q4_K_QUANT, int KSUB = 1>
+__launch_bounds__(128, 2)
+__global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
+    const block_q8_1_mmq_ds4* __restrict__ x_q8,
+    const int64_t* __restrict__ compact_to_source,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_mmq32,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    int64_t expert_stride_rows) {
+  // KSUB subblocks of 32 K elements are staged into shared memory before the
+  // pass syncs, so the tile arrays hold KSUB times as much. KSUB == 1 is the
+  // original narrow pass and its code generation is unchanged.
+  using weight_cache_t =
+      typename mmq32_weight_cache<WEIGHT_QUANT>::type;
+  __shared__ weight_cache_t weight_tile[32 * KSUB];
+  __shared__ q8_1_mmq32_cache activation_tile[32 * KSUB];
+  gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
+      Q4_K_LAYOUT_RAW, 1, false, false, 32 * KSUB, weight_cache_t, WEIGHT_QUANT>(
       x_q8,
       compact_to_source,
       expert_start_compact,
@@ -1732,6 +1881,55 @@ __global__ void gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_ker
       risk_tiles,
       max_risks,
       risk_threshold,
+      weight_tile,
+      activation_tile);
+}
+
+// T16 twin of the fused raw instantiation. The body's T16 branch carries the
+// fused tile indexing, so this is the same body with the resident layout
+// selected instead of the raw one.
+template <int ACTIVATION_PASSES>
+__launch_bounds__(128, 2)
+__global__ void
+ gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel(
+    const block_q8_1_mmq_ds4* __restrict__ x_q8,
+    const int64_t* __restrict__ compact_to_source,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_mmq32,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows) {
+  __shared__ q4_k_mmq32_cache weight_tile[32];
+  __shared__ q8_1_mmq32_cache activation_tile[32];
+  gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
+      Q4_K_LAYOUT_T16, ACTIVATION_PASSES, false, true>(
+      x_q8,
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      0,
+      nullptr,
+      nullptr,
+      0,
+      0.0f,
       weight_tile,
       activation_tile);
 }
@@ -2846,7 +3044,8 @@ int launch_q8_1_mmq_ds4_f32_pack_bf16(
   if (!valid_q8_1_mmq_ds4_pack(x, out, rows, hidden)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  const int64_t blocks_per_row =
+      (hidden + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   hipLaunchKernelGGL(
       (gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel<
           residual_passes,
@@ -5128,6 +5327,8 @@ template <
     int WEIGHT_LAYOUT,
     int ACTIVATION_PASSES = 1,
     bool COLLECT_RISKS = false,
+    bool FUSED_EXPERT_LAYOUT = false,
+    int MMQ_K = 32,
     int WEIGHT_QUANT = Q4_K_QUANT>
 int launch_selected_dual_q8_1_ds4_mmq32_compact32(
     const block_q8_1_mmq_ds4* x_q8,
@@ -5201,6 +5402,29 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         num_experts,
         mmq_total_rows,
         expert_stride_rows);
+  } else if constexpr (WEIGHT_LAYOUT == Q4_K_LAYOUT_T16 &&
+                       FUSED_EXPERT_LAYOUT) {
+    hipLaunchKernelGGL(
+        (gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel<
+            ACTIVATION_PASSES>),
+        grid,
+        block,
+        0,
+        stream,
+        x_q8,
+        compact_to_source,
+        expert_start_compact,
+        expert_start_mmq32,
+        tile_expert,
+        qweight_a,
+        qweight_b,
+        out,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows);
   } else if constexpr (WEIGHT_LAYOUT == Q4_K_LAYOUT_T16) {
     hipLaunchKernelGGL(
         (gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel<
@@ -5229,10 +5453,38 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         risk_tiles,
         max_risks,
         risk_threshold);
+  } else if constexpr (FUSED_EXPERT_LAYOUT) {
+    hipLaunchKernelGGL(
+        (gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel<
+            WEIGHT_QUANT, ACTIVATION_PASSES>),
+        grid,
+        block,
+        0,
+        stream,
+        x_q8,
+        compact_to_source,
+        expert_start_compact,
+        expert_start_mmq32,
+        tile_expert,
+        qweight_a,
+        qweight_b,
+        out,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+        expert_stride_rows);
   } else {
+    // Only the raw layout carries a wide K pass; the packed layouts (x8, t16,
+    // t16-fused) stage through their own kernels, which are fixed at 32.
+    static_assert(
+        MMQ_K == 32 || WEIGHT_LAYOUT == Q4_K_LAYOUT_RAW,
+        "a wide K pass is implemented for the raw weight layout only");
     hipLaunchKernelGGL(
         (gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel<
-             WEIGHT_QUANT>),
+            WEIGHT_QUANT, MMQ_K / 32>),
         grid,
         block,
         0,
@@ -7053,6 +7305,124 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf1
       stream);
 }
 
+extern "C" int
+hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32<
+      Q4_K_LAYOUT_RAW, 1, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+// Resident-layout twin of the fused instantiation above: the same body and the
+// same activation layout with the weights in 16-wide output tiles. The fused
+// tile indexing lives in the body, so this entry point only selects the layout.
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32<
+      Q4_K_LAYOUT_T16, 1, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+// Three-plane twin of the fused instantiation above. The extra two activation
+// planes carry the pack's own error feedback, which cuts the DS4 activation
+// quantization error by about three orders of magnitude for three times the
+// activation bytes; the leaf already consumes them through ACTIVATION_PASSES.
+extern "C" int
+hipengine_gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32<
+      Q4_K_LAYOUT_RAW, 3, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     const void* x_q8,
     const int64_t* compact_to_source,
@@ -7112,7 +7482,7 @@ extern "C" int hipengine_gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact3
     int64_t expert_stride_rows,
     hipStream_t stream) {
   return launch_selected_dual_q8_1_ds4_mmq32_compact32<
-      Q4_K_LAYOUT_RAW, 1, false, Q5_K_QUANT>(
+      Q4_K_LAYOUT_RAW, 1, false, false, 32, Q5_K_QUANT>(
       reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
       compact_to_source,
       expert_start_compact,
@@ -7130,6 +7500,50 @@ extern "C" int hipengine_gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact3
       mmq_total_rows,
       stream,
       expert_stride_rows);
+}
+
+// The 128-wide K pass of the same kernel: four Q4_K subblocks are staged per
+// pass, so the gate/up projection runs 22 iterations and 44 __syncthreads()
+// instead of 88 and 176, with identical arithmetic. It requires in_features to
+// be a whole number of 128-element groups, which is a dispatch condition rather
+// than a kernel precondition: the narrow route stays the default.
+extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  if ((in_features % 128) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32<
+      Q4_K_LAYOUT_RAW, 1, false, false, 128>(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(

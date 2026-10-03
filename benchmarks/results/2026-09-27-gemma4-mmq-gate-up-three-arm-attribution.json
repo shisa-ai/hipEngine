@@ -1,0 +1,1668 @@
+{
+  "schema": 1,
+  "kind": "gemma4_mmq_gate_up_three_arm_attribution",
+  "performance_claim": false,
+  "status": "ok",
+  "created_at": "2026-09-27T06:33:52.677273+00:00",
+  "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "why": "scripts/gemma4_mmq_prefill_length_probe.py compares the MMQ gate/up route against its fp32 owner and reports that the arms disagree. That comparison cannot say which arm is wrong: at a length where both arms are wrong the same way it reports exact agreement, and everywhere else it names the MMQ route without having established that the fp32 route is correct. This run adds llama.cpp's llama-server on the same artifact, GPU, context and KV dtype as a third arm, so the greedy tokens can be attributed against an independent implementation instead of against whichever of our own two kernels ran second.",
+  "command": "PYTHONPATH=. python scripts/gemma4_mmq_arm_attribution.py --corpus {probe,frozen} --lengths ...",
+  "anchor": {
+    "commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+    "engine": "llama.cpp llama-server",
+    "logits": "final-row argmax with the model's own final_logit_softcapping applied",
+    "sampling": "temperature=0, top_k=1, seed=12345, ignore_eos=true, cache_prompt=false",
+    "server_command": [
+      "/home/lhl/llama.cpp/llama.cpp-hip/build-hip/bin/llama-server",
+      "-m",
+      "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "-ngl",
+      "99",
+      "-fa",
+      "on",
+      "-ctk",
+      "bf16",
+      "-ctv",
+      "bf16",
+      "-c",
+      "8192",
+      "-np",
+      "1",
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "18793",
+      "--no-cache-prompt",
+      "--fit",
+      "off"
+    ],
+    "source": "/home/lhl/llama.cpp/llama.cpp-hip"
+  },
+  "positive_control": {
+    "why": "The anchor needs a case where agreement is expected, or a failure to agree proves nothing about which arm is at fault. The frozen campaign corpus is natural text and the campaign's recorded evidence was taken on it, so agreement there validates the harness rather than the route.",
+    "corpus": "frozen",
+    "rows": [
+      {
+        "arms_agree": true,
+        "base_first": 870,
+        "base_first_margin": 12.357577323913574,
+        "base_matches_llama": true,
+        "base_tokens": [
+          870,
+          236781,
+          573,
+          1123
+        ],
+        "ids": 96,
+        "llama_first": 870,
+        "llama_tokens": [
+          870,
+          236781,
+          573,
+          1123
+        ],
+        "mmq_first": 870,
+        "mmq_first_margin": 11.984014511108398,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          870,
+          236781,
+          573,
+          1123
+        ]
+      },
+      {
+        "arms_agree": true,
+        "base_first": 13718,
+        "base_first_margin": 12.309220314025879,
+        "base_matches_llama": true,
+        "base_tokens": [
+          13718,
+          8633,
+          653,
+          618
+        ],
+        "ids": 512,
+        "llama_first": 13718,
+        "llama_tokens": [
+          13718,
+          8633,
+          653,
+          618
+        ],
+        "mmq_first": 13718,
+        "mmq_first_margin": 11.736089706420898,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          13718,
+          8633,
+          653,
+          618
+        ]
+      },
+      {
+        "arms_agree": true,
+        "base_first": 43424,
+        "base_first_margin": 13.45937728881836,
+        "base_matches_llama": true,
+        "base_tokens": [
+          43424,
+          5990,
+          39188,
+          1003
+        ],
+        "ids": 1024,
+        "llama_first": 43424,
+        "llama_tokens": [
+          43424,
+          5990,
+          39188,
+          1003
+        ],
+        "mmq_first": 43424,
+        "mmq_first_margin": 13.873005867004395,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          43424,
+          5990,
+          39188,
+          1003
+        ]
+      }
+    ],
+    "finding": "All three engines agree exactly at 96, 512 and 1024 ids, and the fp32 top-2 margins are 12.31 to 13.46. The 96-id point is the same length that disagrees under the probe corpus, so length alone does not predict the outcome. This establishes that the tokenizer, the prompt-id path into both engines, and the comparison itself are sound: a harness defect would not spare the confident rows."
+  },
+  "probe_corpus": {
+    "rows": [
+      {
+        "arms_agree": false,
+        "base_first": 236778,
+        "base_first_margin": 1.5612173080444336,
+        "base_matches_llama": true,
+        "base_tokens": [
+          236778,
+          236778,
+          236778,
+          236778
+        ],
+        "ids": 16,
+        "llama_first": 236778,
+        "llama_tokens": [
+          236778,
+          236778,
+          16652,
+          236763
+        ],
+        "mmq_first": 236800,
+        "mmq_first_margin": 3.2946672439575195,
+        "mmq_matches_llama": false,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          236800,
+          236800,
+          236800,
+          236800
+        ]
+      },
+      {
+        "arms_agree": false,
+        "base_first": 236800,
+        "base_first_margin": 5.954424858093262,
+        "base_matches_llama": false,
+        "base_tokens": [
+          236800,
+          236800,
+          236800,
+          236800
+        ],
+        "ids": 24,
+        "llama_first": 236771,
+        "llama_tokens": [
+          236771,
+          236812,
+          236771,
+          236812
+        ],
+        "mmq_first": 236812,
+        "mmq_first_margin": 2.8810911178588867,
+        "mmq_matches_llama": false,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          236812,
+          236812,
+          236812,
+          236812
+        ]
+      },
+      {
+        "arms_agree": false,
+        "base_first": 236778,
+        "base_first_margin": 3.1374034881591797,
+        "base_matches_llama": false,
+        "base_tokens": [
+          236778,
+          236825,
+          236743,
+          236828
+        ],
+        "ids": 96,
+        "llama_first": 236800,
+        "llama_tokens": [
+          236800,
+          236800,
+          236743,
+          236832
+        ],
+        "mmq_first": 236800,
+        "mmq_first_margin": 1.7277050018310547,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          236800,
+          236800,
+          236743,
+          236832
+        ]
+      }
+    ],
+    "finding": "The three arms disagree at all three lengths, and the anchor does not consistently side with either arm: it matches fp32 at 16 ids, the MMQ route at 96 ids, and neither at 24 ids. The fp32 top-2 margins are 1.56 to 5.95, against 12.31 to 13.46 on the frozen corpus, which is what probe_corpus was built to produce - its docstring states that the frozen corpus leaves the model close to certain everywhere and that a top-1 bar cannot see a reordering-class divergence there."
+  },
+  "finding": "The MMQ gate/up divergence is a near-tie sensitivity on rows that the probe corpus creates deliberately, not a defect that one arm has and the other does not. On confident natural rows all three engines agree exactly, and the campaign's recorded evidence - 1024 ids on the frozen corpus, where the route measures 7.335e-07 against the 5e-2 bar - is reproduced with the independent anchor agreeing as well. On the low-margin rows the anchor splits between the arms rather than condemning either, so the route does not diverge from an independent implementation by more than that implementation diverges from fp32.",
+  "caveats": [
+    "The anchor is one independent implementation and its own Q4_K_XL path is approximate, so it is evidence about which arm is closer rather than proof of correctness for either.",
+    "At 24 ids the anchor matches neither arm, so the low-margin rows remain unresolved at the level of which single arm is right on any one row; what the run establishes is that neither arm is systematically wrong.",
+    "The fp32 top-2 margins differ between the arms on the low-margin rows (5.954 against 2.881 at 24 ids), so the MMQ route does perturb logits more than fp32 does on those rows. That is a magnitude observation, not an attribution.",
+    "This is a diagnostic and adds no performance row; the campaign's timing evidence is unaffected."
+  ],
+  "reproduction": "Deterministic: the probe-corpus run was repeated and returned identical tokens for all three arms at all three lengths.",
+  "continuation_comparison": {
+    "why": "A first-token comparison cannot see a route that agrees on the first token and then degrades. The recorded decision-stability probes and the length probe both scored one token at a time, and the campaign's flag row cited a fourteen-token repetition that no first-token gate in the tree would have caught.",
+    "continuation_tokens": 16,
+    "corpus": "probe",
+    "rows": [
+      {
+        "arms_agree": false,
+        "base_first": 236778,
+        "base_first_margin": 1.5612173080444336,
+        "base_matches_llama": true,
+        "base_tokens": [
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778,
+          236778
+        ],
+        "ids": 16,
+        "llama_first": 236778,
+        "llama_tokens": [
+          236778,
+          236778,
+          16652,
+          236763,
+          236800,
+          236778,
+          236778,
+          16652,
+          236763,
+          236800,
+          236778,
+          236778,
+          16652,
+          236763,
+          236800,
+          236778
+        ],
+        "mmq_first": 236800,
+        "mmq_first_margin": 3.2946672439575195,
+        "mmq_matches_llama": false,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236771,
+          236771,
+          236771,
+          236771,
+          236771,
+          236771,
+          236771,
+          236771,
+          236771,
+          236771,
+          236771
+        ]
+      },
+      {
+        "arms_agree": false,
+        "base_first": 236800,
+        "base_first_margin": 5.954424858093262,
+        "base_matches_llama": false,
+        "base_tokens": [
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800,
+          236800
+        ],
+        "ids": 24,
+        "llama_first": 236771,
+        "llama_tokens": [
+          236771,
+          236812,
+          236771,
+          236812,
+          236771,
+          236812,
+          236771,
+          236812,
+          236771,
+          236812,
+          236771,
+          236812,
+          236771,
+          236812,
+          236771,
+          236812
+        ],
+        "mmq_first": 236812,
+        "mmq_first_margin": 2.8810911178588867,
+        "mmq_matches_llama": false,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812,
+          236812
+        ]
+      },
+      {
+        "arms_agree": false,
+        "base_first": 236778,
+        "base_first_margin": 3.1374034881591797,
+        "base_matches_llama": false,
+        "base_tokens": [
+          236778,
+          236825,
+          236743,
+          236828,
+          236832,
+          236771,
+          236812,
+          236743,
+          236770,
+          236828,
+          236778,
+          236810,
+          236743,
+          236771,
+          236800,
+          236778
+        ],
+        "ids": 96,
+        "llama_first": 236800,
+        "llama_tokens": [
+          236800,
+          236800,
+          236743,
+          236832,
+          236810,
+          236828,
+          236770,
+          236743,
+          236819,
+          236800,
+          236778,
+          236825,
+          236743,
+          236828,
+          236832,
+          236771
+        ],
+        "mmq_first": 236800,
+        "mmq_first_margin": 1.7277050018310547,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          236800,
+          236800,
+          236743,
+          236832,
+          236832,
+          236832,
+          236832,
+          236743,
+          236832,
+          236832,
+          236832,
+          236832,
+          236743,
+          236832,
+          236832,
+          236832
+        ]
+      }
+    ],
+    "distinct_tokens_per_arm": {
+      "16": {
+        "llama_tokens": 4,
+        "base_tokens": 1,
+        "mmq_tokens": 2
+      },
+      "24": {
+        "llama_tokens": 2,
+        "base_tokens": 1,
+        "mmq_tokens": 1
+      },
+      "96": {
+        "llama_tokens": 10,
+        "base_tokens": 10,
+        "mmq_tokens": 3
+      }
+    },
+    "finding": "At 96 ids llama.cpp and fp32 each emit 10 distinct tokens of 16 while the MMQ route emits 3, collapsing into 236832 repeated. The route's first token there is identical to llama.cpp's, so a first-token comparison reports agreement. At 16 and 24 ids all three arms degenerate, which makes those lengths a property of the short prompt rather than of the route, so 96 is the only clean case and it is decisive.",
+    "correction": "This supersedes the conclusion recorded from first tokens alone in this artifact, that neither arm is systematically wrong. That reading was correct about what it measured and too narrow to generalise from: confident rows still agree across all three engines, so the low-margin account of the flips survives, but a flip that self-reinforces into a loop is a distinct and worse failure than a flip."
+  },
+  "per_step_attribution": {
+    "why": "Once the chains part the arms see different contexts and their logits stop being comparable, so only the steps before the split attribute anything. Within that window the route agrees with the outside implementation and the fp32 arm does not.",
+    "rows": [
+      {
+        "arms_agree": false,
+        "base_first": 236778,
+        "base_first_margin": 3.1374034881591797,
+        "base_matches_llama": false,
+        "base_steps": [
+          {
+            "p_top1": 0.9128713011741638,
+            "raw_margin": 7.140625,
+            "token": 236778
+          },
+          {
+            "p_top1": 0.9999998807907104,
+            "raw_margin": 16.492982864379883,
+            "token": 236825
+          },
+          {
+            "p_top1": 0.9999912977218628,
+            "raw_margin": 11.659311294555664,
+            "token": 236743
+          },
+          {
+            "p_top1": 0.9949703812599182,
+            "raw_margin": 5.307090759277344,
+            "token": 236828
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 19.489295959472656,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 28.35080909729004,
+            "token": 236771
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 27.421886444091797,
+            "token": 236812
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 27.59836196899414,
+            "token": 236743
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 27.53058433532715,
+            "token": 236770
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 25.611576080322266,
+            "token": 236828
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 31.28944206237793,
+            "token": 236778
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 29.31664276123047,
+            "token": 236810
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 26.958175659179688,
+            "token": 236743
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 27.069412231445312,
+            "token": 236771
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 25.068286895751953,
+            "token": 236800
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 34.43961715698242,
+            "token": 236778
+          }
+        ],
+        "base_tokens": [
+          236778,
+          236825,
+          236743,
+          236828,
+          236832,
+          236771,
+          236812,
+          236743,
+          236770,
+          236828,
+          236778,
+          236810,
+          236743,
+          236771,
+          236800,
+          236778
+        ],
+        "ids": 96,
+        "llama_first": 236800,
+        "llama_steps": [
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236800
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236800
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236743
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236832
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236810
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236828
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236770
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236743
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236819
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236800
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236778
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236825
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236743
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236828
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236832
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236771
+          }
+        ],
+        "llama_tokens": [
+          236800,
+          236800,
+          236743,
+          236832,
+          236810,
+          236828,
+          236770,
+          236743,
+          236819,
+          236800,
+          236778,
+          236825,
+          236743,
+          236828,
+          236832,
+          236771
+        ],
+        "logits": {
+          "delta_max_abs": 9.75543212890625,
+          "delta_median": -1.5519052743911743,
+          "delta_std": 1.0098870992660522,
+          "raw_argmax_agrees": false,
+          "raw_argmax_base": 236778,
+          "raw_argmax_mmq": 236800,
+          "raw_span5_base": 11.117996215820312,
+          "raw_span5_mmq": 5.997570037841797,
+          "raw_top5_base": [
+            32.73771667480469,
+            25.597091674804688,
+            24.864215850830078,
+            22.675260543823242,
+            21.619720458984375
+          ],
+          "raw_top5_mmq": [
+            26.150728225708008,
+            22.982284545898438,
+            21.502283096313477,
+            20.308956146240234,
+            20.15315818786621
+          ],
+          "softcap_preserves_argmax_base": true,
+          "softcap_preserves_argmax_mmq": true,
+          "top64_same_order": false
+        },
+        "mmq_first": 236800,
+        "mmq_first_margin": 1.7277050018310547,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_steps": [
+          {
+            "p_top1": 0.7376709580421448,
+            "raw_margin": 3.1684436798095703,
+            "token": 236800
+          },
+          {
+            "p_top1": 0.9999963045120239,
+            "raw_margin": 13.379018783569336,
+            "token": 236800
+          },
+          {
+            "p_top1": 0.9999649524688721,
+            "raw_margin": 10.385232925415039,
+            "token": 236743
+          },
+          {
+            "p_top1": 0.9988517761230469,
+            "raw_margin": 7.3428192138671875,
+            "token": 236832
+          },
+          {
+            "p_top1": 0.5605988502502441,
+            "raw_margin": 0.366912841796875,
+            "token": 236832
+          },
+          {
+            "p_top1": 0.7255620360374451,
+            "raw_margin": 1.0272884368896484,
+            "token": 236832
+          },
+          {
+            "p_top1": 0.999932050704956,
+            "raw_margin": 9.792150497436523,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 23.634029388427734,
+            "token": 236743
+          },
+          {
+            "p_top1": 0.9990522265434265,
+            "raw_margin": 6.960472106933594,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 16.730205535888672,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 24.525192260742188,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 26.344741821289062,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 24.45705795288086,
+            "token": 236743
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 21.70069122314453,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 32.62611770629883,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 25.937170028686523,
+            "token": 236832
+          }
+        ],
+        "mmq_tokens": [
+          236800,
+          236800,
+          236743,
+          236832,
+          236832,
+          236832,
+          236832,
+          236743,
+          236832,
+          236832,
+          236832,
+          236832,
+          236743,
+          236832,
+          236832,
+          236832
+        ],
+        "repeat_check": {
+          "argmax_a": 236800,
+          "argmax_b": 236800,
+          "argmax_stable": true,
+          "bit_identical": true,
+          "max_abs_delta": 0.0
+        }
+      }
+    ],
+    "comparable_window": "steps 0-3, where llama.cpp and the route emit identical tokens",
+    "llama_and_mmq_steps_0_3": [
+      236800,
+      236800,
+      236743,
+      236832
+    ],
+    "fp32_steps_0_3": [
+      236778,
+      236825,
+      236743,
+      236828
+    ],
+    "fp32_split": "step 0, 236778 against 236800, raw margin +7.14 - a confident disagreement",
+    "route_degeneration": "step 4, llama 236810 against route 236832 at raw margin +0.37, after which the route's margins on 236832 grow to +32 as the repeated context makes each further repeat easier",
+    "determinism": {
+      "repeat_bit_identical": true,
+      "softcap_preserves_argmax": true,
+      "note": "an earlier run of this harness reported softcap_preserves_argmax false; that run forwarded twice without an intervening reset, so the second call prefilled at an advanced position. The check exists because of it."
+    },
+    "correction": "This supersedes the attribution in the continuation-degeneration entry, which observed the collapse correctly and concluded from it that the route was the deviant arm. Step by step, the route is the arm that tracks the anchor."
+  },
+  "in_distribution_parity": {
+    "why": "The route's divergence from its fp32 owner is a property of out-of-distribution input. The campaign's two corpora are random ids (far from the training distribution) and near-one-hot repeated prose (degenerate); neither is what a user would send.",
+    "prose": {
+      "source": "docs/PLAN.md, 12 paragraphs, 6622 chars",
+      "rows": [
+        {
+          "ids": 2004,
+          "llama_steps": [
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 107
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 1018
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 1683
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236798
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 49751
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236847
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236800
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 1018
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 2192
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 669
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 4926
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236772
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 13142
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 1854
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 568
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236751
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236786
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236744
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236768
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 99161
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 568
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 44359
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 4012
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236772
+            }
+          ],
+          "base_steps": [
+            {
+              "p_top1": 0.47231122851371765,
+              "raw_margin": 0.25958251953125,
+              "token": 107
+            },
+            {
+              "p_top1": 0.9706412553787231,
+              "raw_margin": 3.8521289825439453,
+              "token": 1018
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 21.406354904174805,
+              "token": 1683
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 17.05767059326172,
+              "token": 236798
+            },
+            {
+              "p_top1": 0.9998434782028198,
+              "raw_margin": 9.62777328491211,
+              "token": 49751
+            },
+            {
+              "p_top1": 0.9999998807907104,
+              "raw_margin": 16.527008056640625,
+              "token": 236847
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 17.681060791015625,
+              "token": 236800
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 19.583932876586914,
+              "token": 1018
+            },
+            {
+              "p_top1": 0.8761032223701477,
+              "raw_margin": 1.9776220321655273,
+              "token": 2192
+            },
+            {
+              "p_top1": 0.9963369369506836,
+              "raw_margin": 5.629337310791016,
+              "token": 669
+            },
+            {
+              "p_top1": 0.978495180606842,
+              "raw_margin": 3.826343536376953,
+              "token": 99161
+            },
+            {
+              "p_top1": 0.9774093627929688,
+              "raw_margin": 4.378330230712891,
+              "token": 568
+            },
+            {
+              "p_top1": 0.999870777130127,
+              "raw_margin": 8.954410552978516,
+              "token": 44359
+            },
+            {
+              "p_top1": 0.9999426603317261,
+              "raw_margin": 11.420431137084961,
+              "token": 4012
+            },
+            {
+              "p_top1": 0.6015375852584839,
+              "raw_margin": 0.6793060302734375,
+              "token": 236786
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 17.688640594482422,
+              "token": 236792
+            },
+            {
+              "p_top1": 0.9998579025268555,
+              "raw_margin": 8.971882820129395,
+              "token": 172655
+            },
+            {
+              "p_top1": 0.5436042547225952,
+              "raw_margin": 0.18327713012695312,
+              "token": 236772
+            },
+            {
+              "p_top1": 0.375738263130188,
+              "raw_margin": 1.694185495376587,
+              "token": 53767
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 18.408756256103516,
+              "token": 236768
+            },
+            {
+              "p_top1": 0.9455916285514832,
+              "raw_margin": 3.2612438201904297,
+              "token": 532
+            },
+            {
+              "p_top1": 0.7313703298568726,
+              "raw_margin": 1.1686820983886719,
+              "token": 15168
+            },
+            {
+              "p_top1": 0.7172963619232178,
+              "raw_margin": 0.9577751159667969,
+              "token": 7620
+            },
+            {
+              "p_top1": 0.7395243048667908,
+              "raw_margin": 1.0703887939453125,
+              "token": 568
+            }
+          ],
+          "mmq_steps": [
+            {
+              "p_top1": 0.47343915700912476,
+              "raw_margin": 0.2467212677001953,
+              "token": 107
+            },
+            {
+              "p_top1": 0.9884985089302063,
+              "raw_margin": 4.791843414306641,
+              "token": 1018
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 20.26481056213379,
+              "token": 1683
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 17.988439559936523,
+              "token": 236798
+            },
+            {
+              "p_top1": 0.9997617602348328,
+              "raw_margin": 9.116424560546875,
+              "token": 49751
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 16.909645080566406,
+              "token": 236847
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 17.697999954223633,
+              "token": 236800
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 19.606040954589844,
+              "token": 1018
+            },
+            {
+              "p_top1": 0.9895893931388855,
+              "raw_margin": 4.635756492614746,
+              "token": 2192
+            },
+            {
+              "p_top1": 0.9933809041976929,
+              "raw_margin": 5.043018341064453,
+              "token": 669
+            },
+            {
+              "p_top1": 0.9753684997558594,
+              "raw_margin": 3.712146759033203,
+              "token": 99161
+            },
+            {
+              "p_top1": 0.9829944372177124,
+              "raw_margin": 4.60441780090332,
+              "token": 568
+            },
+            {
+              "p_top1": 0.9934936165809631,
+              "raw_margin": 5.028450012207031,
+              "token": 44359
+            },
+            {
+              "p_top1": 0.9999591112136841,
+              "raw_margin": 11.589045524597168,
+              "token": 4012
+            },
+            {
+              "p_top1": 0.8984538316726685,
+              "raw_margin": 2.5241928100585938,
+              "token": 236772
+            },
+            {
+              "p_top1": 0.9997897744178772,
+              "raw_margin": 8.93665885925293,
+              "token": 5140
+            },
+            {
+              "p_top1": 0.9999997615814209,
+              "raw_margin": 15.459491729736328,
+              "token": 236768
+            },
+            {
+              "p_top1": 0.9998501539230347,
+              "raw_margin": 9.948978424072266,
+              "token": 532
+            },
+            {
+              "p_top1": 0.8913856148719788,
+              "raw_margin": 2.182781219482422,
+              "token": 150440
+            },
+            {
+              "p_top1": 0.999995231628418,
+              "raw_margin": 12.355356216430664,
+              "token": 236792
+            },
+            {
+              "p_top1": 0.3630715608596802,
+              "raw_margin": 0.4972038269042969,
+              "token": 6596
+            },
+            {
+              "p_top1": 0.9460502862930298,
+              "raw_margin": 2.8855552673339844,
+              "token": 563
+            },
+            {
+              "p_top1": 0.9999639987945557,
+              "raw_margin": 10.27212905883789,
+              "token": 506
+            },
+            {
+              "p_top1": 0.6553876996040344,
+              "raw_margin": 0.6487159729003906,
+              "token": 3328
+            }
+          ],
+          "logits": {
+            "delta_max_abs": 3.455808401107788,
+            "delta_median": 0.24051666259765625,
+            "delta_std": 0.5042207837104797,
+            "raw_argmax_agrees": true,
+            "raw_argmax_base": 107,
+            "raw_argmax_mmq": 107,
+            "raw_span5_base": 5.576563835144043,
+            "raw_span5_mmq": 5.353801727294922,
+            "raw_top5_base": [
+              19.037273406982422,
+              18.777690887451172,
+              16.506744384765625,
+              14.654850959777832,
+              13.460709571838379
+            ],
+            "raw_top5_mmq": [
+              19.51752471923828,
+              19.270803451538086,
+              16.23709487915039,
+              15.791549682617188,
+              14.16372299194336
+            ],
+            "softcap_preserves_argmax_base": true,
+            "softcap_preserves_argmax_mmq": true,
+            "top64_same_order": false
+          },
+          "repeat_check": {
+            "argmax_a": 107,
+            "argmax_b": 107,
+            "argmax_stable": true,
+            "bit_identical": true,
+            "max_abs_delta": 0.0
+          }
+        }
+      ],
+      "finding": "Steps 0-9 identical across all three arms, including near-tie steps at margins +1.98 and +5.63. First divergence at step 10 is llama.cpp alone on 4926 while fp32 and the route both emit 99161. Raw logit max delta 3.46, top-5 span 5.58 against 5.35. No degeneration in 24 tokens."
+    },
+    "code_truncated": {
+      "source": "the merge_intervals function cut mid-comparison at 'if start <=', 511 chars",
+      "rows": [
+        {
+          "ids": 128,
+          "llama_steps": [
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 34846
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 17825
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236770
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 2585
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236770
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 9414
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 107
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 148
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 35516
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 17825
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236770
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 2585
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236770
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236842
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 578
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 1345
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 107
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 144
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 4454
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236787
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 107
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 148
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 35516
+            },
+            {
+              "p_top1": null,
+              "runner_up": null,
+              "token": 236761
+            }
+          ],
+          "base_steps": [
+            {
+              "p_top1": 0.9967340230941772,
+              "raw_margin": 9.557024955749512,
+              "token": 34846
+            },
+            {
+              "p_top1": 0.9999992847442627,
+              "raw_margin": 14.21041488647461,
+              "token": 17825
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 30.943397521972656,
+              "token": 236770
+            },
+            {
+              "p_top1": 0.9999998807907104,
+              "raw_margin": 16.939912796020508,
+              "token": 2585
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 19.07930564880371,
+              "token": 236770
+            },
+            {
+              "p_top1": 0.9999963045120239,
+              "raw_margin": 12.523828506469727,
+              "token": 9414
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 25.829662322998047,
+              "token": 107
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 20.41860580444336,
+              "token": 148
+            },
+            {
+              "p_top1": 0.9882717728614807,
+              "raw_margin": 4.545221328735352,
+              "token": 35516
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 17.095766067504883,
+              "token": 17825
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 19.625215530395508,
+              "token": 236770
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 19.401992797851562,
+              "token": 2585
+            },
+            {
+              "p_top1": 0.9970620274543762,
+              "raw_margin": 5.827268600463867,
+              "token": 236770
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 18.16459846496582,
+              "token": 236842
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 22.36962127685547,
+              "token": 578
+            },
+            {
+              "p_top1": 0.9708238244056702,
+              "raw_margin": 3.504913330078125,
+              "token": 1345
+            },
+            {
+              "p_top1": 0.9998899698257446,
+              "raw_margin": 9.123336791992188,
+              "token": 107
+            },
+            {
+              "p_top1": 0.9999992847442627,
+              "raw_margin": 14.192676544189453,
+              "token": 144
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 21.295652389526367,
+              "token": 4454
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 25.619909286499023,
+              "token": 236787
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 36.0623779296875,
+              "token": 107
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 22.788015365600586,
+              "token": 148
+            },
+            {
+              "p_top1": 0.9998586177825928,
+              "raw_margin": 8.897907257080078,
+              "token": 35516
+            },
+            {
+              "p_top1": 0.9718061089515686,
+              "raw_margin": 3.5540828704833984,
+              "token": 17825
+            }
+          ],
+          "mmq_steps": [
+            {
+              "p_top1": 0.9981734752655029,
+              "raw_margin": 10.11067008972168,
+              "token": 34846
+            },
+            {
+              "p_top1": 0.999998927116394,
+              "raw_margin": 13.727867126464844,
+              "token": 17825
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 31.452293395996094,
+              "token": 236770
+            },
+            {
+              "p_top1": 0.9999998807907104,
+              "raw_margin": 17.044404983520508,
+              "token": 2585
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 19.703359603881836,
+              "token": 236770
+            },
+            {
+              "p_top1": 0.9999964237213135,
+              "raw_margin": 12.540143966674805,
+              "token": 9414
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 27.010047912597656,
+              "token": 107
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 23.694360733032227,
+              "token": 148
+            },
+            {
+              "p_top1": 0.9948498606681824,
+              "raw_margin": 5.368078231811523,
+              "token": 35516
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 19.585861206054688,
+              "token": 17825
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 20.362606048583984,
+              "token": 236770
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 17.136554718017578,
+              "token": 2585
+            },
+            {
+              "p_top1": 0.9999972581863403,
+              "raw_margin": 12.80159854888916,
+              "token": 236770
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 19.217988967895508,
+              "token": 236842
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 23.65401840209961,
+              "token": 578
+            },
+            {
+              "p_top1": 0.8989371061325073,
+              "raw_margin": 2.1855621337890625,
+              "token": 1345
+            },
+            {
+              "p_top1": 0.9999823570251465,
+              "raw_margin": 10.96456527709961,
+              "token": 107
+            },
+            {
+              "p_top1": 0.9999995231628418,
+              "raw_margin": 14.68991470336914,
+              "token": 144
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 21.70688247680664,
+              "token": 4454
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 25.564361572265625,
+              "token": 236787
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 34.31735610961914,
+              "token": 107
+            },
+            {
+              "p_top1": 1.0,
+              "raw_margin": 23.455934524536133,
+              "token": 148
+            },
+            {
+              "p_top1": 0.9997459053993225,
+              "raw_margin": 8.293588638305664,
+              "token": 35516
+            },
+            {
+              "p_top1": 0.5285578966140747,
+              "raw_margin": 0.15923500061035156,
+              "token": 17825
+            }
+          ],
+          "logits": {
+            "delta_max_abs": 3.564908981323242,
+            "delta_median": -0.8123645782470703,
+            "delta_std": 0.5718441605567932,
+            "raw_argmax_agrees": true,
+            "raw_argmax_base": 34846,
+            "raw_argmax_mmq": 34846,
+            "raw_span5_base": 12.385108947753906,
+            "raw_span5_mmq": 12.167484283447266,
+            "raw_top5_base": [
+              24.304405212402344,
+              14.747380256652832,
+              13.240640640258789,
+              12.091893196105957,
+              11.919296264648438
+            ],
+            "raw_top5_mmq": [
+              22.759117126464844,
+              12.648447036743164,
+              11.479171752929688,
+              10.764111518859863,
+              10.591632843017578
+            ],
+            "softcap_preserves_argmax_base": true,
+            "softcap_preserves_argmax_mmq": true,
+            "top64_same_order": false
+          },
+          "repeat_check": {
+            "argmax_a": 34846,
+            "argmax_b": 34846,
+            "argmax_stable": true,
+            "bit_identical": true,
+            "max_abs_delta": 0.0
+          }
+        }
+      ],
+      "finding": "This is the class the flag cites as its cause - a code prompt whose continuation is genuinely ambiguous. All three arms agree on all 23 first tokens. Step 23 parts with llama.cpp on 236761 while fp32 and the route both emit 17825 at a route margin of +0.16. No repeated-token run, so the recorded fourteen-token repetition did not reproduce."
+    },
+    "perturbation_scales_with_distribution": {
+      "probe_max_abs_delta": 9.76,
+      "prose_max_abs_delta": 3.46,
+      "reading": "On input the model was trained for, the int8 activation-quantisation step is small enough not to move a decision; on random ids the logits are small and flat enough that it is. The route's own error measurement of 2.09e-2 max is unchanged - what changes is how often the model's margin is smaller than it."
+    },
+    "promotion_note": "On this evidence the route is a 1.265x prefill gain with no divergence from fp32 on realistic prose or code. The default is the lead's call - the recorded flag text reserves it - and this is the measurement that call should use."
+  }
+}

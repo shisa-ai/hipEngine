@@ -56,9 +56,39 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-DEFAULT_ARTIFACT = Path(
-    "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+# The campaign's GGUF. This was a hard-coded path under /mnt/nvme1 until that
+# mount moved, which broke every script here at import time with a
+# FileNotFoundError that named the model rather than the missing mount. Resolve
+# instead: an explicit HIPENGINE_GEMMA4_ARTIFACT wins, then the known locations.
+# A missing artifact still fails loudly, but at the point of use and naming every
+# path that was tried.
+ARTIFACT_ENV = "HIPENGINE_GEMMA4_ARTIFACT"
+_ARTIFACT_CANDIDATES = (
+    Path("/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"),
+    Path("/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"),
 )
+
+
+def resolve_artifact(explicit: str | Path | None = None) -> Path:
+    """Return the campaign GGUF path, preferring one that exists.
+
+    Never raises: an import of this module must not depend on a model being
+    present, so a box without the artifact still imports and fails at the point
+    of use, where the caller can say which paths were tried.
+    """
+
+    override = os.environ.get(ARTIFACT_ENV, "").strip()
+    candidates = [Path(override)] if override else []
+    if explicit is not None:
+        candidates.append(Path(explicit))
+    candidates.extend(_ARTIFACT_CANDIDATES)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+DEFAULT_ARTIFACT = resolve_artifact()
 DEFAULT_OUT = Path("/tmp/gemma4_campaign_bench.json")
 DEFAULT_CONTEXT = 8192
 DEFAULT_EXPECT_GPU = "RX 7900 XTX"
@@ -87,11 +117,85 @@ CORPUS: tuple[str, ...] = (
 )
 
 
+PROBE_CORPUS_SEED = 20260927
+
+# Word pool for the shuffled and enumerative probe fragments. Ordinary English,
+# so the model's grammar is not the source of uncertainty - only the choice is.
+_PROBE_WORDS: tuple[str, ...] = (
+    "amber", "anchor", "apron", "basalt", "beacon", "bramble", "cinder",
+    "cobalt", "copper", "cotton", "dagger", "dahlia", "ember", "fennel",
+    "flint", "gable", "granite", "harbor", "hazel", "indigo", "ivory",
+    "juniper", "kestrel", "lantern", "lichen", "marble", "meadow", "nectar",
+    "nickel", "obsidian", "orchard", "pebble", "pepper", "quartz", "quill",
+    "raven", "ridge", "saffron", "sandal", "sequoia", "shale", "sorrel",
+    "tallow", "thistle", "timber", "umber", "velvet", "walnut", "willow",
+    "yarrow", "zephyr",
+)
+
+
+def probe_corpus(count: int = 96, *, seed: int = PROBE_CORPUS_SEED) -> tuple[str, ...]:
+    """Deterministic, never-repeating fragments for margin-aware numerical probing.
+
+    The frozen campaign corpus is eight sentences cycled to the target length, so
+    a 1024-token chain repeats each of them many times and the model is close to
+    certain about every continuation: top-1 margins are large everywhere and a
+    top-1 bar cannot see a reordering-class divergence. This corpus is generated
+    from a fixed seed instead, and mixes material with no predictable continuation
+    (hex digests, id-like digit groups, random codes) with material where only the
+    wording is open (shuffled word lists, interchangeable enumerations). One chain
+    therefore carries rows across the whole margin range rather than only the
+    near-one-hot end.
+
+    It is seeded so both arms of a paired comparison see byte-identical ids, which
+    is what makes the comparison paired at all.
+    """
+
+    import random
+
+    rng = random.Random(int(seed))
+    letters = "abcdefghijklmnopqrstuvwxyz"
+    hexits = "0123456789abcdef"
+    fragments: list[str] = []
+    for index in range(int(count)):
+        kind = index % 6
+        if kind == 0:
+            digest = "".join(rng.choice(hexits) for _ in range(56))
+            fragments.append(f"Record {index:04d} digest {digest} closes the entry.")
+        elif kind == 1:
+            groups = " ".join(f"{rng.randrange(10000):04d}" for _ in range(13))
+            fragments.append(f"Sequence {index:04d} reads {groups} and stops there.")
+        elif kind == 2:
+            picks = [rng.choice(_PROBE_WORDS) for _ in range(16)]
+            fragments.append(f"Order {index:04d}: " + ", ".join(picks) + ".")
+        elif kind == 3:
+            picks = [rng.choice(_PROBE_WORDS) for _ in range(11)]
+            fragments.append(
+                "The candidate labels are "
+                + ", ".join(picks[:-1])
+                + " and "
+                + picks[-1]
+                + f", listed under case {index:04d}."
+            )
+        elif kind == 4:
+            codes = " ".join(
+                "".join(rng.choice(letters + "0123456789") for _ in range(5))
+                for _ in range(9)
+            )
+            fragments.append(f"Codes {index:04d}: {codes}.")
+        else:
+            mixed = "".join(
+                rng.choice(letters + "0123456789 .,;:-") for _ in range(110)
+            )
+            fragments.append(f"Payload {index:04d} begins: {mixed}")
+    return tuple(fragments)
+
+
 def exact_prompt_ids(
     tokenize: Callable[[str], Sequence[int]],
     target: int,
     *,
     corpus: Sequence[str] = CORPUS,
+    require_single_pass: bool = False,
 ) -> list[int]:
     """Tokenize the frozen corpus, cycled, and cut to exactly ``target`` ids."""
 
@@ -110,6 +214,12 @@ def exact_prompt_ids(
             index += 1
         if len(ids) == cycle_start:
             raise ValueError("corpus produced no tokens")
+        if require_single_pass and len(ids) < target:
+            raise ValueError(
+                f"corpus supplies only {len(ids)} of {target} ids; a single-pass "
+                "chain must not cycle, or repeated context makes every "
+                "continuation predictable again"
+            )
     return ids[:target]
 
 
@@ -428,6 +538,10 @@ def resolution_row(llm: Any, generator: Any) -> dict[str, Any]:
         value = getattr(llm, attribute, None)
         if isinstance(value, ResolvedRuntimeProfile):
             resolution[attribute] = value.profile.value
+            resolution[attribute + "_manifest"] = {
+                "manifest_sha256": value.manifest_sha256,
+                "fell_back_to_strict": value.fell_back_to_strict,
+            }
         else:
             resolution[attribute] = getattr(value, "value", value)
     resolution["generator_type"] = type(generator).__name__

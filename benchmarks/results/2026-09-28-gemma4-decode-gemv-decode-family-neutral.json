@@ -1,0 +1,37 @@
+{
+  "kind": "gemma4_decode_gemv_decode_family",
+  "verdict": "rejected as a decode lever; flag left at its default and documented",
+  "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B, UD-Q4_K_XL, 512-token prompt / 128-token output",
+  "why": "The decode traffic census puts dense gguf_q8_0 at 1866.7 MB of the 3219.6 MB a decode token moves, 58 percent, and its largest shapes are all rows=1 GEMVs. A real decode resolved the legacy pack8_gemv_bf16_bf16_out for 410 of 411 dense Q8_0 resolutions. There is a newer family, gguf_q8_0_pack8_gemv_decode_bf16_bf16_out, registered on the same key and described in its own module as a drop-in replacement for the single-output decoder, selected through _resolve_use_gemv_decode. That looked like a large win sitting unselected on the majority of decode traffic.",
+  "measurement": {
+    "ab_command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 [HIPENGINE_GGUF_GEMV_DECODE=1] PYTHONPATH=. python3 scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --warmup 1 --expect-gpu 8060S",
+    "decode_tps_flag_unset": 24.81,
+    "decode_tps_flag_set": 24.83,
+    "prefill_s_flag_unset": 1.01,
+    "prefill_s_flag_set": 1.02,
+    "parity": "True in both arms",
+    "reading": "No effect outside run-to-run noise, so the newer decoder is performance-neutral on these shapes."
+  },
+  "selection_did_change": {
+    "method": "instrumented LLM.generate() wrapping the resolved kernels, counting (quant, variant) pairs for 8 decode tokens",
+    "flag_unset": {
+      "pack8_gemv_bf16_bf16_out": 410,
+      "pack8_gemv_decode_bf16_bf16_out": 0
+    },
+    "flag_set": {
+      "pack8_gemv_bf16_bf16_out": 205,
+      "pack8_gemv_decode_bf16_bf16_out": 205
+    },
+    "reading": "The flag does what it says: it moves half the dense Q8_0 decode resolutions to the newer family. It is the lever for selection and not for speed, which is what makes this a negative result rather than an untested lead. Half and not all, because the remaining resolutions take a shape or a sibling the newer family does not cover."
+  },
+  "conclusion": "The 58 percent of decode traffic that runs the legacy pack8 decoder is not limited by the decoder's choice, so the next decode unit has to look elsewhere: at launch count (825.6 launches per step), at the rows=1 GEMV shape itself, or at the expert side. It does close the lead.",
+  "doc_correction": {
+    "what": "docs/ENVS.md said 'The public generator passes use_gemv_decode=True', which reads as universal. Only hipengine/generation/qwen35_gguf.py passes it; the Gemma 4 generator never does, so Gemma 4 takes the process-wide default.",
+    "why_it_matters": "The sentence is what made the flag look already-applied for Gemma 4 and sent the first inference the wrong way. The row now names the generator, records that Gemma 4 takes the default, and carries the neutral measurement so the next reader does not re-run this A/B."
+  },
+  "caveats": [
+    "The neutral result is measured at the 512/128 decode shape only. It is not a claim about other batch widths, where the decode family may differ.",
+    "This does not say the newer family is unnecessary: it is selected by default for qwen35moe, where it was introduced. It says it buys nothing for Gemma 4's dense Q8_0 shapes.",
+    "No production code changed and no default moved, so no correctness gate applies; the flag's default is unchanged."
+  ]
+}

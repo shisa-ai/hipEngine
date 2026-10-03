@@ -64,10 +64,12 @@ __device__ __forceinline__ uint32_t lo_plane_nibbles(uint32_t bytes4) {
 }
 
 __device__ __forceinline__ uint32_t load_qs_bytes(const uint8_t* qs, int w) {
-  return static_cast<uint32_t>(qs[4 * w]) |
-      (static_cast<uint32_t>(qs[4 * w + 1]) << 8) |
-      (static_cast<uint32_t>(qs[4 * w + 2]) << 16) |
-      (static_cast<uint32_t>(qs[4 * w + 3]) << 24);
+  // One dword load, not four byte loads or-ed together. The four-byte form
+  // leaves the merge to the compiler's load-combine pass, which has to prove
+  // the alignment of `qs + 4 * w` through a chain of dynamic offsets. Every
+  // qword in this kernel sits at a 4-byte-aligned offset by construction:
+  // Q5_1_BLOCK_BYTES is 24 and the qs field starts at byte 8 of the block.
+  return *reinterpret_cast<const uint32_t*>(qs + 4 * w);
 }
 
 __device__ __forceinline__ uint32_t expand_hi_bits(uint32_t bits4) {
@@ -76,11 +78,41 @@ __device__ __forceinline__ uint32_t expand_hi_bits(uint32_t bits4) {
       ((bits4 & 8u) << 21);
 }
 
-constexpr int ROWS_PER_PASS = 16;
+// Rows each weight unpack is amortized over. The weight side of the dot product
+// is unpacked once per pass, so this is the weight-reuse factor: a pass reads
+// every weight row it covers once, and a row pass costs the same whether it is
+// one row or ROWS_PER_PASS. An expert averaging 32 rows therefore reads its
+// weights twice at 16 and once at 32. The cost is one accumulator per row and
+// one row of activation loads per sub-block; the accumulators are the register
+// pressure, which is why this is not simply the largest value that compiles.
+constexpr int ROWS_PER_PASS = 32;
 
+// The DS4 activation block comes in two layouts that differ only in how the
+// four (scale, sum) pairs are stored: fp16 for a hidden-state input, and fp32
+// for a post-SiLU one. Both put the eight pairs first and the 128 int8 quants
+// after them, so the offsets are shared and only the stride and the two reads
+// change. The fp16 layout cannot hold a scale above 65504 -- and this route
+// needs the block *sum* to fit as well, because its `m * xs` term uses it, so
+// it runs out at a block sum of 65504, which 32 values of 2048 already reach.
+// A down projection's input is a GeGLU output whose magnitude is a property of
+// the model rather than of this route, so the fp32 layout is the correct one.
+constexpr int DS4_BLOCK_BYTES = 16 + Q8_1_MMQ_BLOCK;
+constexpr int DS4_F32_BLOCK_BYTES = 32 + Q8_1_MMQ_BLOCK;
+
+template <bool F32_SCALES>
+__device__ __forceinline__ float x_block_scale(const uint8_t* x_block,
+                                               int index) {
+  if (F32_SCALES) {
+    return reinterpret_cast<const float*>(x_block)[index];
+  }
+  return fp16_bits_to_float(
+      reinterpret_cast<const uint16_t*>(x_block)[index]);
+}
+
+template <bool F32_SCALES>
 __global__ __launch_bounds__(128, 4)
 void q5_1_mmq_ds4_selected_prefill_kernel(
-    const block_q8_1_mmq_ds4* __restrict__ x_ds4,
+    const uint8_t* __restrict__ x_ds4,
     const int64_t* __restrict__ expert_start,
     const uint8_t* __restrict__ qweight,
     uint16_t* __restrict__ out,
@@ -89,6 +121,7 @@ void q5_1_mmq_ds4_selected_prefill_kernel(
     int64_t in_features,
     int64_t out_features,
     int planes) {
+  constexpr int x_block_bytes = F32_SCALES ? DS4_F32_BLOCK_BYTES : DS4_BLOCK_BYTES;
   const int64_t out_col = static_cast<int64_t>(blockIdx.x) * 128 + threadIdx.x;
   if (out_col >= out_features) return;
   // Ceil: K need not be a multiple of 128 (the down projection is K=704,
@@ -114,6 +147,16 @@ void q5_1_mmq_ds4_selected_prefill_kernel(
 #pragma unroll
       for (int r = 0; r < ROWS_PER_PASS; ++r) acc[r] = 0.0f;
       for (int64_t kb = 0; kb < ds4_blocks; ++kb) {
+        // Q5_1 blocks of real weight data in this 128-wide group. It is 4 for
+        // every group but a trailing partial one, and the row's byte layout
+        // holds exactly (in_features/32) of them, so reading a fifth would run
+        // past the row. Skipping is exact: the dropped sub-blocks multiply
+        // activation elements that do not exist, and the pack writes zeros
+        // there, so their contribution is zero either way. `full_group` keeps
+        // the guard off the common path so the four-way unroll survives.
+        const bool full_group = (kb + 1) * Q8_1_MMQ_BLOCK <= in_features;
+        const int64_t sub_blocks =
+            (in_features - kb * Q8_1_MMQ_BLOCK + QK5_1 - 1) / QK5_1;
         const uint8_t* w_base =
             weight_row + kb * (Q8_1_MMQ_BLOCK / QK5_1) * Q5_1_BLOCK_BYTES;
         // A partial final DS4 block has fewer than 4 Q5_1 blocks left in the
@@ -132,33 +175,50 @@ void q5_1_mmq_ds4_selected_prefill_kernel(
               fp16_bits_to_float(*reinterpret_cast<const uint16_t*>(w_sub + 2));
           const uint32_t qh =
               *reinterpret_cast<const uint32_t*>(w_sub + 4);
+          // The weight side of the dot product is the same for every row in the
+          // pass and every plane, so it is unpacked once here instead of per
+          // row. The row loop is not unrolled -- rcount is dynamic -- so inside
+          // it this costs four qword loads, eight nibble planes and eight
+          // high-bit expansions for every row of every sub-block.
+          uint32_t w_lo[4];
+          uint32_t w_hi[4];
+          uint32_t w_hlo[4];
+          uint32_t w_hhi[4];
+#pragma unroll
+          for (int w = 0; w < 4; ++w) {
+            const uint32_t bytes4 = load_qs_bytes(w_sub + 8, w);
+            w_lo[w] = lo_plane_nibbles(bytes4);
+            w_hi[w] = lo_plane_nibbles(bytes4 >> 4);
+            w_hlo[w] = expand_hi_bits(qh >> (4 * w));
+            w_hhi[w] = expand_hi_bits(qh >> (16 + 4 * w));
+          }
           for (int plane = 0; plane < planes; ++plane) {
-          const block_q8_1_mmq_ds4* x_base =
-              x_ds4 + static_cast<int64_t>(plane) * compact_rows * ds4_blocks +
-              row_base * ds4_blocks + kb;
+          const uint8_t* x_base = x_ds4 +
+              (static_cast<int64_t>(plane) * compact_rows * ds4_blocks +
+               row_base * ds4_blocks + kb) * x_block_bytes;
           for (int r = 0; r < rcount; ++r) {
-            const block_q8_1_mmq_ds4* x_block = x_base + r * ds4_blocks;
-            const int32_t* xw =
-                reinterpret_cast<const int32_t*>(x_block->qs + sub * 32);
+            const uint8_t* x_block = x_base + r * ds4_blocks * x_block_bytes;
+            // The eight activation quants come in two 16-byte loads rather than
+            // eight dword loads. The block header is 16 bytes (32 in the fp32
+            // twin) and the block stride is a multiple of 16, so this address is
+            // 16-byte aligned by construction.
+            const uint8_t* xq =
+                x_block + (F32_SCALES ? 32 : 16) + sub * 32;
+            const uint4 xa = *reinterpret_cast<const uint4*>(xq);
+            const uint4 xb = *reinterpret_cast<const uint4*>(xq + 16);
+            const uint32_t x_lo[4] = {xa.x, xa.y, xa.z, xa.w};
+            const uint32_t x_hi[4] = {xb.x, xb.y, xb.z, xb.w};
             int dot_q = 0;
             int dot_h = 0;
 #pragma unroll
             for (int w = 0; w < 4; ++w) {
-              const uint32_t bytes4 = load_qs_bytes(w_sub + 8, w);
-              const uint32_t lo = lo_plane_nibbles(bytes4);
-              const uint32_t hi = lo_plane_nibbles(bytes4 >> 4);
-              const uint32_t x_lo = static_cast<uint32_t>(xw[w]);
-              const uint32_t x_hi = static_cast<uint32_t>(xw[4 + w]);
-              dot_q = dot4_u8_s8(lo, x_lo, dot_q);
-              dot_q = dot4_u8_s8(hi, x_hi, dot_q);
-              dot_h = dot4_u8_s8(expand_hi_bits(qh >> (4 * w)), x_lo, dot_h);
-              dot_h = dot4_u8_s8(
-                  expand_hi_bits(qh >> (16 + 4 * w)), x_hi, dot_h);
+              dot_q = dot4_u8_s8(w_lo[w], x_lo[w], dot_q);
+              dot_q = dot4_u8_s8(w_hi[w], x_hi[w], dot_q);
+              dot_h = dot4_u8_s8(w_hlo[w], x_lo[w], dot_h);
+              dot_h = dot4_u8_s8(w_hhi[w], x_hi[w], dot_h);
             }
-            const float xd =
-                fp16_bits_to_float(x_block->ds4[2 * sub]);
-            const float xs =
-                fp16_bits_to_float(x_block->ds4[2 * sub + 1]);
+            const float xd = x_block_scale<F32_SCALES>(x_block, 2 * sub);
+            const float xs = x_block_scale<F32_SCALES>(x_block, 2 * sub + 1);
             acc[r] += d * xd * static_cast<float>(dot_q);
             acc[r] += 16.0f * d * xd * static_cast<float>(dot_h);
             // Only plane 0 carries the full block sum; residual planes hold
@@ -350,9 +410,40 @@ extern "C" int hipengine_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
   const unsigned int expert_grid = num_experts > 512u ? 512u
       : static_cast<unsigned int>(num_experts);
   hipLaunchKernelGGL(
-      (q5_1_mmq_ds4_selected_prefill_kernel),
+      (q5_1_mmq_ds4_selected_prefill_kernel<false>),
       dim3(out_tiles, expert_grid), dim3(128), 0, stream,
-      static_cast<const block_q8_1_mmq_ds4*>(x_ds4), expert_start, qweight,
+      static_cast<const uint8_t*>(x_ds4), expert_start, qweight,
+      out, compact_rows, num_experts, in_features, out_features,
+      static_cast<int>(planes));
+  return static_cast<int>(hipGetLastError());
+}
+
+// The fp32-activation-scale twin, for a post-SiLU input; see DS4_BLOCK_BYTES.
+extern "C" int hipengine_q5_1_mmq_ds4_f32_selected_prefill_bf16_bf16_out(
+    const void* x_ds4,
+    const int64_t* expert_start,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t planes,
+    hipStream_t stream) {
+  if (x_ds4 == nullptr || expert_start == nullptr || qweight == nullptr ||
+      out == nullptr || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % QK5_1) != 0 ||
+      out_features <= 0 || planes <= 0 || planes > 3) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int out_tiles =
+      static_cast<unsigned int>((out_features + 127) / 128);
+  const unsigned int expert_grid = num_experts > 512u ? 512u
+      : static_cast<unsigned int>(num_experts);
+  hipLaunchKernelGGL(
+      (q5_1_mmq_ds4_selected_prefill_kernel<true>),
+      dim3(out_tiles, expert_grid), dim3(128), 0, stream,
+      static_cast<const uint8_t*>(x_ds4), expert_start, qweight,
       out, compact_rows, num_experts, in_features, out_features,
       static_cast<int>(planes));
   return static_cast<int>(hipGetLastError());

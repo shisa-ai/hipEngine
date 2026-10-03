@@ -1,0 +1,29 @@
+{
+  "kind": "gemma4_gfx1151_selected_pack8_route_ab",
+  "performance_claim": true,
+  "recorded": "2026-09-28, gfx1151 Strix Halo (AMD Radeon 8060S), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "settles": "which selected-expert GEMV variant the gemma4 decode route resolves",
+  "why": "The gemma4 expert route resolved `linear/<quant>/selected_gemv_bf16_bf16_out`, one output column per block, for every decode step. The same quant families also register `selected_pack8_gemv_bf16_bf16_out`, which computes eight output columns per block from one x read and one block reduction. The two are bit-exact siblings: the k walk (`k = tid; k += blockDim.x`), the per-element dequant and the reduction tree (shuffle offsets 16..1, per-warp partial published by lane 0, sequential sum over warps) are properties of an output, not of the block, and the pack8 kernel reproduces all three per output. This run measures whether preferring it changes decode rate.",
+  "command": "python scripts/gemma4_campaign_bench.py --prompt 8 --output 64 --samples 2 --warmup 1 --expect-gpu 8060S, with the route's pack8 slot pointed at the pack8 variant (`pack8` arm) or at the single-output variant (`single` arm, reproducing the pre-change route)",
+  "condition": "batch-1 decode at 8 prompt tokens, 63 decode forwards per arm, both arms in one process image with the same load, warmup and token ids",
+  "measurements": [
+    {
+      "arm": "single-output selected GEMV (pre-change route)",
+      "decode_s": [2.8344, 2.8119],
+      "decode_tps": 22.32
+    },
+    {
+      "arm": "pack8 selected GEMV",
+      "decode_s": [2.7630, 2.7635],
+      "decode_tps": 22.80
+    }
+  ],
+  "finding": "The pack8 selected route decodes at 22.80 tok/s against 22.32 tok/s for the single-output route, +2.2% on a 63-forward decode. Both arms emitted the same 64 token ids (563, 236764, 532, ... repeated), so the change is bit-exact end to end and not only at the kernel boundary.",
+  "consequence": "The route prefers `selected_pack8_gemv_bf16_bf16_out` wherever the quant registers it and out_features is a multiple of 8, and falls back to the single-output variant otherwise. No numerical gate applies: this is the same arithmetic in a different block shape, and the identical token stream is the end-to-end confirmation.",
+  "caveats": [
+    "The gain is +2.2%, not the 1.41x the isolated Q4_K gate/up benchmark suggested. At rows=8 the x row is 5.6 KB and 1408 output blocks read it, so it is L2-resident after the first few; the pack8 kernel's saving is the amortized block reduction, not x traffic.",
+    "Only Q4_K, Q5_K and Q6_K and Q8_0 register this sibling. Q5_1, which carries this artifact's expert down projection, does not: its compact pack8 kernel is registered on `moe_linear` and takes a compact expert-start array rather than a per-row selected index, so it needs the compact MoE scheduler chain to be reachable.",
+    "The expert arms of the decode ablation measure 31.5% of a 44.73 ms token, so the weight path this route touches is a minority of the step."
+  ],
+  "next": "Attribute the 34% of the decode step that no GEMV arm accounts for; that is larger than either the dense (30.2%) or the expert (31.5%) weight path."
+}

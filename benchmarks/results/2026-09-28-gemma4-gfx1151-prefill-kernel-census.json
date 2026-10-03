@@ -1,0 +1,77 @@
+{
+ "kind": "gemma4_gfx1151_prefill_kernel_census",
+ "performance_claim": "current default, 2048-token prefill, 5.242 s = 390.7 tok/s; kernel time accounted to 98.9 percent",
+ "recorded": "2026-09-28, gfx1151 Strix Halo (AMD Radeon 8060S, 126976 MiB), Gemma 4 26B-A4B, UD-Q4_K_XL, gfx1151 build",
+ "why": "Two attributions of this prefill existed and both had a hole. The route ablation skips a route and reads the delta, which cannot price anything no arm intercepts, and left about 30 percent of the step unnamed. The expert-down artifact then landed the Q5_1 MMQ route and moved every share, so the ablation's own numbers were stale. This census times every kernel the decoder layer launches, in place, and closes the accounting to 98.9 percent -- so the next unit starts from a named kernel instead of a remainder.",
+ "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gemma4_prefill_kernel_census.py --prompt 2048 --repeats 3 --json-out /tmp/gemma4_kernel_census_2048.json",
+ "method": "Patch every kernel wrapper the decoder layer calls -- in hipengine/kernels/hip_gfx1100/gemma4/gemma4_layer.py, the expert leaves in gemma4_experts.py, launch_gguf_embedding, and both module-scope references to launch_gguf_linear -- and record a HIP event pair on the compute stream around each real call. Events are recorded per call and synchronised once at the end, so the pipeline is not drained between calls. The expert block is timed whole and through its own leaves, so the difference is its gather/compaction/scatter glue rather than an unmeasured remainder.",
+ "baseline": {
+  "prefill_s": 5.242,
+  "prefill_tps": 390.7,
+  "note": "the current default path, with the Q5_1 DS4 MMQ route on the expert down projection already landed"
+ },
+ "route_shares": {
+  "prefill_attention": "1993.9 ms, 38.0%",
+  "routed_experts": "1980.2 ms, 37.8%",
+  "dense_projections_and_lm_head": "1077.2 ms, 20.6%",
+  "router": "65.5 ms, 1.2%",
+  "norms_rotary_residual_gelu": "70.0 ms, 1.3%",
+  "accounted_total": "5186.8 ms, 98.9%",
+  "host_and_unmeasured": "55.2 ms, 1.1%"
+ },
+ "expert_block_breakdown": {
+  "method": "the same census, reading the expert leaves nested inside gemma4_experts_forward_bf16 (1980.2 ms)",
+  "rows": [
+   {"route": "gate_up_mmq", "quant": "gguf_q4_k", "layers": "29 of 30", "calls": 116, "total_ms": 626.81, "per_call_ms": 5.404},
+   {"route": "down_mmq", "quant": "gguf_q5_1", "layers": "29 of 30", "calls": 116, "total_ms": 619.11, "per_call_ms": 5.337},
+   {"route": "rows -> grouped_row4", "quant": "gguf_q5_k", "layers": "layer 29 only", "calls": 4, "total_ms": 436.80, "per_call_ms": 109.199},
+   {"route": "rows -> grouped_prefill", "quant": "gguf_q8_0", "layers": "layer 29 only", "calls": 4, "total_ms": 169.77, "per_call_ms": 42.443},
+   {"route": "glue (block minus leaves)", "quant": null, "calls": null, "total_ms": 115.13, "per_call_ms": null}
+  ],
+  "note": "calls are 4 per layer because the prefill runs as 4 blocks of 512 rows (max_block 512), so 30 layers x 4 blocks = 120 block-layers. The two MMQ rows are 116 of 120 because layer 29 declines both.",
+  "declines_measured": [
+   "gemma4_project_experts_gate_up_mmq on gguf_q5_k: returns False in 0.006 ms, 4 calls",
+   "gemma4_project_experts_down_mmq on gguf_q8_0: returns False in 0.006 ms, 4 calls",
+   "gemma4_project_experts_grouped_prefill on gguf_q5_k: returns False in 0.006 ms, 4 calls"
+  ]
+ },
+ "finding": {
+  "statement": "One layer of thirty costs 11.7 percent of the prefill. Layer 29 is quantized differently from its 29 siblings and falls off both fast expert routes, onto fp32 grouped fallbacks that are 14x slower per layer-block.",
+  "artifact_geometry": {
+   "blk_29_ffn_gate_up_exps": "gguf_q5_k; the other 29 layers are gguf_q4_k",
+   "blk_29_ffn_down_exps": "gguf_q8_0; the other 29 layers are gguf_q5_1",
+   "measured": "116 of 120 gate_up calls take the Q4_K MMQ at 5.404 ms; 116 of 120 down calls take the Q5_1 MMQ at 5.337 ms; the remaining 4 of each are layer 29"
+  },
+  "the_cost": {
+   "siblings_per_layer_block_ms": 10.74,
+   "layer_29_per_layer_block_ms": 151.64,
+   "ratio": "14.1x",
+   "total_ms": 606.57,
+   "share": "11.7 percent of the 5.242 s prefill"
+  },
+  "why_it_falls_off": {
+   "gate_up": "gemma4_project_experts_gate_up_mmq routes gguf_q5_k to _gemma4_project_experts_gate_up_wmma_iu8, which declines on `intermediate % 128`. Gemma 4 26B-A4B's expert intermediate is 704, and 704 % 128 = 64.",
+   "the_128_is_real_not_a_soft_guard": "the kernel walks columns as blockIdx.x * 128 (gguf_q5_k_q8_1_selected_prefill.hip line 194) and its host launcher rejects a half whose out_features is not a multiple of 128 (line 601). The fused gate|up block is 1408 columns, which is 11 x 128, but the gate/up seam sits at column 704 and 704 / 128 = 5.5, so a 128-wide block straddles the seam. This is the same partial-trailing-block shape the Q5_1 down MMQ route already handles on its K axis.",
+   "down": "gemma4_project_experts_down_mmq accepts gguf_q5_1 only, so layer 29's gguf_q8_0 down has no MMQ path and takes the fp32 grouped_prefill route."
+  },
+  "fallback_is_slow_by_construction": "the fp32 grouped row4 route is barrier-bound rather than bandwidth- or compute-bound. Layer 29's gate/up is 32.5 GFLOP in 109.2 ms, or 0.30 TFLOP/s, against 6.0 TFLOP/s for the Q4_K MMQ at the same shape. Its weight bytes are 271 MB read in 109.2 ms, or 2.5 GB/s. Neither the bytes nor the FLOPs explain the time, which is the same reading the expert-down artifact recorded for the staged grouped kernel at the down projection."
+ },
+ "corrections": {
+  "the_ablation_no_experts_arm_is_broken": "scripts/gemma4_prefill_route_ablation.py reports no_experts saving 0.579 s (11.1 percent). Its arm patches gemma4_project_experts_rows and gemma4_project_experts_selected, but the default path reaches gemma4_project_experts_gate_up_mmq and gemma4_project_experts_down_mmq directly, so the arm only skips the fallback. The measured expert share is 1980.2 ms, 37.8 percent -- 3.4x what that arm reports. The arm's number was read into the prefill-attention length-scaling artifact and into this unit's starting hypothesis; both are corrected here.",
+  "the_attention_bench_all_layers_total_double_counted": "scripts/gemma4_attention_prefill_bench.py summed all three of its cases into one 'all 30 layers' total, but its two sliding-window rows are the same 25 layers under two window settings. At 2048 it printed 4111.6 ms where the model's 30 attention layers are 1530.0 + 650.8 = 2180.8 ms. The script now sums only the rows the model actually has and labels the window=0 row as a probe.",
+  "the_isolated_bench_is_not_1_79x_slower": "The prefill-attention length-scaling artifact's first not_established entry reads the double-counted 4111.6 ms as an isolated bench that is 1.79x slower than the 2295 ms in-situ measurement. With the double count removed the isolated total is 2180.8 ms, which is 1.05x the in-situ figure and consistent with it. The absolute milliseconds do transfer; the entry is superseded."
+ },
+ "named_next_step": {
+  "unit": "give layer 29 a fast expert route on both projections",
+  "gate_up_fix": "teach gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out to tile each half of the fused gate|up block separately, so the last block of a half is 64 columns wide instead of straddling the seam at 704. The kernel's own argument guard already accepts 16-multiples, so the work is the grid and the partial column block, not a new arithmetic path.",
+  "down_fix": "gguf_q8_0_mmq_prefill.hip already exists in this tree; the missing piece is the selected/grouped form the expert down needs, or an extension of gemma4_project_experts_down_mmq to gguf_q8_0.",
+  "expected": "606.6 ms to about 21 ms if layer 29 reaches its siblings' rate, taking the 2048-token prefill from 5.242 s to about 4.66 s, or 390.7 to about 440 tok/s. That is an estimate from the siblings' measured per-layer-block cost at the same shape, not a measured claim.",
+  "against_the_target": "llama.cpp pp2048 on this host is 1067.14 tok/s (1.919 s), so this closes about 22 percent of the remaining 2.73x gap on its own."
+ },
+ "caveats": [
+  "The census times kernels by patching Python wrappers. A launch reached through a reference captured before the patch is missed, which is exactly how the lm head was missed by the first revision of the dense probe: hipengine/runtime/gemma4.py imports launch_gguf_linear at module scope, so the funnel has two references and both are patched here.",
+  "HIP event elapsed time measures wall time between two records on a stream, so it includes any gap where the host has not yet submitted the next kernel. The accounting closing at 98.9 percent of the wall time is the evidence that those gaps are small here; the per-kernel milliseconds are upper bounds on GPU work, not lower bounds.",
+  "The expert block's 115.13 ms of glue is a difference of two measurements, so it carries both their errors. It is reported for completeness, not as a target.",
+  "Layer 29's 14.1x is measured on this artifact. A different quantization of the same model that quantizes every layer the same way would not have it, so this is a property of UD-Q4_K_XL's layer assignment as much as of the kernels."
+ ]
+}

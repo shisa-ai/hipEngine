@@ -16,7 +16,9 @@ import math
 import pytest
 
 from scripts.gemma4_campaign_bench import (
+    PROBE_CORPUS_SEED,
     exact_prompt_ids,
+    probe_corpus,
     memory_row,
     run_instrumented,
     summarize,
@@ -181,6 +183,30 @@ def test_summarize_rejects_mixed_shapes():
 def _stdev(values):
     mean = sum(values) / len(values)
     return math.sqrt(sum((v - mean) ** 2 for v in values) / (len(values) - 1))
+
+
+def test_probe_corpus_is_deterministic_and_never_repeats():
+    first = probe_corpus(24)
+    assert first == probe_corpus(24)                 # same seed, same chain
+    assert first != probe_corpus(24, seed=PROBE_CORPUS_SEED + 1)
+    assert len(set(first)) == len(first)             # no fragment repeats
+
+
+def test_probe_corpus_mixes_predictable_and_unpredictable_material():
+    fragments = probe_corpus(12)
+    assert len({fragment.split()[0] for fragment in fragments}) > 1
+    # Every fragment carries its own index, so no two are near-duplicates.
+    assert all(f"{index:04d}" in fragment for index, fragment in enumerate(fragments))
+
+
+def test_exact_prompt_ids_refuses_to_cycle_a_single_pass_chain():
+    def tokenize(text):
+        return [int(chunk) for chunk in text.split()]
+
+    corpus = ("1 2", "3 4")
+    assert exact_prompt_ids(tokenize, 3, corpus=corpus) == [1, 2, 3]
+    with pytest.raises(ValueError, match="must not cycle"):
+        exact_prompt_ids(tokenize, 5, corpus=corpus, require_single_pass=True)
 
 
 def test_exact_prompt_ids_hits_the_target_exactly():

@@ -22,15 +22,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 
 import hipengine
 from hipengine.llm import SamplingParams
 
-ARTIFACT = Path(
-    "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
-)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.gemma4_campaign_bench import resolve_artifact  # noqa: E402
+
+ARTIFACT = resolve_artifact()
 OUT = Path("/tmp/gemma4_real_generate.jsonl")
 
 # llama.cpp printed this exact sequence for the prompt below.

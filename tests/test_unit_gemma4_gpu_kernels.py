@@ -8,6 +8,8 @@ guarded so a no-ROCm runner skips them rather than failing release validation.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -1532,6 +1534,7 @@ def test_expert_scratch_rejects_nonpositive_shapes() -> None:
 # --------------------------------------------------------------------------
 
 
+@_needs_hip
 def test_router_topk_matches_the_reference():
     """The assembled router reproduces gemma4_router_topk end to end."""
 
@@ -1635,6 +1638,7 @@ def test_router_topk_matches_the_reference():
     np.testing.assert_allclose(got_weights, want_weights, atol=4 * perturbation, rtol=0)
 
 
+@_needs_hip
 def test_router_topk_selection_is_ordered_by_descending_logit():
     """Selected experts must be ordered best-first, not by expert index."""
 
@@ -1759,6 +1763,203 @@ def _reference_attention(query, key, value, keep_mask, *, num_heads, num_kv_head
             weights = weights / weights.sum()
             context[token, head] = weights @ value[:, kv_head, :]
     return context
+
+
+def _attn_reduction_tree(values, width):
+    """The prefill kernel's reduction: ``p[i] += p[i + stride]``, halving.
+
+    Written as explicit slices so numpy cannot reassociate the adds: each step
+    is one fp32 elementwise addition of the same pairs the kernel sums.
+    """
+
+    partial = np.asarray(values, dtype=np.float32)
+    stride = width // 2
+    while stride >= 1:
+        partial = (partial[:stride] + partial[stride : 2 * stride]).astype(np.float32)
+        stride //= 2
+    return float(partial[0])
+
+
+def _prefill_attention_association(query, key, value, keep_mask, *, num_heads, num_kv_heads,
+                                   head_dim, threads, scale=1.0):
+    """Masked GQA attention in the prefill kernel's own association order.
+
+    The kernel is one block of ``threads`` threads per (token, head):
+
+    * logit[j] is ``tree_sum_d(q[d] * k[j][d]) * scale``, a fixed pairwise tree
+      over ``threads`` partials, where thread *t* holds the partial over
+      ``d = t, t + threads, ...``;
+    * the maximum is exact, so any order gives the same value;
+    * the denominator is a ``threads``-wide tree over per-thread partials
+      ``j = t, t + threads, ...`` of ``exp(logit[j] - max)``;
+    * the numerator is a *serial* sum over keys in increasing order, one thread
+      per output dimension.
+
+    ``head_dim == threads`` is the case Gemma 4 uses, where each thread's
+    partial is a single product.
+    """
+
+    tokens, _, _ = query.shape
+    groups = num_heads // num_kv_heads
+    context = np.zeros_like(query, dtype=np.float32)
+    for token in range(tokens):
+        for head in range(num_heads):
+            kv_head = head // groups
+            keep = keep_mask[token].astype(bool)
+            logits = np.full((tokens,), -np.inf, dtype=np.float32)
+            for j in range(tokens):
+                if not keep[j]:
+                    continue
+                products = np.zeros((threads,), dtype=np.float32)
+                for d in range(head_dim):
+                    partial = np.float32(
+                        np.float32(query[token, head, d]) * np.float32(key[j, kv_head, d])
+                    )
+                    products[d % threads] = np.float32(
+                        products[d % threads] + partial
+                    )
+                logits[j] = np.float32(_attn_reduction_tree(products, threads) * scale)
+            top = logits.max()
+            weights = np.exp(logits - top).astype(np.float32)
+            denominator = _attn_reduction_tree(
+                np.array(
+                    [
+                        np.sum(weights[t::threads].astype(np.float32), dtype=np.float32)
+                        for t in range(threads)
+                    ],
+                    dtype=np.float32,
+                ),
+                threads,
+            )
+            for d in range(head_dim):
+                acc = np.float32(0.0)
+                for j in range(tokens):
+                    if weights[j] == 0.0:
+                        continue
+                    acc = np.float32(acc + np.float32(weights[j] * value[j, kv_head, d]))
+                context[token, head, d] = np.float32(acc / np.float32(denominator))
+    return context
+
+
+_PREFILL_HEAD_DIM_256_CASE = dict(tokens=12, num_heads=4, num_kv_heads=2, head_dim=256)
+
+
+def _prefill_head_dim_256_inputs():
+    """The recorded case: causal, with one masked-out recent key per row."""
+
+    case = _PREFILL_HEAD_DIM_256_CASE
+    rng = np.random.default_rng(913_204)
+    shape_q = (case["tokens"], case["num_heads"], case["head_dim"])
+    shape_kv = (case["tokens"], case["num_kv_heads"], case["head_dim"])
+    query = (rng.standard_normal(shape_q) * 0.5).astype(np.float32)
+    key = (rng.standard_normal(shape_kv) * 0.5).astype(np.float32)
+    value = (rng.standard_normal(shape_kv) * 0.5).astype(np.float32)
+    keep = np.tril(np.ones((case["tokens"], case["tokens"]), dtype=np.uint8))
+    for row in range(2, case["tokens"], 3):
+        keep[row, row] = 0
+    return query, key, value, keep
+
+
+def _run_prefill_head_dim_256(dtype):
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_bf16,
+        gemma4_attention_prefill_f32,
+    )
+
+    case = _PREFILL_HEAD_DIM_256_CASE
+    query, key, value, keep = _prefill_head_dim_256_inputs()
+    if dtype == "bf16":
+        query, key, value = _to_bf16_bits(query), _to_bf16_bits(key), _to_bf16_bits(value)
+        storage, launch = np.uint16, gemma4_attention_prefill_bf16
+    else:
+        storage, launch = np.float32, gemma4_attention_prefill_f32
+
+    device = _Device()
+    try:
+        out_ptr = device.out(
+            (case["tokens"], case["num_heads"], case["head_dim"]), storage
+        )
+        launch(
+            device.put(query),
+            device.put(key),
+            device.put(value),
+            device.put(keep),
+            out_ptr,
+            tokens=case["tokens"],
+            num_heads=case["num_heads"],
+            num_kv_heads=case["num_kv_heads"],
+            head_dim=case["head_dim"],
+            scale=1.0,
+        )
+        return device.get(
+            out_ptr, (case["tokens"], case["num_heads"], case["head_dim"]), storage
+        )
+    finally:
+        device.close()
+
+
+@pytest.mark.parametrize("dtype", ["f32", "bf16"])
+@_needs_hip
+def test_attention_prefill_head_dim_256_is_bit_identical_to_recorded_outputs(dtype):
+    """head_dim=256 prefill keeps every output bit it had before the rewrite.
+
+    The reduction for this shape was rewritten to remove a block-wide barrier
+    tree per key. That rewrite is only allowed to change *how* the tree is
+    computed, never which numbers it sums or in what order, so the outputs are
+    pinned bit-for-bit against tensors captured from the kernel that already
+    implemented this association. A numpy reference cannot stand in for this:
+    the device ``expf`` differs from numpy's ``exp`` in the last bit.
+    """
+
+    expected = np.load(
+        Path(__file__).parent
+        / "fixtures"
+        / "gemma4"
+        / f"attention_prefill_head_dim_256_{dtype}.npy"
+    )
+    np.testing.assert_array_equal(_run_prefill_head_dim_256(dtype), expected)
+
+
+@pytest.mark.parametrize("dtype", ["f32", "bf16"])
+@_needs_hip
+def test_attention_prefill_head_dim_256_follows_its_reduction_association(dtype):
+    """The head_dim=256 prefill path sums the pairs its association names.
+
+    This is the readable form of the same contract: the logits are a fixed
+    pairwise tree over one product per thread, the maximum is exact, the
+    denominator is a tree over per-thread key partials, and the numerator is a
+    serial sum over keys in increasing order. The tolerance is one fp32 ulp of
+    the device's ``expf``, so this catches a wrong structure rather than a
+    different last bit.
+    """
+
+    case = _PREFILL_HEAD_DIM_256_CASE
+    query, key, value, keep = _prefill_head_dim_256_inputs()
+    got = _run_prefill_head_dim_256(dtype)
+    if dtype == "bf16":
+        # The kernel reads bf16 inputs, so the reference has to see the same
+        # rounded values, not the f32 originals.
+        query, key, value = (
+            _from_bf16_bits(_to_bf16_bits(query)),
+            _from_bf16_bits(_to_bf16_bits(key)),
+            _from_bf16_bits(_to_bf16_bits(value)),
+        )
+        got = _from_bf16_bits(got)
+    want = _prefill_attention_association(
+        query,
+        key,
+        value,
+        keep,
+        num_heads=case["num_heads"],
+        num_kv_heads=case["num_kv_heads"],
+        head_dim=case["head_dim"],
+        threads=case["head_dim"],
+    )
+    if dtype == "bf16":
+        # The kernel stores bf16, so the reference rounds the same way before
+        # the comparison; the tolerance below is one fp32 ulp of expf.
+        want = _from_bf16_bits(_to_bf16_bits(want))
+    np.testing.assert_allclose(got, want, atol=5e-7, rtol=0.0)
 
 
 @_needs_hip
@@ -1902,7 +2103,9 @@ def test_attention_prefill_matches_the_reference_through_the_production_mask(sta
 
     num_heads, num_kv_heads, head_dim = 4, 2, 16
     keys = start + rows
-    keep = _keep_mask(geometry, start, rows)
+    # This raw-kernel composition uses a full cached range (the graph's
+    # frozen-origin ABI), so request its origin explicitly.
+    keep = _keep_mask(geometry, start, rows, key_begin=0)
     assert keep.shape == (rows, keys)
 
     rng = np.random.default_rng(20260929)
@@ -1996,7 +2199,9 @@ def test_windowed_attention_matches_the_reference_at_the_gate_shape(
         k_eq_v=False,
     )
 
-    keep = _keep_mask(geometry, start, rows)
+    # Exercise the frozen full-range mask; eager shortened ranges are covered
+    # by the runner and independent mask-origin tests.
+    keep = _keep_mask(geometry, start, rows, key_begin=0)
     assert keep.shape == (rows, keys)
     # Every query sees its own key (column start+i, not i -- the mask spans the
     # whole cached range), so no row is masked away entirely.
@@ -2101,6 +2306,7 @@ def test_attention_prefill_scale_is_not_assumed():
     np.testing.assert_allclose(got, want, atol=1e-5, rtol=1e-5)
 
 
+@_needs_hip
 def test_attention_prefill_bf16_tracks_the_f32_path():
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
         gemma4_attention_prefill_bf16,
@@ -2348,6 +2554,7 @@ def _run_layer_reference(weights, config, attn_geometry, hidden, tokens):
 
 
 @pytest.mark.parametrize("k_eq_v", [False, True])
+@_needs_hip
 def test_layer_forward_matches_the_reference(k_eq_v):
     """The whole decoder layer reproduces gemma4_decoder_layer_forward."""
 
@@ -2482,6 +2689,7 @@ def test_layer_forward_routes_head_dim_512_to_the_tiled_prefill_kernel():
     assert gap < 0.02, f"tiled and exact routes disagree by {gap:.5g}"
 
 
+@_needs_hip
 def test_layer_forward_applies_the_layer_scalar():
     """The trained per-layer output scale must actually be applied.
 
@@ -2515,6 +2723,7 @@ def test_layer_forward_applies_the_layer_scalar():
     )
 
 
+@_needs_hip
 def test_attention_prefill_serves_a_decode_step_over_a_kv_cache():
     """`keys` may exceed `tokens`: one query row attending over a KV cache.
 
@@ -2613,6 +2822,7 @@ def test_expert_offset_fallback_waits_for_its_producer(monkeypatch, stream):
 
 
 @pytest.mark.parametrize("seed", [777, 778, 991])
+@_needs_hip
 def test_layer_incremental_decode_matches_a_dense_prefill(seed):
     """Decoding one token at a time through a KV cache matches a dense prefill.
 

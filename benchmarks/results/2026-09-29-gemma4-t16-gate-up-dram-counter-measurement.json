@@ -1,0 +1,313 @@
+{
+ "kind": "gemma4_t16_gate_up_dram_counter_measurement",
+ "performance_claim": false,
+ "verdict": "diagnostic - no production change; the leaf is not DRAM-bandwidth-bound",
+ "recorded": "2026-09-29, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 126976 MiB), ROCm 7.15.26333 via ~/miniforge3 site-packages",
+ "why": "The Gemma 4 expert gate/up Q4T16 WMMA prefill leaf is the single largest term in a 4096-token prefill (1163.64 ms of a 4.260 s step, worklog entry 20260928T232241). That entry priced it at 65.4 GB/s by dividing unique bytes by wall time and read the gap to a ~221 GB/s read roof as bandwidth headroom worth about 580 ms. This artifact is the measurement that decides whether that gap is real bandwidth headroom or an accounting artifact, using the GL2C DRAM read counter methodology validated by artifact 2026-09-28-gemma4-prefill-kernel-profile-and-q5-1-memory-pricing.json.",
+ "premise_checked": {
+  "prior_figure": "328 MB / 5.016 ms = 65.4 GB/s (worklog entry 20260928T232241)",
+  "numerator_terms": {
+   "tiles_once": 293404672,
+   "activations_once": 23068672,
+   "output_once": 11534336,
+   "total": 328007680,
+   "note": "Every term is correct as a UNIQUE-bytes count for one call at the model's geometry. compact_rows is tokens x top_k = 512 x 8 = 4096, so the activation footprint really is 4096 x 2816 x 2 and the output really is 4096 x 1408 x 2. This is not a rows error."
+  },
+  "what_the_denominator_omitted": "The kernel's re-read DEMAND structure, read off the kernel's own tile walk rather than guessed. The kernel walks `tm = 0..1` (two 16-column output tiles per 32-column block), and for each it walks all `blocks_per_row = 11` K blocks; `expert_id = tile_expert[row_tile]`, so one row tile belongs to exactly one expert and each expert's weight is read once per 16-row tile of that expert. At a UNIFORM 32 rows per expert that is 2 row tiles per expert, so the tile bytes are demanded 2x (586.8 MB, not 293.4 MB). The model's real expert load is not uniform: its 4096 compact rows over 128 experts pad to 300.1 row tiles per call, which is 2.345 tiles per expert, so the in-situ weight demand is 687.9 MB. The activation side is worse: a block reads its 16 rows' full K row once per 16-column tile it owns, and it owns two, so each block demands 2 x 16 x 2816 x 2 = 180,224 B of activation. 11,264 blocks demand 2,030.0 MB (88.0x the 23.1 MB unique footprint) at a uniform 32 rows per expert, and the in-situ 13,204 blocks demand 2,379.9 MB (103.2x). And the 11.5 MB output term was a WRITE counted into a READ rate.",
+  "measured_at_that_geometry": "400.4 MB of DRAM reads and 45.2 MB of DRAM writes per call. On the prior entry's own 5.016 ms denominator that is 79.8 GB/s rather than 65.4, i.e. 1.22x higher; on the fixture's own median duration of 5.304 ms it is 75.5 GB/s.",
+  "reading": "The denominator is a traffic-MODEL error, not a row-count error. Correcting it moves the figure up 1.22x, so the apparent gap to the roof grows rather than shrinks. The premise that the leaf runs far below the roof survives; the premise that the gap is recoverable bandwidth does not."
+ },
+ "method": {
+  "counter": "rocprofv3 --pmc GL2C_EA_RDREQ_DRAM_sum GL2C_EA_WRREQ_DRAM_sum --kernel-include-regex <kernel> --output-format csv; 128 B per request",
+  "caveat": "GL2C sits ABOVE the MALL, so every figure here is an UPPER BOUND on true DRAM reads. Demonstrated rather than assumed: a 16 MB MALL-resident buffer still reports its full 16.78 MB as DRAM requests while running at 600 GB/s, above the 256 GB/s DRAM peak. The bias makes the leaf look MORE bandwidth-bound than it is, so the negative verdict is conservative.",
+  "driver": "scripts/gemma4_t16_gate_up_dram_probe.py plus scripts/gemma4_t16_gate_up_dram_probe.hip (the cold-stream control), both added by this unit",
+  "in_situ_driver": "scripts/gemma4_prefill_kernel_census.py --prompt 4096 --repeats 1 --warmup 1, which also supplies the HIP-event-pair duration for the same calls",
+  "profiled_process": "prebuilt .so outside the profiler with HIPENGINE_COMPILER_VERSION_FILE pinned, so no hipcc runs under rocprofv3"
+ },
+ "counter_validation": {
+  "case": "scripts/gemma4_t16_gate_up_dram_probe.py --mode stream, a contiguous int4 buffer read exactly once",
+  "rows": [
+   {
+    "buffer_mb": 32,
+    "expected_bytes": 33554432,
+    "measured_requests": 262145,
+    "measured_bytes": 33554560,
+    "error_pct": 0.00038
+   },
+   {
+    "buffer_mb": 128,
+    "expected_bytes": 134217728,
+    "measured_requests": 1048577,
+    "measured_bytes": 134217856,
+    "error_pct": 0.0001
+   },
+   {
+    "buffer_mb": 512,
+    "expected_bytes": 536870912,
+    "measured_requests": 4194305,
+    "measured_bytes": 536871040,
+    "error_pct": 2e-05
+   }
+  ],
+  "worst_error_pct": 0.00038,
+  "independent_counter_block": "GCEA_RDRAM_REQ_PER_CLIGRP_sum on the leaf at rows/expert 32 gives 15,741,141.5 requests; at the corroborating 25.6 B/request that is 402.97 MB against GL2C's 400.40 MB, a 0.64 percent agreement between two independent blocks."
+ },
+ "achievable_read_rate": {
+  "instrument": "the same stream kernel, same session, same counter",
+  "rows_gbps": {
+   "32_mb": 702.4,
+   "128_mb": 243.4,
+   "512_mb": 239.6
+  },
+  "adopted_roof_gbps": 239.6,
+  "note": "240 GB/s measured here exceeds the ~221 GB/s documented in docs/reference/ROOFLINE-gfx1151.md. The 32 MB point is MALL-assisted and is reported only to show that the counter cannot see through the MALL."
+ },
+ "leaf_standalone_rows_sweep": {
+  "fixture": "blk.0.ffn_gate_up_exps.weight read from the campaign artifact, repacked with the production repack_gguf_q4_k_tile16, production compact-selected metadata, and the production grid shape (44 column tiles x rows/16 row tiles) of 32-thread blocks",
+  "note": "the probe reproduces the in-situ per-call time: 5.006 ms best against the census's 5.016 ms",
+  "rows": [
+   {
+    "rows_per_expert": 16,
+    "blocks": 5632,
+    "dram_read_mb": 333.54,
+    "dram_write_mb": 22.55,
+    "ms": 2.793,
+    "us_per_block": 0.496,
+    "kb_read_per_block": 59.22,
+    "gbps_at_measured_reads": 119.4
+   },
+   {
+    "rows_per_expert": 32,
+    "blocks": 11264,
+    "dram_read_mb": 400.4,
+    "dram_write_mb": 45.23,
+    "ms": 5.304,
+    "us_per_block": 0.471,
+    "kb_read_per_block": 35.55,
+    "gbps_at_measured_reads": 75.5
+   },
+   {
+    "rows_per_expert": 48,
+    "blocks": 16896,
+    "dram_read_mb": 491.59,
+    "dram_write_mb": 68.63,
+    "ms": 7.969,
+    "us_per_block": 0.472,
+    "kb_read_per_block": 29.09,
+    "gbps_at_measured_reads": 61.7
+   },
+   {
+    "rows_per_expert": 64,
+    "blocks": 22528,
+    "dram_read_mb": 599.93,
+    "dram_write_mb": 91.5,
+    "ms": 10.568,
+    "us_per_block": 0.469,
+    "kb_read_per_block": 26.63,
+    "gbps_at_measured_reads": 56.8
+   },
+   {
+    "rows_per_expert": 96,
+    "blocks": 33792,
+    "dram_read_mb": 818.91,
+    "dram_write_mb": 137.71,
+    "ms": 15.743,
+    "us_per_block": 0.466,
+    "kb_read_per_block": 24.23,
+    "gbps_at_measured_reads": 52.0
+   }
+  ]
+ },
+ "leaf_in_situ_4096": {
+  "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/g4_compiler_version.txt rocprofv3 --pmc GL2C_EA_RDREQ_DRAM_sum GL2C_EA_WRREQ_DRAM_sum --kernel-include-regex 'gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel' --output-format csv -d <dir> -- .venv/bin/python scripts/gemma4_prefill_kernel_census.py --prompt 4096 --repeats 1 --warmup 1",
+  "run1": {
+   "calls": 232,
+   "read_mb_per_call": 277.45,
+   "write_mb_per_call": 45.52,
+   "census_ms_per_call": 4.997,
+   "census_leaf_ms_total": 1159.3,
+   "prefill_wall_s": 4.353,
+   "prefill_tps": 941.1,
+   "counter_ms_per_call_mean": 4.842,
+   "counter_ms_per_call_median": 4.77,
+   "gbps_mean_duration": 57.3,
+   "gbps_median_duration": 58.2
+  },
+  "run2": {
+   "calls": 232,
+   "read_mb_per_call": 277.18,
+   "write_mb_per_call": 45.52,
+   "census_ms_per_call": 4.951,
+   "census_leaf_ms_total": 1148.55,
+   "prefill_wall_s": 4.322,
+   "prefill_tps": 947.7,
+   "counter_ms_per_call_mean": 4.792,
+   "counter_ms_per_call_median": 4.721,
+   "gbps_mean_duration": 57.8,
+   "gbps_median_duration": 58.7
+  },
+  "repeatability_pct": 0.1,
+  "row_tiles_per_call_mean": 300.1,
+  "row_tiles_uniform_32_would_be": 256,
+  "share_of_step_pct": 26.6,
+  "duration_statistic_note": "Two central statistics are carried because they answer different questions. The headline rate uses the MEAN duration, which is the aggregate rate over the run (total bytes / total time). The median is carried beside it and is what the standalone sweep's proportionality argument uses, because one dispatch in the rows/expert-32 run landed 40 percent high. They differ by 1.5 percent on run 1 (4.842 vs 4.77 ms) and 1.5 percent on run 2 (4.792 vs 4.721 ms), so no conclusion turns on the choice."
+ },
+ "irreducible_bytes": {
+  "tile_bytes_once": 293404672,
+  "activation_bytes_once": 23068672,
+  "irreducible_read_bytes": 316473344,
+  "measured_read_bytes": 277452482.0,
+  "measured_over_irreducible": 0.877,
+  "reading": "The leaf reads 277.3 MB from DRAM per call, where the 123,904 distinct tiles it must touch are 293.4 MB once and its weights plus activations once are 316.5 MB. The measured traffic is 0.945x the tile bytes alone and 0.877x the tiles-plus-activations floor. The direction is what matters for the verdict: there is no byte-level reuse left to capture, because the leaf is already not paying for all of its own weights. The 5.5 percent shortfall against the tile bytes is a real, reproducible disagreement between the measurement and the model and is NOT explained; see unexplained_gap.",
+  "demand_vs_unique": {
+   "uniform_fixture_32_rows_per_expert": {
+    "blocks": 11264,
+    "weight_demand_bytes": 586809344,
+    "activation_demand_bytes": 2030043136,
+    "total_demand_bytes": 2616852480,
+    "weight_multiple_of_unique": 2.0,
+    "activation_multiple_of_unique": 88.0,
+    "duration_ms_median": 5.304,
+    "gbps_of_demand": 493.4,
+    "measured_dram_read_bytes": 400397312,
+    "cache_served_fraction": 0.847
+   },
+   "in_situ_4096": {
+    "blocks": 13204,
+    "row_tiles": 300.1,
+    "weight_demand_bytes": 687890000,
+    "activation_demand_bytes": 2379877000,
+    "total_demand_bytes": 3067767000,
+    "weight_multiple_of_unique": 2.345,
+    "activation_multiple_of_unique": 103.2,
+    "duration_ms": 4.997,
+    "gbps_of_demand": 613.9,
+    "measured_dram_read_bytes": 277452482,
+    "cache_served_fraction": 0.91
+   },
+   "note": "The demand model is derived from the kernel's own grid and tile walk (see premise_checked.what_the_denominator_omitted), and it is what makes the measured traffic legible: 2,617-3,068 MB of demand against 277-400 MB of DRAM reads is a 85-91 percent cache-served fraction, which is consistent with the independently measured 87.4 percent L2 hit rate. The measured DRAM byte count is the load-bearing number; the demand model is context for it, and its 28 percent gap to the measured L2 request stream is recorded under not_measured."
+  }
+ },
+ "mechanism": {
+  "instrument": "rocprofv3 --pmc SQ_* GRBM_GUI_ACTIVE_sum on the standalone rows/expert-32 fixture",
+  "per_launch": {
+   "waves": 11264.0,
+   "wmma_wave_instructions": 3964928.0,
+   "sq_wave_cycles": 11555230760.125,
+   "grbm_gui_active_cycles": 9354022.875,
+   "mean_waves_in_flight": 1235.3,
+   "hardware_max_waves": 1280,
+   "wave_occupancy_pct": 96.5,
+   "sq_insts_valu": 513165312.0,
+   "sq_insts_dual_valu_wave32": 27934720.0,
+   "sq_insts_salu": 20556800.0,
+   "sq_insts_flat": 87408640.0,
+   "instructions_per_wave": 52663.0,
+   "instructions_per_wmma": 149.6,
+   "valu_per_wmma": 129.4,
+   "global_loads_per_wmma": 22.0,
+   "issue_slots_available": 748321830.0,
+   "issue_utilization_pct": 79.3
+  },
+  "register_and_lds": {
+   "vgpr": 56,
+   "sgpr": 128,
+   "lds_bytes": 0,
+   "scratch_bytes": 0,
+   "threads_per_block": 32
+  },
+  "static_disassembly": {
+   "tool": "hipcc -S --offload-arch=gfx1151 -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode",
+   "kernel_instructions": 6115,
+   "wmma_in_unrolled_body": 32,
+   "instructions_per_wmma": 191.1,
+   "valu_per_wmma": 137.2,
+   "global_per_wmma": 22.5,
+   "salu_per_wmma": 30.4,
+   "note": "static and dynamic agree: 137.2 vs 129.4 VALU and 22.5 vs 22.0 global loads per WMMA"
+  },
+  "l2_request_stream": {
+   "gl2c_hit_requests": 22961616.6,
+   "gl2c_miss_requests": 3317617.2,
+   "total_requests": 26279233.9,
+   "bytes_at_128B": 3363741936.0,
+   "hit_rate_pct": 87.4,
+   "request_amplification_vs_dram": 8.4,
+   "gbps_of_l2_read_requests": 631.1
+  },
+  "unit_calibration": "GL2C_HIT/MISS are 128-byte units: the 512 MB cold stream reports GL2C_MISS_sum = 4,194,305, exactly the buffer/128, with GL2C_HIT_sum = 3."
+ },
+ "headroom": {
+  "memory_floor_ms_per_call": 1.321,
+  "in_situ_ms_per_call": 4.99698275862069,
+  "in_situ_total_ms": 1159.3,
+  "step_ms": 4353.0,
+  "headroom_ms": 852.9,
+  "headroom_pct_of_step": 19.6,
+  "headroom_pct_at_prior_units_4260_ms_step": 20.0,
+  "projected_step_ms": 3500.0,
+  "projected_tps": 1170.0,
+  "framing": "This is the headroom that exists IF the instruction-side bottleneck is removed. It is NOT bandwidth headroom: the traffic is already at the floor, so no byte-level change can capture any of it. A kernel change captures it only by issuing far fewer instructions per byte.",
+  "alternative_rate_gap_framing_ms": 890.6
+ },
+ "not_measured": [
+  "True DRAM reads. GL2C sits above the MALL, so every number here is an upper bound; the direction of the bias is stated and it makes the negative verdict conservative.",
+  "Stall reasons. rocprofv3 PC sampling is unavailable on gfx1151 ('Given PC sampling configuration is not supported on any of the agents'), so issue-bound is inferred from instruction counts, issue-slot arithmetic, and the block-count proportionality rather than from a stall-reason sample.",
+  "SQ_BUSY_CYCLES does not reconcile with the instruction counts (it implies 25-50 percent busy against a 79 percent issue-utilization model) and its instance aggregation could not be established from the counter list. It was collected and is not used.",
+  "Why the measured in-situ DRAM read is 16.0 MB below the kernel's own distinct tile bytes. See unexplained_gap: the fixture does not reproduce it, five candidate causes are ruled out, and three untested candidates are listed. The verdict does not depend on it.",
+  "The L2 traffic decomposition leaves 28 percent unexplained (3.36 GB measured against a 2.62 GB demand model). The measured request count is reported as measured; no claim rests on the decomposition.",
+  "Whether a memory-optimal rewrite actually reaches 240 GB/s on this access pattern. The roof is a fully-coalesced cold stream, which is the optimistic case.",
+  "The write amplification (45.5 MB written for 11.5 MB of output, 3.9x) is measured but not diagnosed."
+ ],
+ "provenance": {
+  "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "quant": "Q4_K expert gate/up on blk.0..28, Q5_K on blk.29",
+  "host": "zbook / gfx1151 Strix Halo",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S, 40 CU, 2 SIMD/CU, 32 waves/CU, 2 MB L2, 32 MB L3/MALL, LPDDR5X 256 GB/s peak",
+  "command": "see method and leaf_in_situ_4096.command",
+  "git": "220652c56937195dfef945f999d03ac19be0cf47 (worktree dirty: docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md and audit/inventory/meta.json belong to another worker)"
+ },
+ "in_situ_call_geometry_verified": {
+  "instrument": "scripts/gemma4_t16_leaf_call_geometry.py, which wraps the production launcher and records what it is handed; plus the Grid_Size column of the counter CSV, which is in work-items, not blocks",
+  "calls_per_prefill": 232,
+  "distinct_geometries": 1,
+  "geometry": {
+   "compact_rows": 4096,
+   "num_experts": 128,
+   "in_features": 2816,
+   "intermediate": 704
+  },
+  "profile_structure": "the counter CSV holds 464 dispatches = 2 prefills x 232 calls. Segmenting on inter-dispatch gaps above 20 ms splits them into 8 chunks of 29 layer dispatches each, which is 8 chunks of 512 tokens over the 29 Q4_K layers. So the call is one layer of one 512-token chunk, and it is chunk-major: the same layer's next call is 29 dispatches later.",
+  "grid": {
+   "work_items_min": 382976,
+   "work_items_max": 459008,
+   "work_items_mean": 422485,
+   "threads_per_block": 32,
+   "col_tiles": 44,
+   "blocks_mean": 13203,
+   "row_tiles_min": 272,
+   "row_tiles_max": 326,
+   "row_tiles_mean": 300.1
+  },
+  "matches_the_standalone_fixture": "The fixture's own Grid_Size is 360,448 work-items = 11,264 blocks = 256 row tiles, exactly the uniform 32-rows-per-expert value. So the fixture's geometry is the in-situ geometry with the expert load flattened, and the only difference between them is the row distribution.",
+  "why_it_matters": "The prior entry's 65.4 GB/s numerator assumed the activation footprint is 4096 x 2816 x 2. The verified geometry confirms that: compact_rows really is 4096 and in_features really is 2816. The numerator was right about the footprint and wrong about the traffic, which is the distinction this artifact turns on."
+ },
+ "unexplained_gap": {
+  "observation": "Per dispatch the measured DRAM read is 277.45 MB (run 1) and 277.18 MB (run 2), 0.1 percent apart. The kernel's distinct tile set is 293,404,672 B = 293.4 MB, and every one of its 128 experts is used in every call, so every tile is touched. A full pass must fetch 293.4 MB from DRAM. The measurement is 16.0 MB below that.",
+  "the_fixture_does_not_reproduce_it": "At rows/expert 16 the fixture demands the tile set exactly once (5,632 blocks x 22 tiles = 123,904 tile reads) and measures 333.5 MB of DRAM reads - ABOVE the tile bytes, as expected. At rows/expert 32 it demands it twice and measures 400.4 MB. So the fixture reads at least its tile set in both cases, and the sub-floor reading is specific to the in-situ run.",
+  "what_is_ruled_out": [
+   "A geometry mismatch. The in-situ call is 4096 compact rows over 128 experts with in_features 2816 and intermediate 704, all verified, and the fixture runs the same numbers.",
+   "A different tile repack. Production calls hipengine.quant.gguf_q4_k.repack_gguf_q4_k_tile16 (hipengine/loading/gemma4_gguf_device.py), which is the function the fixture calls, and the kernel template argument is qmicro = false.",
+   "A wrong kernel symbol. The counter matched gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short, false>, and the 232-calls-per-prefill count and the 4.8 ms per-call duration both match the census's t16 gate/up leaf line. The _shared_x sibling does not match the regex, so it is not in the profile.",
+   "The counter's own accuracy. It is exact to 0.0004 percent on a known-answer cold stream, and an independent GCEA block agrees to 0.64 percent.",
+   "Cross-call MALL retention. The profile is chunk-major, so 29 other layers' tile sets (about 8.5 GB) pass between two calls for the same layer. A 32 MB MALL cannot carry 16 MB across that."
+  ],
+  "candidate_explanations_not_yet_tested": [
+   "Part of each 2368-byte tile is never read by the kernel, and the unread bytes happen to be whole 128-byte lines. 123,904 tiles x 2240 B = 277.5 MB, which is 0.02 percent from the measurement, but the same arithmetic does not fit the fixture, so this is arithmetic that fits rather than a mechanism that was demonstrated.",
+   "A read request is issued for fewer than 128 bytes and the DRAM burst is shorter than the counter's unit assumption on this access pattern. The counter was calibrated on a fully-coalesced contiguous stream, not on a 2368-byte stride.",
+   "Part of the tile set is resident from the same layer's preceding down-projection kernel or from the loader, if the tile buffer is touched outside this kernel."
+  ],
+  "verdict_impact": "None, and the direction is conservative. The measurement says the leaf pays for LESS DRAM than its own weight pass requires. Every version of this finding makes the bandwidth hypothesis weaker, not stronger, so the negative verdict does not depend on resolving the gap.",
+  "next": "Read the kernel's per-lane tile access pattern against the 2368-byte layout and count the distinct 128-byte lines it touches. That is a source-level count, not a new measurement."
+ }
+}

@@ -27,6 +27,10 @@ GGUF_Q4_K_TILE16_DMIN_OFFSET = GGUF_Q4_K_TILE16_D_OFFSET + GGUF_Q4_K_TILE16_COLS
 GGUF_Q4_K_TILE16_SCALE_OFFSET = GGUF_Q4_K_TILE16_DMIN_OFFSET + GGUF_Q4_K_TILE16_COLS * 2
 GGUF_Q4_K_TILE16_MIN_OFFSET = GGUF_Q4_K_TILE16_SCALE_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_TILE16_COLS
 GGUF_Q4_K_TILE16_Q_OFFSET = GGUF_Q4_K_TILE16_MIN_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_TILE16_COLS
+# K values in one nibble-pair row of the tile.  A K-major tile stores one byte
+# column's sixteen K values as one contiguous 16-byte block, so the 128-byte K
+# tile is the transpose unit.
+GGUF_Q4_K_TILE16_K_TILE = 16
 GGUF_Q4_K_TILE16_BLOCK_BYTES = GGUF_Q4_K_TILE16_Q_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_SUBBLOCK * (GGUF_Q4_K_TILE16_COLS // 2)
 
 # Exact dual-matrix T16 decode screen. Corresponding gate/up payloads are
@@ -292,12 +296,96 @@ def _pack_q4_k_scale_min(scales: np.ndarray, mins: np.ndarray) -> np.ndarray:
     return packed
 
 
-def repack_gguf_q4_k_tile16(raw_qweight: Any) -> GGUFQ4KTile16:
+def repack_gguf_q4_k_tile16_tile_bytes(shape: Any) -> int:
+    """Return the byte count ``repack_gguf_q4_k_tile16`` produces for ``shape``.
+
+    The raw tensor has byte shape ``[experts, out_features, bytes_per_row]`` and
+    the tiles have ``[experts, out_features // 16, blocks_per_row, 2368]``, so
+    the total is that product, with one tile per 16 columns per K block.
+    A tile is 2368 bytes where the 16 raw Q4_K
+    blocks it is built from are 2304, so the tiles alone are 1.02778 times the
+    raw bytes, and a weight that keeps those raw blocks as well -- the Gemma 4
+    expert gate/up stack does -- holds 2.02778 times the raw bytes in total.
+    """
+
+    experts, out_features, bytes_per_row = Q4_K_T16_SHAPE.validate(shape)
+    blocks_per_row = bytes_per_row // GGUF_Q4_K_BLOCK_BYTES
+    out_tiles = out_features // GGUF_Q4_K_TILE16_COLS
+    return int(experts) * int(out_tiles) * int(blocks_per_row) * GGUF_Q4_K_TILE16_BLOCK_BYTES
+
+
+def _tile16_q_region(q_packed_cols: np.ndarray, *, column_major: bool) -> np.ndarray:
+    """Flatten ``[E, B, sb, k, p]`` nibble-pair bytes into the tile's Q region.
+
+    ``column_major`` selects the K-major byte order, which stores the byte for
+    (byte column ``p``, K value ``k``) at ``p * 16 + (k % 16)`` inside the K
+    tile.  That is a pure permutation of the row-major order: the same bytes,
+    the same tile size, the same decoded values.
+    """
+
+    experts, blocks_per_row, subblocks, subblock, byte_cols = q_packed_cols.shape
+    if not column_major:
+        return q_packed_cols.reshape(experts, blocks_per_row, subblocks * subblock * byte_cols)
+    k_tiles = subblock // GGUF_Q4_K_TILE16_K_TILE
+    return (
+        q_packed_cols.reshape(
+            experts,
+            blocks_per_row,
+            subblocks,
+            k_tiles,
+            GGUF_Q4_K_TILE16_K_TILE,
+            byte_cols,
+        )
+        .transpose(0, 1, 2, 3, 5, 4)
+        .reshape(experts, blocks_per_row, subblocks * subblock * byte_cols)
+    )
+
+
+def _tile16_q_region_inverse(
+    q_region: np.ndarray,
+    *,
+    experts: int,
+    blocks_per_row: int,
+    column_major: bool,
+) -> np.ndarray:
+    """Invert :func:`_tile16_q_region`, returning ``[E, B, sb, k, p]``."""
+
+    shape = (
+        experts,
+        blocks_per_row,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_SUBBLOCK,
+        GGUF_Q4_K_TILE16_COLS // 2,
+    )
+    if not column_major:
+        return q_region.reshape(shape)
+    k_tiles = GGUF_Q4_K_SUBBLOCK // GGUF_Q4_K_TILE16_K_TILE
+    return (
+        q_region.reshape(
+            experts,
+            blocks_per_row,
+            GGUF_Q4_K_SUBBLOCKS,
+            k_tiles,
+            GGUF_Q4_K_TILE16_COLS // 2,
+            GGUF_Q4_K_TILE16_K_TILE,
+        )
+        .transpose(0, 1, 2, 3, 5, 4)
+        .reshape(shape)
+    )
+
+
+def repack_gguf_q4_k_tile16(raw_qweight: Any, *, column_major: bool = False) -> GGUFQ4KTile16:
     """Repack rank-3 raw GGUF Q4_K expert weights into Q4T16 tiles.
 
     ``raw_qweight`` must have GGUF byte shape ``[experts, out_features,
     bytes_per_row]``. The repack is bit-lossless: ``unpack_gguf_q4_k_tile16``
     reconstructs the original raw bytes exactly.
+
+    ``column_major`` stores the Q region K-major so a decode lane reads one
+    byte column's sixteen K values as a single 128-bit load instead of sixteen
+    scalar byte loads.  The tile size, the metadata bytes and every decoded
+    value are unchanged; only the order of the Q-region bytes differs.  A tile
+    in one order is not readable by a kernel expecting the other.
     """
 
     raw = np.ascontiguousarray(raw_qweight, dtype=np.uint8)
@@ -342,10 +430,8 @@ def repack_gguf_q4_k_tile16(raw_qweight: Any) -> GGUFQ4KTile16:
             q[..., sb, :] = ((packed >> np.uint8(4)) if (sb & 1) else packed) & np.uint8(0x0F)
         q_tile = q.transpose(0, 2, 3, 4, 1)  # [E, B, sb, lane32, col]
         q_packed_cols = (q_tile[..., 0::2] & np.uint8(0x0F)) | ((q_tile[..., 1::2] & np.uint8(0x0F)) << np.uint8(4))
-        dst[..., GGUF_Q4_K_TILE16_Q_OFFSET:] = q_packed_cols.reshape(
-            experts,
-            blocks_per_row,
-            GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_SUBBLOCK * (GGUF_Q4_K_TILE16_COLS // 2),
+        dst[..., GGUF_Q4_K_TILE16_Q_OFFSET:] = _tile16_q_region(
+            q_packed_cols, column_major=column_major
         )
 
     return GGUFQ4KTile16(
@@ -560,8 +646,16 @@ def unpack_gguf_q4_k_tile16_dual(
     return a, b
 
 
-def unpack_gguf_q4_k_tile16(packed: GGUFQ4KTile16 | np.ndarray, *, out_features: int | None = None) -> np.ndarray:
-    """Reconstruct raw GGUF Q4_K expert bytes from a Q4T16 tile layout."""
+def unpack_gguf_q4_k_tile16(
+    packed: GGUFQ4KTile16 | np.ndarray,
+    *,
+    out_features: int | None = None,
+    column_major: bool = False,
+) -> np.ndarray:
+    """Reconstruct raw GGUF Q4_K expert bytes from a Q4T16 tile layout.
+
+    ``column_major`` must match the repack that produced ``packed``.
+    """
 
     if isinstance(packed, GGUFQ4KTile16):
         tiles = np.asarray(packed.tiles, dtype=np.uint8)
@@ -597,12 +691,11 @@ def unpack_gguf_q4_k_tile16(packed: GGUFQ4KTile16 | np.ndarray, *, out_features:
         ).transpose(0, 3, 1, 2)
         cols[..., 4:16] = _pack_q4_k_scale_min(sc, mn)
 
-        q_packed_cols = src[..., GGUF_Q4_K_TILE16_Q_OFFSET:].reshape(
-            experts,
-            blocks_per_row,
-            GGUF_Q4_K_SUBBLOCKS,
-            GGUF_Q4_K_SUBBLOCK,
-            GGUF_Q4_K_TILE16_COLS // 2,
+        q_packed_cols = _tile16_q_region_inverse(
+            src[..., GGUF_Q4_K_TILE16_Q_OFFSET:],
+            experts=experts,
+            blocks_per_row=blocks_per_row,
+            column_major=column_major,
         )
         q = np.empty(
             (experts, blocks_per_row, GGUF_Q4_K_SUBBLOCKS, GGUF_Q4_K_SUBBLOCK, GGUF_Q4_K_TILE16_COLS),

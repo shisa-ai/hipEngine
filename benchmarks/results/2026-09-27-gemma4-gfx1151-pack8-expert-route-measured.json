@@ -1,0 +1,55 @@
+{
+  "date": "2026-09-27",
+  "platform": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo)",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "model": "Gemma 4 26B-A4B, UD-Q4_K_XL",
+  "status": "rejected",
+  "performance_claim": "None. This unit measured a regression and reverted its default.",
+  "change": "Wired the pack8 expert GEMV route for Gemma 4's rank-3 Q4_K expert tensors: the planner gained LAYOUT_Q4_K_PACK8 (raw plus qweight/scales/mins), the materializer repacked per expert and stacked, and gemma4_project_experts_pack8 resolved the moe_linear / expert_pack8_selected_bf16_bf16_out key that gemma4_project_experts_selected was missing because it asked under 'linear'.",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --label <arm> --expect-gpu 8060S",
+  "result": {
+    "baseline_decode_tps": 21.03,
+    "pack8_layout_on_decode_tps": 7.642,
+    "pack8_layout_off_decode_tps": 20.9966,
+    "prefill_tps": {
+      "baseline": 265,
+      "on": 266,
+      "off": 265
+    },
+    "route_counts_with_layout_on": {
+      "gate_up_mmq32": 29,
+      "grouped_prefill": 30,
+      "grouped_row4": 33,
+      "pack8_selected": 928,
+      "selected_gemv": 960
+    },
+    "residency_after_load_gb": {
+      "layout_on": 33.07,
+      "pack8_expansion_gb": 19.2
+    },
+    "device_ceiling_gib": 124.0
+  },
+  "kernel_attribution": "pack8_selected ran 928 times with the layout on, so the regression is the pack8 kernel rather than a route that failed to be taken.",
+  "findings": [
+    "The pack8 expert route is a measured loss at decode: 21.03 tok/s before, 7.64 tok/s after, 2.75x slower, on the same box and the same campaign command. Prefill is unchanged at 265-266 tok/s.",
+    "The route was confirmed to be taken, so this is the kernel rather than a wiring miss: gemma4_moe_expert_route_counts reported pack8_selected 928 with selected_gemv 960, the latter serving the tensors that have no packed layout.",
+    "The mechanism is a representation trade that loses here. The packed form replaces the raw Q4_K block metadata with precomputed fp32 scale and min terms, which is 1.33x the raw bytes, and this projection is bandwidth-bound rather than metadata-bound, so decoding less metadata means reading more bytes. The earlier profile put this projection at 15% of achievable bandwidth, which is what made it look like a target.",
+    "The kernel is shaped for prefill (gguf_expert_pack8_selected_prefill_kernel), and the route ladder reaches it exactly where rows are fewest. grouped_prefill takes every block with at least one row per expert, so a packed weight is only selected below that threshold, which is the decode case. The layout is therefore reached where it is slowest.",
+    "Correctness was never the problem and is not in question. tests/test_unit_gemma4_gguf_device.py runs both routes on one weight object carrying both representations and they agree, and the raw route is separately pinned against the CPU reference. Every correctness test passes with the layout on and off, which is why the default is now pinned by its own test.",
+    "The layout also costs 19.2 GB: 60 rank-3 expert tensors at 14.4 GB raw expanding by 1.33x. Measured residency after load was 33.07 GB against a 124 GiB ceiling, so memory was not the constraint and is not the reason for the revert.",
+    "Default is now off via HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT, which is a default-off case with a named measured cause rather than a missing qualification. Re-measured with the flag off: 20.9966 tok/s, restoring the baseline within noise.",
+    "The implementation is retained rather than deleted because the one regime the ladder does not already give to grouped_prefill is rows above the expert count, which is a large-batch decode. That is the measurement that would clear the flag, and it is named in docs/REFACTOR.md."
+  ],
+  "validation": [
+    "Same-weight parity: gemma4_project_experts_pack8 and gemma4_project_experts_selected run on one weight object carrying both representations; outputs agree within 2e-2 relative. The raw route is pinned against the CPU reference by test_selected_expert_dispatch_matches_the_bf16_offset_path, so agreement transitively pins the packed layout.",
+    "Default-off is pinned by test_the_pack8_layout_is_off_by_default, so a silent flip back cannot reintroduce the regression unnoticed.",
+    "63 passed across tests/test_unit_gemma4_gguf_device.py and tests/test_unit_gemma4_expert_route.py.",
+    "python3 scripts/docs/check_all.py: all 4 gates pass, including env-var coverage for the new flag.",
+    "The broader gemma4 unit suite has one failure, test_unit_gemma4_runner.py::test_incremental_decode_matches_a_dense_prefill, which fails with the identical 4.417 max abs diff with these files stashed. It is pre-existing at HEAD and not a regression from this work."
+  ],
+  "limits": [
+    "The 2.75x figure is one artifact, one box, one prompt/output shape (512/128). The mechanism explains it, but the row count at which the packed layout would win is not measured.",
+    "Only the decode regime is characterised. The packed layout was never measured at a row count above the expert count, which is the case that could still favour it.",
+    "The pre-existing runner failure above is reported, not diagnosed."
+  ]
+}

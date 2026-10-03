@@ -1,0 +1,1242 @@
+{
+  "schema_version": 1,
+  "kind": "halo_edge140_bfcl96",
+  "official_mlperf_result": false,
+  "setup": {
+    "repository": "https://github.com/halo-box/strix-llama.cpp.git",
+    "requested": "halo-box/strix-halo",
+    "resolved_head": "03895887abe6b46473e0a2e07d0a82fe44484894",
+    "commit": "03895887abe6b46473e0a2e07d0a82fe44484894 2026-09-25T12:12:05-05:00 Merge pull request #87 from pwilkin/gufo-ideas",
+    "selection": "README-recommended Vulkan/RADV; frozen Qwen3.6 target with NextN same bytes as prior MTP arms; depth3 default; speculative prefill off, adaptive drafting default off",
+    "vulkaninfo": "==========\nVULKANINFO\n==========\n\nVulkan Instance Version: 1.4.357\n\n\nInstance Extensions: count = 26\n-------------------------------\nVK_EXT_acquire_drm_display             : extension revision 1\nVK_EXT_acquire_xlib_display            : extension revision 1\nVK_EXT_debug_report                    : extension revision 10\nVK_EXT_debug_utils                     : extension revision 2\nVK_EXT_direct_mode_display             : extension revision 1\nVK_EXT_display_surface_counter         : extension revision 1\nVK_EXT_headless_surface                : extension revision 1\nVK_EXT_layer_settings                  : extension revision 2\nVK_EXT_surface_maintenance1            : extension revision 1\nVK_EXT_swapchain_colorspace            : extension revision 5\nVK_KHR_device_group_creation           : extension revision 1\nVK_KHR_display                         : extension revision 23\nVK_KHR_external_fence_capabilities     : extension revision 1\nVK_KHR_external_memory_capabilities    : extension revision 1\nVK_KHR_external_semaphore_capabilities : extension revision 1\nVK_KHR_get_display_properties2         : extension revision 1\nVK_KHR_get_physical_device_properties2 : extension revision 2\nVK_KHR_get_surface_capabilities2       : extension revision 1\nVK_KHR_portability_enumeration         : extension revision 1\nVK_KHR_surface                         : extension revision 25\nVK_KHR_surface_maintenance1            : extension revision 1\nVK_KHR_surface_protected_capabilities  : extension revision 1\nVK_KHR_wayland_surface                 : extension revision 6\nVK_KHR_xcb_surface                     : extension revision 6\nVK_KHR_xlib_surface                    : extension revision 6\nVK_LUNARG_direct_driver_loading        : extension revision 1\n\nInstance Layers: count = 2\n--------------------------\nVK_LAYER_MESA_anti_lag      Open-source implementation of the VK_AMD_anti_lag extension. 1.4.303  version 1\nVK_LAYER_MESA_device_select Linux device selection layer                                 1.4.303  version 1\n\nDevices:\n========\nGPU0:\n\tapiVersion         = 1.4.354\n\tdriverVersion      = 26.2.2\n\tvendorID           = 0x1002\n\tdeviceID           = 0x1586\n\tdeviceType         = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU\n\tdeviceName         = AMD Radeon 8060S Graphics (RADV STRIX_HALO)\n\tdriverID           = DRIVER_ID_MESA_RADV\n\tdriverName         = radv\n\tdriverInfo         = Mesa 26.2.2-arch3.2\n\tconformanceVersion = 1.4.5.3\n\tdeviceUUID         = 00000000-c100-0000-0000-000000000000\n\tdriverUUID         = 414d442d-4d45-5341-2d44-525600000000\n",
+    "configure_command": [
+      "cmake",
+      "-S",
+      "/home/lhl/gate-runs/halo-edge-20260926/source",
+      "-B",
+      "/home/lhl/gate-runs/halo-edge-20260926/build-vulkan",
+      "-DGGML_VULKAN=ON",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DLLAMA_BUILD_TESTS=OFF"
+    ],
+    "build_command": [
+      "cmake",
+      "--build",
+      "/home/lhl/gate-runs/halo-edge-20260926/build-vulkan",
+      "--target",
+      "llama-server",
+      "-j",
+      "12"
+    ],
+    "hipengine_reference_commit": "9b101011129aa5cedc6472a278dcc06cbbc9b2f6",
+    "binary_sha256": "137da8657b75150215bb2c45b109f307f134b53af8ff4bd29058f21130783cc9"
+  },
+  "raw_root": "/home/lhl/gate-runs/halo-edge-20260926",
+  "references": [
+    "2026-09-25-gfx1151-edge-speculative-140.json",
+    "2026-09-26-gfx1151-bfcl96-parallel-default.json",
+    "2026-09-25-gfx1151-gufo-dflash-edge-140.json"
+  ],
+  "performance": {
+    "completed": 140,
+    "duration_s": 643.080925219,
+    "latency_mean_s": 4.59317087215,
+    "latency_median_s": 3.257695052,
+    "ttft_mean_s": 2.175893336442857,
+    "tool_calls": 141,
+    "finish_counts": {
+      "tool_calls": 140
+    },
+    "inline_iou": 0.6381,
+    "timing_sums": {
+      "cache_n": 1618168,
+      "prompt_n": 56851,
+      "prompt_ms": 243041.388,
+      "predicted_n": 10926,
+      "predicted_ms": 374449.001,
+      "draft_n": 8715,
+      "draft_n_accepted": 8052
+    },
+    "full_prompt_tokens": 1675019,
+    "cache_fraction": 0.9660594894744478,
+    "acceptance": 0.9239242685025818,
+    "effective_prefill_tps": 6891.908467869678,
+    "engine_eval_tps": 29.178873413525277,
+    "speculating_requests": 140,
+    "output_tokens_harness": 10786
+  },
+  "quality": {
+    "published": {
+      "dataset_name": "bfcl_v4::function_calling",
+      "extractor": "FunctionCallExtractor",
+      "ground_truth_column": "ground_truth",
+      "score": 0.8020833333333334,
+      "unit_samples": 96,
+      "num_repeats": 1,
+      "total_samples": 96,
+      "duration_s": 512.077,
+      "complete": true,
+      "dataset_type": "accuracy",
+      "breakdown": {
+        "overall_accuracy": 80.21,
+        "normalized_single_turn_score": 85.42,
+        "category_scores": {
+          "non_live": 75.0,
+          "live": 87.5,
+          "hallucination": 93.75
+        },
+        "subset_scores": {
+          "irrelevance": 100.0,
+          "live_irrelevance": 87.5,
+          "live_multiple": 87.5,
+          "live_parallel": 75.0,
+          "live_parallel_multiple": 87.5,
+          "live_simple": 100.0,
+          "multiple": 100.0,
+          "parallel": 62.5,
+          "parallel_multiple": 75.0,
+          "simple_java": 50.0,
+          "simple_javascript": 37.5,
+          "simple_python": 100.0
+        },
+        "unscored_subsets": {},
+        "total_samples": 96,
+        "issued_samples": 96
+      },
+      "response_counts": {
+        "issued": 96,
+        "scored": 96,
+        "empty": 0,
+        "missing": 0
+      },
+      "osl_tokenize_s": 0.017
+    },
+    "event_counts": {
+      "session.started": 1,
+      "sample.issued": 96,
+      "sample.recv_first": 96,
+      "sample.complete": 96,
+      "session.ended": 1
+    },
+    "counts": {
+      "irrelevance": {
+        "correct": 8.0,
+        "n": 8
+      },
+      "live_irrelevance": {
+        "correct": 7.0,
+        "n": 8
+      },
+      "live_multiple": {
+        "correct": 7.0,
+        "n": 8
+      },
+      "live_parallel": {
+        "correct": 6.0,
+        "n": 8
+      },
+      "live_parallel_multiple": {
+        "correct": 7.0,
+        "n": 8
+      },
+      "live_simple": {
+        "correct": 8.0,
+        "n": 8
+      },
+      "multiple": {
+        "correct": 8.0,
+        "n": 8
+      },
+      "parallel": {
+        "correct": 5.0,
+        "n": 8
+      },
+      "parallel_multiple": {
+        "correct": 6.0,
+        "n": 8
+      },
+      "simple_java": {
+        "correct": 4.0,
+        "n": 8
+      },
+      "simple_javascript": {
+        "correct": 3.0,
+        "n": 8
+      },
+      "simple_python": {
+        "correct": 8.0,
+        "n": 8
+      }
+    },
+    "parallel_call_counts": {
+      "2": 22,
+      "4": 3,
+      "3": 4,
+      "1": 3
+    }
+  },
+  "quality_paired": [
+    {
+      "id": "irrelevance_9",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_17",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_5",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_16",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_18",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_21",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "irrelevance_15",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_18-2-6",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_78-2-66",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_76-2-64",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_50-2-38",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_4-0-4",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "live_irrelevance_86-2-74",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_56-2-44",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_irrelevance_21-2-9",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_35-11-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_0-0-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_87-38-4",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "live_multiple_97-42-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 0.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_83-38-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_40-15-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_48-18-3",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_multiple_3-2-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_6-3-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_15-11-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_8-4-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_4-1-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_9-5-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_10-6-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_7-3-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_11-7-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_18-16-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_9-8-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_4-3-0",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_12-10-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 0.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_14-12-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_16-14-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_13-11-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_parallel_multiple_1-1-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_21-4-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_23-5-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_15-3-11",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_19-3-15",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_9-3-5",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_17-3-13",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_3-2-1",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "live_simple_4-3-0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "multiple_94",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "multiple_82",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "multiple_79",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "multiple_9",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "multiple_33",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "multiple_105",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "multiple_54",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "multiple_80",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_115",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_48",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_59",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_19",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "parallel_38",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "parallel_104",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "parallel_98",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_93",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_13",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_15",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_21",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "parallel_multiple_3",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_7",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_55",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "parallel_multiple_116",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "parallel_multiple_49",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_60",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_59",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "simple_java_40",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_28",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "simple_java_5",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_26",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "simple_java_0",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_java_7",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_5",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_26",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_javascript_8",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_javascript_17",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_18",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_14",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "simple_javascript_7",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_javascript_20",
+      "scores": {
+        "hipengine": 0.0,
+        "llamacpp": 0.0,
+        "gufo": 0.0,
+        "halo": 0.0
+      }
+    },
+    {
+      "id": "simple_python_83",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_61",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_102",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_66",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_211",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_222",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_48",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    },
+    {
+      "id": "simple_python_235",
+      "scores": {
+        "hipengine": 1.0,
+        "llamacpp": 1.0,
+        "gufo": 1.0,
+        "halo": 1.0
+      }
+    }
+  ],
+  "commands": {
+    "screen-140": {
+      "server-command": [
+        "/home/lhl/gate-runs/halo-edge-20260926/build-vulkan/bin/llama-server",
+        "--model",
+        "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-original-target-plus-MTP-Q4_K_M.gguf",
+        "--alias",
+        "Qwen3.6-27B-Q4_K_M",
+        "--ctx-size",
+        "32768",
+        "--parallel",
+        "1",
+        "--n-gpu-layers",
+        "99",
+        "--cache-type-k",
+        "bf16",
+        "--cache-type-v",
+        "bf16",
+        "--reasoning",
+        "off",
+        "--metrics",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8098",
+        "--spec-type",
+        "draft-mtp",
+        "--log-verbosity",
+        "5"
+      ],
+      "runner-command": [
+        "/home/lhl/mlperf-edge-endpoints/.venv/bin/inference-endpoint",
+        "benchmark",
+        "from-config",
+        "--config",
+        "/home/lhl/gate-runs/halo-edge-20260926/screen-140/config.yaml"
+      ]
+    },
+    "bfcl96": {
+      "server-command": [
+        "/home/lhl/gate-runs/halo-edge-20260926/build-vulkan/bin/llama-server",
+        "--model",
+        "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-original-target-plus-MTP-Q4_K_M.gguf",
+        "--alias",
+        "Qwen3.6-27B-Q4_K_M",
+        "--ctx-size",
+        "32768",
+        "--parallel",
+        "1",
+        "--n-gpu-layers",
+        "99",
+        "--cache-type-k",
+        "bf16",
+        "--cache-type-v",
+        "bf16",
+        "--reasoning",
+        "off",
+        "--metrics",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8098",
+        "--spec-type",
+        "draft-mtp",
+        "--log-verbosity",
+        "5"
+      ],
+      "runner-command": [
+        "/home/lhl/mlperf-edge-endpoints/.venv/bin/python",
+        "/home/lhl/gate-runs/edge-bfcl-quality-20260925/run-frozen.py",
+        "benchmark",
+        "from-config",
+        "--config",
+        "/home/lhl/gate-runs/halo-edge-20260926/bfcl96/config.yaml",
+        "--accuracy-only"
+      ]
+    }
+  },
+  "files": {
+    "setup.json": {
+      "sha256": "be3c48ba7b88cd1748414f7adffea558e508af537b9312e3745548bf26aa7203",
+      "bytes": 3710
+    },
+    "run-comparison.py": {
+      "sha256": "fcfc9e5c58cb85e53495ddd6e36a9b9679b7c2145dfd6eeb8e2b855971df3b60",
+      "bytes": 2517
+    },
+    "analyze-quality.py": {
+      "sha256": "da23510617c975f4462623dafa81b0103be4842911ef72d8d9218a232221eb71",
+      "bytes": 3333
+    },
+    "analyze-performance.py": {
+      "sha256": "616e5f714b2a071d88e5c47ebf3900c84e81965f85b0f3ff3c7ccee709f5f402",
+      "bytes": 4024
+    },
+    "quality-analysis.json": {
+      "sha256": "082ed093e8e2ebc9c5ab31d483c4d536e8a171b7232fd7142cd8fee65e65e449",
+      "bytes": 334566
+    },
+    "configure.log": {
+      "sha256": "c38072a7987586a4d20640a1a545256cba8619cfe7afac3da5f4bfe9e685e4ad",
+      "bytes": 2102
+    },
+    "build.log": {
+      "sha256": "cfc150560a6a0154869d8c93f325a678f56aa543df4ca3e232fc67bafa6307b6",
+      "bytes": 94821
+    },
+    "ldd.txt": {
+      "sha256": "c917e6f4fd298388c5a18da4df70689568077ba6b1632a5f147b51542f5d5a27",
+      "bytes": 1861
+    },
+    "screen-140/server-command.json": {
+      "sha256": "0b6934e15ef576c4c4f63611ab408ddda2a36ca685dcb7e7df0fbafc74f63108",
+      "bytes": 505
+    },
+    "screen-140/runner-command.json": {
+      "sha256": "4ce8c390989da3f1d3656c720d922ab6c2ca421d6f0d37adfe8197dc836f936d",
+      "bytes": 181
+    },
+    "screen-140/config.yaml": {
+      "sha256": "15454cfa8b24c0a0c6a7818d221abf2f0cc1e7512424bfee7ac12b89c6a1166b",
+      "bytes": 948
+    },
+    "screen-140/server.log": {
+      "sha256": "b9abaf428feace6ede41cadce3d8bd1dc37880d24671bb37833624cb784cbd3f",
+      "bytes": 22775827
+    },
+    "screen-140/runner.log": {
+      "sha256": "81bb4e657aff57b463417dce42153d4bb0ed03a5c3a66b07152178ab6c8e8552",
+      "bytes": 25825
+    },
+    "screen-140/props.json": {
+      "sha256": "224d5e30c71d8f02e16c76ae180f7c7435f9e902b2675f80e81a8413be966daf",
+      "bytes": 10179
+    },
+    "screen-140/metrics-before.txt": {
+      "sha256": "033056262d2dfed7ee1a6103733a5e445b13fb53daaa6de97304ae73a95d0f36",
+      "bytes": 2553
+    },
+    "screen-140/metrics-after.txt": {
+      "sha256": "e786fdc586f04e9bdd9f4a715dbaf77a4218d12516e51545eb4186d886caae98",
+      "bytes": 2999
+    },
+    "screen-140/harness/events.jsonl": {
+      "sha256": "f01c689f4e9a2cfd6e6b39f2030c5956b05fb76cf70876c74d95e6e2bfdb0eed",
+      "bytes": 6962934
+    },
+    "bfcl96/server-command.json": {
+      "sha256": "0b6934e15ef576c4c4f63611ab408ddda2a36ca685dcb7e7df0fbafc74f63108",
+      "bytes": 505
+    },
+    "bfcl96/runner-command.json": {
+      "sha256": "33800c24446aa6808af44b46c64e79bb37794325f3b712ae1602f5c20e8e5587",
+      "bytes": 252
+    },
+    "bfcl96/config.yaml": {
+      "sha256": "46916cc8bdc3e88f2616bcbdb463f69b21ed23c9069eadbcd115f75565e884e9",
+      "bytes": 1048
+    },
+    "bfcl96/server.log": {
+      "sha256": "4b62789c53f320891e52a53ac28b1915eb801358aabf6227e3478fd69b0d9bf1",
+      "bytes": 14797586
+    },
+    "bfcl96/runner.log": {
+      "sha256": "39c7ad33682cab6d3147e9d5b21461620693069975fedfb843269a94f8f7e882",
+      "bytes": 23634
+    },
+    "bfcl96/props.json": {
+      "sha256": "d7bd077c056f77b23042a643fc2fe8a80def81454418d4f149bc7b502fe08328",
+      "bytes": 10179
+    },
+    "bfcl96/metrics-before.txt": {
+      "sha256": "033056262d2dfed7ee1a6103733a5e445b13fb53daaa6de97304ae73a95d0f36",
+      "bytes": 2553
+    },
+    "bfcl96/metrics-after.txt": {
+      "sha256": "0c89bcff5e6740e9772a6cf4c4959d82d796860f4c7a9b83b2841d80f3241545",
+      "bytes": 2990
+    },
+    "bfcl96/harness/events.jsonl": {
+      "sha256": "bc385e2303a4362e21a453a238cd83d366651d50244deb075b9f0b2263ef7204",
+      "bytes": 284726
+    }
+  },
+  "limitations": [
+    "Same physicalhost and target tensors; Vulkan/RADV fork versus earlier HIP implementations is not isolated code-change comparison.",
+    "hipEngine performance predates parallel-default fix; quality uses corrected default.",
+    "One fixed replay and balanced96BFCL diagnostic; not fullMLPerf or accuracyparity.",
+    "Different outputs and decode timing windows prevent kernel-throughput attribution.",
+    "Speculative prefill and adaptive draft disabled(default), MTP depth3, BF16targetFP16draft."
+  ],
+  "host": {
+    "name": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm_version": "HIP version: 7.15.26333-0000000"
+  }
+}

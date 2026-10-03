@@ -1,0 +1,53 @@
+{
+  "date": "2026-09-27",
+  "platform": "gfx1151",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "model": "gemma-4-26B-A4B-it UD-Q4_K_XL",
+  "status": "measurement",
+  "performance_claim": false,
+  "question": "My llama.cpp baseline showed the prefill gap widening with length (hipEngine 257.2 -> 230.0 tok/s from 512 to 1024 while llama.cpp rose 909.3 -> 1183.1). That separates a large fixed per-prefill cost from work that grows with length, and the campaign's first open item attributes the growth to the 5 global layers at head_dim 512 having no tiled kernel. This curve tests that attribution before any kernel is written.",
+  "rows": {
+    "128": {
+      "prefill_tps": 253.03539014637772,
+      "prefill_s": 0.5058582634665072,
+      "ms_per_token": 3.9520176833320875,
+      "decode_tps": 21.912161411306393
+    },
+    "256": {
+      "prefill_tps": 263.8011960676629,
+      "prefill_s": 0.9704328645311762,
+      "ms_per_token": 3.790753377074907,
+      "decode_tps": 21.55505601213121
+    },
+    "512": {
+      "prefill_tps": 257.12313222189835,
+      "prefill_s": 1.9912638690148015,
+      "ms_per_token": 3.889187244169534,
+      "decode_tps": 20.918341650709763
+    },
+    "1024": {
+      "prefill_tps": 230.35010598355706,
+      "prefill_s": 4.445407738006907,
+      "ms_per_token": 4.34121849414737,
+      "decode_tps": 19.926476814708316
+    },
+    "2048": {
+      "prefill_tps": 196.25083523943334,
+      "prefill_s": 10.435625971498666,
+      "ms_per_token": 5.095520493895833,
+      "decode_tps": 19.568056333291203
+    }
+  },
+  "flat_ms_per_token": 3.790753377074907,
+  "findings": [
+    "Per-token prefill cost is flat to 512 tokens - 3.952, 3.791 and 3.889 ms at 128, 256 and 512, i.e. within 4% of each other with no monotone trend - and then rises to 4.341 at 1024 (1.12x) and 5.096 at 2048 (1.17x). A cost that is flat up to a bound and grows past it is the sliding-window signature, so the campaign's attribution of the length-dependent part to the untiled global-layer attention is confirmed by measurement rather than assumed.",
+    "The window on this model sits at or below 512 prompt tokens, since the flat region ends there.",
+    "The length-dependent slice is real but bounded. Against the flat 3.791 ms floor, the excess is 0.55 ms/token at 1024 and 1.31 at 2048, which is about 0.56 s of the 4.445 s prefill at 1024 (12.6%) and about 2.68 s of the 10.436 s at 2048 (25.7%).",
+    "The dominant cost is not length-dependent at all. At 512 tokens hipEngine spends 3.889 ms per token against llama.cpp's 1.10 ms at the same length (909.3 tok/s), a 3.5x gap with zero attention penalty in it. So a tiled 512-wide-head kernel would recover the 12.6% slice at 1024 and nothing at 512, while the flat per-token constant - the matmul and layer cost - carries the whole 3.5x. This redirects the next unit toward the campaign's fourth item (int8 matmuls with large tiles, where hipEngine's MoE matmuls run at about 16 TFLOP/s against llama.cpp's 26-33) rather than its first.",
+    "Decode falls with prompt length too, 21.91 at 128 to 19.57 at 2048 (-11%), which is expected since decode reads the KV the prefill wrote."
+  ],
+  "limits": [
+    "One box, one artifact, one prompt corpus (the campaign's exact-token chain), two timed samples per length.",
+    "These are per-length costs for locating the next unit, not promotion evidence."
+  ]
+}

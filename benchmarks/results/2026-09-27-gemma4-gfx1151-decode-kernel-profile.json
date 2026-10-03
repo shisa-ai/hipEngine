@@ -1,0 +1,111 @@
+{
+  "date": "2026-09-27",
+  "platform": "gfx1151",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "model": "gemma-4-26B-A4B-it UD-Q4_K_XL",
+  "status": "measurement",
+  "performance_claim": false,
+  "shape": "128-token prompt, 64 decode steps, 21.0 tok/s = 47.6 ms per token",
+  "total_kernel_ms": 3067.92052,
+  "launches": 71868,
+  "distinct_kernels": 38,
+  "top_kernels": [
+    {
+      "kernel": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "ms": 860.487511,
+      "pct": 28.047907544879944,
+      "calls": 1827,
+      "per_decode_step": 28.546875
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+      "ms": 576.923545,
+      "pct": 18.805035568522484,
+      "calls": 12915,
+      "per_decode_step": 201.796875
+    },
+    {
+      "kernel": "(anonymous namespace)::q5_1_selected_gemv_bf16_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+      "ms": 530.482855,
+      "pct": 17.291284162733135,
+      "calls": 1827,
+      "per_decode_step": 28.546875
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 8>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+      "ms": 222.229431,
+      "pct": 7.243650203819492,
+      "calls": 64,
+      "per_decode_step": 1.0
+    },
+    {
+      "kernel": "void (anonymous namespace)::q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<4, 4, 256>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "ms": 201.673006,
+      "pct": 6.573605955085172,
+      "calls": 29,
+      "per_decode_step": 0.453125
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 4, 16>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+      "ms": 151.52474,
+      "pct": 4.9390047431867625,
+      "calls": 205,
+      "per_decode_step": 3.203125
+    },
+    {
+      "kernel": "(anonymous namespace)::gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel((anonymous namespace)::block_q8_1_mmq_ds4 const*, long const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+      "ms": 86.529945,
+      "pct": 2.8204754469975644,
+      "calls": 29,
+      "per_decode_step": 0.453125
+    },
+    {
+      "kernel": "(anonymous namespace)::gguf_q5_k_selected_grouped_row4_bf16_kernel(unsigned short const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "ms": 78.245741,
+      "pct": 2.5504487645592593,
+      "calls": 64,
+      "per_decode_step": 1.0
+    },
+    {
+      "kernel": "void (anonymous namespace)::gemma4_rmsnorm_kernel<unsigned short>(unsigned short const*, float const*, unsigned short*, float, long)",
+      "ms": 62.764744,
+      "pct": 2.0458399619818053,
+      "calls": 9664,
+      "per_decode_step": 151.0
+    },
+    {
+      "kernel": "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+      "ms": 50.039651,
+      "pct": 1.6310608659444672,
+      "calls": 1575,
+      "per_decode_step": 24.609375
+    }
+  ],
+  "findings": [
+    "Decode is not attention-bound. gemma4_attention_decode_class_kernel is 50.04 ms, 1.6% of the 3067.9 ms total, so the 2X decode target has to come out of the expert matmuls and the activation packing, which together are about 71%.",
+    "The single largest line is the Q4_K MoE gate/up at 860.49 ms, 28.0%, in 1827 calls - 28.5 per decode step, one per layer. The Q5_1 expert down is next at 530.48 ms, 17.3%, also 1827 calls, and it runs a selected-GEMV kernel as expected for decode.",
+    "Activation packing is the surprise: gguf_k_pack8_prefill_out_kernel appears twice, at 576.92 ms in 12915 calls and 222.23 ms in 64 calls, together 26.0% of decode. The 12915 is 202 launches per decode step, which at 44.7 us per launch means decode is spending a quarter of its time in a large number of very small packing launches. Reducing the launch count is therefore a candidate lever in its own right, separate from making any single kernel faster.",
+    "The 'prefill' in those kernel names is historical, not a routing error. gemma4_moe_prefill_route_enabled requires lanes >= _PREFILL_MIN_LANES_PER_EXPERT * num_experts, and decode has lanes = 1 * top_k = 8 against 128 experts, so the row-reusing prefill route is correctly off and the selected/GEMV family is what runs. I checked this because 54% of decode time sits in kernels named prefill, and the names alone would have read as a mis-dispatch.",
+    "The 202-per-step packing launch count is now explained. The kernel lives in gguf_q8_0_pack8_gemv.py, whose docstring calls it 'the decode-shaped' kernel, so it is the q8_0 dense decode GEMV and the 'prefill' in its name is historical. 12915 calls over 64 steps and 29 layers is 7 per layer, which is the seven dense projections - q, k, v, o, gate, up, down. Each is a separate launch because each has its own weight matrix, so this is not a batching oversight; the lever is the per-launch cost and the kernel's own efficiency at the decode shape, not a reduction in launch count by combining unrelated projections.",
+    "The Q4_K MoE gate/up, the largest decode line at 28.0%, is memory-bound at 38.5 GB/s - about 15% of the 8060S's roughly 250 GB/s. Arithmetic: q4_k gate_up is 128 experts x 2816 x 1408 at 4.5 bpw = 285 MB total, top-8 routing reads 17.8 MB per token, and across 29 layers that is 517.4 MB in 13.45 ms. So the kernel is not compute-limited; there is roughly a 4-6x bandwidth headroom on this line alone, which is more than the whole 2X decode target.",
+    "A pre-packed decode GEMV for this exact path already exists and is not wired. hipengine_gguf_q4_k_selected_pack8_gemv_bf16_bf16_out is defined at gguf_q4_k_gemv.py:47 with a wrapper at :1503, and a repository-wide grep finds no caller outside its own module. The q5_k and q6_k equivalents in gguf_k_selected_pack8_gemv.py do have wiring. Whether the q4_k pack8 path was never finished or was retired is not yet established, so the next unit is to find out why it is unwired before assuming it is the answer - pack8 needs a weight repack at load time, so it is not free.",
+    "Third instance of a historical 'prefill' in a kernel name, recorded so the pattern stops costing time. gguf_q4_k_selected_prefill_out_kernel is defined in gguf_q4_k_gemv.hip, so it is the decode GEMV, and gemma4_project_experts_rows reports its route as selected_gemv at decode. The route is correct. I checked this because the profile appeared to show a prefill kernel running during decode, and the check cost one grep while the wrong conclusion would have cost a unit.",
+    "The unwired q4_k pack8 GEMV is never-finished, not retired, and the mechanism is now identified. Evidence: the symbol was introduced by 7371f7c0b, a Qwen35 decode commit; the device kernel (launch_gguf_q4_k_selected_pack8_gemv_out, gguf_q4_k_gemv.hip:1432) and its extern C entry (:2894) both exist; tests/test_gpu_gguf_expert_pack8_gemv.py covers the family; and a repository-wide grep finds no caller for the q4_k wrapper anywhere, including in qwen35_gguf_runner.py, which does call the q5_k and q6_k pack8 wrappers at :38900. The registry variant map in gguf_k_gemv.py registers selected_pack8_gemv for q8_0 (:1599), q5_k (:1641) and q6_k (:1679) but not q4_k. gemma4_project_experts_selected resolves its kernel through that registry by (backend, linear, quant_key, variant), so an unregistered variant is unreachable by construction rather than by choice. This is the concrete instance of the objective's premise that Qwen35 work transfers: the same family is wired for three quant types and missing for the one Gemma 4 uses for its expert gate/up.",
+    "The pack8 layout for q4_k already exists, so wiring the selected pack8 GEMV is a small, well-scoped change rather than a new repack pass. hipengine/quant/gguf_q4_k.py:147 documents a 'Lossless pack8 layout for GGUF Q4_K GEMV' and imports Q4_K_PACK8_SHAPE from hipengine.quant.gguf_repack. What is missing is only the plumbing: q8_0 (gguf_k_gemv.py:518), q5_k (:613) and q6_k (:689) each build their selected pack8 wrapper with _make_selected_pack8_wrapper and each have a selected_pack8_gemv_bf16_bf16_out entry in the variant map (:1599, :1641, :1679), while q4_k's wrapper at gguf_q4_k_gemv.py:1503 uses _make_selected_wrapper instead and has no map entry. There is also an existing switch for this family: HIPENGINE_GGUF_GEMV_DECODE, described in gguf_linear.py:161-165 as the opt-in for the GGUF pack8 GEMV decode family (P9.B), selecting the pack8_gemv_decode_* kernels over the legacy pack8_gemv_* decoders. So q4_k selected appears to be the one quant type the P9.B1-P9.B4b work did not reach, and the named clearing step is: build the q4_k selected pack8 wrapper, add the variant-map entry, and confirm the weight carries the pack8 layout at load.",
+    "The thread resolves: the pack8 expert GEMV for q4_k is already written, tested and registered, and the reason gemma4 does not use it is a registry layer mismatch. gguf_expert_pack8_gemv.py registers gguf_q4_k_expert_pack8_selected_bf16_bf16_out under KernelKey('hip_gfx1100', 'moe_linear', 'gguf_q4_k', 'expert_pack8_selected_bf16_bf16_out') at :145, with q5_k and q6_k alongside at :150 and :154, and register_gguf_expert_pack8_gemv_kernels() is invoked at module import (:263) so the entry is live. tests/test_gpu_gguf_expert_pack8_gemv.py covers the family, and repack_gguf_q4_k_pack8 (gguf_q4_k.py:1316) produces the GGUFQ4KPack8 layout it needs. Meanwhile gemma4_project_experts_selected resolves with KernelKey(weight.backend, 'linear', quant_key, _SELECTED_VARIANT) - layer 'linear', variant 'selected_gemv' - and a repository-wide grep for expert_pack8 finds nothing under hipengine/kernels/hip_gfx1100/gemma4/ at all. So the expert pack8 route exists for this quant type and this backend, is registered under the moe_linear layer, and the gemma4 MoE path never looks there. The named clearing step is to have the MoE route resolve moe_linear / expert_pack8_selected first and fall back to the current linear / selected_gemv route, which is the fallback the existing dispatch already provides for a missing kernel.",
+    "The fix is two parts, and the order matters. Layout materialization is declaration-driven: hipengine/loading/qwen35_gguf_materialize.py:147 maps LAYOUT_Q4_K_PACK8 to _ResidentRepack(Q4_K_PACK8_SHAPE, repack_gguf_q4_k_pack8), and laguna does the same at laguna_gguf_materialize.py:1022, so a weight carries the pack8 layout only if its loader declares that layout. Qwen35's MoE then resolves an explicit KernelKey map at qwen35_gguf_runner.py:35458 mapping gguf_q4_k/q5_k/q6_k to the moe_linear / expert_pack8_selected_bf16_bf16_out variants. Gemma 4 has neither half: no pack8 mention in its loader, and a MoE route that resolves linear / selected_gemv. So part one is to declare the q4_k pack8 layout in Gemma 4's materialization and part two is to resolve the moe_linear key, with part one first - a lookup change alone would hand the kernel an unpacked weight, which reads garbage rather than failing, so the layout declaration is the safety property and not an optimization. This ordering is the reason the earlier plan was sequenced that way, and it is now confirmed from the materializer rather than assumed.",
+    "Correction to the size of the next unit: Gemma 4's materializer has no resident-repack machinery at all. grep for _RESIDENT_REPACKS, LAYOUT_ constants and repack in hipengine/loading/gemma4_gguf_materialize.py returns nothing, while qwen35_gguf_materialize.py carries a full _RESIDENT_REPACKS mapping (LAYOUT_Q4_K_PACK8 through the q5_k/q6_k/q8_0 entries) and laguna_gguf_materialize.py defines its own LAYOUT_Q4_K_PACK8. So part one of the fix is not a declaration line to add - it is porting resident-repack materialization to Gemma 4's loader, or producing the pack8 layout for its expert tensors by another route. The previous entry described part one as 'declare the q4_k pack8 layout', which understated it, and this corrects the estimate rather than leaving it to be discovered mid-implementation. The ordering argument is unaffected: the weight must carry the layout before any route change can be correct.",
+    "The next unit is a port, not new architecture, and Gemma 4's own loader says so. hipengine/loading/gemma4_gguf_device.py:15 states 'No repack step. launch_gguf_linear serves the raw layout for every quant ... so resident-layout conversion is a later performance question', and the module defines exactly two layouts, LAYOUT_RAW_GGUF (:44) and LAYOUT_DENSE_F32 (:45), with a dispatch in materialize_gemma4_gguf_device_weight (:203) that branches on spec.layout (:215, :225) and raises on anything else (:228). So a resident-layout step can be inserted where that dispatch is, which makes part one a port of the qwen35 _RESIDENT_REPACKS pattern rather than a new materialization path. The module's own comment calls resident-layout conversion a later performance question; this profile is that question answered, with roughly 4-6x of bandwidth headroom on a line that is 28.0% of decode. Note also that gemma4_gguf_materialize.py is the CPU reference materializer (Gemma4GGUFReferenceWeights, importing kernels.cpu_reference.gemma4), not the device path, so the earlier grep for repack machinery there was looking in the wrong file.",
+    "The fused expert tensor is compatible with the pack8 layout, checked in pure Python without a GPU or a model load. Q4_K_PACK8_SHAPE is GGUFRepackShape(source_type=Q4_K, rank=2, columns=8) and rejects the rank-3 expert tensor directly ('raw_qweight must have GGUF Q4_K dense byte shape [out_features, bytes_per_row] (rank-2)'). But reshaping (128, 1408, 1584) to (180224, 1584) is accepted, repack_gguf_q4_k_pack8 returns qweight=(22528, 2816) with out_packed=22528 and out_features=180224=128*1408, so per-expert row ranges are preserved. The decisive detail is that pack8 groups eight CONSECUTIVE output columns and 1408 % 8 = 0, so no group straddles an expert boundary - the fused gate/up layout is therefore compatible rather than an obstacle. qwen35's materializer also defines a dedicated LAYOUT_GGUF_EXPERT_PACK8_SIDECAR ('gguf_expert_pack8_v1') at qwen35_gguf_materialize.py:85 if the flat view is not the right shape for the kernel's expert indexing. Either way the port is viable, and this was the last thing that could have invalidated it.",
+    "Final scoping finding for the implementation unit, from reading gemma4_gguf_device.py's plan and materialize paths. The port is not a branch: materialize_gemma4_gguf_device_weight (:203) reads one array with reader.tensor_data and then branches only on dtype/source_dtype before a single load_host_array_to_device_as_dtype call, so a weight is exactly one allocation. The pack8 layout is three arrays - qweight (int32), scales and mins (fp32, shape [in_features/32, out_features]) - so the unit needs multi-allocation support in both Gemma4GGUFDeviceWeight and the materialize path, plus the kernel's three pointers threaded through the MoE route. _plan_one (:123) is where the layout would be chosen and it already gates on rank-2-or-3 and on _RAW_BLOCK_TYPES. Residency also changes: the synthetic repack of the 285.5 MB raw expert tensor produced 22528x2816 int32 qweight plus fp32 scales and mins, so the resident cost of this tensor roughly doubles while the raw copy could then be dropped - which is a memory-budget decision, not a free win. This is the honest size of the unit: a materialization capability port, a weight-object change, a route change, and a correctness gate.",
+    "Residency question answered: both the raw and packed copies must coexist for now. The CPU reference does not constrain the device layout - cpu_reference/gemma4.py and gemma4_streaming.py read ffn_gate_up_exps through layer_map.tensor(...).name and dequantize from the file, so they consume raw GGUF bytes rather than anything resident on device. What does constrain it is the device fallback: gemma4_project_experts_rows' route 3 is per_expert_offset, which reads the raw block layout, and the route is a preference list that degrades when a kernel is missing. So promoting pack8 without making the fallback pack8-aware means holding both layouts, and the resident cost of the expert tensors roughly doubles - which for a 26B model's expert weights is a real budget item, not a rounding error. The deliberate choice for the implementation unit is either to accept the doubling, or to make the fallback pack8-aware as well so the raw copy can be dropped. This was listed as unverified in the previous entry and is now closed.",
+    "Residency measured, and it decides the implementation unit's open choice. plan_gemma4_gguf_resident_specs plus resident_bytes over the real artifact gives 16995.2 MB (17.0 GB) across 657 tensors, of which the 60 rank-3 expert tensors are 14416.5 MB (14.4 GB) - 84.8% of all residency. Measured pack8 expansion is 1.33x, not 2x: one fused expert tensor goes from 285.5 MB raw to 380.6 MB packed (253.8 MB int32 qweight plus 126.9 MB fp32 scales and mins). So keeping BOTH layouts would cost 17.0 -> 36.2 GB, an increase of 19.2 GB or 113% - almost certainly beyond what is affordable. Dropping the raw copy once pack8 is promoted gives 21.8 GB. The conclusion is that the fallback cannot simply keep reading the raw layout: either gemma4_project_experts_rows' per_expert_offset route must be made pack8-aware so the raw copy can be released, or the raw copy must be retained only for tensors the fallback actually needs. This converts the previous entry's open question into a forced design decision, and it is the kind of thing that would otherwise have surfaced as an out-of-memory at promotion time.",
+    "Correction: the previous entry's claim that keeping both expert layouts is 'almost certainly beyond what is affordable' was wrong. hipMemGetInfo on this box reports total 124.0 GiB with 121.6 GiB free, and free -g agrees at 125 GB total. Against that ceiling both options fit comfortably: keeping both layouts is 36.2 GB and dropping the raw copy is 21.8 GB, so the drop-raw requirement is not forced after all. This simplifies the implementation unit rather than complicating it - the fallback route can keep reading the raw layout, so per_expert_offset needs no change and the promotion carries one less risk. I asserted a constraint from an estimate without measuring the ceiling, and the ceiling was the easy half of the question; recording the correction rather than quietly dropping the claim.",
+    "The last unknown before implementation - whether the pack8 expert kernel's signature matches what gemma4's route would pass - is answered, and the route change is well defined. hipengine_gguf_q4_k_expert_pack8_selected_bf16_bf16_out takes (x, selected, qweight_low, qweight_high, scales, mins, out, x_rows, rows, num_experts, in_features, out_features, threads, stream), so it needs SIX weight and scale pointers where the current selected_gemv route passes one qweight: qweight_low is int32, qweight_high is void*, and scales and mins are float, matching the pack8 layout's fp32 scales and mins. There is also a dual variant, gguf_q4_k_expert_pack8_dual_selected_bf16_bf16_out, with an explicit 15-argument Python signature covering qweight/scales/mins for both halves plus two output pointers - which is exactly Gemma 4's fused gate/up case in a single launch. So the route change is: thread the packed weight's three arrays (and the low/high split) through the MoE route and swap the registry lookup, not a signature redesign. The one detail still to settle at implementation time is what qweight_low versus qweight_high means for the layout produced by repack_gguf_q4_k_pack8, which returns a single int32 qweight array; the kernel may expect it split.",
+    "The qweight_high question is resolved and it is not an obstacle for q4_k. The kernel guards on qtype: 'if constexpr (qtype == 4 || qtype == 5) if (mins == nullptr) return hipErrorInvalidValue;' and 'if constexpr (qtype == 5 || qtype == 6) if (qweight_high == nullptr) return hipErrorInvalidValue;'. So qweight_high is required only for q5_k (read as uint8) and q6_k (read as uint16), where it carries the extra bits those formats have. For qtype == 4 the read path uses only pw from qweight_low plus the scale and min, which is exactly what repack_gguf_q4_k_pack8 produces: an int32 qweight plus fp32 scales and mins. So the q4_k pack8 expert kernel is satisfied by the existing repack output with qweight_high passed as null. The same guard block also confirms two launch preconditions worth noting for the wiring: out_features % PACK8 == 0 (1408 % 8 = 0, the same arithmetic that made the fused tensor pack8-compatible) and threads must be 32, 64 or 128. This closes the last open risk in the plan."
+  ],
+  "limits": [
+    "One prompt length, one output length, one box, one profiling run. Decode cost varies with context length - the earlier length curve showed decode falling from 21.91 to 19.57 tok/s between 128 and 2048 prompt tokens - so this profile describes a 128-token context.",
+    "Kernel time is not a promotion claim. This sizes the next unit."
+  ]
+}

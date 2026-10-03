@@ -145,8 +145,12 @@ class ToolCallConstraintSpec:
     end_marker: str = _TOOL_CALL_END_MARKER
     thinking_start_marker: str | None = None
     thinking_end_marker: str | None = None
+    envelope: str = "json"
+    parallel_tool_calls: bool = False
 
     def __post_init__(self) -> None:
+        if self.envelope not in {"json", "xml"}:
+            raise ValueError("tool envelope must be json or xml")
         names = tuple(dict.fromkeys(str(name) for name in self.tool_names if str(name)))
         if not names:
             raise ValueError("tool_call_constraint requires at least one tool name")
@@ -190,11 +194,10 @@ class _ToolPrefixStatus:
 class ToolCallConstraintState:
     """Incremental canonical tool-envelope constraint over decoded token text.
 
-    ``auto`` preserves normal API semantics: the model may choose a plain-text
-    response, but once it starts a tool marker it must finish exactly one valid
-    canonical envelope.  A plain-text branch cannot introduce a later tool
-    marker, which prevents content-plus-tool responses.  ``required`` admits
-    only the tool branch.
+    ``auto`` permits a plain-text response. The legacy JSON envelope requires
+    a single call without a text preamble. XML permits a text preamble and, when
+    explicitly enabled, multiple calls. ``required`` admits only tool calls.
+    Once a call starts, EOS is withheld until its envelope is complete.
     """
 
     spec: ToolCallConstraintSpec
@@ -225,11 +228,13 @@ class ToolCallConstraintState:
         body = _tool_answer_body(self.observed_text.lstrip(), self.spec)
         if body is None:
             return ""
+        if self.spec.envelope == "xml":
+            return _xml_tool_status(body, self.spec)[3]
         suffixes = _tool_forced_close_suffixes(body, self.spec)
         return next(iter(suffixes)) if len(suffixes) == 1 else ""
 
     def accepts_text(self, text: str) -> bool:
-        if self.invalid or self.complete:
+        if self.invalid or (self.complete and self.spec.envelope == "json"):
             return bool(self.complete and not str(text).strip())
         return _tool_output_prefix_status(f"{self.observed_text}{str(text)}", self.spec).valid
 
@@ -498,7 +503,20 @@ def _tool_answer_body(body: str, spec: ToolCallConstraintSpec) -> str | None:
     return remainder[close_index + len(end) :].lstrip()
 
 
+def _xml_tool_status(body: str, spec: ToolCallConstraintSpec):
+    from .xml_tools import xml_tool_prefix
+
+    return xml_tool_prefix(
+        body, names=spec.tool_names, mode=spec.mode, start=spec.start_marker,
+        end=spec.end_marker, parallel=spec.parallel_tool_calls,
+        forbidden=spec.forbidden_text_prefixes,
+    )
+
+
 def _tool_answer_prefix_status(body: str, spec: ToolCallConstraintSpec) -> _ToolPrefixStatus:
+    if spec.envelope == "xml":
+        valid, complete, branch, _ = _xml_tool_status(body, spec)
+        return _ToolPrefixStatus(valid=valid, complete=complete, branch=branch)
     if not body:
         return _ToolPrefixStatus(valid=True, branch="undecided")
     if spec.start_marker.startswith(body):

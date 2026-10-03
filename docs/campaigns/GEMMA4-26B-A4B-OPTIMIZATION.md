@@ -4,6 +4,507 @@ owns: Gemma 4 26B-A4B gfx1100 single-request optimization plan, measurement cont
 ---
 # Gemma 4 26B-A4B optimization campaign
 
+## Current prefill status — 2026-09-27, gfx1151
+
+The campaign's prefill rows were never attributed. One was, on a Strix Halo
+(Radeon 8060S, gfx1151) host: over a 512-token prefill the two routed-expert
+projections are **84.8% of prefill kernel time** — `Q4_K` gate/up 53.40% and
+`Q5_1` down 31.40% of 23.37 s across 2581 dispatches — and they are the only
+prefill cost that scales with (rows x weight bytes) rather than with weight
+bytes, because the incumbent launches one block per (out_col, row) and re-reads
+an expert's whole weight matrix once per row. Every other prefill cost is under
+7% (`Q8_0` exact prefill 6.01%, attention 5.79%).
+
+Projecting those rows through a grouped family that reads each expert's weight
+row once and reuses it across the expert's rows is **bit-exact** where the quant
+key registers such a family: the grouped kernel reproduces the selected path's
+own per-row association, so the route moves launch geometry and nothing else.
+Both halves of the budget now have one — `Q5_1` down first (2048-prompt prefill
+39.82 to 48.57 tok/s, +22.0%) and then `Q4_K` gate/up, whose selected prefill
+reduces 128 lanes with `reduce_block_sum()` and is therefore reproduced at the
+same 128-thread k-stride. Paired on one tree in one session with the kernel
+files the only difference between arms, the second unit takes 512/128 prefill
+from 55.34 to 92.57 tok/s (+67.3%, public wall 15.340 to 11.597 s) and 2048/8
+from 48.84 to 75.17 tok/s (+53.9%, public wall 42.418 to 27.684 s), with decode
+and the generated tokens unchanged in every arm. Against the campaign's pre-loop
+prefill on this host the two units together are 1.89x at 2048/8 and 2.10x at
+512/128.
+
+Reuse alone was not the end of it. Re-attributing after both units left the two
+expert projections at **68% of prefill kernel time** (gate/up 45.1%, down 23.0%)
+while moving only ~4 GB/s of weight bytes, which is the signature of a fetch
+problem rather than a bandwidth one. Isolating the shipped Q4_K grouped kernel's
+parts at the artifact's own geometry put 30 ms of 49 ms in the dequant and 21 ms
+in the activation-side multiply: it re-read every activation element from L2 once
+per output column and re-extracted a scale/min pair per weight element. Staging
+the expert's activation rows in shared memory (read once per eight output
+columns) and hoisting each column's `d*scale` / `dmin*min` pairs into shared per
+32-element sub-block is an exact rewrite of the same expressions, so it is
+**2.07x on that kernel with 0 of 5,767,168 bf16 outputs differing** and takes
+512/128 prefill from 92.28 to 121.90 tok/s (+32.1%, public wall 11.629 to
+10.240 s). Three units in, this host's 512/128 prefill is 11.617 -> 4.200 s,
+**2.77x**.
+
+The same fetch problem was still in the `Q5_1` down projection, which the
+staging rewrite had not covered: it launches one block per (expert, out_col) and
+reloads the expert's activation block from L2 once per output column, so at this
+geometry it moves ~17 GB in 38.5 ms (441 GB/s) of which the weight bytes are
+0.3 GB. Giving each block a four-column output tile and holding the activation
+elements a thread needs for the current k-chunk in registers takes that kernel
+from 38.71 to 20.23 ms (**1.91x**) with 0 of 11,534,336 bf16 outputs differing,
+and Qwen4Exp's own shape from 58.70 to 37.81 ms (1.55x) with the same zero
+difference - the family serves both models, so both shapes were measured before
+a shared preference order changed. The contraction is the incumbent's, not a
+reassociation: slot *t* still accumulates columns *t*, *t* + 256, ... in
+increasing order and the tree is still the 256-wide stride-128 tree, whose first
+level becomes register-local because a thread owns both slot *t* and *t* + 128.
+Because it is bit-exact it ships on the default path with no flag and no
+execution-profile gate, and it is the first prefill change in this campaign that
+needed neither. 512/128 prefill goes 4.239 to 3.652 s (**1.161x**, 120.78 to
+140.19 tok/s), decode is unchanged at 21.06 tok/s, and the public path emits 128
+of 128 identical greedy token ids. A wider output tile on its own does nothing
+(the existing `out8` variant measures 30.32 ms against 30.99 ms) because the
+incumbent's inner loop reloads each element per column regardless; and the
+same kernel's `K_TILE=512` shape reaches 17.28 ms but is **not** bit-exact, so it
+was dropped rather than shipped. Recorded in
+`benchmarks/results/2026-09-27-gemma4-q5-1-staged-grouped-prefill-accepted.json`.
+
+*Measured 2026-09-27 (iteration 50): the Q8_0 dense route's tile space was never
+swept either, and it was worth more than the expert routes.* The route is 205
+calls over eight shapes and 717 ms, 23.9% of the prefill - the second largest
+entry in the closed profile - and its selected shape was `col16 row4`. Only three
+of the family's legal shapes had ever been instantiated. At the route's own
+geometries, recorded from a live forward, `col4 row16` is **2.32 against 3.18 ms
+at in 2816/out 2112 (1.37x)** and **4.10 against 5.19 ms at in 2816/out 4096
+(1.27x)**, and the 512-token prefill is **2.993 -> 2.770 s (1.081x)** with the
+same timing script in two worktrees. The public delta exceeds the kernel-level
+prediction (-223 against about -167 ms), which is consistent with the same change
+also cutting activation reloads rather than being an unexplained excess. It is
+bit-exact - the k-loop stride is `blockDim.x` and the per-(row, column) shuffle
+tree and four-wave sum are unchanged, with 0 differing outputs across the sweep -
+so it ships on the default path with no flag and no gate, and all 205 calls were
+confirmed to resolve to the new shape. Row tile is the weight-reuse lever: at
+`col4`, row1 7.90, row2 4.49, row4 3.18, row8 2.42, row16 2.32 ms. The change is
+made only in the branch the route's own geometries take, because rows 8 with a
+wide output favours `col8 row8` by 1.9x over any 16-row tile; every row count that
+branch can see was measured. Evidence row
+`2026-09-27-gemma4-q8-0-dense-prefill-tile4x16-accepted.json`.
+
+*Measured 2026-09-27 (iteration 49): the prefill profile is closed, and there is
+no host-side work to remove.* The route attribution that drove this campaign
+wraps registered kernels, which misses attention and every launch the registry
+does not own; that left 435 ms of a 3.04 s prefill unexplained and made
+host-side work look like a target. A `rocprofv3` kernel trace settles it: across
+five timed 512-token prefills the union of all dispatches is 15.014 s of a
+15.089 s span, so the device is **99.5% busy** and the host gap is **15 ms per
+prefill (0.5%)**. Per-kernel GPU time is the union of each kernel's intervals,
+not the sum of durations - summing reports 3588 ms for a 3018 ms span because
+end stamps overlap the next dispatch - and the unions sum to **3002.8 ms against
+a 3003 ms prefill**, so the accounting is closed rather than approximately
+closed. The breakdown per prefill: Q4_K expert gate/up 1044.6, Q8_0 dense
+projections 717.2, Q5_1 expert down 681.0, attention 317.3, Q5_K row4 112.2,
+Q8_0 grouped 53.9, and everything else combined - router, expert grouping, lane
+compaction, hidden gather, all norms, GeGLU, rotary, weighted accumulate - is
+**73 ms (2.4%)**. Three routes are 81% of the prefill; the glue is not a target
+and attention, after its 3.08x rewrite, is no longer the first thing to reach
+for. The trace also records why isolated and in-context kernel numbers differ:
+the Q4_K route is 32.52 ms per launch isolated and 36.0 ms in context, because
+in context each layer's 285 MB of expert weights is cold. Evidence row
+`2026-09-27-gemma4-prefill-profile-closed.json`.
+
+*Measured 2026-09-27 (iteration 48): the largest route's tile shape was never
+swept, and it was wrong.* The Q4_K gate projection is 38% of the prefill and its
+staged grouped prefill carried `row_batch` 8 at `out_tile` 8. At the route's own
+geometry - in 2816, out 1408, 128 experts, 4096 rows, row_bytes 1584, grid
+176 x 128, 567 passes at `row_batch` 8 - `row_batch` 4 is **32.52 against 35.75
+ms (1.10x)**, and the 512-token prefill is **3.095 -> 3.002 s (1.031x)** measured
+with the same timing script in two worktrees. The public delta matches the
+predicted route delta (-93 against -93.5 ms), so the route accounts for the whole
+effect. It is bit-exact (0 of 11,534,336 bf16 outputs differ, and the
+grouped-prefill test still matches the per-row gather), so it ships with no flag
+and no gate. The rest of the sweep: `out_tile` 16 is 1.02x, `row_batch` 2 is
+1.22x, `out_tile` 4 is 1.44-1.57x, `row_batch` 16 is 2.05x, `out_tile` 2 is
+2.17x. Note the direction: for this kernel a wider output tile is worth 1.4-1.6x
+while for the Q5_1 kernel `out_tile` 4 is the optimum - the two stage different
+things (this one stages activations, Q5_1 stages weight metadata), so neither
+result transfers. And as with Q5_1, it is not a weight-traffic win: `row_batch` 4
+doubles the passes over the block's weight bytes and is still faster. Evidence
+row `2026-09-27-gemma4-q4k-moe-prefill-rowbatch4-accepted.json`.
+
+*Measured 2026-09-27 (iteration 47): this route's tile space is closed, and it
+has no remaining bit-exact lever.* Six tile shapes and a shared-weight-staging
+rewrite were built and measured at the geometry the route is actually asked for
+- recorded from a live forward rather than assumed: in 704, out 2816, 128
+experts, 4096 compact rows, 190.3 MB of weights, grid 704 x 128, 1069 passes.
+Every variant is bit-identical to the incumbent (0 of 11,534,336 bf16 outputs
+differ) and every one is slower: `out8_rowbatch2` 1.07x, `out8_rowbatch4` 1.10x,
+shared-weight staging 1.13x, `out4_rowbatch2` 1.18x, `out2_rowbatch8` 1.22x,
+`out4_rowbatch8` 1.31x, `compact_rowbatch8_out8` 1.83x, `out16_rowbatch2` 2.73x,
+`out4_rowbatch16` 2.89x. The incumbent reproduces production at 21.03 ms per
+layer against the attribution's 22.5. **Both traffic explanations for the
+route's 5%-of-peak FLOP rate are refuted**: the kernel re-reads its weights once
+per row batch (8.35 passes) and the time is proportional to the pass count with
+flat per-pass cost, which looks like DRAM bound - but halving the passes is
+1.31x slower and staging the block's weight bytes in shared memory, coalesced,
+so global weight traffic drops 8.35x and the one-byte loads' 2x sector waste
+disappears, is 1.13x slower. The activations are the larger term (4.06 GB of L2
+against 1.59 GB of weights, because each of the 704 output-tile blocks re-reads
+the same 5.8 MB) and widening the output tile to halve it is also slower. The
+variants were reverted rather than landed - they are slower and nothing selects
+them. The one surviving faster shape is this kernel at `K_TILE=512` (17.28
+against 20.23 ms), which changes the reduction's k tiling and is therefore a
+gate candidate, not a bit-exact route. Evidence row
+`2026-09-27-gemma4-q5_1-staged-tile-space-rejected.json`.
+
+58 of the 60 expert projections per prefill block now take the grouped route.
+The two that do not are layer 29's `Q5_K` gate/up and `Q8_0` down, which have no
+grouped family with a bf16-activation ABI in this tree. Routing the `Q4_K`
+gate/up through the row-batched WMMA prefill instead reaches 111.43 tok/s
+(2.807x) but fails the binding production `kl_max` limit at 0.167959 on 2 of
+1023 teacher-forced rows, so that path is rejected and removed. All three
+outcomes are recorded:
+`benchmarks/results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json`,
+`.../2026-09-27-gemma4-moe-prefill-q4k-grouped-accepted.json` and
+`.../2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json`. Decode is now
+the larger half of this shape's wall time (6.02 s of 11.60 s at 512/128).
+
+This is a gfx1151 measurement and does not qualify or change any gfx1100 row;
+the two backends share the gfx11 source lineage, so the attribution is expected
+to transfer, but the gfx1100 prefill rows remain unmeasured and this campaign's
+RX 7900 XTX status is unchanged.
+
+## Current prefill status — 2026-09-27, gfx1151 (route attribution)
+
+Route-level attribution of the default path at 512 tokens, by wrapping every
+registered kernel in the four-axis registry with a HIP event pair (attention
+launches outside the registry and was measured separately):
+
+| route | ms | launches | share |
+| --- | ---: | ---: | ---: |
+| `Q4_K` gate/up staged grouped prefill | 1156.1 | 29 | 41.0% |
+| `Q8_0` dense exact prefill (`tile16x4`) | 694.2 | 205 | 24.6% |
+| `Q5_1` down staged grouped prefill | 650.5 | 29 | 23.1% |
+| `Q5_K` selected GEMV (layer 29) | 245.8 | 1 | 8.7% |
+| `Q8_0` selected GEMV | 69.0 | 1 | 2.4% |
+| **prefill attention** (measured separately) | ~1000 | 35 | — |
+
+**Prefill attention ran at 147 GFLOP/s** — one block per (token, head) walking
+keys serially with a 256-lane block reduction per key, eight `__syncthreads`
+rounds per key, 5120 barriers per block at 512 tokens. One warp per key with the
+tree in registers takes the kernel **28.63 -> 9.29 ms (3.08x)** at 512 tokens and
+**468.05 -> 133.02 ms (3.52x)** at 2048, and **512/128 prefill 3.637 -> 3.309 s
+(1.099x)**. It is bit-exact and ships with no flag and no gate. The one
+non-obvious requirement: FP contraction must be off for the leaves, because
+fusing a leaf multiply into the first tree add rounds once where the
+shared-memory tree rounds twice. Recorded in
+`benchmarks/results/2026-09-27-gemma4-attention-prefill-register-tree-accepted.json`.
+
+**A dynamic quant is not one quantization.** The same attribution showed two
+dense projections running the *per-row expert gather* during prefill — one Q5_K
+and one Q8_0, one launch each, 314.8 ms together — because one MoE layer of this
+artifact carries Q5_K gate/up and Q8_0 down weights while the other 29 layers are
+Q4_K/Q5_1. A grouped layer costs about 40 ms for the same shape, so that layer is
+paying roughly six times the grouped cost. The Q8_0 half is fixed: its grouped
+family existed but was registered only under the dense `linear` layer, so binding
+it under `moe_linear` and naming it last in the preference order takes the
+projection **68.13 -> 37.19 ms (1.83x, bit-exact)**. The Q5_K gate/up half
+is fixed too, by a different route: **244.4 -> 111.7 ms (2.19x)**, worth 3.5% of the
+512-token prefill (3.238 -> 3.119 s). Q5_K has no grouped *prefill* family — the
+only Q5_K prefill kernels that exist are WMMA and MMQ, both of which change the
+association — but it has a grouped **GEMV** that reuses an expert's weight rows
+across four rows instead of one, and that kernel was registered only under the
+dense `linear` layer. In isolation it is 469.31 -> 154.08 ms (3.05x) at 128
+experts / 2816 -> 2816 fused / 4096 compact rows, and it is bit-exact (0 of
+1,441,792 bf16 outputs differ from the gather). It is a dispatch step rather than
+a preference-list entry because its launch ABI differs: it takes a lane map and
+separate source and destination row counts, and the compact layout makes that
+lane map the identity.
+
+The remaining options for this layer were enumerated and are now moot. There is no Q5_K
+grouped *prefill* family: the only prefill routes that exist for it are
+`selected_wmma_prefill_compact` and the MMQ family, both of which change the
+association and therefore need the numerical gate. The Qwen35 dual gate/up prefill would still be faster if it were
+wired up, but it needs the compact scheduler ABI (`expert_start_compact`,
+`expert_start_wmma`, `tile_expert`) that the Gemma 4 MoE path does not build.
+
+Two refuted candidates are worth carrying forward. Halving the `Q8_0` dense
+route's traffic does **not** help: a row-grouped variant moves 4.56 GB instead of
+9.30 GB over the six dense shapes but takes 21.23 ms against 22.13 ms, because
+achieved bandwidth falls from 428 to 220 GB/s — the kernel is limited by 1-byte
+weight load transactions, not by DRAM, and the lever is fewer and wider loads
+(which needs a different association) rather than less traffic. And the same
+kernel's `tile8x4` shape moves *more* traffic (3.05 GB against 2.31 GB for
+attn_q) while running faster (5.95 ms against 5.47 ms) because it sustains
+higher bandwidth, which is why the dispatcher's `tile16x4` preference is right.
+
+## Current decode status — 2026-09-28, gfx1151
+
+The decode step has been attributed twice on this host: once by route ablation
+and once by a launch census that sums the weight and activation bytes of every
+launch. The two agree, and together they replace the earlier per-kernel profile,
+which was withdrawn because `rocprofv3 --kernel-trace` serializes dispatches on
+this host and inflates kernel durations about 19x.
+
+| component | ms/token | bytes/step | launches/step | GB/s |
+| --- | ---: | ---: | ---: | ---: |
+| dense `Q8_0` GEMV | 13.78 | 1866.7 MB | 218.7 | 135 |
+| expert GEMV (`Q4_K` gate/up, `Q5_1` down) | 14.04 | 1348.1 MB | 62.0 | 96 |
+| host floor (launches removed) | 8.12 | — | — | — |
+| norm + rotary | 2.24 | — | 416 | — |
+| MoE elementwise | 1.09 | — | — | — |
+| router | 0.93 | — | 30 | 12 |
+| attention | 0.14 | — | 32 | — |
+| measurement slack | 3.54 | — | — | — |
+| **total** | **43.88** | **3219.6 MB** | **825.6** | **73** |
+
+One decode step issues 825.6 kernel launches. At the 256 GB/s this host reaches
+on a pack8 `Q8_0` GEMV in isolation, the 3219.6 MB of weight traffic is 12.6 ms,
+so the step runs at **29% of achievable bandwidth**. The same-host llama.cpp
+reference is 41.92 tok/s, which is 135 GB/s on the same traffic — **53% of peak,
+not peak**. The remaining 1.84x is therefore a gap in *achieved* bandwidth
+between two implementations that are both short of peak, and "reach peak" is not
+the plan.
+
+The host floor is 18.5% of the step and is hidden: the host spends 9.8 us per
+launch against 53 us of device time per launch, so the queue stays full and the
+GPU is the bottleneck. Removing host cost is worth at most the 3.5 ms of
+measurement slack.
+
+**What the numbers point at.** The lm head is one `Q8_0` GEMV of 784 MB issued
+once per token and it runs at **195 GB/s**, while the 218.7 per-layer dense GEMVs
+run at **135 GB/s** on the same kernel family. The difference between them is
+launch count: a 6.3 MB GEMV cannot amortize the roughly 30 us of device-side
+latency each launch carries. That is a fewer-and-larger-launches problem, not a
+faster-kernel problem. The dense MLP gate and up (`2816 -> 2112`, twice per
+layer, 379 MB/step) share one input and are two launches, and the attention
+projections are three more. 416 of the 825 launches are normalization and rotary
+kernels costing 2.24 ms in total, so they are cheap per launch and are not the
+problem.
+
+**One bit-exact route change has landed.** The expert route resolved
+`linear/<quant>/selected_gemv_bf16_bf16_out`, one output column per block, and
+now prefers `selected_pack8_gemv_bf16_bf16_out` where the quant registers it:
+**22.32 -> 22.80 tok/s (+2.2%)** with identical generated token ids. The gain is
+small for the reason above — at rows=8 the x row is L2-resident, so the pack8
+saving is the amortized block reduction, not x traffic.
+`Q5_1`, which carries this artifact's expert down projection, does not register
+that sibling: its compact pack8 kernel is on `moe_linear` and takes a compact
+expert-start array rather than a per-row selected index, so reaching it needs the
+compact MoE scheduler chain that the qwen35 runner builds and this path does not.
+
+**MTP is the larger lever and is not implemented.** The head is a separate
+`gemma4-assistant` artifact (4 blocks, width 1024, `nextn` pre/post projections,
+no `attn_k`/`attn_v` — it attends against the backbone's cache). Its
+hyperparameters, tensor layout and the llama.cpp reference algorithm are all
+recorded, and the loader contract landed in b42a56c20. What does not exist is the
+forward, the draft/verify loop and the adapter registration;
+`hipengine/generation/gemma4_gguf.py` still declares
+`supports_speculative_mtp = False`. The artifact is at
+`/models/gguf/gemma-4-26B-A4B-it-GGUF/mtp-gemma-4-26B-A4B-it-Q8_0.gguf`. The
+complete forward specification, including the resolved KV binding, is
+[docs/reference/GEMMA4-ASSISTANT-MTP.md](../reference/GEMMA4-ASSISTANT-MTP.md).
+
+## Current prefill status — 2026-09-28, gfx1151 (route attribution)
+
+The sections above are gfx1100. The gfx1151 prefill has now been attributed the
+same way, and the answer is different enough to redirect the work. At 2048
+tokens over a 7.536 s / 271.8 tok/s baseline:
+
+| route | saves | share |
+| --- | ---: | ---: |
+| routed experts | 3.070 s | **40.7%** |
+| prefill attention | 2.295 s | **30.5%** |
+| router | -0.028 s | ~0 |
+| normalization + rotary | -0.001 s | ~0 |
+| MoE elementwise | -0.011 s | ~0 |
+
+**Two routes are the prefill.** The router, the normalization and rotary chain,
+and the MoE elementwise chain each save nothing measurable, so the levers the
+gfx1100 attribution spent its time on outside experts and attention are already
+free here.
+
+Attention is the better-scoped of the two and was isolated. At the artifact's own
+geometry — 16 query heads; 8 KV heads and head_dim 256 on the 25 sliding-window
+layers with window 1024; 2 KV heads and head_dim 512 on the 5 full layers —
+`gemma4_attention_prefill_bf16` takes **89.99 ms per launch and 2249.8 ms across
+the 25 sliding-window layers**, reproducing the ablation's 2295 ms and so
+confirming the arm measures the kernel rather than a wrapper. The rate is **286 to
+363 GFLOP/s**, under 1.3% of this part's fp32 FMA peak.
+
+The mechanism is in the launcher: the grid is `tokens * num_heads` — 32768 blocks
+at 2048 tokens and 16 heads — one block per query row, and each block walks the
+keys for its own row. **K and V are read once per query row instead of once per
+query tile.** The windowed K/V working set at 2048 tokens is about 16.8 MB, which
+fits this part's L2, so the re-reads are L2-bound rather than DRAM-bound and they
+still cost. That is the shape flash-attention tiling removes: one block per
+(query tile, head) reads a K/V tile once for the whole tile.
+
+The experts' 40.7% was measured as a share only; its mechanism is not yet
+measured and should not be assumed from the attention result. The dense share of
+prefill is **unmeasured, not zero**: the `no_dense_q8` and `no_all_gemv` arms
+both save about -1%, which cannot be right because skipping every GEMV cannot
+save less than skipping the experts alone at 40.7%. Both hook funnels the
+prefill leaves for the dense Q8_0 route and the grouped expert route do not use.
+
+Artifacts: `benchmarks/results/2026-09-28-gemma4-gfx1151-prefill-route-attribution.json`,
+`scripts/gemma4_prefill_route_ablation.py`,
+`scripts/gemma4_attention_prefill_bench.py`.
+
+## Current prefill status — 2026-09-29, gfx1151 (the remaining gap is one kernel)
+
+The campaign metric has been a 512-token prefill. Measured at the same-host
+llama.cpp reference's own protocol, that point is the **least** informative one on
+the curve:
+
+| prompt | this engine | llama.cpp | gap |
+| ---: | ---: | ---: | ---: |
+| 512 | 870.4 tok/s | 1012.98 | 1.16x |
+| 1024 | 704.3 | 1057.48 | 1.50x |
+| 2048 | 567.8 | 1067.14 | 1.88x |
+| 4096 | **453.9** | **1039.85** | **2.29x** |
+
+The engine's rate falls 2.47x per doubling; the reference is flat within 3
+percent across the same eightfold range.
+
+A kernel census at 512/2048/4096 (HIP event pairs, accounted to 98.5/98.9/98.9
+percent) says why. **Every non-attention term scales linearly, 7.4 to 7.8x for 8x
+the tokens** — the expert block, the dense projections, the router, and every
+norm, rotary and elementwise kernel. `gemma4_attention_prefill_bf16` scales
+**41.13x** and is **61.0 percent of the 4096-token step**.
+
+**The non-attention total at 4096 tokens is 3534 ms against the reference's entire
+4096-token prefill of about 3940 ms.** The rest of the step is already at the
+reference's whole prefill cost, so the remaining gap is the attention kernel and
+nothing else. The same holds at 512, where non-attention is 469.7 ms against a
+505 ms reference.
+
+The kernel performs 1524.7 GFLOP of attention in 5.5207 s at 4096 tokens — **276
+GFLOP/s, about one percent of this part's bf16 rate** — and the rate is flat in
+length, so there is no length-dependent inefficiency to remove: it is slow at
+every length and its share grows only because it is the one quadratic term. Its
+in-situ decomposition was already taken: the K/V load and its dot are 25 percent
+of the cost and the surrounding per-key machinery — mask test, LDS write of the
+logit, block max, softmax rescale, loop scalars — is 75 percent. The kernel's own
+comments record that it issues about 3.4 percent of peak and that its deliberate
+`#pragma unroll 2` is not being applied by the compiler.
+
+Structure: one block of 256 threads per (token, head), three passes over the
+keys, no query tiling, and a warp-level reduction **per key**, so with head_dim
+256 each thread does one multiply-add per key and the rest of the iteration is
+overhead.
+
+Artifacts: `benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-ladder-and-attention-share.json`,
+`worklog/entries/20260930T020000.000000Z-lhl-gemma4-prefill-gap-is-entirely-attention-7c1e5a.md`.
+
+## Current prefill status — 2026-09-29, gfx1151 (the sliding layers are fixed; 512 tokens matches the reference)
+
+The kernel identified above was replaced for the 25 sliding layers by a BF16
+WMMA flash prefill that removes the per-key reduction instead of rescheduling
+it: a 16x16x16 matrix tile consumes sixteen keys at once, so the cross-lane
+shuffle tree the strict kernel's cost was made of does not exist. It measures
+**13.64x** the strict kernel on the same bench row at 4096 tokens (9.58 ms
+against 130.63 ms, 6279.6 GFLOP/s against 460.4).
+
+The kernel is on by default under the `production` execution profile, which is
+the shipped default, and `HIPENGINE_EXECUTION_PROFILE=strict` restores the old
+path. Measured end to end, three samples per point, both arms:
+
+| prompt | strict | production | gain | gap vs llama.cpp |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 870.0 tok/s | **1012.8** | 1.16x | 1.16x -> **1.00x** |
+| 1024 | 707.2 | 925.1 | 1.31x | 1.50x -> 1.14x |
+| 2048 | 570.0 | 804.6 | 1.41x | 1.88x -> 1.33x |
+| 4096 | 456.1 | **628.2** | 1.38x | 2.29x -> **1.66x** |
+
+At 512 tokens the engine now matches the reference (1012.8 against 1012.98). The
+strict arm reproduces the previously recorded ladder within 2 percent at every
+point. All twelve greedy generations (four lengths, three samples, 128 tokens
+each) are token-identical between the arms.
+
+The isolated 13.64x is 1.38x end to end, and that attenuation is arithmetic
+rather than a shortfall: the sliding layers are about 52 percent of attention
+FLOPs, attention was 61 percent of the step, and the production path is chunked
+at 512 rows against a growing KV rather than the bench's single 4096-row launch.
+`0.683 + 0.317/13.6 = 0.706`, i.e. 1.42x, against 1.38x measured.
+
+**The remaining 1.66x at 4096 tokens is the five head_dim-512 full layers.** The
+step decomposes exactly: 3534 ms of non-attention terms, about 200 ms of sliding
+attention, and **2799 ms of full-layer attention**, against 6520 ms measured.
+Those five layers are 43 percent of the step at 431.6 GFLOP/s, and they are the
+subject of the current unit. They are a different structure rather than a
+parameter change: head_dim 512 is twice the accumulator per column, and 64 KB of
+LDS per workgroup does not hold a K and a V tile of `K_BATCH * 512 * 2` bytes
+each.
+
+The full-layer kernel exists and those five layers are closed. It is the same
+tiled flash structure at 32 WMMA columns per block (16 query rows x 2 GQA heads),
+8 keys per 32-lane warp, `K_BATCH` 16 and 49,920 bytes of LDS, reading its K and
+V tiles at the offset that skips the rotary half. On the same bench row at 4096
+tokens it measures **10.04x** the strict kernel, **62.82 ms against 638.11 ms**
+over three runs, at 4376.5 GFLOP/s against 430.9. In the step itself the five
+layers fall from **2799 ms to 231.08 ms** across their 40 chunked launches, and
+attention as a whole goes from **61.0 to 13.5 percent** of the 4.277 s prefill.
+The gap to the sliding kernel's 6279.6 GFLOP/s is register pressure rather than
+structure: 256 VGPRs is the wave32 ceiling, so a column group's two
+dimension-group waves each issue the full score dot and the raw matrix-unit work
+is 1.5x the causal pair count both rows are divided by. End to end at 4096 tokens
+the prefill reads **977.8 tok/s against llama.cpp's 1039.85 (0.941x)**, from
+628.2 with the sliding candidate alone and 456.1 on the strict path, and the
+four-length ladder is 1078 / 1042 / 1007 / 977.8 -- flat within 10 percent where
+the strict ladder falls from 870.0 to 456.1. The strict full-layer kernel stays
+registered and `HIPENGINE_EXECUTION_PROFILE=strict` selects it.
+
+What this does **not** have is the `docs/EXECUTION-PROFILES.md` section 6
+teacher-forced numerical gate. Twelve token-identical greedy rows are a screen,
+not that gate. Recorded in `docs/REFACTOR.md` for both candidates, with the
+profile as the lever.
+
+Artifacts: `benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-candidate.json`
+(the sliding kernel in isolation),
+`benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-full-candidate.json`
+(the full-layer kernel in isolation, the 4096-token census, the four-length ladder),
+`benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-wmma-attention-production-ladder.json`
+(the end-to-end ladder),
+`worklog/entries/20260928T193803.559998Z-lhl-gemma4-gemma4-wmma-prefill-candidate-85c4b9.md`,
+`worklog/entries/20260928T200104.021462Z-lhl-gemma4-gemma4-wmma-prefill-attention-on-by-default-6a0640.md`,
+`worklog/entries/20260928T203205.309813Z-lhl-gemma4-gemma4-full-layer-prefill-attention-wmma-ecc8b4.md`.
+
+## Current prefill status — 2026-09-29, gfx1151 (prefill beats the reference at every length)
+
+The expert gate/up Q4T16 WMMA leaf was the last large term. It is issue-bound,
+not bandwidth-bound. Measured with the validated GL2C DRAM read counter it reads
+**277.3 MB against 316.5 MB irreducible** for the same work, so it already moves
+less than the floor for its own work and no byte-level change can help. The time
+goes to instruction issue: `us_per_block` is flat at ~0.47 across a 6x range of
+block counts while DRAM bytes per block fall 2.4x, occupancy is 96.5 percent of
+the hardware ceiling (1235.3 of 1280 waves), and the kernel spends roughly 150
+instructions per WMMA against a target of about 20.
+
+Two bit-identical units took it from **5.025 to 3.144 ms/call (1.598x)**. The
+first hoisted four K-loop invariants and removed two redundant branches. The
+second repacks the tile K-major and stages each sub-block's Q region in LDS, so
+the sixteen K values one lane needs are one contiguous 16-byte block read as a
+single 128-bit load. Reading the same fragment straight from global instead is
+1.98x slower: it lands at 256 VGPRs, the wave32 ceiling, with 202 spilled
+instructions, against 172 VGPRs and no spill through LDS.
+
+End to end, `scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3`:
+
+| prompt | hipEngine | llama.cpp | ratio |
+| ---: | ---: | ---: | ---: |
+| 512 | 1243 | 1012.98 | **1.227x** |
+| 1024 | 1205 | 1057.48 | **1.140x** |
+| 2048 | 1164 | 1067.14 | **1.091x** |
+| 4096 | 1119 | 1039.85 | **1.076x** |
+
+At 4096 that is 1119 tok/s against 977.8 when the full-layer attention landed and
+456.1 on the strict path. The 1012.98 quoted in the previous section is the
+512-token baseline, not the 4096 one; 0.941x there was already against 1039.85.
+
+Artifacts: `benchmarks/results/2026-09-29-gemma4-t16-gate-up-dram-counter-measurement.json`,
+`worklog/entries/20260928T233806.520482Z-lhl-gemma4-t16-gate-up-dram-bound-0619de.md`,
+`worklog/entries/20260928T234111.469697Z-lhl-gemma4-t16-gate-up-dram-bound-b8c595.md`.
+
 ## Current correctness status — 2026-09-26
 
 The key-slice attention implementation failed the corrected teacher-forced
@@ -177,6 +678,14 @@ of selecting the best run or repeating until a desired result appears.
    Record backend/KV-type differences where exact matching is unavailable.
    Pin its source/build and reproduce exact commands; do not assume the CPU
    first-token comparison script launches this engine.
+   The pinned build is plain llama.cpp HIP `17252c769` (10685). The halo-box
+   tree's patched HIP build (`~/halo-box-strix-llama/hb-pr11/build-hip-patched`,
+   built 2026-09-02) was measured against this artifact on 2026-09-27 and is
+   **parity**: pp512 1075.94 vs 1055.62, tg128 40.43 vs 41.11. Its
+   flash-attention and MoE-prefill fixes target `MUL_MAT_ID`-heavy MoE shapes
+   and hd128/hd256 attention at 16K+ depth, neither of which this model reaches
+   at the measured shapes, so the plain build remains the comparator.
+   Evidence: `benchmarks/results/2026-09-27-gemma4-halobox-baseline-and-mmq-mechanism-narrowing.json`.
 3. **Qwen3.6-35B-A3B GGUF UD-Q4_K_M:** same RX 7900 XTX, timing boundaries,
    workload sizes, greedy mode and BF16 KV where supported. It uses its own
    template/tokenizer and is a different-model latency reference. Probe capacity
@@ -1417,6 +1926,103 @@ direction. The clean-device pass also puts every other cell 4-10% above its
     shelf**: fusion that does not serialise a reduction before a dependent
     transform, or a graph that helps where host is already hidden. Evidence row
     `2026-09-26-gemma4-26b-a4b-profile-gap-closed-launch-bubbles.json`.
+  *Diagnostic 2026-09-27 (iteration 52): this artifact has no MTP head, and the
+obvious next decode lever is already spent.* The artifact carries 658 tensors and
+none match `mtp`, `nextn`, `next_n`, `draft`, `spec` or `eagle`; its top-level
+prefixes are `blk`, `output_norm`, `rope_freqs` and `token_embd`, and no metadata
+field mentions MTP. The in-tree speculative path is a NextN head that reads
+`nextn.enorm` and `nextn.hnorm`, so it keys on tensor presence rather than on a
+model name, and `Gemma4GGUFGenerator.supports_speculative_mtp` is already `False`
+and surfaced through `engine_service`. **Speculative decoding is therefore
+unavailable from this artifact, not from the model:** Gemma 4's MTP head ships
+separately as `google/gemma-4-26B-A4B-it-assistant`, and GGUF MTP quants of it
+exist (`ironbcc/gemma-4-26B-A4B-it-MTP-GGUF`). Neither has been downloaded or run
+here, and neither is blocked by the engine - the route keys on tensor presence.
+Wiring a draft artifact is deferred until base decode and prefill land, so decode
+work stays on the single-token path for now.
+On that path, the decode attention kernel's barrier batch is not a tunable: it is
+derived per launch as the largest of 8, 4, 2, 1 whose partial rows fit the 64 KB
+LDS budget, and the dispatch switch already carries a `case 16` the search never
+selects, so it is already at the hardware budget maximum. Measured decode stands
+at 21.06 tok/s against the 16.09 baseline (1.31x) with public-path token-id
+parity. A fresh row on the current tree through the same public runner measures
+**20.03 tok/s at 1024 prompt / 128 output against the baseline artifact's 19.97
+at the same shape**, so decode is at parity with the baseline. An earlier reading
+of that row compared it against 21.06, which is the baseline's *512-prompt* row,
+and reported a 5% gap; the comparison mixed two shapes and was wrong. Decode
+throughput is shape-dependent on this model: 21.96 at 128 prompt, 21.05 at 512,
+19.97 at 1024, 17.58 at 4096, so any decode figure has to carry its shape. Evidence row `2026-09-27-gemma4-decode-mtp-capability.json`.
+
+*Measured 2026-09-27 (iteration 51): the evaluator gap the iteration-46 entry
+recorded below is closed, and the first route it was pointed at is not what that
+entry thought.* The frozen corpus is eight sentences cycled to the target length,
+so a 1024-token chain repeats each many times; measured on the strict arm it has
+**no row below 0.20 top-1 margin at all**, median margin 1.0000, which is why its
+top-1 bar is not "nearly blind" but exactly blind. `probe_corpus` in
+`scripts/gemma4_campaign_bench.py` generates a seeded, never-repeating chain that
+mixes material with no predictable continuation against material where only the
+wording is open, and `--corpus probe` selects it; `require_single_pass` raises
+rather than cycling so repetition cannot silently return. It carries 247 rows
+below 0.20 and 77 below 0.05. The gate's verdict now also reports the baseline's
+own top-1 margin per row and breaks KL and flips down by margin band, so a
+`kl_max` breach can be read against where it happened instead of only how large
+it was. Pointed at the MMQ gate/up route the probe chain reports `kl_mean` 0.384,
+`kl_max` 10.86 and 229 top-1 flips of 1023 rows, against the recorded 1.438e-04,
+0.0651 and 0 flips on the frozen chain - see the correction on that route above.
+Evidence row `2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
+
+*Measured 2026-09-27 (iteration 46): the expert gate/up prefill takes the MMQ
+  route the Qwen4 experts already use, and it is 1.27x - but it lands in the
+  kl_max decision rather than settling it.* The route reads the artifact's
+  per-expert fused `gate | up` row block directly through the int8-dp4a MMQ32
+  leaf (`gguf_q4_k_selected_dual_q8_1_ds4_mmq32_...`), replacing the two fp32
+  grouped launches per layer. The leaf's expert stride assumed two expert-major
+  weight tensors; a fused-layout template flag makes it
+  `out_features_a + out_features_b`, defaults to false, and leaves every
+  existing instantiation untouched. 512/128 prefill **4.200 -> 3.313 s**
+  (121.9 -> 154.3 tok/s, **+26.5%**, 1.265x), 2048/128 **21.836 -> 18.268 s**
+  (93.85 -> 112.06 tok/s, 1.195x), public path parity true, decode unchanged. At the
+  leaf's own geometry the two fp32 grouped launches take 36.94 ms against the
+  fused MMQ route's pack + tile map + one launch at 6.56 ms.
+  *The gate verdict is the iteration-37/38 situation again, with better
+  aggregates.* Against the same strict baseline, 1022 rows: kl_mean 1.438e-04,
+  kl_p95 1.329e-05, kl_p99 1.489e-04, top-1 rate 1.0 with zero flips - all well
+  inside their bars - and kl_max 6.510e-02 on 2 rows against the 0.05 bar. The
+  shipped 4-slice split breaches that bar on this chain at 1 row (0.055589) and
+  **row 863 is the same row** (teacher p_top1 0.995465, top-1 unchanged). The
+  two breaching rows here are near-certain repeated-context rows where the
+  decision does not move, 1019 of 1022 rows sit below 1e-3 KL at a median of
+  1.5e-07, and max|delta logit| is 2.49 at the median across both the quiet rows
+  and the whole set, so the perturbation is not the discriminator. Raising the
+  activation precision cannot clear the bar: this leaf's `ACTIVATION_PASSES` is
+  unused in its body (a three-plane pack returned byte-identical output for +8%
+  cost, and was removed), and iteration 38 already measured the split breaching
+  at 2, 4, 8 and 16 slices alike.
+  *Decision-stability probes, and an evaluator gap they expose.* Three ad-hoc
+  single-run probes through the public runner, recorded as diagnostics rather
+  than a row. A natural English paragraph agrees **exactly** over 16 greedy
+  tokens. A Python snippet agrees for two tokens, then the route takes 236772
+  where the incumbent takes 20470 and emits that token fourteen times in a row
+  while the incumbent continues with varied tokens. A 60-fold repeated sentence
+  flips the first greedy token (108 against 107) at a position where the
+  incumbent's own top-1 is 0.2532 (top four 0.2532/0.1775/0.1665/0.1328) and the
+  route's is 0.5877, with the top logit moving 1.005 -> 14.029. Pinning the
+  attention split to one slice changes none of it, since a 721-key context never
+  engages the split. Two things follow: the route changes decisions at
+  low-margin positions, and **the frozen 1022-row chain cannot see that class** -
+  its rows are near-one-hot repeated prose, so it reports zero top-1 flips while
+  these probes flip at the first low-margin position they meet. Any future
+  promotion of a changed-arithmetic route on this model needs a probe suite that
+  contains low-margin positions; the current evaluator's top-1 bar is nearly
+  blind there.
+  So the route is implemented, registered, tested and measured, but it does
+  **not** become the default path: `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=1` selects
+  it, `docs/REFACTOR.md` carries the flag with its removal condition, and the
+  promotion call is the same lead decision iteration 38 recorded for the split -
+  whether an absolute `kl_max` applies to a change whose divergence is a
+  reordering-class tail effect. Evidence row
+  `2026-09-27-gemma4-moe-gate-up-mmq-measured-not-promoted.json`. The measured
+  1.27x is live the moment that decision lands.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on

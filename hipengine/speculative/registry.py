@@ -22,7 +22,6 @@ from hipengine.speculative.provider import (
 @dataclass(frozen=True, slots=True)
 class SpeculativeProviderKey:
     """Concrete public speculative-provider implementation key."""
-
     provider: str
     target_model: str
     backend: str
@@ -119,6 +118,12 @@ class SpeculativeProviderCapabilities:
 # must resolve to this declared value instead of inventing one.
 DEFAULT_PROVIDER_CANDIDATE_BUDGET = 4
 
+# The ``quant`` axis value a provider registers under when its behaviour does not
+# depend on the target's quantization. ``resolve_speculative_provider`` falls back
+# to it after an exact-key miss, so a provider that genuinely has no quantization
+# dependence never has to enumerate the quantizations it would accept.
+QUANT_AGNOSTIC = "*"
+
 
 @dataclass(frozen=True, slots=True)
 class SpeculativeProviderConfig:
@@ -189,7 +194,21 @@ def resolve_speculative_provider(
     backend: str,
     quant: str,
 ) -> SpeculativeProviderFactory:
-    """Resolve one exact provider implementation or fail closed."""
+    """Resolve one provider implementation, or fail closed.
+
+    An exact ``(provider, target_model, backend, quant)`` key wins. Failing that,
+    a provider registered with ``quant=QUANT_AGNOSTIC`` is accepted: some
+    providers genuinely do not depend on the target's quantization -- a
+    model-attached sidecar whose verify reads whatever logits the backbone
+    produces is the case this exists for -- and without this an exact-key
+    registry would force every such provider to carry a written list of
+    known-good quantizations. That list would refuse a newly resolvable
+    quantization for a reason that is not a capability miss, which is the
+    failure mode this registry must not have.
+
+    A provider that *does* depend on the quantization still registers exact keys
+    and is never matched by the wildcard.
+    """
 
     key = SpeculativeProviderKey(
         provider=provider,
@@ -199,6 +218,16 @@ def resolve_speculative_provider(
     )
     try:
         return _REGISTRY[key]
+    except KeyError:
+        pass
+    agnostic = SpeculativeProviderKey(
+        provider=provider,
+        target_model=target_model,
+        backend=backend,
+        quant=QUANT_AGNOSTIC,
+    )
+    try:
+        return _REGISTRY[agnostic]
     except KeyError as exc:
         raise KeyError(f"unregistered speculative provider: {key}") from exc
 
@@ -279,6 +308,7 @@ def register_builtin_speculative_providers() -> None:
     global _BUILTINS_REGISTERED
     if _BUILTINS_REGISTERED:
         return
+    from hipengine.generation import gemma4_mtp as _gemma4_mtp  # noqa: F401
     from hipengine.generation import laguna_dflash as _laguna_dflash  # noqa: F401
     from hipengine.generation import qwen4_exp_mtp as _qwen4_exp_mtp  # noqa: F401
 
@@ -287,6 +317,7 @@ def register_builtin_speculative_providers() -> None:
 
 __all__ = [
     "DEFAULT_PROVIDER_CANDIDATE_BUDGET",
+    "QUANT_AGNOSTIC",
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
     "SpeculativeProviderFactory",

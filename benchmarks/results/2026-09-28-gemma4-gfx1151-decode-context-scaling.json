@@ -1,0 +1,36 @@
+{
+  "kind": "gemma4_gfx1151_decode_context_scaling",
+  "performance_claim": false,
+  "recorded": "2026-09-28, gfx1151 Strix Halo (AMD Radeon 8060S), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "status": "diagnostic, no change landed",
+  "why": "The decode profile recorded earlier in this session was withdrawn because rocprofv3 --kernel-trace serializes dispatches and the run was cold. This measurement replaces it with a method that carries no profiling overhead: the benchmark's own decode_tps, taken warm, at three context lengths. Decode rate versus context separates the weight-bound part of a decode step from the attention-bound part, because only attention grows with context.",
+  "command": "python scripts/gemma4_campaign_bench.py --prompt <P> --output 64 --samples 2 --warmup 1 --expect-gpu 8060S, for P in 8, 512, 2048",
+  "measurements": [
+    {"prompt": 8, "decode_tps": 22.38, "ms_per_token": 44.7, "prefill_tps": 41.4, "first_token_s": 0.193},
+    {"prompt": 512, "decode_tps": 21.09, "ms_per_token": 47.4, "prefill_tps": 341.0, "first_token_s": 1.501},
+    {"prompt": 2048, "decode_tps": 19.67, "ms_per_token": 50.8, "prefill_tps": 271.8, "first_token_s": 7.536}
+  ],
+  "finding": {
+    "decode_is_flat_in_context": "22.38 to 21.09 to 19.67 tok/s across a 256-fold increase in context length, a 12 percent change from 8 to 2048.",
+    "reading": "Attention is not the decode bottleneck. The attention-dependent part of a decode step is the difference between the shortest and longest context here, about 2.7 tok/s out of 22.4, so roughly 12 percent. The remaining 88 percent is weight streaming: the MoE expert path plus the dense projections, which cost the same per token regardless of context.",
+    "consequence_for_the_objective": "The objective's 2X decode target is a weight-path target. Decode is 22.38 tok/s at short context and llama.cpp is 41.92, so the entire 2.09x gap lives where the weights are read, and no amount of attention work closes it.",
+    "bandwidth_arithmetic": {
+      "CORRECTED": "The first version of this block used 2.25 GB per token and reported about 50 GB/s and 20 percent. That input was wrong. The active weight traffic is 3.50 GB per token, measured from the artifact's own tensor offsets rather than assumed. The corrected figures are below and the original is withdrawn.",
+      "ms_per_token_at_short_context": 44.7,
+      "active_weights_per_token_bytes": 3500000000,
+      "basis": "measured, not assumed: the artifact's 658 tensors are sized from their data-offset deltas, which sum to the file's 17.01 GB exactly, and the 60 rank-3 expert tensors (14.42 GB) are scaled by expert_used_count/expert_count = 8/128. An earlier version of this block assumed 4B active parameters at 4.5 bits per parameter, which gave 2.25 GB and was wrong by 1.55x",
+      "achieved_gb_s": 78,
+      "peak_gb_s": 256,
+      "utilisation": 0.31,
+      "llama_cpp_achieved_gb_s": 146,
+      "llama_cpp_utilisation": 0.57,
+      "note": "The withdrawn decode profile reported 18 percent and the first version of this block reported 20 percent. Both were built on the wrong 2.25 GB input. The corrected reading is 31 percent at short context and 27 percent at 512 context, against llama.cpp's 57 percent, so the headroom is 1.87x rather than 5x and 146 GB/s is a realistic target because it is what llama.cpp already reaches on this host and artifact."
+    }
+  },
+  "what_this_does_not_establish": "Which kernel or which part of the weight path is slow. It rules attention out and points at weight streaming; it does not distinguish the MoE expert gather from the dense projections, and it does not explain why 50 GB/s is reached rather than 94. That needs an ablation, not a profile.",
+  "method_note": "The prompt-8 point has a prefill of only 8 tokens, so its prefill_tps of 41.4 is launch-bound and is not a prefill measurement. It is included only as the short-context decode anchor. The 512 and 2048 prefill figures (341.0 and 271.8) are consistent with the campaign bench and with the WMMA landing.",
+  "next": [
+    "Attribute within the weight path by ablation: time decode with the MoE expert route varied against the dense projections varied, using decode_tps and no tracing.",
+    "Check whether the dense projections are already on their best route at batch 1, since they are 12 percent of the withdrawn ranking and a fixed per-token cost."
+  ]
+}

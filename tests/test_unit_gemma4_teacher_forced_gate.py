@@ -14,11 +14,14 @@ import numpy as np
 import pytest
 
 from scripts.gemma4_teacher_forced_gate import (
+    MARGIN_BANDS,
     THRESHOLDS,
     capture_chain,
     force_slices,
     evaluate,
+    margin_report,
     row_kl_divergence,
+    row_top2_margin,
 )
 
 
@@ -133,6 +136,78 @@ class TestEvaluate:
         cand[2, 5] = np.nan
         with pytest.raises(ValueError, match="finite"):
             evaluate(base, cand)
+
+
+class TestMarginReport:
+    """The margin breakdown that makes a kl_max breach readable.
+
+    The frozen chain is eight sentences cycled, so its rows are near one-hot and
+    the top-1 bar cannot see a divergence that only matters where the decision is
+    close. These tests pin the measure and the banding, not any threshold.
+    """
+
+    def _pair(self) -> tuple[np.ndarray, np.ndarray]:
+        base = np.zeros((4, 8), dtype=np.float32)
+        base[0, 3], base[0, 5] = 2.0, 1.9       # two close leaders
+        base[1, 2], base[1, 4] = 9.0, 0.0       # dominant leader
+        base[2, 1], base[2, 6] = 1.0, 0.5       # moderate
+        return base, base.copy()
+
+    def test_margin_is_the_top_two_probability_gap(self) -> None:
+        base, _ = self._pair()
+        margin, gap = row_top2_margin(base)
+        assert margin.shape == (4,)
+        # A flat row has two equal leaders, so the gap is exactly zero.
+        assert margin[3] == pytest.approx(0.0, abs=1e-12)
+        # A dominant leader is near one.
+        assert margin[1] > 0.99
+        # Row 0's logits differ by 0.1 over six zeros: p1 - p2 is a few percent.
+        assert margin[0] == pytest.approx(0.0351, abs=2e-3)
+        assert gap[0] == pytest.approx(0.1, abs=1e-6)
+        assert gap[1] == pytest.approx(9.0, abs=1e-6)
+
+    def test_bands_partition_the_rows_in_ascending_margin_order(self) -> None:
+        base, _ = self._pair()
+        verdict = evaluate(base, base)
+        bands = verdict["margin_report"]["bands"]
+        assert [b["band"] for b in bands] == [name for name, _ in MARGIN_BANDS]
+        assert sum(b["rows"] for b in bands) == base.shape[0]
+        by_name = {b["band"]: b for b in bands}
+        assert by_name["margin_lt_0.01"]["rows"] == 1        # the flat row
+        assert by_name["margin_0.01_to_0.05"]["rows"] == 1   # the close-leader row
+        assert by_name["margin_0.05_to_0.20"]["rows"] == 1  # moderate gap
+        assert by_name["margin_ge_0.20"]["rows"] == 1      # the dominant row
+
+    def test_a_flip_at_a_close_margin_is_separated_from_a_decisive_one(self) -> None:
+        base, _ = self._pair()
+        cand = base.copy()
+        cand[1] = np.roll(cand[1], 1)        # flips the decisive row
+        cand[1, 0] = cand[1, 0] + 50.0
+        # A tie is the most fragile decision there is: an epsilon moves it.
+        cand[3, 4] = 1e-6
+        verdict = evaluate(base, cand)
+        assert verdict["top1_flips"] == 2
+        assert verdict["top1_flips_close_margin"] == 1
+        by_name = {b["band"]: b for b in verdict["margin_report"]["bands"]}
+        assert by_name["margin_ge_0.20"]["flips"] == 1
+        assert by_name["margin_lt_0.01"]["flips"] == 1
+        assert by_name["margin_lt_0.01"]["kl_max"] < 1e-9
+
+    def test_report_is_present_even_when_nothing_diverges(self) -> None:
+        base, same = self._pair()
+        report = margin_report(base, same, np.zeros(4), [])
+        assert report["close_margin_flips"] == 0
+        assert report["close_margin_rows"] == 2
+        assert report["margin_median"] > 0.0
+
+    def test_an_empty_band_reports_no_kl_rather_than_nan(self) -> None:
+        base = np.zeros((2, 4), dtype=np.float32)
+        base[:, 0] = 20.0                    # every row decisive
+        verdict = evaluate(base, base)
+        by_name = {b["band"]: b for b in verdict["margin_report"]["bands"]}
+        assert by_name["margin_lt_0.01"]["rows"] == 0
+        assert by_name["margin_lt_0.01"]["kl_mean"] is None
+        assert by_name["margin_lt_0.01"]["kl_max"] is None
 
 
 class TestCaptureChain:

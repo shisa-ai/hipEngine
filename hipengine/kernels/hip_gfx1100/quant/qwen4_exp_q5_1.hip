@@ -259,6 +259,202 @@ __global__ void q5_1_selected_grouped_prefill_bf16_bf16_kernel(
   }
 }
 
+// Grouped variant with the block's activation columns held in registers across
+// an output tile, so one activation element feeds OUT_TILE output columns
+// instead of one.
+//
+// The plain grouped kernel launches one block per output column, so every block
+// re-reads the expert's whole activation block from L2: at Gemma 4's down
+// geometry (in 704, out 2816, 128 experts, 4096 compact rows) the kernel moves
+// ~17 GB in 38.7 ms, 441 GB/s, of which the weight bytes are 0.3 GB. A wider
+// OUT_TILE alone does not help, because the plain kernel's inner loop still
+// reloads each activation element once per output column (the existing out8
+// variant measures 30.3 ms against 31.0 ms); the columns have to be *held*
+// across the tile. Holding them takes the same geometry to 20.2 ms with 0 of
+// 11,534,336 outputs differing, and Qwen4Exp's shape from 58.7 to 37.8 ms with
+// the same zero difference.
+//
+// Each thread owns two logical slots - t and t + 128 - and every activation
+// element it needs for the current k-chunk, so the tile's outputs share one
+// load. The contraction order is unchanged: slot t still accumulates columns
+// t, t + 256, t + 512, ... in increasing order, and the tree is still the
+// incumbent's 256-wide stride-128 -> 1 tree, whose first level is now
+// register-local. Outputs are therefore bit-identical to
+// q5_1_selected_grouped_prefill_bf16_bf16_kernel and to the selected GEMV.
+template <int ROW_BATCH, int OUT_TILE, int K_TILE>
+__launch_bounds__(128, 2)
+__global__ void q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ expert_start,
+    const uint8_t* __restrict__ weights,
+    uint16_t* __restrict__ output,
+    int compact_rows,
+    int num_experts,
+    int in_features,
+    int out_features,
+    int row_bytes) {
+  constexpr int THREADS = 128;
+  constexpr int LOGICAL = 256;
+  constexpr int SUBS = K_TILE / 32;
+  const int out_base = blockIdx.x * OUT_TILE;
+  const int expert = blockIdx.y;
+  if (out_base >= out_features || expert >= num_experts) return;
+  const int start = static_cast<int>(expert_start[expert]);
+  const int end = static_cast<int>(expert_start[expert + 1]);
+  if (start < 0 || end > compact_rows || start >= end) return;
+
+  const uint8_t* __restrict__ weight_base =
+      weights + (static_cast<int64_t>(expert) * out_features + out_base) * row_bytes;
+  // The staged weights cover every k-chunk at once, so they are sized by the
+  // whole row rather than by one chunk and live in dynamic shared memory. The
+  // slot count is chunks*SUBS, not in_features/32: a row whose width is not a
+  // multiple of K_TILE still gets a full SUBS-wide tail chunk, and the compute
+  // reads sub+4 into it exactly as the per-chunk staging did.
+  const int chunks = (in_features + K_TILE - 1) / K_TILE;
+  const int total_subs = chunks * SUBS;
+  extern __shared__ unsigned char staged_raw[];
+  float* __restrict__ weight_d = reinterpret_cast<float*>(staged_raw);
+  float* __restrict__ weight_m = weight_d + OUT_TILE * total_subs;
+  uint32_t* __restrict__ weight_qh =
+      reinterpret_cast<uint32_t*>(weight_m + OUT_TILE * total_subs);
+  __shared__ float slot[OUT_TILE][ROW_BATCH][LOGICAL / 2];
+  const int sub = threadIdx.x >> 5;
+  const int within = threadIdx.x & 31;
+
+  // Stage once for the whole block. These bytes depend only on the expert and
+  // the output column, never on the row, so the previous per-chunk staging
+  // re-fetched the same 8448 bytes for each of the 8 row batches: 88 global
+  // round trips where 11 suffice, each one closed by two block-wide barriers.
+  for (int idx = threadIdx.x; idx < OUT_TILE * total_subs; idx += THREADS) {
+    const int o = idx / total_subs;
+    const int s = idx - o * total_subs;
+    // Slots are laid out [chunk][out][sub], so the compute side indexes with a
+    // compile-time inner stride and hoists chunk*OUT_TILE*SUBS out of its out
+    // loop. Indexing [out][global sub] instead costs a runtime multiply per
+    // access and measured 300 extra VALU instructions per wave.
+    const int slot = (s / SUBS) * (OUT_TILE * SUBS) + o * SUBS + (s % SUBS);
+    if (out_base + o < out_features && s * 32 < in_features) {
+      const uint8_t* block = weight_base +
+                             static_cast<int64_t>(o) * row_bytes +
+                             static_cast<int64_t>(s) * 24;
+      weight_d[slot] = load_fp16(block);
+      weight_m[slot] = load_fp16(block + 2);
+      weight_qh[slot] = *reinterpret_cast<const uint32_t*>(block + 4);
+    } else {
+      weight_d[slot] = 0.0f;
+      weight_m[slot] = 0.0f;
+      weight_qh[slot] = 0U;
+    }
+  }
+  __syncthreads();
+
+  for (int base = start; base < end; base += ROW_BATCH) {
+    float value0[OUT_TILE][ROW_BATCH];
+    float value1[OUT_TILE][ROW_BATCH];
+#pragma unroll
+    for (int o = 0; o < OUT_TILE; ++o) {
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        value0[o][r] = 0.0f;
+        value1[o][r] = 0.0f;
+      }
+    }
+    for (int chunk = 0; chunk < chunks; ++chunk) {
+      const int k0 = chunk * K_TILE;
+      const int sub_base = chunk * (OUT_TILE * SUBS);
+      const int column0 = k0 + threadIdx.x;
+      const int column1 = k0 + threadIdx.x + THREADS;
+      float x0[ROW_BATCH];
+      float x1[ROW_BATCH];
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        const int row = base + r;
+        const bool live = row < end;
+        x0[r] = (live && column0 < in_features)
+                    ? bf16_bits_to_float(
+                          input[static_cast<int64_t>(row) * in_features + column0])
+                    : 0.0f;
+        x1[r] = (live && column1 < in_features)
+                    ? bf16_bits_to_float(
+                          input[static_cast<int64_t>(row) * in_features + column1])
+                    : 0.0f;
+      }
+#pragma unroll
+      for (int o = 0; o < OUT_TILE; ++o) {
+        if (out_base + o >= out_features) break;
+        const uint8_t* __restrict__ row_ptr =
+            weight_base + static_cast<int64_t>(o) * row_bytes;
+        const uint8_t* block0 =
+            row_ptr + static_cast<int64_t>(chunk * SUBS + sub) * 24;
+        const uint8_t* block1 = block0 + 4 * 24;
+        const uint8_t packed0 = block0[8 + (within & 15)];
+        const uint8_t packed1 =
+            (chunk * SUBS + sub + 4 < (in_features + 31) / 32) ? block1[8 + (within & 15)]
+                                                              : static_cast<uint8_t>(0);
+        const uint8_t low0 = within < 16 ? (packed0 & 0x0fU) : (packed0 >> 4);
+        const uint8_t low1 = within < 16 ? (packed1 & 0x0fU) : (packed1 >> 4);
+        const int wi0 = sub_base + o * SUBS + sub;
+        const int wi1 = wi0 + 4;
+        const float w0 =
+            weight_d[wi0] *
+                static_cast<float>(low0 |
+                                   (static_cast<uint8_t>(
+                                        (weight_qh[wi0] >> within) & 1U)
+                                    << 4)) +
+            weight_m[wi0];
+        const float w1 =
+            weight_d[wi1] *
+                static_cast<float>(low1 |
+                                   (static_cast<uint8_t>(
+                                        (weight_qh[wi1] >> within) & 1U)
+                                    << 4)) +
+            weight_m[wi1];
+#pragma unroll
+        for (int r = 0; r < ROW_BATCH; ++r) {
+          value0[o][r] += x0[r] * w0;
+          value1[o][r] += x1[r] * w1;
+        }
+      }
+    }
+    // Level one of the incumbent's tree pairs slots t and t + 128, which this
+    // thread already owns; the remaining levels run on the shared 128 slots.
+#pragma unroll
+    for (int o = 0; o < OUT_TILE; ++o) {
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        slot[o][r][threadIdx.x] = value0[o][r] + value1[o][r];
+      }
+    }
+    __syncthreads();
+    for (int stride = LOGICAL / 4; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+#pragma unroll
+        for (int o = 0; o < OUT_TILE; ++o) {
+#pragma unroll
+          for (int r = 0; r < ROW_BATCH; ++r) {
+            slot[o][r][threadIdx.x] += slot[o][r][threadIdx.x + stride];
+          }
+        }
+      }
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+#pragma unroll
+      for (int o = 0; o < OUT_TILE; ++o) {
+        if (out_base + o >= out_features) break;
+#pragma unroll
+        for (int r = 0; r < ROW_BATCH; ++r) {
+          const int row = base + r;
+          if (row >= end) continue;
+          output[static_cast<int64_t>(row) * out_features + out_base + o] =
+              float_to_bf16_bits(slot[o][r][0]);
+        }
+      }
+    }
+    __syncthreads();
+  }
+}
+
 // Exact logical-lane contraction: 128 physical threads materialize the same
 // 256 strict partials, then execute the original stride-128 -> 1 tree.
 template <int ROW_BATCH, int OUT_BATCH>
@@ -1133,6 +1329,88 @@ __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
   }
 }
 
+// Eight output columns per block. The same arithmetic as the one-output kernel
+// above, and a bit-exact sibling of it rather than a numerical candidate: the k
+// walk, the per-element dequant and the reduction tree are properties of an
+// output, not of the block, and this reproduces all three per output. The k walk
+// is the same `column = threadIdx.x; column += blockDim.x` order, the dequant is
+// the same `dequant_q5_1`, and the tree is the same strided halving from
+// `blockDim.x / 2` down to 32 followed by the same warp shuffle over offsets
+// 16..1, applied per output lane. What changes is only that the block reads the
+// x row once for eight outputs and pays that reduction once for eight outputs
+// instead of once for one. It deliberately does NOT borrow the Q4_K pack8 tree,
+// which reduces within each warp and then sums the per-warp partials: that tree
+// is a different association order and would make this a numerical candidate
+// against the route it replaces.
+__global__ void q5_1_selected_pack8_gemv_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ weights,
+    uint16_t* __restrict__ output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t row_bytes) {
+  constexpr int PACK8 = 8;
+  extern __shared__ float partial[];
+  const int64_t pack = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int64_t out_col = pack * PACK8;
+  if (row >= rows || out_col >= out_features) return;
+  const int64_t input_row = row / (rows / x_rows);
+  const int64_t expert = selected[row];
+  if (expert < 0 || expert >= num_experts) return;
+  const uint8_t* weight_row[PACK8];
+#pragma unroll
+  for (int j = 0; j < PACK8; ++j) {
+    weight_row[j] =
+        weights + (expert * out_features + out_col + j) * row_bytes;
+  }
+  const uint16_t* __restrict__ input_row_ptr = input + input_row * in_features;
+  float value[PACK8] = {};
+  for (int64_t column = threadIdx.x; column < in_features;
+       column += blockDim.x) {
+    const int64_t block_index = column / 32;
+    const int within = static_cast<int>(column & 31);
+    const float xv = bf16_bits_to_float(input_row_ptr[column]);
+#pragma unroll
+    for (int j = 0; j < PACK8; ++j) {
+      value[j] +=
+          xv * dequant_q5_1(weight_row[j] + block_index * 24, within);
+    }
+  }
+#pragma unroll
+  for (int j = 0; j < PACK8; ++j) {
+    partial[j * blockDim.x + threadIdx.x] = value[j];
+  }
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride >= 32; stride >>= 1) {
+    if (threadIdx.x < stride) {
+#pragma unroll
+      for (int j = 0; j < PACK8; ++j) {
+        partial[j * blockDim.x + threadIdx.x] +=
+            partial[j * blockDim.x + threadIdx.x + stride];
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x < 32) {
+#pragma unroll
+    for (int j = 0; j < PACK8; ++j) {
+      float reduced = partial[j * blockDim.x + threadIdx.x];
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        reduced += __shfl_down(reduced, offset, 32);
+      }
+      if (threadIdx.x == 0) {
+        output[row * out_features + out_col + j] =
+            float_to_bf16_bits(reduced);
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Weight-exact iu8-WMMA selected Q5_1 down prefill with risk collection.
 //
@@ -1645,6 +1923,63 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatc
   return static_cast<int>(hipGetLastError());
 }
 
+static int launch_q5_1_staged_grouped(
+    const void* input,
+    const void* expert_start,
+    const void* weights,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (input == nullptr || expert_start == nullptr || weights == nullptr ||
+      output == nullptr || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % 32) != 0 || out_features <= 0 ||
+      compact_rows > INT32_MAX || num_experts > INT32_MAX ||
+      in_features > INT32_MAX || out_features > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int64_t out_tile = 4;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  // The staged weights are float d, float m and uint32 qh for every 32-column
+  // block, four output columns, over the row's chunks*SUBS slot count. They are
+  // the only dynamic shared memory this route needs; the slot array is static.
+  const int64_t staged_bytes = out_tile * ((in_features + 255) / 256) * 8 * 12;
+  if (staged_bytes > 65536 - 8192) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + out_tile - 1) / out_tile),
+      static_cast<unsigned int>(num_experts));
+  const dim3 block(128);
+  hipLaunchKernelGGL(
+      (q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<4, 4, 256>),
+      grid, block, static_cast<size_t>(staged_bytes), stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      static_cast<int>(compact_rows), static_cast<int>(num_experts),
+      static_cast<int>(in_features), static_cast<int>(out_features),
+      static_cast<int>(row_bytes));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_staged_out4_bf16_bf16_out(
+    const void* input,
+    const void* expert_start,
+    const void* weights,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_1_staged_grouped(
+      input, expert_start, weights, output, compact_rows, num_experts,
+      in_features, out_features, stream);
+}
+
 extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out(
     const void* input,
     const void* expert_start,
@@ -1670,12 +2005,10 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatc
   constexpr int out_batch = 4;
   const int64_t row_bytes = (in_features / 32) * 24;
   const int64_t blocks_per_row = in_features / 32;
-  // One partial per (output column, row); the widest CTA in the grid owns
-  // ``out_batch`` columns unless the tensor is narrower than that. The three
-  // metadata slabs for every column the CTA owns follow the partials.
-  const int64_t slots = out_features < out_batch ? out_features : out_batch;
+  // The kernel publishes all OUT_BATCH partials even when the output tensor
+  // is narrower. Metadata starts after that full slab as well.
   const size_t shared_bytes =
-      static_cast<size_t>(slots * row_batch) * threads * sizeof(float) +
+      static_cast<size_t>(out_batch * row_batch) * threads * sizeof(float) +
       3 * static_cast<size_t>(out_batch * blocks_per_row) * sizeof(float);
   hipLaunchKernelGGL(
       (q5_1_selected_grouped_prefill_bf16_bf16_kernel<row_batch, out_batch, true, true>),
@@ -2201,6 +2534,42 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
       q5_1_selected_gemv_bf16_bf16_kernel,
       dim3(static_cast<uint32_t>(rows * out_features)), dim3(threads),
       threads * sizeof(float), stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      x_rows, rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+// The pack8 sibling of the launcher above. The width guards are the scalar
+// launcher's plus the one the shape adds: eight output columns per block means
+// `out_features` must be a multiple of 8, which the caller already checks before
+// it asks for this variant, and the guard is repeated here because a launcher is
+// reachable without the caller. A width that fails either guard is an error
+// rather than a silent tail, so the caller falls back to the scalar route.
+extern "C" int hipengine_qwen4_exp_q5_1_selected_pack8_gemv_bf16_bf16_out(
+    const void* input,
+    const void* selected,
+    const void* weights,
+    void* output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !selected || !weights || !output || x_rows <= 0 || rows <= 0 ||
+      rows % x_rows || num_experts <= 0 || in_features <= 0 ||
+      (in_features % 32) || out_features <= 0 || (out_features % 8)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  constexpr int PACK8 = 8;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      q5_1_selected_pack8_gemv_bf16_bf16_kernel,
+      dim3(static_cast<uint32_t>((out_features + PACK8 - 1) / PACK8),
+           static_cast<uint32_t>(rows)),
+      dim3(threads), threads * PACK8 * sizeof(float), stream,
       static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       x_rows, rows, num_experts, in_features, out_features, row_bytes);
