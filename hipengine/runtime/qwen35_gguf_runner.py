@@ -12141,11 +12141,18 @@ def _gguf_prefill_chunk_sizes_for(
 ) -> tuple[int, int] | None:
     """Return a geometry-keyed (linear, moe) prefill chunk override, if any.
 
-    gfx1151 sets ``GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY`` with 512-row
-    linear/MoE chunks for the H2048-MoE geometry (measured ~1.2-2.3% faster
-    at 2048/4096 tokens on the 8060S, chunk-boundary-correct). The H5120 dense
-    27B is left on the default because its benefit is inconclusive within the
-    60W-lane variance.
+    The value is an **input to** :func:`resolve_prefill_config_for_sequence`,
+    not a post-hoc rewrite: the session passes it as ``geometry_chunk_sizes``
+    and the resolver owns the final sizes, so the recorded
+    ``prefill_chunk_tuning`` always describes the run and an explicit
+    ``PrefillConfig`` still wins.
+
+    gfx1151 sets ``GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY`` for the H2048-MoE
+    geometry (measured 2026-08-20: 512-row chunks ~1.2% faster at 2048 tokens
+    and ~2.3% at 4096 than the 1024 default; chunk-boundary-correct, KL 0.00013
+    at 2048 against a 0.034 run-noise floor). The H5120 dense 27B is left to the
+    architecture profile because its benefit is inconclusive within the 60W-lane
+    variance.
     """
 
     policies = backend_package_capability(
@@ -15762,18 +15769,17 @@ class Qwen35GGUFResidentSession:
             _free_bytes, total_memory_bytes = runtime.mem_get_info()
         except Exception:
             total_memory_bytes = 0
+        # The resolver is the single owner of the final chunk sizes: the
+        # geometry policy and the architecture profile are inputs to it, not
+        # post-hoc rewrites, so ``prefill_chunk_tuning`` describes the config
+        # this session actually runs.
         self.prefill_config, self.prefill_chunk_tuning = resolve_prefill_config_for_sequence(
             self.prefill_config or PrefillConfig(),
             max_sequence_length=int(self.scratch.max_positions),
             total_memory_bytes=int(total_memory_bytes),
+            target_arch=self.runner.target_arch,
+            geometry_chunk_sizes=_gguf_prefill_chunk_sizes_for(self.backend, self.runner.weights),
         )
-        chunk_override = _gguf_prefill_chunk_sizes_for(self.backend, self.runner.weights)
-        if chunk_override is not None:
-            self.prefill_config = replace(
-                self.prefill_config,
-                linear_chunk_size=int(chunk_override[0]),
-                moe_chunk_size=int(chunk_override[1]),
-            )
         self._token_host = np.empty((self.max_batch_size,), dtype=np.int64)
         self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
         hidden_bytes = self.runner.hidden_size * 2
