@@ -1978,6 +1978,31 @@ numeric 128K row is carried forward. Evidence:
 
 ### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
 
+#### End-to-end comparison checkpoint (2026-10-03)
+
+On zbook/Radeon 8060S, hipEngine and llama.cpp HIP receive identical prompt
+IDs, BF16 KV, greedy 128-output requests ignoring EOS, and equal observed
+context capacities rounded to 256 tokens above prompt+128. Each row is the
+median of three requests after one full-shape warmup. Decode measures 127
+single-token forwards following the actual full prompt; llama.cpp's time
+also includes the first greedy sample. Loading is outside both phase scopes.
+
+| Prompt tokens | hipEngine prefill tok/s | llama.cpp prefill tok/s | hipEngine decode tok/s | llama.cpp decode tok/s |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 1051.9 | 902.6 | 27.26 | 36.29 |
+| 1024 | 888.2 | 1175.4 | 29.46 | 33.78 |
+| 2048 | 739.1 | 1151.7 | 29.28 | 30.47 |
+| 4096 | 641.6 | 1135.6 | 28.25 | 29.34 |
+
+All four rows process the entire uncached prompt, preserve repeat IDs within
+each engine, and match IDs across engines and hipEngine's public route.
+Instrumented hipEngine logits are finite. The 8192-token reference is an
+output-drift diagnostic, not an accepted row: identical requests produce two
+different continuations starting at generated index three. hipEngine does not
+lead both metrics at these four depths. No full-depth 16K–256K measurement of
+this default is established by the fixed-context replay results below.
+[Protocol, samples, identities and rejected 8K outputs](results/2026-10-03-gemma4-gfx1151-depth-checkpoint.json).
+
 #### Singleton staged-attention PV (2026-10-03)
 
 On physical host **zbook / Radeon 8060S (gfx1151)**, the default production

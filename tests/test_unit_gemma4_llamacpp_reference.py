@@ -152,6 +152,22 @@ def test_reference_forwards_timeout_to_warmup_and_sample(monkeypatch, tmp_path):
         bench.main(["--artifact", str(artifact), "--prompt", "4", "--output", "2",
                     "--context", "6", "--samples", "1", "--warmup", "0",
                     "--port", "0", "--out", str(output)])
+    monkeypatch.setattr(bench, "_stop", lambda *a: output.with_suffix(".log").write_text("n_ctx_slot = 6\n"))
+    calls = []
+    def drifting_post(*a, **kw):
+        calls.append(1)
+        response = post(*a, **kw)
+        response["tokens"] = [1, len(calls)]
+        return response
+    monkeypatch.setattr(bench, "_post", drifting_post)
+    assert bench.main(["--artifact", str(artifact), "--prompt", "4", "--output", "2",
+                       "--context", "6", "--samples", "2", "--warmup", "1",
+                       "--port", "0", "--out", str(output)]) == 1
+    rejected = json.loads(output.read_text())
+    assert rejected["status"] == "output_drift"
+    assert rejected["correctness"]["repeat_output_ids_equal"] is False
+    assert rejected["warmups"][0]["generated_token_ids"] == [1, 1]
+    assert [row["generated_token_ids"] for row in rejected["samples"]] == [[1, 2], [1, 3]]
 
 
 @pytest.mark.parametrize("overrides", [{"prompt_n": 1}, {"cache_n": 1023},

@@ -385,8 +385,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "use a context multiple of 256 for an equal-capacity comparison"
         )
     all_rows = [*warmups, *samples]
-    if any(row["generated_token_ids"] != samples[0]["generated_token_ids"] for row in all_rows):
-        raise ValueError("reference generation is not repeatable across warmups and samples")
+    repeats_equal = all(row["generated_token_ids"] == samples[0]["generated_token_ids"] for row in all_rows)
     stats = {
         "samples": len(samples),
         "decode_tps": _median([row["decode_tps"] for row in samples]),
@@ -402,7 +401,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     artifact = {
         "schema": 1,
         "label": args.label,
-        "status": "ok",
+        "status": "ok" if repeats_equal else "output_drift",
         "performance_claim": False,
         "created_at": started_at,
         "command": shlex.join([sys.executable, *sys.argv]),
@@ -413,7 +412,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "server_binary": executable,
         "llamacpp_source_dirty": source_dirty.splitlines(),
         "runtime": runtime,
-        "correctness": {"full_uncached_prefill": True, "repeat_output_ids_equal": True},
+        "correctness": {"full_uncached_prefill": True, "repeat_output_ids_equal": repeats_equal},
         "llamacpp_commit": source_commit,
         "artifact": str(args.artifact),
         "artifact_bytes": args.artifact.stat().st_size,
@@ -438,6 +437,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"llamacpp_decode_tps={stats['decode_tps']:.4f}")
     print(f"llamacpp_prefill_tps={stats['prefill_tps']:.2f}")
     print(f"artifact={args.out}")
+    if not repeats_equal:
+        print(f"ERROR: reference generation is not repeatable; rejected outputs retained in {args.out}", file=sys.stderr)
+        return 1
     return 0
 
 
