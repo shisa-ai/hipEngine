@@ -9,6 +9,7 @@ limited to short model/session preparation mutations.
 from __future__ import annotations
 
 import asyncio
+import base64
 from contextlib import suppress
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
@@ -34,7 +35,7 @@ from urllib.parse import unquote
 from anyio import CancelScope
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 try:  # Pydantic v2; FastAPI's current default.
@@ -45,6 +46,7 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 from starlette.concurrency import run_in_threadpool
 
 from hipengine import DMSConfig, LLM, SamplingParams
+from hipengine.llm import resolve_generation_surfaces
 from hipengine.generation import (
     DecodeState,
     EngineCommandTimeout,
@@ -80,7 +82,9 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import PREFIX_CACHE_DEFAULT, resolve_prefix_cache_mode
+from hipengine.models import DEFAULT_GENERATION_SURFACES
 from hipengine.runtime.memory_admission import MemoryAdmissionRefused
+from hipengine.util.wav import encode_wav_bytes
 from hipengine.server.multimodal import (
     extract_chat_media,
     media_for_engine,
@@ -437,6 +441,9 @@ class ServerConfig:
     draft_model: str | None = None
     speculative_candidate_budget: int | None = None
     vision_model: str | None = None
+    # Companion decoder checkpoint for models whose pipeline needs a second
+    # artifact to produce its output (YuE2 decodes latents with ``m-a-p/YuE2-Vae``).
+    vae_model: str | None = None
     # HTTP vision input bounds. None means: take the decoded-pixel bound from
     # the engine's declared ``vision_max_pixels`` (falling back to the 1 MP
     # Qwen4Exp scope), and scale the compressed-payload bound with it.
@@ -511,6 +518,10 @@ class ServerConfig:
         if vision_model == "":
             raise ValueError("vision_model must be non-empty when set")
         object.__setattr__(self, "vision_model", vision_model)
+        vae_model = None if self.vae_model is None else str(self.vae_model).strip()
+        if vae_model == "":
+            raise ValueError("vae_model must be non-empty when set")
+        object.__setattr__(self, "vae_model", vae_model)
         for name in ("vision_max_pixels", "vision_max_image_bytes"):
             value = getattr(self, name)
             if value is None:
@@ -1890,17 +1901,217 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
     }
 
 
-def _model_capability_summary(config: ServerConfig | None = None, *, engine: Any | None = None) -> dict[str, Any]:
+def _resolved_generation_surfaces(engine: Any | None) -> tuple[str, ...]:
+    """Return the surfaces the served model declares, defaulting to text.
+
+    A model plugin that declares nothing is a text model, which is every plugin
+    but YuE2. The declaration is read from the model, never inferred from its
+    name or artifact, so an unfamiliar checkpoint still routes by capability.
+    """
+
+    if engine is None:
+        return DEFAULT_GENERATION_SURFACES
+    surfaces = getattr(engine, "generation_surfaces", None)
+    if surfaces is None:
+        return DEFAULT_GENERATION_SURFACES
+    return tuple(str(surface) for surface in surfaces)
+
+
+def _served_generation_surfaces(app: FastAPI) -> tuple[str, ...]:
+    """The served surfaces, from the startup resolution when there is one."""
+
+    cached = getattr(app.state, "hipengine_generation_surfaces", None)
+    if cached is not None:
+        return tuple(cached)
+    return _resolved_generation_surfaces(getattr(app.state, "hipengine_llm", None))
+
+
+def _startup_generation_surfaces(config: ServerConfig) -> tuple[str, ...]:
+    """Resolve the declared surfaces at startup without loading weights.
+
+    A model this cannot resolve fails at load with its own message, so routing
+    reports the default surface rather than pre-empting that with a guess.
+    """
+
+    try:
+        return resolve_generation_surfaces(config.model)
+    except Exception:
+        _LOGGER.warning(
+            "SURFACES: could not resolve declared surfaces for model=%s; "
+            "assuming the text surface",
+            config.model,
+            exc_info=True,
+        )
+        return DEFAULT_GENERATION_SURFACES
+
+
+class _SongRequestCancellation:
+    """Stop a long song request when its client goes away.
+
+    The pipeline polls ``cancelled`` between its stages and inside its decode
+    loops, so noticing the disconnect is the whole job here; a running kernel is
+    never interrupted mid-call.
+    """
+
+    #: How often the connection is checked. A song takes minutes, so a second of
+    #: check latency costs nothing and keeps the watcher quiet.
+    POLL_SECONDS = 1.0
+
+    def __init__(self, request: Request) -> None:
+        self._request = request
+        self._cancelled = False
+        self._task: asyncio.Task | None = None
+
+    def cancelled(self) -> bool:
+        return self._cancelled
+
+    async def start(self) -> None:
+        self._task = asyncio.create_task(self._watch())
+
+    async def _watch(self) -> None:
+        while not self._cancelled:
+            try:
+                if await self._request.is_disconnected():
+                    self._cancelled = True
+                    return
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # A connection that cannot be polled is not evidence of a
+                # disconnect, so the request keeps running.
+                return
+            await asyncio.sleep(self.POLL_SECONDS)
+
+    async def stop(self) -> None:
+        task, self._task = self._task, None
+        if task is None:
+            return
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+def _song_request_from_body(request: SongGenerationRequest, generator: Any) -> Any:
+    """Build the model-owned request, reporting invalid fields as request errors."""
+
+    from hipengine.generation.yue2 import SongRequest
+
+    describe = getattr(generator, "song_capabilities", None)
+    modes = tuple(describe().get("cot_modes") or ()) if callable(describe) else ()
+    cot = str(request.cot).strip().lower()
+    if modes and cot not in modes:
+        raise OpenAIHTTPError(
+            400,
+            f"cot must be one of {', '.join(modes)}, not {request.cot!r}",
+            code="invalid_request",
+            param="cot",
+        )
+    if request.abc is not None and cot == "off":
+        raise OpenAIHTTPError(
+            400,
+            "an external abc score requires cot=melody or cot=full",
+            code="invalid_request",
+            param="abc",
+        )
+    try:
+        return SongRequest(
+            style=request.style,
+            lyrics=request.lyrics,
+            cot=cot,
+            seed=831001 if request.seed is None else int(request.seed),
+            abc=request.abc,
+            cfg_scale=None if request.cfg_scale is None else float(request.cfg_scale),
+            id="song" if request.request_id is None else str(request.request_id),
+        )
+    except (TypeError, ValueError) as exc:
+        raise OpenAIHTTPError(
+            400, str(exc), code="invalid_request", param="request_id"
+        ) from exc
+
+
+def _song_generator(engine: Any) -> Any:
+    """Return the model-owned song generator, or refuse with a named capability miss."""
+
+    getter = getattr(engine, "song_generator", None)
+    if not callable(getter):
+        raise OpenAIHTTPError(
+            501,
+            "the served model does not implement song generation",
+            code="unsupported_feature",
+        )
+    try:
+        return getter()
+    except NotImplementedError as exc:
+        raise OpenAIHTTPError(
+            501,
+            f"the served model does not implement song generation: {exc}",
+            code="unsupported_feature",
+        ) from exc
+
+
+def _require_text_surface(surfaces: Sequence[str], *, endpoint: str) -> None:
+    """Refuse a text endpoint on a model that does not generate text."""
+
+    if "text" in surfaces:
+        return
+    declared = ", ".join(surfaces) or "nothing"
+    suggestion = "; use POST /v1/audio/songs" if "song" in surfaces else ""
+    raise OpenAIHTTPError(
+        501,
+        f"the served model generates {declared} rather than text, so {endpoint} "
+        f"is unavailable{suggestion}",
+        code="unsupported_feature",
+    )
+
+
+def _song_generation_capability(config: ServerConfig, *, engine: Any | None) -> dict[str, Any]:
+    """Describe the song endpoint, and the model's own pipeline facts when loaded."""
+
+    surfaces = _resolved_generation_surfaces(engine)
+    if "song" not in surfaces:
+        return {
+            "enabled": False,
+            "reason": "the served model declares no song surface",
+            "surfaces": list(surfaces),
+        }
+    generator = getattr(engine, "_text_generator", None) if engine is not None else None
+    describe = getattr(generator, "song_capabilities", None)
+    detail = describe() if callable(describe) else None
+    # The pipeline reports the checkpoints it resolved, which is what a decoder
+    # taken from the Hugging Face cache does not have a config value for.
+    resolved = dict((detail or {}).get("checkpoints") or {})
+    checkpoints: dict[str, Any] = {
+        "model": resolved.get("model") or str(config.model),
+        "decoder": resolved.get("vae") or config.vae_model,
+    }
+    if config.vae_model is None and checkpoints["decoder"] is not None:
+        checkpoints["decoder_source"] = "hugging_face_cache"
     return {
-        "completions": True,
-        "chat_completions": True,
-        "streaming": True,
-        "tools": True,
-        "reasoning_controls": True,
-        "structured_outputs": True,
-        "continuations": True,
-        "sessions": True,
+        "enabled": True,
+        "endpoint": "/v1/audio/songs",
+        "response_formats": ["wav", "json"],
+        "loaded": bool(generator is not None and getattr(generator, "loaded", False)),
+        "checkpoints": checkpoints,
+        "detail": detail,
+    }
+
+
+def _model_capability_summary(config: ServerConfig | None = None, *, engine: Any | None = None) -> dict[str, Any]:
+    surfaces = _resolved_generation_surfaces(engine)
+    text_surface = "text" in surfaces
+    song_surface = "song" in surfaces
+    return {
+        "surfaces": list(surfaces),
+        "completions": text_surface,
+        "chat_completions": text_surface,
+        "streaming": text_surface,
+        "tools": text_surface,
+        "reasoning_controls": text_surface,
+        "structured_outputs": text_surface,
+        "continuations": text_surface,
+        "sessions": text_surface,
         "grammars": False,
+        "song_generation": song_surface,
         "speculative_mtp": (
             False
             if config is None
@@ -2030,6 +2241,26 @@ else:  # pragma: no cover - Pydantic v1 compatibility
     class _OpenAIBaseModel(BaseModel):
         class Config:
             extra = "allow"
+
+
+class SongGenerationRequest(_OpenAIBaseModel):
+    """One lyrics-to-audio request for a model that declares the song surface.
+
+    The sampling settings are the model's own product defaults, not request
+    fields: this pipeline's quality path is the pinned preset, and a caller that
+    needs different arithmetic uses the Python API's phase overrides.
+    """
+
+    model: str | None = None
+    style: str = Field(min_length=1)
+    lyrics: str = Field(min_length=1)
+    cot: str = "full"
+    seed: int | None = Field(default=None, ge=0, lt=2**63)
+    abc: str | None = None
+    cfg_scale: float | None = Field(default=None, ge=0.0, le=20.0)
+    steps: int | None = Field(default=None, ge=1)
+    response_format: str = "wav"
+    request_id: str | None = None
 
 
 class CompletionRequest(_OpenAIBaseModel):
@@ -5267,6 +5498,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 kv_scale_dtype=config.kv_scale_dtype,
                 kv_scale_granularity=config.kv_scale_granularity,
                 vision_model=config.vision_model,
+                vae_model=config.vae_model,
             )
             log_effective_mtp_once(app.state.hipengine_llm)
         mtp_circuit_breaker.attach(app.state.hipengine_llm)
@@ -5521,6 +5753,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 config.kv_scale_granularity,
             )
             startup_total_s = time.perf_counter() - startup_started
+            app.state.hipengine_generation_surfaces = _startup_generation_surfaces(config)
+            _LOGGER.info(
+                "SURFACES: model=%s surfaces=%s",
+                config.model_id,
+                ",".join(app.state.hipengine_generation_surfaces),
+            )
             readiness.ready = True
             readiness.status = "ready"
             readiness.model_loaded = app.state.hipengine_llm is not None
@@ -5599,6 +5837,89 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "MODEL_LOAD: engine created elapsed=%.1fs; preparing weights, "
                 "KV pool, and runtime workspace",
                 engine_create_s,
+            )
+            surfaces = _resolved_generation_surfaces(engine)
+            app.state.hipengine_generation_surfaces = surfaces
+            if "text" not in surfaces:
+                # A model that declares no text surface has no resident chat
+                # context, no warmup prompt, and no chat smoke to run. It has a
+                # pipeline, and building that pipeline here is what makes
+                # readiness mean the request this server advertises can be served.
+                _LOGGER.info(
+                    "MODEL_LOAD: surfaces=%s; building the generation pipeline",
+                    ",".join(surfaces),
+                )
+                song_session_started = time.perf_counter()
+                try:
+                    generator = _song_generator(engine)
+                    await asyncio.to_thread(generator.session)
+                except Exception as exc:
+                    startup_checks["song_session"] = {
+                        "status": "failed",
+                        "exception_type": type(exc).__name__,
+                    }
+                    _LOGGER.exception("STARTUP_SONG_SESSION: failed")
+                    fail_startup(
+                        "song_session",
+                        exc,
+                        guidance=(
+                            "Check the model directory and its qwen.tiktoken asset, "
+                            "the decoder checkpoint passed as --vae-model, and the "
+                            "server logs."
+                        ),
+                        timings={
+                            "engine_create_s": round(engine_create_s, 6),
+                            "song_session_s": round(
+                                time.perf_counter() - song_session_started, 6
+                            ),
+                        },
+                    )
+                song_session_s = time.perf_counter() - song_session_started
+                startup_checks["song_session"] = {
+                    "enabled": True,
+                    "status": "passed",
+                    "seconds": round(song_session_s, 6),
+                    "surfaces": list(surfaces),
+                }
+                _record_startup_memory_snapshot(startup_memory, "after_song_session")
+                guard_memory = _device_memory_snapshot()
+                if guard_memory is not None:
+                    startup_memory["guard"] = guard_memory
+                _log_startup_memory_summary(startup_memory, startup_checks)
+                _startup_free_memory_guard(
+                    memory=guard_memory, min_free_mib=config.startup_min_free_mib
+                )
+                startup_total_s = time.perf_counter() - startup_started
+                readiness.ready = True
+                readiness.status = "ready"
+                readiness.model_loaded = True
+                readiness.warmup_complete = True
+                readiness.last_startup_timings = {
+                    "engine_create_s": round(engine_create_s, 6),
+                    "resident_prepare_s": None,
+                    "warmup_s": None,
+                    "scratch_probe_s": None,
+                    "chat_smoke_s": None,
+                    "mtp_smoke_s": None,
+                    "song_session_s": round(song_session_s, 6),
+                    "startup_total_s": round(startup_total_s, 6),
+                }
+                _LOGGER.info(
+                    "LOAD_TIMING: model=%s surfaces=%s song_session_s=%.3f "
+                    "startup_total_s=%.3f",
+                    config.model_id,
+                    ",".join(surfaces),
+                    song_session_s,
+                    startup_total_s,
+                )
+                _LOGGER.info(
+                    "hipEngine is ready (%s generation).", ",".join(surfaces)
+                )
+                return
+            _LOGGER.info(
+                "SURFACES: model=%s surfaces=%s",
+                config.model_id,
+                ",".join(surfaces),
             )
             prepare_started = time.perf_counter()
             try:
@@ -7434,6 +7755,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             "capability": _kv_capability_provenance(engine),
                         },
                         "capabilities": _model_capability_summary(config, engine=engine),
+                        "song_generation": _song_generation_capability(config, engine=engine),
                         "capabilities_url": "/v1/hipengine/capabilities",
                         "routing": {
                             "loaded_model_count": 0 if engine is None else 1,
@@ -7768,6 +8090,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "metadata": _session_metadata_capability(config.max_chat_sessions),
             },
             "admission": _admission_capability(config, engine=engine),
+            "song_generation": _song_generation_capability(config, engine=engine),
             "routing": {
                 "loaded_model_count": 0 if engine is None else 1,
                 "multiple_models": False,
@@ -7918,6 +8241,126 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             raise
 
+    @app.post("/v1/audio/songs", response_model=None)
+    async def generate_song(
+        request: SongGenerationRequest,
+        raw_request: Request,
+        _auth: None = Depends(require_auth),
+    ) -> Any:
+        """Generate one song from lyrics and a style prompt.
+
+        Returns ``audio/wav`` by default and a JSON provenance document when
+        ``response_format`` is ``json``. One request runs at a time on the
+        resident pipeline; a second concurrent request is refused with 429.
+        """
+
+        engine = get_llm()
+        _validate_model(config, request.model, engine=engine)
+        response_format = str(request.response_format).strip().lower()
+        if response_format not in ("wav", "json"):
+            raise OpenAIHTTPError(
+                400,
+                f"response_format must be 'wav' or 'json', not {request.response_format!r}",
+                code="unsupported_parameter",
+                param="response_format",
+            )
+        generator = _song_generator(engine)
+        song_request = _song_request_from_body(request, generator)
+
+        cancellation = _SongRequestCancellation(raw_request)
+        await cancellation.start()
+        song_started = time.perf_counter()
+        try:
+            song = await run_in_threadpool(
+                generator.generate_song,
+                song_request,
+                steps=request.steps,
+                cancelled=cancellation.cancelled,
+            )
+        except InterruptedError as exc:
+            raise OpenAIHTTPError(
+                499,
+                "the song request was cancelled before it finished",
+                code="cancelled",
+            ) from exc
+        except RuntimeError as exc:
+            from hipengine.runtime.yue2_session import Yue2SessionBusy
+
+            if not isinstance(exc, Yue2SessionBusy):
+                raise
+            raise OpenAIHTTPError(
+                429,
+                "the song pipeline is already running a request",
+                code="engine_busy",
+                headers={"Retry-After": str(config.queue_retry_after_seconds)},
+            ) from exc
+        finally:
+            await cancellation.stop()
+        song_seconds = time.perf_counter() - song_started
+
+        audio = song.audio
+        samples = int(audio.shape[-1])
+        channels = int(audio.shape[0])
+        try:
+            wav_bytes = await run_in_threadpool(
+                encode_wav_bytes, audio, int(song.sample_rate)
+            )
+        except ValueError as exc:
+            raise OpenAIHTTPError(
+                500,
+                f"the generated audio could not be encoded: {exc}",
+                error_type="server_error",
+                code="internal_error",
+            ) from exc
+        _LOGGER.info(
+            "SONG: request_id=%s frames=%d samples=%d duration=%.2fs seconds=%.1f "
+            "truncated=%s",
+            song.request_id[:16],
+            int(song.frames),
+            samples,
+            float(song.duration_seconds),
+            song_seconds,
+            song.truncation,
+        )
+        if response_format == "json":
+            return JSONResponse(
+                {
+                    "object": "hipengine.song",
+                    "model": config.model_id,
+                    "request_id": song.request_id,
+                    "sample_rate": int(song.sample_rate),
+                    "channels": channels,
+                    "frames": int(song.frames),
+                    "samples": samples,
+                    "duration_seconds": float(song.duration_seconds),
+                    "truncation": dict(song.truncation),
+                    "abc": song.semantic.plan.abc,
+                    "abc_ids": [int(token) for token in song.semantic.plan.abc_ids],
+                    "semantic_tokens": len(song.semantic.tokens),
+                    "latent_identity": song.latent_identity,
+                    "audio_identity": song.audio_identity,
+                    "request": song.semantic.plan.request.to_dict(),
+                    "config": dict(song.config),
+                    "weights": dict(song.weights),
+                    "timing": dict(song.timing),
+                    "seconds": round(song_seconds, 6),
+                    "audio_wav_base64": base64.b64encode(wav_bytes).decode("ascii"),
+                }
+            )
+        return Response(
+            content=wav_bytes,
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": f'attachment; filename="{song_request.id}.wav"',
+                "X-Hipengine-Request-Id": song.request_id,
+                "X-Hipengine-Frames": str(int(song.frames)),
+                "X-Hipengine-Duration-Seconds": f"{float(song.duration_seconds):.3f}",
+                "X-Hipengine-Latent-Identity": song.latent_identity,
+                "X-Hipengine-Audio-Identity": song.audio_identity,
+                "X-Hipengine-Generation-Seconds": f"{song_seconds:.3f}",
+            },
+        )
+
     @app.post("/v1/completions", response_model=None)
     async def completions(
         request: CompletionRequest,
@@ -7925,6 +8368,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         auth_principal: str = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
+        _require_text_surface(_served_generation_surfaces(app), endpoint="/v1/completions")
         _validate_generation_request(
             config,
             request,
@@ -8128,6 +8572,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         auth_principal: str = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
+        _require_text_surface(_served_generation_surfaces(app), endpoint="/v1/chat/completions")
         _validate_generation_request(
             config,
             request,

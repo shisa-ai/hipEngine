@@ -205,6 +205,12 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_VISION_MAX_PIXELS` | unset | `--vision-max-pixels` | Decoded-pixel bound for HTTP vision input; unset takes the model plugin's bound. |
 | `HIPENGINE_VISION_MAX_IMAGE_BYTES` | unset | `--vision-max-image-bytes` | Compressed base64 PNG payload bound for HTTP vision input. |
 
+## Song generation (companion decoder) variables
+
+| Variable | Default | CLI flag | Values / notes |
+| --- | --- | --- | --- |
+| `HIPENGINE_YUE2_VAE_DIR` | HF cache snapshot of `m-a-p/YuE2-Vae` | `--vae-model` | Companion decoder checkpoint for a model that needs one. YuE2 cannot produce audio without it. An explicit path wins; otherwise the local Hugging Face cache is used, and a missing decoder is reported by name. |
+
 ## HIP JIT build, compiler cache, and AOTriton discovery
 
 | Variable | Default | Values / notes |

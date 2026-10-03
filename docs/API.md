@@ -4,7 +4,7 @@ owns: OpenAI-compatible server usage, endpoint support, request/response semanti
 ---
 # OpenAI-Compatible Server API
 
-Last updated: 2026-09-26
+Last updated: 2026-10-03
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -320,6 +320,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes plus `session.context_overflow_policy` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
+| `POST /v1/audio/songs` | Built in for a song model | Lyrics plus a style prompt to one song, on the model's own pipeline (`LLM.generate_song()`). Returns `audio/wav` (48 kHz stereo PCM), or a JSON provenance document with `response_format: "json"`. One request runs at a time; a second concurrent request is refused with a retryable 429. Only a model whose plugin declares the `song` surface serves it; a text model answers 501. |
 | `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts support live SSE for one row and buffered SSE for multiple rows; they do not support `echo`, continuations, or sessions. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
 | `POST /v1/chat/completions` | Built in | Renders text messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. With Qwen4Exp `--vision-model`, one multipart user message may include bounded base64 `image/png` `image_url` parts and uses the model-owned multimodal path (`n=1`, non-streaming, no tools/session/continuation). Text supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style XML function envelopes or legacy `<tool_call>{...}</tool_call>` output. |
 
@@ -413,6 +414,68 @@ curl http://127.0.0.1:8000/v1/chat/completions \
     "temperature": 0.0
   }'
 ```
+
+### Song generation
+
+A model that declares the `song` surface serves `POST /v1/audio/songs` instead of
+the text endpoints. YuE2 is the current example; see
+[model-cards/MODEL-YUE2.md](model-cards/MODEL-YUE2.md).
+
+```bash
+hipengine serve \
+  --model ~/models/YuE2-3B \
+  --vae-model ~/models/YuE2-Vae \
+  --served-model-name yue2
+
+curl -sS http://127.0.0.1:8000/v1/audio/songs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "yue2",
+    "style": "warm acoustic pop, brushed drums, female lead",
+    "lyrics": "[verse]\nStreetlights hum a quiet tune\n[chorus]\nWe are the echo in the room"
+  }' \
+  --output song.wav
+```
+
+`--vae-model` (or `HIPENGINE_YUE2_VAE_DIR`) names the companion decoder
+checkpoint. Without either, hipEngine looks for the `m-a-p/YuE2-Vae` snapshot in
+the local Hugging Face cache and reports a missing decoder by name. The server
+builds the pipeline during startup, so `/ready` returning 200 means the first
+request is served without a load.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `style` | required | Free-text style description. |
+| `lyrics` | required | Song lyrics with optional `[verse]`/`[chorus]` section tags. |
+| `cot` | `full` | Planning mode: `full` (melody plus sections), `melody` (melody only), or `off` (none). |
+| `abc` | — | An external ABC score, used in the `melody` and `full` modes. |
+| `seed` | `831001` | Sampling seed. |
+| `steps` | model default | Override the product's ODE step count. Fewer steps trade fidelity for time. |
+| `cfg_scale` | model default | Classifier-free guidance scale. |
+| `request_id` | `song` | Filename-safe id, returned as the `Content-Disposition` filename and echoed in the response. |
+| `response_format` | `wav` | `wav` returns the audio; `json` returns the same audio as base64 plus the plan, the semantic token count, the truncation flags, the checkpoint identities, and the timing. |
+
+A `wav` response carries the audio with these headers:
+
+| Header | Meaning |
+| --- | --- |
+| `X-Hipengine-Request-Id` | The pipeline's request id, unique per generation. |
+| `X-Hipengine-Frames` | Semantic frames generated. |
+| `X-Hipengine-Duration-Seconds` | Audio duration in seconds. |
+| `X-Hipengine-Latent-Identity` | sha256 of the latents. |
+| `X-Hipengine-Audio-Identity` | sha256 of the decoded audio. |
+| `X-Hipengine-Generation-Seconds` | Wall-clock time the request took. |
+
+The two identities make a repeat run comparable: the same seed and the same
+settings produce the same `X-Hipengine-Latent-Identity` on the same hardware.
+The truncation flags in the `json` form report whether the plan or the semantic
+decode stopped at its cap rather than at its own end.
+
+A song takes minutes rather than seconds, so this endpoint is not part of the
+batched text path: one request runs at a time, a concurrent request is a
+retryable 429, and a client that disconnects stops the pipeline between stages.
+The capabilities manifest reports the endpoint under `song_generation`, with
+`loaded: true` once the resident pipeline is built.
 
 ### Logprobs
 

@@ -46,7 +46,8 @@ hipEngine is a from-scratch project and does not inherit any unvetted code or le
   (experimental). [Moonshine ASR](docs/model-cards/MOONSHINE.md) has an internal runtime;
   public audio API support is planned.
 - **Music generation:** [YuE2](docs/model-cards/MODEL-YUE2.md) for songs from lyrics
-  and a style prompt (early support; measured on Strix Halo).
+  and a style prompt, through `LLM.generate_song()` or `POST /v1/audio/songs`
+  (early support; measured on Strix Halo).
 - **Time-series forecasting:** [TimesFM 2.5](docs/model-cards/MODEL-TIMESFM.md) and
   [TimesFM 3.0](docs/model-cards/MODEL-TIMESFM3.md).
 
