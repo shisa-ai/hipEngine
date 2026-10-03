@@ -229,8 +229,9 @@ def _run_route(
         if tiles:
             stacked = fused_raw.reshape(_NUM_EXPERTS, fused_width, -1)
             for name, start in (("t16_gate", 0), ("t16_up", _INTERMEDIATE)):
+                # Match the loader and the column-major serving leaf's ABI.
                 packed = repack_gguf_q4_k_tile16(
-                    stacked[:, start : start + _INTERMEDIATE, :]
+                    stacked[:, start : start + _INTERMEDIATE, :], column_major=True
                 ).tiles
                 buf = malloc(packed.nbytes)
                 tile_bufs.append(buf)
