@@ -8,6 +8,7 @@ records the native HIP/CUDA architecture needed by the JIT build layer and maps
 
 from __future__ import annotations
 
+import ctypes
 import os
 import re
 import subprocess
@@ -24,6 +25,11 @@ _ENV_BACKEND = "HIPENGINE_BACKEND"
 _ENV_HIP_ARCH = "HIPENGINE_HIP_ARCH"
 _ENV_GPU_MAX_HW_QUEUES = "GPU_MAX_HW_QUEUES"
 _ENV_HSA_SCRATCH_SINGLE_LIMIT = "HSA_SCRATCH_SINGLE_LIMIT"
+# Applied in this order: ROCR filters the physical device list, then HIP indexes
+# the ROCR-visible result. They compose; one does not override the other.
+_ENV_ROCR_VISIBLE_DEVICES = "ROCR_VISIBLE_DEVICES"
+_ENV_HIP_VISIBLE_DEVICES = "HIP_VISIBLE_DEVICES"
+_VISIBILITY_ENV_VARS = (_ENV_ROCR_VISIBLE_DEVICES, _ENV_HIP_VISIBLE_DEVICES)
 
 HIP_BACKEND_TARGET_ARCH: dict[str, str] = {
     "hip_gfx1100": "gfx1100",
@@ -295,66 +301,169 @@ def detect_hip_target_arches() -> tuple[str, ...]:
     return ()
 
 
-def _visible_device_indices(env: Mapping[str, str]) -> tuple[int, ...] | None:
-    """Selected visible HIP device indices.
+def detect_hip_physical_device_arches() -> tuple[str, ...]:
+    """Per-device HIP target architectures in physical device order.
 
-    ``None`` means neither visibility variable is set, so every host device is
-    visible. An empty tuple means a variable *is* set but its value cannot be
-    mapped to device indices (a UUID or MIG-style handle, or an empty list), so
-    the selected device is unknown and incompatibility is not proven.
-    ``HIP_VISIBLE_DEVICES`` wins over ``ROCR_VISIBLE_DEVICES``, matching the
-    server's reporting.
+    One entry per physical GPU, in device order, with duplicates preserved:
+    ``("gfx1100", "gfx1100", "gfx1151")`` is three devices, not two. The probe
+    runs with the visibility variables removed, so the result is the physical
+    device list whether or not a given ROCm release makes the arch tool
+    visibility-aware; the caller applies the visibility remap exactly once over
+    this list. Verified producer semantics on ROCm 7.2: ``amdgpu-arch`` and
+    ``rocm_agent_enumerator`` print one architecture per line in device order,
+    keep duplicates, and ignore ``ROCR_VISIBLE_DEVICES``/``HIP_VISIBLE_DEVICES``.
+
+    This differs from :func:`detect_hip_target_arches`, which deduplicates and
+    reports the ambient (possibly filtered) set for auto backend selection.
     """
 
-    for name in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
-        raw = env.get(name)
-        if raw is None:
+    probe_env = dict(os.environ)
+    for name in _VISIBILITY_ENV_VARS:
+        probe_env.pop(name, None)
+    for command in _ARCH_COMMANDS:
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=2.0,
+                env=probe_env,
+            )
+        except (OSError, subprocess.SubprocessError):
             continue
-        parts = [part.strip() for part in str(raw).split(",") if part.strip()]
-        if not parts:
+        if result.returncode != 0:
+            continue
+        arches = _parse_arches_ordered(result.stdout)
+        if arches:
+            return arches
+    return ()
+
+
+def _parse_visible_device_indices(raw: str | None) -> tuple[int, ...] | None:
+    """Device indices from one visibility variable.
+
+    ``None`` when the variable is unset. An empty tuple when it is set but its
+    value is not a list of non-negative indices (empty, UUID or MIG-style
+    handle), so the selected device is unknown and incompatibility is not
+    proven.
+    """
+
+    if raw is None:
+        return None
+    parts = [part.strip() for part in str(raw).split(",") if part.strip()]
+    if not parts:
+        return ()
+    indices: list[int] = []
+    for part in parts:
+        if not part.isdigit():
             return ()
-        indices: list[int] = []
-        for part in parts:
-            try:
-                indices.append(int(part))
-            except ValueError:
-                return ()
-        return tuple(indices)
-    return None
+        indices.append(int(part))
+    return tuple(indices)
+
+
+def _visible_logical_device_arches(
+    physical: Sequence[str], env: Mapping[str, str]
+) -> tuple[str, ...] | None:
+    """Visible device architectures in logical device order.
+
+    ``ROCR_VISIBLE_DEVICES`` filters the physical device list; ``HIP_VISIBLE_DEVICES``
+    then indexes that result. The two compose rather than one taking precedence:
+    on ``(gfx1100, gfx1151)`` with ``ROCR_VISIBLE_DEVICES=1`` and
+    ``HIP_VISIBLE_DEVICES=0``, logical device 0 is the gfx1151. ``None`` when a
+    variable is set but cannot be resolved to device indices, or names an index
+    outside the list it filters.
+    """
+
+    devices = list(physical)
+    for name in _VISIBILITY_ENV_VARS:
+        indices = _parse_visible_device_indices(env.get(name))
+        if indices is None:
+            continue
+        if not indices:
+            return None
+        selected: list[str] = []
+        for index in indices:
+            if index >= len(devices):
+                return None
+            selected.append(devices[index])
+        devices = selected
+    return tuple(devices)
+
+
+def _current_hip_device_ordinal() -> int | None:
+    """Current logical HIP device ordinal from ``hipGetDevice``, or ``None``.
+
+    Only scalar APIs are used, so there is no ``hipDeviceProp_t`` ABI hazard
+    across ROCm releases. ``None`` means the HIP runtime is unavailable and the
+    caller falls back to the default logical device. This is consulted only when
+    the visible devices disagree on architecture, so a homogeneous host never
+    initializes the HIP runtime from this path.
+    """
+
+    try:
+        library = ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return None
+    try:
+        library.hipGetDevice.argtypes = [ctypes.POINTER(ctypes.c_int)]
+        library.hipGetDevice.restype = ctypes.c_int
+        device = ctypes.c_int()
+        if int(library.hipGetDevice(ctypes.byref(device))) != 0:
+            return None
+        return int(device.value)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
 
 
 def selected_device_arches(
     *,
     detected_arches: Sequence[str] | None = None,
     env: Mapping[str, str] | None = None,
+    current_device: int | None = None,
 ) -> tuple[str, ...]:
-    """Architectures of the selected visible HIP device(s).
+    """Architecture(s) of the device the engine will execute on.
 
-    ``detected_arches`` is the host device list in device order, as returned by
-    :func:`detect_hip_target_arches`. When ``HIP_VISIBLE_DEVICES`` or
-    ``ROCR_VISIBLE_DEVICES`` selects a subset by index, only those entries are
-    returned, so a mixed host does not excuse a backend that the selected device
-    cannot run. An empty tuple means the selected device could not be resolved,
-    so incompatibility is not proven and callers must not refuse the request.
+    ``detected_arches`` is the physical per-device architecture list in device
+    order, as returned by :func:`detect_hip_physical_device_arches`; duplicates
+    are meaningful and preserved. The visibility variables are applied exactly
+    once over that list, and then the *current logical device* is selected. A
+    matching architecture on some other device does not make the request
+    runnable: with no visibility filter, device 1 being a gfx1151 does not
+    excuse gfx1151 kernels launched on the default device 0.
+
+    ``current_device`` overrides the logical ordinal. When it is omitted and the
+    visible devices disagree on architecture, the ordinal is read with
+    ``hipGetDevice``; a homogeneous visible set never loads the HIP runtime, and
+    a host without ROCm falls back to logical device 0. An empty tuple means the
+    device could not be resolved, so incompatibility is not proven and callers
+    must not refuse the request.
     """
 
     env_map = os.environ if env is None else env
-    raw = tuple(detected_arches) if detected_arches is not None else detect_hip_target_arches()
-    host = tuple(dict.fromkeys(arch for arch in (_normalize_arch(entry) for entry in raw) if arch))
-    if not host:
+    raw = (
+        tuple(detected_arches)
+        if detected_arches is not None
+        else detect_hip_physical_device_arches()
+    )
+    physical = tuple(arch for arch in (_normalize_arch(entry) for entry in raw) if arch)
+    if not physical:
         return ()
-    indices = _visible_device_indices(env_map)
-    if indices is None:
-        return host
-    if not indices:
-        # A visibility variable is set but cannot be mapped to a device.
+    visible = _visible_logical_device_arches(physical, env_map)
+    if not visible:
         return ()
-    selected: list[str] = []
-    for index in indices:
-        if index < 0 or index >= len(host):
-            return ()
-        selected.append(host[index])
-    return tuple(dict.fromkeys(selected))
+    if current_device is not None:
+        index = int(current_device)
+    elif len(set(visible)) == 1:
+        index = 0
+    else:
+        index = _current_hip_device_ordinal()
+        if index is None:
+            index = 0
+    if index < 0 or index >= len(visible):
+        return ()
+    return (visible[index],)
 
 
 def require_backend_device_compatibility(
@@ -362,12 +471,13 @@ def require_backend_device_compatibility(
     *,
     detected_arches: Sequence[str] | None = None,
     env: Mapping[str, str] | None = None,
+    current_device: int | None = None,
 ) -> None:
-    """Refuse an explicit HIP backend that the selected device cannot execute.
+    """Refuse an explicit HIP backend that the current device cannot execute.
 
     A non-HIP backend, an unrecognized backend key, or an unresolved device set
     is left alone: only a HIP backend whose declared target architecture is
-    absent from a known selected-device set raises. ``HIPENGINE_HIP_ARCH`` is a
+    absent from the current logical device raises. ``HIPENGINE_HIP_ARCH`` is a
     build-time cross-compilation override and is deliberately not consulted as
     hardware evidence.
     """
@@ -375,7 +485,11 @@ def require_backend_device_compatibility(
     target_arch = HIP_BACKEND_TARGET_ARCH.get(backend)
     if target_arch is None:
         return
-    arches = selected_device_arches(detected_arches=detected_arches, env=env)
+    arches = selected_device_arches(
+        detected_arches=detected_arches,
+        env=env,
+        current_device=current_device,
+    )
     if not arches or target_arch in arches:
         return
     raise BackendDeviceCapabilityError(
@@ -407,9 +521,19 @@ def hip_target_arch_environment(target_arch: str | None) -> Iterator[None]:
             os.environ[_ENV_HIP_ARCH] = old
 
 
+def _parse_arches_ordered(text: str) -> tuple[str, ...]:
+    """Normalized architectures in probe order, duplicates preserved."""
+
+    return tuple(
+        arch
+        for arch in (_normalize_arch(match.group(0)) for match in _ARCH_PATTERN.finditer(text))
+        if arch
+    )
+
+
 def _parse_arches(text: str) -> tuple[str, ...]:
-    arches = [_normalize_arch(match.group(0)) for match in _ARCH_PATTERN.finditer(text)]
-    return tuple(dict.fromkeys(arch for arch in arches if arch))
+    arches = _parse_arches_ordered(text)
+    return tuple(dict.fromkeys(arches))
 
 
 def _normalize_arch(value: str) -> str:
