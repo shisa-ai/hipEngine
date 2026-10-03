@@ -109,6 +109,34 @@ CANDIDATES = {
         candidate_key=None,
         fallback_key=None,
     ),
+    # The risk multiplier as a CONFIGURATION.  The production repair is a
+    # bit-parity mechanism, and `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` sets the
+    # Kahan bound that decides which outputs are queued for it.  Its default of
+    # 4.0 is deliberately loose against a docstring-screened floor of 0.5-1, so
+    # it repairs 0.7119% of rows where 1.0 repairs 0.2092% and 0.5 repairs
+    # 0.1124% (measured, `code-p4096`, 1504 calls each, zero over-capacity
+    # calls).  The wall follows the incidence: 17.014 -> 16.655 -> 16.564 s for
+    # the same prefill.  This candidate is the 1.0 point, which the multiplier's
+    # own screening places INSIDE the range where BF16 flips are still caught -
+    # so it is the cheapest point that keeps the criterion, and the one worth a
+    # gate.  It is a different change from the rejected `repair_free_gate_up`,
+    # which removed the repair entirely (a 0% incidence) and also swapped the
+    # owner; here the owner is unchanged and 29% of the flagged rows are still
+    # repaired.
+    "q4_iu8_risk_mult_1": CandidateSpec(
+        name="q4_iu8_risk_mult_1",
+        classification="T2",
+        mechanism=(
+            "tighten the exact-iu8 Kahan risk bound from 4.0 to 1.0 so the "
+            "sparse exact repair serves 0.209% of rows instead of 0.712%, "
+            "with the gate/up owner and the down leg unchanged"
+        ),
+        environment={"HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0"},
+        base_profile="production",
+        scenario_id="qwen4exp-q4-iu8-risk-mult-1",
+        candidate_key=None,
+        fallback_key=None,
+    ),
     # MX-1's gate/up half as a CONFIGURATION rather than a build. The
     # production repair is a bit-parity mechanism: the risk kernel queues
     # outputs within a Kahan bound of a BF16 rounding boundary so the sparse
