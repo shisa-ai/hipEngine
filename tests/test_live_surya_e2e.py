@@ -112,7 +112,7 @@ def test_render_chat_prompt_image_expansion(tokenizer: SuryaTokenizer) -> None:
 
 
 def test_preprocess_image_matches_oracle() -> None:
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image", reason="requires hipengine[surya]")
 
     page = Image.open(FIXTURES / "page_small.png")
     rows, grid = preprocess_image_surya(page)
@@ -197,7 +197,7 @@ def test_rect_case_preprocess_matches_oracle(tokenizer: SuryaTokenizer) -> None:
     """Non-square page: upscales across the min-pixels edge, exercises a
     (14, 22) patch grid with 77 merged image tokens."""
 
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image", reason="requires hipengine[surya]")
 
     zi = _oracle("oracle_rect.npz")
     page = Image.open(FIXTURES / "page_rect.png")
