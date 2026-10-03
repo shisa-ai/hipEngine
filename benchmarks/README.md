@@ -1513,6 +1513,22 @@ published values above are left as measured rather than replaced; the prefill
 column is the one the host state explains. Evidence:
 [`host-state re-measurement`](results/2026-10-03-gfx1151-35b-a3b-gufo-reconciliation/README.md).
 
+**H2048-MoE prefill chunk promotion (2026-10-03).** The 512-row linear/MoE
+prefill chunk this geometry carried is replaced by **1024**, which is
+**bit-exact** against it (KL `0.00000000`, max absolute logit difference
+`0.00000000`, identical top-1 at 4096 tokens; same-config repeats are also
+bit-identical, so the run-noise floor on this path is exactly zero). Row
+chunking partitions tokens rather than reductions, so the change cannot alter
+any single token's arithmetic. Measured prefill on one host state at 512 / 1024
+/ 4096 chunks: **1454.8 / 1486.4 / 1488.2** at 1K, **1459.3 / 1487.7 / 1503.9**
+at 4K, **1358.5 / 1358.5 / 1358.3** at 16K, **969.9 / 969.5 / 969.2** at 64K,
+so the lever is confined to short prompts and 4096 is faster still at 1K/4K but
+is not bit-exact and costs more at 64K. Production rows after promotion are
+**1401.89 / 1479.75 / 1197.59 / 969.08 tok/s** prefill at 512 / 4K / 32K / 64K
+(+0.84% / +1.39% / -0.17% / -0.02% against the same host state at 512 chunks).
+Evidence:
+[`chunk promotion`](results/2026-10-03-gfx1151-h2048moe-prefill-chunk-1024/README.md).
+
 ### Laguna S 2.1
 
 | Platform / format | Workload | Prefill | Decode | Evidence |

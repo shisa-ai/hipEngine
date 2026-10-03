@@ -1606,14 +1606,26 @@ GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES = frozenset({"mostly_q4_k_s"})
 # Below the 512-token crossover native is still used regardless. This restores
 # the retained 4K prefill (~1430 tok/s) that predated the False default.
 GGUF_AOTRITON_PREFILL = True
-# Measured 2026-08-20 (35B-A3B @ 2048/4096, 8060S): 512-row linear/MoE prefill
-# chunks are ~1.2% (2048 tok) / ~2.3% (4096 tok) faster than the 1024 default,
-# and chunk-boundary-correct (KL 0.00013 at 2048, far below the 0.034 run-noise
-# floor). The 27B dense (H5120) is inconclusive within 60W-lane variance, so the
-# override is keyed to the H2048-MoE geometry only. Smaller chunks reduce
-# transient scratch and improve pipelining on the 40-CU APU.
+# Measured 2026-10-03 (35B-A3B UD-Q4_K_M, 8060S, accelerator-performance
+# profile, shipping AR route, 4 reps, 4 s settle, one session per size): the
+# 512-row override this table previously carried is NOT the fastest value. Per
+# shape, tok/s at 512 / 1024 / 4096 linear/MoE chunks:
+#   1K:    1454.8 / 1486.4 (+2.17%) / 1488.2 (+2.29%)
+#   4K:    1459.3 / 1487.7 (+1.95%) / 1503.9 (+3.06%)
+#   16K:   1358.5 / 1358.5 (0.00%)  / 1358.3 (-0.01%)
+#   64K:    969.9 /  969.5 (-0.04%) /  969.2 (-0.07%)
+# so the lever is confined to short prompts and 1024 is the retained value.
+# 1024 is also **bit-exact** against 512 on this path (KL 0.00000000,
+# max_abs_logit 0.00000000, top-1 identical, 4096 tokens) because row chunking
+# partitions tokens rather than reductions - see
+# scripts/gguf_prefill_chunk_boundary_gate.py. 4096 is faster still at 1K/4K but
+# is NOT bit-exact (KL 3.1e-07, max_abs_logit 1.279 on a low-probability token)
+# and costs more at 64K, so it is recorded and not promoted.
+# This entry is load-bearing as a shield: the gfx1151 arch profile below still
+# carries (256, 256), which measures as the WORST value for this geometry
+# (1363.7 tok/s at 4K), so removing this key would regress the lane.
 GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY = {
-    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): (512, 512),  # (linear, moe)
+    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): (1024, 1024),  # (linear, moe)
 }
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.

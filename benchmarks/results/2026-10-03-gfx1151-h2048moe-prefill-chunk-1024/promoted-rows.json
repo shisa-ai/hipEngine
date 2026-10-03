@@ -1,0 +1,180 @@
+{
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "quant": "gguf_ud_q4_k_m",
+ "host": "gfx1151 Strix Halo Radeon 8060S",
+ "command": "scripts/qwen35_gguf_bench.py --public-ar-profile --measured-runs 3 --warmup-runs 1 --decode-tokens 128",
+ "chunk_change_delta_vs_512_chunk": {
+  "512": 0.84,
+  "4096": 1.39,
+  "32768": -0.17,
+  "65536": -0.02
+ },
+ "published_reference": {
+  "512": [
+   1369.489,
+   54.33
+  ],
+  "4096": [
+   1430.215,
+   54.798
+  ],
+  "32768": [
+   1144.713,
+   46.405
+  ],
+  "65536": [
+   936.218,
+   40.18
+  ]
+ },
+ "rows": {
+  "512": {
+   "prefill_tok_s": 1401.8928714250192,
+   "decode_tok_s": 56.55068808867865,
+   "prefill_seconds": 0.3652204889804125,
+   "effective_chunk_sizes": {
+    "linear": 1024,
+    "moe": 1024,
+    "full_attn_query": 0,
+    "full_attn_post": 0,
+    "full_attn_rope": 0,
+    "attn_aotriton_min_tokens": 512,
+    "auto_tune": true,
+    "chunk_tune_min_tokens": 1025
+   },
+   "chunk_reason": "geometry_prefill_chunk_policy",
+   "chunk_tuning": {
+    "reason": "geometry_prefill_chunk_policy",
+    "applied": true,
+    "chunk_sizes": {
+     "linear": 1024,
+     "moe": 1024,
+     "full_attn_query": 0,
+     "full_attn_post": 0,
+     "full_attn_rope": 0
+    },
+    "base_chunk_sizes": {
+     "linear": 0,
+     "moe": 0,
+     "full_attn_query": 0,
+     "full_attn_post": 0,
+     "full_attn_rope": 0
+    },
+    "manual_chunk_sizes": [],
+    "arch_profile_applied": true,
+    "geometry_profile_applied": true
+   }
+  },
+  "4096": {
+   "prefill_tok_s": 1479.7547254436165,
+   "decode_tok_s": 56.16345951780466,
+   "prefill_seconds": 2.768026301637292,
+   "effective_chunk_sizes": {
+    "linear": 1024,
+    "moe": 1024,
+    "full_attn_query": 4096,
+    "full_attn_post": 1024,
+    "full_attn_rope": 1024,
+    "attn_aotriton_min_tokens": 512,
+    "auto_tune": true,
+    "chunk_tune_min_tokens": 1025
+   },
+   "chunk_reason": "geometry_prefill_chunk_policy",
+   "chunk_tuning": {
+    "reason": "geometry_prefill_chunk_policy",
+    "applied": false,
+    "chunk_sizes": {
+     "linear": 1024,
+     "moe": 1024,
+     "full_attn_query": 4096,
+     "full_attn_post": 1024,
+     "full_attn_rope": 1024
+    },
+    "base_chunk_sizes": {
+     "linear": 1024,
+     "moe": 1024,
+     "full_attn_query": 4096,
+     "full_attn_post": 1024,
+     "full_attn_rope": 1024
+    },
+    "manual_chunk_sizes": [],
+    "arch_profile_applied": true,
+    "geometry_profile_applied": true
+   }
+  },
+  "32768": {
+   "prefill_tok_s": 1197.5933544279897,
+   "decode_tok_s": 45.06683435110627,
+   "prefill_seconds": 27.361541276797652,
+   "effective_chunk_sizes": {
+    "linear": 1024,
+    "moe": 1024,
+    "full_attn_query": 4096,
+    "full_attn_post": 1024,
+    "full_attn_rope": 1024,
+    "attn_aotriton_min_tokens": 512,
+    "auto_tune": true,
+    "chunk_tune_min_tokens": 1025
+   },
+   "chunk_reason": "geometry_prefill_chunk_policy",
+   "chunk_tuning": {
+    "reason": "geometry_prefill_chunk_policy",
+    "applied": false,
+    "chunk_sizes": {
+     "linear": 1024,
+     "moe": 1024,
+     "full_attn_query": 4096,
+     "full_attn_post": 1024,
+     "full_attn_rope": 1024
+    },
+    "base_chunk_sizes": {
+     "linear": 1024,
+     "moe": 1024,
+     "full_attn_query": 4096,
+     "full_attn_post": 1024,
+     "full_attn_rope": 1024
+    },
+    "manual_chunk_sizes": [],
+    "arch_profile_applied": true,
+    "geometry_profile_applied": true
+   }
+  },
+  "65536": {
+   "prefill_tok_s": 969.0846897532645,
+   "decode_tok_s": 38.241227713246445,
+   "prefill_seconds": 67.62670042458922,
+   "effective_chunk_sizes": {
+    "linear": 1024,
+    "moe": 1024,
+    "full_attn_query": 4096,
+    "full_attn_post": 1024,
+    "full_attn_rope": 1024,
+    "attn_aotriton_min_tokens": 512,
+    "auto_tune": true,
+    "chunk_tune_min_tokens": 1025
+   },
+   "chunk_reason": "geometry_prefill_chunk_policy",
+   "chunk_tuning": {
+    "reason": "geometry_prefill_chunk_policy",
+    "applied": false,
+    "chunk_sizes": {
+     "linear": 1024,
+     "moe": 1024,
+     "full_attn_query": 4096,
+     "full_attn_post": 1024,
+     "full_attn_rope": 1024
+    },
+    "base_chunk_sizes": {
+     "linear": 1024,
+     "moe": 1024,
+     "full_attn_query": 4096,
+     "full_attn_post": 1024,
+     "full_attn_rope": 1024
+    },
+    "manual_chunk_sizes": [],
+    "arch_profile_applied": true,
+    "geometry_profile_applied": true
+   }
+  }
+ }
+}
