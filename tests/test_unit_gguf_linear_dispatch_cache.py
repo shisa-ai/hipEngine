@@ -38,8 +38,8 @@ _PAIR_KEY = KernelKey(
 )
 
 
-def _fake_weight(*, layout: str, quant_key: str, slot_path: str | None = None):
-    alloc = SimpleNamespace(tensor=SimpleNamespace(ptr=10))
+def _fake_weight(*, layout: str, quant_key: str, slot_path: str | None = None, raw_ptr: int = 10):
+    alloc = SimpleNamespace(tensor=SimpleNamespace(ptr=raw_ptr))
 
     class Weight:
         def __init__(self) -> None:
@@ -96,6 +96,53 @@ def test_dispatch_cache_memoizes_and_invalidates_on_registry_change(monkeypatch)
         )
         assert calls["n"] == 2
         assert fired[-1] == "fake2"
+    finally:
+        if saved is None:
+            _KERNELS.pop(_KEY, None)
+        else:
+            register(_KEY, saved, replace=True)
+        gl.clear_gguf_linear_dispatch_cache()
+
+
+def test_dispatch_cache_keys_on_the_raw_sidecar_pointer(monkeypatch) -> None:
+    """The memo must vary with the real raw sidecar pointer, not a declared list.
+
+    The resident Q5 F32 ordered route picks a resident plane by raw pointer,
+    and the generic dispatch reads that pointer from ``weight.allocation("raw")``
+    rather than from a declared ``spec.allocation_names``. When the memo key
+    collapsed the pointer to ``None`` for any spec that did not declare that
+    attribute, a resident plane chosen for one raw weight was reused for a
+    second raw weight that had no plane, and the resident wrapper failed closed
+    with "resident Q5 dispatch has no exact raw-pointer plane". Two weights that
+    differ only in raw pointer must each resolve.
+    """
+
+    gl.clear_gguf_linear_dispatch_cache()
+    calls = {"n": 0}
+    orig_resolve_dispatch = gl.resolve_gguf_linear_dispatch
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return orig_resolve_dispatch(*args, **kwargs)
+
+    monkeypatch.setattr(gl, "resolve_gguf_linear_dispatch", counting)
+    fired: list[str] = []
+    saved = resolve(
+        backend=_KEY.backend, layer=_KEY.layer, quant=_KEY.quant, variant=_KEY.variant, missing="none"
+    )
+    register(_KEY, lambda *args, **kwargs: fired.append("fake"), replace=True)
+    try:
+        for _ in range(2):
+            launch_gguf_linear(
+                _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0", raw_ptr=10),
+                x_ptr=1, out_ptr=2, rows=1, in_features=1024, out_features=2048, runtime="rt",
+            )
+        assert calls["n"] == 1
+        launch_gguf_linear(
+            _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0", raw_ptr=11),
+            x_ptr=1, out_ptr=2, rows=1, in_features=1024, out_features=2048, runtime="rt",
+        )
+        assert calls["n"] == 2
     finally:
         if saved is None:
             _KERNELS.pop(_KEY, None)

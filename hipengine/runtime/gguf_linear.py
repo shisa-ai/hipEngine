@@ -3335,23 +3335,20 @@ def launch_gguf_linear(
     mmq_session = _q8_mmq_prefill_session.get()
     q5_raw_mmq_session = _q5_raw_mmq_target_session.get()
     q5_f32_ordered_session = _q5_f32_ordered_prefill_session.get()
+    # Capture the raw sidecar pointer itself, not a declared-allocation proxy.
+    # The raw-pointer-keyed resident Q5 plane lookup and the raw-K dispatch
+    # family read this exact pointer, so the memo key below must vary with it.
+    # Gating on ``spec.allocation_names`` (declared on five concrete spec types
+    # and no common base) made the key constant ``None`` for any spec that does
+    # not declare the attribute, so a resident plane selected for one raw
+    # pointer was reused for a second pointer that has no plane -- the dispatch
+    # then launched the resident wrapper and failed closed on the missing plane.
+    # An absent ``raw`` allocation still means no raw pointer, as before.
     try:
-        has_raw_weight_sidecar = int(weight.allocation("raw").tensor.ptr) > 0
+        raw_weight_ptr: int | None = int(weight.allocation("raw").tensor.ptr)
     except KeyError:
-        has_raw_weight_sidecar = False
-    # Read the declared allocations through a default rather than assuming the
-    # attribute exists. It is declared on five concrete spec types (laguna,
-    # qwen35 x2, qwen4_exp, gemma4) and on no common base, so the generic
-    # dispatch was reading something that is not part of any interface: a spec
-    # that does not define it raised AttributeError here instead of taking the
-    # no-raw-sidecar path. An absent declaration means no raw allocation, which
-    # is what the empty tuple below says -- the semantics for a spec that does
-    # declare it are unchanged.
-    raw_weight_ptr = (
-        int(weight.allocation("raw").tensor.ptr)
-        if "raw" in getattr(weight.spec, "allocation_names", ())
-        else None
-    )
+        raw_weight_ptr = None
+    has_raw_weight_sidecar = raw_weight_ptr is not None and raw_weight_ptr > 0
     cache_key = (
         generation(),
         weight.spec.layout,
