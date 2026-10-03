@@ -190,6 +190,15 @@ def test_resolve_compiler_version_explicit_becomes_process_default(
     version so later None calls resolve to it and hit ``_LOADED_LIB_CACHE``.
     """
 
+    # This test covers the process default only when no higher-priority
+    # environment override is configured (as in cached-build GPU runners).
+    for name in (
+        "HIPENGINE_COMPILER_VERSION_TEXT",
+        "HIPENGINE_COMPILER_VERSION_FILE",
+        "HIPENGINE_HIPCC_VERSION_TEXT",
+        "HIPENGINE_HIPCC_VERSION_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(build_module, "_COMPILER_VERSION_CACHE", {})
     resolved = build_module._resolve_compiler_version(
         compiler="hipcc", compiler_version="v-pinned 1", dry_run=False
