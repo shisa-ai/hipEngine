@@ -1,0 +1,174 @@
+{
+  "kind": "gemma4_occupancy_calibration",
+  "performance_claim": false,
+  "parent_commit": "623f0f406d4345a23a3b15ab9c7ca1de0975f3f3",
+  "derived_metric_source": "ROCm SDK share/rocprofiler-sdk/config.yaml",
+  "formulas": {
+    "MeanOccupancyPerCU": "reduce(SQ_WAVE_CYCLES,sum)/reduce(GRBM_GUI_ACTIVE,max)/CU_NUM",
+    "MeanOccupancyPerActiveCU": "reduce(SQ_WAVE_CYCLES,sum)/reduce(SQ_BUSY_CYCLES,sum)"
+  },
+  "CU_NUM": 40,
+  "controls": {
+    "known_wave_control": {
+      "csv": "/tmp/priority-occupancy-control-profile/zbook/1461385_counter_collection.csv",
+      "dispatches": [
+        {
+          "kernel": "occupancy_control(float*, long)",
+          "grid_threads": 32,
+          "workgroup_threads": 32,
+          "ms": 10.677263,
+          "counters": {
+            "MeanOccupancyPerActiveCU": 0.999999935,
+            "MeanOccupancyPerCU": 0.0249825208,
+            "OccupancyPercent": 0.0780703777,
+            "SQ_WAVES": 1.0
+          }
+        },
+        {
+          "kernel": "occupancy_control(float*, long)",
+          "grid_threads": 32,
+          "workgroup_threads": 32,
+          "ms": 10.666388,
+          "counters": {
+            "MeanOccupancyPerActiveCU": 0.999999935,
+            "MeanOccupancyPerCU": 0.0249866253,
+            "OccupancyPercent": 0.0780832042,
+            "SQ_WAVES": 1.0
+          }
+        },
+        {
+          "kernel": "occupancy_control(float*, long)",
+          "grid_threads": 1280,
+          "workgroup_threads": 32,
+          "ms": 10.721972,
+          "counters": {
+            "MeanOccupancyPerActiveCU": 1.999999,
+            "MeanOccupancyPerCU": 0.999634028,
+            "OccupancyPercent": 3.123856,
+            "SQ_WAVES": 40.0
+          }
+        }
+      ]
+    },
+    "current_reduced_group": {
+      "csv": "/tmp/priority-current-occupancy-calibrated/zbook/1462108_counter_collection.csv",
+      "dispatches": [
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "grid_threads": 4096,
+          "workgroup_threads": 128,
+          "ms": 2.739191,
+          "counters": {
+            "MeanOccupancyPerActiveCU": 6.522624,
+            "MeanOccupancyPerCU": 3.073943,
+            "OccupancyPercent": 9.606072,
+            "SQ_WAVES": 128.0
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "grid_threads": 4096,
+          "workgroup_threads": 128,
+          "ms": 1.363579,
+          "counters": {
+            "MeanOccupancyPerActiveCU": 6.477547,
+            "MeanOccupancyPerCU": 24.598297,
+            "OccupancyPercent": 76.869678,
+            "SQ_WAVES": 128.0
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "grid_threads": 32768,
+          "workgroup_threads": 256,
+          "ms": 63.378379,
+          "counters": {
+            "MeanOccupancyPerActiveCU": 15.196022,
+            "MeanOccupancyPerCU": 6.603662,
+            "OccupancyPercent": 20.636445,
+            "SQ_WAVES": 1024.0
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "grid_threads": 32768,
+          "workgroup_threads": 256,
+          "ms": 62.852631,
+          "counters": {
+            "MeanOccupancyPerActiveCU": 15.180364,
+            "MeanOccupancyPerCU": 6.459736,
+            "OccupancyPercent": 20.186674,
+            "SQ_WAVES": 1024.0
+          }
+        }
+      ]
+    },
+    "current_raw_group": {
+      "csv": "/tmp/priority-current-occupancy-raw/zbook/1462944_counter_collection.csv",
+      "dispatches": [
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "grid_threads": 4096,
+          "workgroup_threads": 128,
+          "ms": 1.880967,
+          "counters": {
+            "GRBM_GUI_ACTIVE": 4356933.0,
+            "SQ_BUSY_CYCLES": 81637640.0,
+            "SQ_WAVES": 128.0,
+            "SQ_WAVE_CYCLES": 533580936.0
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "grid_threads": 4096,
+          "workgroup_threads": 128,
+          "ms": 1.602084,
+          "counters": {
+            "GRBM_GUI_ACTIVE": 461182.0,
+            "SQ_BUSY_CYCLES": 76852833.0,
+            "SQ_WAVES": 128.0,
+            "SQ_WAVE_CYCLES": 498945437.0
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "grid_threads": 32768,
+          "workgroup_threads": 256,
+          "ms": 64.668532,
+          "counters": {
+            "GRBM_GUI_ACTIVE": 154819716.0,
+            "SQ_BUSY_CYCLES": 2694489656.0,
+            "SQ_WAVES": 1024.0,
+            "SQ_WAVE_CYCLES": 40965283217.0
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "grid_threads": 32768,
+          "workgroup_threads": 256,
+          "ms": 62.882826,
+          "counters": {
+            "GRBM_GUI_ACTIVE": 150946114.0,
+            "SQ_BUSY_CYCLES": 2616669672.0,
+            "SQ_WAVES": 1024.0,
+            "SQ_WAVE_CYCLES": 39719106332.0
+          }
+        }
+      ]
+    }
+  },
+  "source": "#include <hip/hip_runtime.h>\n#include <stdint.h>\n__global__ __launch_bounds__(32) void occupancy_control(float* out, int64_t iterations) {\n  const int i = blockIdx.x * blockDim.x + threadIdx.x;\n  float v = float(i + 1) * 0.000001f;\n  for (int64_t n = 0; n < iterations; ++n) {\n    v = __fmaf_rn(v, 0.999999f, 0.000001f);\n    v = __fmaf_rn(v, 0.999998f, 0.000002f);\n    v = __fmaf_rn(v, 0.999997f, 0.000003f);\n    v = __fmaf_rn(v, 0.999996f, 0.000004f);\n  }\n  out[i] = v;\n}\nextern \"C\" hipError_t launch_occupancy_control(void* out, int64_t iterations, int64_t blocks) {\n hipLaunchKernelGGL(occupancy_control,dim3(blocks),dim3(32),0,0,static_cast<float*>(out),iterations);\n return hipGetLastError();\n}\n",
+  "driver": "import sys,ctypes,time,json,os\nsys.path.insert(0,'/home/lhl/hipEngine-gemma4')\nfrom hipengine.core.build import build_hip\nfrom hipengine.core.hip import get_hip_runtime\nfrom hipengine.core.memory import malloc,free\nlib=build_hip(sources=['/tmp/priority_occupancy_control.hip'],family='priority_occupancy_control',profile='prefill',load=True,require_cached=os.environ.get('HIPENGINE_REQUIRE_CACHED_BUILD')=='1')\nlib.launch_occupancy_control.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_int64];lib.launch_occupancy_control.restype=ctypes.c_int\nrt=get_hip_runtime();out=malloc(40*32*4)\ntry:\n for blocks in (1,1,40):\n  rt.device_synchronize();start=time.perf_counter();assert lib.launch_occupancy_control(out.ptr,1000000,blocks)==0;rt.device_synchronize()\n  print(json.dumps({'blocks':blocks,'waves':blocks,'threads':32,'ms':1000*(time.perf_counter()-start)}),flush=True)\nfinally:free(out)\n",
+  "observations": [
+    "One-wave control yields MeanOccupancyPerCU 0.02498 against its 0.025 maximum; the active metric is about 1.0. Forty waves yield MeanOccupancyPerCU 0.9996 and an active metric of 2.0. The active metric appears WGP-normalized on this part.",
+    "Removing LDS conflict/stall counters from the group does not repair warm decode: MeanOccupancyPerCU 24.6 exceeds the whole-dispatch maximum of 128 / 40 = 3.2.",
+    "Warm decode GRBM_GUI_ACTIVE 461182 over 1.602 ms is inconsistent with first-decode 4356933 over 1.881 ms. Prefill 154819716 over 64.669 ms and 150946114 over 62.883 ms are consistent with about 2.4 GHz and MeanOccupancyPerCU 6.61 / 6.58.",
+    "Prefill estimates replicate across counter groups, but calibration of the control does not prove target-workload GRBM validity. Do not use derived percentages to assert a hard speed ceiling."
+  ],
+  "commands": {
+    "prebuild": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/g4_compiler_version.txt .venv/bin/python /tmp/priority_occupancy_control.py",
+    "control": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/g4_compiler_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --pmc MeanOccupancyPerActiveCU MeanOccupancyPerCU OccupancyPercent SQ_WAVES --output-format csv rocpd -d /tmp/priority-occupancy-control-profile -- .venv/bin/python /tmp/priority_occupancy_control.py",
+    "current_reduced_group": "same environment and counters; -d /tmp/priority-current-occupancy-calibrated -- .venv/bin/python scripts/gemma4_prefill_kernel_bw.py --reps 1 --keys 65536 --tokens 1 256",
+    "current_raw_group": "same environment; --pmc GRBM_GUI_ACTIVE SQ_WAVE_CYCLES SQ_BUSY_CYCLES SQ_WAVES -d /tmp/priority-current-occupancy-raw -- .venv/bin/python scripts/gemma4_prefill_kernel_bw.py --reps 1 --keys 65536 --tokens 1 256"
+  }
+}
