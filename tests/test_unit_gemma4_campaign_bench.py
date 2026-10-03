@@ -227,6 +227,48 @@ def test_exact_prompt_ids_rejects_nonpositive_target():
     with pytest.raises(ValueError, match="target"):
         exact_prompt_ids(lambda text: [1], 0, corpus=("x y",))
 
+
+@pytest.mark.parametrize("context", [8192, 8448, 16640])
+def test_resolve_generator_passes_context_through_public_constructor(monkeypatch, context):
+    """Attribute assignment on a forwarding wrapper must not shadow inner capacity."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import hipengine
+    from scripts.gemma4_campaign_bench import _resolve_generator
+
+    seen = {}
+
+    class Inner:
+        def __init__(self, capacity):
+            self.context_length = capacity
+            self._load_seconds = 0.0
+
+        def _ensure_runner(self):
+            return SimpleNamespace(capacity=self.context_length, max_block=256)
+
+    class Wrapper:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    class FakeLLM:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+            self.generator = Wrapper(Inner(kwargs.get("max_sequence_length", 8192)))
+
+        def _get_text_generator(self):
+            return self.generator
+
+    monkeypatch.setattr(hipengine, "LLM", FakeLLM)
+    _, runner, loading = _resolve_generator(Path("model.gguf"), context)
+    assert seen["max_sequence_length"] == context
+    assert runner.capacity == context
+    assert loading["runner_capacity"] == loading["context_length"] == context
+
+
 def test_resolution_row_serializes_resolved_runtime_profile():
     """The loading row must stay JSON-safe once profiles resolve.
 

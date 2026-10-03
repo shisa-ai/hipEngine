@@ -341,10 +341,12 @@ def _resolve_generator(artifact: Path, context: int) -> tuple[Any, Any, dict[str
     import hipengine
 
     resolve_start = time.perf_counter()
-    llm = hipengine.LLM(model=str(artifact))
+    # Set capacity through the public factory contract. The generator may be
+    # wrapped by SubmitPollTextGenerator: assigning context_length on that
+    # wrapper shadows the inner field and leaves the runner at its default.
+    llm = hipengine.LLM(model=str(artifact), max_sequence_length=int(context))
     generator = llm._get_text_generator()
     resolve_s = time.perf_counter() - resolve_start
-    generator.context_length = int(context)
     load_start = time.perf_counter()
     runner = generator._ensure_runner()
     load_s = time.perf_counter() - load_start
