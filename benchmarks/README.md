@@ -2019,14 +2019,42 @@ These phase timings are not HTTP throughput or a llama.cpp comparison.
 | 16384 | 40.1761 | 38.1657 | −5.00% |
 
 All four public/instrumented output checks pass, and each integrated run
-matches the pre-rebase 128 output IDs. A seven-sample 512-token confirmation
-measures **0.4873 → 0.4990 s (+2.39%)**: the short-prefill regression is not
-cleared. This is an integration diagnostic, not an overall non-regression
-finding or a replacement model topline. Kernel parent/CPU-reference and
-stream/sentinel tests pass; the fresh unit tier has only two inherited
+matches the pre-rebase 128 output IDs. Without host rotary-table reuse, a
+seven-sample 512-token confirmation measures **0.4873 → 0.4990 s (+2.39%)**.
+This records the integration before the host-table change below, not an overall
+non-regression finding or a replacement model topline. Kernel parent/CPU-reference
+and stream/sentinel tests pass; the fresh unit tier has only two inherited
 VibeVoice failures. Saved measurements predate a repaired variant-manifest
 label; the artifact separates actual traced execution from that stale label.
 [Commands, samples, provenance and limitations](results/2026-10-03-gemma4-gfx1151-rebase-fused-t16.json).
+
+#### Host rotary-table reuse (2026-10-03)
+
+On zbook/Radeon 8060S, Gemma `UD-Q4_K_XL`, production/BF16 KV, single-request
+128-output greedy generation uses identical natural prompt IDs and context
+capacities in the pre-rebase and integrated checkouts. Seven measured requests
+follow one full-shape warmup, except the 2053-token baseline has three samples.
+These are runner phase timings, not HTTP throughput or a llama.cpp comparison.
+
+| Prompt tokens | Pre-rebase prefill s | Integrated prefill s | Latency change |
+| ---: | ---: | ---: | ---: |
+| 512 | 0.4906 | 0.4645 | −5.31% |
+| 1024 | 1.1551 | 1.0639 | −7.89% |
+| 2053 | 2.8351 | 2.7151 | −4.23% |
+| 4096 | 6.3909 | 6.1011 | −4.53% |
+
+The default runner reuses one host rotary-table range per configuration across
+reset and decode. At 512/1024, these warm requests reuse the tables; at
+2053/4096, chunking replaces ranges and still computes the original tables.
+First or changed ranges also compute the original tables: **no cold-miss speed
+improvement is claimed**. Every block still uploads fresh tables; no prompt
+activations, logits, KV or device weights are cached by this optimization.
+
+All warmup, sample and public output IDs equal their pre-rebase references.
+Public 512→512→257→257→512 requests show miss/hit/miss/hit/miss. Full logits
+at cache miss/hit are byte-identical after intervening decode, and graph replay
+parity passes. Host tables occupy 3 MiB at 512; close releases their entries.
+[Commands, samples, provenance and correctness checks](results/2026-10-03-gemma4-gfx1151-rope-prefill-cache.json).
 
 #### Shared transient attention workspace (2026-10-03)
 

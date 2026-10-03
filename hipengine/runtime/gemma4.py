@@ -837,6 +837,11 @@ class Gemma4Runner:
     _kv_scale_dtype_resolved: DType = field(default=DType.FP16, repr=False)
     _caches: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _staging: dict[str, tuple[DeviceBuffer, int]] = field(default_factory=dict, repr=False)
+    # One host-only multirow range per immutable RoPE config. Decode bypasses
+    # this cache so single-token steps do not evict reusable prefill tables.
+    _rope_prefill_tables: dict[
+        Gemma4RopeConfig, tuple[int, int, np.ndarray, np.ndarray]
+    ] = field(default_factory=dict, init=False, repr=False)
     _position: int = field(default=0, repr=False)
     # Rows of the most recent block, which is what ``hidden_state`` indexes.
     _last_rows: int = field(default=0, repr=False)
@@ -1144,6 +1149,7 @@ class Gemma4Runner:
             free(buffer)
         self._buffers.clear()
         self._staging.clear()
+        self._rope_prefill_tables.clear()
         self._scratches.clear()
         self._kv.clear()
         self._caches.clear()
@@ -1722,7 +1728,15 @@ class Gemma4Runner:
             # doubled, which is the layout gemma4_partial_rotary_bf16 indexes.
             staged = tables.get(attention.rope)
             if staged is None:
-                cos, sin = gemma4_rope_cos_sin_tables(attention.rope, positions)
+                cached = self._rope_prefill_tables.get(attention.rope) if rows > 1 else None
+                if cached is not None and cached[:2] == (start, rows):
+                    cos, sin = cached[2:]
+                else:
+                    cos, sin = gemma4_rope_cos_sin_tables(attention.rope, positions)
+                    if rows > 1:
+                        self._rope_prefill_tables[attention.rope] = (start, rows, cos, sin)
+                # Upload even on a host hit: decode or graph staging may have
+                # overwritten these reusable device buffers since the prefill.
                 staged = (
                     self._stage_upload(
                         f"cos{attention.rope}",
