@@ -208,14 +208,19 @@ def test_shared_footprint_does_not_grow_with_the_context():
     assert staged.staged_lds_bytes(512) == 8 * 256 * 4
     assert staged.staged_lds_bytes(256) == staged.staged_lds_bytes(512)
     assert staged.staged_lds_bytes(512) <= staged.LDS_BUDGET_BYTES
-    # The plan's own figure is the same constant at 31 keys and at 262,144.
+    # The plan's own figure is the same constant at 31 keys and at 262,144,
+    # and it is the reservation of the decomposition that plan selected.
     small = staged.staged_plan(
         tokens=1, keys=31, num_heads=16, num_kv_heads=2, head_dim=512
     )
     large = staged.staged_plan(
         tokens=1, keys=262144, num_heads=16, num_kv_heads=2, head_dim=512
     )
-    assert small.lds_bytes == large.lds_bytes == staged.staged_lds_bytes(512)
+    assert small.lds_bytes == large.lds_bytes
+    assert small.lds_bytes <= staged.staged_lds_bytes(512)
+    assert small.lds_bytes == max(
+        small.score_lds_bytes, small.softmax_lds_bytes, small.pv_lds_bytes
+    )
     # Contrast: the strict requirement grows with the context up to its resident
     # budget, and past the budget it stops growing -- the 256/512 class kernel
     # moves its logits to request-owned global scratch rather than refusing. The
@@ -361,25 +366,232 @@ def test_plan_reports_the_grid_and_the_row_grouping():
     assert full.score_grid == (48, 4)
     assert full.softmax_grid == (48, 1)
     # Sliding geometry: 2 query heads per KV head.
-    sliding = staged.staged_plan(tokens=1, keys=1024, num_heads=16, num_kv_heads=8, head_dim=256)
+    sliding = staged.staged_plan(tokens=3, keys=1024, num_heads=16, num_kv_heads=8, head_dim=256)
     assert (sliding.rows_per_head, sliding.row_groups) == (2, 1)
-    assert sliding.pv_grid == (1, 8, 1)
+    assert sliding.pv_grid == (3, 8, 1)
     # A GQA ratio wider than one CTA's row budget splits into row groups.
-    wide = staged.staged_plan(tokens=1, keys=1024, num_heads=32, num_kv_heads=2, head_dim=512)
+    wide = staged.staged_plan(tokens=3, keys=1024, num_heads=32, num_kv_heads=2, head_dim=512)
     assert (wide.rows_per_head, wide.row_groups) == (16, 2)
-    assert wide.pv_grid == (1, 2, 2)
+    assert wide.pv_grid == (3, 2, 2)
     # A row per CTA, like the strict kernel, when the ratio is one.
-    plain = staged.staged_plan(tokens=1, keys=64, num_heads=4, num_kv_heads=4, head_dim=256)
-    assert (plain.rows_per_head, plain.row_groups, plain.pv_grid) == (1, 1, (1, 4, 1))
+    plain = staged.staged_plan(tokens=3, keys=64, num_heads=4, num_kv_heads=4, head_dim=256)
+    assert (plain.rows_per_head, plain.row_groups, plain.pv_grid) == (1, 1, (3, 4, 1))
+
+
+# --- the T0 singleton PV decomposition ---------------------------------------
+
+
+def test_single_token_selects_the_32_thread_pv_decomposition():
+    """One query token gets the T0 singleton PV: 32 threads, 2 rows, 32-dim slices.
+
+    The 256-thread decomposition holds every dimension of a query row in one
+    CTA, so a single-token launch has as few PV CTAs as the layer has KV heads
+    (two, for the full-attention geometry). The singleton decomposition pairs
+    the query rows that share a KV head and slices the output dimensions
+    instead, so the same launch has ``ceil(rows_per_head / 2) * head_dim / 32``
+    independent CTAs -- and every output element is still one ascending-key FP32
+    FMA chain, because a slice decides which dimensions a CTA owns, never which
+    keys contribute to one.
+    """
+
+    for head_dim, slices in ((256, 8), (512, 16)):
+        plan = staged.staged_plan(
+            tokens=1, keys=4096, num_heads=16, num_kv_heads=2, head_dim=head_dim
+        )
+        assert plan.pv_threads == staged.SINGLETON_THREADS == 32
+        assert plan.pv_rows_per_block == staged.SINGLETON_ROWS_PER_BLOCK == 2
+        assert plan.pv_dim_slices == slices
+        assert plan.pv_dim_slices * staged.SINGLETON_DIM_SLICE == head_dim
+        # 8 query heads per KV head, two resident rows per group.
+        assert plan.row_groups == 4
+        assert plan.pv_grid == (1, 2, 4 * slices)
+        assert plan.pv_singleton
+        # The score and softmax stages keep the strict 256-lane shapes.
+        assert plan.threads == staged.THREADS == 256
+        assert plan.score_grid == (16, 4)
+        assert plan.softmax_grid == (16, 1)
+        assert plan.pv_lds_bytes == 2 * staged.PV_TILE_KEYS * 4
+        assert plan.lds_bytes == max(
+            plan.score_lds_bytes, plan.softmax_lds_bytes, plan.pv_lds_bytes
+        )
+
+
+def test_multi_token_launches_keep_the_256_thread_decomposition():
+    """More than one query token is the shipped decomposition, unchanged."""
+
+    for num_heads, num_kv_heads, resident in (
+        (16, 2, 8),  # the full-attention geometry
+        (16, 8, 2),  # the sliding geometry: an exact variant with two rows
+        (4, 1, 4),
+        (24, 2, 8),  # ratio 12: the generic variant
+    ):
+        for tokens in (2, 3, 17):
+            plan = staged.staged_plan(
+                tokens=tokens, keys=1024, num_heads=num_heads,
+                num_kv_heads=num_kv_heads, head_dim=512,
+            )
+            assert plan.pv_threads == staged.THREADS == 256
+            assert plan.pv_rows_per_block == resident
+            # One CTA holds the whole head width: the dimensions are not sliced.
+            assert plan.pv_dim_slices == 1
+            assert plan.row_groups == -(-(num_heads // num_kv_heads) // staged.MAX_ROWS_PER_BLOCK)
+            assert plan.pv_grid == (tokens, num_kv_heads, plan.row_groups)
+            assert not plan.pv_singleton
+            # The 256-thread launcher reserves its eight-row tile for every
+            # variant, so that -- not the resident row count -- is the footprint.
+            assert plan.pv_lds_bytes == staged.staged_pv_lds_bytes()
+
+
+def test_singleton_geometry_covers_every_gqa_ratio_shape():
+    """Ratio 1, an even ratio, and odd ratios whose last group holds one row."""
+
+    # A row per CTA when the ratio is one: no second row to pair with.
+    one = staged.staged_plan(tokens=1, keys=64, num_heads=4, num_kv_heads=4, head_dim=256)
+    assert (one.pv_rows_per_block, one.row_groups, one.pv_grid) == (1, 1, (1, 4, 8))
+    # An even ratio fills every group with two rows.
+    even = staged.staged_plan(tokens=1, keys=64, num_heads=24, num_kv_heads=2, head_dim=256)
+    assert (even.pv_rows_per_block, even.row_groups) == (2, 6)
+    assert even.pv_grid == (1, 2, 48)
+    # An odd ratio keeps a partial tail group; the row count is the group's own.
+    for ratio, groups in ((3, 2), (5, 3), (9, 5)):
+        odd = staged.staged_plan(
+            tokens=1, keys=64, num_heads=2 * ratio, num_kv_heads=2, head_dim=256
+        )
+        assert (odd.pv_rows_per_block, odd.row_groups) == (2, groups)
+        assert odd.pv_grid == (1, 2, groups * 8)
+
+
+def test_singleton_grid_z_is_the_row_group_times_slice_product():
+    """Z packs the row group and the dimension slice, so their product is the bound.
+
+    A single-token launch whose combined Z does not fit one grid dimension keeps
+    the 256-thread decomposition -- the same code path a multi-token launch uses
+    -- rather than refusing a shape this family has always served. The three
+    boundaries below are the last ratio that fits the packed grid, the first that
+    does not, and the last ratio the eight-row grid itself admits.
+    """
+
+    # head_dim 256 slices the output eight ways: 8,191 row groups (16,382 query
+    # rows) is the last shape whose product fits 65,535.
+    fits = staged.staged_plan(
+        tokens=1, keys=64, num_heads=16382, num_kv_heads=1, head_dim=256
+    )
+    assert fits.pv_singleton
+    assert (fits.pv_rows_per_block, fits.row_groups) == (2, 8191)
+    assert fits.pv_grid == (1, 1, 8191 * 8)
+    assert fits.pv_grid[2] == 65528 <= staged.MAX_GRID_DIM
+    # One more row group is 65,536: past the packed grid, so the launch is the
+    # 256-thread decomposition on its own grid, whose Z is the row-group count.
+    past = staged.staged_plan(
+        tokens=1, keys=64, num_heads=16384, num_kv_heads=1, head_dim=256
+    )
+    assert not past.pv_singleton
+    assert (past.pv_rows_per_block, past.pv_dim_slices) == (staged.MAX_ROWS_PER_BLOCK, 1)
+    assert past.pv_grid == (1, 1, 2048)
+    assert past.pv_lds_bytes == staged.staged_pv_lds_bytes()
+    # An odd ratio past the bound takes the same fallback: 16,383 rows is 8,192
+    # row groups once they are paired, and 8,192 * 8 is one past the grid.
+    odd_past = staged.staged_plan(
+        tokens=1, keys=64, num_heads=16383, num_kv_heads=1, head_dim=256
+    )
+    assert not odd_past.pv_singleton
+    assert odd_past.pv_grid == (1, 1, 2048)
+    # head_dim 512 slices the output sixteen ways: 4,095 row groups (8,190 rows).
+    fits_512 = staged.staged_plan(
+        tokens=1, keys=64, num_heads=8190, num_kv_heads=1, head_dim=512
+    )
+    assert fits_512.pv_singleton
+    assert fits_512.pv_grid == (1, 1, 4095 * 16)
+    assert fits_512.pv_grid[2] == 65520 <= staged.MAX_GRID_DIM
+    past_512 = staged.staged_plan(
+        tokens=1, keys=64, num_heads=8192, num_kv_heads=1, head_dim=512
+    )
+    assert not past_512.pv_singleton
+    assert past_512.pv_grid == (1, 1, 1024)
+    # The last ratio the eight-row grid admits is 8 * 65,535 = 524,280, which the
+    # packed grid cannot hold at either width -- and it is still a plan, on the
+    # grid the 256-thread decomposition has always launched.
+    old_limit = staged.staged_plan(
+        tokens=1, keys=64, num_heads=524280, num_kv_heads=1, head_dim=256
+    )
+    assert not old_limit.pv_singleton
+    assert old_limit.pv_grid == (1, 1, staged.MAX_GRID_DIM)
+    assert old_limit.pv_grid[2] == 65535
+    # One row group past that limit is refused with the message it always had.
+    with pytest.raises(NotImplementedError) as failure:
+        staged.staged_plan(
+            tokens=1, keys=64, num_heads=524288, num_kv_heads=1, head_dim=256
+        )
+    assert "524288" in str(failure.value)
+    # Whatever the decomposition, no plan reports a Z past the grid.
+    for num_heads, num_kv_heads, head_dim in (
+        (16382, 1, 256),
+        (16383, 1, 256),
+        (16384, 1, 256),
+        (8190, 1, 512),
+        (8192, 1, 512),
+        (524280, 1, 256),
+        (524280, 1, 512),
+        (16, 2, 512),
+        (16, 8, 256),
+    ):
+        plan = staged.staged_plan(
+            tokens=1, keys=64, num_heads=num_heads, num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+        )
+        assert plan.pv_grid[2] <= staged.MAX_GRID_DIM
+
+
+def test_no_shape_the_eight_row_grid_serves_is_refused():
+    """The packed grid is the tighter one, so an overflow falls back, not out.
+
+    A single-token shape whose row-group-by-slice product does not fit one grid
+    dimension keeps the 256-thread decomposition, so the acceptance rule is the
+    eight-row grid's: a shape is a plan exactly when its eight-row row groups fit
+    one grid dimension. This sweeps ratios across both boundaries at both head
+    widths -- the last packed fit, the first packed overflow, and the last ratio
+    the eight-row grid itself admits -- so "no previously runnable shape is
+    refused" is checked rather than argued.
+    """
+
+    accepted = refused = 0
+    for head_dim in (256, 512):
+        for ratio in (
+            1, 2, 3, 4, 5, 8, 12, 16, 17, 4095, 4096, 8190, 8191, 8192, 8193,
+            16382, 16383, 16384, 16385, 32768, 65534 * 8, 65535 * 8, 65535 * 8 + 1,
+        ):
+            legacy_groups = -(-ratio // staged.MAX_ROWS_PER_BLOCK)
+            try:
+                plan = staged.staged_plan(
+                    tokens=1, keys=64, num_heads=ratio, num_kv_heads=1,
+                    head_dim=head_dim,
+                )
+            except NotImplementedError:
+                assert legacy_groups > staged.MAX_GRID_DIM, (head_dim, ratio)
+                refused += 1
+                continue
+            assert legacy_groups <= staged.MAX_GRID_DIM, (head_dim, ratio)
+            assert plan.pv_grid[2] <= staged.MAX_GRID_DIM, (head_dim, ratio)
+            accepted += 1
+    assert accepted and refused
 
 
 def test_plan_describe_names_the_decomposition():
-    plan = staged.staged_plan(tokens=1, keys=2048, num_heads=16, num_kv_heads=2, head_dim=512)
+    plan = staged.staged_plan(tokens=3, keys=2048, num_heads=16, num_kv_heads=2, head_dim=512)
     described = plan.describe()
-    assert "score_grid=16x2" in described
-    assert "pv_grid=1x2x1" in described
+    assert "score_grid=48x2" in described
+    assert "pv_grid=3x2x1" in described
+    assert "pv=multi(256t,8r,1s)" in described
     assert f"lds={plan.lds_bytes}B" in described
     assert f"workspace={plan.workspace_bytes}B" in described
+    # A single token names the other decomposition, with its own grid and tile.
+    singleton = staged.staged_plan(
+        tokens=1, keys=2048, num_heads=16, num_kv_heads=2, head_dim=512
+    )
+    singleton_described = singleton.describe()
+    assert "pv_grid=1x2x64" in singleton_described
+    assert "pv=singleton(32t,2r,16s)" in singleton_described
+    assert f"lds={singleton.lds_bytes}B" in singleton_described
 
 
 # --- workspace ownership ----------------------------------------------------

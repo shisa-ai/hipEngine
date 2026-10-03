@@ -20,6 +20,18 @@
 //      specialized at compile time, so the rows that exist are the only ones the
 //      kernel holds and no per-key row predicate is emitted for it.
 //
+// The PV stage has a second work decomposition for a single query token, which
+// is the shape with the fewest independent PV CTAs: the kernel above holds every
+// dimension of a query row in one CTA, so a one-token launch has one CTA per
+// (token, KV head) however long the context is.
+// `gemma4_attention_staged_pv_singleton_kernel` instead pairs two query rows that
+// share a KV head, runs 32 threads, and gives each CTA a 32-dimension slice of
+// the head, so the same launch has
+// `ceil(rows_per_head / rows) * head_dim / 32` independent CTAs. A slice decides
+// which dimensions a CTA owns and never which keys feed one, so both
+// decompositions produce one ascending-key FP32 FMA chain per output element and
+// the two are bit-identical to each other and to the strict kernel.
+//
 // Nothing here reassociates: the score tree, the denominator partition and the
 // numerator chain are the strict kernel's own, so for the same inputs the output
 // is bit-identical to `gemma4_attention.hip`'s. That equality is the candidate's
@@ -35,13 +47,16 @@
 //
 // The launch shape, for whoever measures it: three kernels, three traversals of
 // the workspace, a score grid of `tokens * num_heads * ceil(keys / 1024)` CTAs
-// and a PV grid of `tokens * num_kv_heads * ceil(GQA / 8)`. Exactness pins each
-// output dimension to one ascending-key chain, so the key range cannot be split
-// across CTAs -- a property of the contract, not a statement about how the shape
-// performs at any given context.
+// and a PV grid of `tokens * num_kv_heads * ceil(GQA / 8)` -- or
+// `tokens * num_kv_heads * ceil(GQA / 2) * head_dim / 32` when a single query
+// token takes the singleton decomposition. Exactness pins each output dimension
+// to one ascending-key chain, so the key range cannot be split across CTAs -- a
+// property of the contract, not a statement about how the shape performs at any
+// given context.
 //
-// Every one of those grids lives inside a single gfx11 grid dimension (65535
-// wide), and the workspace is indexed with int64: `gemma4_staged_validate_launch`
+// Each launch dimension is bounded independently: X permits 2**31-1 CTAs,
+// while Y and Z permit 65535. The workspace is indexed with int64:
+// `gemma4_staged_validate_launch`
 // bounds each raw dimension before any product of it is formed, and a shape past
 // a bound is refused with `hipErrorInvalidValue` before a pointer is taken. The
 // export below applies the same predicate and returns its 0 sentinel instead.
@@ -66,10 +81,10 @@
 
 namespace {
 
-// Every stage runs this block width. The score stage needs 256 so its
-// warp-per-key mapping matches the strict kernel's; the softmax stage needs 256
-// because its reduction is the strict 256-lane one; the PV stage uses it for
-// the dimension walk (head_dim 256 -> one dimension per thread, 512 -> two).
+// The score and softmax stages run this block width to preserve the strict
+// warp-key mapping and reduction tree. Multi-query PV also uses it for the
+// dimension walk (head_dim 256 -> one dimension per thread, 512 -> two).
+// Singleton PV uses kStagedSingletonThreads instead.
 constexpr int kStagedThreads = 256;
 // Keys per score CTA. Sets the workspace's chunk-maximum array: one float per
 // (row, chunk). A power of two so the partial-max reduction is a short loop.
@@ -81,14 +96,26 @@ constexpr int kStagedMaxRows = 8;
 // Keys per PV weight tile, resident in shared memory. The PV footprint is
 // `kStagedMaxRows * kStagedPvTileKeys` floats and does not depend on `keys`.
 constexpr int kStagedPvTileKeys = 256;
+// The single-token PV decomposition: 32 threads, one output dimension per
+// thread, so a CTA owns a 32-dimension slice of the head; two query rows that
+// share a KV head, which is the reuse factor for the V element a thread loads;
+// and `ceil(rows_per_head / kStagedSingletonRows)` row groups. Its Z dimension
+// packs the row group and the slice, which is the product that has to fit one
+// grid dimension.
+constexpr int kStagedSingletonThreads = 32;
+constexpr int kStagedSingletonRows = 2;
+constexpr int kStagedSingletonDimSlice = 32;
 constexpr size_t kStagedLdsBudgetBytes = 64 * 1024;
 // gfx11 permits 2**31-1 CTAs in X and 65535 in Y/Z. Score uses (rows,
-// chunks), PV uses (tokens, num_kv_heads, row_groups). Keep these distinct so
-// long-query grids are not rejected by a Y/Z limit they do not use.
+// chunks), PV uses (tokens, num_kv_heads, row_groups * dim_slices). Keep these
+// distinct so long-query grids are not rejected by a Y/Z limit they do not use.
 constexpr int64_t kStagedMaxGridX = INT32_MAX;
 constexpr int64_t kStagedMaxGridDim = 65535;
 constexpr int64_t kStagedMaxKeys = kStagedMaxGridDim * kStagedScoreChunkKeys;
-// The largest GQA ratio whose PV row groups still fit one grid dimension.
+// The largest GQA ratio whose PV row groups still fit one grid dimension. The
+// singleton decomposition packs the row group and the dimension slice into the
+// same dimension, so its own bound is the product `row_groups * dim_slices`
+// checked in `gemma4_staged_pv_decomposition`, and it is the tighter of the two.
 constexpr int64_t kStagedMaxRowsPerHead = kStagedMaxRows * kStagedMaxGridDim;
 
 // A clamped key bound is a column index, so it fits an `int`; and the launch
@@ -587,6 +614,125 @@ __global__ void gemma4_attention_staged_pv_kernel(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Stage 3, single-token decomposition: one warp per CTA, two query rows, and one
+// 32-dimension slice of the head.
+//
+// Grid (tokens, num_kv_heads, row_groups * dim_slices); 32 threads; thread `tid`
+// owns output dimension `slice * kStagedSingletonDimSlice + tid` of the rows this
+// group holds. `blockIdx.z / dim_slices` is the row group and `z % dim_slices`
+// the slice, so the Z dimension carries both indices. The CTAs are independent:
+// nothing is shared between them but the read-only workspace.
+//
+// The arithmetic is the 256-thread kernel's, element for element. For each
+// (row, dimension) the accumulator is one FP32 FMA per live key in ascending key
+// order, tile after tile, with zero weights skipped and the tile loop adding
+// tiles in ascending key order -- the same order, the same single addend per key
+// and the same accumulator, which is why the two decompositions are bit-identical
+// and this one is bit-identical to the strict kernel. A slice decides which
+// dimensions a CTA owns; it never splits the keys that feed one.
+//
+// `kResidentRows` is the compile-time row count and `kExactRows` says whether it
+// is the whole group's row count. An even GQA ratio fills every group with
+// kStagedSingletonRows rows; an odd ratio past one keeps the generic variant,
+// whose last group holds a single row. The ratio 1 variant holds one row and has
+// exactly one group, so the group stride is never exercised there. The row count
+// is the only difference between the variants: the tile, the grid, the slice and
+// the ascending-key chain are the same in all of them.
+// ---------------------------------------------------------------------------
+template <typename scalar_t, int kResidentRows, bool kExactRows>
+__global__ void gemma4_attention_staged_pv_singleton_kernel(
+    const float* __restrict__ weights,
+    const float* __restrict__ denominator,
+    const scalar_t* __restrict__ value,
+    scalar_t* __restrict__ out,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset) {
+  static_assert(kResidentRows >= 1 && kResidentRows <= kStagedSingletonRows,
+                "a singleton CTA holds the rows it pairs, one group at most");
+  extern __shared__ float shared[];
+  float* w_s = shared;
+
+  const int64_t token = static_cast<int64_t>(blockIdx.x);
+  const int64_t kv_head = static_cast<int64_t>(blockIdx.y);
+  const int64_t dim_slices = head_dim / kStagedSingletonDimSlice;
+  const int64_t z = static_cast<int64_t>(blockIdx.z);
+  const int64_t group = z / dim_slices;
+  const int64_t slice = z - group * dim_slices;
+
+  const int64_t rows_per_head = num_heads / num_kv_heads;
+  // The workspace is indexed by (token, head) row, not by head alone: row `r` of
+  // this group is query head `kv_head * rows_per_head + r` of this token.
+  const int64_t row_base = token * num_heads + kv_head * rows_per_head +
+                           group * kStagedSingletonRows;
+  const int64_t rows =
+      kExactRows ? static_cast<int64_t>(kResidentRows)
+                 : ((rows_per_head - group * kStagedSingletonRows <
+                     kStagedSingletonRows)
+                        ? rows_per_head - group * kStagedSingletonRows
+                        : kStagedSingletonRows);
+
+  float acc[kResidentRows];
+#pragma unroll
+  for (int r = 0; r < kResidentRows; ++r) {
+    acc[r] = 0.0f;
+  }
+
+  const int first_kept = gemma4_staged_first_kept(window, row_offset, token, keys);
+  const int walk_end = gemma4_staged_walk_end(window, row_offset, token, keys);
+  const int64_t v_stride = num_kv_heads * head_dim;
+  const scalar_t* v_base = value + kv_head * head_dim;
+  const unsigned int tid = threadIdx.x;
+  // A slice is exact -- `head_dim` is a whole number of them -- so this thread's
+  // dimension is inside the head for every CTA of this grid, and the V load below
+  // needs no width predicate where the 256-thread kernel's does.
+  const int64_t d = slice * kStagedSingletonDimSlice + static_cast<int64_t>(tid);
+
+  for (int64_t j0 = first_kept; j0 < walk_end; j0 += kStagedPvTileKeys) {
+    const int64_t j1 =
+        (j0 + kStagedPvTileKeys < walk_end) ? j0 + kStagedPvTileKeys : walk_end;
+    const int tile = static_cast<int>(j1 - j0);
+    for (int64_t r = 0; r < rows; ++r) {
+      const float* src = weights + (row_base + r) * keys + j0;
+      float* dst = w_s + r * kStagedPvTileKeys;
+      for (int k = static_cast<int>(tid); k < tile; k += kStagedSingletonThreads) {
+        dst[k] = src[k];
+      }
+    }
+    __syncthreads();
+
+    for (int k = 0; k < tile; ++k) {
+      const float v = gemma4_staged_to_float(v_base[(j0 + k) * v_stride + d]);
+#pragma unroll
+      for (int r = 0; r < kResidentRows; ++r) {
+        // Dead for an exact variant, whose group has no row past its end.
+        if (!kExactRows && r >= rows) {
+          continue;
+        }
+        const float weight = w_s[r * kStagedPvTileKeys + k];
+        if (weight == 0.0f) {
+          continue;
+        }
+        acc[r] += weight * v;
+      }
+    }
+    __syncthreads();
+  }
+
+#pragma unroll
+  for (int r = 0; r < kResidentRows; ++r) {
+    if (!kExactRows && r >= rows) {
+      continue;
+    }
+    out[(row_base + r) * head_dim + d] =
+        gemma4_staged_to_scalar<scalar_t>(acc[r] / denominator[row_base + r]);
+  }
+}
+
 // Shared footprint of each stage, in bytes, for a given head_dim. Constant in
 // `keys`: the score stage holds the query row and eight warp maxima, the
 // softmax stage holds the 256-lane tree plus the broadcast maximum, and the PV
@@ -599,8 +745,12 @@ size_t gemma4_staged_softmax_shared_bytes() {
   return static_cast<size_t>(kStagedThreads + 1) * sizeof(float);
 }
 
+size_t gemma4_staged_pv_tile_shared_bytes(int64_t rows) {
+  return static_cast<size_t>(rows) * kStagedPvTileKeys * sizeof(float);
+}
+
 size_t gemma4_staged_pv_shared_bytes() {
-  return static_cast<size_t>(kStagedMaxRows) * kStagedPvTileKeys * sizeof(float);
+  return gemma4_staged_pv_tile_shared_bytes(kStagedMaxRows);
 }
 
 int64_t gemma4_staged_chunks(int64_t keys) {
@@ -629,38 +779,11 @@ bool gemma4_staged_workspace_shape_ok(int64_t tokens, int64_t num_heads,
   return tokens * num_heads <= kStagedMaxGridX;
 }
 
-// 0 when this shape can be launched, or the HIP error code naming why it cannot.
-// The raw dimensions are checked before any product of them is formed, and the
-// score grid's row count is checked before the PV grid is built from it.
-int gemma4_staged_validate_launch(int64_t tokens, int64_t keys, int64_t num_heads,
-                                  int64_t num_kv_heads, int64_t head_dim) {
-  if (tokens <= 0 || keys <= 0 || num_heads <= 0 || num_kv_heads <= 0 ||
-      head_dim <= 0) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  if (num_heads % num_kv_heads != 0) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  // The warp-key tree is specialised for these two widths.
-  if (head_dim != 256 && head_dim != 512) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  if (num_kv_heads > kStagedMaxGridDim) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  if (!gemma4_staged_workspace_shape_ok(tokens, num_heads, keys)) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  if (num_heads / num_kv_heads > kStagedMaxRowsPerHead) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  return 0;
-}
-
-// The resident row count the PV launcher selects for one GQA ratio, and the one
-// place that table is written down: `launch_gemma4_attention_staged_pv`
-// dispatches on it and `hipengine_gemma4_attention_staged_pv_resident_rows`
-// exports it, so the variant a caller reads there is the variant that ran.
+// The resident row count the 256-thread PV launcher selects for one GQA ratio,
+// and the one place that table is written down:
+// `launch_gemma4_attention_staged_pv` dispatches on it and
+// `hipengine_gemma4_attention_staged_pv_resident_rows` exports it, so the
+// variant a caller reads there is the variant that ran.
 //
 // The ratios 1, 2, 4 and 8 are the ones whose whole group is resident in one
 // CTA, so their row count can be a compile-time constant; every other ratio
@@ -679,6 +802,107 @@ int64_t gemma4_staged_pv_resident_rows(int64_t rows_per_head) {
     default:
       return kStagedMaxRows;
   }
+}
+
+// One PV work decomposition: the block width, the query rows one CTA holds, the
+// number of CTAs the head width is divided into, and the row groups per
+// (token, KV head). The PV grid is (tokens, num_kv_heads, row_groups *
+// dim_slices): for the 256-thread decomposition `dim_slices` is 1 and the Z
+// dimension is the row group alone.
+struct StagedPvDecomposition {
+  int64_t threads;
+  int64_t rows_per_block;
+  int64_t dim_slices;
+  int64_t row_groups;
+
+  bool singleton() const { return threads == kStagedSingletonThreads; }
+  int64_t grid_z() const { return row_groups * dim_slices; }
+};
+
+// Which PV decomposition this launch uses, and the grid it uses it on. The one
+// definition of that choice: `launch_gemma4_attention_staged` dispatches on it
+// and the `hipengine_gemma4_attention_staged_pv_*` exports answer from it, so a
+// caller, a profile or a test can name the decomposition that ran instead of
+// inferring it from timings.
+//
+// A single query token is the shape the 256-thread decomposition serves worst:
+// it holds every dimension of a query row in one CTA, so the launch has one PV
+// CTA per (token, KV head) however long the context is. The singleton
+// decomposition pairs the query rows that share a KV head -- kStagedSingletonRows
+// of them, or one when the ratio is one, which leaves no second row to pair --
+// and gives each CTA a kStagedSingletonDimSlice-wide slice of the output, which
+// is `ceil(rows_per_head / rows) * head_dim / kStagedSingletonDimSlice`
+// independent CTAs over the same ascending-key chains.
+//
+// Its Z dimension packs the row group and the slice, so it is selected only
+// while `row_groups * dim_slices` fits one grid dimension. Past that product, and
+// for every launch with more than one query token, the 256-thread decomposition
+// runs -- the code path this family has always used -- so no shape is refused for
+// a grid the other decomposition can represent.
+//
+// The caller has already validated the shape: `gemma4_staged_pv_shape_ok`
+// guarantees a positive `head_dim` of 256 or 512, an integer GQA ratio inside
+// kStagedMaxRowsPerHead, and the row and KV-head counts inside their grids.
+StagedPvDecomposition gemma4_staged_pv_decomposition(int64_t tokens,
+                                                     int64_t num_heads,
+                                                     int64_t num_kv_heads,
+                                                     int64_t head_dim) {
+  const int64_t rows_per_head = num_heads / num_kv_heads;
+  if (tokens == 1) {
+    const int64_t rows = rows_per_head == 1 ? 1 : kStagedSingletonRows;
+    const int64_t dim_slices = head_dim / kStagedSingletonDimSlice;
+    const int64_t row_groups = (rows_per_head + rows - 1) / rows;
+    if (row_groups * dim_slices <= kStagedMaxGridDim) {
+      return StagedPvDecomposition{kStagedSingletonThreads, rows, dim_slices,
+                                   row_groups};
+    }
+  }
+  return StagedPvDecomposition{kStagedThreads,
+                               gemma4_staged_pv_resident_rows(rows_per_head), 1,
+                               (rows_per_head + kStagedMaxRows - 1) / kStagedMaxRows};
+}
+
+// Whether this launch serves a shape's geometry, without looking at `keys`:
+// every dimension check `gemma4_staged_validate_launch` makes that does not
+// depend on the key count. The PV decomposition exports answer for exactly the
+// shapes this accepts, so "a decomposition exists" and "a launch exists" are the
+// same statement on both sides of the ABI.
+bool gemma4_staged_pv_shape_ok(int64_t tokens, int64_t num_heads,
+                               int64_t num_kv_heads, int64_t head_dim) {
+  if (tokens <= 0 || num_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0) {
+    return false;
+  }
+  if (num_heads % num_kv_heads != 0) {
+    return false;
+  }
+  // The warp-key tree is specialised for these two widths.
+  if (head_dim != 256 && head_dim != 512) {
+    return false;
+  }
+  if (tokens > kStagedMaxGridX || num_heads > kStagedMaxGridX ||
+      num_kv_heads > kStagedMaxGridDim) {
+    return false;
+  }
+  // Both factors are bounded above, so this product cannot overflow.
+  if (tokens * num_heads > kStagedMaxGridX) {
+    return false;
+  }
+  return num_heads / num_kv_heads <= kStagedMaxRowsPerHead;
+}
+
+// 0 when this shape can be launched, or the HIP error code naming why it cannot.
+// The raw dimensions are checked before any product of them is formed, and the
+// score grid's row count is checked before the PV grid is built from it.
+int gemma4_staged_validate_launch(int64_t tokens, int64_t keys, int64_t num_heads,
+                                  int64_t num_kv_heads, int64_t head_dim) {
+  if (keys <= 0 ||
+      !gemma4_staged_pv_shape_ok(tokens, num_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (!gemma4_staged_workspace_shape_ok(tokens, num_heads, keys)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return 0;
 }
 
 // One PV variant: the kernel for one resident row count, on the shape's grid.
@@ -761,6 +985,72 @@ int launch_gemma4_attention_staged_pv(
       keys, window, row_offset, stream);
 }
 
+// One singleton variant: the kernel for one resident row count, on the shape's
+// grid. The grid carries the row group and the dimension slice packed into Z, and
+// the shared footprint is the tile of the rows this variant holds.
+template <typename scalar_t, int kResidentRows, bool kExactRows>
+int launch_gemma4_attention_staged_pv_singleton_rows(
+    const float* weights,
+    const float* denominator,
+    const scalar_t* value,
+    scalar_t* out,
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset,
+    hipStream_t stream) {
+  const int64_t rows_per_head = num_heads / num_kv_heads;
+  const int64_t dim_slices = head_dim / kStagedSingletonDimSlice;
+  const int64_t row_groups = (rows_per_head + kResidentRows - 1) / kResidentRows;
+  const size_t shared_bytes = gemma4_staged_pv_tile_shared_bytes(kResidentRows);
+  const dim3 grid(static_cast<unsigned int>(tokens),
+                  static_cast<unsigned int>(num_kv_heads),
+                  static_cast<unsigned int>(row_groups * dim_slices));
+  gemma4_attention_staged_pv_singleton_kernel<scalar_t, kResidentRows, kExactRows>
+      <<<grid, dim3(kStagedSingletonThreads), shared_bytes, stream>>>(
+          weights, denominator, value, out, num_heads, num_kv_heads, head_dim,
+          keys, window, row_offset);
+  return static_cast<int>(hipGetLastError());
+}
+
+// The single-token PV launch. `rows_per_head == 1` leaves no second row to pair
+// and has exactly one group, so it holds one row; every other ratio holds
+// kStagedSingletonRows and is exact when the ratio is even. An odd ratio past one
+// keeps the generic variant, whose last group holds a single row -- the same
+// split the 256-thread launcher makes for its own tile.
+template <typename scalar_t>
+int launch_gemma4_attention_staged_pv_singleton(
+    const float* weights,
+    const float* denominator,
+    const scalar_t* value,
+    scalar_t* out,
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset,
+    hipStream_t stream) {
+  const int64_t rows_per_head = num_heads / num_kv_heads;
+  if (rows_per_head == 1) {
+    return launch_gemma4_attention_staged_pv_singleton_rows<scalar_t, 1, true>(
+        weights, denominator, value, out, tokens, num_heads, num_kv_heads,
+        head_dim, keys, window, row_offset, stream);
+  }
+  if (rows_per_head % kStagedSingletonRows == 0) {
+    return launch_gemma4_attention_staged_pv_singleton_rows<scalar_t, 2, true>(
+        weights, denominator, value, out, tokens, num_heads, num_kv_heads,
+        head_dim, keys, window, row_offset, stream);
+  }
+  return launch_gemma4_attention_staged_pv_singleton_rows<scalar_t, 2, false>(
+      weights, denominator, value, out, tokens, num_heads, num_kv_heads, head_dim,
+      keys, window, row_offset, stream);
+}
+
 template <typename scalar_t>
 int launch_gemma4_attention_staged(
     const scalar_t* query,
@@ -791,9 +1081,17 @@ int launch_gemma4_attention_staged(
   }
   const int64_t chunks = gemma4_staged_chunks(keys);
   const int64_t rows = tokens * num_heads;
+  // The decomposition is resolved once, before any kernel is launched, and the
+  // shared-memory check below tests the tile it will actually reserve: the
+  // singleton variants hold one or two rows, while the 256-thread launcher
+  // reserves its eight-row tile for every variant, exact ones included.
+  const StagedPvDecomposition pv =
+      gemma4_staged_pv_decomposition(tokens, num_heads, num_kv_heads, head_dim);
   const size_t score_shared = gemma4_staged_score_shared_bytes(head_dim);
   const size_t softmax_shared = gemma4_staged_softmax_shared_bytes();
-  const size_t pv_shared = gemma4_staged_pv_shared_bytes();
+  const size_t pv_shared =
+      pv.singleton() ? gemma4_staged_pv_tile_shared_bytes(pv.rows_per_block)
+                     : gemma4_staged_pv_shared_bytes();
   if (score_shared > kStagedLdsBudgetBytes || softmax_shared > kStagedLdsBudgetBytes ||
       pv_shared > kStagedLdsBudgetBytes) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -823,6 +1121,11 @@ int launch_gemma4_attention_staged(
     return rc;
   }
 
+  if (pv.singleton()) {
+    return launch_gemma4_attention_staged_pv_singleton<scalar_t>(
+        scores, denominator, value, out, tokens, num_heads, num_kv_heads, head_dim,
+        keys, window, row_offset, stream);
+  }
   return (head_dim == 512)
              ? launch_gemma4_attention_staged_pv<scalar_t, 2>(
                    scores, denominator, value, out, tokens, num_heads,
@@ -856,9 +1159,11 @@ extern "C" size_t hipengine_gemma4_attention_staged_workspace_bytes(
   return static_cast<size_t>(rows * keys + rows * chunks + rows) * sizeof(float);
 }
 
-// Largest shared-memory allocation any of the three stages asks for, so a
+// Largest shared-memory allocation any of the three stages can ask for, so a
 // caller can confirm the bounded-layout property (it does not mention `keys`)
-// without a device.
+// without a device. It is the worst case over both PV decompositions; the tile
+// the decomposition of one launch reserves is what the launcher checks and what
+// the plan reports.
 extern "C" size_t hipengine_gemma4_attention_staged_lds_bytes(int64_t head_dim) {
   const size_t score = gemma4_staged_score_shared_bytes(head_dim);
   const size_t softmax = gemma4_staged_softmax_shared_bytes();
@@ -867,15 +1172,20 @@ extern "C" size_t hipengine_gemma4_attention_staged_lds_bytes(int64_t head_dim) 
   return pv > largest ? pv : largest;
 }
 
-// The PV variant this launch selects for one GQA ratio, without a device: the
-// resident row count, which is the `kResidentRows` the kernel is built with, or
-// 0 for a ratio no launch of this family serves. A caller can tell the two
-// variant kinds apart by comparing the answer with `num_heads / num_kv_heads`:
-// equal means the whole group is resident and the specialized kernel ran with no
-// per-key row predicate, unequal means the generic kernel ran with
-// kStagedMaxRows resident rows. It reads the same table the launcher dispatches
-// on, so a test or a profile can name the variant that ran instead of inferring
-// it from timings.
+// The 256-thread PV variant this launch selects for one GQA ratio, without a
+// device: the resident row count, which is the `kResidentRows` the kernel is
+// built with, or 0 for a ratio no launch of this family serves. A caller can
+// tell the two variant kinds apart by comparing the answer with
+// `num_heads / num_kv_heads`: equal means the whole group is resident and the
+// specialized kernel ran with no per-key row predicate, unequal means the
+// generic kernel ran with kStagedMaxRows resident rows. It reads the same table
+// the launcher dispatches on, so a test or a profile can name the variant that
+// ran instead of inferring it from timings.
+//
+// This is the table of the 256-thread decomposition, which is the one a launch
+// with more than one query token uses. The decomposition a launch with any token
+// count actually selects -- the singleton one included -- is what the exports
+// below answer.
 extern "C" int64_t hipengine_gemma4_attention_staged_pv_resident_rows(
     int64_t num_heads,
     int64_t num_kv_heads) {
@@ -887,6 +1197,61 @@ extern "C" int64_t hipengine_gemma4_attention_staged_pv_resident_rows(
     return 0;
   }
   return gemma4_staged_pv_resident_rows(rows_per_head);
+}
+
+// The PV work decomposition a launch of this shape selects, without a device:
+// the block width, the query rows one CTA holds, and the Z extent of the grid it
+// launches on. A caller reads the same resolver `launch_gemma4_attention_staged`
+// dispatches on, so the decomposition it names here is the one that ran -- and
+// for a single query token the width is the thing to compare, because 32 means
+// the singleton decomposition ran and 256 means the shape kept the 256-thread
+// one.
+//
+// Each answers 0 -- a value no launch has, because a launch has positive
+// dimensions and a grid with at least one CTA in Z -- for a shape this family
+// cannot serve at all: the same geometry checks
+// `hipengine_gemma4_attention_staged_workspace_bytes` makes that do not depend on
+// `keys`. `keys` is not an argument because the decomposition does not depend on
+// it: a shape that answers here is a shape some key count can launch.
+extern "C" int64_t hipengine_gemma4_attention_staged_pv_threads(
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  if (!gemma4_staged_pv_shape_ok(tokens, num_heads, num_kv_heads, head_dim)) {
+    return 0;
+  }
+  return gemma4_staged_pv_decomposition(tokens, num_heads, num_kv_heads, head_dim)
+      .threads;
+}
+
+extern "C" int64_t hipengine_gemma4_attention_staged_pv_rows_per_block(
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  if (!gemma4_staged_pv_shape_ok(tokens, num_heads, num_kv_heads, head_dim)) {
+    return 0;
+  }
+  return gemma4_staged_pv_decomposition(tokens, num_heads, num_kv_heads, head_dim)
+      .rows_per_block;
+}
+
+// The Z extent of the selected decomposition's grid, which is the bound that
+// chose it: the singleton decomposition packs the row group and the dimension
+// slice into Z, so its product is the one that has to fit kStagedMaxGridDim, and
+// a shape whose product does not is served by the 256-thread decomposition
+// instead.
+extern "C" int64_t hipengine_gemma4_attention_staged_pv_grid_z(
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  if (!gemma4_staged_pv_shape_ok(tokens, num_heads, num_kv_heads, head_dim)) {
+    return 0;
+  }
+  return gemma4_staged_pv_decomposition(tokens, num_heads, num_kv_heads, head_dim)
+      .grid_z();
 }
 
 extern "C" int hipengine_gemma4_attention_staged_bf16(
