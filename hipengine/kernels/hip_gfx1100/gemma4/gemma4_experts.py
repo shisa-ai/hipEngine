@@ -72,6 +72,75 @@ def _wmma_tile_upper_bound(selected_rows: int, num_experts: int) -> tuple[int, i
     upper_tiles = active_experts + (int(selected_rows) - active_experts) // 16
     return upper_tiles * 16, upper_tiles
 
+
+def _stream_capturing(stream: int, runtime: object | None) -> bool:
+    """Whether ``stream`` is inside a HIP graph capture.
+
+    A capture freezes device work and forbids host synchronization, so any route
+    that reads a device counter back to size its launch cannot run under one
+    (HIP 900). The MMQ-family gate/up leaves ask this before their tile-plan
+    readback and launch a routing-independent bound instead; see
+    :func:`_tile_rows_or_bound`.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+
+    return (runtime or get_hip_runtime()).stream_is_capturing(stream)
+
+
+def _tile_rows_or_bound(
+    *,
+    tile_total_ptr: int,
+    tile_capacity: int,
+    tile_rows: int,
+    bound_rows: int,
+    stream: int,
+    runtime: object | None,
+    route: str,
+) -> int:
+    """Padded tile row count to launch, without a host readback under capture.
+
+    The tile map writes the exact padded row count to ``tile_total_ptr``. Outside
+    capture that count is read back and validated, which is the exact grid and
+    the only form that can catch a routing surprise. Inside capture the readback
+    and the stream synchronize that makes it visible are illegal, so the
+    routing-independent upper bound is launched instead. The map fills every
+    unused ``tile_expert`` slot with ``-1`` and the leaves return early on a
+    negative expert, so the bounded grid produces the same output; it only adds
+    blocks that exit immediately.
+    """
+
+    if _stream_capturing(stream, runtime):
+        if bound_rows <= 0 or bound_rows > tile_capacity * tile_rows:
+            raise RuntimeError(
+                f"gemma4 {route} gate/up tile row bound {bound_rows} is outside "
+                f"capacity {tile_capacity * tile_rows}"
+            )
+        return bound_rows
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+
+    import numpy as np
+
+    if stream:
+        (runtime or get_hip_runtime()).stream_synchronize(stream)
+    total_host = np.empty(1, dtype=np.int64)
+    copy_device_to_host(
+        host_array_ptr(total_host),
+        DeviceBuffer(ptr=tile_total_ptr, nbytes=8),
+        8,
+        runtime=runtime,
+    )
+    total_rows = int(total_host[0])
+    if total_rows <= 0 or total_rows > tile_capacity * tile_rows:
+        raise RuntimeError(
+            f"gemma4 {route} gate/up tile row count {total_rows} is outside "
+            f"capacity {tile_capacity * tile_rows}"
+        )
+    return total_rows
+
+
 # Activation planes the MMQ gate/up route packs and consumes. The pack uses the
 # passes for error feedback - each pass re-quantizes the previous pass's
 # residual - so this is an accuracy knob as well as a size knob: one plane costs
@@ -2329,8 +2398,6 @@ def gemma4_project_experts_gate_up_mmq(
         return False
 
     from hipengine.core.memory import (
-        DeviceBuffer,
-        copy_device_to_host,
         copy_host_array_to_device,
         host_array_ptr,
     )
@@ -2375,23 +2442,19 @@ def gemma4_project_experts_gate_up_mmq(
         tile_capacity=tile_capacity,
         **kwargs,
     )
-    if stream:
-        from hipengine.core.hip import get_hip_runtime
-
-        (runtime or get_hip_runtime()).stream_synchronize(stream)
-    total_host = np.empty(1, dtype=np.int64)
-    copy_device_to_host(
-        host_array_ptr(total_host),
-        DeviceBuffer(ptr=mmq_total.ptr, nbytes=8),
-        8,
+    total_rows = _tile_rows_or_bound(
+        tile_total_ptr=mmq_total.ptr,
+        tile_capacity=tile_capacity,
+        tile_rows=32,
+        # The MMQ32 leaf requires a 32-aligned row count, so the routing bound
+        # is rounded up to the next 32-row tile. ``bound + 31`` stays inside the
+        # buffer capacity: the bound is ``compact_rows + 31 * num_experts`` and
+        # the buffer holds ``scratch.total_lanes // 32 + num_experts + 1`` tiles.
+        bound_rows=((compact_rows + 31 * num_experts + 31) // 32) * 32,
+        stream=stream,
         runtime=runtime,
+        route="MMQ",
     )
-    total_rows = int(total_host[0])
-    if total_rows <= 0 or total_rows > tile_capacity * 32:
-        raise RuntimeError(
-            f"gemma4 MMQ gate/up tile row count {total_rows} is outside "
-            f"capacity {tile_capacity * 32}"
-        )
     weight_ptr = weight.allocation("raw").buffer.ptr
     row_bytes = (in_features // 256) * 144
     mmq_gate_up(
@@ -2470,11 +2533,6 @@ def _gemma4_project_experts_gate_up_wmma_t16(
     if not _gemma4_t16_tiles_ready(weight):
         return False
 
-    from hipengine.core.memory import (
-        DeviceBuffer,
-        copy_device_to_host,
-        host_array_ptr,
-    )
     from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
         qwen35_moe_wmma_tile_map,
     )
@@ -2483,8 +2541,6 @@ def _gemma4_project_experts_gate_up_wmma_t16(
         gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out
         as wmma_gate_up,
     )
-
-    import numpy as np
 
     wmma_starts = scratch.buffer("wmma_expert_start")
     tile_expert = scratch.buffer("wmma_tile_expert")
@@ -2505,24 +2561,15 @@ def _gemma4_project_experts_gate_up_wmma_t16(
         tile_capacity=tile_capacity,
         **kwargs,
     )
-    if stream:
-        from hipengine.core.hip import get_hip_runtime
-
-        (runtime or get_hip_runtime()).stream_synchronize(stream)
-    total_host = np.empty(1, dtype=np.int64)
-    copy_device_to_host(
-        host_array_ptr(total_host),
-        DeviceBuffer(ptr=wmma_total.ptr, nbytes=8),
-        8,
+    total_rows = _tile_rows_or_bound(
+        tile_total_ptr=wmma_total.ptr,
+        tile_capacity=tile_capacity,
+        tile_rows=16,
+        bound_rows=_wmma_tile_upper_bound(compact_rows, num_experts)[0],
+        stream=stream,
         runtime=runtime,
+        route="T16",
     )
-    total_rows = int(total_host[0])
-    # The T16 tile map pads to 16 rows per tile, where the MMQ32 map pads to 32.
-    if total_rows <= 0 or total_rows > tile_capacity * 16:
-        raise RuntimeError(
-            f"gemma4 T16 gate/up tile row count {total_rows} is outside "
-            f"capacity {tile_capacity * 16}"
-        )
 
     wmma_gate_up(
         x_ptr,
@@ -2584,11 +2631,6 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
         return False
 
     from hipengine.core.hip import get_hip_runtime
-    from hipengine.core.memory import (
-        DeviceBuffer,
-        copy_device_to_host,
-        host_array_ptr,
-    )
     from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
         qwen35_moe_wmma_tile_map,
     )
@@ -2597,8 +2639,6 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
         gguf_q5_k_selected_dual_sparse_exact_repair_bf16 as sparse_exact_repair,
         gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out as iu8_risk_gate_up,
     )
-
-    import numpy as np
 
     wmma_starts = scratch.buffer("wmma_expert_start")
     tile_expert = scratch.buffer("wmma_tile_expert")
@@ -2621,21 +2661,15 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
         tile_capacity=tile_capacity,
         **kwargs,
     )
-    if stream:
-        (runtime or get_hip_runtime()).stream_synchronize(stream)
-    total_host = np.empty(1, dtype=np.int64)
-    copy_device_to_host(
-        host_array_ptr(total_host),
-        DeviceBuffer(ptr=wmma_total.ptr, nbytes=8),
-        8,
+    total_rows = _tile_rows_or_bound(
+        tile_total_ptr=wmma_total.ptr,
+        tile_capacity=tile_capacity,
+        tile_rows=16,
+        bound_rows=_wmma_tile_upper_bound(compact_rows, num_experts)[0],
+        stream=stream,
         runtime=runtime,
+        route="iu8",
     )
-    total_rows = int(total_host[0])
-    if total_rows <= 0 or total_rows > tile_capacity * 16:
-        raise RuntimeError(
-            f"gemma4 iu8 gate/up tile row count {total_rows} is outside "
-            f"capacity {tile_capacity * 16}"
-        )
 
     risk_capacity = compact_rows * 2 * intermediate
     if risk_indices.nbytes < risk_capacity * _I32_BYTES:
