@@ -104,18 +104,32 @@ the workspace. Same protocol, same `--order queued`.
 
 | arm | gen chunk | loop cap | workspace | `prefill_token_ids` | prefill wall | peer TTFT | peer ITL median | peer max gap |
 |---|---:|---:|---|---:|---:|---:|---:|---:|
-| `g1024_l1024` | 1024 | 1024 | `[1024]` | 8,192 B | 15.992 s | 16.854 s | 49.19 ms | 147.9 ms |
-| `g4096_l1024` | **4096** | 1024 | **`[4096]`** | **32,768 B** | **15.075 s** | 15.770 s | 49.09 ms | **75.1 ms** |
-| `g4096_l4096` | **4096** | 4096 | **`[4096]`** | **32,768 B** | **15.001 s** | 15.717 s | 49.17 ms | **70.5 ms** |
-| **delta** | | | | | **−5.74% / −6.20%** | −6.43% / −6.75% | −0.20% | **−49% / −52%** |
+| `g1024_l1024` | 1024 | 1024 | `[1024]` | 8,192 B | 15.992 / 15.998 s | 16.854 / 16.864 s | 49.19 / 49.24 ms | 147.9 / 155.5 ms |
+| `g4096_l1024` | **4096** | 1024 | **`[4096]`** | **32,768 B** | **15.075 / 15.070 s** | 15.770 / 15.777 s | 49.09 / 49.15 ms | **75.1 / 71.9 ms** |
+| `g4096_l4096` | **4096** | 4096 | **`[4096]`** | **32,768 B** | **15.001 / 15.072 s** | 15.717 / 15.796 s | 49.17 / 49.10 ms | **70.5 / 73.3 ms** |
+| **delta** | | | | | **−5.74% / −5.80%** | −6.43% / −6.44% | −0.2% | **−49% / −54%** |
 
-**The prefill win reproduces through the engine loop.** RT-1 measured −4.94% by
-calling `runner.prefill(ids)` directly, bypassing the loop; at the same prompt and
-host the serving loop measures **−5.74%**, same direction and comparable magnitude.
+Two values per cell are two independent repetitions, one process per arm each.
+
+**The prefill win reproduces through the engine loop, and it is solid at this sample
+size.** RT-1 measured −4.94% by calling `runner.prefill(ids)` directly, bypassing the
+loop; at the same prompt and host the serving loop measures **−5.74% / −5.80%**.
+
+**Separation is far beyond RT-1's own bar.** Within-arm spread is **0.005 s (0.03%)**
+for both arms across the two repetitions, and the arms **do not overlap**: the
+slowest `g4096_l1024` run (15.075 s) is 5.74% faster than the fastest
+`g1024_l1024` run (15.992 s). The median delta is **183x** the larger within-arm
+spread, against the 5.70x RT-1 required for the original claim.
+
+**The cap adds nothing on top of the chunk.** At repetition 2, `g4096_l4096`
+(−5.79%) and `g4096_l1024` (−5.80%) are indistinguishable, and `g4096_l4096` is the
+*more* variable arm (0.071 s spread vs 0.005 s). That is the same conclusion
+Results 1 and 2 reach from the other direction: the cap is not the lever.
 
 **The peer is not harmed — it benefits.** Its TTFT falls 6.43% because it is queued
-behind a prefill that finishes sooner. Its ITL median is unchanged. Its worst
-single gap **halves**, from 147.9 ms to 75.1 ms.
+behind a prefill that finishes sooner, its ITL median is unchanged (−0.2%), and its
+worst single gap **roughly halves**, from 147.9/155.5 ms to 75.1/71.9 ms, in both
+repetitions.
 
 **Engagement is recorded in-run:** the session's
 `_prefill_workspaces[*].prefill_chunk_size` goes `[1024]` → `[4096]`,
@@ -169,9 +183,9 @@ and free of peer-fairness cost, and leaves the admission decision where it was.
 
 ## Limits
 
-- **One repetition per arm.** The prefill deltas (−5.74%, −6.20%) are far larger
-  than the ≤0.11% noise band this harness shows on the cap comparison, so those are
-  real; the peer-ITL medians are not resolved beyond "unchanged".
+- **Two repetitions per arm.** Within-arm spread is 0.03% and the arms do not
+  overlap, so the prefill deltas (−5.74%, −5.80%) are established; the peer-ITL
+  medians are still not resolved beyond "unchanged".
 - **No memory measurement.** The +4.96 GB workspace cost is quoted from RT-1/RT-3,
   not re-measured here.
 - **One peer shape** (16-token prompt, 64 or 400 output tokens), one long prompt
