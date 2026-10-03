@@ -16,7 +16,9 @@
 //      written back over its logit, and the denominator published.
 //   3. `gemma4_attention_staged_pv_kernel` runs the strict pass 3 with the
 //      weights staged in a bounded shared tile for up to eight query rows that
-//      share one KV head.
+//      share one KV head. A group whose row count is exactly 1, 2, 4 or 8 is
+//      specialized at compile time, so the rows that exist are the only ones the
+//      kernel holds and no per-key row predicate is emitted for it.
 //
 // Nothing here reassociates: the score tree, the denominator partition and the
 // numerator chain are the strict kernel's own, so for the same inputs the output
@@ -465,8 +467,19 @@ __global__ void gemma4_attention_staged_softmax_kernel(
 // kernel's chain element for element. Zero weights are skipped, which is exact:
 // the strict kernel skips them too, and adding 0.0f to a sum of
 // non-negative-magnitude terms cannot change it.
+//
+// `kResidentRows` is the compile-time row count and `kExactRows` says whether it
+// is the whole group's row count. The GQA ratios 1, 2, 4 and 8 put every query
+// head of a KV head in one CTA, so they take the specialized variants: `rows` is
+// then a compile-time constant, the accumulator array is exactly the rows that
+// exist, and the per-key `r >= rows` predicate below folds away. A ratio that
+// does not fill the tile exactly (3, 5, 12, 16, ...) keeps the generic variant,
+// which holds kStagedMaxRows rows and skips the ones past the group's end per
+// key. That predicate is the only difference between the variants: the weight
+// tile, the grid, the workspace layout and the ascending-key chain are the same
+// in all of them.
 // ---------------------------------------------------------------------------
-template <typename scalar_t, int kDimsPerThread>
+template <typename scalar_t, int kDimsPerThread, int kResidentRows, bool kExactRows>
 __global__ void gemma4_attention_staged_pv_kernel(
     const float* __restrict__ weights,
     const float* __restrict__ denominator,
@@ -478,6 +491,8 @@ __global__ void gemma4_attention_staged_pv_kernel(
     int64_t keys,
     int64_t window,
     int64_t row_offset) {
+  static_assert(kResidentRows >= 1 && kResidentRows <= kStagedMaxRows,
+                "a resident row count is one tile row group at most");
   extern __shared__ float shared[];
   float* w_s = shared;
 
@@ -489,13 +504,18 @@ __global__ void gemma4_attention_staged_pv_kernel(
   // of this group is query head `kv_head * rows_per_head + r` of this token.
   const int64_t row_base = token * num_heads + kv_head * rows_per_head +
                            group * kStagedMaxRows;
-  const int64_t rows = (rows_per_head - group * kStagedMaxRows < kStagedMaxRows)
-                           ? rows_per_head - group * kStagedMaxRows
-                           : kStagedMaxRows;
+  // An exact variant is launched only for a ratio whose whole group is resident,
+  // so its row count is the constant and its group index is always 0. The
+  // generic variant derives the count from the group index as before.
+  const int64_t rows =
+      kExactRows ? static_cast<int64_t>(kResidentRows)
+                 : ((rows_per_head - group * kStagedMaxRows < kStagedMaxRows)
+                        ? rows_per_head - group * kStagedMaxRows
+                        : kStagedMaxRows);
 
-  float acc[kStagedMaxRows][kDimsPerThread];
+  float acc[kResidentRows][kDimsPerThread];
 #pragma unroll
-  for (int r = 0; r < kStagedMaxRows; ++r) {
+  for (int r = 0; r < kResidentRows; ++r) {
 #pragma unroll
     for (int t = 0; t < kDimsPerThread; ++t) {
       acc[r][t] = 0.0f;
@@ -532,8 +552,9 @@ __global__ void gemma4_attention_staged_pv_kernel(
                               : 0.0f;
       }
 #pragma unroll
-      for (int r = 0; r < kStagedMaxRows; ++r) {
-        if (r >= rows) {
+      for (int r = 0; r < kResidentRows; ++r) {
+        // Dead for an exact variant, whose group has no row past its end.
+        if (!kExactRows && r >= rows) {
           continue;
         }
         const float weight = w_s[r * kStagedPvTileKeys + k];
@@ -550,8 +571,8 @@ __global__ void gemma4_attention_staged_pv_kernel(
   }
 
 #pragma unroll
-  for (int r = 0; r < kStagedMaxRows; ++r) {
-    if (r >= rows) {
+  for (int r = 0; r < kResidentRows; ++r) {
+    if (!kExactRows && r >= rows) {
       continue;
     }
     const float row_denominator = denominator[row_base + r];
@@ -636,8 +657,35 @@ int gemma4_staged_validate_launch(int64_t tokens, int64_t keys, int64_t num_head
   return 0;
 }
 
-template <typename scalar_t, int kDimsPerThread>
-int launch_gemma4_attention_staged_pv(
+// The resident row count the PV launcher selects for one GQA ratio, and the one
+// place that table is written down: `launch_gemma4_attention_staged_pv`
+// dispatches on it and `hipengine_gemma4_attention_staged_pv_resident_rows`
+// exports it, so the variant a caller reads there is the variant that ran.
+//
+// The ratios 1, 2, 4 and 8 are the ones whose whole group is resident in one
+// CTA, so their row count can be a compile-time constant; every other ratio
+// returns kStagedMaxRows and keeps the generic kernel with its runtime row
+// count.
+int64_t gemma4_staged_pv_resident_rows(int64_t rows_per_head) {
+  switch (rows_per_head) {
+    case 1:
+      return 1;
+    case 2:
+      return 2;
+    case 4:
+      return 4;
+    case 8:
+      return 8;
+    default:
+      return kStagedMaxRows;
+  }
+}
+
+// One PV variant: the kernel for one resident row count, on the shape's grid.
+// The grid, the shared footprint and the argument list are the same for every
+// variant -- only the kernel body changes.
+template <typename scalar_t, int kDimsPerThread, int kResidentRows, bool kExactRows>
+int launch_gemma4_attention_staged_pv_rows(
     const float* weights,
     const float* denominator,
     const scalar_t* value,
@@ -656,11 +704,61 @@ int launch_gemma4_attention_staged_pv(
   const dim3 grid(static_cast<unsigned int>(tokens),
                   static_cast<unsigned int>(num_kv_heads),
                   static_cast<unsigned int>(row_groups));
-  gemma4_attention_staged_pv_kernel<scalar_t, kDimsPerThread>
+  gemma4_attention_staged_pv_kernel<scalar_t, kDimsPerThread, kResidentRows, kExactRows>
       <<<grid, dim3(kStagedThreads), shared_bytes, stream>>>(
           weights, denominator, value, out, num_heads, num_kv_heads, head_dim,
           keys, window, row_offset);
   return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, int kDimsPerThread>
+int launch_gemma4_attention_staged_pv(
+    const float* weights,
+    const float* denominator,
+    const scalar_t* value,
+    scalar_t* out,
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t keys,
+    int64_t window,
+    int64_t row_offset,
+    hipStream_t stream) {
+  const int64_t rows_per_head = num_heads / num_kv_heads;
+  // `resident == rows_per_head` is exactly the ratios that fill the resident
+  // tile: their whole group is in one CTA, so the kernel's row count is a
+  // compile-time constant and its per-key row predicate is dead. Every other
+  // ratio -- 12, 16, and any ratio that is not 1, 2, 4 or 8 -- keeps the generic
+  // kernel, which holds kStagedMaxRows rows and skips the rows past the group's
+  // end per key.
+  const int64_t resident = gemma4_staged_pv_resident_rows(rows_per_head);
+  if (resident == rows_per_head) {
+    switch (static_cast<int>(resident)) {
+      case 1:
+        return launch_gemma4_attention_staged_pv_rows<scalar_t, kDimsPerThread, 1, true>(
+            weights, denominator, value, out, tokens, num_heads, num_kv_heads,
+            head_dim, keys, window, row_offset, stream);
+      case 2:
+        return launch_gemma4_attention_staged_pv_rows<scalar_t, kDimsPerThread, 2, true>(
+            weights, denominator, value, out, tokens, num_heads, num_kv_heads,
+            head_dim, keys, window, row_offset, stream);
+      case 4:
+        return launch_gemma4_attention_staged_pv_rows<scalar_t, kDimsPerThread, 4, true>(
+            weights, denominator, value, out, tokens, num_heads, num_kv_heads,
+            head_dim, keys, window, row_offset, stream);
+      default:
+        // `gemma4_staged_pv_resident_rows` answers 1, 2, 4 or 8 for an exact
+        // ratio, so the ratio 8 case is the one left here.
+        return launch_gemma4_attention_staged_pv_rows<scalar_t, kDimsPerThread, 8, true>(
+            weights, denominator, value, out, tokens, num_heads, num_kv_heads,
+            head_dim, keys, window, row_offset, stream);
+    }
+  }
+  return launch_gemma4_attention_staged_pv_rows<scalar_t, kDimsPerThread,
+                                                kStagedMaxRows, false>(
+      weights, denominator, value, out, tokens, num_heads, num_kv_heads, head_dim,
+      keys, window, row_offset, stream);
 }
 
 template <typename scalar_t>
@@ -767,6 +865,28 @@ extern "C" size_t hipengine_gemma4_attention_staged_lds_bytes(int64_t head_dim) 
   const size_t pv = gemma4_staged_pv_shared_bytes();
   size_t largest = score > softmax ? score : softmax;
   return pv > largest ? pv : largest;
+}
+
+// The PV variant this launch selects for one GQA ratio, without a device: the
+// resident row count, which is the `kResidentRows` the kernel is built with, or
+// 0 for a ratio no launch of this family serves. A caller can tell the two
+// variant kinds apart by comparing the answer with `num_heads / num_kv_heads`:
+// equal means the whole group is resident and the specialized kernel ran with no
+// per-key row predicate, unequal means the generic kernel ran with
+// kStagedMaxRows resident rows. It reads the same table the launcher dispatches
+// on, so a test or a profile can name the variant that ran instead of inferring
+// it from timings.
+extern "C" int64_t hipengine_gemma4_attention_staged_pv_resident_rows(
+    int64_t num_heads,
+    int64_t num_kv_heads) {
+  if (num_heads <= 0 || num_kv_heads <= 0 || num_heads % num_kv_heads != 0) {
+    return 0;
+  }
+  const int64_t rows_per_head = num_heads / num_kv_heads;
+  if (rows_per_head > kStagedMaxRowsPerHead) {
+    return 0;
+  }
+  return gemma4_staged_pv_resident_rows(rows_per_head);
 }
 
 extern "C" int hipengine_gemma4_attention_staged_bf16(
