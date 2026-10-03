@@ -450,7 +450,7 @@ request is served without a load.
 | `cot` | `full` | Planning mode: `full` (melody plus sections), `melody` (melody only), or `off` (none). |
 | `abc` | — | An external ABC score, used in the `melody` and `full` modes. |
 | `seed` | `831001` | Sampling seed. |
-| `steps` | model default | Override the product's ODE step count. Fewer steps trade fidelity for time. |
+| `steps` | `32` | Override the product's ODE step count (reported as `ode_steps.default` in the capabilities manifest). Fewer steps trade fidelity for time. |
 | `cfg_scale` | model default | Classifier-free guidance scale. |
 | `request_id` | `song` | Filename-safe id, returned as the `Content-Disposition` filename and echoed in the response. |
 | `response_format` | `wav` | `wav` returns the audio; `json` returns the same audio as base64 plus the plan, the semantic token count, the truncation flags, the checkpoint identities, and the timing. |
@@ -466,10 +466,11 @@ A `wav` response carries the audio with these headers:
 | `X-Hipengine-Audio-Identity` | sha256 of the decoded audio. |
 | `X-Hipengine-Generation-Seconds` | Wall-clock time the request took. |
 
-The two identities make a repeat run comparable: the same seed and the same
-settings produce the same `X-Hipengine-Latent-Identity` on the same hardware.
-The truncation flags in the `json` form report whether the plan or the semantic
-decode stopped at its cap rather than at its own end.
+The two identities make a repeat run comparable, and they are not advisory: the
+same request, seed, and settings on the same hardware return byte-identical audio
+with the same two identities. The truncation flags in the `json` form report
+whether the plan or the semantic decode stopped at its cap rather than at its own
+end.
 
 A song takes minutes rather than seconds, so this endpoint is not part of the
 batched text path: one request runs at a time, a concurrent request is a
@@ -1877,6 +1878,17 @@ generated text.
 
 ## Current limitations
 
+- `POST /v1/audio/songs` is outside the batched text path. One request runs at a
+time on the resident pipeline, so a second concurrent request is refused with a
+retryable 429 `engine_busy` rather than queued, and a song holds the pipeline for
+its whole duration (minutes, not seconds). There is no streaming form: the
+response is the finished song. The request carries the product's own sampling
+arithmetic; phase-level overrides (`abc_sampling`, `semantic_sampling`) exist on
+`LLM.generate_song()` and `LLM.song_generator()`, not on the HTTP body. A client
+that disconnects stops the pipeline at the next stage or decode-loop boundary,
+which is the same cooperative cancellation described below and not preemption of
+a running kernel. A model that declares the `song` surface serves this endpoint
+instead of the text endpoints, and a text model refuses it.
 - Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;
   runtime failures after that point are reported as SSE error chunks and
   `REQUEST_FAILED` logs, not a different HTTP status.
