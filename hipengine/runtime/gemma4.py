@@ -49,6 +49,7 @@ from hipengine.kernels.cpu_reference.gemma4 import (
     gemma4_text_config_from_hf,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    Gemma4AttentionScratch,
     gemma4_attention_serves_keys,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rope import gemma4_rope_cos_sin_tables
@@ -928,6 +929,21 @@ class Gemma4Runner:
                 gemma4_logit_argmax_scratch_bytes(int(config.vocab_size or 0))
             )
 
+            # One attention workspace serves every layer. The workspace is
+            # transient -- a layer's launch chain finishes with it before the
+            # next layer's starts -- and the block submits its layers serially
+            # on one stream (the layer forward's default stream 0), so a later
+            # layer's kernels are ordered behind the earlier layer's reads and
+            # one allocation can serve them all. A per-layer owner instead
+            # retains each layer's growth chain separately, which is what makes
+            # a deep prefill's workspace scale with the layer count. Sharing
+            # stays safe for anything queued elsewhere: the scratch keys its
+            # buffers by stream, so another stream gets its own allocation
+            # rather than one a kernel here may still be reading. Cleanup is
+            # unchanged: every layer scratch still closes the owner it was
+            # handed, and ``Gemma4AttentionScratch.close`` is idempotent, so the
+            # workspace is synchronized and freed exactly once.
+            shared_attention = Gemma4AttentionScratch()
             for index, attention in enumerate(config.attention):
                 self._scratches.append(
                     Gemma4LayerScratch(
@@ -938,6 +954,7 @@ class Gemma4Runner:
                         num_experts=config.num_experts,
                         top_k=config.top_k_experts,
                         expert_intermediate=config.moe_intermediate_size,
+                        attention=shared_attention,
                     )
                 )
                 if self._kv_storage_resolved == "int8_per_token_head":

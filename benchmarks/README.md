@@ -2003,6 +2003,18 @@ lead both metrics at these four depths. No full-depth 16K–256K measurement of
 this default is established by the fixed-context replay results below.
 [Protocol, samples, identities and rejected 8K outputs](results/2026-10-03-gemma4-gfx1151-depth-checkpoint.json).
 
+#### Shared transient attention workspace (2026-10-03)
+
+On zbook/Radeon 8060S, Gemma 4 26B-A4B `UD-Q4_K_XL` with BF16 KV and
+8,192 prompt tokens / 128 greedy outputs uses one attention workspace owner
+across its 30 serial layers. An instrumented public `LLM.generate_detailed()`
+control measures 522,125,312 retained workspace bytes (0.486 GiB), compared
+with 5,558,108,160 bytes (5.176 GiB) using separate per-layer owners. All 128
+full-logit rows are finite and bit-identical between the controls; generated
+IDs also match. This is an allocation/ownership result, not a latency or
+full-depth capacity result. Standalone layers keep independent owners.
+[Driver, allocator counts and full-logit hashes](results/2026-10-03-gemma4-gfx1151-shared-workspace.json).
+
 #### Singleton staged-attention PV (2026-10-03)
 
 On physical host **zbook / Radeon 8060S (gfx1151)**, the default production
