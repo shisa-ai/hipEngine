@@ -127,6 +127,7 @@ def test_dense_down_keeps_wmma_with_overflow_repair(tmp_path, monkeypatch):
     from tests._gemma4_gguf_fixture import default_fixture_tensors, fixture_metadata, write_fixture_gguf
     import hipengine.runtime.gguf_linear as linear
 
+    monkeypatch.delenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", raising=False)
     artifact = GGUFReader(write_fixture_gguf(
         tmp_path / "gemma4.gguf", default_fixture_tensors(), fixture_metadata(),
     ))
@@ -149,6 +150,9 @@ def test_dense_down_keeps_wmma_with_overflow_repair(tmp_path, monkeypatch):
     finally:
         runner.close()
         weights.free()
-    assert len(launches) == 13, launches
+    # Nine dense projections retain WMMA. The four expert-down projections
+    # use the exact registered owner after the continuation repair and no
+    # longer enter this dense linear launcher.
+    assert len(launches) == 9, launches
     assert any(magnitude > 65504 for _, magnitude in launches), launches
     assert all(enabled for enabled, _ in launches), launches
