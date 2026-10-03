@@ -1,0 +1,42 @@
+{
+  "gufo": {
+    "binary": "/home/lhl/gate-runs/gufo-edge-20260925/build/gufo",
+    "binary_sha256": "8ca63994d7325dee3d635c9dd38d0278fae5aaafd888228966724dc5c88cdf17",
+    "binary_mtime": "2026-09-25 23:08:51.837595186 +0900",
+    "version_string": "gufo version 98641a6503da2ec5d6dbb1888ddc95f8a3e13b28",
+    "source_tree": "/home/lhl/gufo-src",
+    "source_head": "9cad13974cf6da0cd3674b4e0a88b14b7e4a2908",
+    "source_log": "9cad139 docs: credit Strix Halo llama.cpp optimization references (#252)",
+    "source_is_shallow_single_commit": true,
+    "build_source_dir": "/home/lhl/gate-runs/gufo-edge-20260925/source",
+    "build_source_head": "98641a6503da2ec5d6dbb1888ddc95f8a3e13b28",
+    "build_source_log": "98641a6 perf(qwen-flash): fence each K block in the W8A8 WMMA GEMM (#255)\n9cad139 docs: credit Strix Halo llama.cpp optimization references (#252)\n98de59e docs: update readme philosophy section",
+    "build_source_status": "## main...origin/main\n M src/models/qwen/chat_template.cpp\n M tests/models/qwen/tokenization/chat_template_test.cpp\n?? tests/models/qwen/tokenization/qwen36_goldens.inc",
+    "cmake_gufo_version": "GUFO_VERSION:STRING=98641a6503da2ec5d6dbb1888ddc95f8a3e13b28",
+    "build_timestamp": "2026-09-25 23:08:50.313607354 +0900",
+    "source_patch": "diff --git a/src/models/qwen/chat_template.cpp b/src/models/qwen/chat_template.cpp\nindex cf9e626..6fddd9e 100644\n--- a/src/models/qwen/chat_template.cpp\n+++ b/src/models/qwen/chat_template.cpp\n@@ -76,9 +76,9 @@ bool IsQwen38Artifact(const core::GgufReader& reader) {\n   if (name.has_value() && name->find(\"Qwen3.8\") != std::string_view::npos) {\n     return true;\n   }\n-  const auto config = reader.ExtractModelConfig();\n-  return config.has_value() && config->num_layers == 64 &&\n-         config->hidden_size == 5120 && config->vocab_size == 248320;\n+  // Qwen3.6-27B shares these tensor dimensions with Qwen3.8-27B.\n+  // Shape alone cannot select a version-specific chat-template contract.\n+  return false;\n }\n \n std::string_view Trim(std::string_view value) {\ndiff --git a/tests/models/qwen/tokenization/chat_template_test.cpp b/tests/models/qwen/tokenization/chat_template_test.cpp\nindex b936873..2371a37 100644\n--- a/tests/models/qwen/tokenization/chat_template_test.cpp\n+++ b/tests/models/qwen/tokenization/chat_template_test.cpp\n@@ -586,7 +586,10 @@ void TestToolReplayPreservesGeneratedPrefix() {\n \n }  // namespace\n \n+#include \"qwen36_goldens.inc\"\n+\n int main() {\n+  TestQwen36CampaignGoldens();\n   std::cout << \"Running QwenChatTemplate unit tests...\\n\";\n   TestBasicChatRendering();\n   TestThinkingFraming();\n",
+    "toolchain": {
+      "c_compiler": "-- The C compiler identification is GNU 16.2.1",
+      "hip_compiler": "-- The HIP compiler identification is Clang 23.0.0",
+      "hipcc": "-- HIP: Using hipcc from relative path: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/hipcc"
+    }
+  },
+  "hipengine": {
+    "repo": "/home/lhl/hipEngine",
+    "head": "f31997b737be3c88eed6e46ea7436281210b25e0",
+    "branch": "qwen3.8-flash-next",
+    "log": "f31997b73 docs: correction - the round budget does not bound the default prefill path",
+    "hipengine_kernels_clean": true,
+    "tracked_tree_clean": true
+  },
+  "host": {
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "cpu": "model name\t: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "cores": "32",
+    "gpu": "AMD Radeon 8060S Graphics gfx1151",
+    "tuned": "Current active profile: accelerator-performance",
+    "governor": "performance",
+    "compiler_version_file": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n"
+  }
+}

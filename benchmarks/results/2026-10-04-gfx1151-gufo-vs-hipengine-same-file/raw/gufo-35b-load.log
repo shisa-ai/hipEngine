@@ -1,0 +1,5 @@
+HIP: found 1 ROCm devices (Total VRAM: 122880 MiB):
+  Device 0: AMD Radeon 8060S Graphics, gfx1151, Wave Size: 32, VRAM: 122880 MiB
+Error creating Qwen GPU executor: Missing required Qwen tensor: blk.0.ffn_gate.weight
+[Model Load]: 0.0188839 s (failed)
+exit=1

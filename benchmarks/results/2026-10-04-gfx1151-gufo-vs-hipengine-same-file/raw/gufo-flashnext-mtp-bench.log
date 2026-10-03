@@ -1,0 +1,2 @@
+Error creating Qwen3.8-Flash-Next model: missing tensor blk.48.nextn.hc_head_norm.weight
+[Model Load]: 0.151275 s (failed)

@@ -1,0 +1,17 @@
+=== PP LADDER d0 15:23:25 ===
+HIP: found 1 ROCm devices (Total VRAM: 122880 MiB):
+  Device 0: AMD Radeon 8060S Graphics, gfx1151, Wave Size: 32, VRAM: 122880 MiB
+[Model Load]: 0.778484 s
+| model                          |       size |     params | backend    |            test |                   t/s |
+| ------------------------------ | ---------- | ---------- | ---------- | --------------- | --------------------- |
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |           pp512 |        383.53 ± 0.22 |
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |          pp1024 |        392.36 ± 0.10 |
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |          pp2048 |        393.31 ± 0.36 |
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |          pp4096 |        382.74 ± 0.01 |
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |         pp32768 |        360.22 ± 0.03 |
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |         pp65536 |        336.92 ± 0.09 |
+[QwenBenchTrace]: depth=0 count=128 sha256=28bd5a172b3d921b1f9ccfcbe464b8cd6562d713c97591aa09bafbc9fdcc0e00
+[QwenBenchTrace]: depth=0 count=128 sha256=28bd5a172b3d921b1f9ccfcbe464b8cd6562d713c97591aa09bafbc9fdcc0e00
+| Qwen3.8-27B Q4_K mixed         |  15.93 GiB |    27.32 B | ROCm (HIP) |           tg128 |         12.11 ± 0.00 |
+
+PP_LADDER_EXIT=0

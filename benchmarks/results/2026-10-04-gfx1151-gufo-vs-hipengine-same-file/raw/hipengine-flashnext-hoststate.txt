@@ -1,0 +1,2 @@
+start 16:23:18 tuned=Current active profile: accelerator-performance gov=performance
+start 16:35:22 tuned=Current active profile: accelerator-performance gov=performance

@@ -1,0 +1,42 @@
+[warmup] hipengine code-p512 pp=186.964 tg=19.724
+[warmup] hipengine general_en-p512 pp=234.625 tg=20.071
+[warmup] hipengine general_ja-p512 pp=236.374 tg=20.098
+[warmup] hipengine mixed_ja_en-p512 pp=221.230 tg=20.244
+[warmup] hipengine code-p1024 pp=249.248 tg=18.868
+[warmup] hipengine general_en-p1024 pp=252.534 tg=18.701
+[warmup] hipengine general_ja-p1024 pp=253.848 tg=18.573
+[warmup] hipengine mixed_ja_en-p1024 pp=249.299 tg=18.834
+[warmup] hipengine code-p4096 pp=238.473 tg=17.380
+[warmup] hipengine general_en-p4096 pp=243.397 tg=17.481
+[warmup] hipengine general_ja-p4096 pp=244.233 tg=17.335
+[warmup] hipengine mixed_ja_en-p4096 pp=239.564 tg=17.591
+[measure 0] hipengine code-p512 pp=252.846 tg=20.550
+[measure 0] hipengine general_en-p512 pp=253.961 tg=20.380
+[measure 0] hipengine general_ja-p512 pp=257.212 tg=21.003
+[measure 0] hipengine mixed_ja_en-p512 pp=252.560 tg=20.549
+[measure 0] hipengine code-p1024 pp=249.208 tg=18.999
+[measure 0] hipengine general_en-p1024 pp=252.201 tg=19.004
+[measure 0] hipengine general_ja-p1024 pp=256.952 tg=19.289
+[measure 0] hipengine mixed_ja_en-p1024 pp=252.337 tg=19.310
+[measure 0] hipengine code-p4096 pp=239.433 tg=17.505
+[measure 0] hipengine general_en-p4096 pp=243.721 tg=17.532
+[measure 0] hipengine general_ja-p4096 pp=244.669 tg=17.588
+[measure 0] hipengine mixed_ja_en-p4096 pp=239.600 tg=17.612
+[measure 1] hipengine general_ja-p4096 pp=244.030 tg=15.633
+[measure 1] hipengine general_en-p4096 pp=243.134 tg=11.576
+[measure 1] hipengine code-p4096 pp=238.124 tg=10.258
+[measure 1] hipengine mixed_ja_en-p1024 pp=248.449 tg=14.595
+[measure 1] hipengine general_ja-p1024 pp=253.629 tg=16.419
+[measure 1] hipengine general_en-p1024 pp=252.516 tg=17.121
+[measure 1] hipengine code-p1024 pp=247.877 tg=17.461
+[measure 1] hipengine mixed_ja_en-p512 pp=252.635 tg=18.825
+[measure 1] hipengine general_ja-p512 pp=256.856 tg=19.112
+[measure 1] hipengine general_en-p512 pp=254.877 tg=19.246
+[measure 1] hipengine code-p512 pp=253.568 tg=19.314
+[measure 1] hipengine mixed_ja_en-p4096 pp=239.522 tg=12.840
+{
+  "kind": "qwen4exp_canonical_ar_engine_run",
+  "status": "completed",
+  "output": "benchmarks/results/2026-10-04-gfx1151-gufo-vs-hipengine-same-file/raw/hipengine-flashnext-ar-canonical.json"
+}
+EXIT=0 end=16:33:12

@@ -1,0 +1,57 @@
+=== Gufo Diagnostics ===
+Engine Revision : 0.1.0
+Schema Version  : 1.0.0
+Timestamp       : 2026-10-03T17:00:08Z
+Overall Status  : [PASS]
+
+=== Machine Fingerprint ===
+Fingerprint ID      : d8fd821151410be3cae7b4d8ad005d1ea532a31a937ffa82e2a9ccb6638c300f
+Target Platform     : x86_64-linux (Linux 7.1.6-1-cachyos)
+CPU Model           : AMD RYZEN AI MAX+ 395 w/ Radeon 8060S (32 threads)
+GPU Architecture    : AMD Radeon 8060S Graphics [gfx1151, 20 CUs]
+Pinned Toolchain    : ROCm 7.2.3
+
+=== Hardware and Software Inventory ===
+
+CPU Model           : AMD RYZEN AI MAX+ 395 w/ Radeon 8060S (32 threads, x86_64)
+System Memory       : 125 GiB (LPDDR5X (Unified))
+GPU Model           : AMD Radeon 8060S Graphics [gfx1151, 20 CUs] (available)
+Linux Kernel        : 7.1.6-1-cachyos
+ROCm Version        : 7.2.3
+
+=== Compatibility Verdict: [supported] ===
+
+  - platform [supported]
+      Detected   : x86_64-linux
+      Required   : x86_64-linux
+  - gpu [supported]
+      Detected   : gfx1151
+      Required   : gfx1151
+  - kernel_driver [supported]
+      Detected   : amdgpu: loaded
+      Required   : amdgpu: loaded
+
+--- Checks ---
+  [PASS] platform: Supported architecture: Linux x86-64
+      - targetArchitecture: x86_64-linux
+  [PASS] system: Host operating system and kernel identified
+      - kernelRelease: 7.1.6-1-cachyos
+  [PASS] cpu: CPU processor topology queried
+      - logicalCores: 32
+      - modelName: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S
+      - physicalCores: 16
+  [PASS] memory: Host unified memory pool identified
+      - availableBytes: 130855186432
+      - memoryType: LPDDR5X (Unified)
+      - totalBytes: 134304342016
+  [PASS] gpu: Detected AMD Strix Halo GPU (gfx1151)
+      - architecture: gfx1151
+      - computeUnits: 20
+      - driverName: amdgpu
+      - name: AMD Radeon 8060S Graphics
+      - pciId: 1002:1586
+      - powerMode: high
+  [PASS] toolchain: Toolchain and driver stack verified
+      - amdgpuStatus: loaded
+      - kernelRelease: 7.1.6-1-cachyos
+      - rocmVersion: 7.2.3

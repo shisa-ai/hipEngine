@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "kind": "gufo_published_27b_row_gap",
+  "published_row": {
+    "source": "gufo docs/models/qwen3.8-27b/BENCHMARKS.md",
+    "file": "Qwen3.8-27B-UD-Q4_K_XL.gguf",
+    "file_sha256": "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e",
+    "gufo_revision": "628ed18ee92a973d5026b33644d9cb906116ff9d",
+    "gufo_binary_sha256": "8734dac79fadbb4550b9d5e07655545975b330c20c2f273cae96adb588503551",
+    "path": "gufo serve HTTP, pp2048/tg128, context 133760",
+    "pp_d0": 656.33,
+    "tg_d0": 12.37,
+    "host_fingerprint": {
+      "kernelRelease": "7.1.8",
+      "rocmVersion": "7.2.3",
+      "memoryTotalBytes": 134309883904,
+      "fingerprintId": "46337fb568b92fb76472ec90a0af584eb7d7ae401f9878d8d18b09762e7c4caa"
+    }
+  },
+  "this_host": {
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "gufo_fingerprint_id": "d8fd821151410be3cae7b4d8ad005d1ea532a31a937ffa82e2a9ccb6638c300f",
+    "memory_total_bytes": 134304342016,
+    "note": "different physical host (kernel + total memory differ from the published fingerprint)"
+  },
+  "measured_with_prebuilt_binary_98641a6": {
+    "file_used": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "gufo_bench_pp2048": 393.31,
+    "gufo_serve_pp": 380.3704712661264,
+    "gufo_serve_prompt_n": 2481,
+    "hipengine_pp2048_all_in_one": 405.904814287524
+  },
+  "file_hypothesis": {
+    "note": "Published target is UD-Q4_K_XL (not local). Closest local proxies measured with the same binary.",
+    "Q4_K_M_tensor_type_histogram": {
+      "F32": 456,
+      "Q4_K": 294,
+      "Q6_K": 67,
+      "Q5_K": 48,
+      "Q8_0": 1
+    },
+    "UD_Q4_K_M_tensor_type_histogram": {
+      "F32": 360,
+      "Q5_K": 131,
+      "IQ4_XS": 117,
+      "Q8_0": 106,
+      "Q4_K": 104,
+      "Q6_K": 30,
+      "Q3_K": 7,
+      "IQ4_NL": 7
+    },
+    "gufo_label_for_UD_Q4_K_M": "Qwen3.8-27B IQ4_XS mixed",
+    "UD_Q4_K_M_pp512": 484.99,
+    "UD_Q4_K_M_pp2048": 761.9,
+    "UD_Q4_K_M_pp4096": 754.73,
+    "UD_Q4_K_M_tg128": 12.79,
+    "UD_Q4_K_S": "gufo load FAILED: Invalid GGUF tensor shape or unsupported storage type: blk.0.ffn_gate.weight",
+    "conclusion": "Tensor-type composition moves gufo pp2048 from 393.3 (standard Q4_K_M) to 761.9 (IQ4_XS-mixed) on the same binary/host. This alone brackets the published 656.3."
+  },
+  "path_hypothesis": {
+    "gufo_bench_pp2048": 393.31,
+    "gufo_serve_pp": 380.3704712661264,
+    "conclusion": "serve and bench prefill agree within 1%; the HTTP path is NOT the gap."
+  },
+  "build_hypothesis": {
+    "note": "Published binary is revision 628ed18e, which is NOT in the local git history (409 commits) nor the shallow clone. It cannot be rebuilt or tested locally.",
+    "status": "untestable"
+  }
+}

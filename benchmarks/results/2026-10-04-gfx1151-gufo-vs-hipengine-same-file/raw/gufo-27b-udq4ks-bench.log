@@ -1,0 +1,2 @@
+Error loading GGUF model '/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf': Invalid GGUF tensor shape or unsupported storage type: blk.0.ffn_gate.weight
+[Model Load]: 0.0104413 s (failed)

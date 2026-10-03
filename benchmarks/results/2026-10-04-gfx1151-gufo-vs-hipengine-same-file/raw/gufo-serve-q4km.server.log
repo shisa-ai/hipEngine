@@ -1,0 +1,11 @@
+2026-10-04 00:48:04 [INFO] [loader] event=load_started kind=text artifact=/models/gguf/Qwen3.8-27B-Q4_K_M.gguf rss_mib=269 host_available_mib=124078
+2026-10-04 00:48:04 [INFO] [loader] event=load_phase phase=target_weights rss_mib=291 host_available_mib=124068
+2026-10-04 00:48:05 [INFO] [loader] event=load_phase phase=sessions rss_mib=16660 host_available_mib=107736
+2026-10-04 00:48:05 [INFO] [loader] event=load_completed kind=text elapsed_ms=924 model=Qwen3.8-27B sessions=1 context_tokens=133760 speculative=off draft_limit=7 disk_cache=off rss_mib=16765 host_available_mib=96708 gpu_device_used_mib=25658 gpu_device_total_mib=122880
+2026-10-04 00:48:05 [INFO] [server] event=listening address=http://127.0.0.1:53340 auth=off max_connections=16 max_body_bytes=8388608
+2026-10-04 00:48:09 [INFO] [http] request=r2 event=received method=GET path=/v1/models body_bytes=0
+2026-10-04 00:48:09 [INFO] [http] request=r2 event=completed method=GET path=/v1/models status=200 duration_ms=0.1 outcome=completed rss_mib=16766 host_available_mib=96678
+2026-10-04 00:48:09 [INFO] [http] request=r3 event=received method=POST path=/v1/completions body_bytes=13606
+2026-10-04 00:48:16 [INFO] [http] request=r3 event=completed method=POST path=/v1/completions status=200 duration_ms=6543.0 outcome=completed prompt_tokens=2481 prefill_tokens=2481 generated_tokens=0 finish=stop cache=miss cached_tokens=0 cache_restore_ms=0.0 queue_depth=1 resident_at_admission=1 queue_ms=0.8 ttft_ms=0.0 prefill_tps=380.4 decode_tps=0.0 batch_width=1 plan=serial-c1 draft_accepted=0 draft_proposed=0 cache_snapshot_bytes=322447360 cache_miss_reason=no_checkpoint common_prefix_tokens=0 nearest_checkpoint_tokens=0 rss_mib=16831 host_available_mib=96286
+2026-10-04 00:48:16 [INFO] [http] request=r4 event=received method=POST path=/v1/completions body_bytes=13606
+2026-10-04 00:48:16 [INFO] [http] request=r4 event=completed method=POST path=/v1/completions status=200 duration_ms=0.9 outcome=completed prompt_tokens=2481 prefill_tokens=0 generated_tokens=0 finish=stop cache=memory cached_tokens=2481 cache_restore_ms=0.0 queue_depth=1 resident_at_admission=1 queue_ms=0.8 ttft_ms=0.0 prefill_tps=0.0 decode_tps=0.0 batch_width=1 plan=serial-c1 draft_accepted=0 draft_proposed=0 rss_mib=16831 host_available_mib=96300
