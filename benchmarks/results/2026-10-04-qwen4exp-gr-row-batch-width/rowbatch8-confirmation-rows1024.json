@@ -1,0 +1,179 @@
+{
+  "schema": 1,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "cc364a6d19d02af226bf7e0fc1cf8d6fed9b3597",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q8_wave_scale_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--gr-composite",
+    "--gr-parent",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32",
+    "--gr-candidate",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_wave_scale_f32",
+    "--rows",
+    "1024",
+    "--pairs",
+    "20",
+    "--output",
+    "/tmp/gr-ws-confirm.json"
+  ],
+  "cases": [
+    {
+      "tensor": "blk.0.hc_attn_up.weight",
+      "shape": [
+        1024,
+        320,
+        10240
+      ],
+      "weight_sha256": "0c4e6b67f422051842c2c63b6137570cb0a743b1478c8968547b696b6d930dbf",
+      "parent_ms": 6.469164043664932,
+      "candidate_ms": 7.6452866196632385,
+      "speedup": 0.8461637039253196,
+      "mean_speedup": 0.9424310057292672,
+      "speedup_by_order": {
+        "parent_first": 1.068599331295869,
+        "candidate_first": 0.8244255045715725
+      },
+      "samples_ms": [
+        [
+          6.4043765887618065,
+          6.200945004820824,
+          7.710479199886322,
+          6.412101909518242,
+          8.150485344231129,
+          6.2545351684093475,
+          7.39694107323885,
+          6.29065278917551,
+          8.059725165367126,
+          6.411159411072731,
+          8.191022090613842,
+          6.266828626394272,
+          8.200149051845074,
+          6.506399251520634,
+          7.9901451244950294,
+          6.431928835809231,
+          10.257172398269176,
+          6.1980802565813065,
+          8.245344273746014,
+          6.423302926123142
+        ],
+        [
+          7.660696282982826,
+          7.712883874773979,
+          7.639075629413128,
+          7.718214765191078,
+          7.590252906084061,
+          7.7049704268574715,
+          7.609139196574688,
+          7.759382016956806,
+          7.632512599229813,
+          7.674712687730789,
+          7.5377654284238815,
+          7.654635235667229,
+          7.524660788476467,
+          7.627112790942192,
+          7.54493847489357,
+          7.651497609913349,
+          7.579334080219269,
+          7.7018942683935165,
+          7.562050595879555,
+          7.712484337389469
+        ]
+      ],
+      "exact": true
+    },
+    {
+      "tensor": "blk.0.hc_ffn_up.weight",
+      "shape": [
+        1024,
+        320,
+        10240
+      ],
+      "weight_sha256": "da4122603eb260bff3388db04373ef9e5ba7207ebede1fe710d8d49fa5549630",
+      "parent_ms": 6.415042094886303,
+      "candidate_ms": 7.60379433631897,
+      "speedup": 0.843663283243383,
+      "mean_speedup": 0.8423504872526383,
+      "speedup_by_order": {
+        "parent_first": 0.8566009914943588,
+        "candidate_first": 0.8370832770259674
+      },
+      "samples_ms": [
+        [
+          6.1784228309988976,
+          6.396942771971226,
+          6.341277621686459,
+          6.4184339717030525,
+          6.308447569608688,
+          6.404226645827293,
+          6.493484601378441,
+          6.370353512465954,
+          6.479968316853046,
+          6.439812481403351,
+          6.487742997705936,
+          6.411650218069553,
+          6.481051445007324,
+          6.447127088904381,
+          6.531545892357826,
+          6.244988180696964,
+          6.525403819978237,
+          6.364853121340275,
+          6.514733657240868,
+          6.390661001205444
+        ],
+        [
+          7.595352828502655,
+          7.741537876427174,
+          7.6044900342822075,
+          7.600083015859127,
+          7.526453584432602,
+          7.667699828743935,
+          7.556510157883167,
+          7.652800530195236,
+          7.653633132576942,
+          7.629096508026123,
+          7.603098638355732,
+          7.675974629819393,
+          7.539479061961174,
+          7.73297157138586,
+          7.583321072161198,
+          7.639787159860134,
+          7.469045929610729,
+          7.584713399410248,
+          7.551801390945911,
+          7.622283883392811
+        ]
+      ],
+      "exact": true
+    }
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "contract": "T0 F32 output bits",
+  "default_changed": false,
+  "library_prebound": true,
+  "order_balanced": true,
+  "device_fill_precondition_mib": 0,
+  "boundary": "GR up+sigmoid+branch mean",
+  "parent_variant": "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32",
+  "candidate_variant": "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_wave_scale_f32"
+}

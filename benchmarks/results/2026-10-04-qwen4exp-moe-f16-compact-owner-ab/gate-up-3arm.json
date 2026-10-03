@@ -1,0 +1,200 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_moe_owner_ab",
+  "performance_claim": false,
+  "route": "gate-up",
+  "quant": "gguf_q4_k",
+  "owners": [
+    "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+    "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+    "selected_dual_wmma_prefill_compact_bf16_bf16_out"
+  ],
+  "question": "Among the registered owners of the gate-up route, which is fastest on the main kernel at the real geometry, and is that comparison already archived?",
+  "protocol": {
+    "experts": 512,
+    "in_features": 2560,
+    "out_features": 640,
+    "row_bytes": 1440,
+    "dual": true,
+    "wmma_tile_rows": 16,
+    "repetitions": 15,
+    "max_risks": 0,
+    "timing": "median of per-launch HIP event pairs, 2 primed launches",
+    "weights": "synthesized at the real shapes and byte layout; the access pattern and byte counts are representative, the values are not",
+    "scope": "main kernel only; no risk queue writes, no repair pass, no packing, no engine work, no correctness claim"
+  },
+  "rows": {
+    "balanced-512": {
+      "distribution": "balanced",
+      "rows": 512,
+      "padded_rows": 8096,
+      "active_experts": 506,
+      "max_expert_rows": 2,
+      "medians_ms": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 8.5398,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 10.2108,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 20.629,
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out__repeated_last": 8.53
+      },
+      "vs_primary_pct": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 0.0,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 19.5677,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 141.5629
+      },
+      "primary_repeat_drift_pct": -0.115
+    },
+    "balanced-1024": {
+      "distribution": "balanced",
+      "rows": 1024,
+      "padded_rows": 8192,
+      "active_experts": 512,
+      "max_expert_rows": 3,
+      "medians_ms": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 8.6486,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 10.6013,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 20.8694,
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out__repeated_last": 8.645
+      },
+      "vs_primary_pct": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 0.0,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 22.5776,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 141.3034
+      },
+      "primary_repeat_drift_pct": -0.0416
+    },
+    "balanced-4096": {
+      "distribution": "balanced",
+      "rows": 4096,
+      "padded_rows": 8192,
+      "active_experts": 512,
+      "max_expert_rows": 12,
+      "medians_ms": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 8.8984,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 24.9831,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 21.2436,
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out__repeated_last": 8.8996
+      },
+      "vs_primary_pct": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 0.0,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 180.7608,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 138.736
+      },
+      "primary_repeat_drift_pct": 0.0141
+    },
+    "balanced-10240": {
+      "distribution": "balanced",
+      "rows": 10240,
+      "padded_rows": 13696,
+      "active_experts": 512,
+      "max_expert_rows": 30,
+      "medians_ms": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 14.7203,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 57.8447,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 31.5391,
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out__repeated_last": 14.714
+      },
+      "vs_primary_pct": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 0.0,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 292.9583,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 114.2556
+      },
+      "primary_repeat_drift_pct": -0.0427
+    },
+    "sparse-512": {
+      "distribution": "sparse",
+      "rows": 512,
+      "padded_rows": 2048,
+      "active_experts": 128,
+      "max_expert_rows": 4,
+      "medians_ms": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 2.2562,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 3.8627,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 5.3758,
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out__repeated_last": 2.2511
+      },
+      "vs_primary_pct": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 0.0,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 71.2051,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 138.2715
+      },
+      "primary_repeat_drift_pct": -0.2229
+    },
+    "sparse-1024": {
+      "distribution": "sparse",
+      "rows": 1024,
+      "padded_rows": 2048,
+      "active_experts": 128,
+      "max_expert_rows": 8,
+      "medians_ms": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 2.2867,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 5.3686,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 5.4838,
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out__repeated_last": 2.2879
+      },
+      "vs_primary_pct": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 0.0,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 134.778,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 139.8193
+      },
+      "primary_repeat_drift_pct": 0.0526
+    },
+    "sparse-4096": {
+      "distribution": "sparse",
+      "rows": 4096,
+      "padded_rows": 4096,
+      "active_experts": 128,
+      "max_expert_rows": 32,
+      "medians_ms": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 4.5086,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 20.6448,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 9.3266,
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out__repeated_last": 4.5081
+      },
+      "vs_primary_pct": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 0.0,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 357.9026,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 106.8652
+      },
+      "primary_repeat_drift_pct": -0.0093
+    },
+    "sparse-10240": {
+      "distribution": "sparse",
+      "rows": 10240,
+      "padded_rows": 10240,
+      "active_experts": 128,
+      "max_expert_rows": 80,
+      "medians_ms": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 10.9214,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 54.0529,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 16.8084,
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out__repeated_last": 10.9117
+      },
+      "vs_primary_pct": {
+        "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 0.0,
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": 394.927,
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out": 53.9038
+      },
+      "primary_repeat_drift_pct": -0.0884
+    }
+  },
+  "summary": {
+    "cases": 8,
+    "primary": "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+    "max_abs_repeat_drift_pct": 0.2229,
+    "reading": "vs_primary_pct is positive when that owner is SLOWER than the primary owner",
+    "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": {
+      "slower_cases": 8,
+      "faster_cases": 0,
+      "median_pct": 157.7694,
+      "min_pct": 19.5677,
+      "max_pct": 394.927
+    },
+    "selected_dual_wmma_prefill_compact_bf16_bf16_out": {
+      "slower_cases": 8,
+      "faster_cases": 0,
+      "median_pct": 138.5037,
+      "min_pct": 53.9038,
+      "max_pct": 141.5629
+    }
+  }
+}

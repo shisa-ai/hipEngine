@@ -10,7 +10,13 @@ been measured against each other:
   column per lane, each lane reading its own weight row;
 * strict default and production fallback
   ``selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out``, cooperative LDS
-  metadata staging with the weight row reused across an expert's rows.
+  metadata staging with the weight row reused across an expert's rows;
+* ``selected_dual_wmma_prefill_compact_bf16_bf16_out``, the MX-1 F16-WMMA owner with no
+  repair pass (the route ``HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4=0`` selects). MX-1's
+  acceptance target is that this route come in at or below the production iu8-risk
+  main kernel plus its repair; the main-kernel half of that comparison was never
+  measured, which is what this arm adds. The repair half is not timed here - it is
+  charged from the X-3 attribution (gate/up repair 595.921 ms at `code-p4096`).
 
 ``down`` (``moe_linear`` / ``prefill_rows_ge512_k640_exact_grouped_q5_1_down``):
 
@@ -73,6 +79,7 @@ ROUTES = {
         "owners": [
             "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+            "selected_dual_wmma_prefill_compact_bf16_bf16_out",
         ],
     },
     "down": {
@@ -227,9 +234,18 @@ def main() -> int:
                     out_a.ptr, out_b.ptr, rows, EXPERTS, in_features, out_features,
                 )
 
+            def f16_compact() -> None:
+                gu.gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
+                    x.ptr, compact_dev.ptr, padded_dev.ptr, tile_dev.ptr,
+                    w_a.ptr, w_b.ptr, out_dual.ptr,
+                    rows, in_features, out_features, out_features, EXPERTS, padded_rows,
+                    tile_m=64 if rows >= 512 else 16, tile_n=16,
+                )
+
             arms = {
                 "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": wmma,
                 "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": grouped,
+                "selected_dual_wmma_prefill_compact_bf16_bf16_out": f16_compact,
             }
             primary = "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"
         else:

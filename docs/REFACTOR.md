@@ -649,6 +649,40 @@
   the kernel achieves only ~15 GB/s effective on this shape and is therefore not
   bandwidth-bound. Context:
   `benchmarks/results/2026-09-22-gr-drift-localization/`.
+- **Status 2026-10-04: the instantiation landed and the microbenchmark was run; the
+  store stays.** `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel`
+  now takes `WRITE_GATE` as a template parameter and
+  `hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32`
+  exports the `WRITE_GATE=false` instantiation with its wrapper, registry key and
+  test. Measured: `mixed` is bit-identical at four shapes, and the variant is
+  **6.6551 ms against 6.5198 ms, 0.9797x, a 2% regression** (ledger `HC-3`). So the
+  42 MB/layer publication is retained deliberately, and the no-gate variant stays as
+  the strict-chain alternative rather than the default. The "not bandwidth-bound"
+  framing above is now measured rather than inferred: widening this kernel's row
+  reuse to halve its weight re-read is 16% *slower* (ledger §7D).
+- Removal condition: none. Keep both instantiations - the gate-writing one as the
+  production default and the no-gate one as the strict comparison - and do not
+  re-open the store removal without a differently-scheduled body.
+
+## GR-Up Widened Row Reuse Exports (2026-10-04)
+
+- `gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_f32`,
+  `..._rowbatch8_wave_scale_f32` and `..._rowbatch16_wave_scale_f32` are three
+  retained exports of `ROW_BATCH` 8/16 instantiations of the same kernel body. They
+  are bit-identical to the `ROW_BATCH` 4 parent at every shape and **measured slower
+  at every shape** (0.833-0.844x and 0.430-0.437x against the production wave-scale
+  parent, occupancy-bound: 130 and 256 VGPR against the parent's 72, i.e. 15 and 8
+  waves per CU against 28). Evidence:
+  `benchmarks/results/2026-10-04-qwen4exp-gr-row-batch-width/`.
+- They are deliberately **not registered**: a registry key would make a
+  measured-dead path reachable from dispatch, and
+  `tests/test_gpu_qwen4exp_gr_row_batch8.py` scans the whole registry to assert that
+  no key resolves to one of them.
+- Removal condition: drop the three exports, their wrappers, the `_row_batch`
+  parameter and this section together, once the ledger's §7D reopen condition is
+  either met or formally retired - i.e. when a machine class with enough registers
+  per wave has been measured, or when the GR up cost model has been replaced and the
+  retile no longer needs a checked starting point.
 
 ## Q8 Block-Scale Restoration
 
