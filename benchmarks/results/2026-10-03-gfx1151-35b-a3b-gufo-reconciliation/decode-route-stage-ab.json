@@ -1,0 +1,208 @@
+{
+ "shipping": {
+  "use_wmma_prefill": true,
+  "use_gemv_decode": true,
+  "recorder_off": {
+   "ms_per_step": 17.806,
+   "tok_s": 56.16,
+   "gpu_busy_mean": 99,
+   "gpu_busy_max": 99,
+   "samples": 111
+  },
+  "recorder_on": {
+   "ms_per_step": 19.014,
+   "tok_s": 52.594,
+   "gpu_busy_mean": 99,
+   "gpu_busy_max": 99,
+   "samples": 119,
+   "stage_total_ms": 2403.49,
+   "stage_ms_per_step": 18.777,
+   "stage_share_of_wall_pct": 98.8,
+   "stages": {
+    "decode_linear_attn_qkv_gate": {
+     "ms_per_step": 4.306,
+     "pct": 22.93
+    },
+    "decode_ffn_moe_selected": {
+     "ms_per_step": 3.927,
+     "pct": 20.92
+    },
+    "decode_lm_head_sample": {
+     "ms_per_step": 1.876,
+     "pct": 9.99
+    },
+    "decode_linear_attn_ssm_out": {
+     "ms_per_step": 1.546,
+     "pct": 8.23
+    },
+    "decode_full_attn_qkv_head_norm_rope": {
+     "ms_per_step": 1.235,
+     "pct": 6.58
+    },
+    "decode_ffn_moe_shared_gate_up": {
+     "ms_per_step": 0.947,
+     "pct": 5.04
+    },
+    "decode_full_attn_core_gate": {
+     "ms_per_step": 0.906,
+     "pct": 4.83
+    },
+    "decode_ffn_moe_router": {
+     "ms_per_step": 0.765,
+     "pct": 4.07
+    },
+    "decode_linear_attn_gdn": {
+     "ms_per_step": 0.644,
+     "pct": 3.43
+    },
+    "decode_full_attn_output": {
+     "ms_per_step": 0.524,
+     "pct": 2.79
+    },
+    "decode_ffn_moe_shared_down": {
+     "ms_per_step": 0.497,
+     "pct": 2.65
+    },
+    "decode_ffn_moe_combine": {
+     "ms_per_step": 0.468,
+     "pct": 2.49
+    },
+    "decode_ffn_post_norm_residual": {
+     "ms_per_step": 0.388,
+     "pct": 2.07
+    },
+    "decode_linear_attn_alpha_beta": {
+     "ms_per_step": 0.303,
+     "pct": 1.61
+    },
+    "decode_linear_attn_conv": {
+     "ms_per_step": 0.197,
+     "pct": 1.05
+    },
+    "decode_linear_attn_norm": {
+     "ms_per_step": 0.088,
+     "pct": 0.47
+    },
+    "decode_input_setup": {
+     "ms_per_step": 0.078,
+     "pct": 0.42
+    },
+    "decode_full_attn_kv_write": {
+     "ms_per_step": 0.054,
+     "pct": 0.29
+    },
+    "decode_full_attn_norm": {
+     "ms_per_step": 0.019,
+     "pct": 0.1
+    },
+    "decode_output_norm": {
+     "ms_per_step": 0.008,
+     "pct": 0.04
+    }
+   }
+  }
+ },
+ "default": {
+  "use_wmma_prefill": false,
+  "use_gemv_decode": false,
+  "recorder_off": {
+   "ms_per_step": 28.831,
+   "tok_s": 34.685,
+   "gpu_busy_mean": 72.77,
+   "gpu_busy_max": 99,
+   "samples": 177
+  },
+  "recorder_on": {
+   "ms_per_step": 19.0,
+   "tok_s": 52.632,
+   "gpu_busy_mean": 95.55,
+   "gpu_busy_max": 98,
+   "samples": 119,
+   "stage_total_ms": 2402.38,
+   "stage_ms_per_step": 18.769,
+   "stage_share_of_wall_pct": 98.8,
+   "stages": {
+    "decode_linear_attn_qkv_gate": {
+     "ms_per_step": 4.301,
+     "pct": 22.92
+    },
+    "decode_ffn_moe_selected": {
+     "ms_per_step": 3.923,
+     "pct": 20.9
+    },
+    "decode_lm_head_sample": {
+     "ms_per_step": 1.875,
+     "pct": 9.99
+    },
+    "decode_linear_attn_ssm_out": {
+     "ms_per_step": 1.545,
+     "pct": 8.23
+    },
+    "decode_full_attn_qkv_head_norm_rope": {
+     "ms_per_step": 1.235,
+     "pct": 6.58
+    },
+    "decode_ffn_moe_shared_gate_up": {
+     "ms_per_step": 0.946,
+     "pct": 5.04
+    },
+    "decode_full_attn_core_gate": {
+     "ms_per_step": 0.907,
+     "pct": 4.83
+    },
+    "decode_ffn_moe_router": {
+     "ms_per_step": 0.765,
+     "pct": 4.08
+    },
+    "decode_linear_attn_gdn": {
+     "ms_per_step": 0.644,
+     "pct": 3.43
+    },
+    "decode_full_attn_output": {
+     "ms_per_step": 0.524,
+     "pct": 2.79
+    },
+    "decode_ffn_moe_shared_down": {
+     "ms_per_step": 0.497,
+     "pct": 2.65
+    },
+    "decode_ffn_moe_combine": {
+     "ms_per_step": 0.469,
+     "pct": 2.5
+    },
+    "decode_ffn_post_norm_residual": {
+     "ms_per_step": 0.388,
+     "pct": 2.07
+    },
+    "decode_linear_attn_alpha_beta": {
+     "ms_per_step": 0.303,
+     "pct": 1.62
+    },
+    "decode_linear_attn_conv": {
+     "ms_per_step": 0.197,
+     "pct": 1.05
+    },
+    "decode_linear_attn_norm": {
+     "ms_per_step": 0.087,
+     "pct": 0.47
+    },
+    "decode_input_setup": {
+     "ms_per_step": 0.08,
+     "pct": 0.43
+    },
+    "decode_full_attn_kv_write": {
+     "ms_per_step": 0.053,
+     "pct": 0.28
+    },
+    "decode_full_attn_norm": {
+     "ms_per_step": 0.019,
+     "pct": 0.1
+    },
+    "decode_output_norm": {
+     "ms_per_step": 0.008,
+     "pct": 0.04
+    }
+   }
+  }
+ }
+}

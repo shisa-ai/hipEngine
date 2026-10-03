@@ -1,0 +1,115 @@
+{
+ "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "quant": "gguf_ud_q4_k_m",
+ "public_ar_profile": true,
+ "graph_replay_decode": true,
+ "measured_runs": 3,
+ "summary": {
+  "prefill_tok_s": {
+   "median": 1458.819,
+   "samples": [
+    1459.48,
+    1457.933,
+    1458.819
+   ]
+  },
+  "decode_tok_s": {
+   "median": 56.312,
+   "samples": [
+    56.324,
+    56.252,
+    56.312
+   ]
+  },
+  "prefill_seconds": {
+   "median": 2.808,
+   "samples": [
+    2.806,
+    2.809,
+    2.808
+   ]
+  },
+  "decode_seconds": {
+   "median": 2.273,
+   "samples": [
+    2.273,
+    2.275,
+    2.273
+   ]
+  },
+  "graph_capture_seconds": {
+   "median": 0.048,
+   "samples": [
+    0.048,
+    0.048,
+    0.054
+   ]
+  },
+  "tracked_peak_allocated_gib": {
+   "median": 21.453,
+   "samples": [
+    21.453,
+    21.453,
+    21.453
+   ]
+  },
+  "tracked_current_allocated_gib_before_close": {
+   "median": 21.453,
+   "samples": [
+    21.453,
+    21.453,
+    21.453
+   ]
+  },
+  "owned_session_peak_gib": {
+   "median": 21.453,
+   "samples": [
+    21.453,
+    21.453,
+    21.453
+   ]
+  },
+  "hip_used_peak_sampled_gib": {
+   "median": 21.778,
+   "samples": [
+    21.778,
+    21.778,
+    21.778
+   ]
+  }
+ },
+ "measured_run": {
+  "prompt_length": 4096,
+  "decode_tokens": 128,
+  "target_arch": "gfx1151",
+  "resolved_backend": "hip_gfx1151",
+  "use_bulk_prefill": null,
+  "effective_use_wmma_prefill": true,
+  "effective_use_gemv_decode": true,
+  "prefill_chunk_sizes": {
+   "linear": 512,
+   "moe": 512,
+   "full_attn_query": 4096,
+   "full_attn_post": 1024,
+   "full_attn_rope": 1024,
+   "attn_aotriton_min_tokens": 512,
+   "auto_tune": true,
+   "chunk_tune_min_tokens": 1025
+  },
+  "effective_graph_replay_decode": true,
+  "decode_graph_disabled_reason": null,
+  "prefill_chunk_tuning": {
+   "applied": true,
+   "reason": "manual_long_equiv_gt1k",
+   "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+   "target_arch": null,
+   "chunk_sizes": {
+    "linear": 1024,
+    "moe": 1024,
+    "full_attn_query": 4096,
+    "full_attn_post": 1024,
+    "full_attn_rope": 1024
+   }
+  }
+ }
+}

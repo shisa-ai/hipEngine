@@ -1,0 +1,91 @@
+{
+ "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "quant": "gguf_ud_q4_k_m",
+ "public_ar_profile": true,
+ "graph_replay_decode": false,
+ "measured_runs": 1,
+ "summary": {
+  "prefill_tok_s": {
+   "median": 1390.253,
+   "samples": [
+    1390.253
+   ]
+  },
+  "decode_tok_s": {
+   "median": 56.781,
+   "samples": [
+    56.781
+   ]
+  },
+  "prefill_seconds": {
+   "median": 0.368,
+   "samples": [
+    0.368
+   ]
+  },
+  "decode_seconds": {
+   "median": 2.254,
+   "samples": [
+    2.254
+   ]
+  },
+  "graph_capture_seconds": {
+   "median": 0.0,
+   "samples": [
+    0.0
+   ]
+  },
+  "tracked_peak_allocated_gib": {
+   "median": 20.721,
+   "samples": [
+    20.721
+   ]
+  },
+  "tracked_current_allocated_gib_before_close": {
+   "median": 20.721,
+   "samples": [
+    20.721
+   ]
+  },
+  "owned_session_peak_gib": {
+   "median": 20.721,
+   "samples": [
+    20.721
+   ]
+  },
+  "hip_used_peak_sampled_gib": {
+   "median": 20.951,
+   "samples": [
+    20.951
+   ]
+  }
+ },
+ "measured_run": {
+  "prompt_length": 512,
+  "decode_tokens": 128,
+  "target_arch": "gfx1151",
+  "resolved_backend": "hip_gfx1151",
+  "use_bulk_prefill": null,
+  "effective_use_wmma_prefill": true,
+  "effective_use_gemv_decode": true,
+  "prefill_chunk_sizes": {
+   "linear": 512,
+   "moe": 512,
+   "full_attn_query": 0,
+   "full_attn_post": 0,
+   "full_attn_rope": 0,
+   "attn_aotriton_min_tokens": 512,
+   "auto_tune": true,
+   "chunk_tune_min_tokens": 1025
+  },
+  "effective_graph_replay_decode": false,
+  "decode_graph_disabled_reason": null,
+  "prefill_chunk_tuning": {
+   "applied": false,
+   "reason": "below_min_tokens",
+   "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+   "target_arch": null,
+   "chunk_sizes": null
+  }
+ }
+}

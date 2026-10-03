@@ -8204,3 +8204,46 @@ Two consequences worth knowing:
   references the screen. The open follow-up from this row - admitting
   `tiled16_multi` on the UD lane - is a profile/gate task and does not need
   this arm.
+
+## GGUF prefill chunk override silently defeats the chunk flags (2026-10-03)
+
+- `_gguf_prefill_chunk_sizes_for()` applies
+  `GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY` in the `Qwen35GGUFResidentSession`
+  constructor, **after** `resolve_prefill_config_for_sequence()` and after any
+  explicit `PrefillConfig`. For the H2048-MoE geometry the policy is `(512, 512)`
+  (`hipengine/kernels/hip_gfx1151/__init__.py`), so on that model:
+  - `--prefill-linear-chunk-size` / `--prefill-moe-chunk-size` are accepted and
+    then ignored. Confirmed: `PrefillConfig(linear_chunk_size=1024,
+    moe_chunk_size=1024)` resolves to effective `(512, 512)`.
+  - `prefill_chunk_tuning.chunk_sizes` reports the pre-override `{linear: 1024,
+    moe: 1024}` while the run executes `{linear: 512, moe: 512}`, so the recorded
+    tuning metadata does not describe the run it is attached to.
+- `_ARCH_CHUNK_PROFILES["gfx1151"]` (`{linear_chunk_size: 256,
+  moe_chunk_size: 256}`) is unreachable on the GGUF path: the runner calls
+  `resolve_prefill_config_for_sequence()` without `target_arch`, and the recorded
+  tuning carries `target_arch: null`. `scripts/pn3_chunkprofile_ab.py` documents
+  the same gap.
+- Removal condition: have the geometry policy feed the resolver (or a single
+  override point) so one code path owns the final chunk sizes, make the
+  precedence explicit in `prefill_chunk_tuning`, pass `target_arch` from the
+  runner, and drop the second rewrite. Then a 1024-row linear/MoE default for the
+  H2048-MoE geometry becomes reachable through the public flags; the 2026-10-03
+  sweep measures 1024 at +6.40% and 2048 at +2.91% over the shipping 512 at 4096
+  tokens.
+
+## Direct `Qwen35GGUFResidentSession` construction is not the shipping AR route (2026-10-03)
+
+- `use_wmma_prefill` and `use_gemv_decode` default to `False` at the session
+  (`_env_wmma_prefill_enabled()` / `_env_gemv_decode_enabled()`), so a direct
+  construction gets a 1.62x slower decode than the shipping route (4K/128:
+  28.831 vs 17.806 ms/step, GPU busy 72.8% vs 99%). The generation path passes
+  `use_gemv_decode=True` at both shipping call sites, so `hipengine.LLM.generate()`
+  is unaffected; the harness warns via `shipping_ar_route_mismatch`.
+- The conservative default is deliberate (`resolve_qwen35moe_fastpath_safety`
+  blocks the P9.E2-rejected raw-GGUF WMMA+GEMV combination), so this is a
+  documentation and diagnosability item, not a defect: any direct-session
+  profiler, benchmark, or downstream caller must pass the two kwargs explicitly
+  or it will measure and ship a non-shipping route.
+- Removal condition: keep the conservative resolution, but make the effective
+  route visible on the session (it already is, via `fastpath_safety`) and state
+  the required kwargs in the resident-session docstring.

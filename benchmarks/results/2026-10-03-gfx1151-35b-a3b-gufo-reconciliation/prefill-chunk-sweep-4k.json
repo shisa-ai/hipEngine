@@ -1,0 +1,125 @@
+{
+ "prompt_tokens": 4096,
+ "settle_s": 3.0,
+ "reps": 3,
+ "route": "shipping (wmma+gemv)",
+ "sizes": {
+  "512": {
+   "effective": [
+    512,
+    512
+   ],
+   "wmma": true,
+   "gemv": true,
+   "samples": [
+    2982.3,
+    2984.1,
+    2984.2
+   ],
+   "clocks": [
+    {
+     "n": 59,
+     "min_core_mhz": 2000,
+     "max_core_mhz": 5137,
+     "median_of_min_mhz": 2000,
+     "pct_core_samples_at_base": 88.6
+    },
+    {
+     "n": 59,
+     "min_core_mhz": 2000,
+     "max_core_mhz": 5137,
+     "median_of_min_mhz": 2000,
+     "pct_core_samples_at_base": 87.3
+    },
+    {
+     "n": 59,
+     "min_core_mhz": 2000,
+     "max_core_mhz": 5138,
+     "median_of_min_mhz": 2000,
+     "pct_core_samples_at_base": 89.2
+    }
+   ],
+   "ms_median": 2984.1,
+   "prefill_tok_s": 1372.6,
+   "delta_pct_vs_first": 0.0
+  },
+  "1024": {
+   "effective": [
+    1024,
+    1024
+   ],
+   "wmma": true,
+   "gemv": true,
+   "samples": [
+    2805.3,
+    2804.6,
+    2803.5
+   ],
+   "clocks": [
+    {
+     "n": 56,
+     "min_core_mhz": 2000,
+     "max_core_mhz": 5136,
+     "median_of_min_mhz": 2000,
+     "pct_core_samples_at_base": 87.8
+    },
+    {
+     "n": 56,
+     "min_core_mhz": 1865,
+     "max_core_mhz": 5137,
+     "median_of_min_mhz": 2000,
+     "pct_core_samples_at_base": 87.7
+    },
+    {
+     "n": 55,
+     "min_core_mhz": 2000,
+     "max_core_mhz": 5135,
+     "median_of_min_mhz": 2000,
+     "pct_core_samples_at_base": 87.5
+    }
+   ],
+   "ms_median": 2804.6,
+   "prefill_tok_s": 1460.5,
+   "delta_pct_vs_first": 6.4
+  },
+  "2048": {
+   "effective": [
+    2048,
+    2048
+   ],
+   "wmma": true,
+   "gemv": true,
+   "samples": [
+    2899.7,
+    2899.7,
+    2899.5
+   ],
+   "clocks": [
+    {
+     "n": 58,
+     "min_core_mhz": 1937,
+     "max_core_mhz": 5171,
+     "median_of_min_mhz": 2000,
+     "pct_core_samples_at_base": 87.2
+    },
+    {
+     "n": 58,
+     "min_core_mhz": 1875,
+     "max_core_mhz": 5141,
+     "median_of_min_mhz": 2000,
+     "pct_core_samples_at_base": 88.5
+    },
+    {
+     "n": 58,
+     "min_core_mhz": 1861,
+     "max_core_mhz": 5139,
+     "median_of_min_mhz": 2000,
+     "pct_core_samples_at_base": 88.8
+    }
+   ],
+   "ms_median": 2899.7,
+   "prefill_tok_s": 1412.6,
+   "delta_pct_vs_first": 2.91
+  }
+ }
+}

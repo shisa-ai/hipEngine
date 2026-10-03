@@ -1,0 +1,140 @@
+{
+ "idle": {
+  "label": "idle 5s",
+  "samples": 100,
+  "cores": 32,
+  "max_core_mhz": {
+   "min": 2000,
+   "median": 4114,
+   "max": 5139
+  },
+  "pct_pairs_at_2000": 87.7,
+  "pct_pairs_at_5000plus": 1.5,
+  "top_freqs_mhz": [
+   [
+    2000,
+    2807
+   ],
+   [
+    2964,
+    15
+   ],
+   [
+    2966,
+    11
+   ],
+   [
+    2973,
+    9
+   ],
+   [
+    2971,
+    9
+   ]
+  ]
+ },
+ "cpu_burn": {
+  "label": "32-thread CPU burn 5s",
+  "samples": 100,
+  "cores": 32,
+  "max_core_mhz": {
+   "min": 5103,
+   "median": 5116,
+   "max": 5124
+  },
+  "pct_pairs_at_2000": 0.0,
+  "pct_pairs_at_5000plus": 50.0,
+  "top_freqs_mhz": [
+   [
+    5114,
+    136
+   ],
+   [
+    5110,
+    118
+   ],
+   [
+    5113,
+    116
+   ],
+   [
+    5116,
+    116
+   ],
+   [
+    5117,
+    115
+   ]
+  ]
+ },
+ "prefill": {
+  "label": "during 4K prefill",
+  "samples": 55,
+  "cores": 32,
+  "max_core_mhz": {
+   "min": 2000,
+   "median": 5111,
+   "max": 5137
+  },
+  "pct_pairs_at_2000": 88.9,
+  "pct_pairs_at_5000plus": 3.9,
+  "top_freqs_mhz": [
+   [
+    2000,
+    1564
+   ],
+   [
+    5113,
+    7
+   ],
+   [
+    5110,
+    5
+   ],
+   [
+    5081,
+    5
+   ],
+   [
+    5111,
+    4
+   ]
+  ],
+  "ms": 2806.4,
+  "tok_s": 1459.5
+ },
+ "after_settle": {
+  "label": "idle 4s after prefill",
+  "samples": 80,
+  "cores": 32,
+  "max_core_mhz": {
+   "min": 2000,
+   "median": 4339,
+   "max": 5138
+  },
+  "pct_pairs_at_2000": 88.2,
+  "pct_pairs_at_5000plus": 1.6,
+  "top_freqs_mhz": [
+   [
+    2000,
+    2258
+   ],
+   [
+    2972,
+    18
+   ],
+   [
+    2973,
+    11
+   ],
+   [
+    2971,
+    10
+   ],
+   [
+    2977,
+    7
+   ]
+  ]
+ }
+}
