@@ -263,6 +263,22 @@ class HipRuntime:
         self.check(self.library.hipStreamEndCapture(ctypes.c_void_p(stream), ctypes.byref(graph)))
         return 0 if graph.value is None else int(graph.value)
 
+    def stream_is_capturing(self, stream: int) -> bool:
+        """Whether ``stream`` is inside an active or invalidated capture.
+
+        ``hipStreamIsCapturing`` reports ``None``, ``Active`` or
+        ``Invalidated``. This returns ``True`` for anything but ``None``:
+        host-synchronizing work is illegal in both capturing states, and a
+        caller deciding whether it may synchronize or read a device buffer back
+        must treat an invalidated capture the same as an active one.
+        """
+
+        status = ctypes.c_int()
+        self.check(
+            self.library.hipStreamIsCapturing(ctypes.c_void_p(stream), ctypes.byref(status))
+        )
+        return int(status.value) != 0
+
     def graph_instantiate(self, graph: int) -> int:
         graph_exec = ctypes.c_void_p()
         error_node = ctypes.c_void_p()
@@ -514,6 +530,8 @@ class HipRuntime:
         self.library.hipStreamBeginCapture.restype = ctypes.c_int
         self.library.hipStreamEndCapture.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
         self.library.hipStreamEndCapture.restype = ctypes.c_int
+        self.library.hipStreamIsCapturing.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+        self.library.hipStreamIsCapturing.restype = ctypes.c_int
         self.library.hipGraphInstantiate.argtypes = [
             ctypes.POINTER(ctypes.c_void_p),
             ctypes.c_void_p,
