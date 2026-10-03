@@ -1,0 +1,4396 @@
+{
+ "dispatches": 10864,
+ "half1_ms": 2755.600759,
+ "half2_ms": 2755.633483,
+ "measured_dispatch_count": 5432,
+ "kernel_sum_ms": 2755.633483,
+ "wall_ms": 2802.6,
+ "ratio_pct": 98.32418051095412,
+ "top": [
+  {
+   "name": "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+   "n": 160,
+   "total_ms": 594.021117,
+   "mean_us": 3712.63198125,
+   "pct": 21.556608332153875,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      1024,
+      512,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      512,
+      1
+     ],
+     "n": 8,
+     "total_ms": 27.243032,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      571,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      571,
+      1
+     ],
+     "n": 5,
+     "total_ms": 19.223868,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      557,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      557,
+      1
+     ],
+     "n": 5,
+     "total_ms": 18.817384,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      544,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      544,
+      1
+     ],
+     "n": 5,
+     "total_ms": 18.147729,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      522,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      522,
+      1
+     ],
+     "n": 5,
+     "total_ms": 17.734594,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      586,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      586,
+      1
+     ],
+     "n": 4,
+     "total_ms": 15.681821,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      581,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      581,
+      1
+     ],
+     "n": 4,
+     "total_ms": 15.593095,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      577,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      577,
+      1
+     ],
+     "n": 4,
+     "total_ms": 15.590531,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      579,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      579,
+      1
+     ],
+     "n": 4,
+     "total_ms": 15.537311,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      572,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      572,
+      1
+     ],
+     "n": 4,
+     "total_ms": 15.416123,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      543,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      543,
+      1
+     ],
+     "n": 4,
+     "total_ms": 14.640267,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      549,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      549,
+      1
+     ],
+     "n": 4,
+     "total_ms": 14.588491,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      545,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      545,
+      1
+     ],
+     "n": 4,
+     "total_ms": 14.478003,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      576,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      576,
+      1
+     ],
+     "n": 3,
+     "total_ms": 11.591909,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      568,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      568,
+      1
+     ],
+     "n": 3,
+     "total_ms": 11.590586,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      570,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      570,
+      1
+     ],
+     "n": 3,
+     "total_ms": 11.539009,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      564,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      564,
+      1
+     ],
+     "n": 3,
+     "total_ms": 11.538809,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      562,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      562,
+      1
+     ],
+     "n": 3,
+     "total_ms": 11.393817,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      558,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      558,
+      1
+     ],
+     "n": 3,
+     "total_ms": 11.203419,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      553,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      553,
+      1
+     ],
+     "n": 3,
+     "total_ms": 11.127517,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      541,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      541,
+      1
+     ],
+     "n": 3,
+     "total_ms": 10.868391,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      535,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      535,
+      1
+     ],
+     "n": 3,
+     "total_ms": 10.764315,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      524,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      524,
+      1
+     ],
+     "n": 3,
+     "total_ms": 10.57504,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      521,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      521,
+      1
+     ],
+     "n": 3,
+     "total_ms": 10.523304,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      516,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      516,
+      1
+     ],
+     "n": 3,
+     "total_ms": 10.448603,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      580,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      580,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.763846,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      574,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      574,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.761763,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      566,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      566,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.741244,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      575,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      575,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.729702,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      563,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      563,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.691431,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      567,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      567,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.677323,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      573,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      573,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.638289,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      559,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      559,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.601181,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      560,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      560,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.60034,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      555,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      555,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.458152,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      552,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      552,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.356682,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      551,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      551,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.294406,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      547,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      547,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.234613,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      536,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      536,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.213172,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      540,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      540,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.190531,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      528,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      528,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.178589,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      531,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      531,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.165123,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      526,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      526,
+      1
+     ],
+     "n": 2,
+     "total_ms": 7.033315,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      601,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      601,
+      1
+     ],
+     "n": 1,
+     "total_ms": 4.097808,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      600,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      600,
+      1
+     ],
+     "n": 1,
+     "total_ms": 4.089953,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      595,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      595,
+      1
+     ],
+     "n": 1,
+     "total_ms": 4.027716,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      594,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      594,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.979947,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      588,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      588,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.968325,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      585,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      585,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.962475,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      582,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      582,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.929893,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      583,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      583,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.925645,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      590,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      590,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.903163,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      569,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      569,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.889017,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      561,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      561,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.774882,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      554,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      554,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.734808,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      546,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      546,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.697417,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      542,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      542,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.64079,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      530,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      530,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.585727,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      533,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      533,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.583443,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      525,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      525,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.568014,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      537,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      537,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.551783,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      532,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      532,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.544209,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      539,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      539,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.539601,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      527,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      527,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.530905,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      517,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      517,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.511147,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      520,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      520,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.511107,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      523,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      523,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.478005,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      534,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      534,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.466784,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      518,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      518,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.449993,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      514,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      514,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.448229,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      1024,
+      515,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      515,
+      1
+     ],
+     "n": 1,
+     "total_ms": 3.443661,
+     "vgpr": "56",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_nwave_kernel<32, 4>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+   "n": 440,
+   "total_ms": 476.248484,
+   "mean_us": 1082.3829181818182,
+   "pct": 17.28272235542436,
+   "tf_s": 21.64399857785164,
+   "geometries": [
+    {
+     "grid": [
+      8192,
+      32,
+      1
+     ],
+     "block": [
+      128,
+      1,
+      1
+     ],
+     "wg": [
+      64,
+      32,
+      1
+     ],
+     "n": 160,
+     "total_ms": 231.763623,
+     "vgpr": "80",
+     "sgpr": "128",
+     "lds": "1024",
+     "out_features": 8192,
+     "rows": 1024,
+     "k": 2048
+    },
+    {
+     "grid": [
+      2048,
+      32,
+      1
+     ],
+     "block": [
+      128,
+      1,
+      1
+     ],
+     "wg": [
+      16,
+      32,
+      1
+     ],
+     "n": 160,
+     "total_ms": 139.597669,
+     "vgpr": "80",
+     "sgpr": "128",
+     "lds": "1024",
+     "out_features": 2048,
+     "rows": 1024,
+     "k": 4096
+    },
+    {
+     "grid": [
+      4096,
+      32,
+      1
+     ],
+     "block": [
+      128,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      32,
+      1
+     ],
+     "n": 120,
+     "total_ms": 104.887192,
+     "vgpr": "80",
+     "sgpr": "128",
+     "lds": "1024",
+     "out_features": 4096,
+     "rows": 1024,
+     "k": 2048
+    }
+   ]
+  },
+  {
+   "name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+   "n": 120,
+   "total_ms": 456.917402,
+   "mean_us": 3807.6450166666664,
+   "pct": 16.58121099263766,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      32,
+      32,
+      4
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      1,
+      32,
+      4
+     ],
+     "n": 120,
+     "total_ms": 456.917402,
+     "vgpr": "32",
+     "sgpr": "128",
+     "lds": "16384",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short, 5, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+   "n": 148,
+   "total_ms": 367.722174,
+   "mean_us": 2484.6092837837837,
+   "pct": 13.344378933865638,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      4096,
+      512,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      512,
+      1
+     ],
+     "n": 8,
+     "total_ms": 18.088536,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      571,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      571,
+      1
+     ],
+     "n": 5,
+     "total_ms": 12.894831,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      586,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      586,
+      1
+     ],
+     "n": 4,
+     "total_ms": 10.606939,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      581,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      581,
+      1
+     ],
+     "n": 4,
+     "total_ms": 10.508475,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      579,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      579,
+      1
+     ],
+     "n": 4,
+     "total_ms": 10.47922,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      577,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      577,
+      1
+     ],
+     "n": 4,
+     "total_ms": 10.429527,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      572,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      572,
+      1
+     ],
+     "n": 4,
+     "total_ms": 10.329258,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      557,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      557,
+      1
+     ],
+     "n": 4,
+     "total_ms": 9.994792,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      543,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      543,
+      1
+     ],
+     "n": 4,
+     "total_ms": 9.688257,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      522,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      522,
+      1
+     ],
+     "n": 4,
+     "total_ms": 9.299807,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      576,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      576,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.829852,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      570,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      570,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.735313,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      568,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      568,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.695038,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      564,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      564,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.631518,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      562,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      562,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.598936,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      558,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      558,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.514859,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      553,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      553,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.444046,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      549,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      549,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.373593,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      545,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      545,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.333839,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      544,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      544,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.285188,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      541,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      541,
+      1
+     ],
+     "n": 3,
+     "total_ms": 7.264109,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      516,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      516,
+      1
+     ],
+     "n": 3,
+     "total_ms": 6.864399,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      580,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      580,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.228089,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      575,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      575,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.191219,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      574,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      574,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.188374,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      573,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      573,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.178756,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      567,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      567,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.114636,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      566,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      566,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.086783,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      563,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      563,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.062658,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      559,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      559,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.029196,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      560,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      560,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.027433,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      555,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      555,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.996013,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      552,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      552,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.954215,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      551,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      551,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.935219,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      547,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      547,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.898671,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      540,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      540,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.814673,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      536,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      536,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.773074,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      535,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      535,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.764618,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      531,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      531,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.712241,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      528,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      528,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.701622,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      524,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      524,
+      1
+     ],
+     "n": 2,
+     "total_ms": 4.649803,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      601,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      601,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.740862,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      600,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      600,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.719662,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      594,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      594,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.701468,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      595,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      595,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.699425,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      590,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      590,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.674418,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      588,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      588,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.668927,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      585,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      585,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.660191,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      583,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      583,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.644842,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      582,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      582,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.621558,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      569,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      569,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.556636,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      561,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      561,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.517323,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      554,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      554,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.483419,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      546,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      546,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.445789,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      539,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      539,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.421343,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      542,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      542,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.419059,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      537,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      537,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.394692,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      533,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      533,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.364276,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      532,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      532,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.362632,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      527,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      527,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.351291,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      530,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      530,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.351211,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      526,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      526,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.335342,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      525,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      525,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.32913,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      523,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      523,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.32392,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      521,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      521,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.309893,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      520,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      520,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.306848,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      517,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      517,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.290778,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      515,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      515,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.28104,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      518,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      518,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.276792,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      514,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      514,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.271782,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_kernel<unsigned short, unsigned short, 32, 16>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+   "n": 560,
+   "total_ms": 171.035369,
+   "mean_us": 305.4203017857143,
+   "pct": 6.206753185978761,
+   "tf_s": 7.031240672097478,
+   "geometries": [
+    {
+     "grid": [
+      512,
+      64,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      16,
+      64,
+      1
+     ],
+     "n": 400,
+     "total_ms": 142.987981,
+     "vgpr": "64",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": 512,
+     "rows": 1024,
+     "k": 2048
+    },
+    {
+     "grid": [
+      2048,
+      64,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      64,
+      64,
+      1
+     ],
+     "n": 160,
+     "total_ms": 28.047388,
+     "vgpr": "64",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": 2048,
+     "rows": 1024,
+     "k": 512
+    }
+   ]
+  },
+  {
+   "name": "attn_fwd",
+   "n": 40,
+   "total_ms": 142.675924,
+   "mean_us": 3566.8981,
+   "pct": 5.1776088830460765,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      4096,
+      16,
+      1
+     ],
+     "block": [
+      128,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      16,
+      1
+     ],
+     "n": 40,
+     "total_ms": 142.675924,
+     "vgpr": "256",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, float, 4>(unsigned short const*, float const*, float*, long, long, long)",
+   "n": 320,
+   "total_ms": 123.147273,
+   "mean_us": 384.835228125,
+   "pct": 4.468927880275724,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      65536,
+      256,
+      1
+     ],
+     "block": [
+      256,
+      1,
+      1
+     ],
+     "wg": [
+      256,
+      256,
+      1
+     ],
+     "n": 160,
+     "total_ms": 121.992755,
+     "vgpr": "32",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      256,
+      256,
+      1
+     ],
+     "block": [
+      256,
+      1,
+      1
+     ],
+     "wg": [
+      1,
+      256,
+      1
+     ],
+     "n": 160,
+     "total_ms": 1.154518,
+     "vgpr": "32",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
+   "n": 120,
+   "total_ms": 87.867841,
+   "mean_us": 732.2320083333333,
+   "pct": 3.1886621186043995,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      131072,
+      32,
+      1
+     ],
+     "block": [
+      128,
+      1,
+      1
+     ],
+     "wg": [
+      1024,
+      32,
+      1
+     ],
+     "n": 120,
+     "total_ms": 87.867841,
+     "vgpr": "24",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_compact_scales_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, long, long, long, long, long)",
+   "n": 120,
+   "total_ms": 70.315648,
+   "mean_us": 585.9637333333333,
+   "pct": 2.5517053858501106,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      131072,
+      32,
+      1
+     ],
+     "block": [
+      128,
+      1,
+      1
+     ],
+     "wg": [
+      1024,
+      32,
+      1
+     ],
+     "n": 120,
+     "total_ms": 70.315648,
+     "vgpr": "32",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+   "n": 240,
+   "total_ms": 50.140465,
+   "mean_us": 208.91860416666665,
+   "pct": 1.8195621917546572,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      8192,
+      1024,
+      1
+     ],
+     "block": [
+      256,
+      1,
+      1
+     ],
+     "wg": [
+      32,
+      1024,
+      1
+     ],
+     "n": 240,
+     "total_ms": 50.140465,
+     "vgpr": "24",
+     "sgpr": "128",
+     "lds": "1024",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_tile32x128_kernel(float const*, float const*, float const*, float*, long, long)",
+   "n": 120,
+   "total_ms": 46.693965,
+   "mean_us": 389.116375,
+   "pct": 1.694491132005163,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      8192,
+      32,
+      1
+     ],
+     "block": [
+      128,
+      1,
+      1
+     ],
+     "wg": [
+      64,
+      32,
+      1
+     ],
+     "n": 120,
+     "total_ms": 46.693965,
+     "vgpr": "224",
+     "sgpr": "128",
+     "lds": "17920",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short, 6, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+   "n": 12,
+   "total_ms": 31.658798,
+   "mean_us": 2638.2331666666664,
+   "pct": 1.148875501597322,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      4096,
+      544,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      544,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.369554,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      521,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      521,
+      1
+     ],
+     "n": 2,
+     "total_ms": 5.124455,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      557,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      557,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.749559,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      549,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      549,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.709724,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      545,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      545,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.694215,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      535,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      535,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.640153,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      534,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      534,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.632899,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      526,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      526,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.591302,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      524,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      524,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.575232,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      4096,
+      522,
+      1
+     ],
+     "block": [
+      32,
+      1,
+      1
+     ],
+     "wg": [
+      128,
+      522,
+      1
+     ],
+     "n": 1,
+     "total_ms": 2.571705,
+     "vgpr": "72",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
+   "n": 160,
+   "total_ms": 30.394387,
+   "mean_us": 189.96491875,
+   "pct": 1.1029909161544327,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      2048,
+      1024,
+      1
+     ],
+     "block": [
+      128,
+      1,
+      1
+     ],
+     "wg": [
+      16,
+      1024,
+      1
+     ],
+     "n": 160,
+     "total_ms": 30.394387,
+     "vgpr": "8",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+   "n": 160,
+   "total_ms": 19.751742,
+   "mean_us": 123.4483875,
+   "pct": 0.7167768181745525,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      2097152,
+      1,
+      1
+     ],
+     "block": [
+      256,
+      1,
+      1
+     ],
+     "wg": [
+      8192,
+      1,
+      1
+     ],
+     "n": 160,
+     "total_ms": 19.751742,
+     "vgpr": "16",
+     "sgpr": "128",
+     "lds": "512",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+   "n": 160,
+   "total_ms": 18.807604,
+   "mean_us": 117.547525,
+   "pct": 0.6825147145303431,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      8388608,
+      1,
+      1
+     ],
+     "block": [
+      256,
+      1,
+      1
+     ],
+     "wg": [
+      32768,
+      1,
+      1
+     ],
+     "n": 120,
+     "total_ms": 18.266748,
+     "vgpr": "8",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    },
+    {
+     "grid": [
+      524288,
+      1,
+      1
+     ],
+     "block": [
+      256,
+      1,
+      1
+     ],
+     "wg": [
+      2048,
+      1,
+      1
+     ],
+     "n": 40,
+     "total_ms": 0.540856,
+     "vgpr": "8",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  },
+  {
+   "name": "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)",
+   "n": 160,
+   "total_ms": 13.518928,
+   "mean_us": 84.4933,
+   "pct": 0.49059238405254924,
+   "tf_s": null,
+   "geometries": [
+    {
+     "grid": [
+      4194304,
+      1,
+      1
+     ],
+     "block": [
+      256,
+      1,
+      1
+     ],
+     "wg": [
+      16384,
+      1,
+      1
+     ],
+     "n": 160,
+     "total_ms": 13.518928,
+     "vgpr": "16",
+     "sgpr": "128",
+     "lds": "0",
+     "out_features": null,
+     "rows": null,
+     "k": null
+    }
+   ]
+  }
+ ]
+}
