@@ -9350,7 +9350,28 @@ path, and its correctness tests stay in place. Evidence:
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-three-arm-attribution.json`,
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
 
-## Gemma 4 Q5_1 expert down prefill is the default; the flag is a rollback lever (open 2026-09-28)
+## Gemma 4 expert down MMQ: exact automatic default after continuation failure (open 2026-10-03)
+
+Automatic selection uses the registered exact down owner. The existing one-plane
+MMQ route failed nine of ten generated-history screens; three-plane feedback
+failed seven. The exact-down control matched all 610 paired strict logits.
+Explicit `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1` and pinned `mmq` selection remain
+runnable; neither the representation nor the evaluator thresholds changed.
+
+Clearing command (use the same artifact for both arms):
+
+```bash
+HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1 .venv/bin/python scripts/gemma4_generated_history_gate.py \
+  --model <artifact>.gguf --output-dir /tmp/gemma4-down-mmq-repair
+```
+
+Remove the lever after a repaired MMQ owner passes this unchanged continuation
+screen and the full applicable execution-profile gate, with selected-route,
+repeatability and isolation evidence. See
+`worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md`.
+
+The following measurements describe the earlier 2026-09-28 decision, not the
+current default.
 
 `HIPENGINE_GEMMA4_MOE_DOWN_MMQ` selects the Q5_1 DS4 DP4A MMQ route for Gemma 4's
 expert down projection. Before it, Q5_1 had no MMQ path at all --
@@ -9361,9 +9382,10 @@ gate/up MMQ on the same layer ran at **67 GB/s**, 11.8x per FLOP. It measures
 prefill falls from 43.4% to 11.0%. On the loop's 512/128 shape the prefill goes
 from 1.52 s to 1.01 s.
 
-**The route is now the default path.** `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` restores
-the fp32 grouped route, and unset means on. `tests/test_unit_gemma4_expert_route.py`
-and `tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py` pin the route.
+**Historical default (2026-09-28).** The route defaulted on, and
+`HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` restored the FP32 grouped route.
+`tests/test_unit_gemma4_expert_route.py` and
+`tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py` test the implementation.
 
 **Why the width constraint had to be lifted, not worked around.** The Q5_1 MMQ
 kernel tiled `in_features` in 128-wide DS4 blocks and computed
