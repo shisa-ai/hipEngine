@@ -17,9 +17,10 @@ Comparability, stated once:
   first greedy sample; the hipEngine ``decode_s`` starts after it. The
   difference is one host sample (~sub-millisecond) inside a second-plus phase
   and is recorded here rather than silently adjusted.
-- llama.cpp runs at its shipped configuration for this artifact (flash
-  attention on, graph-free decode); hipEngine runs its own shipped path. Each
-  engine is measured at its product defaults.
+- llama.cpp runs its shipped graph configuration for this artifact with flash
+  attention on; hipEngine runs its own shipped path. Do not disable comparator
+  graphs to make an eager engine appear faster. Record actual graph behavior
+  from the server log rather than inferring it from throughput.
 
 Unit tests for the response accounting live in
 ``tests/test_unit_gemma4_llamacpp_reference.py``.
@@ -30,6 +31,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import shlex
 import signal
@@ -195,6 +197,13 @@ def _median(values: list[float]) -> float:
     return float(statistics.median(values))
 
 
+def _positive_seconds(value: str) -> float:
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("request timeout must be finite positive seconds")
+    return seconds
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact", type=Path, default=DEFAULT_ARTIFACT)
@@ -205,6 +214,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--context", type=int, default=8192)
+    parser.add_argument("--request-timeout", type=_positive_seconds, default=600.0,
+                        help="completion request timeout in seconds; increase for long-context prefill")
     parser.add_argument("--kv", default="bf16")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--pci", default=None,
@@ -291,7 +302,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[llamacpp_reference] text tokenizer parity: {text_probe}", flush=True)
 
         for index in range(args.warmup):
-            row = reference_row(_post(base, _completion_body(prompt_ids, args.output)), prompt_ids, args.output)
+            row = reference_row(_post(base, _completion_body(prompt_ids, args.output),
+                                      timeout=args.request_timeout), prompt_ids, args.output)
             row["index"] = index
             warmups.append(row)
             print(
@@ -300,7 +312,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 flush=True,
             )
         for index in range(args.samples):
-            row = reference_row(_post(base, _completion_body(prompt_ids, args.output)), prompt_ids, args.output)
+            row = reference_row(_post(base, _completion_body(prompt_ids, args.output),
+                                      timeout=args.request_timeout), prompt_ids, args.output)
             row["index"] = index
             samples.append(row)
             print(
@@ -333,6 +346,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "created_at": started_at,
         "command": shlex.join([sys.executable, *sys.argv]),
         "server_command": server_command,
+        "request_timeout_s": args.request_timeout,
         "llamacpp_source": str(args.source),
         "llamacpp_commit": source_commit,
         "artifact": str(args.artifact),
