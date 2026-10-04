@@ -142,24 +142,62 @@ different profile binding set. Same command, same case, one process per arm:
 2026-09-21, so any artifact predating this note whose hipEngine rows came from
 a raw `python3` invocation describes a different code base than it records.
 
-**The dense-projection bucket is where the milliseconds are, and the obvious
-lever is now closed.** The wide-row f16 Q8_0 route runs 0.0193 s per layer
-against the exact coltile chain's 0.171 s, so
-`PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS` (16-47, leaving the coltile chain on
-0-15) is the largest single prefill lever. Extending it to 0-47 measures
-**+18.876% prefill and +5.786% decode** at `code-p4096` against a 0.372%
+**The dense-projection bucket is where the milliseconds are, and its scope lever is
+now spent.** The wide-row f16 Q8_0 route runs 0.0193 s per layer against the exact
+coltile chain's 0.171 s, so `PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS` is the
+largest single prefill lever. It was extended from 16-47 to **13-47** on
+2026-10-04 UTC, a measured **+3.0% prefill at `code-p4096`** (`+2.6%` / `+3.2%` /
+`+3.0%` across p512 / p1024 / p4096, decode unchanged). Extending it to 0-47
+measures **+18.876% prefill and +5.786% decode** at `code-p4096` against a 0.372%
 same-code control, with identical generated-token digests - and **fails the
-production gate**: mean KL 1.468e-3 (1.47x over), p95 7.517e-3 (1.50x over),
-max 5.140e-2 (1.03x over), top-1 0.98837, all four categories failing. The
-ladder closes the region above 16-47:
+production gate**: mean KL 1.468e-3 (1.47x over), p95 7.517e-3 (1.50x over), max
+5.140e-2 (1.03x over), top-1 0.98837, all four categories failing. The ladder
+closes the region above 13-47:
 
-| scope | kl_mean | kl_max | top-1 matches | hard gates | why |
-| --- | ---: | ---: | ---: | --- | --- |
-| 16-47 | 4.527e-4 | 2.341e-2 | 1538 | **PASS** | certified default |
-| **14-47** | 5.190e-4 | 3.979e-2 | 1536 | **PASS** | deepest passing scope |
-| 12-47 | 6.406e-4 | 3.249e-2 | 1532 | FAIL | aggregate top-1, one row short |
-| 8-47 | 8.839e-4 | 4.146e-2 | 1534 | FAIL | `general_en` mean KL 1.181e-3 |
-| 0-47 | 1.468e-3 | 5.140e-2 | 1530 | FAIL | KL and top-1, 6 scopes |
+| scope | kl_mean | kl_p95 | kl_max | top-1 | hard gates | why |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| 16-47 | 4.527e-4 | - | 2.341e-2 | 1538 (0.99354) | **PASS** | previous certified default |
+| **13-47** | **6.229e-4** | **3.158e-3** | **2.606e-2** | **1538 (0.99354)** | **PASS** | **promoted default; deepest passing scope** |
+| 14-47 | 5.190e-4 | - | 3.979e-2 | 1536 (0.99225) | **PASS** | dominated by 13-47 on top-1 and max |
+| 12-47 | 6.406e-4 | 3.229e-3 | 3.249e-2 | 1532 (0.98966) | FAIL | aggregate top-1, one row short |
+| 11-47 | 7.819e-4 | 3.868e-3 | **6.957e-2** | 1536 (0.99225) | FAIL | `kl_max` 1.39x over |
+| 10-47 | 8.370e-4 | 4.291e-3 | 3.554e-2 | 1528 (0.98708) | FAIL | top-1 **and** `general_en` 1.08x |
+| 8-47 | 8.839e-4 | 4.647e-3 | 4.146e-2 | 1534 (0.99096) | FAIL | `general_en` mean KL 1.181e-3 |
+| 0-47 | 1.468e-3 | - | 5.140e-2 | 1530 | FAIL | KL and top-1, 6 scopes |
+
+**13-47 was added on 2026-10-04 UTC and is the promoted default.** It passes with
+1.6-1.9x margin on every binding gate and all four categories above their 0.97
+floors (code 0.99225, general_en 0.98708, general_ja 1.0, mixed_ja_en 0.99483).
+**It dominates 14-47**, which the previous revision of this table called the
+deepest passing scope: 13-47 scores top-1 0.99354 and `kl_max` 2.606e-2 against
+14-47's 0.99225 and 3.979e-2. So the newly-passing scope is also numerically
+stronger, and this is not a speed-for-quality trade against the passing frontier.
+
+**The three new points sharpen the non-monotonicity into a warning.** 11-47 and
+12-47 fail on **different axes** (`kl_max` at 1.39x against aggregate top-1 by one
+row), and 10-47 is worse than 12-47 on top-1 while 8-47's top-1 beats both. No
+monotone search over scope finds 13-47; it has to be tested. The earlier revision
+of this table inferred "deepest passing" from 14-47 because it had not tested 13.
+
+**Why the 8-47 lever is now closed rather than pending.** The residual drift is
+**accumulation-order error, and that is verified rather than inferred.** Both the
+wide route and the coltile parent use f16 operands with f32 accumulation and the
+same `wmma_f32_16x16x16_f16` intrinsic, and both accumulate K sequentially in
+steps of 16. Their dequant paths produce identical f16 values: the wide route
+computes `d0 * q` in f32 and rounds once, the parent computes it in f16 and rounds
+once, and both are a single correctly-rounded operation on the same exact product,
+which is exactly representable in f32 (11 significand bits times 7 is at most 18,
+well inside 24). `tests/test_gpu_gguf_q8_0_dense_wide.py::test_dense_wide_matches_
+the_f16_reference` asserts the bound and names the mechanism - "Accumulation-order
+error only: f32 accumulation over K terms with f16 operands. A structural bug
+misses by the f16 rounding scale instead" - and passes for every variant (20
+passed). **WMMA on RDNA3 has no f32-operand form**; f16 is the most precise
+available operand format and bf16 would be worse, so the route sits at the
+accuracy floor of the formulation that gives it its speed. The
+`HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT` knob is a no-op at these shapes because the
+binder already resolves to the f32-input owner, so there is no activation-precision
+trade either. **The remaining five layers cannot be recovered by making the route
+more accurate.**
 
 **The boundary is non-monotone in the tail and in top-1 while `kl_mean` and
 `kl_p95` are monotone**: 12-47's `kl_max` is better than 14-47's while its mean
@@ -169,13 +207,26 @@ found (15-47 failing while 14-47 and 16-47 pass). **Two consequences:** the
 boundary cannot be located by monotone search, and a passing scope is not
 evidence about a shallower one.
 
-**14-47 is admissible and is NOT promoted.** Its speed was measured with the
-same three-arm A/B/C: A 16-47 **268.877 pp**, B 14-47 **275.305 pp**, C 16-47
+**13-47 is promoted (2026-10-04 UTC); 14-47 was declined on the previous
+revision's evidence and is now dominated by it.** 14-47's speed was measured with
+the same three-arm A/B/C: A 16-47 **268.877 pp**, B 14-47 **275.305 pp**, C 16-47
 **272.589 pp**, so the pooled effect is **+1.69%** against a **+1.38%** same-code
 drift. A signal-to-drift ratio of 1.2 is not a measurement, and changing the KV
-rounding of two layers for a benefit that cannot be shown is the wrong trade. A
-higher-precision A/B (more repetitions, interleaved in one process) would
-resolve it; the per-layer cost model predicts about 2.2%. Every candidate scope
+rounding of two layers for a benefit that cannot be shown is the wrong trade.
+
+**13-47 was promoted on a stronger case.** Its A/B/C was A 16-47 **268.30 pp**,
+B 13-47 **277.70 pp**, C 16-47 **272.54 pp** - pooled **+2.69% prefill** and
+**+0.92% decode** against **+1.58%** drift, a ratio of 1.7. That is better than
+14-47's 1.2 but still not a headline number. **The reason it was retained is the
+both-baselines argument plus the stronger numerics:** arm B sits temporally
+between A and C and exceeds **both**, which a monotone session trend cannot
+produce, so the effect is bounded below by **+1.89%** and above by **+3.50%**. The
+end-to-end confirmation then landed inside that band - **+2.6% / +3.2% / +3.0%**
+prefill across `code-p512` / `code-p1024` / `code-p4096` at chunk 1024, with decode
+unchanged - which is three independent processes agreeing and is what a session
+trend cannot do. **The lesson for the next such decision: a both-baselines A/B/C
+plus an end-to-end check across shapes can admit an effect that a single 1.2-1.7x
+signal-to-drift ratio would have declined.** Every candidate scope
 leaves `prefill_last` KL at 4e-9 to 5e-8 with top-1 1.0 while `steady` carries
 the whole drift: this route changes the *rounding* of the projections feeding
 the KV cache, so the final prompt position barely moves while all 4096 cached
@@ -183,9 +234,12 @@ positions accumulate a difference that decode attention reads. That makes the
 dense-prefill region a KV-arithmetic question, not a prefill-latency one.
 
 Evidence: `benchmarks/results/2026-10-04-qwen4exp-dense-wide-scope-ladder/`,
+`benchmarks/results/2026-10-04-qwen4exp-dense-wide-13-47-frontier/` (the 13-47 and
+11-47 gates, the three-arm A/B/C, and the end-to-end confirmation),
 `benchmarks/results/2026-10-04-qwen4exp-gufo-prefill-gap-verified/`, worklog
 `20261004T030644.952503Z`, `20261004T031136.427018Z`, `20261004T032242.378046Z`,
-`20261004T043701.325729Z`.
+`20261004T043701.325729Z`, `20261004T132643.298003Z` (accumulation-order
+mechanism).
 
 ### 1.3 Current attribution checkpoint — 2026-09-28 UTC
 
@@ -407,10 +461,19 @@ H chunk size, E attention, F GDN, C router/reduce**, pending `X-3`.
 
 ### 4A. Dense projections — 5234.8 ms at the anchor (31.3%)
 
-Wide route 1404.2 ms at layers 16-47; exact coltile chain 3262.5 ms at 0-15;
-565 ms of other dense roles. `dense_wide256` runs the packet shape (rows 1024,
+Wide route 1404.2 ms at layers **13-47** as of 2026-10-04 UTC (was 16-47 when
+this anchor was taken); exact coltile chain on the remaining low layers; 565 ms
+of other dense roles. `dense_wide256` runs the packet shape (rows 1024,
 K 2560, N 10240) in 2.573 ms, **20.9 TFLOP/s**; gufo reports 30-34 TFLOP/s for
 its F16 dense kernels at 2048 rows and rejected hipBLASLt at 19-26.
+
+**The scope lever is spent at 13-47.** Extending to 0-47 is worth +18.876% prefill
+but fails the production gate, and the residual drift is verified accumulation-order
+error rather than a precision defect (§1.2.1), so no accuracy fix recovers the
+remaining layers. The open question in this block is therefore **throughput at the
+scope already promoted**: `dense_wide256`'s 20.9 TFLOP/s against gufo's reported
+30-34 TFLOP/s for the same class of F16 dense kernel. Closing that is a kernel
+question (tiling, LDS staging, wave occupancy), not a scope or precision one.
 
 | ID | Mechanism / measured cost | Opportunity and limit | First bounded experiment | Track | State |
 | --- | --- | --- | --- | --- | --- |
