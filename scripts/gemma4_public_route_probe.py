@@ -44,11 +44,34 @@ def observe_attention_launches():
 
         return replace(selection, launcher=invoked)
 
+    native_launches = {
+        'gemma4_attention_prefill_tiled': 'tiled',
+        'gemma4_attention_prefill_aotriton': 'aotriton',
+        'gemma4_attention_prefill_bf16': 'exact',
+    }
+    originals = {name: getattr(layer, name) for name in native_launches}
+
+    def observe_native(launch, variant):
+        def invoked(*args, **kwargs):
+            result = launch(*args, **kwargs)
+            records.append({
+                'variant': variant,
+                'reason': 'native capability route',
+                **{name: kwargs.get(name) for name in
+                   ('tokens', 'keys', 'head_dim', 'num_heads', 'num_kv_heads')},
+            })
+            return result
+        return invoked
+
     layer.select_prefill_attention = observed
+    for name, variant in native_launches.items():
+        setattr(layer, name, observe_native(originals[name], variant))
     try:
         yield records
     finally:
         layer.select_prefill_attention = original
+        for name, launch in originals.items():
+            setattr(layer, name, launch)
 
 
 def summarize_attention_launches(records):
@@ -97,6 +120,7 @@ def main(argv=None):
             "surface": "hipengine.LLM.generate", "device_synchronize_passed": True,
             "execution_profile_manifest": getattr(profile, "manifest", None),
             "manifest_sha256": getattr(profile, "manifest_sha256", None),
+            "observer_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "source_sha256": sources,
             "counts": counts,
             "launches": records,
