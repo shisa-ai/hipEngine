@@ -32,7 +32,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 
@@ -51,6 +53,18 @@ _LAYER_KERNELS = (
     "gemma4_rmsnorm_weightless_bf16",
     "gemma4_partial_rotary_bf16",
     "gemma4_router_topk_bf16",
+    # Prefill attention. The layer imports these three launchers by name at module
+    # scope and calls them through an explicit route chain, so patching the
+    # attention module's own attributes does not reach the call site: that patch
+    # only covers the variant-selection path, and the production profile leaves
+    # `prefill_attention_variants` unset. Before these were here the census
+    # reported attention as zero calls and charged the whole step to host time,
+    # which is the failure the warning at the bottom of this file describes.
+    "gemma4_attention_prefill_bf16",
+    "gemma4_attention_prefill_tiled",
+    "gemma4_attention_prefill_aotriton",
+    "gemma4_attention_prefill_wmma_bf16",
+    "gemma4_attention_prefill_wmma_full_bf16",
 )
 
 # Expert-block leaves. ``gemma4_project_experts_rows`` is the outer entry point
@@ -69,8 +83,14 @@ _LAYER_KERNELS = (
 _EXPERT_LEAVES = (
     "gemma4_project_experts_gate_up_mmq",
     "gemma4_project_experts_down_mmq",
+    "gemma4_project_experts_mmq",
+    "gemma4_project_experts_mmq_dual",
+    "gemma4_project_experts_wmma",
+    "gemma4_project_experts_wmma_dual",
     "gemma4_project_experts_grouped_prefill",
+    "gemma4_project_experts_grouped",
     "gemma4_project_experts_grouped_row4",
+    "gemma4_project_experts_grouped_dual",
     "gemma4_project_experts_selected",
     "gemma4_project_experts_by_offset",
 )
@@ -89,6 +109,20 @@ _NESTED_EXPERT_LABELS = {
 }
 
 
+def resolution_profile(resolution: dict) -> str | None:
+    """The selected execution profile name, whichever shape the resolver reports.
+
+    ``_resolved_execution_profile`` is a dict on the current tree and was a bare
+    string before it, and a census row that silently records the wrong profile is
+    worse than one that records none.
+    """
+
+    value = resolution.get("_resolved_execution_profile")
+    if isinstance(value, dict):
+        return value.get("profile")
+    return value if isinstance(value, str) else None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="")
@@ -96,13 +130,27 @@ def main() -> int:
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--warmup", type=int, default=1)
     ap.add_argument("--json-out", default="")
+    # Capacity. The probe originally loaded at a fixed 4096, which caps the depth
+    # it can census at just under one full block. Depth is the axis that moves
+    # attention's share of a prefill, so the capacity has to follow the prompt.
+    # 0 keeps the historical 4096 for the default 2048-token prompt and otherwise
+    # sizes to the campaign protocol's round_up_256(prompt + 128).
+    ap.add_argument("--context", type=int, default=0)
+    # Token content is not free in this census: MoE routing decides which experts
+    # are hot, so a synthetic id range prices the expert block for a routing
+    # pattern no real prompt produces. `campaign` reuses the exact prompt ids the
+    # campaign bench measures, which is what makes these shares comparable to a
+    # ladder row at the same shape. `synthetic` is the historical behavior.
+    ap.add_argument("--corpus", choices=("synthetic", "campaign"), default="synthetic")
     args = ap.parse_args()
 
-    from scripts.gemma4_campaign_bench import _resolve_generator, resolve_artifact
+    from scripts.gemma4_campaign_bench import _resolve_generator, exact_prompt_ids, resolve_artifact
 
+    context = int(args.context) or max(4096, -(-(int(args.prompt) + 128) // 256) * 256)
     model = args.model or str(resolve_artifact())
-    llm, _runner, info = _resolve_generator(Path(model), 4096)
+    llm, _runner, info = _resolve_generator(Path(model), context)
     print(f"load_s={info['load_s']:.1f} resolution={info['resolution']}")
+    print(f"context_length={info['context_length']} max_block={info['max_block']}")
 
     from hipengine.core.hip import get_hip_runtime
     from hipengine.llm import SamplingParams
@@ -123,19 +171,27 @@ def main() -> int:
     recording = False
     # name -> [calls, [(start, stop), ...]]
     census: dict[str, list] = {}
+    # name -> {stream handle}. The MoE block is launched on its own stream, so an
+    # event pair recorded on stream 0 around it brackets nothing and reports the
+    # block as free while its work reappears as host time. The stream is read off
+    # the call and reported, because which stream a route uses is itself part of
+    # what this census is measuring.
+    streams: dict[str, set] = {}
 
     def make_spy(name: str, fn):
         def spy(*a, **kw):
             if not recording:
                 return fn(*a, **kw)
+            stream = kw.get("stream") or 0
             start = runtime.event_create()
             stop = runtime.event_create()
-            runtime.event_record(start, 0)
+            runtime.event_record(start, stream)
             result = fn(*a, **kw)
-            runtime.event_record(stop, 0)
+            runtime.event_record(stop, stream)
             row = census.setdefault(name, [0, []])
             row[0] += 1
             row[1].append((start, stop))
+            streams.setdefault(name, set()).add(int(stream))
             return result
 
         return spy
@@ -161,6 +217,24 @@ def main() -> int:
     patch(ga, "gemma4_attention_prefill_bf16")
     patch(gaw, "gemma4_attention_prefill_wmma_bf16")
     patch(gawf, "gemma4_attention_prefill_wmma_full_bf16")
+    # ...and the same for the profile-selected variant, which is the route the
+    # production plan actually takes. That path resolves its launcher out of the
+    # kernel registry (``gemma4_gguf_profiles`` registers the function objects at
+    # import), so patching the staged module's attribute, or the registry key,
+    # reaches nothing: the selection has to be wrapped where it is made. This is
+    # also the only patch that keeps working when a variant is added later, which
+    # is the failure that produced a zero-attention census.
+    _select_attention = gl.select_prefill_attention
+
+    def spy_select(**kw):
+        selection = _select_attention(**kw)
+        return replace(
+            selection,
+            launcher=make_spy(f"attention[{selection.variant}]", selection.launcher),
+        )
+
+    gl.select_prefill_attention = spy_select
+    originals.append((gl, "select_prefill_attention", _select_attention))
     for name in _EXPERT_LEAVES + _NESTED_EXPERT_LEAVES:
         patch(ex, name)
     for name in ("launch_gguf_embedding",):
@@ -170,7 +244,10 @@ def main() -> int:
     patch(glinear, "launch_gguf_linear")
     patch(g4, "launch_gguf_linear")
 
-    prompt_ids = list(range(1000, 1000 + args.prompt))
+    if args.corpus == "campaign":
+        prompt_ids = exact_prompt_ids(llm._get_text_generator().tokenize, args.prompt)
+    else:
+        prompt_ids = list(range(1000, 1000 + args.prompt))
     params = SamplingParams(max_tokens=1, temperature=0.0, ignore_eos=True)
 
     def wall() -> float:
@@ -252,10 +329,15 @@ def main() -> int:
     # on above, so zero calls across all of them means the call site moved.
     attention_names = (
         "gemma4_attention_prefill_bf16",
+        "gemma4_attention_prefill_tiled",
+        "gemma4_attention_prefill_aotriton",
         "gemma4_attention_prefill_wmma_bf16",
         "gemma4_attention_prefill_wmma_full_bf16",
     )
-    if not any(calls.get(name) for name in attention_names):
+    attention_seen = any(calls.get(name) for name in attention_names) or any(
+        name.startswith("attention[") for name in calls
+    )
+    if not attention_seen:
         print(
             "\nWARNING: no attention launcher was intercepted "
             f"({', '.join(attention_names)}). The step above charges attention "
@@ -265,7 +347,12 @@ def main() -> int:
     payload = {
         "kind": "gemma4_prefill_kernel_census",
         "recorded": time.strftime("%Y-%m-%d"),
+        "command": " ".join(sys.argv),
         "prompt": args.prompt,
+        "corpus": args.corpus,
+        "context_length": info["context_length"],
+        "max_block": info["max_block"],
+        "execution_profile": resolution_profile(info["resolution"]),
         "prefill_s": round(seconds, 4),
         "prefill_tps": round(args.prompt / seconds, 2),
         "kernels": [
@@ -275,6 +362,7 @@ def main() -> int:
                 "total_ms": round(ms, 3),
                 "per_call_ms": round(ms / calls[name], 4),
                 "share": round(ms / step_ms, 4),
+                "streams": sorted(streams.get(name, ())),
             }
             for name, ms in sorted(totals.items(), key=lambda kv: -kv[1])
         ],
