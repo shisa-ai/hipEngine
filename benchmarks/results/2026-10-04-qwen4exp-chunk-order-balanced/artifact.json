@@ -1,0 +1,82 @@
+{
+  "schema": "hipengine.benchmark.artifact/v1",
+  "title": "Order-balanced chunk A/B: +18.1% prefill at p4096 and no p512 regression; the sequential suite arm was unreliable",
+  "date": "2026-10-04",
+  "kind": "benchmark",
+  "verdict": "With interleaved, order-balanced arms the chunk-2048 change is +18.1% prefill at p4096 (composite -9.1% counting decode) and +0.7% prefill with identical decode at p512. There is NO short-prompt regression. This refutes the p512 regression reported by the sequential full-suite run and shows that suite's 2048 arm was depressed by a transient.",
+  "supersedes": "benchmarks/results/2026-10-04-qwen4exp-prefill-chunk-full-suite/artifact.json, whose shape-dependent-loss claim does not survive an order-balanced control",
+  "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF)",
+  "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
+  "host": {"arch": "gfx1151", "machine_id": "55ea6c509d0b49eea8de7094a1023668", "backend": "hip_gfx1150_family", "python_env": "therock10-staging-20260828", "note": "not the gfx1100/W7900 default hardware"},
+  "method": {
+    "design": "four sequential process invocations per shape, alternating arms in the order 512, 2048, 512, 2048, so neither chunk occupies only one position in the session. Each invocation loads the model fresh.",
+    "why": "the earlier full-suite run measured chunk 512 for the whole first arm and chunk 2048 for the whole second arm, which confounds the arm with its position in the session. That confound is what produced the spurious p512 regression.",
+    "command": "scripts/qwen4exp_canonical_ar_bench.py hipengine --model-root <UD-Q4_K_XL> --output <json> --prefill-chunk-size <C> --execution-profile production --case-id <case> --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "warmups_per_case": 1,
+    "measured_repetitions": 3,
+    "decode_transitions": 128
+  },
+  "p512": {
+    "case": "code-p512",
+    "why_this_is_a_control": "a 512-token prompt fits in a single prefill pass at either setting, so the partitioning is IDENTICAL and the only differences are allocations sized by the configured chunk",
+    "runs": [
+      {"run": 0, "chunk": 512,  "pp_median": 296.288, "tg_median": 20.359, "pp_samples": [297.823, 296.288, 295.799]},
+      {"run": 1, "chunk": 2048, "pp_median": 298.956, "tg_median": 20.332, "pp_samples": [298.648, 298.956, 299.940]},
+      {"run": 2, "chunk": 512,  "pp_median": 297.779, "tg_median": 20.349, "pp_samples": [299.585, 297.779, 297.171]},
+      {"run": 3, "chunk": 2048, "pp_median": 299.198, "tg_median": 20.356, "pp_samples": [299.593, 299.198, 298.730]}
+    ],
+    "chunk_512_mean_pp": 297.03,
+    "chunk_2048_mean_pp": 299.08,
+    "prefill_delta_pct": 0.7,
+    "chunk_512_mean_tg": 20.354,
+    "chunk_2048_mean_tg": 20.355,
+    "decode_delta_pct": 0.0,
+    "conclusion": "no short-prompt cost. The chunk-2048 configuration is marginally FASTER on identical work, and decode is unchanged to three decimals."
+  },
+  "p4096": {
+    "case": "code-p4096",
+    "runs": [
+      {"run": 0, "chunk": 512,  "pp_median": 260.989, "tg_median": 19.659, "pp_samples": [263.312, 259.624, 260.989]},
+      {"run": 1, "chunk": 2048, "pp_median": 309.063, "tg_median": 18.565, "pp_samples": [310.376, 308.159, 309.063]},
+      {"run": 2, "chunk": 512,  "pp_median": 262.044, "tg_median": 19.624, "pp_samples": [265.330, 261.278, 262.044]},
+      {"run": 3, "chunk": 2048, "pp_median": 308.734, "tg_median": 18.556, "pp_samples": [309.681, 308.734, 308.728]}
+    ],
+    "chunk_512_mean_pp": 261.516,
+    "chunk_2048_mean_pp": 308.899,
+    "prefill_delta_pct": 18.1,
+    "chunk_512_mean_tg": 19.641,
+    "chunk_2048_mean_tg": 18.560,
+    "decode_delta_pct": -5.5,
+    "composite": {
+      "chunk_512_s": 22.179,
+      "chunk_2048_s": 20.156,
+      "delta_pct": -9.1,
+      "definition": "4096 prompt tokens / mean pp + 128 decode transitions / mean tg"
+    },
+    "conclusion": "a large prefill win that survives the decode regression. The +18.1% reproduces the original single-case ladder's +18.4% under order balancing."
+  },
+  "corrected_reading": {
+    "p512_regression": "REFUTED. The sequential suite reported -4.1% prefill and -2.7% decode at p512; order-balanced arms give +0.7% and 0.0%.",
+    "p4096_gain": "CONFIRMED and slightly understated. The sequential suite reported +15.6%; order-balanced arms give +18.1%.",
+    "decode_regression": "REAL at p4096 (-5.5%, reproducible with tight spreads) and ZERO at p512 (0.0%).",
+    "what_this_implies_about_the_mechanism": "the decode regression is present exactly where the prefill partitioning changes (8 passes to 2 at p4096) and absent exactly where it does not (1 pass to 1 at p512). That is consistent with a KV-write-pattern or prefill-state effect and INCONSISTENT with a fixed allocation cost, which was the earlier hypothesis. The allocation hypothesis is not confirmed and should not be repeated as if it were.",
+    "allocation_evidence": "the chunk-scaled allocations were sized and are too small to matter: the PLE staging buffer is 2 * (chunk * 16) * 160 * 4 bytes, i.e. 10 MiB at chunk 512 and 40 MiB at 2048, a 30 MiB delta. The scratch reservation has a 4 GiB floor that the chunk-scaled terms may not even reach."
+  },
+  "methodological_lesson": "A partitioning parameter measured with one arm occupying the whole first half of a session and the other the whole second half can produce a confident, consistent, sign-uniform, entirely spurious result. The p512 regression was negative in all four cases (-4.0% to -5.3%) and still did not reproduce. Per-case consistency is not evidence against an arm-level confound; only order balancing is.",
+  "correctness": {
+    "cross_arm_bit_identity": "established for code-p4096 in the ladder artifact: chunk 512, 1024 and 2048 produced byte-identical output_token_ids (129/129).",
+    "determinism": "every arm in every run reports one distinct output hash across its three repetitions."
+  },
+  "recommendation": {
+    "status": "chunk 2048 is now supported at p4096 by an order-balanced measurement and is neutral at p512, so the earlier shape-adaptive-only recommendation is no longer required by the evidence.",
+    "remaining_blocker": "the -5.5% decode regression at p4096 is unexplained. Decode is a first-class target of the same objective, so this must be resolved or bounded before promotion.",
+    "next": "test whether the decode regression follows the prefill partition rather than the configured chunk, since p512 is the case where the two are equal and it shows no regression."
+  },
+  "limits": [
+    "Two cases only (code-p512, code-p4096). The other ten canonical cases were not re-measured under order balancing, so the sequential suite's per-category numbers for those remain unreliable and are not superseded here.",
+    "Two runs per arm per shape (n=2), each with 3 internal repetitions. The deltas are far larger than the within-run spread, but n=2 is small.",
+    "One host, one model file, one quant, one execution profile, one session.",
+    "No default, flag, kernel or dispatch changed by this artifact."
+  ],
+  "source": "/tmp/p512-ab/run{0,1,2,3}-c*.json and /tmp/p4096-ab/run{0,1,2,3}-c*.json"
+}
