@@ -466,20 +466,24 @@ this anchor was taken); exact coltile chain on the remaining low layers; 565 ms
 of other dense roles. `dense_wide256` runs the packet shape (rows 1024,
 K 2560, N 10240) in **1.3207 ms, 40.65 TFLOP/s** on the f16-activation-hoisted
 variant that production actually launches (1156 launches at `code-p4096`).
-For comparison, gufo reports **30-34 TFLOP/s** for its F16 dense kernels at 2048
-rows and rejected hipBLASLt at **19-26**. **On this operation the promoted route
-is ahead of both.**
+**This confirms, and does not newly establish, the figure `DP-7` recorded on
+2026-09-28** (attn_qkv F16-input at **40.54**/41.32/41.66 TFLOP/s for
+1024/2048/4096 rows). For comparison, gufo reports **30-34 TFLOP/s** for its F16
+dense kernels at 2048 rows and rejected hipBLASLt at **19-26**; `DP-7` already
+noted the 30-TFLOP/s threshold is exceeded and that tile work should not be
+justified from the old gap.
 
-**A stale figure was carried here until 2026-10-04 UTC:** this section previously
-said 2.573 ms / 20.9 TFLOP/s. A tile-family sweep
-(`scripts/qwen4exp_dense_wide_tile_sweep.py`) reproduces that number exactly for
-the **f32-activation** variant (2.5518 ms), which is not what runs, so the figure
-had the right provenance and the wrong subject. The sweep also settled the tile
-question the kernel's comment left open - **128x256 beats 128x128 beats 64x256
-beats 64x128**, so the widest `BN` wins - and priced the activation hoist at
-**-48.25% on the GEMM, bit-identical output** (`max abs diff` exactly 0).
-End to end the hoist is worth **+4.09% prefill** at `code-p4096` against a
-within-arm spread of 0.04-0.13%, a signal-to-drift ratio of roughly 40x.
+**The 2.573 ms / 20.9 TFLOP/s figure this section carried until 2026-10-04 UTC
+describes the f32-activation variant that production does not run**, which is why
+it sat below `DP-7`'s measurement for six days rather than contradicting it: a
+tile-family sweep (`scripts/qwen4exp_dense_wide_tile_sweep.py`) reproduces
+2.5518 ms exactly for that variant. **What the sweep adds is the family
+comparison and the price, not the headline number.** It settles the tile question
+the kernel's comment left open - **128x256 beats 128x128 beats 64x256 beats
+64x128**, so the widest `BN` wins and the narrower layouts lose - and it prices
+the activation hoist at **-48.25% on the GEMM with bit-identical output**
+(`max abs diff` exactly 0), worth **+4.09% prefill** end to end at `code-p4096`
+against a within-arm spread of 0.04-0.13%, a signal-to-drift ratio near 40x.
 
 **The scope lever is spent at 13-47.** Extending to 0-47 is worth +18.876% prefill
 but fails the production gate, and the residual drift is verified accumulation-order
@@ -488,7 +492,9 @@ remaining layers. **Since the wide route already outruns the reference on
 throughput, the dense block's recoverable milliseconds are gated by the numerical
 envelope rather than by kernel efficiency** - the open question is whether any of
 layers 0-12 can be converted at all under the gate, not how fast the converted
-layers run.
+layers run. `DP-2` (7.478 ms) and `DP-6` (an 85.791 ms ceiling, of which the
+KV-store half is 0.010% and should be dropped) are the only rows left in this
+block and both are small.
 
 | ID | Mechanism / measured cost | Opportunity and limit | First bounded experiment | Track | State |
 | --- | --- | --- | --- | --- | --- |

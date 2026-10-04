@@ -75,18 +75,36 @@ numerics by nothing.
 numerical gate is not a test of whether the path changed. Which one is engaged has
 to be answered by a symbol census, and its value by a speed A/B.
 
-## The ledger's dense figure is stale
+## The ledger's §4A figure, and what this sweep does and does not add
 
 §4A of `QWEN4EXP-OPTIMIZATION-LEDGER.md` said `dense_wide256` "runs the packet
 shape in 2.573 ms, **20.9 TFLOP/s**". The sweep reproduces that number exactly for
 the **f32-activation** variant (2.5518 ms), so the figure has the right provenance
 and describes the variant production does not run.
 
-**The production figure is 40.65 TFLOP/s**, against gufo's reported **30-34** for
-its F16 dense kernels and hipBLASLt's **19-26**. On this operation the promoted
-route is ahead of both, so the dense block's remaining opportunity is not the wide
-route's throughput - it is the layers still on the exact coltile chain, which is
-the 8-47 scope lever and is closed by accumulation-order drift.
+**This is a section that had not been updated, not an undiscovered gap.** `DP-7`
+recorded the current figure on 2026-09-28, three days earlier: *"Historical 20.9
+TFLOP/s at 1024 predates the F16-input path. Current packet measures attn_qkv
+F16-input at **40.54**/41.32/41.66 TFLOP/s for 1024/2048/4096 rows"*, and it added
+the guidance that follows: *"The historical 30-TFLOP/s threshold is already
+exceeded in this packet. Do not justify tile work using the old gap."*
+
+**So this sweep's 40.65 TFLOP/s confirms `DP-7` and must not be presented as a
+discovery.** `DP-7` also recorded zero numerical difference between the F32 and
+F16 input paths across 36 cases, which agrees with the `max abs diff` exactly 0
+measured here.
+
+**What is genuinely added:** the four tile families had never been compared against
+each other at one shape, and the hoist had never been priced end to end. `DP-7`
+measured attn_qkv F16-input at three row counts on one tile; `RT-1` measured chunk
+4096 end to end but not this knob. So the tile ordering and the +4.09% are new, and
+the 40.65 figure and the bit-identity are confirmations.
+
+**The consequence is unchanged and is what matters:** the promoted route is ahead
+of gufo's reported 30-34 for F16 dense kernels and hipBLASLt's 19-26, so the dense
+block's remaining opportunity is not the wide route's throughput - it is the layers
+still on the exact coltile chain, which is the 8-47 scope lever and is closed by
+accumulation-order drift.
 
 ## Limits
 
