@@ -261,7 +261,35 @@ def build_hip(
     computed without probing ``hipcc --version``. ``HIPENGINE_BUILD_CACHE_ROOT``
     scopes implicit cache roots, and ``HIPENGINE_REQUIRE_CACHED_BUILD=1`` makes
     every HIP builder in the process fail closed without per-call plumbing.
+
+    A cache hit is memoized on the call arguments plus the build-affecting
+    environment (see :func:`_resolution_environment_identity`), so a hot launch
+    path that repeats the same ``build_X(load=True)`` call pays a dictionary
+    lookup instead of re-deriving the loaded-library key. The memo still
+    observes a changed build environment, so it cannot return a library the
+    un-memoized path would have resolved differently; only ``force=True``
+    bypasses it.
     """
+
+    resolution_key: tuple | None = None
+    if load and not dry_run and not force:
+        resolution_key = (
+            _resolution_environment_identity(compiler),
+            family,
+            profile,
+            output_name,
+            compiler,
+            compiler_version,
+            target_arch,
+            tuple(map(str, sources)),
+            None if cache_root is None else str(cache_root),
+            tuple(map(str, include_dirs)),
+            tuple(extra_flags),
+            bool(require_cached),
+        )
+        memoized = _RESOLUTION_CACHE.get(resolution_key)
+        if memoized is not None:
+            return memoized
 
     require_cached = bool(require_cached or _environment_requires_cached_build())
 
@@ -329,6 +357,8 @@ def build_hip(
     lib = ctypes.CDLL(str(artifact.output_path))
     if cache_key is not None:
         _LOADED_LIB_CACHE[cache_key] = lib
+    if resolution_key is not None:
+        _RESOLUTION_CACHE[resolution_key] = lib
     return lib
 
 
@@ -425,6 +455,58 @@ def compiler_version_text(compiler: str) -> str:
 
 
 _COMPILER_VERSION_CACHE: dict[str, str] = {}
+
+# Process-level memo for the whole cache-hit path of ``build_hip``/``build_cuda``.
+# ``_LOADED_LIB_CACHE`` already avoids rebuilding, but reaching it re-derives
+# the key on every call: the compiler-version environment identity, the target
+# arch, the cache root, a ``Path`` round-trip per source, and the flags tuple.
+# On a hot kernel-launch path that is re-run once per launch - the R7
+# wrapper-host screen measured 919 resolutions and ~8.8 ms per Qwen4Exp decode
+# step for the version resolution alone - so the derivation, not the build, is
+# the per-launch cost. Keyed on the call arguments plus
+# ``_resolution_environment_identity``, which is the complete set of
+# environment inputs to that derivation.
+_RESOLUTION_CACHE: dict[tuple, "ctypes.CDLL"] = {}
+
+
+def invalidate_build_resolution() -> None:
+    """Drop memoized build resolutions and loaded libraries for this process.
+
+    ``build_hip`` memoizes its cache-hit path on the call arguments plus the
+    build-affecting environment, so an environment change is normally observed
+    on the next call. Use this to force a fresh resolution when a build
+    environment variable is changed through a path that does not go through
+    ``os.environ``, or to release loaded libraries in a long-lived process.
+    """
+
+    _RESOLUTION_CACHE.clear()
+    _LOADED_LIB_CACHE.clear()
+
+
+def _resolution_environment_identity(compiler: str) -> tuple:
+    """The build-affecting environment values a resolved library depends on.
+
+    This is every environment input to ``build_hip``'s cache-key derivation:
+    the compiler-version override identity (four variables, compiler-prefixed
+    and generic), the HIP target arch, the implicit build cache root, and the
+    fail-closed switch. It is deliberately read on every memo lookup - that
+    cost is what keeps the memo from hiding an environment change.
+    """
+
+    environment = os.environ
+    prefix = _compiler_env_prefix(compiler)
+    return (
+        environment.get(f"{prefix}_VERSION_TEXT"),
+        environment.get("HIPENGINE_COMPILER_VERSION_TEXT"),
+        environment.get(f"{prefix}_VERSION_FILE"),
+        environment.get("HIPENGINE_COMPILER_VERSION_FILE"),
+        environment.get(_ENV_HIP_ARCH),
+        environment.get(_ENV_HIP_OFFLOAD_ARCH),
+        environment.get(_ENV_BUILD_CACHE_ROOT),
+        environment.get(_ENV_REQUIRE_CACHED_BUILD),
+    )
+
+
 # Process-level cache of loaded ``ctypes.CDLL`` handles keyed by build identity.
 _LOADED_LIB_CACHE: dict[tuple, "ctypes.CDLL"] = {}
 
