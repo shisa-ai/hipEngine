@@ -1,0 +1,5 @@
+{"case_id": "code-p512", "prompt_tokens": 512, "transitions": 128, "max_sequence_length": 808, "host_enqueue_ms_total": 10127.48, "host_enqueue_ms_per_step": 79.121, "device_drain_ms": 0.0, "loop_wall_ms_per_step": 79.121, "sync_each_ms_per_step": 71.788, "host_bound": true, "implied_tok_s_loop": 12.639, "implied_tok_s_sync_each": 13.93}
+{"case_id": "code-p1024", "prompt_tokens": 1024, "transitions": 128, "max_sequence_length": 1320, "host_enqueue_ms_total": 10248.02, "host_enqueue_ms_per_step": 80.063, "device_drain_ms": 0.0, "loop_wall_ms_per_step": 80.063, "sync_each_ms_per_step": 74.315, "host_bound": true, "implied_tok_s_loop": 12.49, "implied_tok_s_sync_each": 13.456}
+{"case_id": "code-p4096", "prompt_tokens": 4096, "transitions": 128, "max_sequence_length": 4392, "host_enqueue_ms_total": 13752.85, "host_enqueue_ms_per_step": 107.444, "device_drain_ms": 0.0, "loop_wall_ms_per_step": 107.444, "sync_each_ms_per_step": 101.687, "host_bound": true, "implied_tok_s_loop": 9.307, "implied_tok_s_sync_each": 9.834}
+{"host_cost_growth": {"from": "code-p512", "to": "code-p4096", "host_enqueue_ms_per_step": [79.121, 107.444], "ratio": 1.358}}
+HBPROBE_DONE
