@@ -94,18 +94,45 @@ is the same instability this host shows elsewhere; its pp1024 and pp4096 do not
 completely different campaign from the 5.78x gap to gufo: gufo is not
 llama.cpp, and the objective names llama.cpp first.
 
-### The shape that matters most: decode does not scale with context
+### Decode: llama.cpp is flat across context, and hipEngine's context trend is not established
 
 llama.cpp's decode is **flat** across prompt length (21.85 / 22.04 / 21.89) and
-so is its prefill (385.97 / 421.60 / 421.87). hipEngine's decode **falls 17%**
-(20.98 → 19.40 → 17.40) and its prefill is non-monotone (264.0 / 287.2 / 295.0).
+so is its prefill (385.97 / 421.60 / 421.87). hipEngine's decode, measured by
+`qwen4exp_canonical_ar_bench.py`, **falls 17%** (20.98 → 19.40 → 17.40) and its
+prefill is non-monotone (264.0 / 287.2 / 295.0).
 
-All six hipEngine rows were measured in the same 48-56 °C band, so this is
-context-driven and not thermal. Decode is **0.96x at 512, 0.88x at 1K and 0.80x
-at 4K** - the deficit grows with context, and the objective's later stages are
-8K through 256K. **This is the most actionable finding in the packet:** at 512
-decode is essentially matched, and every added token of context costs us
-relative to llama.cpp.
+**That hipEngine decode trend is reported here as measured but not as
+established, because a second harness contradicts it.**
+`qwen4exp_profile_gap.py --mode decode` at p512 and p4096, with an explicit
+`--max-sequence-length` of 648 and 4232 and a cooldown before each, reports
+**19.46 and 20.07 tok/s** - flat, and in the opposite direction. A kernel trace
+of those two runs shows the device work is context-independent:
+
+| quantity (16 decode steps) | p512 | p4096 |
+| --- | ---: | ---: |
+| decode launches | 44495 | 44482 |
+| total kernel time | 1081.8 ms | 1075.9 ms |
+| `qwen35_paged_full_attn_decode_context` | 1.790 ms (n=288) | 1.799 ms (n=288) |
+| `gguf_k_pack8_prefill_out_kernel` | 563.3 ms | 557.2 ms |
+
+The two harnesses measure decode differently - the canonical bench runs 128
+`runner.step()` calls in one tight Python loop with a single
+`device_synchronize()` at the end, while `profile_gap` runs 16 steps with 8
+warm steps - and the canonical bench's p4096 decode rows were taken inside the
+12-case in-process suite whose thermal trajectory is documented above. **Which
+of the two is right is unresolved.** Until it is settled, the decode ratio to
+llama.cpp should be read as 0.80-0.96x with an unknown trend, not as a
+decode-context deficit.
+
+What the trace does establish, as a same-protocol comparison, is that
+**`gguf_k_pack8_prefill_out_kernel` is 52% of decode kernel time at 786 launches
+per step**, and that a decode step issues **~2781 kernel launches**. Both are
+context-independent and both are candidates for the decode gap.
+
+> **Correction.** An earlier revision of this file claimed the 17% decode fall
+> was context-driven and called it the most actionable finding. A follow-up
+trace did not reproduce it. The claim is withdrawn; the measurement stands and
+> its cause is open.
 
 ## Measured hipEngine baseline (thermal-controlled, in-tree, fresh process per case)
 
