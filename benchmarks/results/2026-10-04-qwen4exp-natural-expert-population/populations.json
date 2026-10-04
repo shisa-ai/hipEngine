@@ -706,5 +706,392 @@
    "max_rows_per_expert_4096tok": 3999,
    "min_rows_per_active_expert_4096tok": 1
   }
+ },
+ "category_arms": {
+  "protocol": "same capture shape for every arm: 1,024 tokens x top-10 = 10,240 assignments per layer, production profile, chunk 512, uv run",
+  "synthetic_baseline": 202.9583,
+  "arms": {
+   "code-p1024": {
+    "mean": 385.4792,
+    "share_of_512": 75.29,
+    "min": 304,
+    "max": 444,
+    "median": 394.5,
+    "delta_pct_vs_synthetic": 89.93,
+    "assignments_per_layer": 491520
+   },
+   "general_en-p1024": {
+    "mean": 359.1042,
+    "share_of_512": 70.14,
+    "min": 268,
+    "max": 412,
+    "median": 367.0,
+    "delta_pct_vs_synthetic": 76.93,
+    "assignments_per_layer": 491520
+   },
+   "general_ja-p1024": {
+    "mean": 341.5417,
+    "share_of_512": 66.71,
+    "min": 210,
+    "max": 402,
+    "median": 351.0,
+    "delta_pct_vs_synthetic": 68.28,
+    "assignments_per_layer": 491520
+   },
+   "mixed_ja_en-p1024": {
+    "mean": 387.9167,
+    "share_of_512": 75.76,
+    "min": 279,
+    "max": 444,
+    "median": 395.5,
+    "delta_pct_vs_synthetic": 91.13,
+    "assignments_per_layer": 491520
+   }
+  },
+  "natural_mean": 368.5104,
+  "natural_mean_share": 71.97,
+  "category_spread_experts": 46.375,
+  "category_spread_pct_of_mean": 12.58,
+  "synthetic_vs_natural_mean_pct": -44.92,
+  "answer": "The population IS category-dependent, but mildly (12.6% spread across four natural categories) and all four sit far above the synthetic probe. general_ja - the category the task gates treat as sensitive - is the LOWEST at 341.54 (66.7%). The synthetic figure is a 44.9% outlier against the natural mean.",
+  "use_instead": "~368 of 512 (72%) as the campaign's MoE population model, not 203; general_ja runs ~7% below that mean.",
+  "per_layer": {
+   "layers.0.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 349,
+    "general_en-p1024": 330,
+    "general_ja-p1024": 314,
+    "mixed_ja_en-p1024": 364
+   },
+   "layers.1.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 321,
+    "general_en-p1024": 288,
+    "general_ja-p1024": 273,
+    "mixed_ja_en-p1024": 331
+   },
+   "layers.2.expert_gate": {
+    "quant_down": "gguf_q8_0",
+    "code-p1024": 366,
+    "general_en-p1024": 311,
+    "general_ja-p1024": 293,
+    "mixed_ja_en-p1024": 355
+   },
+   "layers.3.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 329,
+    "general_en-p1024": 299,
+    "general_ja-p1024": 265,
+    "mixed_ja_en-p1024": 331
+   },
+   "layers.4.expert_gate": {
+    "quant_down": "gguf_q8_0",
+    "code-p1024": 344,
+    "general_en-p1024": 268,
+    "general_ja-p1024": 260,
+    "mixed_ja_en-p1024": 326
+   },
+   "layers.5.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 397,
+    "general_en-p1024": 303,
+    "general_ja-p1024": 285,
+    "mixed_ja_en-p1024": 384
+   },
+   "layers.6.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 396,
+    "general_en-p1024": 334,
+    "general_ja-p1024": 304,
+    "mixed_ja_en-p1024": 404
+   },
+   "layers.7.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 400,
+    "general_en-p1024": 336,
+    "general_ja-p1024": 312,
+    "mixed_ja_en-p1024": 396
+   },
+   "layers.8.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 343,
+    "general_en-p1024": 305,
+    "general_ja-p1024": 292,
+    "mixed_ja_en-p1024": 373
+   },
+   "layers.9.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 356,
+    "general_en-p1024": 313,
+    "general_ja-p1024": 296,
+    "mixed_ja_en-p1024": 376
+   },
+   "layers.10.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 384,
+    "general_en-p1024": 355,
+    "general_ja-p1024": 352,
+    "mixed_ja_en-p1024": 400
+   },
+   "layers.11.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 361,
+    "general_en-p1024": 336,
+    "general_ja-p1024": 326,
+    "mixed_ja_en-p1024": 396
+   },
+   "layers.12.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 401,
+    "general_en-p1024": 359,
+    "general_ja-p1024": 330,
+    "mixed_ja_en-p1024": 395
+   },
+   "layers.13.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 385,
+    "general_en-p1024": 342,
+    "general_ja-p1024": 339,
+    "mixed_ja_en-p1024": 396
+   },
+   "layers.14.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 401,
+    "general_en-p1024": 370,
+    "general_ja-p1024": 363,
+    "mixed_ja_en-p1024": 418
+   },
+   "layers.15.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 402,
+    "general_en-p1024": 365,
+    "general_ja-p1024": 351,
+    "mixed_ja_en-p1024": 382
+   },
+   "layers.16.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 425,
+    "general_en-p1024": 385,
+    "general_ja-p1024": 382,
+    "mixed_ja_en-p1024": 411
+   },
+   "layers.17.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 435,
+    "general_en-p1024": 406,
+    "general_ja-p1024": 394,
+    "mixed_ja_en-p1024": 444
+   },
+   "layers.18.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 428,
+    "general_en-p1024": 381,
+    "general_ja-p1024": 345,
+    "mixed_ja_en-p1024": 425
+   },
+   "layers.19.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 423,
+    "general_en-p1024": 402,
+    "general_ja-p1024": 386,
+    "mixed_ja_en-p1024": 415
+   },
+   "layers.20.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 444,
+    "general_en-p1024": 412,
+    "general_ja-p1024": 400,
+    "mixed_ja_en-p1024": 424
+   },
+   "layers.21.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 415,
+    "general_en-p1024": 382,
+    "general_ja-p1024": 360,
+    "mixed_ja_en-p1024": 430
+   },
+   "layers.22.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 429,
+    "general_en-p1024": 385,
+    "general_ja-p1024": 355,
+    "mixed_ja_en-p1024": 415
+   },
+   "layers.23.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 417,
+    "general_en-p1024": 392,
+    "general_ja-p1024": 388,
+    "mixed_ja_en-p1024": 411
+   },
+   "layers.24.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 396,
+    "general_en-p1024": 385,
+    "general_ja-p1024": 380,
+    "mixed_ja_en-p1024": 414
+   },
+   "layers.25.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 408,
+    "general_en-p1024": 391,
+    "general_ja-p1024": 394,
+    "mixed_ja_en-p1024": 410
+   },
+   "layers.26.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 413,
+    "general_en-p1024": 386,
+    "general_ja-p1024": 388,
+    "mixed_ja_en-p1024": 412
+   },
+   "layers.27.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 388,
+    "general_en-p1024": 384,
+    "general_ja-p1024": 387,
+    "mixed_ja_en-p1024": 419
+   },
+   "layers.28.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 401,
+    "general_en-p1024": 381,
+    "general_ja-p1024": 361,
+    "mixed_ja_en-p1024": 387
+   },
+   "layers.29.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 402,
+    "general_en-p1024": 375,
+    "general_ja-p1024": 386,
+    "mixed_ja_en-p1024": 416
+   },
+   "layers.30.expert_gate": {
+    "quant_down": "gguf_q8_0",
+    "code-p1024": 393,
+    "general_en-p1024": 385,
+    "general_ja-p1024": 402,
+    "mixed_ja_en-p1024": 427
+   },
+   "layers.31.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 304,
+    "general_en-p1024": 305,
+    "general_ja-p1024": 296,
+    "mixed_ja_en-p1024": 354
+   },
+   "layers.32.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 333,
+    "general_en-p1024": 339,
+    "general_ja-p1024": 358,
+    "mixed_ja_en-p1024": 373
+   },
+   "layers.33.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 393,
+    "general_en-p1024": 374,
+    "general_ja-p1024": 381,
+    "mixed_ja_en-p1024": 416
+   },
+   "layers.34.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 425,
+    "general_en-p1024": 403,
+    "general_ja-p1024": 367,
+    "mixed_ja_en-p1024": 424
+   },
+   "layers.35.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 384,
+    "general_en-p1024": 372,
+    "general_ja-p1024": 367,
+    "mixed_ja_en-p1024": 394
+   },
+   "layers.36.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 358,
+    "general_en-p1024": 362,
+    "general_ja-p1024": 364,
+    "mixed_ja_en-p1024": 369
+   },
+   "layers.37.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 421,
+    "general_en-p1024": 399,
+    "general_ja-p1024": 363,
+    "mixed_ja_en-p1024": 399
+   },
+   "layers.38.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 428,
+    "general_en-p1024": 403,
+    "general_ja-p1024": 347,
+    "mixed_ja_en-p1024": 427
+   },
+   "layers.39.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 350,
+    "general_en-p1024": 350,
+    "general_ja-p1024": 325,
+    "mixed_ja_en-p1024": 349
+   },
+   "layers.40.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 360,
+    "general_en-p1024": 369,
+    "general_ja-p1024": 351,
+    "mixed_ja_en-p1024": 359
+   },
+   "layers.41.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 399,
+    "general_en-p1024": 376,
+    "general_ja-p1024": 388,
+    "mixed_ja_en-p1024": 382
+   },
+   "layers.42.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 396,
+    "general_en-p1024": 397,
+    "general_ja-p1024": 341,
+    "mixed_ja_en-p1024": 375
+   },
+   "layers.43.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 387,
+    "general_en-p1024": 343,
+    "general_ja-p1024": 327,
+    "mixed_ja_en-p1024": 353
+   },
+   "layers.44.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 372,
+    "general_en-p1024": 365,
+    "general_ja-p1024": 321,
+    "mixed_ja_en-p1024": 357
+   },
+   "layers.45.expert_gate": {
+    "quant_down": "gguf_q5_1",
+    "code-p1024": 341,
+    "general_en-p1024": 340,
+    "general_ja-p1024": 338,
+    "mixed_ja_en-p1024": 373
+   },
+   "layers.46.expert_gate": {
+    "quant_down": "gguf_q8_0",
+    "code-p1024": 362,
+    "general_en-p1024": 363,
+    "general_ja-p1024": 287,
+    "mixed_ja_en-p1024": 350
+   },
+   "layers.47.expert_gate": {
+    "quant_down": "gguf_q8_0",
+    "code-p1024": 338,
+    "general_en-p1024": 331,
+    "general_ja-p1024": 210,
+    "mixed_ja_en-p1024": 279
+   }
+  }
  }
 }
