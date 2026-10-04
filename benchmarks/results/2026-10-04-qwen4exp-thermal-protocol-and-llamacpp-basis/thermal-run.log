@@ -1,0 +1,46 @@
+  cooled to 39000 after 0s
+THERMAL hot-demo-1 shape=code-p4096 chunk=1024 temp_start=39000 temp_end=54000
+    [measure 0] hipengine code-p4096 pp=269.655 tg=17.462
+    [measure 1] hipengine code-p4096 pp=269.764 tg=17.478
+    [measure 2] hipengine code-p4096 pp=269.765 tg=17.565
+  cooled to 48000 after 5s
+THERMAL hot-demo-2 shape=code-p4096 chunk=1024 temp_start=48000 temp_end=53000
+    [measure 0] hipengine code-p4096 pp=270.453 tg=17.475
+    [measure 1] hipengine code-p4096 pp=270.214 tg=17.413
+    [measure 2] hipengine code-p4096 pp=270.098 tg=17.529
+  cooled to 48000 after 5s
+THERMAL hot-demo-3 shape=code-p4096 chunk=1024 temp_start=48000 temp_end=54000
+    [measure 0] hipengine code-p4096 pp=270.970 tg=17.453
+    [measure 1] hipengine code-p4096 pp=270.647 tg=17.408
+    [measure 2] hipengine code-p4096 pp=270.993 tg=17.470
+  cooled to 48000 after 5s
+THERMAL p512-c512 shape=code-p512 chunk=512 temp_start=48000 temp_end=54000
+    [measure 0] hipengine code-p512 pp=265.180 tg=21.014
+    [measure 1] hipengine code-p512 pp=265.398 tg=21.012
+    [measure 2] hipengine code-p512 pp=265.168 tg=21.011
+  cooled to 50000 after 5s
+THERMAL p512-c1024 shape=code-p512 chunk=1024 temp_start=50000 temp_end=54000
+    [measure 0] hipengine code-p512 pp=263.893 tg=20.984
+    [measure 1] hipengine code-p512 pp=264.023 tg=20.971
+    [measure 2] hipengine code-p512 pp=263.968 tg=20.986
+  cooled to 50000 after 5s
+THERMAL p1024-c1024 shape=code-p1024 chunk=1024 temp_start=50000 temp_end=56000
+    [measure 0] hipengine code-p1024 pp=287.236 tg=20.219
+    [measure 1] hipengine code-p1024 pp=286.990 tg=19.509
+    [measure 2] hipengine code-p1024 pp=286.913 tg=19.397
+  cooled to 50000 after 5s
+THERMAL p1024-c2048 shape=code-p1024 chunk=2048 temp_start=50000 temp_end=56000
+    [measure 0] hipengine code-p1024 pp=286.935 tg=20.257
+    [measure 1] hipengine code-p1024 pp=286.845 tg=19.568
+    [measure 2] hipengine code-p1024 pp=286.944 tg=19.421
+  cooled to 50000 after 5s
+THERMAL p4096-c1024 shape=code-p4096 chunk=1024 temp_start=50000 temp_end=54000
+    [measure 0] hipengine code-p4096 pp=270.690 tg=17.333
+    [measure 1] hipengine code-p4096 pp=270.442 tg=17.398
+    [measure 2] hipengine code-p4096 pp=270.579 tg=17.490
+  cooled to 48000 after 5s
+THERMAL p4096-c4096 shape=code-p4096 chunk=4096 temp_start=48000 temp_end=54000
+    [measure 0] hipengine code-p4096 pp=294.426 tg=17.707
+    [measure 1] hipengine code-p4096 pp=295.010 tg=17.643
+    [measure 2] hipengine code-p4096 pp=295.289 tg=17.707
+THERMAL_DONE
