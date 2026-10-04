@@ -1031,6 +1031,15 @@ MoE kernels unchanged to 0.1%; a bit-identical row-bucketed redesign that moves
 3.3x fewer bytes is 22% slower. [Packet](results/2026-09-17-qwen4exp-iu8-repair-cost-structure/README.md)
 · [engine capture](results/2026-09-17-iu8-repair-unroll/role-analysis.json).
 
+A prefill-only hardware-counter capture shows the prefill is **not** uniformly
+stalled across families: the largest kernel (`gr_up_sigmoid_mean`, 18.26% of
+device time) sits at **30.82% LDS wait** while every other top-ten prefill kernel
+is at **≤0.35%**, so the family ratios locate work rather than describe one shared
+per-kernel deficit. The fifth-largest, the GDN prefill kernel, is **register-bound
+at the 256-VGPR hardware maximum** with no LDS in use at all, running at 0.92
+instructions per CU-cycle against a ~4/cycle ceiling — the worst utilization of
+any large prefill kernel. [Packet](results/2026-10-04-qwen4exp-prefill-stall-census/README.md).
+
 The routed-MoE main kernels are bound by expert-weight traffic at a constant
 104-126 GB/s, and that traffic is set by how many 16-row WMMA tiles the experts'
 rows are cut into: `sum over experts of ceil(rows/16) x 1.843 MB`. Eight times the
