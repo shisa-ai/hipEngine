@@ -1060,14 +1060,26 @@ is an engine that can actually open that file.
 | upstream llama.cpp | `6011c34ce` | f16 | 320.9 | 413.9 | 460.1 | 434.1 |
 | upstream llama.cpp | `6011c34ce` | bf16 | 316.4 | 419.7 | 452.9 | 429.9 |
 | hipEngine at `ddfc2a746` (2026-09-15) | `ddfc2a746` | bf16 | 185.2 | 190.6 | 183.6 | 185.0 |
-| **hipEngine current default** | `89264f901` | bf16 | **300.2** | **297.4** | **265.9** | **274.7** |
+| **hipEngine current default** | `0ab52deea` | bf16 | 294.5 | 292.0 | 259.6 | 274.1 |
+| hipEngine at `89264f901` (earlier session) | `89264f901` | bf16 | 300.3 | 297.3 | 265.7 | 279.1 |
 
-The two hipEngine rows are the same engine at two commits and are both shown so
-the change is legible: the current default is **1.62x / 1.56x / 1.45x** the
-2026-09-15 row. That gain is the 6.74x wide-row Q8 prefill route, certified
-2026-09-17 for layers 16-47, plus the exact-coltile DPP wave reduction. The
-2026-09-15 commit has no `PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS` at all, so its
-row prices the exact coltile chain on all 48 layers.
+**The current row was re-measured at `0ab52deea` after the iu8 risk multiplier was
+promoted from 4.0 to 1.0.** The promotion is a same-session, worktree-controlled
+A/B: against `177cb7977`, identical but for the binding, prefill moves **289.6 ->
+294.5 at 512 (+1.70%), 280.6 -> 292.0 at 1K (+4.07%) and 256.1 -> 259.6 at 4K
+(+1.39%)**, with decode **+0.87% / +1.73% / +0.86%**. The 1K shape gains most, so
+the weighted column moves less than the 1K column suggests.
+[Acceptance artifact](results/2026-10-04-qwen4exp-risk-mult-canonical-acceptance/artifact.json).
+
+**The two hipEngine rows above are NOT a like-for-like comparison and the lower
+absolute level in the current row is host drift, not a regression.** The same
+protocol re-run on the pre-promotion commit in the same window reads 289.6 / 280.6
+/ 256.1, which is **-3.6% / -5.6% / -3.6% below the `89264f901` row** measured
+earlier in the same session on an essentially identical configuration. That drift
+is larger than the promotion's 4K delta, so absolute prefill levels on this host
+are not comparable across measurement windows at the 3-6% level, and the promotion
+claim rests on its internally controlled A/B rather than on the row difference.
+
 [Current baseline, per-category and reproduction](results/2026-10-04-qwen4exp-prefill-baseline-current/README.md).
 
 Every row is total prompt tokens over total prompt time, computed by

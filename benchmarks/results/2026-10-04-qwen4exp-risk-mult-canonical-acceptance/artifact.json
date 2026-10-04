@@ -1,0 +1,65 @@
+{
+  "schema": "hipengine.benchmark.artifact/v1",
+  "title": "iu8 risk multiplier 4.0 -> 1.0: canonical twelve-case prefill +1.39% to +4.07%, decode +0.86% to +1.73%",
+  "date": "2026-10-04",
+  "kind": "accepted",
+  "verdict": "KEEP. Faster at every shape on both the weighted mean and the median, on the canonical protocol, with clean provenance on both arms.",
+  "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF)",
+  "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
+  "host": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1150_family",
+    "note": "not the gfx1100/W7900 default hardware; absolute rates are not comparable to W7900 rows"
+  },
+  "protocol": "scripts/qwen4exp_canonical_ar_bench.py hipengine --execution-profile production, full twelve-case fixture (benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json), 4 cases per shape, 3 measured repetitions, 1 warmup, warm PLE cache",
+  "arms": {
+    "mult_4.0": {
+      "worktree": "/tmp/he-mult40",
+      "head": "177cb79771129acc39e48da426bde42f34374928",
+      "tracked_clean": true,
+      "profile_requested": "production",
+      "fell_back_to_strict": false
+    },
+    "mult_1.0": {
+      "worktree": "/home/lhl/hipEngine",
+      "head": "0ab52deeaf039e6acac6b623ad054cf8d44fdc90",
+      "tracked_clean": true,
+      "profile_requested": "production",
+      "fell_back_to_strict": false
+    }
+  },
+  "why_a_worktree": "The canonical harness reads the production profile, and the binder writes HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT unconditionally, so a shell assignment cannot change the arm. The baseline was therefore run from a git worktree at the commit before the promotion, where the binding is still 4.0. Both arms are then committed states with tracked_clean provenance, and the only functional difference between the two commits is the multiplier binding plus its worklog entry.",
+  "prefill_tok_s": {
+    "512": {"mult_4.0_weighted": 289.62, "mult_1.0_weighted": 294.54, "delta_pct": 1.70, "mult_4.0_median": 288.46, "mult_1.0_median": 298.23},
+    "1024": {"mult_4.0_weighted": 280.55, "mult_1.0_weighted": 291.98, "delta_pct": 4.07, "mult_4.0_median": 275.21, "mult_1.0_median": 292.88},
+    "4096": {"mult_4.0_weighted": 256.05, "mult_1.0_weighted": 259.61, "delta_pct": 1.39, "mult_4.0_median": 255.49, "mult_1.0_median": 262.48}
+  },
+  "decode_tok_s": {
+    "512": {"mult_4.0_weighted": 19.97, "mult_1.0_weighted": 20.14, "delta_pct": 0.87},
+    "1024": {"mult_4.0_weighted": 19.23, "mult_1.0_weighted": 19.57, "delta_pct": 1.73},
+    "4096": {"mult_4.0_weighted": 19.09, "mult_1.0_weighted": 19.25, "delta_pct": 0.86}
+  },
+  "determinism": "all_cases_deterministic true, 36 samples per arm",
+  "mechanism": "Tightening the Kahan risk bound from 4.0 to 1.0 cuts the repair queue 3.403x (70,167,220 -> 20,621,412 slots over 1504 calls, rate 0.80574% -> 0.23886%, zero over-capacity calls) and the repair kernel's own traced time falls 4808.346 -> 3386.063 ms on code-p4096.",
+  "correctness": {
+    "numerical_gate": "passed - mean KL 3.039e-4 against a 1e-3 bar, p99 4.271e-3 against 2e-2, max 7.771e-3 against 5e-2, top-1 0.99556, scope_failures null, determinism and isolation clean (3.3-6.4x aggregate margin, including 274x improvement on the prefill_last scope that rejected the repair-free sibling)",
+    "state_gate": "passed",
+    "lifecycle_gate": "passed",
+    "task_gate": "requires_review - 15/18 strict-exact, candidate repeat-deterministic with no repeat mismatches, and three cosmetic divergences (an extra 'Deque,' in an import list; two reworded, semantically equivalent clauses). Per AGENTS.md cross-width generated-ID equality is diagnostic rather than binding; the calibrated production envelope is the binding gate and it passes.",
+    "evidence": "benchmarks/results/2026-10-04-qwen4exp-q4-iu8-risk-mult-1/gate.json"
+  },
+  "residual": {
+    "fixed_component_ms": 2794.1,
+    "share_of_prefill_window_pct": 4.30,
+    "derivation": "Fitting time = F + k*queue over the two kernel-trace arms gives k = 2.871e-5 ms/slot and F = 2794.1 ms, i.e. 58.1% of the repair at multiplier 4.0 is independent of the queue. This survives the promotion unchanged and is a separate launch-geometry target.",
+    "note": "Fitted from two points, so F and k describe the observed pair and are not a validated model of the pass."
+  },
+  "rollback": "Set HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT back to \"4.0\" in hipengine/generation/qwen4_exp_profiles.py. The strict fallback is registered and untouched.",
+  "limits": [
+    "One host (gfx1151 APU), one model, one quant, one execution profile, one fixture.",
+    "Absolute rates are profiler-free but single-host; they are not comparable to W7900 rows.",
+    "The 1024-shape gain (+4.07%) is the largest; the others are +1.39% and +1.70%. A single-shape claim would overstate or understate the result.",
+    "The task gate is requires_review rather than passed; the review is recorded above and its outcome is a judgement call, stated rather than hidden."
+  ],
+  "source": "/tmp/canonical-mult40/result.json and /tmp/canonical-mult1/result.json"
+}
