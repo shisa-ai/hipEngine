@@ -8458,3 +8458,25 @@ ms/step at p512, 0.575 at p4096). Drop the `host_bound` field, or rename both
 fields so they cannot be read as an attribution. The counter-rotated same-state
 A/B that replaces the probe's conclusion lives in
 `benchmarks/results/2026-10-04-qwen4exp-decode-readback-split/`.
+
+## The per-launch `build_X(load=True)` call
+
+Every kernel-launch helper resolves its library per launch - `library = library or
+build_gguf_k_gemv(load=True)` and its siblings - which is **957 calls in one
+`code-p4096` decode step**, measured by the canonical bench's `--host-profile`.
+Each call re-derives a resolution identity from **eight** environment variables
+(2.281 us micro-benchmarked), so the term is ~2.49 ms/step even after the memo in
+`d0f...` removed the key derivation.
+
+**Do not expect wall movement from removing it.** Two ablations of ~2 ms/step of
+host work at p4096 measured +2.53% and -0.45% against base spreads of 0.73% and
+0.15%, and the host CPU is flat with context (70.816 -> 71.478 us/step for a
+fixed workload while the wall grows 37.5%). The wall's growth is device-side.
+
+Removal condition: thread the resolved library through the launch sites (the
+`library` / `libraries` parameters already exist) so the launch path resolves
+once per process rather than once per launch, then delete the per-launch
+`build_X(load=True)` fallback. The build-affecting environment contract lives in
+`build_hip` and is unchanged by that; decide explicitly whether the *launch*
+path must also observe a mid-process environment change, since that is the only
+reason the per-launch call exists.

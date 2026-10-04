@@ -1,0 +1,5 @@
+{"phase": "baseline", "idle_gpu_host_burn_us": 67.499}
+{"case_id": "code-p512", "prompt_tokens": 512, "transitions": 64, "blocks_per_step": 1, "host_burn_us_per_step": 70.816, "host_burn_ratio_vs_idle": 1.0491, "wall_ms_per_step": 79.829, "drain_ms_per_step": 0.0}
+{"case_id": "code-p1024", "prompt_tokens": 1024, "transitions": 64, "blocks_per_step": 1, "host_burn_us_per_step": 70.912, "host_burn_ratio_vs_idle": 1.0506, "wall_ms_per_step": 81.156, "drain_ms_per_step": 0.001}
+{"case_id": "code-p4096", "prompt_tokens": 4096, "transitions": 64, "blocks_per_step": 1, "host_burn_us_per_step": 71.478, "host_burn_ratio_vs_idle": 1.0589, "wall_ms_per_step": 109.763, "drain_ms_per_step": 0.0}
+{"growth": {"from": "code-p512", "to": "code-p4096", "host_burn_us_per_step": [70.816, 71.478], "host_burn_ratio": 1.0093, "wall_ms_per_step": [79.829, 109.763], "wall_ratio": 1.375}}

@@ -2200,11 +2200,32 @@ def wmma_prefill_weight_filter_session(
         _wmma_prefill_weight_filter.reset(token)
 
 
+_ENV_FLAG_CACHE: dict[tuple[str, str], bool] = {}
+
+
+def _env_flag_enabled(name: str, default: str = "") -> bool:
+    """Resolve a boolean environment flag, memoized on the raw string.
+
+    ``launch_gguf_linear`` resolves several flags once per dense launch - 545
+    times in one `code-p4096` decode step, measured by the canonical bench's
+    ``--host-profile`` - and each resolution allocated two strings through
+    ``.strip().lower()``. The memo is keyed on the raw value the caller read, so
+    it is exact and a changed variable selects a different key rather than a
+    stale entry.
+    """
+
+    raw = os.environ.get(name, default)
+    key = (name, raw)
+    cached = _ENV_FLAG_CACHE.get(key)
+    if cached is not None:
+        return cached
+    enabled = bool(raw) and raw.strip().lower() in {"1", "true", "yes", "on"}
+    _ENV_FLAG_CACHE[key] = enabled
+    return enabled
+
+
 def _env_wmma_prefill_enabled() -> bool:
-    raw = os.environ.get(_WMMA_PREFILL_ENV, "")
-    if not raw:
-        return False
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return _env_flag_enabled(_WMMA_PREFILL_ENV)
 
 
 def gguf_wmma_prefill_enabled(use_wmma_prefill: bool | None = None) -> bool:
@@ -3144,6 +3165,35 @@ _Q8_DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
 _Q8_DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
 
 
+_LAYER_SCOPE_PARSE_CACHE: dict[str, frozenset[int] | None] = {}
+
+
+def _parse_layer_scope(raw: str) -> frozenset[int] | None:
+    """Parse a comma-separated layer scope, memoized on the raw string.
+
+    Three routes resolve a layer scope from an environment variable, and
+    ``launch_gguf_linear`` resolves them **once per dense launch** - 545 times in
+    a single `code-p4096` decode step, measured by the canonical bench's
+    ``--host-profile``. Re-parsing the same string on every one of those calls
+    cost 5.5% of the loop's profiled host time plus most of its 19,973
+    ``str.strip`` calls per step, for a value that cannot have changed.
+
+    The memo is exact because this is a pure function of ``raw``, and it stays
+    live because the *caller* still reads the environment on every call - the
+    cache is keyed on what it read, so a changed variable selects a different
+    key rather than a stale entry. Unset, empty and separator-only all parse to
+    ``None``; whether ``None`` means "every layer" or "off" is the caller's
+    policy, not this function's.
+    """
+
+    if raw in _LAYER_SCOPE_PARSE_CACHE:
+        return _LAYER_SCOPE_PARSE_CACHE[raw]
+    values = {int(part) for part in raw.split(",") if part.strip()}
+    scope = frozenset(values) if values else None
+    _LAYER_SCOPE_PARSE_CACHE[raw] = scope
+    return scope
+
+
 def _q8_dense_wide_layers() -> frozenset[int] | None:
     """Parse the layer scope for the wide route, or ``None`` for every layer.
 
@@ -3154,9 +3204,7 @@ def _q8_dense_wide_layers() -> frozenset[int] | None:
     shape: the certified plan for ``gguf_ud_q4_k_xl`` binds 16-47 explicitly.
     """
 
-    raw = os.environ.get(_Q8_DENSE_WIDE_LAYERS_ENV, "")
-    values = {int(part) for part in raw.split(",") if part.strip()}
-    return frozenset(values) if values else None
+    return _parse_layer_scope(os.environ.get(_Q8_DENSE_WIDE_LAYERS_ENV, ""))
 
 
 def _weight_layer_index(weight: object | None) -> int | None:
@@ -3406,6 +3454,43 @@ _Q8_STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
 # Read here so the dispatch memoization key can see it; see the cache key note.
 _Q8_DPP_REDUCTION_ENV = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
 
+
+def _q8_dpp_reduction_raw() -> str:
+    """The raw DPP-reduction flag. In the launch cache key, so it must be exact.
+
+    Called once per dense launch (545 times in one `code-p4096` decode step), so
+    it goes through the shared raw-string memo rather than re-reading and
+    re-normalizing on every call.
+    """
+
+    return _raw_env_value(_Q8_DPP_REDUCTION_ENV, "1")
+
+
+def _q4_pack8_wmma_bulk_raw() -> str:
+    """The raw Q4 pack8 WMMA bulk flag, for the same reason as the DPP flag."""
+
+    return _raw_env_value("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1")
+
+
+_RAW_ENV_CACHE: dict[tuple[str, str], str] = {}
+
+
+def _raw_env_value(name: str, default: str = "") -> str:
+    """Read an environment variable, memoized on its own current value.
+
+    A dict lookup keyed on what ``os.environ.get`` just returned, so the read
+    still happens on every call and a change is observed on the next one; the
+    saving is only the repeated tuple construction for a value that has not
+    moved. Returns the raw string, not a parsed flag, so a caller that needs the
+    raw value for a cache key can use it directly.
+    """
+
+    raw = os.environ.get(name, default)
+    key = (name, raw)
+    if key not in _RAW_ENV_CACHE:
+        _RAW_ENV_CACHE[key] = raw
+    return _RAW_ENV_CACHE[key]
+
 # Kept as a literal rather than imported from the backend package, which
 # ``hipengine.runtime`` must not import eagerly. The registration site is
 # ``hipengine.kernels.hip_gfx1151.STAGED_F32_VARIANT``; the two must agree, and
@@ -3434,8 +3519,7 @@ def _q8_wmma_layers_scope() -> frozenset[int] | None:
     """
 
     raw = os.environ.get(_Q8_WMMA_LAYERS_ENV, "")
-    values = {int(part) for part in raw.split(",") if part.strip()}
-    return frozenset(values) if values else None
+    return _parse_layer_scope(raw)
 
 
 def _q8_staged_f32_layers() -> frozenset[int] | None:
@@ -3453,8 +3537,7 @@ def _q8_staged_f32_layers() -> frozenset[int] | None:
     """
 
     raw = os.environ.get(_Q8_STAGED_F32_LAYERS_ENV, "")
-    values = {int(part) for part in raw.split(",") if part.strip()}
-    return frozenset(values) if values else None
+    return _parse_layer_scope(raw)
 
 
 def _raw_k_staged_f32_dispatch(
@@ -4099,9 +4182,9 @@ def launch_gguf_linear(
         raw_k_variant,
         # Read by ``_raw_k_coltile_pipelined_dispatch``; without it in the key a
         # flag flip inside one process would replay the other arm's leaf.
-        os.environ.get(_Q8_DPP_REDUCTION_ENV, "1"),
+        _q8_dpp_reduction_raw(),
         bool(use_q4_pack8_wmma),
-        os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0",
+        _q4_pack8_wmma_bulk_raw() != "0",
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
