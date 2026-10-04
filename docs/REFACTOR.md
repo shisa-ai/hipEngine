@@ -8438,3 +8438,23 @@ Two consequences worth knowing:
   session as the change, and either bind the winner or delete the env var and make
   the chosen bound a named constant (keeping the strict path's 4.0 as a constant
   rather than an environment string).
+
+## The host/device loop split in `qwen4exp_decode_host_bound_probe.py`
+
+`scripts/qwen4exp_decode_host_bound_probe.py` reports `host_bound: true` and a
+`device_drain_ms` of `0.0` from splitting the decode loop at its trailing
+synchronize. That inference is invalid: `runner.step()` ends with a blocking
+device-to-host copy of the argmax result (`_finish_lm_head` ->
+`copy_device_to_host`), so the "host enqueue" window already contains the device
+wait and a zero drain is guaranteed. `qwen4exp_canonical_ar_bench.py` carries
+the same split as `decode_host_enqueue_ms` / `decode_device_drain_ms`, but its
+code comment now states the limitation and its artifact protocol records the
+capture mode, so a reader can tell a `compact` row (no explicit per-step
+synchronize) from a `full` one.
+
+Removal condition: give the probe a mode that drops the readback before it
+claims a split — that makes the drain meaningful and it is then non-zero (0.343
+ms/step at p512, 0.575 at p4096). Drop the `host_bound` field, or rename both
+fields so they cannot be read as an attribution. The counter-rotated same-state
+A/B that replaces the probe's conclusion lives in
+`benchmarks/results/2026-10-04-qwen4exp-decode-readback-split/`.
