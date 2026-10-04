@@ -1,0 +1,56 @@
+{
+  "schema": "hipengine.benchmark.artifact/v1",
+  "title": "Measured MoE prefill tile padding: 12800 padded rows for 10240 real (1.25x)",
+  "date": "2026-10-04",
+  "kind": "diagnostic",
+  "verdict": "the padded row space is measured, not modelled; 25% of the gate/up WMMA work at the production chunk is padding",
+  "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF)",
+  "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
+  "workload": {
+    "mode": "prefill",
+    "case_id": "code-p4096",
+    "execution_profile": "production",
+    "chunk_tokens": 1024,
+    "window_tokens": 4096,
+    "top_k": 10,
+    "experts": 512
+  },
+  "host": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1150_family",
+    "note": "not the gfx1100/W7900 default hardware"
+  },
+  "how_measured": {
+    "instrument": "rocprofv3 --kernel-trace on the production prefill window at risk multiplier 4.0",
+    "derivation": "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel launches dim3 grid = ((out_features_total + 127) / 128, wmma_total_rows / TILE_ROWS) with dim3 block = 128 threads (gguf_q4_k_selected_prefill.hip:2471-2478). rocprofv3 reports Grid_Size as total work-items, so the block count in Y equals Grid_Size_Y and wmma_total_rows = Grid_Size_Y x 16. Cross-check on the same launch: out_features_total = 1280 gives 10 column blocks, and Grid_Size_X = 1280 = 10 x 128 threads, which confirms the work-item interpretation.",
+    "observed": "Grid_Size_Y = 800 for all 1504 launches of the q4_k gate/up risk owner in the window",
+    "result": "wmma_total_rows = 800 x 16 = 12800 padded rows"
+  },
+  "arithmetic": {
+    "real_rows": 10240,
+    "real_rows_derivation": "1024 chunk tokens x top-10 experts",
+    "padded_rows": 12800,
+    "padding_waste_pct": 25.0,
+    "work_ratio": 1.25,
+    "tiles": 800,
+    "experts_with_a_tile": "800 tiles over 512 experts: if x experts hold one tile and 512-x hold two, x + 2(512-x) = 800 gives x = 224. So 224 experts have at most 16 rows and 288 have 17-32. Fewer than 512 experts hold rows, which is why the real distribution pads less than uniform routing would."
+  },
+  "correction_to_prior_estimate": {
+    "prior": "A modelled uniform-routing estimate in worklog/entries/20261003T235118.067749Z-lhl-qwen4exp-moe-tile-padding-8a6b02.md put the production chunk at 16384 padded rows for 10240 real, i.e. 1.60x.",
+    "now": "1.25x, measured. Real top-10 routing is sparser than uniform - 224 of 512 experts hold at most one tile - so the modelled figure was pessimistic by 0.35x of work ratio.",
+    "direction": "the finding stands; its size is smaller than modelled"
+  },
+  "mechanism": "group_scatter.hip:350 rounds every expert owning at least one row up to a full 16-row WMMA tile, and gguf_q4_k_selected_prefill.hip:2472 turns that padded total into the launched grid. Rows beyond a tile boundary are recomputed as padding.",
+  "prize": {
+    "note": "Upper bound only. Eliminating padding entirely would take the gate/up row space from 12800 to 10240, a 20% reduction in gate/up WMMA work. Whether any of that is recoverable depends on finding a row space that packs tail rows from multiple experts into shared tiles, which needs a kernel able to switch weight pointers mid-tile or a tail path cheaper than 1/4 of the WMMA path - the exact grouped fallback is not it (it already loses by median +157.8% while doing 1.25x less work).",
+    "gate_up_share_of_window_pct": 32.56,
+    "upper_bound_share_of_window_pct": 6.5
+  },
+  "limits": [
+    "One host (gfx1151 APU), one model, one quant, one case (code-p4096), one chunk size, one execution profile.",
+    "Single prompt: the routing distribution is prompt-dependent, so 1.25x is this prompt's figure and not a general one. A sparse-routing prompt would pad more.",
+    "The 12800 figure is the padded row space the kernel is launched over; it is not itself a timing.",
+    "No correctness gate applies: no arithmetic changed and no default was modified."
+  ],
+  "source": "/tmp/repair-trace/raw-4.0/trace_kernel_trace.csv via scripts/qwen4exp_repair_trace_sum.py"
+}
