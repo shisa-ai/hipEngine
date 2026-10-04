@@ -1,0 +1,77 @@
+{
+  "schema": "hipengine.benchmark.artifact/v1",
+  "title": "Full-suite prefill chunk result: +11.4% weighted at chunk 2048, but shape-dependent (+15.6% at 4K, -4.1% at 512)",
+  "date": "2026-10-04",
+  "kind": "benchmark",
+  "verdict": "Chunk 2048 raises the canonical weighted prefill rate from 273.84 to 305.18 tok/s (+11.4%) on the full twelve-case suite, with byte-identical output. But the effect is strongly shape-dependent: +15.6% at 4096, +3.1% at 1024, and -4.1% at 512 where the prefill work is identical either way. Decode regresses at every shape. This qualifies and partially corrects the single-case ladder artifact, whose +18.4% was measured only on code-p4096 - the one shape where the change wins.",
+  "supersedes_reading_of": "benchmarks/results/2026-10-04-qwen4exp-prefill-chunk-ladder/artifact.json (the ladder's numbers stand for code-p4096; its headline generalisation does not)",
+  "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF)",
+  "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
+  "host": {"arch": "gfx1151", "machine_id": "55ea6c509d0b49eea8de7094a1023668", "backend": "hip_gfx1150_family", "python_env": "therock10-staging-20260828", "note": "not the gfx1100/W7900 default hardware"},
+  "protocol": {
+    "command": "scripts/qwen4exp_canonical_ar_bench.py hipengine --model-root <UD-Q4_K_XL> --output <json> --prefill-chunk-size <C> --execution-profile production --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json (all twelve cases)",
+    "execution_profile": "production",
+    "warmups_per_case": 1,
+    "measured_repetitions": 3,
+    "decode_transitions": 128,
+    "ple_cache_mode": "warm",
+    "sessions": "both arms sequential in one session, same host, no other GPU work"
+  },
+  "scoreboard_metric": {
+    "estimator": "total prompt tokens / total prompt time, the same estimator as the recorded scoreboard rows",
+    "tie_to_scoreboard": "the 512 arm lands at 273.84, reproducing the recorded canonical weighted 274.1, so this comparison is directly on the scoreboard's basis",
+    "by_shape": [
+      {"shape": 512,  "chunk_512": 298.46, "chunk_2048": 286.35, "delta_pct": -4.1},
+      {"shape": 1024, "chunk_512": 297.72, "chunk_2048": 306.81, "delta_pct": 3.1},
+      {"shape": 4096, "chunk_512": 265.78, "chunk_2048": 307.30, "delta_pct": 15.6}
+    ],
+    "all_twelve": {"chunk_512": 273.84, "chunk_2048": 305.18, "delta_pct": 11.4}
+  },
+  "decode_by_shape": [
+    {"shape": 512,  "chunk_512_tg": 20.368, "chunk_2048_tg": 19.825, "delta_pct": -2.7},
+    {"shape": 1024, "chunk_512_tg": 19.660, "chunk_2048_tg": 19.041, "delta_pct": -3.2},
+    {"shape": 4096, "chunk_512_tg": 19.673, "chunk_2048_tg": 17.822, "delta_pct": -9.4}
+  ],
+  "composite": {
+    "definition": "prompt prefill + 128 decode transitions, from the arm medians",
+    "rows": [
+      {"shape": 512,  "chunk_512_s": 7.991,  "chunk_2048_s": 8.245,  "delta_pct": 3.2},
+      {"shape": 1024, "chunk_512_s": 9.950,  "chunk_2048_s": 10.088, "delta_pct": 1.4},
+      {"shape": 4096, "chunk_512_s": 21.890, "chunk_2048_s": 20.532, "delta_pct": -6.2}
+    ],
+    "reading": "2048 is a net loss at 512 and 1024 once decode is counted, and a net win at 4096."
+  },
+  "the_p512_control": {
+    "why_it_matters": "at a 512-token prompt the chunk cannot change the partitioning - the prompt fits in one pass at either setting - so the prefill work is IDENTICAL. Any measured difference is a fixed cost of the larger configuration, not a partitioning effect.",
+    "result": "chunk 2048 is 4.1% SLOWER on identical work, and the regression is consistent in all four cases: code -3.95%, general_en -4.48%, general_ja -4.46%, mixed_ja_en -5.26%",
+    "mechanism": "prefill_chunk_size feeds staging_token_capacity in plan_qwen4_exp_residency (hipengine/generation/qwen4_exp_gguf.py:112) and the scratch reservation in resolve_qwen4_exp_context, so configuring 2048 allocates staging and scratch for 2048 tokens even when the prompt is 512.",
+    "consequence": "a blanket 2048 default is wrong. The correct change is shape-adaptive."
+  },
+  "correctness": {
+    "determinism": "both arms report all_cases_deterministic = true; every case has one distinct output hash across its three repetitions",
+    "cross_arm": "on the ladder's code-p4096, 512/1024/2048 produced byte-identical output_token_ids (129/129). This suite's two arms were not diffed token-by-token across all twelve cases, so cross-arm bit-identity is established for code-p4096 and not asserted for the other eleven."
+  },
+  "noise": {
+    "chunk_512_arm": "max prefill CV 2.25%, max decode CV 1.34%",
+    "chunk_2048_arm": "max prefill CV 6.57%, max decode CV 9.91%",
+    "investigated": "no warnings, no thermal or throttling events, no OOM, no competing process, and 84 GiB free host memory at the end of the session",
+    "reading": "the larger chunk is inherently noisier. This is a real property to weigh against the gain, not a measurement defect, but it means the arm medians carry wider intervals than the 512 arm's."
+  },
+  "why_the_ladder_over_generalised": "the ladder measured ONE case, code-p4096, which is precisely the shape where a larger chunk wins most. A single-case sweep of a partitioning parameter cannot distinguish 'this parameter helps' from 'this parameter helps at this prompt length', and the difference here is +15.6% versus -4.1%.",
+  "recommendation": {
+    "not": "a blanket chunk increase to 2048",
+    "but": "a shape-adaptive policy that keeps a small chunk for short prompts and raises it only where the pass count actually falls, e.g. 512 below ~1024 tokens, 1024 for ~1024, 2048 at 2048 and above",
+    "expected": "captures the +15.6% at 4096 and the +3.1% at 1024 without the -4.1% at 512",
+    "prerequisite": "the decode regression is unexplained and must be resolved or bounded before any of this becomes a default, because decode is a first-class target of the same objective",
+    "existing_machinery": "GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY at hipengine/kernels/hip_gfx1151/__init__.py:1627 already implements a geometry-keyed policy, but has no entry for the Qwen3.8-Flash-Next geometry, so it falls through"
+  },
+  "limits": [
+    "One host, one model file, one quant, one execution profile, one session.",
+    "Two arms only; no arm was repeated, so the shape deltas rest on a single run of 3 repetitions per case.",
+    "The 4096 arm is not in this suite; its +25.6% single-case figure and its arithmetic divergence are recorded in the ladder artifact only.",
+    "The decode regression is measured at all three shapes but no mechanism was tested. Nothing here explains it.",
+    "No default, flag, kernel or dispatch changed by this artifact."
+  ],
+  "source": "/tmp/chunk-suite/full-c512.json and /tmp/chunk-suite/full-c2048.json"
+}
