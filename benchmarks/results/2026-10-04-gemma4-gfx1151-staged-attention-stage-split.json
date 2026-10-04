@@ -1,0 +1,169 @@
+{
+ "kind": "gemma4_staged_attention_stage_split",
+ "performance_claim": false,
+ "created": "2026-10-05",
+ "command": "scripts/gemma4_staged_attention_stage_split.py --trace /tmp/gemma4-prof/pf32768_kernel_trace.csv --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --tokens 32768 --prefills 2 --wall-s 116.66 --out benchmarks/results/2026-10-04-gemma4-gfx1151-staged-attention-stage-split.json",
+ "trace": "/tmp/gemma4-prof/pf32768_kernel_trace.csv",
+ "model": "Gemma 4 26B-A4B-it",
+ "quant": "UD-Q4_K_XL",
+ "physical_host": "zbook",
+ "hardware": "AMD Radeon 8060S Graphics (gfx1151)",
+ "kv_dtype": "bf16",
+ "prompt_tokens": 32768,
+ "prefills_in_trace": 2,
+ "geometry": {
+  "block_count": 30,
+  "sliding_window": 1024,
+  "full_layers": 5,
+  "sliding_layers": 25
+ },
+ "kernel_time_s": 233.027,
+ "reported_prefill_s": 116.66,
+ "attention_stages": [
+  {
+   "stage": "score",
+   "seconds": 111.024,
+   "seconds_per_prefill": 55.5119,
+   "launches": 1950,
+   "variants": [
+    "gemma4_attention_staged_score_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned char const*, float*, float*, long, long, long, float, long, long, long, long)"
+   ],
+   "launch_shape": {
+    "workgroup": [
+     "256",
+     "1",
+     "1"
+    ],
+    "grid": [
+     "262144",
+     "1",
+     "1"
+    ],
+    "vgpr": "40",
+    "lds_bytes": "0"
+   }
+  },
+  {
+   "stage": "softmax",
+   "seconds": 4.971,
+   "seconds_per_prefill": 2.4854,
+   "launches": 1950,
+   "variants": [
+    "gemma4_attention_staged_softmax_kernel(float*, float const*, float*, long, long, long, long, long)"
+   ],
+   "launch_shape": {
+    "workgroup": [
+     "256",
+     "1",
+     "1"
+    ],
+    "grid": [
+     "262144",
+     "1",
+     "1"
+    ],
+    "vgpr": "16",
+    "lds_bytes": "0"
+   }
+  },
+  {
+   "stage": "pv",
+   "seconds": 70.579,
+   "seconds_per_prefill": 35.2893,
+   "launches": 1950,
+   "variants": [
+    "gemma4_attention_staged_pv_kernel<unsigned short, 1, 2, true>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long, long)",
+    "gemma4_attention_staged_pv_kernel<unsigned short, 2, 8, true>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long, long)"
+   ],
+   "launch_shape": {
+    "workgroup": [
+     "256",
+     "1",
+     "1"
+    ],
+    "grid": [
+     "16384",
+     "8",
+     "1"
+    ],
+    "vgpr": "32",
+    "lds_bytes": "0"
+   }
+  }
+ ],
+ "attention_share_of_kernel_time": 0.8007,
+ "derived": {
+  "query_key_head_triples_per_prefill": 56163246080,
+  "qk_flops_per_prefill": 50746485637120,
+  "pv_flops_per_prefill": 50746485637120,
+  "attention_flops_per_prefill": 101492971274240,
+  "attention_tflops": 1.088,
+  "score_tflops": 0.9142,
+  "pv_tflops": 1.438,
+  "score_read_bytes_per_prefill_if_unstaged": 101492971274240,
+  "score_effective_gbps_if_unstaged": 1828.3,
+  "note": "QK and P*V each cost one multiply-accumulate per (query, key, head) element of the head dimension, so both are reported at the same FLOP count. The effective read rate is what the kernel would move if it staged nothing; it exceeds the part's DRAM roofline, so a large part of it is served from cache. The point is the amplification, not the rate."
+ },
+ "top_kernels": [
+  {
+   "name": "void (anonymous namespace)::gemma4_attention_staged_score_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned char const*, float*, float*, long, long, long, float, long, long, long, long)",
+   "seconds": 111.024,
+   "launches": 1950
+  },
+  {
+   "name": "void (anonymous namespace)::gemma4_attention_staged_pv_kernel<unsigned short, 2, 8, true>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long, long)",
+   "seconds": 49.323,
+   "launches": 325
+  },
+  {
+   "name": "void (anonymous namespace)::gemma4_attention_staged_pv_kernel<unsigned short, 1, 2, true>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long, long)",
+   "seconds": 21.256,
+   "launches": 1625
+  },
+  {
+   "name": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_nwave_kernel<32, 4>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+   "seconds": 13.735,
+   "launches": 7800
+  },
+  {
+   "name": "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short, false, false, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+   "seconds": 10.766,
+   "launches": 1856
+  },
+  {
+   "name": "void (anonymous namespace)::q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel<32, 16, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+   "seconds": 8.732,
+   "launches": 1856
+  },
+  {
+   "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, float, 8>(unsigned short const*, float const*, float*, long, long, long)",
+   "seconds": 5.634,
+   "launches": 1950
+  },
+  {
+   "name": "(anonymous namespace)::gemma4_attention_staged_softmax_kernel(float*, float const*, float*, long, long, long, long, long)",
+   "seconds": 4.971,
+   "launches": 1950
+  },
+  {
+   "name": "(anonymous namespace)::qwen35_moe_gather_packed_hidden_kernel(unsigned short const*, long const*, unsigned short*, long, long, long, long)",
+   "seconds": 1.322,
+   "launches": 1950
+  },
+  {
+   "name": "void (anonymous namespace)::gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long, long)",
+   "seconds": 1.141,
+   "launches": 65
+  },
+  {
+   "name": "(anonymous namespace)::gemma4_moe_weighted_accumulate_kernel(unsigned short const*, int const*, float const*, unsigned short*, long, long, long)",
+   "seconds": 0.657,
+   "launches": 1950
+  },
+  {
+   "name": "void (anonymous namespace)::gemma4_head_rmsnorm_kernel<unsigned short>(unsigned short const*, float const*, unsigned short*, float, long)",
+   "seconds": 0.536,
+   "launches": 3900
+  }
+ ]
+}
