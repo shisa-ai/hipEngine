@@ -1035,10 +1035,11 @@ A prefill-only hardware-counter capture shows the prefill is **not** uniformly
 stalled across families: the largest kernel (`gr_up_sigmoid_mean`, 18.26% of
 device time) sits at **30.82% LDS wait** while every other top-ten prefill kernel
 is at **≤0.35%**, so the family ratios locate work rather than describe one shared
-per-kernel deficit. The fifth-largest, the GDN prefill kernel, is **register-bound
-at the 256-VGPR hardware maximum** with no LDS in use at all, running at 0.92
-instructions per CU-cycle against a ~4/cycle ceiling — the worst utilization of
-any large prefill kernel. [Packet](results/2026-10-04-qwen4exp-prefill-stall-census/README.md).
+per-kernel deficit. The fifth-largest, the GDN prefill kernel, is register-bound at
+the 256-VGPR hardware maximum (5.93% of prefill, 0.92 instructions per CU-cycle) —
+a condition already recorded in the kernel source and already priced: its LDS route
+is slower at 1024 rows and above, and the 85-VGPR route that escapes the bound is
+gated off in the UD lane. [Packet](results/2026-10-04-qwen4exp-prefill-stall-census/README.md).
 
 The routed-MoE main kernels are bound by expert-weight traffic at a constant
 104-126 GB/s, and that traffic is set by how many 16-row WMMA tiles the experts'

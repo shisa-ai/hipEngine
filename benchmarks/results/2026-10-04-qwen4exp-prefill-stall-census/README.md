@@ -41,6 +41,18 @@ The GDN prefill kernel is **register-bound at the hardware maximum**: `VGPR_Coun
 256, `LDS_Block_Size` 0, 128-thread workgroups, 6,144 grid blocks. The grid is not
 the constraint, and the kernel uses no LDS at all.
 
+**This condition is already recorded, already addressed, and already priced.**
+`hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip:1110-1117` states the
+256-VGPR / register-file-capacity finding "confirmed by hardware counter"; the LDS
+route was built as the GD-4 Woodbury-Young kernel (`20261001T`), which keeps a
+128x32 tile in LDS at 28,576 B; and it is **slower where this campaign aims** —
+GD-4's artifact records it at 1.0546x the current UD production route at 512 rows
+but 0.8727x at 1024 and 0.7922x at 2048. The full state (128x128 floats per v_head
+= 65,536 B) is the entire per-block LDS budget, so it cannot simply move. The
+census's contribution here is the **share** (5.93% of prefill at chunk 4096,
+previously unquantified for the UD lane), not a new lever. See worklog
+`20261004T151015`.
+
 ## Limits
 
 - `SQ_WAIT_INST_ANY` is accepted by `rocprofv3 --pmc` and **silently dropped** on
