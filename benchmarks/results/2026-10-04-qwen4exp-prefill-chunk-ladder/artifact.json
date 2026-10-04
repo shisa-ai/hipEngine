@@ -1,0 +1,67 @@
+{
+  "schema": "hipengine.benchmark.artifact/v1",
+  "title": "Qwen4Exp prefill chunk ladder: 512 -> 2048 is +18.4% prefill with bit-identical output, and the canonical protocol has been running the 512 default",
+  "date": "2026-10-04",
+  "kind": "benchmark",
+  "verdict": "The production prefill chunk is 512, not the 1024 the profile intends, because the profile's chunk binding is dead code and the canonical harness defaults to 512. Raising it to 2048 is +18.4% prefill with BIT-IDENTICAL generated token IDs (129/129 across all three repetitions). 4096 is +25.6% but changes arithmetic. Decode regresses monotonically with chunk size and is NOT explained by anything here.",
+  "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF)",
+  "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
+  "host": {
+    "arch": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "backend": "hip_gfx1150_family",
+    "python_env": "therock10-staging-20260828",
+    "note": "not the gfx1100/W7900 default hardware; absolute rates are not comparable to W7900 rows"
+  },
+  "protocol": {
+    "command": "scripts/qwen4exp_canonical_ar_bench.py hipengine --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --output <json> --prefill-chunk-size <C> --execution-profile production --case-id code-p4096 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "case": "code-p4096",
+    "execution_profile": "production",
+    "warmups_per_case": 1,
+    "measured_repetitions": 3,
+    "decode_transitions": 128,
+    "ple_cache_mode": "warm",
+    "sessions": "all four arms in one sequential session, same host, no other GPU work"
+  },
+  "ladder": [
+    {"chunk": 512,  "prefill_tok_s": [263.802, 260.408, 261.767], "prefill_median": 261.767, "prefill_vs_512": 1.000, "decode_tok_s": [19.621, 19.649, 19.688], "decode_median": 19.649, "output_sha256_prefix": "4c9bee4452a76ec4", "bit_identical_to_512": true},
+    {"chunk": 1024, "prefill_tok_s": [292.094, 290.052, 291.472], "prefill_median": 291.472, "prefill_vs_512": 1.113, "decode_tok_s": [19.015, 18.927, 19.051], "decode_median": 18.927, "output_sha256_prefix": "4c9bee4452a76ec4", "bit_identical_to_512": true},
+    {"chunk": 2048, "prefill_tok_s": [313.517, 308.983, 309.854], "prefill_median": 309.854, "prefill_vs_512": 1.184, "decode_tok_s": [18.626, 18.487, 18.561], "decode_median": 18.561, "output_sha256_prefix": "4c9bee4452a76ec4", "bit_identical_to_512": true},
+    {"chunk": 4096, "prefill_tok_s": [328.143, 328.794, 328.666], "prefill_median": 328.666, "prefill_vs_512": 1.256, "decode_tok_s": [18.019, 17.792, 17.780], "decode_median": 17.792, "output_sha256_prefix": "603391a99234c994", "bit_identical_to_512": false, "differing_positions": "118 of 129, first at position 10"}
+  ],
+  "correctness": {
+    "within_arm_determinism": "all four arms report exactly 1 distinct output hash across their 3 repetitions",
+    "across_arm_equality": "512, 1024 and 2048 produce byte-identical output_token_ids (129/129). 4096 diverges at position 10 and differs in 118 of 129 positions.",
+    "reading": "2048 is a bit-identical change on this case, so it needs no numerical gate. 4096 changes arithmetic and requires the production numerical gate before it can be a default. The divergence is consistent with the existing code comment at hipengine/kernels/hip_gfx1151/__init__.py:1620 recording 4096 as 'faster still at 1K/4K but is NOT bit-exact (KL 3.1e-07)'."
+  },
+  "composite_cost": {
+    "definition": "median prefill_ms + median decode_ms for a 4096-token prompt plus 128 decode transitions",
+    "512":  {"prefill_s": 15.647, "decode_s": 6.514, "total_s": 22.162, "vs_512": 1.000},
+    "1024": {"prefill_s": 14.053, "decode_s": 6.732, "total_s": 20.784, "vs_512": 0.938},
+    "2048": {"prefill_s": 13.219, "decode_s": 6.896, "total_s": 20.115, "vs_512": 0.908},
+    "4096": {"prefill_s": 12.462, "decode_s": 7.194, "total_s": 19.657, "vs_512": 0.887},
+    "reading": "Larger chunks win on the composite despite the decode regression. But decode is a first-class target of the same objective, so the regression is not acceptable as a permanent trade and is carried forward as an open question rather than priced in."
+  },
+  "why_the_default_is_512": {
+    "mechanism": "hipengine/generation/qwen4_exp_profiles.py:674 _bind_default_chunk sets runner.prefill_chunk_size = 1024 (production) ONLY when generator._implicit_profile_chunk_size is true. hipengine/generation/qwen4_exp_gguf.py:939 sets that flag to (prefill_chunk_size is None). scripts/qwen4exp_canonical_ar_bench.py:798 always passes prefill_chunk_size=args.prefill_chunk_size, whose default is 512, so the flag is always False.",
+    "consequence": "the profile's intended production chunk of 1024 is dead code on every caller in the tree; no call site anywhere passes prefill_chunk_size=None",
+    "evidence": "the committed canonical artifact /tmp/canonical-mult1/result.json records protocol.prefill_chunk_size = 512, and this ladder's 512 arm reproduces its rate (261.77 vs 259.61 median, within session drift)"
+  },
+  "correction_to_prior_artifact": {
+    "artifact": "benchmarks/results/2026-10-04-qwen4exp-moe-tile-padding-measured/artifact.json",
+    "claimed": "12800 padded rows for 10240 real = 1.25x, on the stated basis chunk_tokens = 1024",
+    "corrected": "the canonical chunk is 512, so real rows per chunk-pass are 512 x top-10 = 5120 and the padded row space is 800 tiles x 16 = 12800, i.e. 2.50x",
+    "independent_confirmation": "the trace's launch counts fix the chunk exactly: router logits 1536 launches = 48 layers x 32 chunk-passes and gate/up 1504 = 47 layers x 32 chunk-passes, so there are 32 chunk-passes. 4 prefills x 8 chunks gives 32 at chunk 512; chunk 1024 would need 8 prefills and 126 s of prefill inside a 68.26 s window, which is impossible.",
+    "effect": "the padding finding stands and is 2x LARGER than reported. Up to 60% of the gate/up WMMA row space is padding at chunk 512, not 40%."
+  },
+  "mechanism": "Two effects act in the same direction. First, tile padding: each expert owning at least one row is rounded up to a full 16-row WMMA tile (group_scatter.hip:350, gguf_q4_k_selected_prefill.hip:2472), so a small chunk over a 512-expert space wastes a large fraction of the row space. Second, weight traffic per token: a 4096-token prompt at chunk 512 makes 8 passes over the model instead of 1 at chunk 4096. Both fall as the chunk grows.",
+  "limits": [
+    "ONE case (code-p4096) for the ladder. The full twelve-case suite at 512 and 2048 is running separately and is the promotion evidence.",
+    "The decode regression is measured but NOT explained. Nothing here attributes it, and no mechanism was tested. It is monotonic in chunk size across all four arms, so it is not noise.",
+    "The 4096 arm changes arithmetic and has no numerical gate here. Its divergence is recorded, not accepted.",
+    "The padding correction is arithmetic from the traced grid, not a new trace; the 800-tile figure comes from the 4.0-arm trace and its launch counts.",
+    "One host, one model file, one quant, one execution profile, one session.",
+    "No default, flag or kernel was changed by this artifact."
+  ],
+  "source": "/tmp/chunk-ladder/c{512,1024,2048,4096}.json"
+}
