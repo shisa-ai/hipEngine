@@ -1277,6 +1277,29 @@ identical (this run used a warm PLE cache and two measured repetitions), so the
 table row is **not** replaced here.
 [Same-file comparison](results/2026-10-04-gfx1151-gufo-vs-hipengine-same-file/README.md).
 
+gufo's `pp` is a **full-prompt, device-synchronized prefill**, not a
+cached-prefix marginal rate: `src/cli/bench/bench.cpp` times
+`t0 -> ForwardPromptBatch(prompt_tokens, depth) + hipDeviceSynchronize() -> t1`
+with `restore_depth()` outside the window and no reuse inside it, and the wall
+clock agrees (53 s for `-p 4096 -n 0 -d 0 -r 2` against 45.30 s model load plus
+3 x 2.40 s of predicted prefill). So the prefill gap is real and, at one
+protocol, **5.17x**: gufo 2.40 s / 1705.94 tok/s against hipEngine 12.42 s /
+329.94 tok/s at chunk 4096.
+
+At **matched granularity** - one 4096-row pass, both sides traced - the gap is
+**5.69x and uniform across every bucket**: dense projections 6.78x (43.2% of
+hipEngine's prefill time), routed MoE 5.56x (32.0%), attention/GDN/router/other
+4.55x. So no single kernel family is the answer, and it is **not launch count or
+scheduling** - gufo issues 4,237 launches per prefill against hipEngine's 2,766,
+1.53x more. The difference is per-kernel throughput.
+
+The 27B `Q4_K_M` row is **not a dense control**: that file declares architecture
+`qwen35` (65 dense layers) while Flash-Next declares `qwen4exp`, so those two
+engines are running different model implementations. The table shows the
+*qwen35* path is at parity with gufo; it does not show the qwen4exp dense
+projections are fast, and the trace shows they are not.
+[Gap verification](results/2026-10-04-qwen4exp-gufo-prefill-gap-verified/README.md).
+
 ### Long context 8K-256K on the same file
 
 The comparison above stops at 4K. Extended to 262,008 tokens on the same host, the
