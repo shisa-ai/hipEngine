@@ -18,7 +18,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -41,7 +41,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/benchmark/provenance.py:336:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "c6a077e69f63"
+      "evidence_hash": "601a653e8b7d"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -56,7 +56,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -79,7 +79,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/benchmark/provenance.py:38:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "2a7b125bf973"
+      "evidence_hash": "5b2d6460fdb1"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -94,7 +94,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -117,7 +117,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/core/build.py:17:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "248900031a25"
+      "evidence_hash": "fde202e72bfb"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -132,7 +132,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -155,7 +155,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/core/build.py:225:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "7d542ceda819"
+      "evidence_hash": "b73c35e25d8a"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -344,9 +344,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/generation/gemma4_gguf.py:544:HIPENGINE_HIP_ARCH",
+      "key": "hipengine/generation/gemma4_gguf.py:545:HIPENGINE_HIP_ARCH",
       "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
-      "location": "hipengine/generation/gemma4_gguf.py:544",
+      "location": "hipengine/generation/gemma4_gguf.py:545",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -355,7 +355,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -364,7 +364,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:544:HIPENGINE_HIP_ARCH"
+          "hipengine/generation/gemma4_gguf.py:545:HIPENGINE_HIP_ARCH"
         ],
         "tokens": [
           "branch",
@@ -377,8 +377,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/generation/gemma4_gguf.py:544:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "529b9009c279"
+      "id": "ungoverned-flag-branch/hipengine/generation/gemma4_gguf.py:545:HIPENGINE_HIP_ARCH",
+      "evidence_hash": "4579121be9b1"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -456,9 +456,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/kernels/backends.py:24:HIPENGINE_HIP_ARCH",
+      "key": "hipengine/kernels/backends.py:25:HIPENGINE_HIP_ARCH",
       "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
-      "location": "hipengine/kernels/backends.py:24",
+      "location": "hipengine/kernels/backends.py:25",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -467,7 +467,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -476,7 +476,7 @@
       "hints": {
         "anchor": "hipengine/kernels/backends.py",
         "refs": [
-          "hipengine/kernels/backends.py:24:HIPENGINE_HIP_ARCH"
+          "hipengine/kernels/backends.py:25:HIPENGINE_HIP_ARCH"
         ],
         "tokens": [
           "branch",
@@ -489,14 +489,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/kernels/backends.py:24:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "50a65ee99e82"
+      "id": "ungoverned-flag-branch/hipengine/kernels/backends.py:25:HIPENGINE_HIP_ARCH",
+      "evidence_hash": "63935595102b"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/kernels/backends.py:289:HIPENGINE_HIP_ARCH",
+      "key": "hipengine/kernels/backends.py:584:HIPENGINE_HIP_ARCH",
       "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
-      "location": "hipengine/kernels/backends.py:289",
+      "location": "hipengine/kernels/backends.py:584",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -505,7 +505,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -514,7 +514,7 @@
       "hints": {
         "anchor": "hipengine/kernels/backends.py",
         "refs": [
-          "hipengine/kernels/backends.py:289:HIPENGINE_HIP_ARCH"
+          "hipengine/kernels/backends.py:584:HIPENGINE_HIP_ARCH"
         ],
         "tokens": [
           "branch",
@@ -527,8 +527,84 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/kernels/backends.py:289:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "d493bb682e2c"
+      "id": "ungoverned-flag-branch/hipengine/kernels/backends.py:584:HIPENGINE_HIP_ARCH",
+      "evidence_hash": "63c185363396"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/kernels/backends.py:605:HIPENGINE_HIP_ARCH",
+      "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
+      "location": "hipengine/kernels/backends.py:605",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_HIP_ARCH",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
+          "read at 15 runtime sites \u2014 branching is spread out"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/backends.py",
+        "refs": [
+          "hipengine/kernels/backends.py:605:HIPENGINE_HIP_ARCH"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_hip_arch",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/kernels/backends.py:605:HIPENGINE_HIP_ARCH",
+      "evidence_hash": "4520fab5e74d"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/kernels/backends.py:612:HIPENGINE_HIP_ARCH",
+      "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
+      "location": "hipengine/kernels/backends.py:612",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_HIP_ARCH",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
+          "read at 15 runtime sites \u2014 branching is spread out"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/backends.py",
+        "refs": [
+          "hipengine/kernels/backends.py:612:HIPENGINE_HIP_ARCH"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_hip_arch",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/kernels/backends.py:612:HIPENGINE_HIP_ARCH",
+      "evidence_hash": "01f9ce97289e"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -543,7 +619,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -566,7 +642,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/attention/dms_compact.py:40:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "eb627e81ff13"
+      "evidence_hash": "19f3df907579"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -581,7 +657,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -604,7 +680,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_iq_wmma_prefill.py:62:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "a5a18c0fa798"
+      "evidence_hash": "830f75ae6a19"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -619,7 +695,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -642,7 +718,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_iq_wmma_prefill.py:66:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "cfe5b01c07aa"
+      "evidence_hash": "24a082716999"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -694,7 +770,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -717,7 +793,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:45:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "b7fd88f288c3"
+      "evidence_hash": "317c315e653d"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -732,7 +808,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -755,7 +831,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:55:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "14961c8f8d3c"
+      "evidence_hash": "c597c7f971cb"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -844,7 +920,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 13 runtime sites \u2014 branching is spread out"
+          "read at 15 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -867,7 +943,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1151/__init__.py:5:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "f47cc38230cd"
+      "evidence_hash": "a1f506794cf0"
     },
     {
       "kind": "ungoverned-flag-branch",

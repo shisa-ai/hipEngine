@@ -37,7 +37,8 @@ def test_cached_mtp_drafter_rebinds_before_reading_hidden_or_shared_kv():
     assert drafter.runner is new
 
 
-def test_iu8_map_readback_and_risk_reset_follow_the_producer_stream(monkeypatch):
+@pytest.mark.parametrize('capturing', [False, True])
+def test_iu8_device_map_and_risk_reset_follow_the_producer_stream(monkeypatch, capturing):
     from hipengine.core import memory
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts as experts
     from hipengine.kernels.hip_gfx1100.moe import group_scatter
@@ -47,7 +48,7 @@ def test_iu8_map_readback_and_risk_reset_follow_the_producer_stream(monkeypatch)
     runtime = SimpleNamespace(
         stream_synchronize=lambda stream: events.append(('sync', stream)),
         memset_async=lambda ptr, value, count, stream: events.append(('reset', stream)),
-        stream_is_capturing=lambda stream: False,
+        stream_is_capturing=lambda stream: capturing,
     )
     buffers = {name: SimpleNamespace(ptr=(i+1)*1000, nbytes=size)
                for i, (name, size) in enumerate([
@@ -59,57 +60,10 @@ def test_iu8_map_readback_and_risk_reset_follow_the_producer_stream(monkeypatch)
     monkeypatch.setattr(group_scatter, 'qwen35_moe_wmma_tile_map',
                         lambda *a, **kw: events.append(('map', kw['stream'])))
 
-    def readback(dst, src, count, **kw):
-        assert events[-1] == ('sync', 7)
-        events.append(('read', 7))
-        ctypes.c_int64.from_address(dst).value = 16
+    def readback(*args, **kwargs):
+        raise AssertionError("device tile map must not be read on host during capture")
 
     monkeypatch.setattr(memory, 'copy_device_to_host', readback)
-    monkeypatch.setattr(leaf, 'gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out',
-                        lambda *a, **kw: events.append(('risk', kw['stream'])))
-    monkeypatch.setattr(leaf, 'gguf_q5_k_selected_dual_sparse_exact_repair_bf16',
-                        lambda *a, **kw: events.append(('repair', kw['stream'])))
-    assert experts._gemma4_project_experts_gate_up_wmma_iu8(
-        weight, 10, 20, SimpleNamespace(ptr=30), 1, 1, 256, 16,
-        scratch=scratch, stream=7, runtime=runtime)
-    assert events == [('map',7), ('sync',7), ('read',7), ('reset',7), ('risk',7), ('repair',7)]
-
-
-def test_iu8_capture_launches_the_bound_without_a_readback(monkeypatch):
-    """Under capture the tile plan's row count is never read back to the host.
-
-    The MMQ-family leaves size their grid from a device readback and synchronize
-    the stream to make it visible. Both are illegal inside a HIP graph capture
-    (HIP 900), so a capturing stream must launch the routing-independent upper
-    bound instead. The map still fills every unused ``tile_expert`` slot with
-    ``-1``, which the leaf rejects, so the bounded grid is the same output.
-    """
-    from hipengine.core import memory
-    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts as experts
-    from hipengine.kernels.hip_gfx1100.moe import group_scatter
-    from hipengine.kernels.hip_gfx1100.quant import gguf_q5_k_q8_1_selected_prefill as leaf
-
-    events = []
-    checked = []
-    runtime = SimpleNamespace(
-        stream_synchronize=lambda stream: events.append(('sync', stream)),
-        memset_async=lambda ptr, value, count, stream: events.append(('reset', stream)),
-        stream_is_capturing=lambda stream: (checked.append(stream) or True),
-    )
-    buffers = {name: SimpleNamespace(ptr=(i+1)*1000, nbytes=size)
-               for i, (name, size) in enumerate([
-                   ('wmma_expert_start',16), ('wmma_tile_expert',8), ('wmma_total',8),
-                   ('mmq_risk_count',4), ('mmq_risk_indices',128)])}
-    scratch = SimpleNamespace(buffer=lambda name: buffers[name])
-    weight = SimpleNamespace(allocation=lambda name: SimpleNamespace(buffer=SimpleNamespace(ptr=6000)))
-    monkeypatch.setattr(leaf, 'build_gguf_q5_k_q8_1_selected_prefill', lambda **kw: object())
-    monkeypatch.setattr(group_scatter, 'qwen35_moe_wmma_tile_map',
-                        lambda *a, **kw: events.append(('map', kw['stream'])))
-
-    def forbidden_readback(*a, **kw):
-        raise AssertionError('capture must not read the tile total back to the host')
-
-    monkeypatch.setattr(memory, 'copy_device_to_host', forbidden_readback)
     monkeypatch.setattr(leaf, 'gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out',
                         lambda *a, **kw: events.append(('risk', kw['stream'], a[-1])))
     monkeypatch.setattr(leaf, 'gguf_q5_k_selected_dual_sparse_exact_repair_bf16',
@@ -117,10 +71,6 @@ def test_iu8_capture_launches_the_bound_without_a_readback(monkeypatch):
     assert experts._gemma4_project_experts_gate_up_wmma_iu8(
         weight, 10, 20, SimpleNamespace(ptr=30), 1, 1, 256, 16,
         scratch=scratch, stream=7, runtime=runtime)
-    # No synchronize and no readback: the capture only maps, resets and launches.
-    assert checked == [7]
-    assert ('sync', 7) not in events and ('read', 7) not in events
-    # 1 compact row over 1 expert bounds to one 16-row tile.
     assert events == [('map',7), ('reset',7), ('risk',7,16), ('repair',7)]
 
 

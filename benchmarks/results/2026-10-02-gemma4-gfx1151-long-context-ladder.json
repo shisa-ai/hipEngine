@@ -1,0 +1,71 @@
+{
+  "kind": "gemma4_gfx1151_long_context_ladder",
+  "performance_claim": true,
+  "status": "landed",
+  "recorded": "2026-10-02, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 124 GB unified), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "why": "The 2026-09-30 boundary diagnostic measured hipEngine's prompt ladder only to 8192 because the strict attention kernel's shared-memory bound refused every context above 15616, and the crossover with llama.cpp was left between 4096 and 8192 with hipEngine unable to run past it. The WMMA flash prefills and the full-layer key split and decode shape have since made those contexts servable, so the question the diagnostic could not ask -- where does hipEngine's own curve go -- is now askable. This is that curve, plus the 4096/8192 boundary re-measured on the same protocol so the two are comparable.",
+
+  "protocol": "scripts/gemma4_campaign_bench.py --prompt <P> --output 128 --context <P+128> --expect-gpu 8060S, production execution profile. Samples 3 with one full-shape warmup at 4096, 8192 and 32768 where a point is cheap; samples 1 with one warmup at 65536, 131072 and 262144 where it is not. capacity = prompt + 128, matching the 2026-09-30 protocol. Each point is its own process.",
+
+  "ladder": {
+    "4096":   {"prefill_tps": 1111.9, "decode_tps": 25.590, "public_wall_s": 8.65,   "peak_used_gib": 31.75, "public_path_parity": true},
+    "8192":   {"prefill_tps": 1061.6, "decode_tps": 16.830, "public_wall_s": 15.20,  "peak_used_gib": 32.63, "public_path_parity": true},
+    "32768":  {"prefill_tps": 819.5,  "decode_tps": 25.983, "public_wall_s": 44.85,  "peak_used_gib": 37.89, "public_path_parity": true},
+    "65536":  {"prefill_tps": 631.8,  "decode_tps": 23.474, "public_wall_s": 110.89, "peak_used_gib": 44.77, "public_path_parity": true},
+    "131072": {"prefill_tps": 407.5,  "decode_tps": 19.392, "public_wall_s": 332.29, "peak_used_gib": 58.58, "public_path_parity": true},
+    "262144": {"prefill_tps": 248.2,  "decode_tps": 14.794, "public_wall_s": 1066.07, "peak_used_gib": 86.20, "public_path_parity": true}
+  },
+
+  "prefill_reading": "The prefill declines smoothly and monotonically from 1112 to 248 tok/s across a 64x prompt range, a factor of 4.48, and every point ran. Extrapolating the earlier -11 percent over a 16x range at the short end, the decline steepens as the quadratic attention term takes over, which is what the full layers' per-block key walk predicts. The 262144 point is 1056.16 s of prefill for 262144 tokens; the mask-cost unit measured 998.1 s for the same width on the raw prefill path, a 5 percent difference between two harness boundaries rather than two protocols.",
+
+  "decode_reading": "Decode declines from 25.98 at 32768 to 14.79 at 262144, a factor of 1.76 across an 8x context. Between 4096 and 32768 it is NOT monotone: 25.59, then 16.83 at 8192, then 25.98. Decode at 8192 keys is slower than decode at 262144 keys, a 32x context difference in the wrong direction, and it is reproducible -- the 2026-09-30 diagnostic recorded 16.72 at the same point against 25.24 at 4096, so this shape predates every change in this unit. It is not a property of the context; it is a property of which kernel a one-token block selects, and that is measured below.",
+
+  "boundary_re_run": {
+    "why": "The 2026-09-30 diagnostic recorded 4096 and 8192 on this protocol. Re-running both is what makes the new points comparable to it.",
+    "recorded_4096": {"prefill_tps": 1103, "decode_tps": 25.24},
+    "now_4096": {"prefill_tps": 1111.9, "decode_tps": 25.590},
+    "recorded_8192": {"prefill_tps": 1042, "decode_tps": 16.72},
+    "now_8192": {"prefill_tps": 1061.6, "decode_tps": 16.830},
+    "reading": "Both points reproduce within 1-2 percent. The 2026-09-30 rows were measured with a harness defect that made --context decorative (runner capacity 8192 at every point); that was fixed in 85bce9c3f. At these two points the fix is invisible, because context 4224 and 8320 were both already under the old 8192 allocation -- which is exactly why the defect went unnoticed there and why the re-run is worth having."
+  },
+
+  "the_8192_anomaly": {
+    "what": "A one-token block is served by the strict decode kernel whenever gemma4_decode_max_keys() admits the key count, and by the WMMA full kernel's decode shape above that. The rule's stated reason is that the WMMA kernels tile 16 query rows wide, so one row wastes fifteen sixteenths of every op, and the strict path has a dedicated decode kernel for exactly that case.",
+    "measurement": "One layer, tokens=1, identical buffers and arguments in both arms, alternating repetitions, median of 9. scripts/gemma4_campaign_bench.py's decode boundary is a different measurement from this one and is not the basis for the claim.",
+    "kernel_ab": {
+      "512":   {"strict_ms": 0.12, "wmma_decode_ms": 0.27, "wmma_over_strict": 2.345},
+      "1024":  {"strict_ms": 0.21, "wmma_decode_ms": 0.47, "wmma_over_strict": 2.208},
+      "2048":  {"strict_ms": 0.37, "wmma_decode_ms": 0.50, "wmma_over_strict": 1.331},
+      "4096":  {"strict_ms": 0.87, "wmma_decode_ms": 0.55, "wmma_over_strict": 0.636},
+      "8192":  {"strict_ms": 3.35, "wmma_decode_ms": 0.64, "wmma_over_strict": 0.190},
+      "15856": "strict refused to launch: 66496 bytes of shared memory against a 65536 budget"
+    },
+    "finding": "The crossover is between 2048 and 4096 keys, not at 15856. At 8192 keys the strict decode kernel is 5.2x slower than the WMMA decode shape, and the strict kernel is super-linear: 0.87 ms at 4096 keys and 3.35 ms at 8192, 3.9x for a 2x key increase. The rule's premise is stale in two ways -- the WMMA kernel is no longer 16 rows wide for a decode (shape_for_tokens(1) selects the 2-row 8-GQA-head shape, so one of two rows is wasted, not fifteen of sixteen), and the strict decode kernel's own parallelism is structurally low with grid = tokens * num_heads = 16 blocks, which is the same limitation the key split was added to work around.",
+    "output_equivalence": "The two arms agree to the same reassociation delta the decode shape already reports: 8161-8190 of 8192 bf16 outputs bit-identical, worst element 0.0078 against a 3.7-4.3 peak."
+  },
+
+  "a_live_defect_found_while_measuring": {
+    "what": "A context in [15617, 15856] prefills successfully and then raises on the first decode.",
+    "evidence": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151, hipengine.LLM(max_sequence_length=15928), a 15800-token prompt, 4 greedy tokens: GenerationExecutionFailed: generation execution failed during decode (request_ids=[0], work_kind=decode, state_mutation=unknown, cause=NotImplementedError: Gemma 4 gfx1100 attention requires 66276 bytes of shared memory for head_dim=512, keys=15801; this kernel supports at most 65536 bytes and needs tiled attention for this context). The same script at a 15600-token prompt (decode keys 15600-15603) returns 4 tokens normally.",
+    "why": "Two bounds disagree by 240 keys. gemma4_decode_max_keys() is 15856 -- the decode kernel's own requirement, keys + 528 floats -- and _strict_decode_serves admits the strict variant up to it. The launcher validates with gemma4_attention_shared_bytes, which takes max(block_kernel_requirement, decode_requirement) and therefore refuses above 15616. So the selection promises a path the launcher will not start, and the failure is a raise rather than a silent wrong answer.",
+    "reachability": "Not rare: any context between 15616 and 15856 whose prompt is long enough to put the first decode key inside the window. It is also pre-existing -- it arrived with the WMMA variants that made contexts above 15616 servable at all, not with this unit.",
+    "not_fixed_here": "Fixing it means changing which kernel a one-token block selects, which is a routing change to production arithmetic and needs its own gate. Filed as a follow-up with the measurement above."
+  },
+
+  "correctness": {
+    "path_parity": "public_path_parity True at all six points. The harness runs the instrumented path and an untouched generate_detailed call on the same token ids and compares them, so a divergence would be reported rather than smoothed over.",
+    "the_256k_request_is_coherent": "The 262144-token point's public row generated exactly 128 tokens (public_generated_equals_expected true) and they are a coherent continuation: the prompt ends mid-sentence in the frozen corpus and the model completes it and resumes the cycle -- '...春の桜と秋の紅' continues '葉では観光客の数も変わる。The Treaty of Westphalia in 1648 is often cited as the moment that established the modern system of sovereign states in Europe.' and onward through the corpus. Decoded with the artifact's own tokenizer."
+  },
+
+  "capacity": {
+    "tier1_probe": "benchmarks/results/2026-10-02-gemma4-gfx1151-262144-capacity-tier1.json: the 262144 envelope allocates and runs a short prefill and decode with finite logits, 82.33 GiB peak against 124 GB unified, so the expensive full-length point was worth starting.",
+    "measured_peak_at_262144": "86.20 GiB in the full-length run, against 133.14 GB total. The probe's 82.33 GiB is the same envelope measured before the prefill workspace is exercised.",
+    "ladder_peak": "31.75, 32.63, 37.89, 44.77, 58.58, 86.20 GiB at 4096 through 262144. The growth is the KV planes, 225280 B per token: 25 sliding layers at 8 KV heads x head_dim 256 and 5 full layers at 2 KV heads x head_dim 512."
+  },
+
+  "not_supplied": [
+    "a multi-slot serving envelope: every point ran max_batch_size 1, the LLM.generate() route. The server reserves one full-context KV plane per slot and 262144 x 4 slots is a separate question",
+    "a llama.cpp comparison at the new points: the 2026-09-30 diagnostic's llama-bench row is the comparison basis and it is unchanged here",
+    "category, isolation and task gates"
+  ]
+}

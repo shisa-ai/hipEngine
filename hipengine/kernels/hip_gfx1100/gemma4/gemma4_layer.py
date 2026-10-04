@@ -911,10 +911,25 @@ def gemma4_layer_forward_bf16(
         )
         _last_prefill_route = route
         if prefill_attention_variants is not None:
+            # `rows` goes with it because a one-token block is a decode step, and
+            # the variants are multi-row prefill kernels. Before this was passed,
+            # decode ran the prefill tiling for all 30 layers and never reached
+            # the decode kernel the strict path routes to: 30 launches at
+            # tokens=1 per step, 0 to `_launch_prefill`, and 10 percent off
+            # decode throughput.
+            #
+            # `keys` goes with `rows` because which of the two a one-token block
+            # takes is a measured crossover, not a fixed rule: the strict decode
+            # kernel is faster below `_STRICT_DECODE_WINS_UNTIL_KEYS` and the
+            # variants' decode shape is faster above it. A block past that
+            # crossover takes the variants' online-softmax walk, which is also
+            # the only path that runs once the strict kernel's own shared-memory
+            # bound is passed -- and what makes a context longer than that bound
+            # reachable at all.
             attention = select_prefill_attention(
                 requested_variant=prefill_attention_variants,
                 num_heads=num_heads, num_kv_heads=num_kv_heads,
-                head_dim=head_dim, tokens=rows,
+                head_dim=head_dim, tokens=rows, keys=key_count,
             )
             _last_prefill_route = attention.variant
             attention.launcher(

@@ -48,7 +48,10 @@ from hipengine.kernels.cpu_reference.gemma4 import (
     Gemma4TextConfig,
     gemma4_text_config_from_hf,
 )
-from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import gemma4_attention_shared_bytes
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    Gemma4AttentionScratch,
+    gemma4_attention_serves_keys,
+)
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rope import gemma4_rope_cos_sin_tables
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
     Gemma4LayerGeometry,
@@ -481,34 +484,61 @@ def gemma4_text_config_from_reader(
     return gemma4_text_config_from_gguf(gguf, tensor_names=tensor_names)
 
 
+def gemma4_layer_key_count(
+    attention: Gemma4AttentionGeometry, capacity: int, *, rows: int = 1
+) -> int:
+    """Return the cached key span presented by a layer's widest block."""
+    capacity = int(capacity)
+    if attention.sliding_window is None:
+        return capacity
+    return min(capacity, int(attention.sliding_window) + int(rows) - 1)
+
+
 def gemma4_require_context_capacity(
     config: Gemma4TextConfig,
     capacity: int,
     *,
+    rows: int | None = None,
     kv_storage: str = "bf16",
+    variants: Sequence[str] | None = None,
 ) -> None:
-    """Raise if the *selected* attention consumer cannot serve ``capacity``.
+    """Raise if no selected attention path can serve ``capacity`` positions.
 
-    BF16 attention moves logits to owned global scratch for the implemented
-    256/512 head geometries when the LDS requirement is too large. The direct
-    INT8 consumer instead keeps context-sized logits in LDS. Admission checks
-    only the selected storage consumer, rather than applying one storage's
-    resource bound to another.
+    The question is asked of the *selected* consumer, and of the family rather
+    than of one kernel in it.
 
-    ``gemma4_attention_shared_bytes`` is the repaired BF16 bound: the 256/512
-    head-dimension class kernel moves its logits to request-owned global scratch
-    beyond 64 KiB rather than refusing the context, so a long global-logit
-    context is servable and this does not reintroduce the old 256/512 LDS cap.
+    BF16 256/512-head attention moves its logits to request-owned global scratch
+    when a resident row would exceed the LDS budget, so that geometry is
+    servable at any key count. Other BF16 geometries are charged the layer's
+    actual key band. The INT8 consumer has its own context-sized LDS contract
+    and is checked separately.
 
-    The check is on ``capacity`` and not on any live count, so a sliding window
-    does not lift it: the runner validates the configured context, not the keys
-    a particular query attends to.
+    ``gemma4_attention_serves_keys`` holds the strict kernel to one logit per
+    live key in LDS. Each layer is charged the key count it actually presents,
+    from :func:`gemma4_layer_key_count`: the whole context for a windowless
+    layer, and ``window + rows - 1`` for a windowed one.
 
-    This is a capability refusal and it is deliberately loud and named. It is
-    also deliberately callable without weights, so a caller can raise it before
-    paying for a load rather than after.
+    A layer the strict kernel cannot serve is not automatically unservable. The
+    WMMA flash prefills stage a fixed K/V tile and walk the keys in online-softmax
+    batches, so their shared memory does not grow with the context, and a
+    ``variants`` request that selects one of them for this geometry serves the
+    layer. The question is asked through
+    :func:`gemma4_attention_serves_keys`, which owns it, so the answer cannot
+    drift from what the launchers do.
+
+    ``rows`` is the widest block that will be submitted, and it widens a windowed
+    layer's band. It defaults to the block ``Gemma4Runner`` derives when it is not
+    told one, so a caller checking the geometry before a load reaches the same
+    answer the runner will.
+
+    This is a capability refusal and it is deliberately loud and named. It is also
+    deliberately callable without weights, so a caller can raise it before paying
+    for a load rather than after.
     """
 
+    capacity = int(capacity)
+    if rows is None:
+        rows = min(capacity, DEFAULT_PREFILL_BLOCK)
     resolved = str(kv_storage or "auto")
     if resolved == "auto":
         resolved = "bf16"
@@ -519,9 +549,20 @@ def gemma4_require_context_capacity(
             )
         return
     for attention in config.attention:
-        gemma4_attention_shared_bytes(
-            head_dim=attention.head_dim, keys=int(capacity)
+        keys = gemma4_layer_key_count(attention, capacity, rows=int(rows))
+        reason = gemma4_attention_serves_keys(
+            head_dim=attention.head_dim,
+            num_heads=attention.num_heads,
+            num_kv_heads=attention.num_kv_heads,
+            keys=keys,
+            requested_variant=variants,
         )
+        if reason is not None:
+            raise NotImplementedError(
+                f"no attention path serves {keys} keys for head_dim="
+                f"{attention.head_dim} with {attention.num_heads}q/"
+                f"{attention.num_kv_heads}kv at capacity {capacity}: {reason}"
+            )
 
 
 def load_gemma4_device_weights(
@@ -796,6 +837,11 @@ class Gemma4Runner:
     _kv_scale_dtype_resolved: DType = field(default=DType.FP16, repr=False)
     _caches: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _staging: dict[str, tuple[DeviceBuffer, int]] = field(default_factory=dict, repr=False)
+    # One host-only multirow range per immutable RoPE config. Decode bypasses
+    # this cache so single-token steps do not evict reusable prefill tables.
+    _rope_prefill_tables: dict[
+        Gemma4RopeConfig, tuple[int, int, np.ndarray, np.ndarray]
+    ] = field(default_factory=dict, init=False, repr=False)
     _position: int = field(default=0, repr=False)
     # Rows of the most recent block, which is what ``hidden_state`` indexes.
     _last_rows: int = field(default=0, repr=False)
@@ -824,6 +870,9 @@ class Gemma4Runner:
             self.max_block = min(self.capacity, DEFAULT_PREFILL_BLOCK)
         if self.max_block > self.capacity:
             raise ValueError("max_block must not exceed capacity")
+        # A capability refusal, raised here rather than at request time. Callers
+        # that can reach the geometry without loading weights should call
+        # gemma4_require_context_capacity first so the refusal costs nothing.
         self._resolve_kv_storage()
         self._validate_attention_shared_memory(config)
 
@@ -885,6 +934,21 @@ class Gemma4Runner:
                 gemma4_logit_argmax_scratch_bytes(int(config.vocab_size or 0))
             )
 
+            # One attention workspace serves every layer. The workspace is
+            # transient -- a layer's launch chain finishes with it before the
+            # next layer's starts -- and the block submits its layers serially
+            # on one stream (the layer forward's default stream 0), so a later
+            # layer's kernels are ordered behind the earlier layer's reads and
+            # one allocation can serve them all. A per-layer owner instead
+            # retains each layer's growth chain separately, which is what makes
+            # a deep prefill's workspace scale with the layer count. Sharing
+            # stays safe for anything queued elsewhere: the scratch keys its
+            # buffers by stream, so another stream gets its own allocation
+            # rather than one a kernel here may still be reading. Cleanup is
+            # unchanged: every layer scratch still closes the owner it was
+            # handed, and ``Gemma4AttentionScratch.close`` is idempotent, so the
+            # workspace is synchronized and freed exactly once.
+            shared_attention = Gemma4AttentionScratch()
             for index, attention in enumerate(config.attention):
                 self._scratches.append(
                     Gemma4LayerScratch(
@@ -895,6 +959,7 @@ class Gemma4Runner:
                         num_experts=config.num_experts,
                         top_k=config.top_k_experts,
                         expert_intermediate=config.moe_intermediate_size,
+                        attention=shared_attention,
                     )
                 )
                 if self._kv_storage_resolved == "int8_per_token_head":
@@ -943,7 +1008,11 @@ class Gemma4Runner:
         """
 
         gemma4_require_context_capacity(
-            config, self.capacity, kv_storage=self._kv_storage_resolved
+            config,
+            self.capacity,
+            rows=self.max_block,
+            kv_storage=self._kv_storage_resolved,
+            variants=self.prefill_attention_variants,
         )
 
     def _resolve_kv_storage(self) -> None:
@@ -1080,6 +1149,7 @@ class Gemma4Runner:
             free(buffer)
         self._buffers.clear()
         self._staging.clear()
+        self._rope_prefill_tables.clear()
         self._scratches.clear()
         self._kv.clear()
         self._caches.clear()
@@ -1658,7 +1728,15 @@ class Gemma4Runner:
             # doubled, which is the layout gemma4_partial_rotary_bf16 indexes.
             staged = tables.get(attention.rope)
             if staged is None:
-                cos, sin = gemma4_rope_cos_sin_tables(attention.rope, positions)
+                cached = self._rope_prefill_tables.get(attention.rope) if rows > 1 else None
+                if cached is not None and cached[:2] == (start, rows):
+                    cos, sin = cached[2:]
+                else:
+                    cos, sin = gemma4_rope_cos_sin_tables(attention.rope, positions)
+                    if rows > 1:
+                        self._rope_prefill_tables[attention.rope] = (start, rows, cos, sin)
+                # Upload even on a host hit: decode or graph staging may have
+                # overwritten these reusable device buffers since the prefill.
                 staged = (
                     self._stage_upload(
                         f"cos{attention.rope}",

@@ -1,0 +1,249 @@
+{
+  "kind": "gemma4_partial_score_validation_screen",
+  "performance_claim": false,
+  "production_certified": false,
+  "numerical_screen": {
+    "baseline_forced_slices": null,
+    "baseline_path": "/tmp/gate_strict_8k.npz",
+    "baseline_sha256": "dac757faa90b65f12550ee2be4ce428e9fff3661627d758bafef17df15969d75",
+    "candidate_forced_slices": null,
+    "chain_kind": {
+      "corpus": "frozen",
+      "corpus_seed": null
+    },
+    "chain_sha256": "ea1766ee5530c7028e61cc93c4162cee2e0f54738e9b3a097306013efe8daaba",
+    "direction": "kl(baseline || candidate)",
+    "evidence_level": "numerical_rows",
+    "failed": [],
+    "kl_max": 0.011627845921230114,
+    "kl_mean": 1.6903118698150017e-05,
+    "kl_p95": 3.4276066968816962e-06,
+    "kl_p99": 6.359368255097804e-05,
+    "margin_report": {
+      "band_definition": "margin is p1 - p2 within the frozen baseline row",
+      "bands": [
+        {
+          "band": "margin_lt_0.01",
+          "flips": 0,
+          "kl_max": null,
+          "kl_mean": null,
+          "rows": 0,
+          "share": 0.0
+        },
+        {
+          "band": "margin_0.01_to_0.05",
+          "flips": 0,
+          "kl_max": null,
+          "kl_mean": null,
+          "rows": 0,
+          "share": 0.0
+        },
+        {
+          "band": "margin_0.05_to_0.20",
+          "flips": 0,
+          "kl_max": null,
+          "kl_mean": null,
+          "rows": 0,
+          "share": 0.0
+        },
+        {
+          "band": "margin_ge_0.20",
+          "flips": 0,
+          "kl_max": 0.011627845921230114,
+          "kl_mean": 1.6903118698150017e-05,
+          "rows": 4095,
+          "share": 1.0
+        }
+      ],
+      "close_margin_definition": "margin < 0.05",
+      "close_margin_flips": 0,
+      "close_margin_kl_max": null,
+      "close_margin_rows": 0,
+      "logit_gap_median": 15.690959930419922,
+      "margin_median": 0.9999993866403893,
+      "margin_min": 0.9048505757192052
+    },
+    "observed_routes": {
+      "decode_launches": 102375,
+      "head_dims": [
+        256
+      ],
+      "selections": [
+        2
+      ],
+      "split_key_range": [
+        1024,
+        1024
+      ],
+      "split_launches": 102375
+    },
+    "observed_wmma_full_split": {
+      "divided_key_range": [
+        4097,
+        8191
+      ],
+      "divided_plans": 20475,
+      "plans": 20475,
+      "shapes": [
+        2
+      ],
+      "slice_counts": [
+        16
+      ]
+    },
+    "passed": true,
+    "percentile_method": "nearest-rank",
+    "prefill": 4096,
+    "promotion_qualified": false,
+    "rows": 4095,
+    "scored_key_range": [
+      4097,
+      8191
+    ],
+    "thresholds": {
+      "kl_max": 0.05,
+      "kl_mean": 0.001,
+      "kl_p95": 0.005,
+      "kl_p99": 0.02,
+      "top1_rate": 0.99
+    },
+    "top1_flip_rows": [],
+    "top1_flips": 0,
+    "top1_flips_close_margin": 0,
+    "top1_rate": 1.0,
+    "vocab": 262144
+  },
+  "public_route": {
+    "kind": "gemma4_public_attention_route_observation",
+    "performance_claim": false,
+    "prompt_tokens": 8192,
+    "requested_output_tokens": 4,
+    "surface": "hipengine.LLM.generate",
+    "device_synchronize_passed": true,
+    "execution_profile_manifest": {
+      "kind": "hipengine_execution_profile_manifest",
+      "schema_version": 1,
+      "execution_profile": "production",
+      "backend": "hip_gfx1151",
+      "model": "gemma4_gguf",
+      "quant": "gguf_q4_k_m",
+      "kv_policy": "paged_bf16",
+      "graph_policy": "eager_blocks",
+      "selections": [
+        {
+          "layer": "prefill_attention",
+          "scope": "full_head_dim_512",
+          "selected_variant": "gemma4_wmma_flash_full",
+          "strict_fallback_variant": "gemma4_plain",
+          "evidence_artifact": "benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-full-candidate.json",
+          "registry_quant": "gguf_q4_k_m"
+        },
+        {
+          "layer": "prefill_attention",
+          "scope": "sliding_head_dim_256",
+          "selected_variant": "gemma4_wmma_flash",
+          "strict_fallback_variant": "gemma4_plain",
+          "evidence_artifact": "benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-candidate.json",
+          "registry_quant": "gguf_q4_k_m"
+        }
+      ]
+    },
+    "manifest_sha256": "11bd3c240c725a4e9330801feff134153098d7ba2748a39c0fe9548a3a10ccf3",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip": "39507883359b3df454878a407be11224a7a550853da00570a13123b60536325c"
+    },
+    "counts": [
+      {
+        "variant": "gemma4_plain",
+        "phase": "decode",
+        "invocations": 75
+      },
+      {
+        "variant": "gemma4_wmma_flash",
+        "phase": "prefill",
+        "invocations": 400
+      },
+      {
+        "variant": "gemma4_wmma_flash_full",
+        "phase": "decode",
+        "invocations": 15
+      },
+      {
+        "variant": "gemma4_wmma_flash_full",
+        "phase": "prefill",
+        "invocations": 80
+      }
+    ],
+    "outputs": [
+      "(items) //"
+    ],
+    "provenance": {
+      "kind": "hipengine_artifact_provenance",
+      "schema_version": 2,
+      "collected_at": "2026-10-03T01:22:15.716837+00:00",
+      "host_name": "zbook",
+      "repo_root": "/home/lhl/hipEngine-gemma4",
+      "hipengine_commit": "2ea70034357c719953b5ee9c8becee6ba3e78255",
+      "git_branch": "gemma4",
+      "staged_dirty": false,
+      "unstaged_dirty": false,
+      "untracked_dirty": true,
+      "untracked_count": 3,
+      "dirty": true,
+      "configured_backend": "auto",
+      "resolved_backend": "hip_gfx1151",
+      "target_arch": "gfx1151",
+      "device_name": "AMD Radeon 8060S Graphics",
+      "model_path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "model_revision": null,
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+        "size_bytes": 17010980576,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          8504966000,
+          17009932000
+        ],
+        "exists": true,
+        "path_type": "file"
+      },
+      "quant": "UD-Q4_K_XL",
+      "kv_dtype": "bf16",
+      "command": [
+        "scripts/gemma4_public_route_probe.py",
+        "--prompt",
+        "8192",
+        "--output",
+        "4",
+        "--out",
+        "/tmp/priority-public-route-8192.json"
+      ],
+      "environment": {
+        "HIPENGINE_BACKEND": null,
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "GPU_MAX_HW_QUEUES": "2",
+        "HIPENGINE_BUILD_CACHE_ROOT": null,
+        "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+        "HIP_VISIBLE_DEVICES": null,
+        "ROCR_VISIBLE_DEVICES": null,
+        "CUDA_VISIBLE_DEVICES": null,
+        "GPU_DEVICE_ORDINAL": null
+      },
+      "rocm_version": "HIP version: 7.15.26333-0000000",
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+      "build_profile": null,
+      "timing_protocol": null,
+      "warmups": null,
+      "repetitions": null,
+      "profiler": null
+    }
+  },
+  "limitations": [
+    "Frozen chain contains no close-margin rows.",
+    "Baseline is historical strict-decode routing on a production-profile prefill, not a complete strict-plan teacher.",
+    "Multi-category, heldout, repeat, isolation and task checks remain pending."
+  ]
+}

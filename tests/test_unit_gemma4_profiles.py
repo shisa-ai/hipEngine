@@ -32,7 +32,8 @@ from hipengine.generation.gemma4_profiles import (
 
 # The measured default path (resolve-spy trace, mode=auto, shipped artifact).
 _MMQ32 = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
-_WMMA_DOWN = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+_T16_FUSED_WMMA = "selected_dual_wmma_prefill_fused_bf16_bf16_out"
+_GROUPED_DOWN_PRODUCTION = "selected_grouped_prefill_staged_out4_bf16_bf16_out"
 _GROUPED_DUAL = "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
 _GROUPED_DOWN_Q5_1 = "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
 # The T16-converted gate_up scope's exact owner: grouped registers no T16
@@ -101,7 +102,16 @@ def test_production_manifest_matches_the_measured_routes() -> None:
         profile=ExecutionProfile.PRODUCTION,
     )
     rows = _by_scope(resolved)
-    assert rows[("moe_linear", "gate_up_q4_k")]["selected_variant"] == _T16_DECODE
+    assert rows[("moe_linear", "gate_up_q4_k")]["selected_variant"] == _T16_FUSED_WMMA
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import _fused_wmma_owner
+    from hipengine.kernels.registry import resolve
+    from types import SimpleNamespace
+    weight = SimpleNamespace(backend=GEMMA4_GGUF_BACKEND,
+                             spec=SimpleNamespace(quant_key="gguf_q4_k_t16_v1"))
+    selected = rows[("moe_linear", "gate_up_q4_k")]["selected_variant"]
+    assert _fused_wmma_owner(weight, 512 * 8, 2816, 704, 128) is resolve(
+        backend=GEMMA4_GGUF_BACKEND, layer="moe_linear",
+        quant="gguf_q4_k_t16_v1", variant=selected)
     # The T16 conversion moves the registry key the rows resolve under:
     # gate_up dispatches as its tiles layout, both at prefill and decode.
     assert rows[("moe_linear", "gate_up_q4_k")]["registry_quant"] == (
@@ -111,7 +121,7 @@ def test_production_manifest_matches_the_measured_routes() -> None:
         "gguf_q4_k_t16_v1"
     )
     assert rows[("moe_linear", "gate_up_q5_k")]["selected_variant"] == _MMQ32
-    assert rows[("moe_linear", "down_q5_1")]["selected_variant"] == "selected_grouped_prefill_staged_out4_bf16_bf16_out"
+    assert rows[("moe_linear", "down_q5_1")]["selected_variant"] == _GROUPED_DOWN_PRODUCTION
     assert rows[("linear", "dense_prefill_q8_0")]["selected_variant"] == (
         "wmma_prefill_bf16_bf16_out"
     )

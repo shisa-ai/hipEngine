@@ -1,0 +1,41 @@
+{
+  "kind": "gemma4_gfx1151_262144_capacity_tier1",
+  "performance_claim": false,
+  "status": "pass",
+  "recorded": "2026-10-02, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 124 GB unified), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "question": "Does a 262144-token context fit on this device, and does the tier-1 protocol cover this architecture at all?",
+  "answer": "It fits with about 42 GiB of headroom: 82.33 GiB peak against 124 GB unified. And it did not cover it before this unit.",
+
+  "protocol_tier": 1,
+  "why_tier_1": "Every allocation the declared context sizes -- weights, the per-layer KV planes, the persistent scratch -- is acquired when the runner is built, not when the prompt arrives, so a 2048-token prompt at max_sequence_length 262144 exercises the same envelope a full-length point would. The full-length point costs 998 s; this cost 40 s. This is the protocol in benchmarks/HARNESSES.md 'Capacity testing': use tier 1 for every does-it-fit question and tier 2 only to confirm a bound tier 1 found.",
+
+  "what_was_missing": "scripts/gguf_capacity_probe.py drove Qwen35GGUFResidentSession unconditionally, so a gemma4 artifact died inside the loader with \"expected GGUF architecture 'qwen35' or 'qwen35moe', got 'gemma4'\" before it could answer anything. The probe now routes on the artifact's general.architecture: gemma4 resolves the same generator hipengine.LLM would and drives its runner, so the envelope it certifies is the one a user reaches; qwen35/qwen35moe keep the resident-session route their ladders were measured on; any other architecture raises a named unsupported-architecture error before allocating. Without a branch the protocol's only option for a new family is the expensive point it exists to avoid.",
+
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gguf_capacity_probe.py --model /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --max-sequence-length 262144 --json /tmp/cap_g4_262144.json",
+
+  "measured": {
+    "architecture": "gemma4",
+    "generator": "Gemma4GGUFGenerator",
+    "execution_profile": "production",
+    "runner_capacity": 262144,
+    "layers": 30,
+    "status": "pass",
+    "finite_logits": true,
+    "resident_gib": 78.756019,
+    "transient_peak_gib": 3.576883,
+    "resident_plus_transient_peak_gib": 82.332903,
+    "device_unified_bytes": 133143986176,
+    "headroom_gib": 41.7
+  },
+
+  "reading": "78.76 GiB resident is the 17 GB artifact plus 262144 positions of KV: 25 sliding layers at 8 KV heads x head_dim 256 = 8192 B per token and 5 full layers at 2 KV heads x head_dim 512 = 4096 B per token, so 225280 B per token, 59.05 GB at 262144. The transient 3.58 GiB is the chunked prefill workspace, which is sized by the block width and not by the context. The context is not what is close to the limit here -- the weights and the KV are, and they were already resident at 131072.",
+
+  "not_supplied": [
+    "a multi-slot serving envelope: this probe ran max_batch_size 1, which is the LLM.generate() route. The server reserves one full-context KV plane per slot, so a serving envelope needs --max-batch-size 4 and roughly three more copies of the 59 GB KV term; that is a separate question and it was not asked here",
+    "a throughput claim of any kind: tier 1 answers whether a context fits, never how fast it runs"
+  ],
+
+  "kv_storage_note": "The gemma4 branch certifies the envelope hipengine.LLM builds, so the generator's own KV route applies and the probe's --kv-storage flag does not. The artifact records kv_storage null rather than echoing the flag's default, which would have described a policy the probe never selected.",
+
+  "correctness": "tests/test_unit_gguf_capacity_probe.py, 6 cases with no device: gemma4 reaches the gemma4 branch, qwen35 and qwen35moe reach the qwen35 branch, an unknown architecture exits by name naming the branches that exist, the gemma4 branch records that --kv-storage does not apply, and the declared context does not size the prompt."
+}
