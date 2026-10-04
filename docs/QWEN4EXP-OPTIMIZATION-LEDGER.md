@@ -1058,6 +1058,26 @@ not just harness coverage accounting.
 
 ## 11. Open-candidate census (2026-09-30)
 
+**RE-RUN (`20261004T`): 13 actionable / 17 gated / 40 closed / 1 not-a-candidate.** Five days of
+work moved seven rows: **DE-1** and **MX-1** to closed, **X-7**, **X-10** and **RT-6** to gated,
+**RT-1**'s lever realised (the 1024→4096 chunk step taken through a guard, `ee19f3321`), and
+**ED-3** advanced to its mixed-quant axis only. **Of the 13 actionable rows, only 3 are speed
+candidates — DP-2, DP-6 and QA-4 — and all three are already marked low-value, demoted (QA-4 has
+a measured 3.02% ceiling at 64K), or undocumented (DP-6's entire status cell is 29 characters
+with no state token).** The rest are qualification (X-1, X-2, X-9, X-11), serving lanes (RT-5,
+DE-9, DE-10), MTP (MT-8, MT-1) and ED-3's mixed-quant axis.
+
+**THE RULE BELOW HAS A DEFECT, now known.** It reads the END of each status cell to avoid stale
+opening prefixes — but **DE-1 is the row that defeats it**: its cell *opens* with `CLOSED — BOTH
+RUNTIME ROUTES AND BOTH FLAGS DELETED` and its *tail* is a limits-and-evidence statement with no
+state token, so a tail-reading classifier returns "actionable" for a row whose first word is
+`CLOSED`. **Corrected rule: a row is closed if a terminal marker appears ANYWHERE in its status
+cell, with the end-of-cell read used only to resolve contradictions between a stale prefix and a
+later conclusion.** Applied that way DE-1 classifies correctly and no other row in the 18 moves.
+**`DP-6` is unclassifiable by any rule** — its cell is 29 characters with no state token, and it
+is carrying an actionable row on an undocumented state. Evidence: worklog `20261004T152301`.
+
+
 The campaign's question is whether every candidate in this ledger has been run
 through. That is a punchlist, not a single metric, so the answer is a
 classification of all 71 rows by each row's **own declared state read from the
