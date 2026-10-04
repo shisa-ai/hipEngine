@@ -1044,10 +1044,24 @@ def _hipengine_host_profile(
     runner.runtime.device_synchronize()
     stats = pstats.Stats(profiler)
     total = stats.total_tt
+    callers_of = {key: value[4] for key, value in stats.stats.items()}
     entries = []
-    for (filename, lineno, func), (_cc, ncalls, tottime, _ct, _callers) in sorted(
+    for key, (_cc, ncalls, tottime, _ct, _callers) in sorted(
         stats.stats.items(), key=lambda kv: kv[1][2], reverse=True
     )[: int(top)]:
+        callers = [
+            {
+                "function": caller[2],
+                "file": caller[0],
+                "line": caller[1],
+                "ncalls": int(data[1]),
+                "tottime_s": round(float(data[3]), 6),
+            }
+            for caller, data in sorted(
+                callers_of.get(key, {}).items(), key=lambda kv: -kv[1][3]
+            )[:5]
+        ]
+        filename, lineno, func = key
         entries.append(
             {
                 "function": func,
@@ -1056,6 +1070,7 @@ def _hipengine_host_profile(
                 "ncalls": int(ncalls),
                 "tottime_s": round(float(tottime), 6),
                 "share": round(float(tottime) / total, 6) if total else 0.0,
+                "callers": callers,
             }
         )
     return {
