@@ -1058,8 +1058,29 @@ not just harness coverage accounting.
 
 ## 11. Open-candidate census (2026-09-30)
 
-**THE READING PASS IS DONE (`20261004T153054`): 26 ROWS NEED WORK.** All 72 status cells read head
-and tail, classified by hand. **24 open + 2 partial + 14 gated + 31 closed + 1 not-a-candidate = 72.**
+**THE READING PASS IS DONE, AND THEN CORRECTED (`20261004T153054`, `20261004T153211`): 24 ROWS
+NEED WORK.** All 72 status cells read head and tail, classified by hand; then a middle scan, which
+found **25 of 72 rows state a status token mid-cell that head+tail misses and 4 of those flip the
+row's state**. **21 open + 3 partial + 14 gated + 33 closed + 1 not-a-candidate = 72.**
+
+**The four flips, and the method failure they record.** `X-6` read `BROKEN AT HEAD` at its head and
+`cause found and fixed ... RED/GREEN verified` mid-cell -> **CLOSED**. `DE-6` read `OPEN, low` ->
+`CLOSED: precondition not met`. `DE-8` read `OPEN, lower priority (R20)` -> `PRICED AND CLOSED
+(20261001T): THE HEAD IS AT ITS OWN FAMILY'S READ RATE`. `QA-8` read `CLOSED - ALREADY
+IMPLEMENTED` -> `Not closed: the prefill rows path still selects strict_rows_spans` -> **PARTIAL**.
+**The head+tail method is therefore insufficient on 4 of 72 rows, exactly the failure mode the
+method's own hypothesis named before the count was reported.** The other 21 mid-cell hits state a
+token that does not change the row's state (a figure or paragraph withdrawn, a gap or route closed).
+
+**`X-6` IS CLOSED, AND ITS CAUSE WAS NOT THE MEMOIZATION KEY.** Fix commit `ccd9f7a84` (*clear the
+wide route in both arms of the wmma gate*), test `tests/test_unit_qwen4exp_wmma_gate_route_arms.py`,
+**2 passed**. The memoization-key revision is recorded in X-6's own cell as **withdrawn** - *"the
+false pass reproduced unchanged with the key fix in place"*. The real cause: the route cleared only
+its own selector, never `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE`, which the certified plan binds to
+16-47; `_q8_dense_wide_claims_parent` accepts the wmma-rewritten parent as well as the exact parent,
+so **the wide route claimed the dispatch in both arms and the gate compared one configuration
+against itself**. **Consequence: `DP-7`'s sole named blocker is gone**, and DP-7's own measured case
+is **-4.94%** (15.625 s -> 14.854 s). DP-7 should be re-checked for promotion.
 
 | state | count |
 | --- | ---: |
