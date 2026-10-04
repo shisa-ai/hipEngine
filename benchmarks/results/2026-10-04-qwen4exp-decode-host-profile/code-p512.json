@@ -1,0 +1,658 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_canonical_ar_engine_run",
+  "engine": "hipengine_production",
+  "surface": "synchronized_direct_runner",
+  "status": "completed",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "b0e143788315f1d43b3a6bfb018b2e603014caf2",
+    "tracked_clean": true
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+    "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+    "fell_back_to_strict": false
+  },
+  "protocol": {
+    "case_ids": [
+      "code-p512"
+    ],
+    "capture_mode": "full",
+    "prefill_kwargs": {},
+    "step_kwargs": {},
+    "ple_cache_mode": "warm",
+    "ple_cache_scope": "per_layer_token_embd.weight file range only",
+    "ple_telemetry": false,
+    "ple_random_access": "off",
+    "warmups_per_case": 1,
+    "measured_repetitions": 1,
+    "decode_transitions": 128,
+    "visible_output_tokens": 129,
+    "prefill_chunk_size": 1024,
+    "timing_boundary": "synchronized runner.prefill including the first greedy output, followed by exactly N synchronized autoregressive runner.step transitions"
+  },
+  "warmups": [
+    {
+      "case_id": "code-p512",
+      "repetition": 0,
+      "output_token_ids_sha256": "0edd28b7a524d7cb2f7afeb9799045d913d97822bf5d27154f05fa0da1f18e54"
+    }
+  ],
+  "samples": [
+    {
+      "case_id": "code-p512",
+      "category": "code",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7",
+      "repetition": 0,
+      "prefill_ms": 1934.390196,
+      "prefill_tok_s": 264.682896480106,
+      "decode_ms": 6097.435737,
+      "prefill_host_enqueue_ms": 1934.386489,
+      "prefill_device_drain_ms": 0.003707,
+      "decode_host_enqueue_ms": 6097.433893,
+      "decode_device_drain_ms": 0.001844,
+      "decode_host_enqueue_ms_per_step": 47.6362022890625,
+      "decode_device_drain_ms_per_step": 1.440625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.992431166314727,
+      "client_wall_s": 8.031825933,
+      "output_token_count": 129,
+      "output_token_ids": [
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        364,
+        2943,
+        12654,
+        1970,
+        66320,
+        11,
+        11173,
+        5081,
+        2942,
+        13,
+        353,
+        1144,
+        310,
+        3300,
+        660,
+        2943,
+        37066,
+        440,
+        6813,
+        13,
+        6558,
+        728,
+        3165,
+        1070,
+        660,
+        680,
+        430,
+        1970,
+        1132,
+        13,
+        271,
+        16,
+        13,
+        10562,
+        87682,
+        471,
+        10562,
+        48142,
+        7629,
+        7308,
+        26126,
+        198,
+        17,
+        13,
+        70058,
+        17885,
+        471,
+        1844,
+        5551,
+        3269,
+        440,
+        10458,
+        17448,
+        198,
+        18,
+        13,
+        43072,
+        5287,
+        1714,
+        471,
+        496,
+        7,
+        16,
+        8,
+        436,
+        34810,
+        6297,
+        198,
+        19,
+        13,
+        48794,
+        5070,
+        471,
+        469,
+        24794,
+        1898,
+        494,
+        1103,
+        314,
+        94231,
+        271,
+        9764,
+        728,
+        3165,
+        4101,
+        11,
+        4252,
+        37066,
+        364,
+        1754,
+        13,
+        198,
+        248069,
+        271,
+        71093,
+        12305,
+        198,
+        2,
+        12091,
+        10562,
+        87682,
+        12091,
+        198,
+        727,
+        10562,
+        87682,
+        1494,
+        40798,
+        1590,
+        198,
+        262,
+        413,
+        524,
+        26126,
+        25,
+        198,
+        285,
+        460,
+        2958,
+        198,
+        262,
+        26126,
+        10299
+      ],
+      "output_token_ids_sha256": "0edd28b7a524d7cb2f7afeb9799045d913d97822bf5d27154f05fa0da1f18e54",
+      "memory_before": {
+        "rss_bytes": 492294144,
+        "rss_anon_bytes": 339091456,
+        "rss_file_bytes": 116486144,
+        "host_mem_available_bytes": 46356631552,
+        "host_mem_free_bytes": 2526138368,
+        "host_swap_free_bytes": 85485895680,
+        "process_read_bytes": 81652736000,
+        "minor_faults": 20235297,
+        "major_faults": 5025
+      },
+      "memory_after": {
+        "rss_bytes": 504315904,
+        "rss_anon_bytes": 351113216,
+        "rss_file_bytes": 116486144,
+        "host_mem_available_bytes": 46316126208,
+        "host_mem_free_bytes": 2483134464,
+        "host_swap_free_bytes": 85486485504,
+        "process_read_bytes": 81652736000,
+        "minor_faults": 20236699,
+        "major_faults": 5025
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 1402,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4374878722348692,
+          4374880656738888
+        ],
+        "decode": [
+          4374880656741553,
+          4374886754177290
+        ]
+      }
+    }
+  ],
+  "ple_cache_advice": [
+    {
+      "phase": "initial",
+      "mode": "warm",
+      "scope": "ple_tensor_file_range",
+      "offset": 682453280,
+      "nbytes": 28800138240,
+      "file_advice_applied": true,
+      "mapping_advice_applied": true,
+      "mapping_reopened": false
+    }
+  ],
+  "summary": {
+    "sample_count": 1,
+    "all_cases_deterministic": true,
+    "cases": {
+      "code-p512": {
+        "sample_count": 1,
+        "case_count": 1,
+        "prefill_tok_s_weighted": 264.682896480106,
+        "decode_tok_s_weighted": 20.992431166314727,
+        "client_wall_s_total": 8.031825933,
+        "prefill_tok_s": {
+          "samples": [
+            264.682896480106
+          ],
+          "median": 264.682896480106,
+          "mean": 264.682896480106,
+          "p95": 264.682896480106,
+          "min": 264.682896480106,
+          "max": 264.682896480106,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_tok_s": {
+          "samples": [
+            20.992431166314727
+          ],
+          "median": 20.992431166314727,
+          "mean": 20.992431166314727,
+          "p95": 20.992431166314727,
+          "min": 20.992431166314727,
+          "max": 20.992431166314727,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_host_enqueue_ms_per_step": 47.6362022890625,
+        "decode_device_drain_ms_per_step": 1.440625e-05,
+        "decode_host_enqueue_share": 0.9999996975777886,
+        "decode_device_drain_share": 3.024222114897215e-07,
+        "prefill_host_enqueue_ms": 1934.386489,
+        "prefill_device_drain_ms": 0.003707,
+        "prefill_host_enqueue_share": 0.9999980836337944,
+        "category": "code",
+        "prompt_tokens": 512,
+        "deterministic": true,
+        "output_token_ids_sha256": [
+          "0edd28b7a524d7cb2f7afeb9799045d913d97822bf5d27154f05fa0da1f18e54"
+        ]
+      }
+    },
+    "shapes": {
+      "512": {
+        "sample_count": 1,
+        "case_count": 1,
+        "prefill_tok_s_weighted": 264.682896480106,
+        "decode_tok_s_weighted": 20.992431166314727,
+        "client_wall_s_total": 8.031825933,
+        "prefill_tok_s": {
+          "samples": [
+            264.682896480106
+          ],
+          "median": 264.682896480106,
+          "mean": 264.682896480106,
+          "p95": 264.682896480106,
+          "min": 264.682896480106,
+          "max": 264.682896480106,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_tok_s": {
+          "samples": [
+            20.992431166314727
+          ],
+          "median": 20.992431166314727,
+          "mean": 20.992431166314727,
+          "p95": 20.992431166314727,
+          "min": 20.992431166314727,
+          "max": 20.992431166314727,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_host_enqueue_ms_per_step": 47.6362022890625,
+        "decode_device_drain_ms_per_step": 1.440625e-05,
+        "decode_host_enqueue_share": 0.9999996975777886,
+        "decode_device_drain_share": 3.024222114897215e-07,
+        "prefill_host_enqueue_ms": 1934.386489,
+        "prefill_device_drain_ms": 0.003707,
+        "prefill_host_enqueue_share": 0.9999980836337944
+      }
+    },
+    "categories": {
+      "code": {
+        "sample_count": 1,
+        "case_count": 1,
+        "prefill_tok_s_weighted": 264.682896480106,
+        "decode_tok_s_weighted": 20.992431166314727,
+        "client_wall_s_total": 8.031825933,
+        "prefill_tok_s": {
+          "samples": [
+            264.682896480106
+          ],
+          "median": 264.682896480106,
+          "mean": 264.682896480106,
+          "p95": 264.682896480106,
+          "min": 264.682896480106,
+          "max": 264.682896480106,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_tok_s": {
+          "samples": [
+            20.992431166314727
+          ],
+          "median": 20.992431166314727,
+          "mean": 20.992431166314727,
+          "p95": 20.992431166314727,
+          "min": 20.992431166314727,
+          "max": 20.992431166314727,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_host_enqueue_ms_per_step": 47.6362022890625,
+        "decode_device_drain_ms_per_step": 1.440625e-05,
+        "decode_host_enqueue_share": 0.9999996975777886,
+        "decode_device_drain_share": 3.024222114897215e-07,
+        "prefill_host_enqueue_ms": 1934.386489,
+        "prefill_device_drain_ms": 0.003707,
+        "prefill_host_enqueue_share": 0.9999980836337944
+      }
+    }
+  },
+  "host_profiles": [
+    {
+      "case_id": "code-p512",
+      "transitions": 128,
+      "total_s": 6.456777,
+      "entries": [
+        {
+          "function": "_launch",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+          "line": 1239,
+          "ncalls": 45184,
+          "tottime_s": 0.822508,
+          "share": 0.127387
+        },
+        {
+          "function": "__getitem__",
+          "file": "<frozen os>",
+          "line": 712,
+          "ncalls": 1769600,
+          "tottime_s": 0.588434,
+          "share": 0.091134
+        },
+        {
+          "function": "launch_gguf_linear",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 3762,
+          "ncalls": 68224,
+          "tottime_s": 0.453023,
+          "share": 0.070162
+        },
+        {
+          "function": "encode",
+          "file": "<frozen os>",
+          "line": 794,
+          "ncalls": 1769600,
+          "tottime_s": 0.412372,
+          "share": 0.063867
+        },
+        {
+          "function": "device_synchronize",
+          "file": "/home/lhl/hipEngine/hipengine/core/hip.py",
+          "line": 351,
+          "ncalls": 128,
+          "tottime_s": 0.402643,
+          "share": 0.06236
+        },
+        {
+          "function": "dense_gemv_out_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+          "line": 512,
+          "ncalls": 21504,
+          "tottime_s": 0.370718,
+          "share": 0.057415
+        },
+        {
+          "function": "get",
+          "file": "<frozen _collections_abc>",
+          "line": 808,
+          "ncalls": 1769600,
+          "tottime_s": 0.353215,
+          "share": 0.054705
+        },
+        {
+          "function": "_q8_dense_wide_layers",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 3147,
+          "ncalls": 68224,
+          "tottime_s": 0.351538,
+          "share": 0.054445
+        },
+        {
+          "function": "<method 'encode' of 'str' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 1769600,
+          "tottime_s": 0.173511,
+          "share": 0.026873
+        },
+        {
+          "function": "<method 'strip' of 'str' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 2501248,
+          "tottime_s": 0.163245,
+          "share": 0.025283
+        },
+        {
+          "function": "_resolution_environment_identity",
+          "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+          "line": 486,
+          "ncalls": 117504,
+          "tottime_s": 0.156225,
+          "share": 0.024196
+        },
+        {
+          "function": "build_hip",
+          "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+          "line": 234,
+          "ncalls": 117504,
+          "tottime_s": 0.117393,
+          "share": 0.018181
+        },
+        {
+          "function": "decode",
+          "file": "<frozen os>",
+          "line": 798,
+          "ncalls": 659328,
+          "tottime_s": 0.106424,
+          "share": 0.016483
+        },
+        {
+          "function": "<built-in method builtins.isinstance>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 1847424,
+          "tottime_s": 0.102085,
+          "share": 0.015811
+        },
+        {
+          "function": "qwen4_exp_grouped_rmsnorm_bf16_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "line": 147,
+          "ncalls": 12544,
+          "tottime_s": 0.101259,
+          "share": 0.015683
+        },
+        {
+          "function": "<method 'get' of 'dict' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 355328,
+          "tottime_s": 0.087875,
+          "share": 0.01361
+        },
+        {
+          "function": "<method 'decode' of 'bytes' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 659328,
+          "tottime_s": 0.075655,
+          "share": 0.011717
+        },
+        {
+          "function": "_weight_layer_index",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 3162,
+          "ncalls": 68224,
+          "tottime_s": 0.064173,
+          "share": 0.009939
+        },
+        {
+          "function": "<method 'get' of '_contextvars.ContextVar' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 750464,
+          "tottime_s": 0.060752,
+          "share": 0.009409
+        },
+        {
+          "function": "run_qwen4_exp_gr_read",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+          "line": 3024,
+          "ncalls": 12416,
+          "tottime_s": 0.058529,
+          "share": 0.009065
+        },
+        {
+          "function": "_weight_backend",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 1869,
+          "ncalls": 68224,
+          "tottime_s": 0.051156,
+          "share": 0.007923
+        },
+        {
+          "function": "<method 'split' of 'str' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 272896,
+          "tottime_s": 0.049862,
+          "share": 0.007722
+        },
+        {
+          "function": "qwen4_exp_scaled_silu_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "line": 357,
+          "ncalls": 12544,
+          "tottime_s": 0.046632,
+          "share": 0.007222
+        },
+        {
+          "function": "qwen4_exp_gated_mean_sigmoid_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "line": 281,
+          "ncalls": 12416,
+          "tottime_s": 0.046092,
+          "share": 0.007139
+        },
+        {
+          "function": "prefill_f16_staging_enabled",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 414,
+          "ncalls": 68224,
+          "tottime_s": 0.044526,
+          "share": 0.006896
+        },
+        {
+          "function": "qwen4_exp_gr_write_bf16_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "line": 318,
+          "ncalls": 12288,
+          "tottime_s": 0.04292,
+          "share": 0.006647
+        },
+        {
+          "function": "<built-in method builtins.getattr>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 420224,
+          "tottime_s": 0.040704,
+          "share": 0.006304
+        },
+        {
+          "function": "_q8_staged_f32_layers",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 3441,
+          "ncalls": 68224,
+          "tottime_s": 0.036931,
+          "share": 0.00572
+        },
+        {
+          "function": "_launch_cast",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/convert/cast.py",
+          "line": 278,
+          "ncalls": 6144,
+          "tottime_s": 0.035539,
+          "share": 0.005504
+        },
+        {
+          "function": "_pack8_gemv_decode_threads",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 8172,
+          "ncalls": 68224,
+          "tottime_s": 0.034538,
+          "share": 0.005349
+        }
+      ]
+    }
+  ],
+  "memory_before_close": {
+    "current_allocated_bytes": 83687190808,
+    "peak_allocated_bytes": 83687190808,
+    "total_allocated_bytes": 83739619616,
+    "total_freed_bytes": 52428808,
+    "active_allocations": 1622,
+    "peak_allocations": 1622
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83687190808,
+    "total_allocated_bytes": 83739619616,
+    "total_freed_bytes": 83739619616,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  }
+}

@@ -1,0 +1,1215 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_canonical_ar_engine_run",
+  "engine": "hipengine_production",
+  "surface": "synchronized_direct_runner",
+  "status": "completed",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "b0e143788315f1d43b3a6bfb018b2e603014caf2",
+    "tracked_clean": false
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+    "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+    "fell_back_to_strict": false
+  },
+  "protocol": {
+    "case_ids": [
+      "code-p4096"
+    ],
+    "capture_mode": "full",
+    "prefill_kwargs": {},
+    "step_kwargs": {},
+    "ple_cache_mode": "warm",
+    "ple_cache_scope": "per_layer_token_embd.weight file range only",
+    "ple_telemetry": false,
+    "ple_random_access": "off",
+    "warmups_per_case": 1,
+    "measured_repetitions": 1,
+    "decode_transitions": 128,
+    "visible_output_tokens": 129,
+    "prefill_chunk_size": 1024,
+    "timing_boundary": "synchronized runner.prefill including the first greedy output, followed by exactly N synchronized autoregressive runner.step transitions"
+  },
+  "warmups": [
+    {
+      "case_id": "code-p4096",
+      "repetition": 0,
+      "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+    }
+  ],
+  "samples": [
+    {
+      "case_id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+      "repetition": 0,
+      "prefill_ms": 15017.533605,
+      "prefill_tok_s": 272.7478497958054,
+      "decode_ms": 7218.963738,
+      "prefill_host_enqueue_ms": 15017.498479,
+      "prefill_device_drain_ms": 0.035126,
+      "decode_host_enqueue_ms": 7218.962095,
+      "decode_device_drain_ms": 0.001643,
+      "decode_host_enqueue_ms_per_step": 56.3981413671875,
+      "decode_device_drain_ms_per_step": 1.28359375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 17.731076736986374,
+      "client_wall_s": 22.236497343000003,
+      "output_token_count": 129,
+      "output_token_ids": [
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        364,
+        2943,
+        12654,
+        1970,
+        66320,
+        11,
+        11173,
+        1599,
+        2942,
+        13,
+        353,
+        3172,
+        3300,
+        1754,
+        799,
+        2957,
+        11,
+        93531,
+        13,
+        6558,
+        728,
+        3165,
+        25,
+        271,
+        16,
+        13,
+        1510,
+        18479,
+        87682,
+        1494,
+        40798,
+        44646,
+        471,
+        78161,
+        48142,
+        7629,
+        7308,
+        26126,
+        198,
+        17,
+        13,
+        1510,
+        3369,
+        78,
+        17885,
+        37423,
+        11,
+        12454,
+        44646,
+        471,
+        1844,
+        5551,
+        3269,
+        440,
+        10458,
+        17448,
+        198,
+        18,
+        13,
+        1510,
+        19504,
+        5287,
+        1714,
+        63,
+        523,
+        440,
+        496,
+        7,
+        16,
+        8,
+        615,
+        14,
+        611,
+        198,
+        19,
+        13,
+        1510,
+        58046,
+        5070,
+        30863,
+        44646,
+        471,
+        469,
+        24794,
+        48794,
+        1898,
+        494,
+        1103,
+        314,
+        94231,
+        271,
+        2324,
+        440,
+        6813,
+        13,
+        3301,
+        1132,
+        1970,
+        13,
+        198,
+        248069,
+        271,
+        71093,
+        12305,
+        198,
+        2,
+        12091,
+        10562,
+        87682,
+        12091,
+        198,
+        727,
+        10562,
+        87682,
+        1494,
+        40798,
+        1590,
+        198,
+        262,
+        413,
+        524,
+        26126,
+        25
+      ],
+      "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+      "memory_before": {
+        "rss_bytes": 512499712,
+        "rss_anon_bytes": 369811456,
+        "rss_file_bytes": 105971712,
+        "host_mem_available_bytes": 45507899392,
+        "host_mem_free_bytes": 1447120896,
+        "host_swap_free_bytes": 85439393792,
+        "process_read_bytes": 81528979456,
+        "minor_faults": 20234272,
+        "major_faults": 4961
+      },
+      "memory_after": {
+        "rss_bytes": 517173248,
+        "rss_anon_bytes": 374484992,
+        "rss_file_bytes": 105971712,
+        "host_mem_available_bytes": 45501493248,
+        "host_mem_free_bytes": 1440288768,
+        "host_swap_free_bytes": 85439971328,
+        "process_read_bytes": 81528979456,
+        "minor_faults": 20234902,
+        "major_faults": 4961
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 630,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4375091089558688,
+          4375106107092293
+        ],
+        "decode": [
+          4375106107104195,
+          4375113326067933
+        ]
+      }
+    }
+  ],
+  "ple_cache_advice": [
+    {
+      "phase": "initial",
+      "mode": "warm",
+      "scope": "ple_tensor_file_range",
+      "offset": 682453280,
+      "nbytes": 28800138240,
+      "file_advice_applied": true,
+      "mapping_advice_applied": true,
+      "mapping_reopened": false
+    }
+  ],
+  "summary": {
+    "sample_count": 1,
+    "all_cases_deterministic": true,
+    "cases": {
+      "code-p4096": {
+        "sample_count": 1,
+        "case_count": 1,
+        "prefill_tok_s_weighted": 272.7478497958054,
+        "decode_tok_s_weighted": 17.731076736986374,
+        "client_wall_s_total": 22.236497343000003,
+        "prefill_tok_s": {
+          "samples": [
+            272.7478497958054
+          ],
+          "median": 272.7478497958054,
+          "mean": 272.7478497958054,
+          "p95": 272.7478497958054,
+          "min": 272.7478497958054,
+          "max": 272.7478497958054,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_tok_s": {
+          "samples": [
+            17.731076736986374
+          ],
+          "median": 17.731076736986374,
+          "mean": 17.731076736986374,
+          "p95": 17.731076736986374,
+          "min": 17.731076736986374,
+          "max": 17.731076736986374,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_host_enqueue_ms_per_step": 56.3981413671875,
+        "decode_device_drain_ms_per_step": 1.28359375e-05,
+        "decode_host_enqueue_share": 0.9999997724050071,
+        "decode_device_drain_share": 2.2759499280366101e-07,
+        "prefill_host_enqueue_ms": 15017.498479,
+        "prefill_device_drain_ms": 0.035126,
+        "prefill_host_enqueue_share": 0.9999976610007393,
+        "category": "code",
+        "prompt_tokens": 4096,
+        "deterministic": true,
+        "output_token_ids_sha256": [
+          "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+        ]
+      }
+    },
+    "shapes": {
+      "4096": {
+        "sample_count": 1,
+        "case_count": 1,
+        "prefill_tok_s_weighted": 272.7478497958054,
+        "decode_tok_s_weighted": 17.731076736986374,
+        "client_wall_s_total": 22.236497343000003,
+        "prefill_tok_s": {
+          "samples": [
+            272.7478497958054
+          ],
+          "median": 272.7478497958054,
+          "mean": 272.7478497958054,
+          "p95": 272.7478497958054,
+          "min": 272.7478497958054,
+          "max": 272.7478497958054,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_tok_s": {
+          "samples": [
+            17.731076736986374
+          ],
+          "median": 17.731076736986374,
+          "mean": 17.731076736986374,
+          "p95": 17.731076736986374,
+          "min": 17.731076736986374,
+          "max": 17.731076736986374,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_host_enqueue_ms_per_step": 56.3981413671875,
+        "decode_device_drain_ms_per_step": 1.28359375e-05,
+        "decode_host_enqueue_share": 0.9999997724050071,
+        "decode_device_drain_share": 2.2759499280366101e-07,
+        "prefill_host_enqueue_ms": 15017.498479,
+        "prefill_device_drain_ms": 0.035126,
+        "prefill_host_enqueue_share": 0.9999976610007393
+      }
+    },
+    "categories": {
+      "code": {
+        "sample_count": 1,
+        "case_count": 1,
+        "prefill_tok_s_weighted": 272.7478497958054,
+        "decode_tok_s_weighted": 17.731076736986374,
+        "client_wall_s_total": 22.236497343000003,
+        "prefill_tok_s": {
+          "samples": [
+            272.7478497958054
+          ],
+          "median": 272.7478497958054,
+          "mean": 272.7478497958054,
+          "p95": 272.7478497958054,
+          "min": 272.7478497958054,
+          "max": 272.7478497958054,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_tok_s": {
+          "samples": [
+            17.731076736986374
+          ],
+          "median": 17.731076736986374,
+          "mean": 17.731076736986374,
+          "p95": 17.731076736986374,
+          "min": 17.731076736986374,
+          "max": 17.731076736986374,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_host_enqueue_ms_per_step": 56.3981413671875,
+        "decode_device_drain_ms_per_step": 1.28359375e-05,
+        "decode_host_enqueue_share": 0.9999997724050071,
+        "decode_device_drain_share": 2.2759499280366101e-07,
+        "prefill_host_enqueue_ms": 15017.498479,
+        "prefill_device_drain_ms": 0.035126,
+        "prefill_host_enqueue_share": 0.9999976610007393
+      }
+    }
+  },
+  "host_profiles": [
+    {
+      "case_id": "code-p4096",
+      "transitions": 128,
+      "total_s": 7.850312,
+      "entries": [
+        {
+          "function": "_launch",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+          "line": 1239,
+          "ncalls": 45184,
+          "tottime_s": 0.846891,
+          "share": 0.10788,
+          "callers": [
+            {
+              "function": "wrapper",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "line": 282,
+              "ncalls": 45184,
+              "tottime_s": 1.56556
+            }
+          ]
+        },
+        {
+          "function": "__getitem__",
+          "file": "<frozen os>",
+          "line": 712,
+          "ncalls": 1829504,
+          "tottime_s": 0.74492,
+          "share": 0.094891,
+          "callers": [
+            {
+              "function": "get",
+              "file": "<frozen _collections_abc>",
+              "line": 808,
+              "ncalls": 1829504,
+              "tottime_s": 1.854377
+            }
+          ]
+        },
+        {
+          "function": "launch_gguf_linear",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 3762,
+          "ncalls": 69760,
+          "tottime_s": 0.571888,
+          "share": 0.072849,
+          "callers": [
+            {
+              "function": "run_qwen4_exp_gr_read",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 3024,
+              "ncalls": 37120,
+              "tottime_s": 2.8984
+            },
+            {
+              "function": "run_qwen4_exp_gdn_token_mixer",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5906,
+              "ncalls": 23040,
+              "tottime_s": 1.706349
+            },
+            {
+              "function": "run_qwen4_exp_dense_qsa_token_mixer",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 2341,
+              "ncalls": 9216,
+              "tottime_s": 0.698897
+            },
+            {
+              "function": "run_qwen4_exp_ple",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5765,
+              "ncalls": 256,
+              "tottime_s": 0.022886
+            },
+            {
+              "function": "step",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 7168,
+              "ncalls": 128,
+              "tottime_s": 0.010761
+            }
+          ]
+        },
+        {
+          "function": "encode",
+          "file": "<frozen os>",
+          "line": 794,
+          "ncalls": 1829504,
+          "tottime_s": 0.525117,
+          "share": 0.066891,
+          "callers": [
+            {
+              "function": "__getitem__",
+              "file": "<frozen os>",
+              "line": 712,
+              "ncalls": 1829504,
+              "tottime_s": 0.874329
+            }
+          ]
+        },
+        {
+          "function": "get",
+          "file": "<frozen _collections_abc>",
+          "line": 808,
+          "ncalls": 1829504,
+          "tottime_s": 0.446635,
+          "share": 0.056894,
+          "callers": [
+            {
+              "function": "_resolution_environment_identity",
+              "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+              "line": 486,
+              "ncalls": 979968,
+              "tottime_s": 1.219508
+            },
+            {
+              "function": "launch_gguf_linear",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3762,
+              "ncalls": 139520,
+              "tottime_s": 0.1626
+            },
+            {
+              "function": "_q8_dense_wide_enabled",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3184,
+              "ncalls": 69760,
+              "tottime_s": 0.100186
+            },
+            {
+              "function": "_q8_dense_wide_layers",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3147,
+              "ncalls": 69760,
+              "tottime_s": 0.098446
+            },
+            {
+              "function": "_env_wmma_prefill_enabled",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 2203,
+              "ncalls": 69760,
+              "tottime_s": 0.097772
+            }
+          ]
+        },
+        {
+          "function": "_q8_dense_wide_layers",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 3147,
+          "ncalls": 69760,
+          "tottime_s": 0.434217,
+          "share": 0.055312,
+          "callers": [
+            {
+              "function": "launch_gguf_linear",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3762,
+              "ncalls": 69760,
+              "tottime_s": 0.730692
+            }
+          ]
+        },
+        {
+          "function": "device_synchronize",
+          "file": "/home/lhl/hipEngine/hipengine/core/hip.py",
+          "line": 351,
+          "ncalls": 128,
+          "tottime_s": 0.402229,
+          "share": 0.051237,
+          "callers": [
+            {
+              "function": "_finish_lm_head",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 7119,
+              "ncalls": 128,
+              "tottime_s": 0.402253
+            }
+          ]
+        },
+        {
+          "function": "dense_gemv_out_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+          "line": 512,
+          "ncalls": 21504,
+          "tottime_s": 0.385899,
+          "share": 0.049157,
+          "callers": [
+            {
+              "function": "_launch_dense_bf16",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 7552,
+              "ncalls": 21504,
+              "tottime_s": 0.405706
+            }
+          ]
+        },
+        {
+          "function": "<method 'encode' of 'str' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 1829504,
+          "tottime_s": 0.224995,
+          "share": 0.028661,
+          "callers": [
+            {
+              "function": "encode",
+              "file": "<frozen os>",
+              "line": 794,
+              "ncalls": 1829504,
+              "tottime_s": 0.224995
+            }
+          ]
+        },
+        {
+          "function": "<method 'strip' of 'str' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 2556544,
+          "tottime_s": 0.204892,
+          "share": 0.0261,
+          "callers": [
+            {
+              "function": "_q8_dense_wide_layers",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3147,
+              "ncalls": 2232320,
+              "tottime_s": 0.167381
+            },
+            {
+              "function": "_env_wmma_prefill_enabled",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 2203,
+              "ncalls": 69760,
+              "tottime_s": 0.009602
+            },
+            {
+              "function": "prefill_f16_staging_enabled",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 414,
+              "ncalls": 69760,
+              "tottime_s": 0.008141
+            },
+            {
+              "function": "_q8_staged_f32_layers",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3441,
+              "ncalls": 69760,
+              "tottime_s": 0.007537
+            },
+            {
+              "function": "_q8_wmma_layers_scope",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3419,
+              "ncalls": 69760,
+              "tottime_s": 0.007309
+            }
+          ]
+        },
+        {
+          "function": "_resolution_environment_identity",
+          "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+          "line": 486,
+          "ncalls": 122496,
+          "tottime_s": 0.201483,
+          "share": 0.025666,
+          "callers": [
+            {
+              "function": "build_hip",
+              "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+              "line": 234,
+              "ncalls": 122496,
+              "tottime_s": 1.468751
+            }
+          ]
+        },
+        {
+          "function": "build_hip",
+          "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+          "line": 234,
+          "ncalls": 122496,
+          "tottime_s": 0.149064,
+          "share": 0.018988,
+          "callers": [
+            {
+              "function": "build_qwen4_exp_gr",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+              "line": 101,
+              "ncalls": 50176,
+              "tottime_s": 0.676546
+            },
+            {
+              "function": "build_gguf_k_gemv",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "line": 74,
+              "ncalls": 45184,
+              "tottime_s": 0.621519
+            },
+            {
+              "function": "build_qwen4_exp_qsa",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+              "line": 175,
+              "ncalls": 9600,
+              "tottime_s": 0.129165
+            },
+            {
+              "function": "build_cast",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/convert/cast.py",
+              "line": 42,
+              "ncalls": 6144,
+              "tottime_s": 0.083823
+            },
+            {
+              "function": "build_qwen35_linear_attn_conv",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear_attn/conv.py",
+              "line": 96,
+              "ncalls": 4608,
+              "tottime_s": 0.063898
+            }
+          ]
+        },
+        {
+          "function": "decode",
+          "file": "<frozen os>",
+          "line": 798,
+          "ncalls": 683520,
+          "tottime_s": 0.137169,
+          "share": 0.017473,
+          "callers": [
+            {
+              "function": "__getitem__",
+              "file": "<frozen os>",
+              "line": 712,
+              "ncalls": 683520,
+              "tottime_s": 0.235128
+            }
+          ]
+        },
+        {
+          "function": "<built-in method builtins.isinstance>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 1911552,
+          "tottime_s": 0.130444,
+          "share": 0.016616,
+          "callers": [
+            {
+              "function": "encode",
+              "file": "<frozen os>",
+              "line": 794,
+              "ncalls": 1829504,
+              "tottime_s": 0.124217
+            },
+            {
+              "function": "_weight_layer_index",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3162,
+              "ncalls": 69760,
+              "tottime_s": 0.005208
+            },
+            {
+              "function": "parse",
+              "file": "/home/lhl/hipEngine/hipengine/core/dtype.py",
+              "line": 24,
+              "ncalls": 11904,
+              "tottime_s": 0.000962
+            },
+            {
+              "function": "ggml_type",
+              "file": "/home/lhl/hipEngine/hipengine/quant/gguf.py",
+              "line": 401,
+              "ncalls": 384,
+              "tottime_s": 5.7e-05
+            }
+          ]
+        },
+        {
+          "function": "qwen4_exp_grouped_rmsnorm_bf16_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "line": 147,
+          "ncalls": 12544,
+          "tottime_s": 0.114328,
+          "share": 0.014564,
+          "callers": [
+            {
+              "function": "run_qwen4_exp_gr_read",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 3024,
+              "ncalls": 12416,
+              "tottime_s": 0.295922
+            },
+            {
+              "function": "run_qwen4_exp_ple",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5765,
+              "ncalls": 128,
+              "tottime_s": 0.00259
+            }
+          ]
+        },
+        {
+          "function": "<method 'get' of 'dict' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 371456,
+          "tottime_s": 0.11332,
+          "share": 0.014435,
+          "callers": [
+            {
+              "function": "launch_gguf_linear",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3762,
+              "ncalls": 69760,
+              "tottime_s": 0.047253
+            },
+            {
+              "function": "build_hip",
+              "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+              "line": 234,
+              "ncalls": 122496,
+              "tottime_s": 0.036301
+            },
+            {
+              "function": "_compiler_env_prefix",
+              "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+              "line": 595,
+              "ncalls": 122496,
+              "tottime_s": 0.016499
+            },
+            {
+              "function": "_cached_fn",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "line": 24,
+              "ncalls": 45184,
+              "tottime_s": 0.008195
+            },
+            {
+              "function": "is_registered",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/registry.py",
+              "line": 94,
+              "ncalls": 1536,
+              "tottime_s": 0.002884
+            }
+          ]
+        },
+        {
+          "function": "<method 'decode' of 'bytes' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 683520,
+          "tottime_s": 0.097959,
+          "share": 0.012478,
+          "callers": [
+            {
+              "function": "decode",
+              "file": "<frozen os>",
+              "line": 798,
+              "ncalls": 683520,
+              "tottime_s": 0.097959
+            }
+          ]
+        },
+        {
+          "function": "_weight_layer_index",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 3162,
+          "ncalls": 69760,
+          "tottime_s": 0.080698,
+          "share": 0.01028,
+          "callers": [
+            {
+              "function": "launch_gguf_linear",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3762,
+              "ncalls": 69760,
+              "tottime_s": 0.130009
+            }
+          ]
+        },
+        {
+          "function": "<method 'get' of '_contextvars.ContextVar' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 767360,
+          "tottime_s": 0.076937,
+          "share": 0.0098,
+          "callers": [
+            {
+              "function": "launch_gguf_linear",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3762,
+              "ncalls": 348800,
+              "tottime_s": 0.036463
+            },
+            {
+              "function": "_record_selector",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 201,
+              "ncalls": 139520,
+              "tottime_s": 0.014639
+            },
+            {
+              "function": "prefill_f16_staging_enabled",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 414,
+              "ncalls": 69760,
+              "tottime_s": 0.007345
+            },
+            {
+              "function": "q6_dense_integer_mmq_workspace",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
+              "line": 266,
+              "ncalls": 69760,
+              "tottime_s": 0.006864
+            },
+            {
+              "function": "raw_k_prefill_rowbatch",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 2269,
+              "ncalls": 69760,
+              "tottime_s": 0.006012
+            }
+          ]
+        },
+        {
+          "function": "run_qwen4_exp_gr_read",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+          "line": 3024,
+          "ncalls": 12416,
+          "tottime_s": 0.072415,
+          "share": 0.009225,
+          "callers": [
+            {
+              "function": "_segment_gr_read_attn",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5598,
+              "ncalls": 4608,
+              "tottime_s": 1.45902
+            },
+            {
+              "function": "_segment_gr_write_ffn_read",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5655,
+              "ncalls": 4608,
+              "tottime_s": 1.383421
+            },
+            {
+              "function": "run_qwen4_exp_dense_qsa_layer",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5321,
+              "ncalls": 3072,
+              "tottime_s": 0.936565
+            },
+            {
+              "function": "step",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 7168,
+              "ncalls": 128,
+              "tottime_s": 0.031152
+            }
+          ]
+        },
+        {
+          "function": "_weight_backend",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 1869,
+          "ncalls": 69760,
+          "tottime_s": 0.063791,
+          "share": 0.008126,
+          "callers": [
+            {
+              "function": "launch_gguf_linear",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3762,
+              "ncalls": 69760,
+              "tottime_s": 0.09758
+            }
+          ]
+        },
+        {
+          "function": "qwen4_exp_scaled_silu_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "line": 357,
+          "ncalls": 12544,
+          "tottime_s": 0.061593,
+          "share": 0.007846,
+          "callers": [
+            {
+              "function": "run_qwen4_exp_gr_read",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 3024,
+              "ncalls": 12416,
+              "tottime_s": 0.241651
+            },
+            {
+              "function": "run_qwen4_exp_ple",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5765,
+              "ncalls": 128,
+              "tottime_s": 0.002518
+            }
+          ]
+        },
+        {
+          "function": "qwen4_exp_gated_mean_sigmoid_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "line": 281,
+          "ncalls": 12416,
+          "tottime_s": 0.060608,
+          "share": 0.00772,
+          "callers": [
+            {
+              "function": "run_qwen4_exp_gr_read",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 3024,
+              "ncalls": 12416,
+              "tottime_s": 0.248369
+            }
+          ]
+        },
+        {
+          "function": "<method 'split' of 'str' objects>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 279040,
+          "tottime_s": 0.060277,
+          "share": 0.007678,
+          "callers": [
+            {
+              "function": "_q8_dense_wide_layers",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3147,
+              "ncalls": 69760,
+              "tottime_s": 0.030649
+            },
+            {
+              "function": "_weight_layer_index",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3162,
+              "ncalls": 69760,
+              "tottime_s": 0.012621
+            },
+            {
+              "function": "_q8_staged_f32_layers",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3441,
+              "ncalls": 69760,
+              "tottime_s": 0.008848
+            },
+            {
+              "function": "_q8_wmma_layers_scope",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3419,
+              "ncalls": 69760,
+              "tottime_s": 0.00816
+            }
+          ]
+        },
+        {
+          "function": "qwen4_exp_gr_write_bf16_f32",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "line": 318,
+          "ncalls": 12288,
+          "tottime_s": 0.05819,
+          "share": 0.007412,
+          "callers": [
+            {
+              "function": "_segment_gr_write_ffn_read",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5655,
+              "ncalls": 4608,
+              "tottime_s": 0.092537
+            },
+            {
+              "function": "_segment_epilogue",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5716,
+              "ncalls": 4608,
+              "tottime_s": 0.089841
+            },
+            {
+              "function": "run_qwen4_exp_dense_qsa_layer",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+              "line": 5321,
+              "ncalls": 3072,
+              "tottime_s": 0.060374
+            }
+          ]
+        },
+        {
+          "function": "prefill_f16_staging_enabled",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 414,
+          "ncalls": 69760,
+          "tottime_s": 0.056565,
+          "share": 0.007205,
+          "callers": [
+            {
+              "function": "launch_gguf_linear",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3762,
+              "ncalls": 69760,
+              "tottime_s": 0.162166
+            }
+          ]
+        },
+        {
+          "function": "dense_gemv_f32_bf16w_f32_out",
+          "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+          "line": 314,
+          "ncalls": 3072,
+          "tottime_s": 0.056523,
+          "share": 0.0072,
+          "callers": [
+            {
+              "function": "_launch_dense_bf16",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 7552,
+              "ncalls": 3072,
+              "tottime_s": 0.059418
+            }
+          ]
+        },
+        {
+          "function": "<built-in method builtins.getattr>",
+          "file": "~",
+          "line": 0,
+          "ncalls": 447104,
+          "tottime_s": 0.051925,
+          "share": 0.006614,
+          "callers": [
+            {
+              "function": "signed_kernel_fn",
+              "file": "/home/lhl/hipEngine/hipengine/core/ctypes_cache.py",
+              "line": 52,
+              "ncalls": 178944,
+              "tottime_s": 0.022087
+            },
+            {
+              "function": "_weight_layer_index",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3162,
+              "ncalls": 139520,
+              "tottime_s": 0.01423
+            },
+            {
+              "function": "_weight_backend",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 1869,
+              "ncalls": 69760,
+              "tottime_s": 0.008189
+            },
+            {
+              "function": "__post_init__",
+              "file": "/home/lhl/hipEngine/hipengine/kernels/registry.py",
+              "line": 24,
+              "ncalls": 41856,
+              "tottime_s": 0.003996
+            },
+            {
+              "function": "host_array_ptr",
+              "file": "/home/lhl/hipEngine/hipengine/core/memory.py",
+              "line": 150,
+              "ncalls": 1024,
+              "tottime_s": 0.001539
+            }
+          ]
+        },
+        {
+          "function": "_q8_staged_f32_layers",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 3441,
+          "ncalls": 69760,
+          "tottime_s": 0.047029,
+          "share": 0.005991,
+          "callers": [
+            {
+              "function": "launch_gguf_linear",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3762,
+              "ncalls": 69760,
+              "tottime_s": 0.150997
+            }
+          ]
+        },
+        {
+          "function": "_pack8_gemv_decode_threads",
+          "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+          "line": 8172,
+          "ncalls": 69760,
+          "tottime_s": 0.044124,
+          "share": 0.005621,
+          "callers": [
+            {
+              "function": "launch_gguf_linear",
+              "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+              "line": 3762,
+              "ncalls": 69760,
+              "tottime_s": 0.162598
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "memory_before_close": {
+    "current_allocated_bytes": 84440887208,
+    "peak_allocated_bytes": 84440887208,
+    "total_allocated_bytes": 84545744816,
+    "total_freed_bytes": 104857608,
+    "active_allocations": 1622,
+    "peak_allocations": 1622
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 84440887208,
+    "total_allocated_bytes": 84545744816,
+    "total_freed_bytes": 84545744816,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  }
+}
