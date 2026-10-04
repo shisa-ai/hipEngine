@@ -1,5 +1,24 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+
+## Prefill chunk capacity guard
+
+- `_select_prefill_chunk` / `_AUTO_PREFILL_CHUNK_LADDER` in
+  `hipengine/generation/qwen4_exp_gguf.py` select the production prefill chunk
+  by admission rather than by a constant. Added 2026-10-04.
+- **Revert lever:** the ladder is a single tuple. Dropping it to `(1024,)` or
+  `(2048,)` restores a fixed chunk with one edit and no other change; 2048 is
+  the free rung (it sits under the 4 GiB per-runner scratch floor and costs no
+  device memory), so `(2048,)` is the conservative fallback if the 4096
+  reservation's +6.80 GB ever binds.
+- **Remove when:** the guard has a dedicated GPU test asserting the ladder under
+  constrained `available_device_bytes`, and the `RT-3` gaps it does not cover
+  (2051/2052 boundary, ragged final chunks, separate repair-queue / F16-workspace
+  accounting) are either measured or formally dropped. Until then the ladder
+  values are the only place the policy is expressed and must stay in one place.
+- Evidence: `benchmarks/results/2026-10-04-qwen4exp-prefill-chunk-4096/`,
+  worklog `20261004T145428.690726Z`.
+
 ## Prefill-Only Workspace Ownership
 
 - `Qwen4ExpPrefillWorkspace` owns prefill scratch and input buffers without

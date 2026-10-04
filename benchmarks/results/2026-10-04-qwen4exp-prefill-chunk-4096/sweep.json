@@ -1,0 +1,108 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_prefill_chunk_sweep",
+ "question": "Does a prefill chunk larger than the production 1024 improve prefill/decode, and is it numerically inert?",
+ "protocol": {
+  "case": "code-p4096",
+  "reps": 2,
+  "samples_per_arm": 6,
+  "decode_transitions": 128,
+  "arms_production": [
+   1024,
+   2048,
+   4096
+  ],
+  "arms_strict": [
+   1024,
+   4096
+  ],
+  "order": "interleaved A/B/A/B per arm so session drift cannot masquerade as an arm effect"
+ },
+ "production": {
+  "1024": {
+   "n": 6,
+   "prefill_tok_s": 279.2762187819391,
+   "prefill_spread_pct": 1.0275400858827908,
+   "decode_tok_s": 18.126881786131587,
+   "decode_spread_pct": 1.30024835695385,
+   "distinct_token_id_hashes": 1,
+   "token_id_sha256": [
+    "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+   ]
+  },
+  "2048": {
+   "n": 6,
+   "prefill_tok_s": 292.58959627344143,
+   "prefill_spread_pct": 0.7180371853474381,
+   "decode_tok_s": 18.152399294310694,
+   "decode_spread_pct": 0.7117815112895594,
+   "distinct_token_id_hashes": 1,
+   "token_id_sha256": [
+    "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+   ],
+   "prefill_vs_1024_pct": 4.767100310068817,
+   "decode_vs_1024_pct": 0.14077163673362758,
+   "token_ids_identical_to_1024": true
+  },
+  "4096": {
+   "n": 6,
+   "prefill_tok_s": 302.8131994973236,
+   "prefill_spread_pct": 1.1328556730730757,
+   "decode_tok_s": 18.4306379803027,
+   "decode_spread_pct": 1.236486353527163,
+   "distinct_token_id_hashes": 1,
+   "token_id_sha256": [
+    "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+   ],
+   "prefill_vs_1024_pct": 8.427849968049838,
+   "decode_vs_1024_pct": 1.6757222657208803,
+   "token_ids_identical_to_1024": true
+  }
+ },
+ "strict": {
+  "1024": {
+   "n": 6,
+   "prefill_tok_s": 72.35080862085151,
+   "prefill_spread_pct": 0.08313032254135977,
+   "decode_tok_s": 11.808972243680172,
+   "decode_spread_pct": 0.06995122163296712,
+   "distinct_token_id_hashes": 1,
+   "token_id_sha256": [
+    "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+   ]
+  },
+  "4096": {
+   "n": 6,
+   "prefill_tok_s": 70.55607079199034,
+   "prefill_spread_pct": 0.43151337167035114,
+   "decode_tok_s": 11.811743636940138,
+   "decode_spread_pct": 0.07428375918266326,
+   "distinct_token_id_hashes": 1,
+   "token_id_sha256": [
+    "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+   ],
+   "token_ids_identical_to_1024": true,
+   "prefill_vs_1024_pct": -2.480605072800701
+  }
+ },
+ "host": "gfx1151",
+ "cross_profile_token_ids_identical": true,
+ "memory": {
+  "staging_bytes": {
+   "1024": 20971520,
+   "2048": 41943040,
+   "4096": 83886080
+  },
+  "scratch_bytes_reserved": {
+   "1024": 8589934592,
+   "2048": 8589934592,
+   "4096": 15389593680
+  },
+  "context_tokens": {
+   "1024": 262144,
+   "2048": 262144,
+   "4096": 262144
+  },
+  "note": "staging is host memory; scratch is the admission reservation. chunk 2048 stays under the 4GiB scratch floor (no device-memory cost); chunk 4096 exceeds it (+6.80 GB reservation). Max context is 262144 tokens at every chunk size."
+ }
+}
