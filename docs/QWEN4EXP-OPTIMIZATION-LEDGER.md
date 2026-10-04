@@ -1058,6 +1058,44 @@ not just harness coverage accounting.
 
 ## 11. Open-candidate census (2026-09-30)
 
+**THE READING PASS IS DONE (`20261004T153054`): 26 ROWS NEED WORK.** All 72 status cells read head
+and tail, classified by hand. **24 open + 2 partial + 14 gated + 31 closed + 1 not-a-candidate = 72.**
+
+| state | count |
+| --- | ---: |
+| **Open — needs work** | **24** (X-2, X-6, X-9, X-11, DP-2, DP-4, DP-9, ED-3, QA-4, QA-6, PL-1, RT-2, RT-3, RT-5, DE-2, DE-5, DE-6, DE-7, DE-8, DE-9, DE-10, DE-11, MT-1, MT-8) |
+| **Partial** | **2** (X-1, X-3) |
+| Gated | 14 (X-7, X-10, DP-5, DP-7, MR-4, HC-1, QA-2, QA-7, PL-2, RT-6, MT-2, MT-3, MT-4, MT-6) |
+| Closed | 31 (X-4, X-5, X-8, DP-1, DP-3, DP-6, DP-8, ED-1, ED-4, EG-1, EG-3, GD-1, GD-3, GD-4, HC-3, HC-6, HC-7, MR-1, MR-3, MR-5, MX-1, QA-5, QA-8, QA-9, QA-10, RT-1, RT-4, DE-1, DE-3, DE-4, MT-5) |
+| Not a candidate | 1 (MT-7, `Standing rule`) |
+
+**This is 26 rows needing work, not the 13 this section previously reported.** The 13 was not wrong
+about the rows it examined; it was wrong about the universe, because it diffed only the 18-row
+actionable set. **The omissions are large: X-6, DP-4, DP-9, PL-1, RT-2, RT-3, DE-2, DE-5, DE-6,
+DE-7, DE-8 and DE-11 all need work and none was in the 18-row set.**
+
+**`X-6` IS A SILENT FALSE PASS AND IT IS THE HIGHEST-VALUE ITEM HERE.** At HEAD, `--route wmma
+--layers 16-47` (the *certified* configuration) returns **identical candidate/teacher logits
+hashes, KL exactly 0.0, and `status: complete` with `measurement_valid: true`** — the teacher arm
+does not resolve to the exact chain it claims, so the 16-47 gate cannot be re-run at HEAD to
+reproduce its own certification. Verified cause: the dispatch memoization key carries `use_wmma`
+as a boolean but **no WMMA layer-scope term**, so the key is identical between the route's two arms
+and **the teacher arm replays the candidate dispatch**. **A gate returning KL 0.0 with
+`measurement_valid: true` is worse than one that fails: every numerical gate run through that route
+since 2026-09-29 returned a vacuous pass.** And **`DP-7`'s cell says its chunk-4096 promotion is
+"blocked only on `X-6`"** — so this single defect is the sole blocker on a measured **-4.94%**
+complete-engine prefill win. Fix the key, re-run the 16-47 gate, unblock DP-7.
+
+**The head+tail reading method works where counting failed.** All 72 classified with no
+unclassifiable row, agreeing with all five rows hand-verified earlier (DE-1, X-7, MX-1, MT-2,
+MT-3). It resolves every row the token classifiers got wrong: `X-7` (`NOT RESOLVED` -> gated),
+`DP-6` (`PARTIALLY PRICED` -> closed), `DP-4` (`THE GATE ... IS NOW SATISFIED` -> open, arm
+unbuilt), `DP-9` (`re-ranked UP, not down` -> open), `X-4` (stale `still OPEN` prefix corrected by
+a later `THE NAMED NEXT STEP IS DONE` -> closed). **Limits: head+tail is not a full read** — a state
+stated only mid-cell would be missed, and `X-6`'s cell is 16,680 characters. Evidence: worklog
+`20261004T153054`.
+
+
 **RE-RUN (`20261004T`): 13 actionable / 17 gated / 40 closed / 1 not-a-candidate.** Five days of
 work moved seven rows: **DE-1** and **MX-1** to closed, **X-7**, **X-10** and **RT-6** to gated,
 **RT-1**'s lever realised (the 1024→4096 chunk step taken through a guard, `ee19f3321`), and
