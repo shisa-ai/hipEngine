@@ -7,8 +7,10 @@
   HC-1 `gr_up_sigmoid_mean` is 18.26% of device time at **30.82% LDS wait** while
   every other top-ten prefill kernel is **≤0.35%**, a ~90x spread. The GDN prefill
   kernel (5.93%) is **register-bound at `VGPR_Count` 256** with `LDS_Block_Size` 0
-  and 6,144 grid blocks, running at **0.92 instructions/CU-cycle** against a
-  ~4/cycle ceiling. No speed change; this re-ranks the remaining levers.
+  and 6,144 grid blocks, running at **0.92 instructions/CU-cycle** — a condition
+  already recorded in the kernel source (`qwen4_exp_gdn.hip:1110`) and already
+  priced: its LDS route is 0.8727x/0.7922x at 1024/2048 rows. No speed change; this
+  re-ranks the remaining levers and closes the GDN register route.
   `SQ_WAIT_INST_ANY` is silently dropped by this `rocprofv3` build, so the non-LDS
   stall is unattributable — recorded as a limit. Source:
   `benchmarks/results/2026-10-04-qwen4exp-prefill-stall-census/`, worklog
