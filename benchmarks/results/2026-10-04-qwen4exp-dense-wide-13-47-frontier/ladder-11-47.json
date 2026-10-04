@@ -1,0 +1,1041 @@
+{
+ "schema_version": 2,
+ "kind": "hipengine_execution_profile_q8_dense_wide_prefill_layers_gate",
+ "created_at": "2026-10-04T12:29:31.508053+00:00",
+ "performance_claim": false,
+ "status": "invalid_or_screen_only",
+ "measurement_valid": false,
+ "canonical_numerical_qualification_claim": false,
+ "category_heldout_qualification_claim": false,
+ "category_heldout_evidence_complete": false,
+ "profile_qualification_claim": false,
+ "qualification_blockers": [
+  "calibrated quality thresholds",
+  "execution-affecting worktree provenance",
+  "category-heldout numerical evidence",
+  "strict-teacher and applicable BF16-relative evidence",
+  "exact control/isolation/graph/lifecycle evidence",
+  "task-quality evidence",
+  "candidate route engagement and repair-oracle coverage"
+ ],
+ "qualification_coverage": {
+  "protocol": "canonical_12_case_d128_three_repeat_numerical_v1",
+  "complete": true,
+  "checks": {
+   "canonical_fixture_identity": true,
+   "canonical_cases_once_each": true,
+   "canonical_categories": true,
+   "teacher_d128": true,
+   "candidate_d128_three_repeats": true,
+   "positive_chunk_size": true
+  },
+  "required_fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "observed_fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "fixture_kind": "canonical",
+  "observed_case_ids": [
+   "code-p512",
+   "code-p1024",
+   "code-p4096",
+   "general_en-p512",
+   "general_en-p1024",
+   "general_en-p4096",
+   "general_ja-p512",
+   "general_ja-p1024",
+   "general_ja-p4096",
+   "mixed_ja_en-p512",
+   "mixed_ja_en-p1024",
+   "mixed_ja_en-p4096"
+  ],
+  "observed_teacher_rows": 1548,
+  "prefill_chunk_size": 1024,
+  "scope": "this route/layer set, manifest and chunk size only"
+ },
+ "route": {
+  "name": "dense_wide",
+  "surface": "post-binder HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE + HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS; HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS cleared in both arms",
+  "candidate_layers": "11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+  "teacher_selector": "cleared",
+  "teacher_chain": "exact coltile8_rowbatch4_f32_f32_out",
+  "candidate_chain": "dense_wide256_f32_f32_out",
+  "warmup_request_after_selector_flip": true,
+  "selector_restored_after_capture": true
+ },
+ "protocol": {
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "case_count": 12,
+  "decode_steps": 128,
+  "candidate_repeat_runs": 3,
+  "execution_profile": "production",
+  "prefill_chunk_size": 1024,
+  "same_context_rule": "candidate consumes the strict generated token prefix at every compared transition",
+  "teacher_scope": "production profile with the route's selectors cleared; candidate-local isolation of the changed route",
+  "thresholds_evaluated": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "profile_manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+  "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed"
+ },
+ "quality": {
+  "finite": true,
+  "top_k": 5,
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "summary": {
+   "rows": 1548,
+   "kl_mean": 0.0007819454745624202,
+   "kl_p50": 1.665898901980559e-05,
+   "kl_p95": 0.003868458383663526,
+   "kl_p99": 0.011687422107841352,
+   "kl_max": 0.06957377013371151,
+   "top1_agreement": 0.9922480620155039,
+   "top1_matches": 1536,
+   "topk_overlap_mean": 0.9806201550387597,
+   "strict_teacher_nll_mean": 0.16390878435233106,
+   "candidate_teacher_nll_mean": 0.1638461568376246,
+   "teacher_nll_delta": -6.262751470645367e-05,
+   "teacher_delta_p_mean": 0.00020470851203388633,
+   "strict_margin_min": 0.003047943115234375,
+   "max_abs_logit_delta": 2.311062812805176,
+   "flip_eligible_rows": 212,
+   "flip_eligible_share": 0.13695090439276486,
+   "top1_mismatches_flip_eligible": 12,
+   "top1_mismatches_outside_flip_eligible": 0
+  },
+  "by_scope": {
+   "category": {
+    "code": {
+     "rows": 387,
+     "kl_mean": 0.0006508161702733855,
+     "kl_p50": 4.065679550534371e-06,
+     "kl_p95": 0.002316651157629566,
+     "kl_p99": 0.006972040555298474,
+     "kl_max": 0.06957377013371151,
+     "top1_agreement": 0.9948320413436692,
+     "top1_matches": 385,
+     "topk_overlap_mean": 0.9767441860465116,
+     "strict_teacher_nll_mean": 0.13412946833520564,
+     "candidate_teacher_nll_mean": 0.13350265008167173,
+     "teacher_nll_delta": -0.0006268182535339173,
+     "teacher_delta_p_mean": 0.0007131485411936404,
+     "strict_margin_min": 0.02237701416015625,
+     "max_abs_logit_delta": 2.177111864089966,
+     "flip_eligible_rows": 45,
+     "flip_eligible_share": 0.11627906976744186,
+     "top1_mismatches_flip_eligible": 2,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    },
+    "general_en": {
+     "rows": 387,
+     "kl_mean": 0.0009490285930343881,
+     "kl_p50": 5.309141171559902e-05,
+     "kl_p95": 0.004626633866211919,
+     "kl_p99": 0.013033431289148805,
+     "kl_max": 0.01999703153082554,
+     "top1_agreement": 0.9844961240310077,
+     "top1_matches": 381,
+     "topk_overlap_mean": 0.9808785529715763,
+     "strict_teacher_nll_mean": 0.2102308181042981,
+     "candidate_teacher_nll_mean": 0.21153533360375953,
+     "teacher_nll_delta": 0.0013045154994614228,
+     "teacher_delta_p_mean": -0.00036138148496891147,
+     "strict_margin_min": 0.016599655151367188,
+     "max_abs_logit_delta": 1.858534812927246,
+     "flip_eligible_rows": 67,
+     "flip_eligible_share": 0.1731266149870801,
+     "top1_mismatches_flip_eligible": 6,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "general_ja": {
+     "rows": 387,
+     "kl_mean": 0.0009418520398248287,
+     "kl_p50": 3.026543914828115e-05,
+     "kl_p95": 0.005106287953248631,
+     "kl_p99": 0.015926566353810193,
+     "kl_max": 0.024512838002118106,
+     "top1_agreement": 0.9974160206718347,
+     "top1_matches": 386,
+     "topk_overlap_mean": 0.9839793281653747,
+     "strict_teacher_nll_mean": 0.1682357597557083,
+     "candidate_teacher_nll_mean": 0.16809042877131639,
+     "teacher_nll_delta": -0.0001453309843919004,
+     "teacher_delta_p_mean": -0.0002434254671525491,
+     "strict_margin_min": 0.01860809326171875,
+     "max_abs_logit_delta": 2.311062812805176,
+     "flip_eligible_rows": 48,
+     "flip_eligible_share": 0.12403100775193798,
+     "top1_mismatches_flip_eligible": 1,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    },
+    "mixed_ja_en": {
+     "rows": 387,
+     "kl_mean": 0.0005860850951170785,
+     "kl_p50": 9.188450518943822e-06,
+     "kl_p95": 0.003148249075793437,
+     "kl_p99": 0.006104965110351653,
+     "kl_max": 0.012831288043388806,
+     "top1_agreement": 0.9922480620155039,
+     "top1_matches": 384,
+     "topk_overlap_mean": 0.9808785529715763,
+     "strict_teacher_nll_mean": 0.1430390912141121,
+     "candidate_teacher_nll_mean": 0.14225621489375076,
+     "teacher_nll_delta": -0.0007828763203613365,
+     "teacher_delta_p_mean": 0.0007104924590633655,
+     "strict_margin_min": 0.003047943115234375,
+     "max_abs_logit_delta": 2.308716297149658,
+     "flip_eligible_rows": 52,
+     "flip_eligible_share": 0.1343669250645995,
+     "top1_mismatches_flip_eligible": 3,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   },
+   "shape": {
+    "c1": {
+     "rows": 1536,
+     "kl_mean": 0.0007880543259154129,
+     "kl_p50": 1.7747867452770413e-05,
+     "kl_p95": 0.00387949137732219,
+     "kl_p99": 0.011802055397901953,
+     "kl_max": 0.06957377013371151,
+     "top1_agreement": 0.9921875,
+     "top1_matches": 1524,
+     "topk_overlap_mean": 0.9805989583333333,
+     "strict_teacher_nll_mean": 0.16518932136575393,
+     "candidate_teacher_nll_mean": 0.16512620465232672,
+     "teacher_nll_delta": -6.311671342720815e-05,
+     "teacher_delta_p_mean": 0.000206307718546331,
+     "strict_margin_min": 0.003047943115234375,
+     "max_abs_logit_delta": 2.311062812805176,
+     "flip_eligible_rows": 212,
+     "flip_eligible_share": 0.13802083333333334,
+     "top1_mismatches_flip_eligible": 12,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    },
+    "prefill_last": {
+     "rows": 12,
+     "kl_mean": 1.250137936270609e-08,
+     "kl_p50": 3.659419199251739e-11,
+     "kl_p95": 6.79230753608161e-08,
+     "kl_p99": 1.1783052559450818e-07,
+     "kl_max": 1.303073881529311e-07,
+     "top1_agreement": 1.0,
+     "top1_matches": 12,
+     "topk_overlap_mean": 0.9833333333333334,
+     "strict_teacher_nll_mean": 4.6634202015277706e-08,
+     "candidate_teacher_nll_mean": 3.655575526685883e-08,
+     "teacher_nll_delta": -1.0078446748418873e-08,
+     "teacher_delta_p_mean": 1.0078440970673341e-08,
+     "strict_margin_min": 14.672698974609375,
+     "max_abs_logit_delta": 2.177111864089966,
+     "flip_eligible_rows": 0,
+     "flip_eligible_share": 0.0,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   },
+   "transition": {
+    "prefill_to_c1": {
+     "rows": 12,
+     "kl_mean": 1.250137936270609e-08,
+     "kl_p50": 3.659419199251739e-11,
+     "kl_p95": 6.79230753608161e-08,
+     "kl_p99": 1.1783052559450818e-07,
+     "kl_max": 1.303073881529311e-07,
+     "top1_agreement": 1.0,
+     "top1_matches": 12,
+     "topk_overlap_mean": 0.9833333333333334,
+     "strict_teacher_nll_mean": 4.6634202015277706e-08,
+     "candidate_teacher_nll_mean": 3.655575526685883e-08,
+     "teacher_nll_delta": -1.0078446748418873e-08,
+     "teacher_delta_p_mean": 1.0078440970673341e-08,
+     "strict_margin_min": 14.672698974609375,
+     "max_abs_logit_delta": 2.177111864089966,
+     "flip_eligible_rows": 0,
+     "flip_eligible_share": 0.0,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "steady": {
+     "rows": 1536,
+     "kl_mean": 0.0007880543259154129,
+     "kl_p50": 1.7747867452770413e-05,
+     "kl_p95": 0.00387949137732219,
+     "kl_p99": 0.011802055397901953,
+     "kl_max": 0.06957377013371151,
+     "top1_agreement": 0.9921875,
+     "top1_matches": 1524,
+     "topk_overlap_mean": 0.9805989583333333,
+     "strict_teacher_nll_mean": 0.16518932136575393,
+     "candidate_teacher_nll_mean": 0.16512620465232672,
+     "teacher_nll_delta": -6.311671342720815e-05,
+     "teacher_delta_p_mean": 0.000206307718546331,
+     "strict_margin_min": 0.003047943115234375,
+     "max_abs_logit_delta": 2.311062812805176,
+     "flip_eligible_rows": 212,
+     "flip_eligible_share": 0.13802083333333334,
+     "top1_mismatches_flip_eligible": 12,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    }
+   }
+  },
+  "scope_failures": [
+   {
+    "dimension": "category",
+    "value": "code"
+   },
+   {
+    "dimension": "category",
+    "value": "general_ja"
+   },
+   {
+    "dimension": "shape",
+    "value": "c1"
+   },
+   {
+    "dimension": "transition",
+    "value": "steady"
+   }
+  ],
+  "rows_over_review_boundary": [
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 259,
+    "request_id": "code-p4096",
+    "teacher_step": 1,
+    "category": "code",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 198,
+    "row_index": 259,
+    "kl": 0.06957377013371151,
+    "top1_equal": true,
+    "strict_top1_token_id": 198,
+    "candidate_top1_token_id": 198,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.6306514739990234,
+    "strict_top1_candidate_rank": 1,
+    "strict_teacher_nll": 0.42673465692985313,
+    "candidate_teacher_nll": 0.20955446319936535,
+    "teacher_delta_p": 0.15830876966442775,
+    "max_abs_logit_delta": 1.2009716033935547
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 793,
+    "request_id": "general_ja-p512",
+    "teacher_step": 19,
+    "category": "general_ja",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 49219,
+    "row_index": 793,
+    "kl": 0.0215193411247533,
+    "top1_equal": true,
+    "strict_top1_token_id": 49219,
+    "candidate_top1_token_id": 49219,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.09866142272949219,
+    "strict_top1_candidate_rank": 1,
+    "strict_teacher_nll": 1.2690927760047048,
+    "candidate_teacher_nll": 1.0472316958524757,
+    "teacher_delta_p": 0.06982131077767278,
+    "max_abs_logit_delta": 0.41794300079345703
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 874,
+    "request_id": "general_ja-p512",
+    "teacher_step": 100,
+    "category": "general_ja",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 10083,
+    "row_index": 874,
+    "kl": 0.024512838002118106,
+    "top1_equal": true,
+    "strict_top1_token_id": 10083,
+    "candidate_top1_token_id": 10083,
+    "topk_overlap": 0.8,
+    "strict_margin": 1.1932315826416016,
+    "strict_top1_candidate_rank": 1,
+    "strict_teacher_nll": 0.4601439380680564,
+    "candidate_teacher_nll": 0.3345732814141817,
+    "teacher_delta_p": 0.08445061324812198,
+    "max_abs_logit_delta": 0.8925051689147949
+   }
+  ],
+  "top1_mismatch_rows": [
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 4,
+    "request_id": "code-p512",
+    "teacher_step": 4,
+    "category": "code",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 369,
+    "row_index": 4,
+    "kl": 0.013216993141439448,
+    "top1_equal": false,
+    "strict_top1_token_id": 369,
+    "candidate_top1_token_id": 6587,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.03929328918457031,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.9979437780133804,
+    "candidate_teacher_nll": 1.0679316721730352,
+    "teacher_delta_p": -0.024917955528191205,
+    "max_abs_logit_delta": 0.6584968566894531
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 10,
+    "request_id": "code-p512",
+    "teacher_step": 10,
+    "category": "code",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 66320,
+    "row_index": 10,
+    "kl": 0.001182703444308999,
+    "top1_equal": false,
+    "strict_top1_token_id": 66320,
+    "candidate_top1_token_id": 9611,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.059497833251953125,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.9013698068037181,
+    "candidate_teacher_nll": 0.9378072409182093,
+    "teacher_delta_p": -0.01452779123230502,
+    "max_abs_logit_delta": 0.3311729431152344
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 392,
+    "request_id": "general_en-p512",
+    "teacher_step": 5,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 11173,
+    "row_index": 392,
+    "kl": 0.011181125076740883,
+    "top1_equal": false,
+    "strict_top1_token_id": 11173,
+    "candidate_top1_token_id": 3106,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.08922958374023438,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.911303680637243,
+    "candidate_teacher_nll": 1.0414943471206342,
+    "teacher_delta_p": -0.049072910488724863,
+    "max_abs_logit_delta": 0.4618203639984131
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 410,
+    "request_id": "general_en-p512",
+    "teacher_step": 23,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 10926,
+    "row_index": 410,
+    "kl": 0.001798592196159026,
+    "top1_equal": false,
+    "strict_top1_token_id": 10926,
+    "candidate_top1_token_id": 12960,
+    "topk_overlap": 0.8,
+    "strict_margin": 0.05734825134277344,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 1.0479675590523418,
+    "candidate_teacher_nll": 1.1174218970483327,
+    "teacher_delta_p": -0.023527637390625522,
+    "max_abs_logit_delta": 0.3285372257232666
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 469,
+    "request_id": "general_en-p512",
+    "teacher_step": 82,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 318,
+    "row_index": 469,
+    "kl": 0.018706626492916514,
+    "top1_equal": false,
+    "strict_top1_token_id": 318,
+    "candidate_top1_token_id": 478,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.10913467407226562,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 1.0302334185800133,
+    "candidate_teacher_nll": 1.2105467560812946,
+    "teacher_delta_p": -0.05888935541853646,
+    "max_abs_logit_delta": 0.41945815086364746
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 533,
+    "request_id": "general_en-p1024",
+    "teacher_step": 17,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 1622,
+    "row_index": 533,
+    "kl": 0.015237569116741102,
+    "top1_equal": false,
+    "strict_top1_token_id": 1622,
+    "candidate_top1_token_id": 7154,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.08659172058105469,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.7660659461914783,
+    "candidate_teacher_nll": 0.9389834168227585,
+    "teacher_delta_p": -0.07381303135632516,
+    "max_abs_logit_delta": 0.5156607627868652
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 542,
+    "request_id": "general_en-p1024",
+    "teacher_step": 26,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 61446,
+    "row_index": 542,
+    "kl": 0.0008683151551472287,
+    "top1_equal": false,
+    "strict_top1_token_id": 61446,
+    "candidate_top1_token_id": 11567,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.025342941284179688,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.7206928863822339,
+    "candidate_teacher_nll": 0.7631534493921908,
+    "teacher_delta_p": -0.02022112131422088,
+    "max_abs_logit_delta": 0.2774667739868164
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 743,
+    "request_id": "general_en-p4096",
+    "teacher_step": 98,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 46058,
+    "row_index": 743,
+    "kl": 0.006184174721738746,
+    "top1_equal": false,
+    "strict_top1_token_id": 46058,
+    "candidate_top1_token_id": 318,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.07003402709960938,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 1.2753133071146445,
+    "candidate_teacher_nll": 1.3426996878629547,
+    "teacher_delta_p": -0.01820371386865577,
+    "max_abs_logit_delta": 0.7715072631835938
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 1045,
+    "request_id": "general_ja-p4096",
+    "teacher_step": 13,
+    "category": "general_ja",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 49219,
+    "row_index": 1045,
+    "kl": 0.0022996971805490235,
+    "top1_equal": false,
+    "strict_top1_token_id": 49219,
+    "candidate_top1_token_id": 13139,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.05814552307128906,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.7352893446276173,
+    "candidate_teacher_nll": 0.7971410789899954,
+    "teacher_delta_p": -0.0287513385530776,
+    "max_abs_logit_delta": 0.6547479629516602
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 1318,
+    "request_id": "mixed_ja_en-p1024",
+    "teacher_step": 28,
+    "category": "mixed_ja_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 176217,
+    "row_index": 1318,
+    "kl": 0.004813970405632712,
+    "top1_equal": false,
+    "strict_top1_token_id": 176217,
+    "candidate_top1_token_id": 498,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.04511260986328125,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 1.5848894725972364,
+    "candidate_teacher_nll": 1.5456270558173562,
+    "teacher_delta_p": 0.008207707985425222,
+    "max_abs_logit_delta": 0.3826792240142822
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 1396,
+    "request_id": "mixed_ja_en-p1024",
+    "teacher_step": 106,
+    "category": "mixed_ja_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 8439,
+    "row_index": 1396,
+    "kl": 0.0010573164534368891,
+    "top1_equal": false,
+    "strict_top1_token_id": 8439,
+    "candidate_top1_token_id": 353,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.03161048889160156,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 1.1010886926323231,
+    "candidate_teacher_nll": 1.0980005914859285,
+    "teacher_delta_p": 0.0010284081708427095,
+    "max_abs_logit_delta": 0.23581582307815552
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-dense-wide256-dense-prefill-layers-11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 1473,
+    "request_id": "mixed_ja_en-p4096",
+    "teacher_step": 54,
+    "category": "mixed_ja_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 10452,
+    "row_index": 1473,
+    "kl": 0.006025532190179253,
+    "top1_equal": false,
+    "strict_top1_token_id": 10452,
+    "candidate_top1_token_id": 561,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.05484199523925781,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.8949921550197684,
+    "candidate_teacher_nll": 0.9619560867703382,
+    "teacher_delta_p": -0.02646615785612627,
+    "max_abs_logit_delta": 0.48931884765625
+   }
+  ],
+  "hard_gates_passed": false,
+  "requires_outlier_review": true,
+  "eligible_for_automatic_admission": false
+ },
+ "repeat_determinism": {
+  "runs": 3,
+  "passed": true,
+  "mismatches": [],
+  "trajectory_sha256_by_prompt": [
+   [
+    "4307b364c9cabc99bbb059298a4bbcf6b83f59fce130d27cd6a8c357f161b0e6",
+    "4307b364c9cabc99bbb059298a4bbcf6b83f59fce130d27cd6a8c357f161b0e6",
+    "4307b364c9cabc99bbb059298a4bbcf6b83f59fce130d27cd6a8c357f161b0e6"
+   ],
+   [
+    "e38bc7b585b1cb5e2536a19b14c15a42c66857a4ef98f65217b9c69caec543ac",
+    "e38bc7b585b1cb5e2536a19b14c15a42c66857a4ef98f65217b9c69caec543ac",
+    "e38bc7b585b1cb5e2536a19b14c15a42c66857a4ef98f65217b9c69caec543ac"
+   ],
+   [
+    "576b047b7a95871aa12dd3066aaec4de2fbf60843a56e84dc2ba95b5caa3bf86",
+    "576b047b7a95871aa12dd3066aaec4de2fbf60843a56e84dc2ba95b5caa3bf86",
+    "576b047b7a95871aa12dd3066aaec4de2fbf60843a56e84dc2ba95b5caa3bf86"
+   ],
+   [
+    "443b3ccb3a235836189346054487fcbfc41f915bf650d9de1134f27a4e34ff38",
+    "443b3ccb3a235836189346054487fcbfc41f915bf650d9de1134f27a4e34ff38",
+    "443b3ccb3a235836189346054487fcbfc41f915bf650d9de1134f27a4e34ff38"
+   ],
+   [
+    "c40f24b6169db5c0680ec169a3d446715686db34b2203e0b80b4f68b909880aa",
+    "c40f24b6169db5c0680ec169a3d446715686db34b2203e0b80b4f68b909880aa",
+    "c40f24b6169db5c0680ec169a3d446715686db34b2203e0b80b4f68b909880aa"
+   ],
+   [
+    "270452e6b7993ff787340beed6fedad0614374b31b3908caa196fa52213f5106",
+    "270452e6b7993ff787340beed6fedad0614374b31b3908caa196fa52213f5106",
+    "270452e6b7993ff787340beed6fedad0614374b31b3908caa196fa52213f5106"
+   ],
+   [
+    "32c980a439f8b6d4f5222eb78021620c447234a6760e791fcb2e7203159d77ba",
+    "32c980a439f8b6d4f5222eb78021620c447234a6760e791fcb2e7203159d77ba",
+    "32c980a439f8b6d4f5222eb78021620c447234a6760e791fcb2e7203159d77ba"
+   ],
+   [
+    "4ae3f10a53aa8b8b094e62217ac718120d6ea871b8ddfdf76ddba2e1bbef7224",
+    "4ae3f10a53aa8b8b094e62217ac718120d6ea871b8ddfdf76ddba2e1bbef7224",
+    "4ae3f10a53aa8b8b094e62217ac718120d6ea871b8ddfdf76ddba2e1bbef7224"
+   ],
+   [
+    "a3c4167247cc1eb2dd75465b4de57d86e1a6f4b94f759f24b1c8adebfd476717",
+    "a3c4167247cc1eb2dd75465b4de57d86e1a6f4b94f759f24b1c8adebfd476717",
+    "a3c4167247cc1eb2dd75465b4de57d86e1a6f4b94f759f24b1c8adebfd476717"
+   ],
+   [
+    "ea87f9dea56920b98f8caf1ae5db6fb63ba9197a9ea9b4a28455b299b977d173",
+    "ea87f9dea56920b98f8caf1ae5db6fb63ba9197a9ea9b4a28455b299b977d173",
+    "ea87f9dea56920b98f8caf1ae5db6fb63ba9197a9ea9b4a28455b299b977d173"
+   ],
+   [
+    "8356a3a02967938a1ee9b562f2bb505cf16d066c9ca22112bd61df2489496228",
+    "8356a3a02967938a1ee9b562f2bb505cf16d066c9ca22112bd61df2489496228",
+    "8356a3a02967938a1ee9b562f2bb505cf16d066c9ca22112bd61df2489496228"
+   ],
+   [
+    "94c1fb2e6fd8efc4bd908b84e15299212eb54ba5ddc995b445b83998b09cb236",
+    "94c1fb2e6fd8efc4bd908b84e15299212eb54ba5ddc995b445b83998b09cb236",
+    "94c1fb2e6fd8efc4bd908b84e15299212eb54ba5ddc995b445b83998b09cb236"
+   ]
+  ]
+ },
+ "strict_logits_sha256": "4377006f4f0827dd419e9d92da9b61b0dbf65074195ffec5852fb98cc7e65ed7",
+ "candidate_logits_sha256": "bdca81681cc654fc0d47fa7efa90edfee4350fdf8b66676d32773a48757d7446",
+ "variant_manifests": {
+  "candidate_evidentiary": {
+   "kind": "hipengine_execution_profile_manifest",
+   "schema_version": 1,
+   "execution_profile": "production",
+   "backend": "hip_gfx1151",
+   "model": "qwen4_exp_gguf",
+   "quant": "gguf_ud_q4_k_xl",
+   "kv_policy": "paged_bf16_qsa_index_f32",
+   "graph_policy": "request_owned_exact_moe_graph_c1",
+   "selections": [
+    {
+     "layer": "linear",
+     "scope": "prefill_dense_q8_wmma_layers",
+     "selected_variant": "dense_wide256_f32_f32_out",
+     "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+     "evidence_artifact": null,
+     "registry_quant": "gguf_q8_0"
+    }
+   ]
+  }
+ },
+ "route_engagement": {
+  "teacher": {
+   "launches": 1683932,
+   "engaged_launches": 840660,
+   "engaged_variants": {
+    "None": 840660
+   },
+   "decline_reasons": {
+    "active": 840660,
+    "inactive": 840660,
+    "selector off": 1306,
+    "use_wmma_false": 1306
+   },
+   "rows_seen": [
+    1,
+    512,
+    1024
+   ],
+   "per_selector": {
+    "dense_wide": {
+     "active": 0,
+     "inactive": 1306
+    },
+    "native_batch_decode_session": {
+     "active": 0,
+     "inactive": 840660
+    },
+    "q4k_rowtile": {
+     "active": 840660,
+     "inactive": 0
+    },
+    "wmma_prefill": {
+     "active": 0,
+     "inactive": 1306
+    }
+   }
+  },
+  "candidate": {
+   "launches": 5044212,
+   "engaged_launches": 2521152,
+   "engaged_variants": {
+    "None": 2521152
+   },
+   "decline_reasons": {
+    "active": 2520540,
+    "claimed": 612,
+    "inactive": 2520540,
+    "ineligible shape": 770,
+    "outside layer scope": 184,
+    "use_wmma_false": 1566
+   },
+   "rows_seen": [
+    1,
+    512,
+    1024
+   ],
+   "per_selector": {
+    "dense_wide": {
+     "active": 612,
+     "inactive": 954
+    },
+    "native_batch_decode_session": {
+     "active": 0,
+     "inactive": 2520540
+    },
+    "q4k_rowtile": {
+     "active": 2520540,
+     "inactive": 0
+    },
+    "wmma_prefill": {
+     "active": 0,
+     "inactive": 1566
+    }
+   }
+  },
+  "selector_states": {
+   "dense_wide": {
+    "teacher_engaged_rate": 0.0,
+    "candidate_engaged_rate": 0.390805,
+    "differs": true
+   },
+   "native_batch_decode_session": {
+    "teacher_engaged_rate": 0.0,
+    "candidate_engaged_rate": 0.0,
+    "differs": false
+   },
+   "q4k_rowtile": {
+    "teacher_engaged_rate": 1.0,
+    "candidate_engaged_rate": 1.0,
+    "differs": false
+   },
+   "wmma_prefill": {
+    "teacher_engaged_rate": 0.0,
+    "candidate_engaged_rate": 0.0,
+    "differs": false
+   }
+  },
+  "selectors_differing_between_arms": [
+   "dense_wide"
+  ],
+  "selectors_observed_in_one_arm_only": [],
+  "attribution": "the drift this run measures can only come from dense_wide",
+  "candidate_route_engaged": true,
+  "teacher_route_engaged": false,
+  "route": "dense_wide",
+  "route_engagement_recorded": true,
+  "wmma_route_engaged_candidate_only": true,
+  "covers_other_use_wmma_selectors": false,
+  "verdict": "this route engaged in the candidate arm only - which does NOT mean the arms are isolated: use_wmma also gates f_rowtile, enabled=not use_wmma, use_rowtile and the rows-2-8 native batch-decode session, and this recorder cannot observe those"
+ },
+ "prompts": [
+  {
+   "id": "code-p512",
+   "category": "code",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7"
+  },
+  {
+   "id": "code-p1024",
+   "category": "code",
+   "prompt_tokens": 1024,
+   "prompt_token_ids_sha256": "0c1cebb57ff5cbf29f04c0a41ab05b547ec65fddc7606d639c9b2fafb16e831d"
+  },
+  {
+   "id": "code-p4096",
+   "category": "code",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75"
+  },
+  {
+   "id": "general_en-p512",
+   "category": "general_en",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "6f75ae560a9b18076c9a175b3f4fb806df50289b495c25ce68237e8af006ded6"
+  },
+  {
+   "id": "general_en-p1024",
+   "category": "general_en",
+   "prompt_tokens": 1024,
+   "prompt_token_ids_sha256": "a54b2114bbf26cc1254f1828d6ab2bd521bf9211127848427f881d791d599fe7"
+  },
+  {
+   "id": "general_en-p4096",
+   "category": "general_en",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "ef66cd9fc3e5b856c5a519f8a43f022d4747d76c03dc76329b86dab896df9c91"
+  },
+  {
+   "id": "general_ja-p512",
+   "category": "general_ja",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "165270b64b0061e9f2be4449475234fd9d680d6d10ca9be2d427b69c80667295"
+  },
+  {
+   "id": "general_ja-p1024",
+   "category": "general_ja",
+   "prompt_tokens": 1024,
+   "prompt_token_ids_sha256": "1960a6f71503c527fbd8b215ec0cf9a9da6dc4615d7e53b03577426697a93e7d"
+  },
+  {
+   "id": "general_ja-p4096",
+   "category": "general_ja",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "13bde7cae91b24eec51008e5c580f9713542f108db970336549c930da4e89d87"
+  },
+  {
+   "id": "mixed_ja_en-p512",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "32e6513f92edd6d5a14548897df15e285807d155031eed5a47a4c39e621f53e8"
+  },
+  {
+   "id": "mixed_ja_en-p1024",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 1024,
+   "prompt_token_ids_sha256": "b7a7dfa527c2abecc09bc05e110afab9b6652f6248a6466759b4721e3b8d1010"
+  },
+  {
+   "id": "mixed_ja_en-p4096",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "d74cef6a5d25af32dfaa5dce89652944fd30b6ef8dfd783d4d83bbf37ff4da51"
+  }
+ ],
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 3,
+  "collected_at": "2026-10-04T12:29:31.265466+00:00",
+  "host_name": "gfx1151",
+  "repo_root": "/home/lhl/hipEngine",
+  "hipengine_commit": "284dc21bc00c91890f2c66ef7c17400ee1db797e",
+  "git_branch": "qwen3.8-flash-next",
+  "staged_dirty": false,
+  "unstaged_dirty": false,
+  "untracked_dirty": true,
+  "untracked_count": 30,
+  "dirty": true,
+  "dirty_paths": [],
+  "dirty_path_count": 0,
+  "untracked_paths": [
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/census.json",
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/warm.json",
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/warm.log",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/decode-baseline.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/decode-dp4a.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/prof-baseline.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/prof-dp4a.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/trace-baseline.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/trace-dp4a.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/trace-promoted.json",
+   "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_memory_allocation_trace.csv",
+   "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_memory_copy_trace.csv",
+   "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_scratch_memory_trace.csv",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/de5-clean-ar.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/reset-split-mem.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/reset-split.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-clocks.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-hostgpu.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-long.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-p1024.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-perstep.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-prefill.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-production.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-resync.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-settle.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-trend.json",
+   "benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-gate/gate.json",
+   "benchmarks/results/2026-10-04-qwen4exp-decode-linear-owner/census.json",
+   "docs/superpowers/plans/2026-09-13-qwen38-gfx1151-release-qualification.md",
+   "scripts/qwen4exp_workspace_footprint_probe.py"
+  ],
+  "execution_affecting_dirty": true,
+  "execution_affecting_paths": [
+   "scripts/qwen4exp_workspace_footprint_probe.py"
+  ],
+  "configured_backend": "hip_gfx1151",
+  "resolved_backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "device_name": "AMD Radeon 8060S Graphics",
+  "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-directory-manifest-v1",
+   "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+   "size_bytes": 111334654784,
+   "sampled_bytes": 12582912,
+   "file_count": 4,
+   "exists": true,
+   "path_type": "directory"
+  },
+  "quant": "gguf_ud_q4_k_xl",
+  "kv_dtype": "bf16",
+  "command": [
+   "python3",
+   "scripts/execution_profile_q8_wmma_prefill_layers_gate.py",
+   "--route",
+   "dense_wide",
+   "--layers",
+   "11-47",
+   "--decode-steps",
+   "128",
+   "--repeat-runs",
+   "3",
+   "--execution-profile",
+   "production",
+   "--prefill-chunk-size",
+   "1024",
+   "--require-cached-build",
+   "--model-root",
+   "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+   "--output",
+   "/tmp/dw-gate3/ladder-11-47.json"
+  ],
+  "environment": {
+   "HIPENGINE_HIP_ARCH": "gfx1151",
+   "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "",
+   "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "1",
+   "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": "11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47"
+  },
+  "rocm_version": "HIP version: 7.15.26333-0000000",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "build_profile": "hipengine_execution_profile_q8_dense_wide_prefill_layers_gate",
+  "timing_protocol": "none_full_logits_only_v1",
+  "warmups": 1,
+  "repetitions": 3,
+  "profiler": {
+   "enabled": false,
+   "kind": null,
+   "command": null
+  }
+ }
+}
