@@ -74,3 +74,29 @@ model (`unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL`, UD-Q4_K_XL), one profile, one ca
 (`code-p4096`), one chunk size (1024), 3 repetitions per arm, 3 candidate repeats
 in the gate. The speed claim is one case; the gate is the 12-case canonical
 protocol. Not promoted in this artifact.
+
+## End-to-end confirmation after promotion
+
+The speed claim above is one case. With 13-47 as the **committed default**, the
+canonical bench at chunk 1024 across the three target shapes:
+
+| case | prefill tok/s | vs 16-47 baseline | llama.cpp | ratio | decode tok/s | decode ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| code-p512 | 272.10 | **+2.6%** | 385.97 | 0.705 | 20.937 | 0.958 |
+| code-p1024 | 295.77 | **+3.2%** | 421.60 | 0.702 | 19.972 | 0.906 |
+| code-p4096 | 280.59 | **+3.0%** | 421.87 | 0.665 | 18.047 | 0.824 |
+
+Baselines are this session's 16-47 readings at the same chunk (265.33 / 286.64 /
+272.38).
+
+**This lands inside the predicted range and validates the both-baselines argument.**
+The A/B/C bounded the effect at +1.89% to +3.50% and estimated +2.69%; three
+independent shapes measure +2.6%, +3.2% and +3.0%. A monotone session trend could
+not have produced a consistent gain across three separate processes.
+
+Decode is essentially unchanged (18.047 against 17.911 at p4096), so this is a
+prefill-only gain.
+
+**Not a same-session A/B**, so these are cross-session deltas against this
+session's baselines rather than an interleaved measurement. The interleaved A/B/C
+in the section above is the controlled version and agrees with it.
