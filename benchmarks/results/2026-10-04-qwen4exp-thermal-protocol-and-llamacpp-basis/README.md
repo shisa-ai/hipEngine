@@ -134,7 +134,17 @@ context-independent and both are candidates for the decode gap.
 > trace did not reproduce it in a second harness. The measurement stands and
 > its cause is now located: see below.
 
-### The decode fall is host-side, and the device is idle throughout it
+### Decode is limited by its non-kernel remainder, and that remainder grows with depth
+
+> **Corrected.** This section previously concluded that decode is host-enqueue
+> bound, on the strength of `device_drain_ms = 0.0` in
+> `scripts/qwen4exp_decode_host_bound_probe.py`. **That inference is withdrawn**:
+> `runner.step()` ends with a blocking device-to-host copy of the argmax
+> result, so the probe's "host" window already contains the device wait and a
+> zero trailing drain is a tautology. Removing the readback shows a non-zero
+> drain, and a counter-rotated same-state A/B shows the readback costs nothing.
+> The measurement below stands; the host/device attribution is replaced. See
+> [the correction](results/2026-10-04-qwen4exp-decode-readback-split/README.md).
 
 Two follow-up experiments locate it.
 
@@ -143,8 +153,8 @@ Two follow-up experiments locate it.
 46 °C - gives decode **17.55 / 17.75 / 17.84** for p4096 and **21.01 / 21.01 /
 21.02** for p512. The same case measured second is the same as measured first.
 
-**It is not device work.** Profiling the canonical bench's own decode loop
-(`--case-id`, `--warmups 1 --repetitions 1`, one case per process, under
+**It is not device kernel work.** Profiling the canonical bench's own decode
+loop (`--case-id`, `--warmups 1 --repetitions 1`, one case per process, under
 `rocprofv3`) and isolating the 128-step decode window:
 
 | family | p512 | p4096 |
@@ -161,33 +171,43 @@ top-k expansion above - and attention rises 252.7 -> 320.1 ms (**+27%**). But
 attention is only 4-5% of a decode step, MoE GEMV is **50%** of it and is flat,
 and the total is **+2.0%** where the unprofiled rate falls 17%.
 
-**It is host enqueue cost.** `scripts/qwen4exp_decode_host_bound_probe.py`
-splits the loop into host enqueue time and device drain time:
+**It is the non-kernel remainder, and it is host-side.** The wall grows
+**10.04 ms/step (+21%)** across the same range where the device kernel sum grows
+0.94 ms/step (+2.0%):
 
-| case | host enqueue / step | device drain | host-bound |
-| --- | ---: | ---: | --- |
-| code-p512 | 79.121 ms | **0.0 ms** | yes |
-| code-p1024 | 80.063 ms | **0.0 ms** | yes |
-| code-p4096 | **107.444 ms** | **0.0 ms** | yes |
+| case | decode wall | profiled kernel sum | wall minus kernel sum |
+| --- | ---: | ---: | ---: |
+| code-p512 | 47.66 ms/step | 46.19 ms/step | **1.47 ms/step** |
+| code-p4096 | 57.69 ms/step | 47.13 ms/step | **10.56 ms/step** |
 
-`device_drain_ms` is the time from "host finished enqueuing" to "device
-synchronize returned", and it is **zero at every depth**: the GPU completed all
-128 queued steps before the host finished enqueuing them, so it is idle for the
-entire decode loop. Host cost is flat at 79-80 ms/step through 1024 and then
-jumps **+36%** at 4096, coinciding with the dense-to-QSA path switch.
+The remainder grows 7x with depth while kernels do not move. Two independent
+checks agree that this remainder is host work and not device stalls:
 
-**Decode is a host-side problem, not a kernel problem.** That is where the
-0.80-0.96x gap to llama.cpp should be attacked, and the ~1729 launches per step
-that the bench's decode loop issues are the obvious candidate.
+- Removing **2.3 ms/step** of host work (memoizing the per-launch build
+  resolution) moves p512 by **+0.02%** and p4096 by **+2.53%** against a 4.0%
+prediction - nothing to gain where the step has device slack, most of the
+prediction where it does not.
+- A counter-rotated same-state A/B that removes the per-step blocking token
+  readback changes the loop wall by **-0.87%** at p512 and **-1.37%** at p4096
+  (it gets *slower*, by the extra trailing drain the readback was hiding), and
+  the trailing drain after 128 unsynchronized steps is only **0.343 / 0.575
+  ms/step**. The host enqueue and the device execution are within ~1% of each
+  other, so **the loop wall is their maximum and a host-only or device-only
+  change is capped at roughly half its nominal saving.**
+
+**Decode at depth is a host-side problem, and the growing remainder is where
+the 0.80-0.96x gap to llama.cpp should be attacked.** The ~1729 launches per
+step that the bench's decode loop issues are one candidate; the measured
+remainder bounds the prize at 10.56 ms/step at p4096.
 
 > **Calibration caveat.** The probe's absolute rate (12.6 / 12.5 / 9.3 tok/s)
 > is well below the canonical bench's (21.01 / 19.40 / 17.40) for what should
 > be the same loop, and the ratio between them is not constant (1.66 / 1.55 /
 > 1.87). The probe runs two 128-step loops on one growing sequence and an extra
-> 8 warm steps, so it is not the same loop - but the discrepancy is not
-> explained and the bench's absolute decode rate is therefore not independently
-> reproduced. The host-vs-device split and the +36% growth are measured within
-> the probe and are unaffected; the absolute rates are not comparable.
+> 8 warm steps, and it never warms the PLE page cache, so it is not the same
+> loop. Its within-arm deltas are sound; its absolute levels are not bench
+> levels. The 10.56 ms/step remainder is measured in the bench itself, not from
+> the probe.
 
 ## Measured hipEngine baseline (thermal-controlled, in-tree, fresh process per case)
 

@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_decode_readback_probe",
+  "rows": [
+    {
+      "case_id": "code-p512",
+      "prompt_tokens": 512,
+      "transitions": 128,
+      "max_sequence_length": 808,
+      "with_readback_host_ms_per_step": 78.535,
+      "with_readback_drain_ms_per_step": 0.0,
+      "with_readback_wall_ms_per_step": 78.535,
+      "with_readback_implied_tok_s": 12.733,
+      "no_readback_host_ms_per_step": 54.699,
+      "no_readback_drain_ms_per_step": 0.345,
+      "no_readback_wall_ms_per_step": 55.044,
+      "no_readback_implied_tok_s": 18.167
+    },
+    {
+      "case_id": "code-p4096",
+      "prompt_tokens": 4096,
+      "transitions": 128,
+      "max_sequence_length": 4392,
+      "with_readback_host_ms_per_step": 106.228,
+      "with_readback_drain_ms_per_step": 0.0,
+      "with_readback_wall_ms_per_step": 106.228,
+      "with_readback_implied_tok_s": 9.414,
+      "no_readback_host_ms_per_step": 83.972,
+      "no_readback_drain_ms_per_step": 0.573,
+      "no_readback_wall_ms_per_step": 84.546,
+      "no_readback_implied_tok_s": 11.828
+    }
+  ]
+}
