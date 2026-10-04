@@ -1,5 +1,19 @@
 # Qwen3.8-Flash-Next (Qwen4Exp) optimization ledger
 
+**PREFILL STATUS, 2026-10-04: the remaining prefill headroom is blocked on ONE
+scope-and-threshold decision, not on missing kernel work.** Every prefill-speed lever
+in this ledger's own §11 classification is closed, gated on the production numerical
+envelope, or — for the one row that names the blocking mechanism — a scope-and-threshold
+question that X-7's own state cell calls "not another kernel or gate experiment".
+Measured at `code-p4096`: **302.81 tok/s** against the comparator's 421.87, with the
+prefill-only stall census showing the two largest kernels have **opposite** stall
+profiles (HC-1 at 30.82% LDS wait; every other top-ten kernel at <=0.35%), so the
+§1.2.1 "uniform per-kernel throughput" reading is a wall-time artifact. The decision:
+whether a route whose per-logit perturbation is ~0.4 can meet the 1e-3 mean-KL limit on
+a 4-row `prefill_last` scope. If yes, HC-1's staging screen (2.388x on an 18.26% family)
+and the dense-wide scope extension re-open together. If no, the prefill is at its
+production-envelope floor. Full evidence chain: worklog `20261004T151113`.
+
 - **Ledger date:** 2026-09-29 (expanded after a cross-document coverage review;
   §10 records the source inventory and experiment crosswalk)
 - **Host:** Framework `gfx1151`, Radeon 8060S / Strix Halo, machine
