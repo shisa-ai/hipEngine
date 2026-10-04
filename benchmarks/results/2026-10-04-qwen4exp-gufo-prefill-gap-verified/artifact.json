@@ -1,0 +1,341 @@
+{
+ "schema": "hipengine.benchmark.artifact/v1",
+ "title": "The Qwen4Exp prefill gap to gufo is 5.2x and uniform across every kernel family",
+ "date": "2026-10-04",
+ "kind": "diagnostic",
+ "verdict": "gufo's pp4096 = 1705.94 tok/s is a genuine full-prompt, device-synchronized prefill: its source times the whole ForwardPromptBatch plus hipDeviceSynchronize with state restore outside the window, and the wall clock (53 s = 45.30 s load + 7.7 s for 1 warmup + 2 reps) matches the 3 x 2.40 s the rate implies. hipEngine's best is 329.94 tok/s at chunk 4096, so the prefill target is 5.17x. At matched granularity (one 4096-row pass, traced both sides) the gap is 5.69x and it is uniform: dense projections 6.8x, routed MoE 5.6x, attention/GDN/router 4.6x. No single family is the answer, and it is not launch count - gufo runs MORE launches per prefill than we do (4,237 against 2,766).",
+ "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF, 103.69 GiB)",
+ "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts",
+ "host": {
+  "arch": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "compute_units": 40,
+  "sclk_mhz": 2900,
+  "peak_fp32_tflops": 29.7,
+  "peak_fp16_tflops": 59.4,
+  "peak_bandwidth_gbps": 256,
+  "note": "not the gfx1100/W7900 default hardware"
+ },
+ "protocol": "same-file, same-host. gufo: prebuilt gufo edge 98641a6 (binary 8ca63994...), `gufo bench -p 4096 -n 0 -d 0 -r 2 -v`. hipEngine: scripts/qwen4exp_canonical_ar_bench.py hipengine, code-p4096, 1 warmup + 3 measured, counterbalanced pass sweep, 2 orderings.",
+ "check_1_source": {
+  "file": "/home/lhl/gufo-src/src/cli/bench/bench.cpp",
+  "timed_region": "t0 -> prefill() = ForwardPromptBatch(prompt_tokens, depth) + hipDeviceSynchronize() -> t1",
+  "state_restore": "restore_depth() is called before t0, outside the timed region",
+  "rate_formula": "p_len / elapsed_sec",
+  "cache_reuse_in_window": false,
+  "cross_check": "same file validates ForwardPromptBatch against per-token ForwardToken under [Prefill Validation]"
+ },
+ "check_2_wall_clock": {
+  "command": "gufo bench -m <shard1> -p 4096 -n 0 -d 0 -r 2 -v",
+  "model_load_s": 45.2962,
+  "total_wall_s": 53,
+  "prefill_passes": 3,
+  "predicted_prefill_s": 7.2,
+  "observed_prefill_s": 7.7,
+  "reported_tok_s": 1705.94,
+  "packet_reported_tok_s": 1695.37
+ },
+ "prefill_4096_comparison": [
+  {
+   "engine": "gufo 98641a6",
+   "chunk": null,
+   "seconds": 2.4,
+   "tok_s": 1705.94
+  },
+  {
+   "engine": "hipEngine production",
+   "chunk": 4096,
+   "seconds": 12.42,
+   "tok_s": 329.94
+  },
+  {
+   "engine": "hipEngine production",
+   "chunk": 1024,
+   "seconds": 14.08,
+   "tok_s": 290.47
+  },
+  {
+   "engine": "hipEngine production",
+   "chunk": 512,
+   "seconds": 15.57,
+   "tok_s": 261.48
+  }
+ ],
+ "ratio_at_chunk_4096": 5.17,
+ "dense_control_27b_q4_k_m": {
+  "note": "NOT a dense-vs-MoE control: Qwen3.8-27B is `qwen35` architecture (65 dense layers) while Qwen3.8-Flash-Next is `qwen4exp`. They are different model implementations with different kernel paths, so this table shows the qwen35 path is at parity with gufo, NOT that dense is fine. An earlier revision of this artifact read it the wrong way.",
+  "rows": [
+   {
+    "shape": "512",
+    "gufo_pp": 383.53,
+    "hipengine_pp_pershape": 357.1,
+    "hipengine_pp_1session": 407.99
+   },
+   {
+    "shape": "1K",
+    "gufo_pp": 392.36,
+    "hipengine_pp_pershape": 406.18,
+    "hipengine_pp_1session": 405.9
+   },
+   {
+    "shape": "4K",
+    "gufo_pp": 382.74,
+    "hipengine_pp_pershape": 398.82,
+    "hipengine_pp_1session": 398.56
+   }
+  ]
+ },
+ "gufo_kernel_trace": {
+  "command": "rocprofv3 --kernel-trace -f csv -o raw -- gufo bench -m <shard1> -p 4096 -n 0 -d 0 -r 1",
+  "raw": "/tmp/gufo-prof/raw_kernel_trace.csv",
+  "tok_s_under_profiler": 1675.38,
+  "launches_total": 8475,
+  "prefill_runs_in_trace": 2,
+  "total_kernel_s": 4.84,
+  "per_prefill_kernel_s": 2.42,
+  "trace_span_s": 50.35,
+  "model_load_s": 45.37,
+  "prefill_window_busy_pct": 97.0,
+  "routed_moe_family": {
+   "kernels": [
+    "RoutedF16GEMMKernel<WeightType 7, 128, 48, 2, false>",
+    "RoutedF16GEMMKernel<WeightType 12, 128, 64, 2, true>",
+    "RoutedF16GEMMKernel<WeightType 12, 128, 128, 2, true>",
+    "RoutedF16GEMMKernel<WeightType 8, 128, 48, 2, false>",
+    "RoutedF16GEMMKernel<WeightType 13, 128, 128, 2, true>",
+    "RoutedF16GEMMKernel<WeightType 7, 128, 64, 2, false>",
+    "RoutedF16GEMMKernel<WeightType 8, 128, 64, 2, false>"
+   ],
+   "total_s_over_2_runs": 1.586,
+   "per_prefill_s": 0.793,
+   "pct_of_kernel_time": 32.8,
+   "launches_per_prefill": 192,
+   "launches_per_layer": 4,
+   "design": "fused gather + quantized-weight GEMM + scatter in one kernel"
+  },
+  "top_families": [
+   {
+    "kernel": "DenseF16GEMMKernel<256,128,2,8,1,1,false,true,false,false> (AttentionProjectionOutput)",
+    "sec": 0.6069,
+    "pct": 12.53,
+    "n": 144
+   },
+   {
+    "kernel": "RoutedF16GEMMKernel<7,128,48,2,false>",
+    "sec": 0.5511,
+    "pct": 11.38,
+    "n": 166
+   },
+   {
+    "kernel": "RoutedF16GEMMKernel<12,128,64,2,true>",
+    "sec": 0.4815,
+    "pct": 9.94,
+    "n": 90
+   },
+   {
+    "kernel": "RoutedF16GEMMKernel<12,128,128,2,true>",
+    "sec": 0.4576,
+    "pct": 9.45,
+    "n": 98
+   },
+   {
+    "kernel": "HcCombineMoeF16Kernel",
+    "sec": 0.325,
+    "pct": 6.71,
+    "n": 188
+   },
+   {
+    "kernel": "GdnRowSplitKernel",
+    "sec": 0.3073,
+    "pct": 6.34,
+    "n": 144
+   },
+   {
+    "kernel": "DenseF16GEMMKernel<256,128,2,8,1,1,false,false,false,false>",
+    "sec": 0.2759,
+    "pct": 5.7,
+    "n": 144
+   }
+  ]
+ },
+ "hipengine_kernel_trace": {
+  "source": "benchmarks/results/2026-10-04-qwen4exp-prefill-kernel-breakdown/artifact.json",
+  "chunk": 1024,
+  "prefill_runs_in_trace": 4,
+  "total_kernel_s": 65.358,
+  "per_prefill_kernel_s": 16.34,
+  "launches_total": 85696,
+  "launches_per_prefill": 21424,
+  "moe_families": [
+   {
+    "family": "MoE gate/up (q4_k iu8_risk prefill)",
+    "pct": 20.42
+   },
+   {
+    "family": "MoE down (q5_1 iu8_risk prefill)",
+    "pct": 11.49
+   },
+   {
+    "family": "MoE gate/up repair",
+    "pct": 3.25
+   },
+   {
+    "family": "MoE down repair",
+    "pct": 3.18
+   }
+  ],
+  "moe_pct": 38.34,
+  "moe_per_prefill_s": 6.265,
+  "moe_launches_per_prefill": 720,
+  "moe_launches_per_layer": 15
+ },
+ "derived_efficiency": {
+  "basis": "per 4096-token prefill the routed MoE reads ~73 GB of quantized expert weights and does ~21.8 TFLOP (10 of 512 experts active, expert_feed_forward_length 640, hidden_size 2560, 48 layers, plus shared expert and router). Derived from config arithmetic, not hardware counters.",
+  "rows": [
+   {
+    "engine": "gufo routed MoE",
+    "per_prefill_s": 0.793,
+    "gb_per_s": 92,
+    "tflops": 27.5
+   },
+   {
+    "engine": "hipEngine MoE (chunk 1024)",
+    "per_prefill_s": 6.265,
+    "gb_per_s": 11.7,
+    "tflops": 3.5
+   }
+  ],
+  "gap": 8.0
+ },
+ "what_this_changes": [
+  "The prefill objective is a 5.2x kernel-throughput gap, not the ~1.7x the older Vulkan-lane tables suggested.",
+  "It is uniform across families (4.6x-6.8x), so no single kernel is the answer; the 43.2% dense-projection bucket is the largest single share.",
+  "It is not launch count: gufo issues 1.53x more launches per prefill than hipEngine.",
+  "Chunk-size tuning and scheduling work are real but second-order against it.",
+  "The qwen35 path (27B) is at parity with gufo; the qwen4exp path is where the work is."
+ ],
+ "limits": [
+  "Prompt token content differs between engines: gufo cycles (i%1000)+100, hipEngine uses the committed fixture. This is a same-shape, same-host, same-file ratio, not a same-prompt ratio.",
+  "gufo is a prebuilt binary at 98641a6 with source.patch applied; gufo-src HEAD is one commit ahead.",
+  "TFLOP/s and GB/s are derived from config arithmetic, not hardware counters.",
+  "One host, one model, one quant, one repetition count per engine."
+ ],
+ "source": {
+  "path": "/home/lhl/hipEngine",
+  "head": "bc0ee3559ca3521b6805ca0285b800e4fc05d47d"
+ },
+ "matched_granularity": {
+  "note": "Both sides traced with rocprofv3 --kernel-trace at one 4096-row prefill pass. hipEngine chunk 4096, 4 prefill runs in the window (confirmed: 192 router_logits launches / 4 = 48 = one per layer x 48 layers; 144 GDN prefill / 4 = 36 = the 36 GDN layers). gufo -r 1, 2 prefill runs (384 RoutedF16GEMM launches / 2 = 192 = 4 per layer x 48 layers).",
+  "hipengine": {
+   "harness": "scripts/qwen4exp_profile_gap.py --mode prefill --prefill-chunk-size 4096",
+   "raw": "/tmp/c4096-trace/raw/trace_kernel_trace.csv",
+   "reported_tok_s": 288.37,
+   "reported_wall_s": 14.2,
+   "runs_in_trace": 4,
+   "prefill_window_s": 58.7,
+   "kernel_s_per_run": 13.769,
+   "launches_per_run": 2766,
+   "buckets_s_per_run": {
+    "dense_proj": 5.954,
+    "moe_main": 3.478,
+    "attention": 1.09,
+    "moe_repair": 0.862,
+    "other": 0.859,
+    "gdn": 0.824,
+    "router": 0.633,
+    "moe_sched": 0.068
+   },
+   "buckets_pct": {
+    "dense_proj": 43.24,
+    "moe_main": 25.26,
+    "attention": 7.92,
+    "moe_repair": 6.26,
+    "other": 6.24,
+    "gdn": 5.99,
+    "router": 4.59,
+    "moe_sched": 0.5
+   },
+   "top_families": [
+    {
+     "family": "gguf_k_prefill_out_coltile_rowbatch_pipelined",
+     "sec_per_run": 2.724,
+     "n_per_run": 134
+    },
+    {
+     "family": "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4",
+     "sec_per_run": 2.396,
+     "n_per_run": 96
+    },
+    {
+     "family": "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill (MoE gate/up)",
+     "sec_per_run": 2.217,
+     "n_per_run": 47
+    },
+    {
+     "family": "q5_1_selected_wmma_iu8_risk_prefill (MoE down)",
+     "sec_per_run": 1.206,
+     "n_per_run": 43
+    },
+    {
+     "family": "qwen4_exp_gdn_prefill",
+     "sec_per_run": 0.77,
+     "n_per_run": 36
+    },
+    {
+     "family": "qwen35_router_logits_f32_token_tile_dense_exact",
+     "sec_per_run": 0.615,
+     "n_per_run": 48
+    },
+    {
+     "family": "q8_0_dense_wide",
+     "sec_per_run": 0.612,
+     "n_per_run": 264
+    },
+    {
+     "family": "q5_1_selected_sparse_exact_repair_row_publish (MoE down repair)",
+     "sec_per_run": 0.516,
+     "n_per_run": 43
+    },
+    {
+     "family": "dense_gemv (decode-shaped, running during prefill)",
+     "sec_per_run": 0.498,
+     "n_per_run": 240
+    },
+    {
+     "family": "qwen35_paged_full_attn_decode_context_tensor_batch",
+     "sec_per_run": 0.454,
+     "n_per_run": 12
+    },
+    {
+     "family": "qsa_sparse_attention_h256_wave_rows_f32",
+     "sec_per_run": 0.448,
+     "n_per_run": 12
+    },
+    {
+     "family": "gguf_q4_k_selected_dual_sparse_exact_repair_bf16 (MoE gate/up repair)",
+     "sec_per_run": 0.17,
+     "n_per_run": 47
+    }
+   ]
+  },
+  "gufo": {
+   "command": "rocprofv3 --kernel-trace -f csv -o raw -- gufo bench -m <shard1> -p 4096 -n 0 -d 0 -r 1",
+   "raw": "/tmp/gufo-prof/raw_kernel_trace.csv",
+   "runs_in_trace": 2,
+   "kernel_s_per_run": 2.42,
+   "launches_per_run": 4237,
+   "routed_moe_s_per_run": 0.793,
+   "dense_gemm_s_per_run": 0.878,
+   "other_s_per_run": 0.749
+  },
+  "ratios": {
+   "total": 5.69,
+   "dense_proj": 6.78,
+   "routed_moe": 5.56,
+   "attention_gdn_router_other": 4.55,
+   "launches": "gufo 4237 per run vs hipEngine 2766 per run - gufo uses MORE"
+  },
+  "conclusion": "The gap is uniform across every bucket, so it is not one broken kernel family. It is also not launch count or scheduling: gufo issues 1.53x more launches per prefill. What separates them is per-kernel throughput, and the widest single bucket is the dense projections at 43.2% of our prefill time and 6.8x off."
+ }
+}
