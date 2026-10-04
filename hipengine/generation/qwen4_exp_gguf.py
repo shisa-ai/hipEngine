@@ -58,7 +58,7 @@ class Qwen4ExpGGUFTextGenerator:
         runner: Any | None = None,
         max_sequence_length: int | None = None,
         resident_capacity: int | None = None,
-        prefill_chunk_size: int = 512,
+        prefill_chunk_size: int | None = 512,
         vision_model_path: str | Path | None = None,
     ) -> None:
         self.model_path = Path(model_path)
@@ -74,6 +74,10 @@ class Qwen4ExpGGUFTextGenerator:
         self.server_plain_ar_max_active_requests = self._configured_resident_capacity
         self.server_plain_ar_max_active_requests_by_max_sequence_length = {1024:self._configured_resident_capacity}
         self.context_admission = None
+        # The chunk the admission was actually computed for. `None` means the
+        # caller supplied a resident runner, so no admission ran and the binder
+        # keeps its own default.
+        self.admitted_prefill_chunk_size = None
         self._resident = None
         self._vision_resident = None
         self._vision_runner = None
@@ -108,8 +112,12 @@ class Qwen4ExpGGUFTextGenerator:
             model_map = build_qwen4_exp_gguf_tensor_map(
                 tuple(reader.info for reader in readers)
             )
-            plan = plan_qwen4_exp_residency(
-                model_map, staging_token_capacity=prefill_chunk_size
+            # A `None` chunk means the capacity guard below chooses it, so the
+            # plan is built there for the rung that wins.
+            plan = (
+                None if prefill_chunk_size is None
+                else plan_qwen4_exp_residency(
+                    model_map, staging_token_capacity=prefill_chunk_size)
             )
             from hipengine.core.hip import get_hip_runtime
             from hipengine.loading.qwen4_exp_context import resolve_qwen4_exp_context
@@ -124,12 +132,37 @@ class Qwen4ExpGGUFTextGenerator:
             vision_reserve = 0 if vision_plan is None else int(vision_plan.device_weight_bytes)
             if free_bytes < vision_reserve:
                 raise MemoryError("Qwen4Exp vision weights exceed available device memory")
-            admission = resolve_qwen4_exp_context(
-                plan,available_device_bytes=free_bytes-vision_reserve,
-                requested_context=max_sequence_length,
-                native_context_length=getattr(model_plugin,"native_context_length",model_map.config.context_length),
-                resident_capacity=self._configured_resident_capacity,
-                prefill_chunk_size=prefill_chunk_size)
+            native_context = getattr(
+                model_plugin,"native_context_length",model_map.config.context_length)
+            if prefill_chunk_size is None:
+                # Capacity guard (ledger RT-1/RT-3): take the largest chunk whose
+                # admission still yields the requested context, and fall back a
+                # step at a time when it does not. The guard exists because the
+                # workspace is CONTEXT-aware, not prompt-aware - rows are
+                # min(chunk, native_context), so in a serving session the larger
+                # chunk is paid at construction for every session regardless of
+                # traffic, and a blanket flip is the wrong form.
+                #
+                # The admission below is pure arithmetic on the residency plan,
+                # so the whole ladder is evaluated before any weight is
+                # materialized and the fallback costs no device memory or time.
+                prefill_chunk_size, plan, admission = _select_prefill_chunk(
+                    model_map,
+                    ladder=_AUTO_PREFILL_CHUNK_LADDER,
+                    available_device_bytes=free_bytes-vision_reserve,
+                    requested_context=max_sequence_length,
+                    native_context_length=native_context,
+                    resident_capacity=self._configured_resident_capacity,
+                    plan_fn=plan_qwen4_exp_residency,
+                    admit_fn=resolve_qwen4_exp_context)
+            else:
+                admission = resolve_qwen4_exp_context(
+                    plan,available_device_bytes=free_bytes-vision_reserve,
+                    requested_context=max_sequence_length,
+                    native_context_length=native_context,
+                    resident_capacity=self._configured_resident_capacity,
+                    prefill_chunk_size=prefill_chunk_size)
+            self.admitted_prefill_chunk_size = int(prefill_chunk_size)
             self.context_admission = {
                 "mode": "auto" if max_sequence_length is None else "explicit",
                 "device_free_bytes": free_bytes,"device_total_bytes": total_bytes,
@@ -898,6 +931,72 @@ class Qwen4ExpResidentServingRunner:
         return ids
 
 
+_AUTO_PREFILL_CHUNK_LADDER = (4096, 2048, 1024)
+
+
+def _select_prefill_chunk(
+    model_map: object,
+    *,
+    ladder: tuple[int, ...],
+    available_device_bytes: int,
+    requested_context: int | None,
+    native_context_length: int,
+    resident_capacity: int,
+    plan_fn: object,
+    admit_fn: object,
+) -> tuple[int, object, object]:
+    """Capacity guard for the prefill chunk (ledger `RT-1` / `RT-3`).
+
+    Take the largest chunk in ``ladder`` whose admission still yields the
+    requested context, falling back one step at a time when it does not.
+
+    The workspace is context-aware rather than prompt-aware: ``allocate_inputs``
+    sizes rows as ``min(prefill_chunk_size, max_sequence_length)`` and the
+    runner's ``max_sequence_length`` comes from the model's native context, so
+    in a serving session the larger chunk is paid at construction for every
+    session regardless of traffic. A blanket default flip therefore spends
+    device memory on requests that never use it; this picks the largest chunk
+    the device can actually afford at the context being served.
+
+    Both callbacks are pure arithmetic on the residency plan, so the whole
+    ladder is evaluated before any weight is materialized.
+
+    The requested context is what the caller asked for, or the native context
+    when the caller left it open, so a fallback is only taken when the larger
+    chunk would genuinely cost context rather than merely cost headroom.
+    """
+    wanted = int(native_context_length if requested_context is None else requested_context)
+    failure: Exception | None = None
+    for chunk in ladder:
+        try:
+            plan = plan_fn(model_map, staging_token_capacity=chunk)
+            admission = admit_fn(
+                plan, available_device_bytes=available_device_bytes,
+                requested_context=requested_context,
+                native_context_length=native_context_length,
+                resident_capacity=resident_capacity,
+                prefill_chunk_size=chunk)
+        except MemoryError as error:  # chunk too large for this device
+            failure = error
+            continue
+        if int(admission.context_tokens) >= wanted:
+            return int(chunk), plan, admission
+        failure = None
+    if failure is not None:
+        raise failure
+    # No rung preserved the requested context; take the smallest and let the
+    # admission report whatever context it can actually serve.
+    chunk = int(ladder[-1])
+    plan = plan_fn(model_map, staging_token_capacity=chunk)
+    admission = admit_fn(
+        plan, available_device_bytes=available_device_bytes,
+        requested_context=requested_context,
+        native_context_length=native_context_length,
+        resident_capacity=resident_capacity,
+        prefill_chunk_size=chunk)
+    return chunk, plan, admission
+
+
 def make_qwen4_exp_gguf_generator_gfx1151(
     *,
     model_path: str | Path,
@@ -934,7 +1033,14 @@ def make_qwen4_exp_ud_q4_k_xl_generator_gfx1151(
         model_path=model_path,weight_index=weight_index,model_plugin=model_plugin,
         vision_model_path=vision_model_path,max_sequence_length=max_sequence_length,
         resident_capacity=resident_capacity,
-        prefill_chunk_size=1024 if prefill_chunk_size is None else prefill_chunk_size,
+        # `None` asks the generator's capacity guard to take the largest chunk
+        # whose admission still yields the requested context (ledger RT-1/RT-3),
+        # falling back 4096 -> 2048 -> 1024 when the device cannot afford it.
+        # The guard runs on the residency plan before any weight is
+        # materialized, so it costs no device memory and no time, and it keeps
+        # the pre-binding allocation consistent with what the profile will
+        # bind - the binder can only lower the runner's chunk afterwards.
+        prefill_chunk_size=None if prefill_chunk_size is None else prefill_chunk_size,
     )
     generator._implicit_profile_chunk_size = prefill_chunk_size is None
     return generator

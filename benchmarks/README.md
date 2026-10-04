@@ -66,9 +66,30 @@ limits](results/2026-10-04-qwen4exp-chunk-decode-trade/README.md).
 
 The 1024 -> 4096 step was measured separately on `code-p4096`: 15.625 -> 14.854 s
 (**-4.94%**) for +4.96 GB peak, `token_id` and `logits_sha256` identical on every
-arm. Not promoted: it buys 2.76 further percentage points over 256 -> 1024 for
-4.96 GB more, and what remains is memory admission on long prompts.
-[Protocol, cost and limits](results/2026-09-29-qwen4exp-rt1-chunk-remeasure/README.md).
+arm. [Protocol, cost and
+limits](results/2026-09-29-qwen4exp-rt1-chunk-remeasure/README.md).
+
+**The production default is now a capacity guard, not a fixed chunk.** The
+workspace is context-aware rather than prompt-aware — rows are
+`min(chunk, max_sequence_length)` and the runner's `max_sequence_length` comes
+from the model's native context — so a blanket larger default would be paid at
+session construction for every session regardless of traffic. The guard takes
+the largest chunk whose admission still yields the requested context and falls
+back 4096 -> 2048 -> 1024 when the device cannot afford it, so a device that
+cannot hold the top rung gets a smaller one instead of losing context. Measured
+on `code-p4096`, production, 6 samples per arm, interleaved:
+
+| chunk | prefill tok/s | decode tok/s |
+| ---: | ---: | ---: |
+| 1024 | 279.28 | 18.127 |
+| 2048 | 292.59 (+4.77%) | 18.152 (+0.14%) |
+| 4096 | **302.81 (+8.43%)** | **18.431 (+1.68%)** |
+
+Chunk 4096 also improves **decode** by 1.68% rather than costing it. At native
+context the scratch reservation is unchanged at 2048 (still under the 4 GiB
+per-runner floor) and rises +6.80 GB at 4096; max context stays 262144 tokens at
+every rung. [Guard protocol, gate and memory
+table](results/2026-10-04-qwen4exp-prefill-chunk-4096/README.md).
 
 ## Qwen3.8 Flash Next full-attention context route
 

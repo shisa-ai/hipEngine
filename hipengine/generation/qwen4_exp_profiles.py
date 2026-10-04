@@ -673,8 +673,24 @@ def _report_prebinder_conflicts() -> None:
 
 def _bind_default_chunk(generator: Any, *, production: bool) -> None:
     if getattr(generator,"_implicit_profile_chunk_size",False):
-        # The qualified factory allocated1024 before profile binding.
-        generator.runner.prefill_chunk_size = 1024 if production else 512
+        # The qualified factory allocated the caller's chunk before profile
+        # binding; the profile owns the production default.
+        #
+        # PRODUCTION CHUNK (2026-10-04): the generator's capacity guard picks
+        # the largest chunk the device can afford at the requested context and
+        # records it as `admitted_prefill_chunk_size` (ledger RT-1/RT-3). The
+        # binder binds THAT value rather than a fixed constant, so a device that
+        # cannot afford 4096 falls back to 2048 or 1024 instead of
+        # under-reserving. Evidence for the 1024 -> 4096 step:
+        # benchmarks/results/2026-10-04-qwen4exp-prefill-chunk-4096/ - +8.43%
+        # prefill and +1.68% decode at code-p4096, bit-identical token ids
+        # across strict and production at both chunk sizes, and the layer2 gate
+        # at 4096 reproducing the 1024 gate numbers digit for digit.
+        admitted = getattr(generator,"admitted_prefill_chunk_size",None)
+        if admitted:
+            generator.runner.prefill_chunk_size = int(admitted)
+        else:
+            generator.runner.prefill_chunk_size = 1024 if production else 512
 
 
 def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool) -> None:
