@@ -1,4 +1,5 @@
-"""CPU protocol checks for the public workspace ownership diagnostic."""
+"""CPU protocol checks for public workspace ownership and device-greedy observation."""
+import hashlib
 import json
 import sys
 from types import SimpleNamespace
@@ -38,18 +39,20 @@ def _drive(monkeypatch, tmp_path, *, expected=(2, 3)):
         owner = Owner()
         runner = SimpleNamespace(_scratches=[SimpleNamespace(attention=owner) for _ in range(2)])
 
-        def forward(ids):
+        def forward_argmax(ids):
             for scratch in runner._scratches:
                 scratch.attention.use()
-            return np.array([0.0, 1.0], dtype=np.float32)
+            runner._last_logits = np.array([0.0, 1.0], dtype=np.float32)
+            return 2
 
-        runner.forward = forward
+        runner.forward_argmax = forward_argmax
+        runner.forward = lambda ids: pytest.fail("public greedy must not call forward")
         runners.append(runner)
 
         def generate(ids, params):
             assert ids == [1, 2] and params.max_tokens == 2 and params.ignore_eos
-            runner.forward(ids)
-            runner.forward([2])
+            runner.forward_argmax(ids)
+            runner.forward_argmax([2])
             return [SimpleNamespace(generated_token_ids=(2, 3))]
 
         def close():
@@ -61,6 +64,7 @@ def _drive(monkeypatch, tmp_path, *, expected=(2, 3)):
 
     monkeypatch.setattr(attention, "Gemma4AttentionScratch", Owner)
     monkeypatch.setattr(bench, "_resolve_generator", resolve)
+    monkeypatch.setattr(probe, "_read_runner_logits", lambda runner: runner._last_logits)
     monkeypatch.setattr(hip, "get_hip_runtime", lambda: SimpleNamespace(device_synchronize=lambda: None))
     monkeypatch.setattr(memory, "memory_stats", lambda: {})
     monkeypatch.setattr(memory, "reset_memory_stats", lambda: None)
@@ -93,3 +97,51 @@ def test_public_workspace_probe_closes_on_output_mismatch(monkeypatch, tmp_path)
         probe.main()
     assert closed == runners
     assert not output.exists()
+
+
+class Runner:
+    def __init__(self):
+        self.calls = []
+
+    def forward_argmax(self, token_ids, *, apply_softcap=True):
+        self.calls.append((token_ids, apply_softcap))
+        return 7
+
+
+def test_observer_captures_logits_without_changing_greedy_call(monkeypatch):
+    runner = Runner()
+    logits = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    monkeypatch.setattr(probe, '_read_runner_logits', lambda value: logits, raising=False)
+    with probe.observe_argmax_logits(runner) as (hashes, finite):
+        assert runner.forward_argmax([12, 34], apply_softcap=False) == 7
+        assert runner.forward_argmax([7]) == 7
+    assert hashes == [hashlib.sha256(logits.tobytes()).hexdigest()] * 2
+    assert finite == [True, True]
+    assert runner.calls == [([12, 34], False), ([7], True)]
+    assert 'forward_argmax' not in runner.__dict__
+
+
+def test_observer_restores_instance_override_and_records_nonfinite(monkeypatch):
+    runner = Runner()
+    original = lambda ids: 3
+    runner.forward_argmax = original
+    monkeypatch.setattr(probe, '_read_runner_logits',
+                        lambda value: np.array([np.nan], dtype=np.float32), raising=False)
+    with probe.observe_argmax_logits(runner) as (hashes, finite):
+        assert runner.forward_argmax([3]) == 3
+    assert len(hashes) == 1 and finite == [False]
+    assert runner.forward_argmax is original
+
+
+def test_failed_greedy_call_is_not_captured(monkeypatch):
+    runner = Runner()
+    def fail(ids):
+        raise RuntimeError('greedy failed')
+    runner.forward_argmax = fail
+    monkeypatch.setattr(probe, '_read_runner_logits',
+                        lambda value: pytest.fail('must not capture a failed call'), raising=False)
+    with pytest.raises(RuntimeError, match='greedy failed'):
+        with probe.observe_argmax_logits(runner) as (hashes, finite):
+            runner.forward_argmax([3])
+    assert hashes == finite == []
+    assert runner.forward_argmax is fail

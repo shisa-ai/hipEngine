@@ -15,6 +15,41 @@ def test_single_row_prefill_tail_is_not_claimed_as_decode():
 
 
 
+@pytest.mark.parametrize('name,variant', [
+    ('gemma4_attention_prefill_tiled', 'tiled'),
+    ('gemma4_attention_prefill_aotriton', 'aotriton'),
+    ('gemma4_attention_prefill_bf16', 'exact'),
+])
+def test_observe_native_launches_without_variant_selection(monkeypatch, name, variant):
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer as layer
+
+    def launch(*args, **kwargs):
+        return 'native launch'
+
+    monkeypatch.setattr(layer, name, launch)
+    with observe_attention_launches() as records:
+        assert getattr(layer, name)(tokens=3, keys=19, head_dim=256,
+                                    num_heads=16, num_kv_heads=2) == 'native launch'
+    assert len(records) == 1
+    assert records[0]['variant'] == variant
+    assert records[0]['tokens'] == 3
+    assert getattr(layer, name) is launch
+
+
+def test_native_failure_is_not_counted_and_wrapper_is_restored(monkeypatch):
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer as layer
+
+    def fail(**kwargs):
+        raise RuntimeError('native launch failed')
+
+    monkeypatch.setattr(layer, 'gemma4_attention_prefill_bf16', fail)
+    with pytest.raises(RuntimeError, match='native launch failed'):
+        with observe_attention_launches() as records:
+            layer.gemma4_attention_prefill_bf16(tokens=1)
+    assert records == []
+    assert layer.gemma4_attention_prefill_bf16 is fail
+
+
 @dataclass(frozen=True)
 class Selection:
     variant: str

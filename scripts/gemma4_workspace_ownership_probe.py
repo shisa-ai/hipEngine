@@ -9,6 +9,7 @@ and allocator counts are diagnostics; instrumentation is not a latency benchmark
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import shlex
@@ -21,13 +22,52 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
+def _read_runner_logits(runner):
+    """Copy the already-softcapped row; never run the projection a second time."""
+    import numpy as np
+    from hipengine.core.memory import copy_device_to_host, host_array_ptr
+
+    logits = np.empty(int(runner.weights.config.vocab_size), dtype=np.float32)
+    copy_device_to_host(host_array_ptr(logits), runner._logits, logits.nbytes)
+    return logits
+
+
+@contextmanager
+def observe_argmax_logits(runner):
+    """Observe public greedy calls without changing their sampler or arithmetic.
+
+    The added full-vocabulary copies make this an untimed correctness probe,
+    not a measurement of the device-greedy path's latency.
+    """
+    import numpy as np
+
+    original = runner.forward_argmax
+    had_override = 'forward_argmax' in runner.__dict__
+    hashes, finite = [], []
+
+    def observed(*args, **kwargs):
+        token = original(*args, **kwargs)
+        array = np.asarray(_read_runner_logits(runner), dtype=np.float32)
+        finite.append(bool(np.isfinite(array).all()))
+        hashes.append(hashlib.sha256(array.tobytes()).hexdigest())
+        return token
+
+    runner.forward_argmax = observed
+    try:
+        yield hashes, finite
+    finally:
+        if had_override:
+            runner.forward_argmax = original
+        else:
+            del runner.forward_argmax
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-json", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
-    import numpy as np
     from scripts import gemma4_campaign_bench as bench
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import memory_stats, reset_memory_stats
@@ -51,20 +91,10 @@ def main() -> int:
                     scratch.attention = Gemma4AttentionScratch()
             resident = memory_stats()
             reset_memory_stats()
-            original = runner.forward
-            hashes, finite = [], []
-
-            def observed(*a, **kw):
-                logits = original(*a, **kw)
-                array = np.asarray(logits, dtype=np.float32)
-                finite.append(bool(np.isfinite(array).all()))
-                hashes.append(hashlib.sha256(array.tobytes()).hexdigest())
-                return logits
-
-            runner.forward = observed
-            output = llm.generate_detailed(
-                ids, SamplingParams(max_tokens=outputs, temperature=0, ignore_eos=True)
-            )[0]
+            with observe_argmax_logits(runner) as (hashes, finite):
+                output = llm.generate_detailed(
+                    ids, SamplingParams(max_tokens=outputs, temperature=0, ignore_eos=True)
+                )[0]
             get_hip_runtime().device_synchronize()
             owners = list({id(s.attention): s.attention for s in runner._scratches}.values())
             row = {
@@ -89,6 +119,7 @@ def main() -> int:
         "kind": "public_workspace_control", "status": "ownership_pass", "performance_claim": False,
         "command": shlex.join([sys.executable, *sys.argv]),
         "host": subprocess.check_output(["hostname"], text=True).strip(),
+        "observer_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "baseline_provenance": baseline["provenance"],
         "candidate_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "candidate_diff_sha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD", "--", "hipengine/runtime/gemma4.py"])).hexdigest(),
