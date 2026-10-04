@@ -1,5 +1,19 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-04 — Qwen3.8 Flash Next prefill stall census (diagnostic)
+
+- Prefill-only `rocprofv3` capture at `code-p4096`, production, chunk 4096
+  (5,840 kernels, 27.102 s device time). The prefill is **not uniformly stalled**:
+  HC-1 `gr_up_sigmoid_mean` is 18.26% of device time at **30.82% LDS wait** while
+  every other top-ten prefill kernel is **≤0.35%**, a ~90x spread. The GDN prefill
+  kernel (5.93%) is **register-bound at `VGPR_Count` 256** with `LDS_Block_Size` 0
+  and 6,144 grid blocks, running at **0.92 instructions/CU-cycle** against a
+  ~4/cycle ceiling. No speed change; this re-ranks the remaining levers.
+  `SQ_WAIT_INST_ANY` is silently dropped by this `rocprofv3` build, so the non-LDS
+  stall is unattributable — recorded as a limit. Source:
+  `benchmarks/results/2026-10-04-qwen4exp-prefill-stall-census/`, worklog
+  `20261004T150839`.
+
 ## 2026-10-04 — Qwen3.8 Flash Next prefill chunk capacity guard
 
 - Production prefill chunk becomes the largest its admission can afford

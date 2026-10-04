@@ -1,0 +1,142 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_prefill_stall_census",
+ "question": "Is the prefill uniformly stalled across families (the wall-time reading in the ledger's 1.2.1), or does one family carry the gap?",
+ "protocol": {
+  "harness": "scripts/qwen4exp_profile_gap.py --mode prefill",
+  "case": "code-p4096",
+  "prefill_chunk_size": 4096,
+  "execution_profile": "production",
+  "repetitions": 1,
+  "profiler": "rocprofv3 --pmc",
+  "kernel_rows": 5840,
+  "device_seconds": 27.10204432
+ },
+ "limits": [
+  "SQ_WAIT_INST_ANY is accepted by rocprofv3 --pmc but SILENTLY DROPPED on this build (absent from the collected set), so the non-LDS stall component cannot be named.",
+  "There is no VMEM wait counter on this build; SQ_INSTS_FLAT_LOAD is an instruction-count proxy, not a stall measure.",
+  "One case, one model, one quant, one host (gfx1151); kernel durations under the profiler are inflated for launch-dense phases, so the SHARES are the result."
+ ],
+ "kernels": {
+  "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true, tr": {
+   "dispatches": 192,
+   "device_seconds": 4.949,
+   "share_pct": 18.26,
+   "lds_wait_pct": 30.815,
+   "valu_issue_pct": 2.336,
+   "flat_load_pct": 0.331,
+   "waves_per_busy_cycle": 55.32,
+   "inst_per_cu_cycle_est": 2.45
+  },
+  "gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<float, float, 8, ": {
+   "dispatches": 218,
+   "device_seconds": 4.492,
+   "share_pct": 16.57,
+   "lds_wait_pct": 0.026,
+   "valu_issue_pct": 7.764,
+   "flat_load_pct": 1.568,
+   "waves_per_busy_cycle": 36.19,
+   "inst_per_cu_cycle_est": 3.76
+  },
+  "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3": {
+   "dispatches": 94,
+   "device_seconds": 4.438,
+   "share_pct": 16.38,
+   "lds_wait_pct": 0.148,
+   "valu_issue_pct": 9.488,
+   "flat_load_pct": 0.082,
+   "waves_per_busy_cycle": 23.94,
+   "inst_per_cu_cycle_est": 2.67
+  },
+  "q5_1_selected_wmma_iu8_risk_prefill_kernel<16>(unsigned short const*, ": {
+   "dispatches": 86,
+   "device_seconds": 2.418,
+   "share_pct": 8.92,
+   "lds_wait_pct": 0.098,
+   "valu_issue_pct": 7.333,
+   "flat_load_pct": 0.078,
+   "waves_per_busy_cycle": 31.38,
+   "inst_per_cu_cycle_est": 2.75
+  },
+  "qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const": {
+   "dispatches": 72,
+   "device_seconds": 1.607,
+   "share_pct": 5.93,
+   "lds_wait_pct": 0.011,
+   "valu_issue_pct": 6.994,
+   "flat_load_pct": 0.077,
+   "waves_per_busy_cycle": 9.6,
+   "inst_per_cu_cycle_est": 0.92
+  },
+  "qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*": {
+   "dispatches": 96,
+   "device_seconds": 1.234,
+   "share_pct": 4.55,
+   "lds_wait_pct": 0.347,
+   "valu_issue_pct": 1.302,
+   "flat_load_pct": 0.243,
+   "waves_per_busy_cycle": 60.11,
+   "inst_per_cu_cycle_est": 1.92
+  },
+  "q5_1_selected_sparse_exact_repair_row_publish_kernel(unsigned short co": {
+   "dispatches": 86,
+   "device_seconds": 1.051,
+   "share_pct": 3.88,
+   "lds_wait_pct": 0.03,
+   "valu_issue_pct": 1.774,
+   "flat_load_pct": 0.238,
+   "waves_per_busy_cycle": 53.9,
+   "inst_per_cu_cycle_est": 3.0
+  },
+  "q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, false, 1>(_Float16 ": {
+   "dispatches": 438,
+   "device_seconds": 0.922,
+   "share_pct": 3.4,
+   "lds_wait_pct": 1.24,
+   "valu_issue_pct": 2.483,
+   "flat_load_pct": 0.084,
+   "waves_per_busy_cycle": 15.9,
+   "inst_per_cu_cycle_est": 0.54
+  },
+  "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, fal": {
+   "dispatches": 24,
+   "device_seconds": 0.911,
+   "share_pct": 3.36,
+   "lds_wait_pct": 0.294,
+   "valu_issue_pct": 6.422,
+   "flat_load_pct": 0.513,
+   "waves_per_busy_cycle": 36.71,
+   "inst_per_cu_cycle_est": 3.09
+  },
+  "qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4>(float const*, ": {
+   "dispatches": 24,
+   "device_seconds": 0.898,
+   "share_pct": 3.31,
+   "lds_wait_pct": 0.213,
+   "valu_issue_pct": 8.26,
+   "flat_load_pct": 0.469,
+   "waves_per_busy_cycle": 40.56,
+   "inst_per_cu_cycle_est": 4.03
+  },
+  "dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const": {
+   "dispatches": 48,
+   "device_seconds": 0.566,
+   "share_pct": 2.09,
+   "lds_wait_pct": 0.005,
+   "valu_issue_pct": 1.87,
+   "flat_load_pct": 0.184,
+   "waves_per_busy_cycle": 58.84,
+   "inst_per_cu_cycle_est": 2.66
+  },
+  "dense_gemv_out_kernel<float, float, false>(float const*, float const*,": {
+   "dispatches": 432,
+   "device_seconds": 0.441,
+   "share_pct": 1.63,
+   "lds_wait_pct": 0.004,
+   "valu_issue_pct": 1.108,
+   "flat_load_pct": 0.157,
+   "waves_per_busy_cycle": 59.44,
+   "inst_per_cu_cycle_est": 1.63
+  }
+ }
+}
