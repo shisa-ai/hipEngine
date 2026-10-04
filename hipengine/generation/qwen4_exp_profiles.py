@@ -49,7 +49,7 @@ PRODUCTION_Q8_WMMA_PREFILL_LAYERS = tuple(range(16, 48))
 # p99 5.42e-3, max 1.53e-2, top-1 1538/1548, 3/3 deterministic, no scope
 # failures), with `strict_logits_sha256` and `candidate_logits_sha256` equal to
 # that route's gate artifact byte for byte.
-PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(16, 48))
+PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(13, 48))
 PRODUCTION_Q4_IU8_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS = tuple(range(32, 48))
 PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS = tuple(range(35, 48))
