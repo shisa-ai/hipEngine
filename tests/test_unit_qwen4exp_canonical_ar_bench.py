@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -368,3 +369,67 @@ def test_compare_rejects_different_case_sets(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="identical non-empty case sets"):
         module.compare_engine_artifacts(paths)
+
+
+def test_hipengine_parser_accepts_host_profile(tmp_path: Path) -> None:
+    module = _load_script()
+    parser = module.build_parser()
+    default = parser.parse_args(
+        ["hipengine", "--model-root", str(tmp_path), "--output", str(tmp_path / "o.json")]
+    )
+    assert default.host_profile is False
+    enabled = parser.parse_args(
+        [
+            "hipengine", "--model-root", str(tmp_path), "--output", str(tmp_path / "o.json"),
+            "--host-profile",
+        ]
+    )
+    assert enabled.host_profile is True
+
+
+class _HostProfileRunner:
+    """Minimal runner stub: reset/prefill/step plus a device_synchronize no-op."""
+
+    class _Runtime:
+        @staticmethod
+        def device_synchronize() -> None:
+            return None
+
+    def __init__(self) -> None:
+        self.runtime = self._Runtime()
+        self.calls = {"reset": 0, "prefill": 0, "step": 0}
+
+    def reset(self) -> None:
+        self.calls["reset"] += 1
+
+    def prefill(self, token_ids: list[int], **_kwargs: Any) -> Any:
+        self.calls["prefill"] += 1
+        assert token_ids == [1, 2, 3]
+        return type("R", (), {"token_id": 7})()
+
+    def step(self, token_id: int, **_kwargs: Any) -> Any:
+        self.calls["step"] += 1
+        return type("R", (), {"token_id": token_id + 1})()
+
+
+def test_host_profile_resets_first_and_attributes_the_decode_loop() -> None:
+    module = _load_script()
+    runner = _HostProfileRunner()
+    profile = module._hipengine_host_profile(
+        runner,
+        case={"id": "code-p512", "prompt_token_ids": [1, 2, 3]},
+        transitions=16,
+        step_kwargs={"token_id_resident": True},
+    )
+    # The pass must not grow the measured sequence, so it resets first.
+    assert runner.calls["reset"] == 1
+    assert runner.calls["prefill"] == 1
+    assert runner.calls["step"] == 16
+    assert profile["case_id"] == "code-p512"
+    assert profile["transitions"] == 16
+    assert profile["total_s"] > 0.0
+    assert profile["entries"], "a profiled pass must record at least one entry"
+    shares = [entry["share"] for entry in profile["entries"]]
+    assert shares == sorted(shares, reverse=True)
+    # The loop itself has to appear; `step` is what the attribution is about.
+    assert any("_loop" in entry["function"] for entry in profile["entries"])

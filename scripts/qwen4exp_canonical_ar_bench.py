@@ -974,6 +974,22 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
                     f"pp={row['prefill_tok_s']:.3f} tg={row['decode_tok_s']:.3f}",
                     flush=True,
                 )
+        if args.host_profile:
+            artifact.setdefault("host_profiles", []).append(
+                _hipengine_host_profile(
+                    generator.runner,
+                    case=cases[0],
+                    transitions=transitions,
+                    prefill_kwargs=prefill_kwargs,
+                    step_kwargs=step_kwargs,
+                )
+            )
+            _write_json(args.output, artifact)
+            for entry in artifact["host_profiles"][-1]["entries"][:12]:
+                print(
+                    f"[host-profile] {entry['share'] * 100:5.1f}% {entry['ncalls']:>9d}  {entry['function']}",
+                    flush=True,
+                )
         artifact["status"] = "completed"
         artifact["memory_before_close"] = memory_stats()
     finally:
@@ -982,6 +998,72 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
     artifact["summary"] = summarize_samples(artifact["samples"])
     _write_json(args.output, artifact)
     return artifact
+
+
+def _hipengine_host_profile(
+    runner: Any,
+    *,
+    case: Mapping[str, Any],
+    transitions: int,
+    prefill_kwargs: Mapping[str, Any] | None = None,
+    step_kwargs: Mapping[str, Any] | None = None,
+    top: int = 30,
+) -> dict[str, Any]:
+    """Attribute the host side of the bench's own decode loop.
+
+    `wall - kernel_sum` says how much of a decode step is not device kernel time
+    but not what it is. This profiles the bench's own loop (not a second
+    harness's) so the attribution belongs to the measured configuration.
+
+    cProfile inflates absolute times, so the returned `total_s` and the per-entry
+    `tottime_s` are not a timing measurement - read the ordering and the shares.
+    The pass is extra: `runner.reset()` restores the position first, so it does
+    not grow the sequence and does not perturb the measured samples.
+    """
+
+    import cProfile
+    import pstats
+
+    token_ids = [int(token_id) for token_id in case["prompt_token_ids"]]
+    prefill_call_kwargs = dict(prefill_kwargs or {})
+    step_call_kwargs = dict(step_kwargs or {})
+    runner.reset()
+    result = runner.prefill(token_ids, **prefill_call_kwargs)
+    current = int(result.token_id)
+    runner.runtime.device_synchronize()
+
+    def _loop() -> None:
+        nonlocal current
+        for _ in range(int(transitions)):
+            current = int(runner.step(current, **step_call_kwargs).token_id)
+
+    profiler = cProfile.Profile()
+    profiler.enable()
+    _loop()
+    profiler.disable()
+    runner.runtime.device_synchronize()
+    stats = pstats.Stats(profiler)
+    total = stats.total_tt
+    entries = []
+    for (filename, lineno, func), (_cc, ncalls, tottime, _ct, _callers) in sorted(
+        stats.stats.items(), key=lambda kv: kv[1][2], reverse=True
+    )[: int(top)]:
+        entries.append(
+            {
+                "function": func,
+                "file": filename,
+                "line": lineno,
+                "ncalls": int(ncalls),
+                "tottime_s": round(float(tottime), 6),
+                "share": round(float(tottime) / total, 6) if total else 0.0,
+            }
+        )
+    return {
+        "case_id": str(case["id"]),
+        "transitions": int(transitions),
+        "total_s": round(float(total), 6),
+        "entries": entries,
+    }
 
 
 def compare_engine_artifacts(paths: Sequence[Path]) -> dict[str, Any]:
@@ -1099,6 +1181,15 @@ def build_parser() -> argparse.ArgumentParser:
     hip_parser.add_argument(
         "--ple-telemetry", action="store_true",
         help="Record opt-in PLE row/page locality, fault proxies, and staging/H2D wall per request",
+    )
+    hip_parser.add_argument(
+        "--host-profile", action="store_true",
+        help=(
+            "After the measured repetitions, profile the bench's own decode loop with "
+            "cProfile and record the top functions by tottime. Absolute times are "
+            "inflated by the profiler; read the ordering and the shares. The profiled "
+            "pass is extra and resets the sequence first, so the samples are unaffected."
+        ),
     )
     hip_parser.add_argument("--warmups", type=int, default=1)
     hip_parser.add_argument("--repetitions", type=int, default=3)
