@@ -204,6 +204,85 @@ def test_summarize_samples_reports_shape_rates_and_determinism() -> None:
     assert summary["shapes"]["512"]["decode_tok_s_weighted"] > 60
 
 
+def test_summarize_samples_reports_decode_host_device_split_when_present() -> None:
+    """The split is reported only for rows that carry it, and it sums, not averages."""
+    module = _load_script()
+    samples = []
+    for repetition in range(2):
+        samples.append(
+            {
+                "case_id": "code-p512",
+                "category": "code",
+                "prompt_tokens": 512,
+                "repetition": repetition,
+                "prefill_ms": 1000.0,
+                "prefill_tok_s": 512.0,
+                "decode_ms": 1280.0,
+                "decode_transitions": 128,
+                "decode_tok_s": 100.0,
+                "client_wall_s": 2.28,
+                "output_token_ids_sha256": "0" * 64,
+                "output_token_count": 129,
+                "prefill_host_enqueue_ms": 900.0,
+                "prefill_device_drain_ms": 100.0,
+                "decode_host_enqueue_ms": 640.0,
+                "decode_device_drain_ms": 640.0,
+            }
+        )
+
+    summary = module.summarize_samples(samples)
+
+    shape = summary["shapes"]["512"]
+    assert shape["decode_host_enqueue_ms_per_step"] == pytest.approx(5.0)
+    assert shape["decode_device_drain_ms_per_step"] == pytest.approx(5.0)
+    assert shape["decode_host_enqueue_share"] == pytest.approx(0.5)
+    assert shape["prefill_host_enqueue_share"] == pytest.approx(0.9)
+    # Rows without the split (llama.cpp, older artifacts) must not grow the keys.
+    without_split = dict(samples[0])
+    for key in (
+        "prefill_host_enqueue_ms",
+        "prefill_device_drain_ms",
+        "decode_host_enqueue_ms",
+        "decode_device_drain_ms",
+    ):
+        without_split.pop(key)
+    plain = module.summarize_samples([without_split])["shapes"]["512"]
+    assert "decode_host_enqueue_ms_per_step" not in plain
+    assert "prefill_host_enqueue_share" not in plain
+
+
+def test_capture_kwargs_full_is_empty_and_compact_matches_the_generator() -> None:
+    module = _load_script()
+    from hipengine.generation.qwen4_exp_gguf import (
+        _qwen4_exp_compact_prefill_kwargs,
+        _qwen4_exp_compact_step_kwargs,
+    )
+
+    assert module._capture_kwargs("full") == ({}, {})
+    prefill, step = module._capture_kwargs("compact")
+    assert prefill == dict(_qwen4_exp_compact_prefill_kwargs())
+    assert step == dict(_qwen4_exp_compact_step_kwargs())
+    assert step["token_id_resident"] is True
+    with pytest.raises(ValueError):
+        module._capture_kwargs("other")
+
+
+def test_hipengine_parser_accepts_capture_mode(tmp_path: Path) -> None:
+    module = _load_script()
+    parser = module.build_parser()
+    default = parser.parse_args(
+        ["hipengine", "--model-root", str(tmp_path), "--output", str(tmp_path / "o.json")]
+    )
+    assert default.capture_mode == "full"
+    compact = parser.parse_args(
+        [
+            "hipengine", "--model-root", str(tmp_path), "--output", str(tmp_path / "o.json"),
+            "--capture-mode", "compact",
+        ]
+    )
+    assert compact.capture_mode == "compact"
+
+
 def test_llamacpp_startup_default_covers_large_model_load(tmp_path: Path) -> None:
     module = _load_script()
     args = module.build_parser().parse_args(

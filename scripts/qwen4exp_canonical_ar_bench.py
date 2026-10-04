@@ -292,7 +292,7 @@ def _sample_group_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     prefill_ms = sum(float(row["prefill_ms"]) for row in rows)
     transitions = sum(int(row["decode_transitions"]) for row in rows)
     decode_ms = sum(float(row["decode_ms"]) for row in rows)
-    return {
+    summary = {
         "sample_count": len(rows),
         "case_count": len({str(row["case_id"]) for row in rows}),
         "prefill_tok_s_weighted": 1000.0 * prompt_tokens / prefill_ms,
@@ -301,6 +301,25 @@ def _sample_group_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "prefill_tok_s": _stats([float(row["prefill_tok_s"]) for row in rows]),
         "decode_tok_s": _stats([float(row["decode_tok_s"]) for row in rows]),
     }
+    # The host/device split only exists for hipEngine rows measured after the
+    # in-bench split was added; llama.cpp rows and older artifacts omit it.
+    if rows and all("decode_host_enqueue_ms" in row for row in rows):
+        decode_host = sum(float(row["decode_host_enqueue_ms"]) for row in rows)
+        decode_drain = sum(float(row["decode_device_drain_ms"]) for row in rows)
+        prefill_host = sum(float(row["prefill_host_enqueue_ms"]) for row in rows)
+        prefill_drain = sum(float(row["prefill_device_drain_ms"]) for row in rows)
+        summary.update(
+            {
+                "decode_host_enqueue_ms_per_step": decode_host / transitions,
+                "decode_device_drain_ms_per_step": decode_drain / transitions,
+                "decode_host_enqueue_share": decode_host / decode_ms,
+                "decode_device_drain_share": decode_drain / decode_ms,
+                "prefill_host_enqueue_ms": prefill_host,
+                "prefill_device_drain_ms": prefill_drain,
+                "prefill_host_enqueue_share": prefill_host / prefill_ms,
+            }
+        )
+    return summary
 
 
 def summarize_samples(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -695,13 +714,18 @@ def _hipengine_case_sample(
     case: Mapping[str, Any],
     repetition: int,
     transitions: int,
+    prefill_kwargs: Mapping[str, Any] | None = None,
+    step_kwargs: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     runtime = runner.runtime
     token_ids = [int(token_id) for token_id in case["prompt_token_ids"]]
+    prefill_call_kwargs = dict(prefill_kwargs or {})
+    step_call_kwargs = dict(step_kwargs or {})
     memory_before = _process_memory_snapshot()
     runtime.device_synchronize()
     prefill_started = time.perf_counter_ns()
-    result = runner.prefill(token_ids)
+    result = runner.prefill(token_ids, **prefill_call_kwargs)
+    prefill_enqueued = time.perf_counter_ns()
     runtime.device_synchronize()
     prefill_ended = time.perf_counter_ns()
     prefill_ms = (prefill_ended - prefill_started) / 1_000_000.0
@@ -709,12 +733,25 @@ def _hipengine_case_sample(
     current = int(result.token_id)
     decode_started = time.perf_counter_ns()
     for _ in range(int(transitions)):
-        result = runner.step(current)
+        result = runner.step(current, **step_call_kwargs)
         current = int(result.token_id)
         output_ids.append(current)
+    decode_enqueued = time.perf_counter_ns()
     runtime.device_synchronize()
     decode_ended = time.perf_counter_ns()
     decode_ms = (decode_ended - decode_started) / 1_000_000.0
+    # `decode_ms` is max(host enqueue, device). Splitting the loop at the single
+    # trailing synchronize separates the two windows, but note that the split
+    # alone cannot attribute them: `runner.step` ends with a blocking
+    # device-to-host copy of the argmax result (`_finish_lm_head`), so the host
+    # window already contains the device wait and the trailing drain is zero by
+    # construction. A zero drain therefore does NOT mean the step is host-bound.
+    # The host-vs-device question needs the readback removed; see
+    # `scripts/qwen4exp_decode_host_bound_probe.py`.
+    prefill_host_enqueue_ms = (prefill_enqueued - prefill_started) / 1_000_000.0
+    prefill_device_drain_ms = (prefill_ended - prefill_enqueued) / 1_000_000.0
+    decode_host_enqueue_ms = (decode_enqueued - decode_started) / 1_000_000.0
+    decode_device_drain_ms = (decode_ended - decode_enqueued) / 1_000_000.0
     client_wall_s = (prefill_ms + decode_ms) / 1000.0
     memory_after = _process_memory_snapshot()
     memory_delta = {
@@ -730,6 +767,12 @@ def _hipengine_case_sample(
         "prefill_ms": prefill_ms,
         "prefill_tok_s": 1000.0 * len(token_ids) / prefill_ms,
         "decode_ms": decode_ms,
+        "prefill_host_enqueue_ms": prefill_host_enqueue_ms,
+        "prefill_device_drain_ms": prefill_device_drain_ms,
+        "decode_host_enqueue_ms": decode_host_enqueue_ms,
+        "decode_device_drain_ms": decode_device_drain_ms,
+        "decode_host_enqueue_ms_per_step": decode_host_enqueue_ms / int(transitions),
+        "decode_device_drain_ms_per_step": decode_device_drain_ms / int(transitions),
         "decode_transitions": int(transitions),
         "decode_tok_s": 1000.0 * int(transitions) / decode_ms,
         "client_wall_s": client_wall_s,
@@ -744,6 +787,32 @@ def _hipengine_case_sample(
             "decode": [decode_started, decode_ended],
         },
     }
+
+
+def _capture_kwargs(mode: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return the (prefill, step) capture kwargs for one capture mode.
+
+    ``full`` is the runner default and what this bench has always measured:
+    ``capture_logits=True`` copies the whole vocabulary to the host and takes a
+    host argmax, which also forces a ``device_synchronize`` inside every step.
+
+    ``compact`` is exactly what the production text generator passes for an
+    uncontrolled greedy request (``_qwen4_exp_compact_*_kwargs``), so it is the
+    configuration a serving client actually runs.
+    """
+    from hipengine.generation.qwen4_exp_gguf import (
+        _qwen4_exp_compact_prefill_kwargs,
+        _qwen4_exp_compact_step_kwargs,
+    )
+
+    if mode == "full":
+        return {}, {}
+    if mode == "compact":
+        return (
+            dict(_qwen4_exp_compact_prefill_kwargs()),
+            dict(_qwen4_exp_compact_step_kwargs()),
+        )
+    raise ValueError(f"unknown capture mode {mode!r}")
 
 
 def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
@@ -798,6 +867,7 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
             prefill_chunk_size=args.prefill_chunk_size,
         )
 
+    prefill_kwargs, step_kwargs = _capture_kwargs(str(args.capture_mode))
     artifact: dict[str, Any] = {
         "schema": 1,
         "kind": "qwen4exp_canonical_ar_engine_run",
@@ -817,6 +887,9 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
         },
         "protocol": {
             "case_ids": [str(row["id"]) for row in cases],
+            "capture_mode": str(args.capture_mode),
+            "prefill_kwargs": {k: bool(v) for k, v in sorted(prefill_kwargs.items())},
+            "step_kwargs": {k: bool(v) for k, v in sorted(step_kwargs.items())},
             "ple_cache_mode": str(args.ple_cache_mode),
             "ple_cache_scope": "per_layer_token_embd.weight file range only",
             "ple_telemetry": bool(args.ple_telemetry),
@@ -859,6 +932,8 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
                     case=case,
                     repetition=warmup,
                     transitions=transitions,
+                    prefill_kwargs=prefill_kwargs,
+                    step_kwargs=step_kwargs,
                 )
                 warmup_row = {
                     "case_id": row["case_id"],
@@ -886,6 +961,8 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
                     case=case,
                     repetition=repetition,
                     transitions=transitions,
+                    prefill_kwargs=prefill_kwargs,
+                    step_kwargs=step_kwargs,
                 )
                 if args.ple_telemetry:
                     row["ple_telemetry"] = ple_table.telemetry()
@@ -1003,6 +1080,13 @@ def build_parser() -> argparse.ArgumentParser:
     hip_parser.add_argument(
         "--case-id", nargs="+",
         help="Measure only these IDs after validating the complete canonical fixture",
+    )
+    hip_parser.add_argument(
+        "--capture-mode", choices=("full", "compact"), default="full",
+        help=(
+            "full = runner defaults (capture_logits=True, host argmax, per-step synchronize); "
+            "compact = the production generator's uncontrolled greedy kwargs (device argmax)"
+        ),
     )
     hip_parser.add_argument(
         "--ple-cache-mode", choices=("warm", "cold"), default="warm",
