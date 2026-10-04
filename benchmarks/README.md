@@ -87,37 +87,49 @@ re-measured for this change.
 The superseded two-lever route is in
 [its own artifact](results/2026-09-27-fullattn-context-promoted/README.md).
 
-## Qwen3.8 Flash Next decode is host-enqueue bound
+## Qwen3.8 Flash Next decode is limited by its growing non-kernel remainder
 
 Measured on physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), AMD
 gfx1151, UD-Q4_K_XL, BF16 KV, production execution profile, cached build, 128
 decode transitions, one process.
 
-A decode step's device work is **46.19 ms** at a 512-token prompt and
+A decode step's device kernel sum is **46.19 ms** at a 512-token prompt and
 **47.13 ms** at 4096 (**+2.0%**), while the measured decode rate falls from
 21.01 to 17.40 tok/s over the same range. The device is therefore not what sets
-the rate. Splitting the loop into host enqueue time and device drain time shows
-why:
+the rate:
 
-| Prompt tokens | Host enqueue per step | Device drain after 128 steps |
-| ---: | ---: | ---: |
-| 512 | 79.121 ms | **0.0 ms** |
-| 1024 | 80.063 ms | **0.0 ms** |
-| 4096 | 107.444 ms | **0.0 ms** |
+| Prompt tokens | Decode wall | Profiled kernel sum | Non-kernel remainder |
+| ---: | ---: | ---: | ---: |
+| 512 | 47.66 ms/step | 46.19 ms/step | **1.47 ms/step** |
+| 4096 | 57.69 ms/step | 47.13 ms/step | **10.56 ms/step** |
 
-A zero drain means the GPU had already completed every queued step before the
-host finished enqueuing them, so it is idle for the whole loop. Host cost is
-flat to 1024 tokens and then rises **36%** at 4096, where the decode attention
-path switches from dense full attention to QSA sparse attention plus a top-k
-expansion; that switch raises attention cost **27%**, but attention is only 4-5%
-of a decode step, and MoE GEMV is 50% of it and does not move.
+The wall grows **10.04 ms/step (+21%)** where the kernel sum grows 0.94 ms/step
+(+2.0%), and the remainder grows 7x with depth. The decode attention path
+switches from dense full attention to QSA sparse attention plus a top-k
+expansion across the same range, which raises attention cost **27%**, but
+attention is only 4-5% of a decode step and MoE GEMV is 50% of it and does not
+move.
 
-Two limits apply. The probe's absolute rates (12.6 / 12.5 / 9.3 tok/s) do not
-match this table's rates for what should be the same loop, and the discrepancy
-is unexplained, so the host-versus-device split is the finding and the absolute
-rates are not comparable. The 36% rise is correlated with the path switch, not
-proven to be caused by it.
+Two independent checks agree that this growing remainder is host work and not
+device stalls. Memoizing the per-launch build resolution removes **2.3 ms/step**
+of host work and moves p512 by **+0.02%** but p4096 by **+2.53%** against a 4.0%
+prediction - nothing to gain where the step has device slack, most of the
+prediction where it does not. A counter-rotated same-state A/B that removes the
+per-step blocking token readback changes the loop wall by **-0.87%** at p512 and
+**-1.37%** at p4096, and the trailing device drain after 128 unsynchronized
+steps is only **0.343 / 0.575 ms/step**, so host enqueue and device execution
+are within ~1% of each other and the wall is their maximum. **A host-only or
+device-only change is capped at roughly half its nominal saving.**
+
+The ~1729 launches per step that the decode loop issues are one candidate; the
+measured remainder bounds the prize at 10.56 ms/step at p4096.
+
+A limit applies. `wall - kernel_sum` is a difference of two differently measured
+quantities: the kernel sum comes from a profiled capture whose own note records
+that the profiler serializes launches and inflates absolute times. Read the
+46.19 / 47.13 figures as the device floor and the wall growth as the finding.
 [Protocol, traces and artifacts](results/2026-10-04-qwen4exp-thermal-protocol-and-llamacpp-basis/README.md),
+[host/device correction](results/2026-10-04-qwen4exp-decode-readback-split/README.md),
 [probe](https://github.com/hipEngine/hipEngine/blob/qwen3.8-flash-next/scripts/qwen4exp_decode_host_bound_probe.py).
 
 ## Root README performance summary

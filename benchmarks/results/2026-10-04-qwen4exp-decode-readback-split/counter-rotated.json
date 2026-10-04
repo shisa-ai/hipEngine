@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_decode_readback_ab",
+  "rows": [
+    {
+      "case_id": "code-p512",
+      "prompt_tokens": 512,
+      "passes": [
+        {
+          "case_id": "code-p512",
+          "pass": 0,
+          "mode": "readback",
+          "host_ms_per_step": 54.687,
+          "drain_ms_per_step": 0.0,
+          "wall_ms_per_step": 54.687,
+          "implied_tok_s": 18.286,
+          "token_sequence_sha": "e5589556f5ce306f"
+        },
+        {
+          "case_id": "code-p512",
+          "pass": 1,
+          "mode": "no_readback",
+          "host_ms_per_step": 54.887,
+          "drain_ms_per_step": 0.343,
+          "wall_ms_per_step": 55.23,
+          "implied_tok_s": 18.106,
+          "token_sequence_sha": "e6dcd97db636130f"
+        },
+        {
+          "case_id": "code-p512",
+          "pass": 2,
+          "mode": "readback",
+          "host_ms_per_step": 54.669,
+          "drain_ms_per_step": 0.0,
+          "wall_ms_per_step": 54.67,
+          "implied_tok_s": 18.292,
+          "token_sequence_sha": "e5589556f5ce306f"
+        },
+        {
+          "case_id": "code-p512",
+          "pass": 3,
+          "mode": "no_readback",
+          "host_ms_per_step": 54.747,
+          "drain_ms_per_step": 0.344,
+          "wall_ms_per_step": 55.091,
+          "implied_tok_s": 18.152,
+          "token_sequence_sha": "e6dcd97db636130f"
+        }
+      ]
+    },
+    {
+      "case_id": "code-p4096",
+      "prompt_tokens": 4096,
+      "passes": [
+        {
+          "case_id": "code-p4096",
+          "pass": 0,
+          "mode": "readback",
+          "host_ms_per_step": 84.618,
+          "drain_ms_per_step": 0.0,
+          "wall_ms_per_step": 84.618,
+          "implied_tok_s": 11.818,
+          "token_sequence_sha": "432bcecb6419a765"
+        },
+        {
+          "case_id": "code-p4096",
+          "pass": 1,
+          "mode": "no_readback",
+          "host_ms_per_step": 85.188,
+          "drain_ms_per_step": 0.573,
+          "wall_ms_per_step": 85.761,
+          "implied_tok_s": 11.66,
+          "token_sequence_sha": "95f215370eb199da"
+        },
+        {
+          "case_id": "code-p4096",
+          "pass": 2,
+          "mode": "readback",
+          "host_ms_per_step": 84.588,
+          "drain_ms_per_step": 0.0,
+          "wall_ms_per_step": 84.588,
+          "implied_tok_s": 11.822,
+          "token_sequence_sha": "432bcecb6419a765"
+        },
+        {
+          "case_id": "code-p4096",
+          "pass": 3,
+          "mode": "no_readback",
+          "host_ms_per_step": 85.214,
+          "drain_ms_per_step": 0.575,
+          "wall_ms_per_step": 85.789,
+          "implied_tok_s": 11.657,
+          "token_sequence_sha": "95f215370eb199da"
+        }
+      ]
+    }
+  ]
+}
