@@ -43,6 +43,37 @@ The synthetic input was not merely different, it was **pathological for this pur
 what a repetitive degenerate token sequence produces. A natural prompt spreads the same
 number of assignments over 385.
 
+## Category coverage — the population IS category-dependent, but mildly
+
+All four natural categories measured at the **same shape** (1,024 tokens x top-10 = 10,240
+assignments per layer), so every arm below is directly comparable to the synthetic probe:
+
+| arm | active of 512 | share | range across layers | vs synthetic |
+| --- | ---: | ---: | ---: | ---: |
+| synthetic `4000..5023` | 202.96 | 39.6% | — | — |
+| `code-p1024` | 385.48 | 75.3% | 304–444 | +89.9% |
+| `general_en-p1024` | 359.10 | 70.1% | 268–412 | +76.9% |
+| **`general_ja-p1024`** | **341.54** | **66.7%** | 210–402 | +68.3% |
+| `mixed_ja_en-p1024` | 387.92 | 75.8% | 279–444 | +91.1% |
+| **natural mean** | **368.51** | **72.0%** | | |
+
+**Category spread: 46.38 experts = 12.6% of the natural mean.** The synthetic figure is
+**44.9% below** the natural mean.
+
+Two conclusions, and the second is the one that keeps the row open:
+
+1. **The synthetic input is an outlier against every category**, not just against code. The
+   39.6% regime does not appear in any natural prompt measured.
+2. **The population is category-dependent.** `general_ja` — the category this campaign's task
+   gates treat as the sensitive one — is the **lowest** at 341.54 (66.7%), 46.4 experts below
+   `mixed_ja_en`. So the correct model is a per-category band, not a single number:
+   **use ~368 of 512 (72%) rather than 203, with `general_ja` running ~7% below that mean.**
+
+The spread is small relative to the synthetic error (12.6% against 44.9%), so a single
+corrected figure is far better than the historical one — but it is not category-invariant, and
+the per-layer ranges are wide (210–444), so any tuning that depends on the *per-layer*
+population rather than the mean should read `populations.json`'s `category_arms.per_layer`.
+
 ## Protocol
 
 | | |
