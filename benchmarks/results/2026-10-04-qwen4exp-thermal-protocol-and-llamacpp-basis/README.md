@@ -131,8 +131,63 @@ context-independent and both are candidates for the decode gap.
 
 > **Correction.** An earlier revision of this file claimed the 17% decode fall
 > was context-driven and called it the most actionable finding. A follow-up
-trace did not reproduce it. The claim is withdrawn; the measurement stands and
-> its cause is open.
+> trace did not reproduce it in a second harness. The measurement stands and
+> its cause is now located: see below.
+
+### The decode fall is host-side, and the device is idle throughout it
+
+Two follow-up experiments locate it.
+
+**It is not thermal, and not order.** Reversing the measurement order after a
+300-second idle - `code-p4096` first from a cold 42 °C, then `code-p512` from
+46 °C - gives decode **17.55 / 17.75 / 17.84** for p4096 and **21.01 / 21.01 /
+21.02** for p512. The same case measured second is the same as measured first.
+
+**It is not device work.** Profiling the canonical bench's own decode loop
+(`--case-id`, `--warmups 1 --repetitions 1`, one case per process, under
+`rocprofv3`) and isolating the 128-step decode window:
+
+| family | p512 | p4096 |
+| --- | ---: | ---: |
+| `qwen35_paged_full_attn_decode_context` | **252.7 ms** | 0 |
+| `qsa_sparse_attention_paged_bf16_ordered_*` (3) | 0 | 257.4 ms |
+| `qsa_topk_expand` + `qsa_score` | 0 | 62.8 ms |
+| `gguf_k_pack8_prefill_out_kernel` | 3015.8 ms | 3028.2 ms (+0.4%) |
+| **total kernel per step** | **46.19 ms** | **47.13 ms (+2.0%)** |
+
+The decode path **switches kernels** between these depths - dense
+`qwen35_paged_full_attn_decode_context` below, QSA sparse attention plus a
+top-k expansion above - and attention rises 252.7 -> 320.1 ms (**+27%**). But
+attention is only 4-5% of a decode step, MoE GEMV is **50%** of it and is flat,
+and the total is **+2.0%** where the unprofiled rate falls 17%.
+
+**It is host enqueue cost.** `scripts/qwen4exp_decode_host_bound_probe.py`
+splits the loop into host enqueue time and device drain time:
+
+| case | host enqueue / step | device drain | host-bound |
+| --- | ---: | ---: | --- |
+| code-p512 | 79.121 ms | **0.0 ms** | yes |
+| code-p1024 | 80.063 ms | **0.0 ms** | yes |
+| code-p4096 | **107.444 ms** | **0.0 ms** | yes |
+
+`device_drain_ms` is the time from "host finished enqueuing" to "device
+synchronize returned", and it is **zero at every depth**: the GPU completed all
+128 queued steps before the host finished enqueuing them, so it is idle for the
+entire decode loop. Host cost is flat at 79-80 ms/step through 1024 and then
+jumps **+36%** at 4096, coinciding with the dense-to-QSA path switch.
+
+**Decode is a host-side problem, not a kernel problem.** That is where the
+0.80-0.96x gap to llama.cpp should be attacked, and the ~1729 launches per step
+that the bench's decode loop issues are the obvious candidate.
+
+> **Calibration caveat.** The probe's absolute rate (12.6 / 12.5 / 9.3 tok/s)
+> is well below the canonical bench's (21.01 / 19.40 / 17.40) for what should
+> be the same loop, and the ratio between them is not constant (1.66 / 1.55 /
+> 1.87). The probe runs two 128-step loops on one growing sequence and an extra
+> 8 warm steps, so it is not the same loop - but the discrepancy is not
+> explained and the bench's absolute decode rate is therefore not independently
+> reproduced. The host-vs-device split and the +36% growth are measured within
+> the probe and are unaffected; the absolute rates are not comparable.
 
 ## Measured hipEngine baseline (thermal-controlled, in-tree, fresh process per case)
 
