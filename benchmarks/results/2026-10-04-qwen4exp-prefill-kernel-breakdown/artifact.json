@@ -1,0 +1,79 @@
+{
+  "schema": "hipengine.benchmark.artifact/v1",
+  "title": "Qwen4Exp 4K prefill is GPU-bound at 95.7%: the llama.cpp gap is pure kernel throughput, not scheduling",
+  "date": "2026-10-04",
+  "kind": "diagnostic",
+  "verdict": "The prefill window is 95.7% GPU-busy, so no dispatch, scheduling, overlap or host-stall win is available. The 3.6x per-token gap to the tuned llama.cpp forks is a kernel-throughput gap and can only be closed by making kernels faster. This artifact is the priority map that directs that work.",
+  "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF)",
+  "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
+  "host": {
+    "arch": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "note": "not the gfx1100/W7900 default hardware"
+  },
+  "protocol": "rocprofv3 --kernel-trace over scripts/qwen4exp_canonical_ar_bench.py prefill on code-p4096; raw trace at /tmp/repair-trace/raw-1.0/trace_kernel_trace.csv (85,696 launches). Traced under the promoted 1.0 binding; the 4.0 arm was traced identically and every share agrees within 0.15 points.",
+  "target_context": {
+    "same_file_same_host_table": "benchmarks/README.md 'Same-file prefill against every llama.cpp-family engine'",
+    "best_llamacpp_family_weighted": 915.4,
+    "upstream_llamacpp_weighted": 434.1,
+    "hipengine_weighted": 274.1,
+    "ms_per_token_llamacpp_best": 0.95,
+    "ms_per_token_hipengine": "3.40 (512) / 3.43 (1024) / 3.85 (4096)",
+    "note": "The tuned forks ramp 479.4 -> 860.8 -> 1051.6 across 512/1K/4K while hipEngine is flat-to-worse (294.5 -> 292.0 -> 259.6), so the gap is per-token cost rather than fixed overhead."
+  },
+  "occupancy": {
+    "trace_span_s": 117.441,
+    "total_kernel_time_s": 65.358,
+    "prefill_window_s": 68.26,
+    "prefill_window_gpu_busy_s": 65.303,
+    "prefill_window_busy_pct": 95.7,
+    "prefill_window_idle_s": 2.957,
+    "idle_gaps_over_50ms": 27,
+    "idle_total_gaps_over_50ms_s": 1.593,
+    "idle_gaps_under_50ms": 85218,
+    "idle_total_gaps_under_50ms_s": 1.364,
+    "first_49s_has_zero_moe_prefill_kernels": true,
+    "setup_phase_gaps": "49 gaps of ~1 s, all in the first 49 s of weight upload and cache setup, adjacent to __amd_rocclr_copyBuffer calls that themselves total only 5 ms across 2516 dispatches"
+  },
+  "kernel_breakdown_pct_of_65358_s": [
+    {"family": "MoE gate/up (q4_k iu8_risk prefill)", "pct": 20.42, "seconds": 13.348, "launches": 1504, "ms_per_launch": 8.875},
+    {"family": "K-quant dense prefill (coltile_rowbatch_pipelined)", "pct": 16.95, "seconds": 11.077, "launches": 4288, "ms_per_launch": 2.583},
+    {"family": "GR up (sigmoid_mean coltile2_branch4_rowbatch4)", "pct": 15.22, "seconds": 9.951, "launches": 3072, "ms_per_launch": 3.239},
+    {"family": "MoE down (q5_1 iu8_risk prefill)", "pct": 11.49, "seconds": 7.508, "launches": 1376, "ms_per_launch": 5.456},
+    {"family": "Q8_0 dense wide", "pct": 5.83, "seconds": 3.807, "launches": 8448, "ms_per_launch": 0.451},
+    {"family": "GDN prefill", "pct": 4.76, "seconds": 3.112, "launches": 1152, "ms_per_launch": 2.701},
+    {"family": "Router logits", "pct": 3.85, "seconds": 2.518, "launches": 1536, "ms_per_launch": 1.639},
+    {"family": "MoE gate/up repair", "pct": 3.25, "seconds": 2.125, "launches": 1504, "ms_per_launch": 1.413},
+    {"family": "MoE down repair", "pct": 3.18, "seconds": 2.081, "launches": 1376, "ms_per_launch": 1.513},
+    {"family": "QSA sparse attention", "pct": 2.95, "seconds": 1.929, "launches": 192, "ms_per_launch": 10.045},
+    {"family": "GEMV (decode-shaped)", "pct": 2.86, "seconds": 1.870, "launches": 7680, "ms_per_launch": 0.243},
+    {"family": "Paged full attention", "pct": 2.60, "seconds": 1.698, "launches": 240, "ms_per_launch": 7.077}
+  ],
+  "aggregates": {
+    "moe_pair_pct": 31.91,
+    "moe_pair_including_repair_pct": 38.34,
+    "top4_pct": 64.08,
+    "top8_pct": 81.97
+  },
+  "what_this_rules_out": [
+    "Dispatch or launch overhead: 85,245 gaps under 50 ms total 1.364 s, a 0.016 ms median. Kernel launch overhead is not the gap.",
+    "Host-side stalls or a Python/ctypes bottleneck inside the prefill: the prefill window is 95.7% busy.",
+    "Overlap, stream-parallelism or scheduling wins: there is almost no idle time in the measured window to recover.",
+    "The 49 one-second stalls are real but are entirely outside the measured prefill window, in weight upload and cache setup. They affect time-to-first-token, not prefill throughput."
+  ],
+  "priority_reading": "Ranked by absolute seconds available, the top four families are 64.08% of prefill. The MoE pair alone is 31.91% and its repair pass is a further 6.43%. A 3.6x per-token improvement - what matching the tuned forks requires - cannot come from a single family: it needs the top four to improve roughly in proportion.",
+  "known_levers_and_their_status": [
+    {"target": "GR up (15.22%)", "lever": "HC-1 staged-f32 tile, screened at 2.388x", "status": "CLOSED - gate run and rejected: numerical_passed false, task_passed false, mixed_ja_en mean KL 1.499e-3 against the 1e-3 limit, broad-based drift rather than a tail artifact. The dense sibling with the identical mechanism failed the same way. benchmarks/results/2026-09-29-qwen4exp-hc1-gr-staged-gate/"},
+    {"target": "MoE gate/up (20.42%)", "lever": "remove the iu8 risk path via an F16 gate/up owner (MX-1)", "status": "CLOSED - refuted on both halves: the F16 owner is 1.54-2.42x the production iu8-risk kernel, so the 1219.978 ms repair it would remove cannot pay for it, and it fails the production numerical envelope."},
+    {"target": "MoE prefill tiles", "lever": "remove per-expert tile padding", "status": "OPEN - measured 1.25x waste (12,800 padded rows for 10,240 real), worth roughly 4.1% of prefill on the gate/up half plus 2.3% on the down half if fully removed."},
+    {"target": "MoE repair pass", "lever": "launch geometry", "status": "PARTIAL - the threshold is promoted (1.0, committed a0d705484) and the queue falls 3.403x, but fitting time = F + k*queue leaves F = 2794.1 ms fixed, 4.30% of the prefill window, which survives the promotion unchanged."},
+    {"target": "GR up (15.22%)", "lever": "ROW_BATCH 4 -> 8 at HIDDEN_TILE 2", "status": "CLOSED - refuted as an occupancy loss: VGPR 72/130/256 and 28/15/8 waves per CU at widths 4/8/16, so 130 VGPR crosses the 128 granule and halves resident waves. Measures 0.833-0.844x."}
+  ],
+  "limits": [
+    "One host, one model file, one quant, one execution profile, one case (code-p4096).",
+    "Shares are from a single trace; the two binding arms agree within 0.15 points, which bounds arm-to-arm drift but not run-to-run drift.",
+    "rocprofv3 perturbs absolute timing, so this artifact is used for SHARES and occupancy rather than as a throughput measurement. The throughput numbers quoted for the comparison come from the canonical profiler-free protocol.",
+    "The per-launch counts reflect the harness's chunking, so ms/launch is a property of this chunk size rather than of the kernel alone."
+  ],
+  "source": "/tmp/repair-trace/raw-1.0/trace_kernel_trace.csv and /tmp/repair-trace/raw-4.0/trace_kernel_trace.csv"
+}
