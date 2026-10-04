@@ -464,16 +464,31 @@ H chunk size, E attention, F GDN, C router/reduce**, pending `X-3`.
 Wide route 1404.2 ms at layers **13-47** as of 2026-10-04 UTC (was 16-47 when
 this anchor was taken); exact coltile chain on the remaining low layers; 565 ms
 of other dense roles. `dense_wide256` runs the packet shape (rows 1024,
-K 2560, N 10240) in 2.573 ms, **20.9 TFLOP/s**; gufo reports 30-34 TFLOP/s for
-its F16 dense kernels at 2048 rows and rejected hipBLASLt at 19-26.
+K 2560, N 10240) in **1.3207 ms, 40.65 TFLOP/s** on the f16-activation-hoisted
+variant that production actually launches (1156 launches at `code-p4096`).
+For comparison, gufo reports **30-34 TFLOP/s** for its F16 dense kernels at 2048
+rows and rejected hipBLASLt at **19-26**. **On this operation the promoted route
+is ahead of both.**
+
+**A stale figure was carried here until 2026-10-04 UTC:** this section previously
+said 2.573 ms / 20.9 TFLOP/s. A tile-family sweep
+(`scripts/qwen4exp_dense_wide_tile_sweep.py`) reproduces that number exactly for
+the **f32-activation** variant (2.5518 ms), which is not what runs, so the figure
+had the right provenance and the wrong subject. The sweep also settled the tile
+question the kernel's comment left open - **128x256 beats 128x128 beats 64x256
+beats 64x128**, so the widest `BN` wins - and priced the activation hoist at
+**-48.25% on the GEMM, bit-identical output** (`max abs diff` exactly 0).
+End to end the hoist is worth **+4.09% prefill** at `code-p4096` against a
+within-arm spread of 0.04-0.13%, a signal-to-drift ratio of roughly 40x.
 
 **The scope lever is spent at 13-47.** Extending to 0-47 is worth +18.876% prefill
 but fails the production gate, and the residual drift is verified accumulation-order
 error rather than a precision defect (§1.2.1), so no accuracy fix recovers the
-remaining layers. The open question in this block is therefore **throughput at the
-scope already promoted**: `dense_wide256`'s 20.9 TFLOP/s against gufo's reported
-30-34 TFLOP/s for the same class of F16 dense kernel. Closing that is a kernel
-question (tiling, LDS staging, wave occupancy), not a scope or precision one.
+remaining layers. **Since the wide route already outruns the reference on
+throughput, the dense block's recoverable milliseconds are gated by the numerical
+envelope rather than by kernel efficiency** - the open question is whether any of
+layers 0-12 can be converted at all under the gate, not how fast the converted
+layers run.
 
 | ID | Mechanism / measured cost | Opportunity and limit | First bounded experiment | Track | State |
 | --- | --- | --- | --- | --- | --- |
@@ -675,10 +690,11 @@ STATUS and the cited entries.
 
 ### 7A. Dense projections
 
-Live: `dense_wide256` at 16-47 (`20260916T205304`), F16 activation staging
-(`20260926T143853`), exact Q8 wave-scale prefill (`20260905T234311`), its
-software-pipelined leaf (`20260929T083913`, `DP-8`), and its DPP wave reduction
-(`20261004T`).
+Live: `dense_wide256` at **13-47** (`20260916T205304`, extended `20261004T`),
+F16 activation staging (`20260926T143853`) - **confirmed engaged by symbol census
+and priced at +4.09% prefill end to end (`20261004T132957`)**, exact Q8 wave-scale
+prefill (`20260905T234311`), its software-pipelined leaf (`20260929T083913`,
+`DP-8`), and its DPP wave reduction (`20261004T`).
 
 | Tried | Class | Evidence | Entry | Reopen only with |
 | --- | --- | --- | --- | --- |
