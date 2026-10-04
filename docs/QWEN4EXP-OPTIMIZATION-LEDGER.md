@@ -1075,6 +1075,27 @@ cell, with the end-of-cell read used only to resolve contradictions between a st
 later conclusion.** Applied that way DE-1 classifies correctly and no other row in the 18 moves.
 Evidence: worklog `20261004T152301`.
 
+**THE SET BELOW IS ALSO INCOMPLETE, NOT MERELY STALE.** A full pass over all 72 rows
+(`20261004T152443`) found four rows *outside* the 18-row actionable set whose status heads read
+`OPEN`: **`MT-2`** (`OPEN for diagnostics; admission blocked`), **`MT-6`** (`OPEN, after MT-2`),
+**`QA-6`** (`OPEN — after memory/consumer census, independent of QA-2`) and **`X-4`** (`stable wall
+and serving-wrapper attribution still OPEN under X-10/DE-5`). **`MT-3`** is the control that
+distinguishes omission from misreading — its head reads `STILL BLOCKED, ON MT-2`, which is why it
+is correctly outside the set.
+
+**AND THE COUNT CANNOT BE DONE BY COUNTING.** Three attempts have now produced three different
+answers, the two automated ones wrong in opposite directions. The 2026-09-30 census read the END
+of each cell and misclassified `DE-1`. An automated pass produced 51 "open" by swallowing rows
+whose tails carry no state token. A second automated pass over all 72 rows produced 49 closed / 16
+open / 3 gated / 4 unknown — and **classified `X-7` CLOSED when its status cell reads `NOT
+RESOLVED`**, classified `QA-8` closed when its status reads `NOT CLOSED`, returned `DP-6` as
+"unknown" for a status of `PARTIALLY PRICED`, and matched 22 negation-trap candidates among its 49
+"closed" hits. **The failure mode is not the regex: the cells state their conclusions in 200-2000
+characters of prose, and a token matcher cannot separate `CLOSED` from `NOT RESOLVED`.** The
+remaining work is a **reading pass over all 72 status cells**, one at a time, each state recorded
+with its quoted evidence. That is finite, needs no GPU, and is the only route to a census that will
+not need retracting. Evidence: worklog `20261004T152443`.
+
 **A RETRACTED SUB-CLAIM, recorded because the retraction is the useful part.** The same unit also
 reported that `DP-6` was "unclassifiable — its entire status cell is 29 characters with no state
 token". **That was wrong, and it was a parsing artefact of my own, not a ledger defect.** `DP-5`
