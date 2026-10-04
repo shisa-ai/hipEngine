@@ -1283,13 +1283,15 @@ cached-prefix marginal rate: `src/cli/bench/bench.cpp` times
 with `restore_depth()` outside the window and no reuse inside it, and the wall
 clock agrees (53 s for `-p 4096 -n 0 -d 0 -r 2` against 45.30 s model load plus
 3 x 2.40 s of predicted prefill). So the prefill gap is real and, at one
-protocol, **5.17x**: gufo 2.40 s / 1705.94 tok/s against hipEngine 12.42 s /
-329.94 tok/s at chunk 4096.
+protocol, **5.78x**: gufo 2.40 s / 1705.94 tok/s against hipEngine 13.87 s /
+295.40 tok/s at chunk 4096. The hipEngine rate is measured with `uv run`; the
+raw conda interpreters resolve `hipengine` to a separate clone and are not a
+valid way to measure this tree.
 
 At **matched granularity** - one 4096-row pass, both sides traced - the gap is
-**5.69x and uniform across every bucket**: dense projections 6.78x (43.2% of
-hipEngine's prefill time), routed MoE 5.56x (32.0%), attention/GDN/router/other
-4.55x. So no single kernel family is the answer, and it is **not launch count or
+**5.77x and uniform across every bucket**: dense projections 6.93x (43.6% of
+hipEngine's prefill time), routed MoE 5.59x (31.7%), attention/GDN/router/other
+4.61x. So no single kernel family is the answer, and it is **not launch count or
 scheduling** - gufo issues 4,237 launches per prefill against hipEngine's 2,766,
 1.53x more. The difference is per-kernel throughput.
 

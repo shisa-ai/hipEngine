@@ -9,9 +9,16 @@ Peaks: 29.7 TFLOP/s FP32, 59.4 TFLOP/s FP16, ~256 GB/s LPDDR5X.
 4.6x-7.0x hipEngine's on Qwen3.8-Flash-Next. That number drives the whole
 prefill campaign, and it was recorded without checking whether gufo's `pp` is a
 real full-prompt prefill or a cached-prefix "marginal" rate. This artifact
-checks it. **It is real.** The target is 5.17x, not the ~1.7x the older
-Vulkan-lane tables implied, and at matched granularity it is **5.69x and
+checks it. **It is real.** The target is 5.78x, not the ~1.7x the older
+Vulkan-lane tables implied, and at matched granularity it is **5.77x and
 uniform across every kernel family**.
+
+**Tree provenance.** Every hipEngine row here was re-measured with `uv run`,
+which imports `/home/lhl/hipEngine`. An earlier revision used
+`python3 scripts/...`, which silently imports the separate
+`/home/lhl/hipEngine-main` clone; see
+`worklog/20261004T030644.952503Z-lhl-python-env-resolves-stale-clone-573911`.
+The gufo rows are unaffected - gufo is its own prebuilt binary.
 
 ## Check 1: gufo's source
 
@@ -51,16 +58,22 @@ Full 4096-token synchronized prefill, same host, same file, production profile,
 cached build. Prompt token content differs (gufo cycles `(i%1000)+100`,
 hipEngine uses the committed fixture) - a same-shape ratio, not a same-prompt one.
 
-| engine | 4096-token prefill | tok/s |
-| --- | ---: | ---: |
-| gufo `98641a6` (prebuilt `8ca63994…`) | 2.40 s | **1705.94** |
-| hipEngine, chunk 4096 | 12.42 s | 329.94 |
-| hipEngine, chunk 1024 | 14.08 s | 290.47 |
-| hipEngine, chunk 512 | 15.57 s | 261.48 |
+| engine | tree | chunk | 4096-token prefill | tok/s |
+| --- | --- | ---: | ---: | ---: |
+| gufo `98641a6` (prebuilt `8ca63994…`) | gufo binary | - | 2.40 s | **1705.94** |
+| hipEngine production | this tree (`uv run`) | 4096 | 13.87 s | 295.40 |
+| hipEngine production | this tree (`uv run`) | 1024 | 15.03 s | 272.46 |
+| hipEngine production | `hipEngine-main` (stale) | 4096 | 12.42 s | 329.94 |
+| hipEngine production | `hipEngine-main` (stale) | 1024 | 14.08 s | 290.47 |
 
-**5.17x** at chunk 4096. The hipEngine rows are the counterbalanced pass sweep
-(`results/2026-10-04-qwen4exp-chunk-order-balanced`), two orderings, three reps
-per arm, arms agreeing to 0.3%.
+**5.78x** at chunk 4096, against the in-tree rate. The `hipEngine-main` rows are
+kept only to show the size of the tree error; they are not this tree's numbers.
+
+In-tree the chunk effect is **+8.41%** (272.46 -> 295.40, three reps per arm,
+and the chunk-1024 arm run twice agreeing to 0.12%), and **decode improves
++1.83%** (17.40 -> 17.72). The **-8.9% decode regression** reported from the
+earlier chunk sweep came from the `hipEngine-main` arms (19.03 at chunk 1024)
+and **does not exist in-tree**.
 
 ## The 27B control is a different architecture, not a dense control
 
@@ -113,17 +126,17 @@ profiler):
 (raw: `/tmp/c4096-trace/raw/trace_kernel_trace.csv`). The trace holds **4
 prefill runs**, confirmed structurally rather than assumed: 192 `router_logits`
 launches / 4 = 48 = one per layer x 48 layers, and 144 GDN prefill launches / 4
-= 36 = the 36 GDN layers. Reported 288.37 tok/s, wall 14.20 s.
+= 36 = the 36 GDN layers.
 
 | bucket | hipEngine s/run | % | n/run | gufo s/run | ratio |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| dense projections | 5.954 | 43.24 | 854 | 0.878 | **6.78x** |
-| routed MoE (main + repair + sched) | 4.408 | 32.02 | 331 | 0.793 | **5.56x** |
-| attention | 1.090 | 7.92 | 108 | | |
-| GDN | 0.824 | 5.99 | 108 | 0.749 | **4.55x** |
-| router | 0.633 | 4.59 | 96 | | |
-| other | 0.859 | 6.24 | 1270 | | |
-| **total** | **13.769** | | **2766** | **2.42** | **5.69x** |
+| dense projections | 6.085 | 43.56 | 854 | 0.878 | **6.93x** |
+| routed MoE (main + repair + sched) | 4.429 | 31.71 | 331 | 0.793 | **5.59x** |
+| attention | 1.094 | 7.83 | 108 | | |
+| GDN | 0.846 | 6.05 | 108 | 0.749 | **4.61x** |
+| router | 0.636 | 4.55 | 96 | | |
+| other | 0.879 | 6.29 | 1268 | | |
+| **total** | **13.969** | | **2766** | **2.42** | **5.77x** |
 
 The last three hipEngine rows and gufo's remainder are not a like-for-like
 split, so only the two named buckets carry a per-family ratio; the combined
@@ -133,26 +146,26 @@ Largest hipEngine families at chunk 4096:
 
 | family | s/run | n/run | ms/launch |
 | --- | ---: | ---: | ---: |
-| `gguf_k_prefill_out_coltile_rowbatch_pipelined` | 2.724 | 134 | 20.3 |
-| `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4` | 2.396 | 96 | 25.0 |
+| `gguf_k_prefill_out_coltile_rowbatch_pipelined` | 2.737 | 134 | 20.4 |
+| `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4` | 2.490 | 96 | 25.9 |
 | `gguf_q4_k_selected_dual_wmma_iu8_risk_prefill` (MoE gate/up) | 2.217 | 47 | 47.2 |
-| `q5_1_selected_wmma_iu8_risk_prefill` (MoE down) | 1.206 | 43 | 28.0 |
-| `qwen4_exp_gdn_prefill` | 0.770 | 36 | 21.4 |
-| `qwen35_router_logits_f32_token_tile_dense_exact` | 0.615 | 48 | 12.8 |
-| `q8_0_dense_wide` | 0.612 | 264 | 2.3 |
-| `q5_1_selected_sparse_exact_repair_row_publish` (MoE down repair) | 0.516 | 43 | 12.0 |
-| `dense_gemv` (decode-shaped, running during prefill) | 0.498 | 240 | 2.1 |
+| `q5_1_selected_wmma_iu8_risk_prefill` (MoE down) | 1.208 | 43 | 28.1 |
+| `qwen4_exp_gdn_prefill` | 0.790 | 36 | 21.9 |
+| `qwen35_router_logits_f32_token_tile_dense_exact` | 0.618 | 48 | 12.9 |
+| `q8_0_dense_wide` | 0.616 | 264 | 2.3 |
+| `q5_1_selected_sparse_exact_repair_row_publish` (MoE down repair) | 0.531 | 43 | 12.3 |
+| `dense_gemv` (decode-shaped, running during prefill) | 0.502 | 240 | 2.1 |
 
 Three things fall out that were not visible at chunk 1024:
 
-- **The gap is uniform.** Every bucket is 4.6x-6.8x off, so no single kernel is
-  the answer. The widest bucket is the dense projections at 43.2% of prefill
+- **The gap is uniform.** Every bucket is 4.6x-6.9x off, so no single kernel is
+  the answer. The widest bucket is the dense projections at 43.6% of prefill
   time, not MoE.
 - **It is not launch count.** gufo issues 4,237 launches per prefill against our
   2,766 - **1.53x more**. The difference is per-kernel throughput, which
   refutes the "gufo fuses and we do not" reading of this artifact's first
   revision.
-- **240 `dense_gemv` launches run during prefill**, 0.498 s/run (3.6%) -
+- **240 `dense_gemv` launches run during prefill**, 0.502 s/run (3.6%) -
   decode-shaped kernels on a prefill path.
 
 The chunk-1024 trace
@@ -181,8 +194,8 @@ the matched-granularity table above is the overall reading.
 - The prefill objective is a **5.2x kernel-throughput gap**, not the ~1.7x the
   older Vulkan-lane tables suggested. Chunk-size tuning and scheduling work are
   real but second-order against it.
-- It is **uniform across families** (4.6x-6.8x), so there is no single kernel to
-  port. The largest single share is the dense projections at 43.2% of prefill.
+- It is **uniform across families** (4.6x-6.9x), so there is no single kernel to
+  port. The largest single share is the dense projections at 43.6% of prefill.
 - It is **not launch count or scheduling** - gufo issues more launches than we
   do - so the work is per-kernel throughput, and a fused-kernel port is not by
   itself the answer.
