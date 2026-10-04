@@ -109,6 +109,84 @@ Our rows mix the pre-unroll anchor (dense, HC, GDN, attention, reduce) with
 the post-unroll MoE capture; `elementwise_norm` and the remainder are omitted,
 so the rows do not sum exactly to the post-unroll total.
 
+### 1.2.1 Verified same-file comparison and the dense-scope result — 2026-10-04 UTC
+
+Replaces §1.2 as the comparison basis. Same host, same file, production
+profile, both engines' own prefill timed as a whole.
+
+**gufo's `pp` is a genuine full-prompt, device-synchronized prefill.** Its
+`src/cli/bench/bench.cpp` times `t0 -> ForwardPromptBatch(prompt_tokens, depth)
++ hipDeviceSynchronize() -> t1` with `restore_depth()` outside the window and
+no reuse inside it, and the wall clock agrees (`-p 4096 -n 0 -d 0 -r 2` = 53 s
+against 45.30 s model load plus 3 x 2.40 s of predicted prefill).
+
+| engine | tree | chunk | 4096-token prefill | tok/s |
+| --- | --- | ---: | ---: | ---: |
+| gufo `98641a6` (prebuilt `8ca63994...`) | gufo binary | - | 2.40 s | **1705.94** |
+| hipEngine production | this tree | 4096 | 13.87 s | 295.40 |
+| hipEngine production | this tree | 1024 | 15.03 s | 272.46 |
+
+**The gap is 5.78x, and at matched granularity (one 4096-row pass, both sides
+traced) it is 5.77x and uniform**: dense projections 6.93x (43.6% of our
+prefill), routed MoE 5.59x (31.7%), attention/GDN/router/other 4.61x. It is
+**not** launch count or scheduling - gufo issues 4,237 launches per prefill
+against our 2,766, 1.53x more. The difference is per-kernel throughput, so no
+single family is the answer and no single port closes it.
+
+**Measure every hipEngine row here with `uv run`.** `python3 scripts/<harness>.py`
+resolves `import hipengine` through the conda editable `.pth`, which points at
+`/home/lhl/hipEngine-main` - a separate clone, 209 files different, with a
+different profile binding set. Same command, same case, one process per arm:
+**0.12% within-arm drift and -6.3% prefill / -8.5% decode between the trees.**
+`uv run` uses this tree's `.venv` and is correct. The `.pth` dates from
+2026-09-21, so any artifact predating this note whose hipEngine rows came from
+a raw `python3` invocation describes a different code base than it records.
+
+**The dense-projection bucket is where the milliseconds are, and the obvious
+lever is now closed.** The wide-row f16 Q8_0 route runs 0.0193 s per layer
+against the exact coltile chain's 0.171 s, so
+`PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS` (16-47, leaving the coltile chain on
+0-15) is the largest single prefill lever. Extending it to 0-47 measures
+**+18.876% prefill and +5.786% decode** at `code-p4096` against a 0.372%
+same-code control, with identical generated-token digests - and **fails the
+production gate**: mean KL 1.468e-3 (1.47x over), p95 7.517e-3 (1.50x over),
+max 5.140e-2 (1.03x over), top-1 0.98837, all four categories failing. The
+ladder closes the region above 16-47:
+
+| scope | kl_mean | kl_max | top-1 matches | hard gates | why |
+| --- | ---: | ---: | ---: | --- | --- |
+| 16-47 | 4.527e-4 | 2.341e-2 | 1538 | **PASS** | certified default |
+| **14-47** | 5.190e-4 | 3.979e-2 | 1536 | **PASS** | deepest passing scope |
+| 12-47 | 6.406e-4 | 3.249e-2 | 1532 | FAIL | aggregate top-1, one row short |
+| 8-47 | 8.839e-4 | 4.146e-2 | 1534 | FAIL | `general_en` mean KL 1.181e-3 |
+| 0-47 | 1.468e-3 | 5.140e-2 | 1530 | FAIL | KL and top-1, 6 scopes |
+
+**The boundary is non-monotone in the tail and in top-1 while `kl_mean` and
+`kl_p95` are monotone**: 12-47's `kl_max` is better than 14-47's while its mean
+is worse, and 8-47's top-1 (1534) is better than 12-47's (1532). This reproduces
+on a second, independent route the same non-monotonicity the staged-f32 ladder
+found (15-47 failing while 14-47 and 16-47 pass). **Two consequences:** the
+boundary cannot be located by monotone search, and a passing scope is not
+evidence about a shallower one.
+
+**14-47 is admissible and is NOT promoted.** Its speed was measured with the
+same three-arm A/B/C: A 16-47 **268.877 pp**, B 14-47 **275.305 pp**, C 16-47
+**272.589 pp**, so the pooled effect is **+1.69%** against a **+1.38%** same-code
+drift. A signal-to-drift ratio of 1.2 is not a measurement, and changing the KV
+rounding of two layers for a benefit that cannot be shown is the wrong trade. A
+higher-precision A/B (more repetitions, interleaved in one process) would
+resolve it; the per-layer cost model predicts about 2.2%. Every candidate scope
+leaves `prefill_last` KL at 4e-9 to 5e-8 with top-1 1.0 while `steady` carries
+the whole drift: this route changes the *rounding* of the projections feeding
+the KV cache, so the final prompt position barely moves while all 4096 cached
+positions accumulate a difference that decode attention reads. That makes the
+dense-prefill region a KV-arithmetic question, not a prefill-latency one.
+
+Evidence: `benchmarks/results/2026-10-04-qwen4exp-dense-wide-scope-ladder/`,
+`benchmarks/results/2026-10-04-qwen4exp-gufo-prefill-gap-verified/`, worklog
+`20261004T030644.952503Z`, `20261004T031136.427018Z`, `20261004T032242.378046Z`,
+`20261004T043701.325729Z`.
+
 ### 1.3 Current attribution checkpoint — 2026-09-28 UTC
 
 The [current-owner packet](../benchmarks/results/2026-09-28-qwen4exp-current-attribution/README.md)

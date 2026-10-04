@@ -37,19 +37,70 @@ for B).
 Canonical protocol: 12 cases, 128 decode steps, 3 repeats, chunk 1024,
 production profile, HEAD `04d0f4161`, one process per run, `--require-cached-build`.
 
-| scope | engaged rate | kl_mean | kl_p95 | kl_max | top-1 | worst category | hard gates |
+| scope | engaged rate | kl_mean | kl_p95 | kl_max | top-1 | hard gates | why |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| **16-47 (control)** | 0.337 | 4.527e-4 | 2.320e-3 | 2.341e-2 | 0.99354 | - | **PASS** |
-| 8-47 | 0.421 | 8.839e-4 | 4.647e-3 | 4.146e-2 | 0.99096 | general_en 1.181e-3 | FAIL, 1 scope |
-| 0-47 | 0.508 | **1.468e-3** | **7.517e-3** | **5.140e-2** | **0.98837** | general_en 1.753e-3 | FAIL, 6 scopes |
+| **16-47** | 0.337 | 4.527e-4 | 2.320e-3 | 2.341e-2 | 1538/1548 | **PASS** | - |
+| **14-47** | 0.359 | 5.190e-4 | 2.636e-3 | 3.979e-2 | 1536/1548 | **PASS** | deepest passing scope |
+| 12-47 | 0.379 | 6.406e-4 | 3.229e-3 | 3.249e-2 | **1532**/1548 | FAIL | aggregate top-1, one row short of 1533 |
+| 8-47 | 0.421 | 8.839e-4 | 4.647e-3 | 4.146e-2 | 1534/1548 | FAIL | `general_en` mean KL 1.181e-3 |
+| 0-47 | 0.508 | **1.468e-3** | **7.517e-3** | **5.140e-2** | 1530/1548 | FAIL | KL and top-1, 6 scopes |
 
 Limits: mean 1e-3, p95 5e-3, p99 2e-2, max 5e-2, aggregate top-1 0.99,
-per-scope top-1 0.97, review boundary 0.02.
+per-scope top-1 0.97, review boundary 0.02. The **strict teacher hash is
+identical in all five runs**
+(`4377006f4f0827dd419e9d92da9b61b0dbf65074195ffec5852fb98cc7e65ed7`), so the
+candidate hashes are the only difference between them, and engagement scales
+monotonically with scope (0.337 / 0.359 / 0.379 / 0.421 / 0.508).
 
 At 0-47 the mean is **1.47x over**, p95 **1.50x over**, max **1.03x over**, and
 top-1 is below the 0.99 minimum; all four categories fail, plus shape `c1` and
 transition `steady`. At 8-47 every aggregate gate passes and **one** category
-(`general_en`, mean KL 1.1812e-3) is 1.18x over the per-category mean limit.
+(`general_en`, mean KL 1.1812e-3) is 1.18x over the per-category mean limit. At
+12-47 every KL gate passes with 1.5x headroom and there are **zero scope
+failures** - it fails only the aggregate top-1, by **one row** (1532 against the
+1533 needed).
+
+### The boundary is not monotone
+
+`kl_mean` and `kl_p95` grow monotonically with the scope, but the **tail** and
+**count** statistics do not:
+
+| scope | kl_mean | kl_max | top-1 matches |
+| --- | ---: | ---: | ---: |
+| 16-47 | 4.527e-4 | **2.341e-2** | **1538** |
+| 14-47 | 5.190e-4 | 3.979e-2 | 1536 |
+| 12-47 | 6.406e-4 | **3.249e-2** | **1532** |
+| 8-47 | 8.839e-4 | 4.146e-2 | 1534 |
+| 0-47 | 1.468e-3 | 5.140e-2 | 1530 |
+
+12-47's `kl_max` is **better** than 14-47's while its mean is worse, and 8-47's
+top-1 (1534) is **better** than 12-47's (1532). This is the same
+non-monotonicity this project already measured on the staged-f32 route (15-47
+failing while 14-47 and 16-47 pass), now reproduced on a second, independent
+route. **Two consequences:** the boundary cannot be located by monotone search,
+and a passing scope does not imply that a shallower one passes - so 14-47's pass
+is not evidence about 13-47 or 12-47.
+
+### 14-47 passes the gate but its speed win is not resolvable
+
+The deepest passing scope is **14-47**, two layers beyond the certified 16-47.
+Its speed was measured with the same three-arm A/B/C design:
+
+| arm | scope | pp tok/s | tg tok/s |
+| --- | --- | ---: | ---: |
+| A | 16-47 | 268.877 | 17.545 |
+| B | **14-47** | **275.305** | 17.556 |
+| C | 16-47 | 272.589 | 17.378 |
+
+Same-code drift A against C is **+1.38%**; the pooled candidate effect against
+`mean(A,C) = 270.733` is **+1.69%** prefill and **+0.54%** decode. A
+signal-to-drift ratio of 1.2 is **not a measurement**, and this is a much noisier
+session than the 0-47 A/B (0.37% drift) was. So 14-47 is **numerically
+admissible and not promoted**: the arithmetic change is real, the benefit is
+predicted by the per-layer cost model to be about 2.2%, and the measurement is
+consistent with that but cannot separate it from drift. Changing the KV
+rounding of two layers for a benefit that cannot be shown is the wrong trade.
+All three arms emit the same generated-token digest `c18d529b…`.
 
 ### Attribution is clean
 
@@ -109,15 +160,16 @@ failure, so a per-layer or per-row guard would not rescue it.
 ## What this closes and what it leaves open
 
 **Closed:** the 18.9% prefill / 5.8% decode headline is not admissible, and no
-scope tested so far recovers it. The region is not merely tail-sensitive; it
-fails the aggregate envelope, and it fails it for every category.
+scope tested recovers it. The region is not merely tail-sensitive; 0-47 fails
+the aggregate envelope for every category, and 12-47 and 8-47 fail single
+distinct gates.
 
-**Open:** the boundary between 8-47 and 16-47 is not located. This project has
-already measured a **non-monotonic** scope boundary on a sibling route - the
-staged-f32 ladder found 15-47 failing while 14-47 and 16-47 pass - so the
-boundary may not be a simple threshold and no scope may be inferred from a
-neighbour's result. The value of a passing scope is roughly 0.152 s per added
-layer off a ~14 s prefill: about **4.3%** at 12-47 and **2.2%** at 14-47.
+**Open:** 14-47 passes the gate and is two layers of a route that runs 8.9x
+faster per layer than the chain it replaces, but the benefit is below this
+session's drift floor. A higher-precision A/B (more repetitions, interleaved
+within one process) would resolve it; the per-layer model predicts about 2.2%.
+Whether 13-47 passes is unknown and cannot be inferred from 14-47, because the
+boundary is non-monotone.
 
 ## Artifacts
 
@@ -127,8 +179,11 @@ layer off a ~14 s prefill: about **4.3%** at 12-47 and **2.2%** at 14-47.
 | `ab-B-0-47.json` | canonical bench, dense-wide 0-47, arm B |
 | `ab-C-16-47.json` | canonical bench, dense-wide 16-47, arm C (drift control) |
 | `artifact-16-47-control.json` | production gate, 16-47 at HEAD |
+| `artifact-14-47.json` | production gate, 14-47 (PASS, deepest passing) |
+| `artifact-12-47.json` | production gate, 12-47 (fails aggregate top-1 by one row) |
 | `artifact-8-47.json` | production gate, 8-47 |
 | `artifact-0-47.json` | production gate, 0-47 |
+| `ab14-A.json`, `ab14-B.json`, `ab14-C.json` | canonical bench, 16-47 / 14-47 / 16-47 |
 
 ## Limits
 
@@ -143,6 +198,15 @@ layer off a ~14 s prefill: about **4.3%** at 12-47 and **2.2%** at 14-47.
   untrustworthy".
 - The A/B speed arms are one case (`code-p4096`); the gate is the twelve-case
   protocol. The two were not measured on the same case set.
+- The 14-47 A/B's same-code drift (1.38%) is larger than the effect it measures
+  (1.69%), so that row carries no speed claim. The earlier 0-47 A/B in the same
+  session had 0.37% drift, so the difference is session noise rather than a
+  protocol change; the two A/Bs are not directly comparable in precision.
+- 12-47 fails the aggregate top-1 by one row (1532 against 1533). The 16-47
+  control reproduced its recorded certificate with a **one-row** top-1
+difference (1538 here against 1539 recorded), so this metric has at least
+  one row of run-to-run variation and 12-47 is *at* the boundary rather than
+  clearly beyond it. It still cannot be certified.
 - No kernel-level trace of any extended scope, so the per-layer cost model is
   inferred from the 16-47 trace rather than measured on the extended one.
 - The profile constant is outside the recorded `manifest_sha256`, so the gate
