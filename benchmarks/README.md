@@ -1,6 +1,46 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-03**
+Last updated: **2026-10-04**
+
+## gfx1100 merged baseline and transfer screen — October 4
+
+Gemma 4 26B-A4B `UD-Q4_K_XL`, host **epyc / Radeon Pro W7900**, production
+profile, BF16 KV, capacity 8448, 32 greedy outputs: one warmup and three
+resident-harness samples per prompt length. Decode rates include full-logit host
+collection; public-generation wall time is a separate one-request observation.
+
+| Prompt tokens | Prefill tok/s | Decode tok/s | Public generation wall |
+| --- | ---: | ---: | ---: |
+| 513 | 1285.1 | 70.13 | 0.837 s |
+| 2053 | 1047.3 | 66.13 | 2.486 s |
+| 8191 | 808.5 | 66.27 | 10.632 s |
+
+Repeated and public output IDs agree. These are merged-tree snapshots, **not
+pre-merge speedups**. First-request timings are saved separately with their
+compilation/cache conditions. Six additional public requests confirm native
+attention routes and finite, bit-identical full logits between separate and
+shared attention owners.
+
+The bounded transfer screen finds two useful Qwen routing candidates on the
+**separate RX 7900 XTX lane**: true 16-row Q5 T16 col8 is 2.36–4.10x faster than
+the direct leaf across seven shapes with exact parent outputs, and local32 is
+1.285x faster for the narrow C1 K5120/N1024 projection with exact outputs.
+Those are leaf screens, not public-model gains. The attn_q CPU-reference top-1
+floor fails for both control and candidate; no complete promotion gate is
+claimed. Six other C1 shapes favor existing local32 over donor tile8. The
+narrow 2/4/8-row shape also has faster alternatives, unlike the wider shapes.
+All four additional mixed-quant fusions lose to gfx1100's shipping chain; two
+IQ-side fusions miss their declared exact contract.
+
+On W7900, transferred staged-attention changes preserve exact outputs in their
+explicit diagnostic A/B. Native production does not request staged attention:
+compared with native attention, the staged diagnostic has slower short-context
+prefill/decode and faster 8191-token prefill. No default changes follow from this
+screen. Host rotary reuse saves about 0.8% prefill at the single-block 513-token
+prompt; multiblock requests have no effective cross-request hit with the
+single-range cache. Full commands, samples, route observations, numerical
+findings and archived diagnostic drivers are in the
+[transfer artifact](results/2026-10-04-gfx1100-transfer-screen.json).
 
 **Halo-box Vulkan MTP** (`strix-llama.cpp@03895887abe6`) completes the same
 Qwen3.6 Q4_K_M 140-turn replay on Radeon 8060S in **643.08 s** (mean **4.593 s**),
