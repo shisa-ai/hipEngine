@@ -1,0 +1,105 @@
+{
+  "schema": "hipengine.benchmark.artifact/v1",
+  "title": "The iu8 sparse exact repair pass costs 4808 ms and does not respond to the risk multiplier",
+  "date": "2026-10-04",
+  "kind": "diagnostic",
+  "verdict": "the repair time is flat across a 3.40x change in repaired-row share; the mechanism is NOT a fixed over-launched grid (an earlier reading of this trace was a units error - see correction)",
+  "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF)",
+  "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
+  "workload": {
+    "mode": "prefill",
+    "case_id": "code-p4096",
+    "execution_profile": "production",
+    "chunk_tokens": 1024,
+    "window_tokens": 4096
+  },
+  "host": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1150_family",
+    "note": "not the gfx1100/W7900 default hardware; absolute rates are not comparable to W7900 rows"
+  },
+  "instrument": {
+    "tool": "rocprofv3",
+    "flags": "--kernel-trace --output-format csv",
+    "jit": "warmed outside the profiler; --require-cached-build plus a precomputed compiler-version file, so no hipcc ran under the profiler",
+    "duration_derivation": "End_Timestamp - Start_Timestamp (the CSV carries no duration column); nanoseconds",
+    "grid_units": "Grid_Size_X/Y/Z are TOTAL WORK-ITEMS, not blocks. Workgroup_Size_X is the block size. Divide to get the block count."
+  },
+  "command": "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT=<4.0|1.0> rocprofv3 --kernel-trace --output-format csv -d . -o trace -- python3 scripts/qwen4exp_profile_gap.py --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --mode prefill --case-id code-p4096 --execution-profile production --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output prof-<mult>.json",
+  "summary": "Summing the repair kernels' own durations across the prefill window at risk multiplier 4.0 and 1.0 gives 4808.702 ms and 4844.580 ms - a 0.7% difference with the tighter multiplier marginally SLOWER. Tightening 4.0 -> 1.0 cuts the repaired row share 3.40x (measured previously), so the repair kernels' time does not track how much they repair. The mechanism is still unexplained: the launch geometry is proportional (a 1024-block grid with a grid-stride loop bounded by min(risk_count, max_risks)), so the flat time is not an over-launched grid.",
+  "correction": {
+    "what_was_wrong": "An earlier revision of this artifact reported the repair kernel as dispatching a fixed 131072-block grid and inferred a 128x over-launch. That was a units error: rocprofv3 reports Grid_Size_X as total work-items. The repair's real grid is 1024 blocks x 128 threads = 131072 work-items, exactly the wrapper default and exactly what the source passes to dim3(grid_blocks).",
+    "how_it_was_caught": "qwen35_moe_wmma_tile_map_kernel is launched with dim3(1) blocks and dim3(512) threads (group_scatter.hip:959-963, threads = next_power_of_two(512)); the same trace reports Grid_Size_X = 512, Workgroup_Size_X = 512. A block count of 1 cannot produce 512, so Grid_Size_X is work-items.",
+    "independent_confirmation": "scripts/qwen4exp_repair_grid_probe.py launches the registered repair kernel directly under the profiler at a known grid_blocks. grid_blocks=1024 -> 131072 work-items; grid_blocks=8192 -> 1048576 work-items. Both are grid_blocks x 128, matching the source and the 1024-block reading.",
+    "what_survives": "The flat-time observation itself is unaffected: the repair is 4808.702 ms at 4.0 and 4844.580 ms at 1.0. What does not survive is the claimed mechanism and the 3394 ms launch-geometry prize derived from it."
+  },
+  "windows": {
+    "mult_4.0": {
+      "total_kernel_time_s": 65.068,
+      "total_launches": 85696,
+      "repair_ms": 4808.702,
+      "repair_share_pct": 7.39,
+      "risk_owner_ms": 21188.779,
+      "risk_owner_share_pct": 32.56
+    },
+    "mult_1.0": {
+      "total_kernel_time_s": 65.358,
+      "total_launches": 85696,
+      "repair_ms": 4844.58,
+      "repair_share_pct": 7.41,
+      "risk_owner_ms": 21181.15,
+      "risk_owner_share_pct": 32.41
+    },
+    "delta_note": "The two arms are 0.45% apart in total kernel time and the tighter multiplier is the slower of the two. No kernel-level effect of the multiplier change is detectable."
+  },
+  "repair_families_ms": {
+    "gguf_q4_k_selected_dual_sparse_exact_repair_bf16": {
+      "mult_4.0": 2107.456,
+      "mult_1.0": 2125.251,
+      "launches": 1504,
+      "grid_work_items": [131072, 1, 1],
+      "blocks": 1024,
+      "workgroup": [128, 1, 1],
+      "vgpr": 64
+    },
+    "q5_1_selected_sparse_exact_repair_row_publish": {
+      "mult_4.0": 2069.181,
+      "mult_1.0": 2081.321,
+      "launches": 1376,
+      "grid_work_items": [131072, 1, 1],
+      "blocks": 1024,
+      "workgroup": [128, 1, 1]
+    },
+    "q8_0_selected_sparse_repair": {
+      "mult_4.0": 390.625,
+      "mult_1.0": 396.181,
+      "launches": 160,
+      "grid_work_items": [524288, 1, 1],
+      "blocks": 4096,
+      "workgroup": [128, 1, 1]
+    },
+    "gguf_q5_k_selected_dual_sparse_exact_repair_bf16": {
+      "mult_4.0": 241.44,
+      "mult_1.0": 241.826,
+      "launches": 32
+    }
+  },
+  "risk_owner_for_contrast": {
+    "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill": {
+      "mult_4.0_ms": 13351.17,
+      "mult_1.0_ms": 13348.22,
+      "launches": 1504,
+      "grid_work_items": [1280, 800, 1],
+      "workgroup": [128, 1, 1],
+      "blocks_note": "10 x 800 blocks at workgroup 128 in X - a row-tile x column-tile shape, flat across multipliers as expected for a kernel that always covers the full padded row space."
+    }
+  },
+  "open_question": "The repair cost is flat across a 3.40x change in repaired-row share, but the grid is proportional and the kernel's loop bound is min(risk_count, max_risks). Either risk_count does not in fact differ 3.40x between the two multipliers in this production path, or the repair's cost is dominated by per-launch work that does not scale with the slot count. risk_count itself has not been measured; the deciding run is scripts/qwen4exp_profile_gap.py with --risk-diagnostics at both multipliers.",
+  "limits": [
+    "One host (gfx1151 APU), one model, one quant, one case (code-p4096), one execution profile.",
+    "The profiled run is serialized by rocprofv3, so absolute durations are not wall-clock prefill times; the 4.0-vs-1.0 comparison is valid because both arms are profiled identically.",
+    "The 3.40x repaired-row reduction is carried over from the previous iteration's measurement, not re-derived here, and is the assumption the open question turns on.",
+    "No correctness gate applies: no arithmetic changed and no default was modified."
+  ],
+  "source": "scripts/qwen4exp_repair_trace_sum.py over /tmp/repair-trace/raw-4.0 and /tmp/repair-trace/raw-1.0; scripts/qwen4exp_repair_grid_probe.py over /tmp/repair-probe-1024 and /tmp/repair-probe-8192"
+}
