@@ -336,3 +336,143 @@ def test_plan_hip_build_rejects_bad_profile_and_missing_source(tmp_path: Path) -
             family="smoke",
             compiler_version="hipcc test version",
         )
+
+
+def _stub_cached_artifact(tmp_path: Path, source: Path, *, version: str, arch: str | None):
+    artifact = plan_hip_build(
+        sources=[source],
+        family="smoke",
+        profile="baseline",
+        cache_root=tmp_path / "cache",
+        compiler="definitely-not-a-real-hipcc",
+        compiler_version=version,
+        target_arch=arch,
+    )
+    artifact.cache_dir.mkdir(parents=True, exist_ok=True)
+    artifact.output_path.write_bytes(b"not a real shared object")
+    return artifact
+
+
+def test_build_hip_resolution_memo_skips_repeated_environment_derivation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A repeat launch resolves the same library without re-deriving the key.
+
+    The launch path calls ``build_X(load=True)`` with no explicit version,
+    target arch or cache root, so every call re-reads the build environment and
+    re-parses its sources to form the loaded-library key. The resolution memo
+    must turn the repeat call into a lookup while still honouring a changed
+    build environment, which is the contract
+    ``test_build_hip_loaded_cache_distinguishes_environment_target_arch`` pins.
+    """
+
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    version = "hipcc cached test version"
+    artifacts = {
+        arch: _stub_cached_artifact(tmp_path, source, version=version, arch=arch)
+        for arch in ("gfx1100", "gfx1151")
+    }
+
+    monkeypatch.setattr(build_module, "_LOADED_LIB_CACHE", {})
+    monkeypatch.setattr(build_module, "_RESOLUTION_CACHE", {})
+    monkeypatch.setattr(build_module.ctypes, "CDLL", lambda path: Path(path))
+    monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_TEXT", version)
+
+    derivations = {"count": 0}
+    real_identity = build_module._environment_version_identity
+
+    def counted_identity(compiler: str):
+        derivations["count"] += 1
+        return real_identity(compiler)
+
+    monkeypatch.setattr(build_module, "_environment_version_identity", counted_identity)
+
+    def call() -> Path:
+        return build_hip(
+            sources=[source],
+            family="smoke",
+            profile="baseline",
+            cache_root=tmp_path / "cache",
+            compiler="definitely-not-a-real-hipcc",
+            load=True,
+            require_cached=True,
+        )
+
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
+    first = call()
+    after_first = derivations["count"]
+    assert first == artifacts["gfx1100"].output_path
+
+    # Repeat calls with an unchanged environment must not re-derive the key.
+    assert call() == first
+    assert call() == first
+    assert derivations["count"] == after_first
+
+    # A changed build environment still selects the other artifact.
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    assert call() == artifacts["gfx1151"].output_path
+    assert derivations["count"] > after_first
+
+
+def test_build_hip_resolution_memo_does_not_bypass_force(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    version = "hipcc cached test version"
+    artifact = _stub_cached_artifact(tmp_path, source, version=version, arch="gfx1100")
+    monkeypatch.setattr(build_module, "_LOADED_LIB_CACHE", {})
+    monkeypatch.setattr(build_module, "_RESOLUTION_CACHE", {})
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
+    monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_TEXT", version)
+    loads: list[str] = []
+
+    def counting_cdll(path: str):
+        loads.append(str(path))
+        return Path(path)
+
+    monkeypatch.setattr(build_module.ctypes, "CDLL", counting_cdll)
+
+    kwargs = dict(
+        sources=[source],
+        family="smoke",
+        profile="baseline",
+        cache_root=tmp_path / "cache",
+        compiler="definitely-not-a-real-hipcc",
+        load=True,
+    )
+    build_hip(**kwargs)
+    build_hip(**kwargs)
+    assert len(loads) == 1
+
+    # force must re-run the build/load path even though the memo is warm.
+    monkeypatch.setattr(build_module.subprocess, "run", lambda *a, **k: None)
+    build_hip(**kwargs, force=True)
+    assert len(loads) == 2
+
+
+def test_invalidate_build_resolution_drops_memoized_libraries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    version = "hipcc cached test version"
+    _stub_cached_artifact(tmp_path, source, version=version, arch="gfx1100")
+    monkeypatch.setattr(build_module, "_LOADED_LIB_CACHE", {})
+    monkeypatch.setattr(build_module, "_RESOLUTION_CACHE", {})
+    monkeypatch.setattr(build_module.ctypes, "CDLL", lambda path: Path(path))
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
+    monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_TEXT", version)
+
+    kwargs = dict(
+        sources=[source],
+        family="smoke",
+        profile="baseline",
+        cache_root=tmp_path / "cache",
+        compiler="definitely-not-a-real-hipcc",
+        load=True,
+        require_cached=True,
+    )
+    build_hip(**kwargs)
+    assert build_module._RESOLUTION_CACHE
+    build_module.invalidate_build_resolution()
+    assert not build_module._RESOLUTION_CACHE
+    assert not build_module._LOADED_LIB_CACHE
