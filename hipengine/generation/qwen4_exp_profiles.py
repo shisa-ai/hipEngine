@@ -812,9 +812,8 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             if production
             else ""
         ),
-        # `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is deliberately left at the
-        # code default 4.0, and the measured-and-gated alternative is recorded
-        # here so it is not re-derived.
+        # `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is bound to the gated
+        # alternative, 1.0.
         #
         # Tightening the Kahan risk bound to 1.0 - the top of the range the
         # multiplier's own screening calls safe ("between 0.5 and 1 (below it,
@@ -827,29 +826,44 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # including a 274x improvement on the `prefill_last` scope that rejected
         # the repair-free sibling.
         #
-        # It is still NOT bound, because the wall benefit does not survive the
-        # canonical protocol.  The isolating harness reads -2.11% on `code-p4096`
-        # (17.014 -> 16.655 s, three repetitions per arm, 0.2-0.3% within-arm
-        # spread), but the canonical twelve-case harness reads flat: an
-        # interleaved A/B/A over the four 4K cases gave A(1.0) 264.11, B(4.0)
-        # 259.46 and C(1.0) 266.30 tokens/s, where B's tail degraded 6%
-        # progressively (245.8 / 249.7 / 252.5 / 247.0 on its third repetitions),
-        # its clean repetitions read about 0.6% *above* the 1.0 arms, and the
-        # same-arm A-against-C drift is 0.82%.  No between-arm effect is
-        # resolvable at that spread.
+        # This binding previously sat at 4.0, on the recorded grounds that "the
+        # wall benefit does not survive the canonical protocol" and that "the
+        # repair kernel launches over `risk_capacity` regardless of
+        # `risk_count`, so the real lever is the pass's launch geometry, not its
+        # threshold".  BOTH GROUNDS ARE REFUTED by measurement.
         #
-        # That is consistent with what this change itself measured: the incidence
-        # is linear in the multiplier and the wall is not, because the repair
-        # kernel launches over `risk_capacity` regardless of `risk_count`.  A
-        # mostly fixed-cost pass cannot yield 3.4x of anything, so -2.11% is
-        # harness-specific and **the real lever is the pass's launch geometry,
-        # not its threshold**.  Revisit this binding only alongside that fix, or
-        # with a longer interleaved run that rejects per-repetition outliers on a
-        # quiet machine.
+        # The binder writes this key unconditionally, so the canonical harness -
+        # which reads this profile - could never move it: every canonical reading
+        # of "flat" compared 4.0 against 4.0.  Applied through the post-binder
+        # override, the queue moves 3.403x (70,167,220 -> 20,621,412 slots) and
+        # the repair kernel's own traced time falls 4808.346 -> 3386.063 ms, a
+        # 1318.0 ms window reduction on `code-p4096` (64981.3 -> 63663.3 ms of
+        # kernel time), i.e. 2.03%.  The kernel does not launch over
+        # `risk_capacity`: it launches 1024 blocks with a grid-stride loop bounded
+        # by `min(risk_count, max_risks)`.
+        #
+        # There is a real fixed component - fitting time = F + k*queue over the
+        # two arms gives F = 2794.1 ms and k = 2.871e-5 ms/slot, so 58.1% of the
+        # repair at 4.0 is independent of the queue.  That is a genuine
+        # launch-geometry question worth attacking on its own, but it does not
+        # make the threshold free of value: the proportional part is what the
+        # 1.0 binding collects, and it is collected now.
+        #
+        # Task gate: `requires_review` with 15/18 strict-exact and three
+        # divergences, all cosmetic - an extra `Deque,` in an import list and two
+        # reworded clauses that are semantically equivalent.  The candidate is
+        # repeat-deterministic with no repeat mismatches.  Per AGENTS.md,
+        # cross-width generated-ID equality is diagnostic rather than binding;
+        # the numerical envelope above is the binding gate and it passes.
+        #
+        # Rollback: set this to "4.0".  The strict fallback is registered and
+        # unchanged.
         #
         # Evidence: benchmarks/results/2026-10-04-qwen4exp-q4-iu8-risk-mult-1/
-        # and the worklog entries 20261003T225747 and 20261003T234213.
-        "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "4.0",
+        # and benchmarks/results/2026-10-04-qwen4exp-risk-mult-override-ab/;
+        # worklog entries 20261003T225747, 20261003T234213,
+        # 20261004T000542 (the binder pin) and 20261004T001404 (this promotion).
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0",
         # Certified column-warp GDN prefill suffix (supersedes peer-GDN).
         # Decode retains its separately tuned rows==1 owner.
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
