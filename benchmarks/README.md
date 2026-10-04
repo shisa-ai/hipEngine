@@ -87,6 +87,39 @@ re-measured for this change.
 The superseded two-lever route is in
 [its own artifact](results/2026-09-27-fullattn-context-promoted/README.md).
 
+## Qwen3.8 Flash Next decode is host-enqueue bound
+
+Measured on physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), AMD
+gfx1151, UD-Q4_K_XL, BF16 KV, production execution profile, cached build, 128
+decode transitions, one process.
+
+A decode step's device work is **46.19 ms** at a 512-token prompt and
+**47.13 ms** at 4096 (**+2.0%**), while the measured decode rate falls from
+21.01 to 17.40 tok/s over the same range. The device is therefore not what sets
+the rate. Splitting the loop into host enqueue time and device drain time shows
+why:
+
+| Prompt tokens | Host enqueue per step | Device drain after 128 steps |
+| ---: | ---: | ---: |
+| 512 | 79.121 ms | **0.0 ms** |
+| 1024 | 80.063 ms | **0.0 ms** |
+| 4096 | 107.444 ms | **0.0 ms** |
+
+A zero drain means the GPU had already completed every queued step before the
+host finished enqueuing them, so it is idle for the whole loop. Host cost is
+flat to 1024 tokens and then rises **36%** at 4096, where the decode attention
+path switches from dense full attention to QSA sparse attention plus a top-k
+expansion; that switch raises attention cost **27%**, but attention is only 4-5%
+of a decode step, and MoE GEMV is 50% of it and does not move.
+
+Two limits apply. The probe's absolute rates (12.6 / 12.5 / 9.3 tok/s) do not
+match this table's rates for what should be the same loop, and the discrepancy
+is unexplained, so the host-versus-device split is the finding and the absolute
+rates are not comparable. The 36% rise is correlated with the path switch, not
+proven to be caused by it.
+[Protocol, traces and artifacts](results/2026-10-04-qwen4exp-thermal-protocol-and-llamacpp-basis/README.md),
+[probe](https://github.com/hipEngine/hipEngine/blob/qwen3.8-flash-next/scripts/qwen4exp_decode_host_bound_probe.py).
+
 ## Root README performance summary
 
 The root README exports this compact retained summary verbatim.
