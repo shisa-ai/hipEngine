@@ -49,9 +49,18 @@ configuration the numerical gate certifies. The workspace is
 `min(chunk, max_sequence_length)`, so a 512-token request resolves to the same
 768 rows either way and short requests are unaffected in time and memory.
 
-This is a prefill-only measurement (`qwen4exp_profile_gap.py --mode prefill`).
-It is not a decode-latency-under-concurrency claim; the per-tick prefill bound
-that protects decode is the round budget, which is unchanged.
+The table above is a prefill-only measurement (`qwen4exp_profile_gap.py --mode
+prefill`); the per-tick prefill bound that protects decode is the round budget,
+which is unchanged.
+
+**The decode side of the same knob is measured.** At `code-p4096`, chunk 1024
+against chunk 512 is **+9.06% prefill and -1.15% decode**, measured A/B/A/B/A/B
+in one session with every arm separated and within-arm spread of 0.05-0.48%. The
+decode cost of the chunk default is therefore eight times smaller than its
+prefill benefit. The same comparison run sequentially reads -7.1% decode,
+because a non-interleaved `code-p4096` A/B on this host drifts 8%; interleaving
+is required to resolve anything below that. [Chunk trade protocol and
+limits](results/2026-10-04-qwen4exp-chunk-decode-trade/README.md).
 
 [256 -> 1024 protocol and full table](results/2026-09-29-qwen4exp-rt1-256-vs-1024/README.md).
 
