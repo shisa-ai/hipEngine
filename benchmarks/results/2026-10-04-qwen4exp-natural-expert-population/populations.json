@@ -1,0 +1,710 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_natural_expert_population",
+ "ledger_row": "ED-3",
+ "question": "The row states: 'The historical population probe measured 203 of 512 active experts on average using SYNTHETIC token IDs 4000..5023, not a natural code-p4096 prompt.' Is the campaign's MoE population model correct for a natural prompt?",
+ "answer": "NO - the synthetic model understates the natural population by 1.9x at the same token count.",
+ "protocol": {
+  "harness": "scripts/qwen4exp_profile_gap.py --mode prefill --moe-telemetry",
+  "case": "code-p4096 (natural: four real code prompts concatenated, 4096 tokens, sha256 72a815ea...)",
+  "execution_profile": "production",
+  "repetitions": 1,
+  "chunk_size": 512,
+  "interpreter": "uv run (NOT python3 - see the 20261004T tree-provenance finding)",
+  "capture": "8 chunks x 512 rows x 48 layers = 384 telemetry rows, 40,960 assignments per layer at 4096 tokens",
+  "comparable_arm": "the first 2 chunks = 1024 tokens x top-10 = 10,240 assignments, EXACTLY the synthetic probe's shape"
+ },
+ "comparison": {
+  "synthetic_1024tok_10240assignments": 202.9583,
+  "natural_1024tok_10240assignments": 385.4792,
+  "delta_experts_1024tok": 182.5209,
+  "delta_pct_1024tok": 89.93,
+  "natural_4096tok": 446.4792,
+  "delta_pct_4096tok": 119.99,
+  "natural_1024tok_min": 304,
+  "natural_1024tok_max": 444,
+  "natural_4096tok_min": 354,
+  "natural_4096tok_max": 493
+ },
+ "implication_inferred_not_measured": "The MoE is 25.3% of the prefill (gate/up 16.38% + down 8.92%). If 75-87% of experts are active rather than 40%, the expert-weight traffic behind the selected MoE kernels is close to the FULL matrix, so the headroom a selected/sparse route can have over a dense one is far smaller than the 40% model implies. This is an inference from the population, NOT a measured traffic figure - the census times are measured and unaffected.",
+ "limits": [
+  "Counts, not throughput measurements.",
+  "One case, one model, one quant, one host (gfx1151).",
+  "capture_index/layer naming is the telemetry's own layer label, not an independently verified quant identity - though the quant_triplet IS captured per row and is reported here.",
+  "The synthetic arm is the recovered fixture, not a re-run; its provenance limits are recorded in its own artifact."
+ ],
+ "layers": {
+  "layers.0.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 349,
+   "active_4096tok": 370,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 601,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.1.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 321,
+   "active_4096tok": 354,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 843,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.2.expert_gate": {
+   "quant_triplet": [
+    "gguf_q5_k",
+    "gguf_q5_k",
+    "gguf_q8_0"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 366,
+   "active_4096tok": 386,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1193,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.3.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 329,
+   "active_4096tok": 365,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1115,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.4.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q8_0"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 344,
+   "active_4096tok": 382,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1160,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.5.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 397,
+   "active_4096tok": 421,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 881,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.6.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 396,
+   "active_4096tok": 422,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 940,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.7.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 400,
+   "active_4096tok": 440,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 963,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.8.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 343,
+   "active_4096tok": 425,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1041,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.9.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 356,
+   "active_4096tok": 423,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1088,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.10.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 384,
+   "active_4096tok": 439,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 953,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.11.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 361,
+   "active_4096tok": 440,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1203,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.12.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 401,
+   "active_4096tok": 436,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1143,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.13.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 385,
+   "active_4096tok": 447,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1372,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.14.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 401,
+   "active_4096tok": 467,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 878,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.15.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 402,
+   "active_4096tok": 471,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 631,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.16.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 425,
+   "active_4096tok": 481,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 675,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.17.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 435,
+   "active_4096tok": 480,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1019,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.18.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 428,
+   "active_4096tok": 460,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1168,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.19.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 423,
+   "active_4096tok": 466,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 961,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.20.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 444,
+   "active_4096tok": 485,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 923,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.21.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 415,
+   "active_4096tok": 454,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1424,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.22.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 429,
+   "active_4096tok": 466,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1808,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.23.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 417,
+   "active_4096tok": 479,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 961,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.24.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 396,
+   "active_4096tok": 457,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1721,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.25.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 408,
+   "active_4096tok": 483,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 925,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.26.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 413,
+   "active_4096tok": 477,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1207,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.27.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 388,
+   "active_4096tok": 471,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1397,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.28.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 401,
+   "active_4096tok": 465,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1440,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.29.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 402,
+   "active_4096tok": 464,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1271,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.30.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q8_0"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 393,
+   "active_4096tok": 493,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 954,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.31.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 304,
+   "active_4096tok": 481,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 894,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.32.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 333,
+   "active_4096tok": 482,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1101,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.33.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 393,
+   "active_4096tok": 478,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 808,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.34.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 425,
+   "active_4096tok": 487,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1264,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.35.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 384,
+   "active_4096tok": 473,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1457,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.36.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 358,
+   "active_4096tok": 434,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1763,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.37.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 421,
+   "active_4096tok": 481,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1669,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.38.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 428,
+   "active_4096tok": 479,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 2168,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.39.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 350,
+   "active_4096tok": 457,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1771,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.40.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 360,
+   "active_4096tok": 474,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 2109,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.41.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 399,
+   "active_4096tok": 477,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1995,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.42.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 396,
+   "active_4096tok": 443,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 1871,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.43.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 387,
+   "active_4096tok": 469,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 2127,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.44.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 372,
+   "active_4096tok": 418,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 3469,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.45.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q5_1"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 341,
+   "active_4096tok": 380,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 2960,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.46.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q8_0"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 362,
+   "active_4096tok": 383,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 2904,
+   "min_rows_per_active_expert_4096tok": 1
+  },
+  "layers.47.expert_gate": {
+   "quant_triplet": [
+    "gguf_q4_k",
+    "gguf_q4_k",
+    "gguf_q8_0"
+   ],
+   "top_k": 10,
+   "chunks": 8,
+   "active_1024tok": 338,
+   "active_4096tok": 366,
+   "assignments_4096tok": 40960,
+   "max_rows_per_expert_4096tok": 3999,
+   "min_rows_per_active_expert_4096tok": 1
+  }
+ }
+}
