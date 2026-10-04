@@ -1,0 +1,68 @@
+{
+  "schema": "hipengine.benchmark.artifact/v1",
+  "title": "The iu8 risk multiplier reaches production only via --override, and cuts the repair queue 3.403x",
+  "date": "2026-10-04",
+  "kind": "diagnostic",
+  "verdict": "the production profile pins the multiplier to 4.0 and silently discards a caller value; applied correctly, 1.0 cuts the repaired-row share 3.403x, confirming the gate's 3.40x on the production path for the first time",
+  "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF)",
+  "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
+  "workload": {
+    "mode": "prefill",
+    "case_id": "code-p4096",
+    "execution_profile": "production",
+    "chunk_tokens": 1024,
+    "window_tokens": 4096
+  },
+  "host": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1150_family",
+    "note": "not the gfx1100/W7900 default hardware"
+  },
+  "defect": {
+    "where": "hipengine/generation/qwen4_exp_profiles.py:852",
+    "binding": "\"HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT\": \"4.0\"",
+    "why_a_shell_value_is_discarded": "qwen4_exp_profiles.py:638 _apply_profile_env writes os.environ[key] = value unconditionally. The binder records the discard in _last_prebinder_conflicts and _report_prebinder_conflicts() warns, but PREBINDER_CONFLICT_ENV defaults to 'warn', not 'error', so a discarded override is a log line and the run proceeds with the profile value.",
+    "consequence": "Every production and canonical A/B of this multiplier compared 4.0 against 4.0. The flat repair time, flat risk-owner time and flat window total reported from those runs are a property of the harness, not of the kernel."
+  },
+  "the_working_path": {
+    "flag": "scripts/qwen4exp_profile_gap.py --override HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT=<value>",
+    "why": "scripts/qwen4exp_profile_gap.py:419-430 applies overrides after the profile binder has run, then re-reads the effective environment.",
+    "self_proving": "Each run records bound_route_env (post-binder, pre-override) and route_env (effective), so an arm can be shown to have taken effect rather than assumed."
+  },
+  "command": "python3 scripts/qwen4exp_profile_gap.py --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --mode prefill --case-id code-p4096 --execution-profile production --risk-diagnostics --override HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT=<4.0|1.0> --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output ovr-<mult>.json",
+  "arms": {
+    "mult_4.0": {
+      "bound_route_env": "4.0",
+      "effective_route_env": "4.0",
+      "overrides": {"HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "4.0"},
+      "repair_slots": 70167220,
+      "calls": 1504,
+      "repair_rate": 0.008057403564453124,
+      "over_capacity_calls": 0
+    },
+    "mult_1.0": {
+      "bound_route_env": "4.0",
+      "effective_route_env": "1.0",
+      "overrides": {"HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0"},
+      "repair_slots": 20621412,
+      "calls": 1504,
+      "repair_rate": 0.00238861083984375,
+      "over_capacity_calls": 0
+    }
+  },
+  "result": {
+    "queue_ratio": 3.4029,
+    "rate_ratio": 3.3733,
+    "gate_harness_figure": 3.4,
+    "agreement": "The 3.403x measured here matches the 3.40x the gate harness recorded (repair share 0.7119% -> 0.2092% over 1504 calls and 9.86e9 outputs). This is the first independent confirmation of that figure on the production path.",
+    "note": "The arm identity is proven by bound=4.0 / effective=1.0, not assumed from the shell."
+  },
+  "open_question": "Whether the repair TIME follows the queue. The repair kernel's grid-stride loop bound is min(risk_count, max_risks), so proportional work predicts 4808.702 ms -> ~1414 ms, a saving of ~3394 ms = 5.2% of the prefill window. The trace that decides it is running (bg-34), at both multipliers, both through --override.",
+  "note_on_the_3394_ms": "The same ~3394 ms magnitude was derived in an earlier iteration from a fixed-grid mechanism that was subsequently withdrawn as a units error, and then from a flat-time premise that this artifact shows was an artifact of the pin. The magnitude is recorded here only as a prediction to be tested, not as a result.",
+  "limits": [
+    "One host (gfx1151 APU), one model, one quant, one case (code-p4096), one execution profile.",
+    "--risk-diagnostics synchronizes the stream per call, so these runs are for the queue count and the arm identity, not for a timing claim.",
+    "No correctness gate applies: no arithmetic changed and no default was modified."
+  ],
+  "source": "/tmp/risk-override/ovr-4.0.json and ovr-1.0.json via scripts/qwen4exp_risk_count_compare.py"
+}
