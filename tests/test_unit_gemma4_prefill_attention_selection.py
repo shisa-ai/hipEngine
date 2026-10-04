@@ -8,9 +8,10 @@ Three contracts, and they are separate ones:
   anywhere else keeps the strict kernel and says why. This is a capability
   match, so it is exercised on values on both sides of the boundary and on
   values unrelated to it, rather than at the boundary alone.
-* **Profile.** ``production`` requests both variants, ``strict`` requests
-  neither, and an unset profile resolves to the shipped default. Registering
-  both plans is what makes that default ``production``.
+* **Profile.** ``production`` requests the strict-parity staged variant,
+  ``strict`` requests plain attention, and an unset profile resolves to production.
+  The WMMA routing matrix below uses an explicit candidate request, not the
+  shipping production plan.
 * **Fallback.** An unknown variant name, a missing plan, or an unregistered
   backend must reach the strict kernel rather than raise, because a profile is a
   performance decision and not a licence to fail a request.
@@ -36,7 +37,11 @@ from hipengine.generation.gemma4_gguf_profiles import (
     resolve_gemma4_prefill_attention_variants,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    _STRICT_DECODE_WINS_UNTIL_KEYS,
     gemma4_attention_prefill_bf16,
+    gemma4_attention_serves_keys,
+    gemma4_attention_shared_bytes,
+    gemma4_decode_max_keys,
     select_prefill_attention,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma import (
@@ -49,9 +54,10 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma_full imp
 # The sliding geometry, the full geometry, and shapes unrelated to either.
 SLIDING = dict(num_heads=16, num_kv_heads=8, head_dim=256)
 FULL = dict(num_heads=16, num_kv_heads=2, head_dim=512)
-# What a production run requests, taken from the module that declares it so the
-# resolver and the constant cannot drift apart.
-PRODUCTION = PREFILL_ATTENTION_PRODUCTION_VARIANTS
+# Explicit WMMA candidate request used by the geometry/crossover matrix below.
+# It is not the current shipping production request.
+PRODUCTION = (PREFILL_ATTENTION_WMMA_FLASH, PREFILL_ATTENTION_WMMA_FLASH_FULL)
+SHIPPED_PRODUCTION = PREFILL_ATTENTION_PRODUCTION_VARIANTS
 
 
 def test_an_unrequested_variant_is_the_strict_kernel():
@@ -84,7 +90,7 @@ def test_the_full_geometry_gets_the_full_wmma_variant():
     assert "capability match" in selection.describe()
 
 
-def test_a_production_request_covers_both_geometries():
+def test_a_wmma_candidate_request_covers_both_geometries():
     """One request list, one layer at a time: each geometry gets its own variant.
 
     This is the contract that matters in production, where both geometries occur
@@ -154,7 +160,7 @@ def test_a_geometry_the_full_variant_does_not_implement_keeps_the_strict_kernel(
     assert str(geometry["head_dim"]) in selection.reason
 
 
-def test_a_production_request_keeps_the_strict_kernel_off_both_geometries():
+def test_a_wmma_candidate_request_keeps_the_strict_kernel_off_both_geometries():
     """A geometry neither variant implements still runs, and says both misses."""
 
     selection = select_prefill_attention(
@@ -221,8 +227,8 @@ def test_the_profiles_register_and_make_production_the_default():
     ("requested", "expected"),
     [
         (ExecutionProfile.STRICT, (PREFILL_ATTENTION_PLAIN,)),
-        (ExecutionProfile.PRODUCTION, PRODUCTION),
-        (None, PRODUCTION),
+        (ExecutionProfile.PRODUCTION, SHIPPED_PRODUCTION),
+        (None, SHIPPED_PRODUCTION),
     ],
 )
 def test_the_profile_selects_the_variants(requested, expected):
@@ -235,8 +241,8 @@ def test_the_environment_variable_selects_the_variants():
     ) == (PREFILL_ATTENTION_PLAIN,)
     assert resolve_gemma4_prefill_attention_variants(
         environ={"HIPENGINE_EXECUTION_PROFILE": "production"}
-    ) == PRODUCTION
-    assert resolve_gemma4_prefill_attention_variants(environ={}) == PRODUCTION
+    ) == SHIPPED_PRODUCTION
+    assert resolve_gemma4_prefill_attention_variants(environ={}) == SHIPPED_PRODUCTION
 
 
 def test_an_unregistered_backend_keeps_the_strict_kernel():
@@ -300,7 +306,7 @@ def test_the_production_plan_carries_one_selection_per_geometry():
 
     register_gemma4_gguf_profiles()
     for profile, expected in (
-        (ExecutionProfile.PRODUCTION, PRODUCTION),
+        (ExecutionProfile.PRODUCTION, SHIPPED_PRODUCTION),
         (ExecutionProfile.STRICT, (PREFILL_ATTENTION_PLAIN,)),
     ):
         resolved = resolve_runtime_profile(
@@ -367,3 +373,167 @@ def test_an_unconstrained_request_still_answers_on_geometry_alone():
     selection = select_prefill_attention(requested_variant=PRODUCTION, **SLIDING)
 
     assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH
+
+
+def test_a_one_token_block_takes_the_variant_above_the_measured_crossover():
+    """The decode rule is a measured crossover, not the strict kernel's LDS bound.
+
+    Below the crossover the strict decode kernel is the faster path and keeps the
+    block; above it the WMMA decode shape is faster, by a margin that grows
+    super-linearly. The rule used to run to ``gemma4_decode_max_keys()`` on the
+    reasoning that a WMMA tile wastes fifteen sixteenths of a one-row block --
+    which stopped being true when a one-token block started selecting the 2-row
+    decode shape, and which measured 5.2x against the kernel it was keeping at
+    8192 keys.
+
+    Both sides of the crossover are exercised, and the crossover itself is the
+    value that must keep the strict kernel.
+    """
+
+    for keys in (_STRICT_DECODE_WINS_UNTIL_KEYS, _STRICT_DECODE_WINS_UNTIL_KEYS + 1):
+        selection = select_prefill_attention(
+            requested_variant=PRODUCTION, tokens=1, keys=keys, **FULL
+        )
+        if keys <= _STRICT_DECODE_WINS_UNTIL_KEYS:
+            assert selection.variant == PREFILL_ATTENTION_PLAIN, keys
+            assert selection.reason.startswith("decode:"), keys
+        else:
+            assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL, keys
+            assert selection.reason == "capability match", keys
+
+
+def test_the_rule_never_selects_a_strict_launch_that_cannot_start():
+    """The selection must not promise a path the launcher refuses.
+
+    At head_dim 512 the strict path's *resident* requirement crosses the 64 KiB
+    budget above 15616 keys, so when this rule was written the strict kernel
+    could not launch there at all, and a context in [15617, 15856] was accepted
+    at construction, prefilled successfully, and then raised on its first
+    decode:
+
+        NotImplementedError: Gemma 4 gfx1100 attention requires 66276 bytes of
+        shared memory for head_dim=512, keys=15801
+
+    On this tree that refusal is gone: the 256/512 class kernel moves its logits
+    to request-owned global scratch past the budget, so the strict path launches
+    at any key count and the rule is a routing choice rather than the only
+    launchable path. The crossover sits below both bounds, so the window is still
+    unreachable. Both halves are asserted here rather than trusting the
+    arithmetic to stay put.
+    """
+
+    for keys in range(15_616, 15_857):
+        selection = select_prefill_attention(
+            requested_variant=PRODUCTION, tokens=1, keys=keys, **FULL
+        )
+        assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL, keys
+
+    # The bound the window above is defined against: the strict path's resident
+    # requirement. One key past it the requirement stops growing with the key
+    # count, which is the global-scratch route rather than a refusal.
+    assert gemma4_attention_shared_bytes(head_dim=512, keys=15_616) <= 64 * 1024
+    past = gemma4_attention_shared_bytes(head_dim=512, keys=15_617)
+    assert past == gemma4_attention_shared_bytes(head_dim=512, keys=262_144)
+    assert past < gemma4_attention_shared_bytes(head_dim=512, keys=15_616)
+
+
+def test_the_sliding_geometry_keeps_the_strict_decode_kernel_at_any_context():
+    """A sliding layer's decode presents its window's worth of keys, always.
+
+    This is the half the bound must not move. At 262,144 configured positions a
+    sliding layer still reads 1,024 keys, so it keeps the exact-tiling decode
+    kernel; only the windowless layers cross the bound and take the candidate.
+    """
+
+    selection = select_prefill_attention(
+        requested_variant=PRODUCTION, tokens=1, keys=1024, **SLIDING
+    )
+
+    assert selection.variant == PREFILL_ATTENTION_PLAIN
+    assert selection.reason.startswith("decode:")
+
+
+def test_an_unknown_key_count_keeps_the_incumbent_decode_routing():
+    """``keys=None`` is not evidence that there are too many keys.
+
+    A caller that did not say how many keys it has gets the exact-tiling path,
+    because guessing the other way would move every decode step onto a tiling
+    that wastes fifteen sixteenths of its work.
+    """
+
+    selection = select_prefill_attention(requested_variant=PRODUCTION, tokens=1, **FULL)
+
+    assert selection.variant == PREFILL_ATTENTION_PLAIN
+
+
+def test_the_decode_bound_is_the_kernels_own_lds_formula():
+    """The bound is derived from the LDS budget, not written down a second time.
+
+    Asserted against ``gemma4_attention_shared_bytes`` rather than against a
+    literal, so a change to the decode kernel's LDS layout moves the bound and
+    this fails where the two disagree rather than letting them drift.
+
+    At the bound the resident row still fits the budget. One key past it the
+    resident row does not, and the 256/512 class kernel moves its logits to
+    request-owned global scratch -- so the requirement stops growing with the
+    key count instead of refusing the launch.
+    """
+
+    bound = gemma4_decode_max_keys()
+
+    assert gemma4_attention_shared_bytes(head_dim=256, keys=bound) == (bound + 528) * 4
+    assert gemma4_attention_shared_bytes(head_dim=256, keys=bound) <= 64 * 1024
+    past = gemma4_attention_shared_bytes(head_dim=256, keys=bound + 1)
+    assert past == gemma4_attention_shared_bytes(head_dim=256, keys=262_144)
+    assert past < gemma4_attention_shared_bytes(head_dim=256, keys=bound)
+
+
+def test_the_strict_kernel_serves_gemma4_geometries_at_any_key_count():
+    """The global-logits route, pinned where it is visible.
+
+    ``gemma4_attention_shared_bytes`` is the strict family's own answer, and for
+    the two head widths Gemma 4 uses it stops growing with the key count rather
+    than refusing: beyond the LDS budget the logits move to request-owned global
+    scratch. The selected-path question below is therefore about geometries that
+    have no such route.
+    """
+
+    for head_dim in (256, 512):
+        assert gemma4_attention_shared_bytes(head_dim=head_dim, keys=1024) <= 65_536
+        assert gemma4_attention_shared_bytes(head_dim=head_dim, keys=262_144) <= 65_536
+        assert gemma4_attention_serves_keys(
+            head_dim=head_dim, num_heads=16, num_kv_heads=2, keys=262_144
+        ) is None
+
+
+def test_a_tiled_variant_serves_a_layer_the_strict_kernel_cannot(monkeypatch):
+    """The capacity question is asked of the family, not of the strict kernel alone.
+
+    This is what makes a long context reachable rather than merely configurable:
+    where the strict kernel refuses 262,144 keys outright, the answer depends on
+    whether the requested profile selects a variant that implements the geometry
+    and walks keys without holding them.
+
+    The strict kernel's bound is narrowed here rather than relied on, because on
+    Gemma 4's own geometries it does not refuse -- see
+    ``test_the_strict_kernel_serves_gemma4_geometries_at_any_key_count``. What is
+    pinned is the mechanism for when it does.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention_module
+
+    def _refuse(*, head_dim: int, keys: int) -> int:
+        raise NotImplementedError(f"narrowed for this test: {head_dim}/{keys}")
+
+    monkeypatch.setattr(attention_module, "gemma4_attention_shared_bytes", _refuse)
+
+    long_context = dict(head_dim=512, num_heads=16, num_kv_heads=2, keys=262_144)
+
+    assert gemma4_attention_serves_keys(**long_context) is not None
+    assert gemma4_attention_serves_keys(
+        requested_variant=PRODUCTION, **long_context
+    ) is None
+    # A variant that does not implement the geometry does not serve it either.
+    assert gemma4_attention_serves_keys(
+        requested_variant=(PREFILL_ATTENTION_WMMA_FLASH,), **long_context
+    ) is not None

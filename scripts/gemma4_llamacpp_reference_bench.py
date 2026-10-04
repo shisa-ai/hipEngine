@@ -17,9 +17,10 @@ Comparability, stated once:
   first greedy sample; the hipEngine ``decode_s`` starts after it. The
   difference is one host sample (~sub-millisecond) inside a second-plus phase
   and is recorded here rather than silently adjusted.
-- llama.cpp runs at its shipped configuration for this artifact (flash
-  attention on, graph-free decode); hipEngine runs its own shipped path. Each
-  engine is measured at its product defaults.
+- llama.cpp runs its shipped graph configuration for this artifact with flash
+  attention on; hipEngine runs its own shipped path. Do not disable comparator
+  graphs to make an eager engine appear faster. Record actual graph behavior
+  from the server log rather than inferring it from throughput.
 
 Unit tests for the response accounting live in
 ``tests/test_unit_gemma4_llamacpp_reference.py``.
@@ -30,7 +31,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
+import re
 import shlex
 import signal
 import socket
@@ -50,6 +53,8 @@ if str(_REPO_ROOT) not in sys.path:
 from scripts.gemma4_campaign_bench import (  # noqa: E402
     DEFAULT_ARTIFACT,
     exact_prompt_ids,
+    _provenance,
+    _run,
 )
 
 # The pinned llama.cpp HIP comparator. These were hard-coded paths under
@@ -76,15 +81,22 @@ def reference_row(response: dict[str, Any], prompt_ids: Sequence[int], outputs: 
     tokens = response.get("tokens", [])
     if len(tokens) != outputs:
         raise ValueError(f"response carried {len(tokens)} output tokens, expected {outputs}")
+    if any(type(token) is not int or token < 0 for token in tokens):
+        raise ValueError("response carried malformed token IDs")
     timings = response.get("timings") or {}
+    if (type(timings.get("prompt_n")) is not int
+            or timings["prompt_n"] != len(prompt_ids)
+            or type(timings.get("cache_n")) is not int or timings["cache_n"] != 0):
+        raise ValueError("prefill must process the full prompt with zero cached tokens")
     if timings.get("predicted_n") != outputs:
         raise ValueError(
             f"timings.predicted_n={timings.get('predicted_n')} does not equal {outputs}"
         )
-    prompt_ms = float(timings.get("prompt_ms") or 0.0)
-    predicted_ms = float(timings.get("predicted_ms") or 0.0)
-    if not prompt_ms > 0 or not predicted_ms > 0:
-        raise ValueError(f"non-positive timing: prompt_ms={prompt_ms}, predicted_ms={predicted_ms}")
+    prompt_ms = timings.get("prompt_ms")
+    predicted_ms = timings.get("predicted_ms")
+    if any(type(value) not in (int, float) or not math.isfinite(value) or value <= 0
+           for value in (prompt_ms, predicted_ms)):
+        raise ValueError(f"invalid timing: prompt_ms={prompt_ms}, predicted_ms={predicted_ms}")
     decode_forwards = outputs - 1
     decode_s = predicted_ms / 1000.0
     prefill_s = prompt_ms / 1000.0
@@ -96,6 +108,43 @@ def reference_row(response: dict[str, Any], prompt_ids: Sequence[int], outputs: 
         "decode_s": decode_s,
         "decode_tps": decode_forwards / decode_s,
         "prefill_tps": len(prompt_ids) / prefill_s,
+        "generated_token_ids": list(tokens),
+        "content": response.get("content"),
+        "stop_type": response.get("stop_type"),
+        "generation_settings": response.get("generation_settings"),
+        "timings": dict(timings),
+    }
+
+
+def binary_provenance(server: Path, source_commit: str) -> dict[str, Any]:
+    """Bind the measured executable's embedded revision to the supplied source."""
+    version = _run([str(server), "--version"])
+    match = re.search(r"commit ([0-9a-f]{7,40})", version)
+    if match is None or not source_commit.startswith(match[1]):
+        raise ValueError(f"server build/source revision mismatch: {version!r} vs {source_commit}")
+    digest = hashlib.sha256()
+    with server.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return {"path": str(server.resolve()), "sha256": digest.hexdigest(), "version": version}
+
+
+def runtime_log_metadata(log: str) -> dict[str, Any]:
+    """Retain observed runtime settings, never infer graph enablement from speed."""
+    capacities = re.findall(r"n_ctx_(?:per_seq|slot)\s*=\s*(\d+)", log)
+    pairs = re.findall(r"K \((\w+)\).*?V \((\w+)\)", log)
+    reused = [int(value) for value in re.findall(r"graphs reused\s*=\s*(\d+)", log)]
+    lines = log.splitlines()
+    graph = [line for line in lines if "graph" in line.lower()]
+    return {
+        "effective_context": int(capacities[-1]) if capacities else None,
+        "kv_dtype_pairs": [list(pair) for pair in sorted(set(pairs))],
+        "flash_attention_log": [line for line in lines if "flash_attn" in line or "flash attention" in line.lower()],
+        "device_log": [line for line in lines if "ROCm" in line or "Device " in line or "using device" in line.lower()],
+        "graph_log": graph,
+        "graph_fallback_observed": any("disabl" in line.lower() or "fallback" in line.lower() for line in graph),
+        "graph_reuse_counts": reused,
+        "graph_enabled": True if any(value > 0 for value in reused) else None,
     }
 
 
@@ -195,6 +244,13 @@ def _median(values: list[float]) -> float:
     return float(statistics.median(values))
 
 
+def _positive_seconds(value: str) -> float:
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("request timeout must be finite positive seconds")
+    return seconds
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact", type=Path, default=DEFAULT_ARTIFACT)
@@ -205,6 +261,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--context", type=int, default=8192)
+    parser.add_argument("--request-timeout", type=_positive_seconds, default=600.0,
+                        help="completion request timeout in seconds; increase for long-context prefill")
     parser.add_argument("--kv", default="bf16")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--pci", default=None,
@@ -217,6 +275,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.prompt < 1 or args.output < 2:
         parser.error("--prompt >= 1 and --output >= 2 required")
+    if args.samples < 1 or args.warmup < 0:
+        parser.error("--samples must be positive and --warmup must not be negative")
     if args.prompt + args.output > args.context:
         parser.error("prompt + output must fit --context")
 
@@ -254,6 +314,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         ).strip()
     except (OSError, subprocess.CalledProcessError):
         pass
+    executable = binary_provenance(args.server, source_commit)
+    provenance = _provenance(args.artifact)
+    source_dirty = _run(["git", "-C", str(args.source), "status", "--porcelain"])
     server_command = [
         str(args.server), "-m", str(args.artifact), "-ngl", "99", "-fa", "on",
         "-ctk", args.kv, "-ctv", args.kv, "-c", str(args.context), "-np", "1",
@@ -291,7 +354,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[llamacpp_reference] text tokenizer parity: {text_probe}", flush=True)
 
         for index in range(args.warmup):
-            row = reference_row(_post(base, _completion_body(prompt_ids, args.output)), prompt_ids, args.output)
+            row = reference_row(_post(base, _completion_body(prompt_ids, args.output),
+                                      timeout=args.request_timeout), prompt_ids, args.output)
             row["index"] = index
             warmups.append(row)
             print(
@@ -300,7 +364,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 flush=True,
             )
         for index in range(args.samples):
-            row = reference_row(_post(base, _completion_body(prompt_ids, args.output)), prompt_ids, args.output)
+            row = reference_row(_post(base, _completion_body(prompt_ids, args.output),
+                                      timeout=args.request_timeout), prompt_ids, args.output)
             row["index"] = index
             samples.append(row)
             print(
@@ -313,6 +378,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if process is not None:
             _stop(process)
 
+    runtime = runtime_log_metadata(log_path.read_text(errors="replace"))
+    if runtime["effective_context"] != args.context:
+        raise ValueError(
+            f"observed context {runtime['effective_context']} does not match requested {args.context}; "
+            "use a context multiple of 256 for an equal-capacity comparison"
+        )
+    all_rows = [*warmups, *samples]
+    repeats_equal = all(row["generated_token_ids"] == samples[0]["generated_token_ids"] for row in all_rows)
     stats = {
         "samples": len(samples),
         "decode_tps": _median([row["decode_tps"] for row in samples]),
@@ -328,19 +401,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     artifact = {
         "schema": 1,
         "label": args.label,
-        "status": "ok",
+        "status": "ok" if repeats_equal else "output_drift",
         "performance_claim": False,
         "created_at": started_at,
         "command": shlex.join([sys.executable, *sys.argv]),
         "server_command": server_command,
+        "request_timeout_s": args.request_timeout,
         "llamacpp_source": str(args.source),
+        "provenance": provenance,
+        "server_binary": executable,
+        "llamacpp_source_dirty": source_dirty.splitlines(),
+        "runtime": runtime,
+        "correctness": {"full_uncached_prefill": True, "repeat_output_ids_equal": repeats_equal},
         "llamacpp_commit": source_commit,
         "artifact": str(args.artifact),
         "artifact_bytes": args.artifact.stat().st_size,
         "prompt_ids_sha256": hashlib.sha256(
             b"".join(int(t).to_bytes(4, "little") for t in prompt_ids)
         ).hexdigest(),
-        "env": {k: os.environ.get(k) for k in sorted(os.environ) if k.startswith(("HIP", "ROCR", "HSA"))},
+        "env": {k: os.environ.get(k) for k in sorted(os.environ) if k.startswith(("HIP", "ROCR", "HSA", "GGML", "LLAMA", "AMD", "GPU_"))},
         "kv": args.kv,
         "context": args.context,
         "text_probe": text_probe,
@@ -354,10 +433,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "samples": samples,
         "stats": stats,
     }
-    args.out.write_text(json.dumps(artifact, indent=2) + "\n")
+    args.out.write_text(json.dumps(artifact, indent=2, allow_nan=False) + "\n")
     print(f"llamacpp_decode_tps={stats['decode_tps']:.4f}")
     print(f"llamacpp_prefill_tps={stats['prefill_tps']:.2f}")
     print(f"artifact={args.out}")
+    if not repeats_equal:
+        print(f"ERROR: reference generation is not repeatable; rejected outputs retained in {args.out}", file=sys.stderr)
+        return 1
     return 0
 
 

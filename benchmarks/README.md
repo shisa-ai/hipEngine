@@ -1976,6 +1976,252 @@ numeric 128K row is carried forward. Evidence:
 [September 20 C1 refresh](results/2026-09-20-gfx1151-v060-headline-refresh.json);
 [`SH14-C1 completion gate`](results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
 
+### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
+
+#### End-to-end comparison checkpoint (2026-10-03)
+
+On zbook/Radeon 8060S, hipEngine and llama.cpp HIP receive identical prompt
+IDs, BF16 KV, greedy 128-output requests ignoring EOS, and equal observed
+context capacities rounded to 256 tokens above prompt+128. Each row is the
+median of three requests after one full-shape warmup. Decode measures 127
+single-token forwards following the actual full prompt; llama.cpp's time
+also includes the first greedy sample. Loading is outside both phase scopes.
+
+| Prompt tokens | hipEngine prefill tok/s | llama.cpp prefill tok/s | hipEngine decode tok/s | llama.cpp decode tok/s |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 1051.9 | 902.6 | 27.26 | 36.29 |
+| 1024 | 888.2 | 1175.4 | 29.46 | 33.78 |
+| 2048 | 739.1 | 1151.7 | 29.28 | 30.47 |
+| 4096 | 641.6 | 1135.6 | 28.25 | 29.34 |
+
+All four rows process the entire uncached prompt, preserve repeat IDs within
+each engine, and match IDs across engines and hipEngine's public route.
+Instrumented hipEngine logits are finite. The 8192-token reference is an
+output-drift diagnostic, not an accepted row: identical requests produce two
+different continuations starting at generated index three. hipEngine does not
+lead both metrics at these four depths. No full-depth 16K–256K measurement of
+this default is established by the fixed-context replay results below.
+[Protocol, samples, identities and rejected 8K outputs](results/2026-10-03-gemma4-gfx1151-depth-checkpoint.json).
+
+#### Rebase integration check (2026-10-03)
+
+On zbook/Radeon 8060S, the integrated production path and the pre-rebase
+checkout use Gemma `UD-Q4_K_XL`, BF16 KV, equal context capacities,
+128 greedy outputs ignoring EOS, and identical uncached prompt IDs.
+Three measured requests follow one full-shape warmup per checkout.
+These phase timings are not HTTP throughput or a llama.cpp comparison.
+
+| Prompt tokens | Pre-rebase prefill s | Integrated prefill s | Latency change |
+| ---: | ---: | ---: | ---: |
+| 512 | 0.4956 | 0.4976 | +0.39% |
+| 2053 | 2.8351 | 2.7353 | −3.52% |
+| 8192 | 15.1967 | 14.7111 | −3.19% |
+| 16384 | 40.1761 | 38.1657 | −5.00% |
+
+All four public/instrumented output checks pass, and each integrated run
+matches the pre-rebase 128 output IDs. Without host rotary-table reuse, a
+seven-sample 512-token confirmation measures **0.4873 → 0.4990 s (+2.39%)**.
+This records the integration before the host-table change below, not an overall
+non-regression finding or a replacement model topline. Kernel parent/CPU-reference
+and stream/sentinel tests pass; the fresh unit tier has only two inherited
+VibeVoice failures. Saved measurements predate a repaired variant-manifest
+label; the artifact separates actual traced execution from that stale label.
+[Commands, samples, provenance and limitations](results/2026-10-03-gemma4-gfx1151-rebase-fused-t16.json).
+
+#### Host rotary-table reuse (2026-10-03)
+
+On zbook/Radeon 8060S, Gemma `UD-Q4_K_XL`, production/BF16 KV, single-request
+128-output greedy generation uses identical natural prompt IDs and context
+capacities in the pre-rebase and integrated checkouts. Seven measured requests
+follow one full-shape warmup, except the 2053-token baseline has three samples.
+These are runner phase timings, not HTTP throughput or a llama.cpp comparison.
+
+| Prompt tokens | Pre-rebase prefill s | Integrated prefill s | Latency change |
+| ---: | ---: | ---: | ---: |
+| 512 | 0.4906 | 0.4645 | −5.31% |
+| 1024 | 1.1551 | 1.0639 | −7.89% |
+| 2053 | 2.8351 | 2.7151 | −4.23% |
+| 4096 | 6.3909 | 6.1011 | −4.53% |
+
+The default runner reuses one host rotary-table range per configuration across
+reset and decode. At 512/1024, these warm requests reuse the tables; at
+2053/4096, chunking replaces ranges and still computes the original tables.
+First or changed ranges also compute the original tables: **no cold-miss speed
+improvement is claimed**. Every block still uploads fresh tables; no prompt
+activations, logits, KV or device weights are cached by this optimization.
+
+All warmup, sample and public output IDs equal their pre-rebase references.
+Public 512→512→257→257→512 requests show miss/hit/miss/hit/miss. Full logits
+at cache miss/hit are byte-identical after intervening decode, and graph replay
+parity passes. Host tables occupy 3 MiB at 512; close releases their entries.
+[Commands, samples, provenance and correctness checks](results/2026-10-03-gemma4-gfx1151-rope-prefill-cache.json).
+
+#### Shared transient attention workspace (2026-10-03)
+
+On zbook/Radeon 8060S, Gemma 4 26B-A4B `UD-Q4_K_XL` with BF16 KV and
+8,192 prompt tokens / 128 greedy outputs uses one attention workspace owner
+across its 30 serial layers. An instrumented public `LLM.generate_detailed()`
+control measures 522,125,312 retained workspace bytes (0.486 GiB), compared
+with 5,558,108,160 bytes (5.176 GiB) using separate per-layer owners. All 128
+full-logit rows are finite and bit-identical between the controls; generated
+IDs also match. This is an allocation/ownership result, not a latency or
+full-depth capacity result. Standalone layers keep independent owners.
+[Driver, allocator counts and full-logit hashes](results/2026-10-03-gemma4-gfx1151-shared-workspace.json).
+
+#### Singleton staged-attention PV (2026-10-03)
+
+On physical host **zbook / Radeon 8060S (gfx1151)**, the default production
+staged-attention path uses independent output-dimension slices for a single
+query token, preserving each output's ascending-key FP32 accumulation chain.
+Synthetic BF16 attention with 16 query heads measures **28.7–81.7% lower latency**
+across ten sliding/full geometries at 127/513/2053/8191/17000 keys. Three
+seven-pair AB/BA blocks use identical device buffers and reusable workspace;
+all independent outputs are finite and bit-identical. Eight multi-query controls
+meet the predeclared candidate/baseline pooled-median limit of 1.02.
+
+A same-residency model diagnostic uses `UD-Q4_K_XL`, BF16 KV, capacity 8207,
+a fixed teacher token and prefix, and nine alternating replays per arm after
+warmup. Both arms bind frozen libraries identically; times include forward,
+host argmax and synchronization, not prefill or request loading:
+
+| Teacher-prefix tokens | Baseline decode wall | Singleton decode wall | Latency reduction |
+| --- | ---: | ---: | ---: |
+| 513 | 38.25 ms | 36.89 ms | 3.5% |
+| 2053 | 48.05 ms | 38.01 ms | 20.9% |
+| 8191 | 64.84 ms | 37.97 ms | 41.4% |
+
+Every replay's full logits match baseline bits. A separate `LLM.generate()`
+request at 2053/4 selects staged attention; cached native profiling confirms
+32-thread singleton PV kernels. The 134 unit/GPU primitive checks pass, and
+two saved 64-row strict teacher chains match full logits bit-for-bit. These
+measurements do not establish a free-running throughput curve, a 256K result,
+a llama.cpp comparison, or total host overhead.
+[Commands, samples, attribution and checks](results/2026-10-03-gemma4-gfx1151-staged-pv-singleton.json).
+
+#### Staged-attention PV specialization (2026-10-03)
+
+Production uses strict-order staged attention. Specializing the resident GQA
+query rows removes dynamic row checks from its weighted-sum stage without
+changing arithmetic, allocation, or the three-stage launch sequence. On physical
+host **zbook / Radeon 8060S (gfx1151)**, synthetic BF16 causal blocks measure:
+
+| Query rows / keys | Head dim / KV heads / window | Baseline ms | Specialized ms | Latency reduction |
+| --- | --- | ---: | ---: | ---: |
+| 512 / 513 | 256 / 8 / 1024 | 3.667 | 2.722 | 25.8% |
+| 512 / 513 | 512 / 2 / 0 | 5.158 | 3.947 | 23.5% |
+| 512 / 2053 | 256 / 8 / 1024 | 16.242 | 13.266 | 18.3% |
+| 512 / 2053 | 512 / 2 / 0 | 26.403 | 22.686 | 14.1% |
+| 512 / 8191 | 256 / 8 / 1024 | 16.155 | 13.424 | 16.9% |
+| 512 / 8191 | 512 / 2 / 0 | 112.772 | 100.557 | 10.8% |
+| 127 / 17000 | 256 / 8 / 1024 | 3.931 | 3.032 | 22.9% |
+| 127 / 17000 | 512 / 2 / 0 | 61.799 | 54.468 | 11.9% |
+
+Each row has 16 query heads. Values are pooled medians from three seven-pair
+AB/BA blocks, timed with default-stream HIP events on shared buffers and reusable
+workspace, with two configured warmups plus untimed setup/capture launches per
+arm. The baseline is the prior staged library,
+not WMMA attention. Independent captures poison output and workspace with NaNs;
+all outputs are finite and bit-identical. These are synthetic kernel-subwindow
+measurements, not model throughput or a context-scaling curve.
+
+A same-residency, fixed-one-output-token runner diagnostic measures prefill at
+513/2053/8191 tokens as **0.542 → 0.524 s**, **3.072 → 2.844 s** and
+**16.573 → 15.232 s** (3.3/7.4/8.1% lower latency), three paired samples per
+arm after a full-shape warmup. Both arms use frozen-library bindings and produce
+the same IDs. A separate unmodified `LLM.generate()` request at 1537/4 confirms
+staged selection; a public profiler names the specialized two-/eight-row PV
+kernels. The 100 primitive checks pass, and two saved 64-row strict teacher
+chains match full logits bit-for-bit. No new decode, model-topline, llama.cpp
+comparison or 256K performance result is claimed.
+[Commands, samples and checks](results/2026-10-03-gemma4-gfx1151-staged-pv-resident-rows.json).
+
+#### Model-throughput measurement (2026-09-29)
+
+The following model-throughput row was measured before the 2026-10-03 staged-PV
+specialization; it is not a measurement of that change.
+
+Dense T16 Q8 WMMA prefill recomputes non-finite accumulator elements in FP32
+from the original activation, so oversized GeGLU inputs do not require disabling
+the dense down-projection fast path. A same-residency 512–4096 prompt diagnostic
+with eight output tokens measured median prefill changes of -0.46% to +0.75%
+against the pre-repair WMMA library, with identical generated tokens and uncapped
+logits at the checked teacher positions. This is a correctness-repair check,
+not a replacement for the 512/128 topline below. See the
+[range-repair diagnostic](results/2026-09-29-gemma4-dense-range-repair.json).
+
+Prefill runs the routed experts through int8 MMQ routes. The fused gate/up
+projection and the down projection each pack the block's activations to Q8_1
+blocks and contract them with `dp4a`, reading an expert's weight row once per
+pass and reusing it across that expert's rows. Every layer takes both routes:
+they match the model's mixed quantization against the shapes they declare — 29
+layers of `Q4_K` gate/up with `Q5_1` down, and layer 29 of `Q5_K` with `Q8_0` —
+so the layer whose quantization differs from its siblings is routed by the same
+rule as the rest rather than falling to a slower fallback.
+
+| Workload | Prefill | Decode | Public wall |
+| --- | ---: | ---: | ---: |
+| 512/128 | **1242 tok/s** | 28.92 tok/s | **4.38 s** |
+
+Both arms of that row were measured in one session with only the Q4_K gate/up
+leaf's source file, its wrapper, its route and its loader repack differing:
+**1147 to 1242 tok/s prefill, 28.374 to 28.924 tok/s decode, 4.86 to 4.38 s
+public wall**, path parity true in both. The leaf itself goes **4.087 to 2.987 ms
+per call at 512 tokens and 4.170 to 3.0723 at 4096**, 29 and 232 calls
+respectively, and the output is bit-identical.
+
+The leaf reads its weight tile through LDS now. The tile is repacked K-major, a
+pure permutation that puts the byte for (byte column `p`, K value `k`) at
+`p * 16 + (k % 16)` inside its 128-byte K tile, so the sixteen K values one lane
+needs for its byte column become one contiguous 16-byte block. Each sub-block's
+512 staged bytes are copied by one coalesced 128-bit load per lane and read back
+as one 128-bit LDS load per weight fragment, replacing sixteen scalar global byte
+loads. Reading the same fragment straight from global memory instead is **1.98x
+slower**: one load per fragment leaves the compiler nothing to batch, so it keeps
+more fragments in flight to hide L2 latency and asks for 256 VGPRs -- the ISA
+maximum -- with 202 spilled instructions, against the row-major decode's 175
+VGPRs and no spill. The LDS read is short-latency enough not to need batching,
+and the budget lands at **172 VGPRs with no spill and 99.2 instructions per
+WMMA** against the row-major decode's 124.4.
+
+An earlier published row for this workload was 121.90 tok/s prefill, 21.14
+tok/s decode and a 10.240 s wall. The intervening work was the int8 MMQ expert
+routes becoming the default, the Q5_1 down projection's inner-loop memory
+traffic, layer 29 reaching its siblings' routes, prefill attention no longer
+walking the columns its own causal mask zeroes, the Q4_K gate/up leaf's
+per-(sub-block, k-tile, half) bookkeeping moving out of its K loop, and now that
+leaf reading its tile through LDS. Prefill-only
+kernel time at 512 tokens divides into the routed experts at 46.8%, the dense
+projections and lm head at 26.9%, and attention at 19.2%. At 2048 tokens
+attention is 46.2% and the expert block 31.1%, so attention is the only term
+that grows with prompt length and past the sliding window it becomes the largest
+single one.
+
+The projection kernels are fetch-bound, not weight-bound: with the weight reuse
+in place the two expert projections were still 68% of prefill kernel time while
+moving only ~4 GB/s of weight bytes, and isolating the shipped kernel's parts put
+30 ms of 49 ms in the Q4_K dequant and 21 ms in the activation-side multiply.
+Staging the expert's activation rows in shared memory and hoisting each column's
+`d*scale` / `dmin*min` pairs into shared memory per 32-element sub-block is an
+exact rewrite of the same expressions, so it is **2.07x** on that kernel with 0
+of 5,767,168 bf16 outputs differing. The T16 gate/up WMMA leaf is a different
+route to the same projection, and it gains **1.294x** on its own fixture and
+**1.200x** in situ by hoisting its per-(sub-block, k-tile, half) bookkeeping out
+of the K loop and dropping a column-validity predicate that no stored column
+could observe. That is also bit-identical, 0 of 5,767,168 outputs differing, and
+it is what the +7.0% row above measures.
+
+Routing the `Q4_K` gate/up through the row-batched WMMA prefill instead exceeds
+the production `kl_max` limit at 0.167959 on 2 of 1023 teacher-forced rows (both
+rows keep their top-1 token; the divergence is a compressed tail), so it is not
+shipped. Evidence:
+[public-path row](results/2026-09-28-gemma4-q5-1-down-mmq-load-width-accepted.json);
+[prefill census](results/2026-09-28-gemma4-gfx1151-prefill-census-layer29-closed.json);
+[`Q5_1` down reuse](results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json);
+[`Q4_K` gate/up reuse](results/2026-09-27-gemma4-moe-prefill-q4k-grouped-accepted.json);
+[`Q4_K` staged fetch](results/2026-09-27-gemma4-moe-prefill-q4k-staged-accepted.json);
+[`Q4_K` gate/up T16 leaf](results/2026-09-29-gemma4-t16-gate-up-leaf-invariant-hoist.json);
+[`WMMA row-slice rejection`](results/2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json).
+
 ### Laguna S 2.1
 
 | Platform / format | Workload | Prefill | Decode | Evidence |

@@ -211,7 +211,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `quant/gguf_q6_k_t16_gemv.hip` | T16/qmicro Q6_K projections and head/residual composites. |
 | `quant/gguf_t16_selected_gemv.hip` | T16 selected-expert projections and weighted/residual composites. |
 | `quant/gguf_k_t16_selected_prefill.hip` | T16 Q5_K/Q6_K selected-expert prefill projections. |
-| `quant/gguf_q4_k_t16_selected_prefill.hip` | T16 Q4_K selected-expert prefill projections. |
+| `quant/gguf_q4_k_t16_selected_prefill.hip` | T16 Q4_K selected-expert prefill, including an LDS-transposed fused expert-major gate/up consumer. |
 | `quant/gguf_q5_k_qmicro_planar_gemv.hip` | Planar qmicro Q5_K selected-expert projections. |
 | `quant/gguf_q8_0_t16_gemv.hip` | T16 Q8_0 decode projections. |
 | `quant/gguf_q8_0_t16_prefill.hip` | T16 Q8_0 prefill projections with FP32 repair of non-finite WMMA accumulators. |
@@ -326,6 +326,7 @@ strict fallback; backend packages supply shape-specific choices. See
 | --- | --- | --- | --- |
 | Qwen/PARO `w4_paro` | Pack8 projections, separate rotation/SiLU/combine | Fused rotation/projection and selected feed-forward chains; matrix-tiled prefill | `quant/paro_awq_gemv`, `quant/paro_moe_ffn_fused`, `wmma/paro_awq_wmma` |
 | GGUF Q4/Q5/Q6 T16 | Scalar/row-tiled projections and primitive residual/weighted sums | Matrix-tiled prefill, dual+SiLU, weighted-down and residual composites | `quant/gguf_t16_selected_gemv`, `quant/gguf_k_t16_selected_prefill`, `quant/gguf_q4_k_t16_selected_prefill` |
+| GGUF Q4 T16 fused expert slab | Registered selected-row projection primitives and split-parent WMMA | `moe_linear` / `gguf_q4_k_t16_v1` / `selected_dual_wmma_prefill_fused_bf16_bf16_out`: one expert-major gate/up slab, explicit full expert stride, transient LDS transpose with split-parent arithmetic | `quant/gguf_q4_k_t16_selected_prefill` |
 | GGUF Q4/Q5/Q6 library routes | Exact raw/T16 projections | Dequantized FP16 rocBLAS and activation-quantized integer prefill | `quant/gguf_q6_k_f16_rocblas_prefill`, `quant/gguf_k_mmq_prefill`, `quant/gguf_q4_k_q8_1_selected_prefill` |
 | GGUF Q8_0 | Raw/T16 GEMV and exact row-batched variants | Matrix-tiled and integer prefill; packed-integer verifier projections | `quant/gguf_k_gemv`, `quant/gguf_q8_0_t16_*`, `quant/gguf_q8_0_mmq_prefill`, `quant/gguf_q8_0_dp4a_gemv` |
 | Qwen4Exp Q5_1 experts | Selected GEMV and exact grouped projections | `selected_grouped_wmma_prefill_compact_bf16_bf16_out` | `quant/qwen4_exp_q5_1` |
@@ -334,7 +335,7 @@ strict fallback; backend packages supply shape-specific choices. See
 | Qwen4Exp sparse attention | `strict_rows_spans`, exact ordered decode variants | `production_wave32_h128_spans`, `production_rows_wave32_h128_spans` | `attention/qwen4_exp_qsa` |
 | Laguna FP16 | Scalar/tiled projections and strict attention | Matrix-tiled projections, flash prefill, and fused attention/output gate | `linear/laguna_f16_projection`, `attention/laguna_kv_attention`, `attention/laguna_flash_attention_prefill` |
 | Moonshine FP16 | Separate projection, activation, residual, and norm | Fused MLP/residual/norm; optional CUDA CUTLASS attention | `linear/moonshine_projection`, `fused/moonshine_*`, `norm/moonshine_layernorm`, CUDA `attention/moonshine_attention_cutlass` |
-| Gemma 4 GGUF `gguf_q4_k_m` prefill attention | Scalar per-(token, head) prefill attention, exact against the decode twin | BF16 WMMA flash prefill, one candidate per attention geometry: `gemma4_wmma_flash` (sliding, head_dim 256) and `gemma4_wmma_flash_full` (full, head_dim 512) | `gemma4/gemma4_attention_prefill_wmma`, `gemma4/gemma4_attention_prefill_wmma_full` |
+| Gemma 4 GGUF `gguf_q4_k_m` prefill attention | `gemma4_plain`: scalar strict attention with an exact decode twin | `gemma4_staged`: strict-order FP32 score, softmax and P*V stages with global score workspace and bounded LDS; selected by production for head_dim 256/512. Explicit WMMA candidates remain registered for arithmetic evaluation but are not defaults after multicategory KL failures | `gemma4/gemma4_attention`, `gemma4/gemma4_attention_staged`, `gemma4/gemma4_attention_prefill_wmma`, `gemma4/gemma4_attention_prefill_wmma_full` |
 | VibeVoice BF16 | `strict` primitives and incremental prefill | Fused depthwise convolution, matrix-tiled frontend, and library prefill | `vibevoice/encoder`, `vibevoice/registered.py` |
 | TimesFM | FP32 attention | FP16 matrix-tiled flash attention | `timesfm/timesfm` |
 | YuE2 autoregressive BF16 | Row-by-row dense GEMV prefill | FP16-converted hipBLASLt batched prefill | Shared `linear/dense_gemv`, `hipengine/runtime/yue2_ar.py` |

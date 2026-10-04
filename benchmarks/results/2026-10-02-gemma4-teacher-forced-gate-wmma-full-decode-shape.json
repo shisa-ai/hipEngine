@@ -1,0 +1,103 @@
+{
+ "baseline": {
+  "chain": {
+   "corpus": "frozen",
+   "corpus_seed": null
+  },
+  "chain_sha256": "7cf9b6b2971e115104a2343207c4d854e36683d5a434f7014bafed23955f84d3",
+  "forced_slices": null,
+  "forced_wmma_full_shape": "prefill",
+  "forced_wmma_full_slices": null,
+  "sha256": "bd35952d5e4efb44fe92b355772f854cc494ddada751036757e5aa615ac7c4f1",
+  "stored_outside_repo": true
+ },
+ "baseline_command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gemma4_teacher_forced_gate.py capture --prompt 16384 --prefill 15856 --context 16384 --wmma-full-shape prefill --out /tmp/gate_shape_prefill.npz",
+ "candidate": {
+  "forced_slices": null,
+  "forced_wmma_full_shape": "decode",
+  "forced_wmma_full_slices": null,
+  "profile": "production"
+ },
+ "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gemma4_teacher_forced_gate.py gate --prompt 16384 --prefill 15856 --context 16384 --wmma-full-shape decode --baseline /tmp/gate_shape_prefill.npz",
+ "date": "2026-10-02",
+ "gate": "docs/EXECUTION-PROFILES.md section 6 KL envelope over full-vocabulary teacher-forced rows",
+ "measured": {
+  "kl_max": 0.0012235915716105777,
+  "kl_mean": 5.044881182221965e-06,
+  "kl_p95": 1.2495606601741772e-06,
+  "kl_p99": 1.863194633544349e-05,
+  "top1_flips": 0,
+  "top1_flips_close_margin": 0,
+  "top1_rate": 1.0
+ },
+ "not_supplied_by_this_evaluator": [
+  "category gates",
+  "isolation gates",
+  "task gates",
+  "the 500-1000 paired-row promotion standard (this is 527 single-chain rows)"
+ ],
+ "note": "The arms differ in exactly one thing: which query-block shape the full layers' decode launches. Both run the shipped key split. --wmma-full-shape is a third independent pin, separate from --wmma-full-slices and --slices, because the shape is an arithmetic path of its own -- it regroups the softmax over a different set of query heads -- so varying it together with the split could not attribute a difference to either.",
+ "observed_routes": {
+  "decode_launches": 13175,
+  "head_dims": [
+   256
+  ],
+  "selections": [
+   2
+  ],
+  "split_key_range": [
+   1024,
+   1024
+  ],
+  "split_launches": 13175
+ },
+ "observed_wmma_full_split": {
+  "divided_key_range": [
+   15857,
+   16383
+  ],
+  "divided_plans": 2635,
+  "plans": 2635,
+  "shapes": [
+   2
+  ],
+  "slice_counts": [
+   64
+  ]
+ },
+ "percentile_method": "nearest-rank",
+ "prefill_shape_unchanged": {
+  "command": "gate --prompt 16384 --prefill 15856 --context 16384 --wmma-full-shape prefill --wmma-full-slices 1 --baseline /tmp/gate_wmma_full_whole.npz",
+  "measured": {
+   "kl_max": 0.0,
+   "kl_mean": 0.0,
+   "top1_rate": 1.0
+  },
+  "passed": true,
+  "why": "The prefill shape was gated against the prefill-shape baseline the split unit froze, with the same split pin that baseline used. kl_max exactly 0.0 says the macro indirection that made the shape a build-time parameter changed no arithmetic on the path that was already shipping."
+ },
+ "prefill_tokens": 15856,
+ "route_evidence": "observed_wmma_full_split records shapes [2] and slice_counts [64] over all 2635 full-layer plans, against the baseline's shapes [16] and slice_counts [16]. 2635 is exactly 5 full layers x 527 scored rows. Without this the gate's worst failure mode is live: if the candidate never reached the decode shape the two arms would be the same kernel and every KL would be exactly zero.",
+ "rows": 527,
+ "schema": "hipengine.gemma4.teacher_forced_gate.v1",
+ "scored_key_range": [
+  15857,
+  16383
+ ],
+ "subject": "the WMMA full-layer decode query-block shape (2 rows x 8 GQA heads, gqa_tiles 1)",
+ "thresholds": {
+  "kl_max": 0.05,
+  "kl_mean": 0.001,
+  "kl_p95": 0.005,
+  "kl_p99": 0.02,
+  "top1_rate": 0.99
+ },
+ "verdict": {
+  "evidence_level": "numerical_rows",
+  "failed": [],
+  "passed": true,
+  "promotion_qualified": false
+ },
+ "vocab": 262144,
+ "why_this_geometry": "The strict decode kernel serves keys up to 15856, and the full layers only reach the WMMA kernel above that, so the scored range starts at 15857. 527 rows is above the 500-row screen threshold, making this numerical_rows rather than screen evidence."
+}

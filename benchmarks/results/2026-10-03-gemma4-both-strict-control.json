@@ -1,0 +1,297 @@
+{
+  "kind": "gemma4_both_strict_control",
+  "arms": [
+    {
+      "arm": "strict_both",
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "strict_comparison": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0,
+            "kl_p95": 0.0,
+            "kl_p99": 0.0,
+            "kl_max": 0.0,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [],
+            "passed": true,
+            "requires_review": false
+          },
+          "current_comparison": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.002323338514975637,
+            "kl_p95": 0.006745385254448209,
+            "kl_p99": 0.06182186720932541,
+            "kl_max": 0.06182186720932541,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "calls": 1950,
+          "position": 576,
+          "strict_bitwise_equal": true,
+          "strict_max_abs_diff": 0.0
+        },
+        {
+          "id": "general_en_plan",
+          "strict_comparison": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0,
+            "kl_p95": 0.0,
+            "kl_p99": 0.0,
+            "kl_max": 0.0,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [],
+            "passed": true,
+            "requires_review": false
+          },
+          "current_comparison": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0016856318554511476,
+            "kl_p95": 0.009562556707266856,
+            "kl_p99": 0.019446965284578725,
+            "kl_max": 0.019446965284578725,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95"
+            ],
+            "passed": false,
+            "requires_review": false
+          },
+          "calls": 2370,
+          "position": 8254,
+          "strict_bitwise_equal": true,
+          "strict_max_abs_diff": 0.0
+        },
+        {
+          "id": "general_ja_explain",
+          "strict_comparison": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0,
+            "kl_p95": 0.0,
+            "kl_p99": 0.0,
+            "kl_max": 0.0,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [],
+            "passed": true,
+            "requires_review": false
+          },
+          "current_comparison": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.004090152237069066,
+            "kl_p95": 0.017026199054193513,
+            "kl_p99": 0.14430417437506188,
+            "kl_max": 0.14430417437506188,
+            "top1_rate": 0.96875,
+            "top1_flips": 2,
+            "top1_flip_rows": [
+              3,
+              40
+            ],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 2,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max",
+              "top1_rate"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "calls": 2040,
+          "position": 2116,
+          "strict_bitwise_equal": true,
+          "strict_max_abs_diff": 0.0
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "strict_comparison": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0,
+            "kl_p95": 0.0,
+            "kl_p99": 0.0,
+            "kl_max": 0.0,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [],
+            "passed": true,
+            "requires_review": false
+          },
+          "current_comparison": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.009309492032046689,
+            "kl_p95": 0.032692316845507254,
+            "kl_p99": 0.2347601274581568,
+            "kl_max": 0.2347601274581568,
+            "top1_rate": 0.96875,
+            "top1_flips": 2,
+            "top1_flip_rows": [
+              46,
+              47
+            ],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max",
+              "top1_rate"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "calls": 1980,
+          "position": 1094,
+          "strict_bitwise_equal": true,
+          "strict_max_abs_diff": 0.0
+        }
+      ]
+    }
+  ],
+  "parent_commit": "623f0f406d4345a23a3b15ab9c7ca1de0975f3f3",
+  "baseline_packet": "benchmarks/results/2026-10-03-gemma4-attention-production-quality-failed.json",
+  "teacher_inputs": "Same saved prompt hashes and strict teacher tokens as baseline packet; checked during replay.",
+  "loading": {
+    "resolve_s": 0.4642126130638644,
+    "load_s": 14.9357126300456,
+    "internal_load_s": 14.69915566209238,
+    "resolution": {
+      "_resolved_backend": "hip_gfx1151",
+      "_resolved_quant": "gguf_q4_k_m",
+      "_resolved_execution_profile": {
+        "profile": "production",
+        "manifest_sha256": "11bd3c240c725a4e9330801feff134153098d7ba2748a39c0fe9548a3a10ccf3",
+        "fell_back_to_strict": false
+      },
+      "generator_type": "SubmitPollTextGenerator"
+    },
+    "context_length": 8255,
+    "runner_capacity": 8255,
+    "max_block": 512
+  },
+  "performance_claim": false,
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python /tmp/priority_strict_control.py",
+  "script_sha256": "eeb3aa60674d516cd439e08998b4dac115bd8c9d4eb01405cc80c7e5799f4624",
+  "conclusion": "Both-strict selection in the production-created runner exactly reproduces the saved strict-created-runner baseline on all four cases. Combined attention arithmetic is sufficient to account for divergence in this diagnostic; no other runner setting differed."
+}

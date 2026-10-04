@@ -1,0 +1,402 @@
+{
+  "kind": "gemma4_current_prefill_profile",
+  "performance_claim": false,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-10-03T02:08:04.391442+00:00",
+    "host_name": "zbook",
+    "repo_root": "/home/lhl/hipEngine-gemma4",
+    "hipengine_commit": "b36020ede8b95d9bb63a102a25c3019adb8c6803",
+    "git_branch": "gemma4",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 1,
+    "dirty": true,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+      "size_bytes": 17010980576,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8504966000,
+        17009932000
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "bf16",
+    "command": [
+      "-"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": null,
+    "warmups": null,
+    "repetitions": null,
+    "profiler": null
+  },
+  "shape": {
+    "keys": 65536,
+    "tokens": [
+      1,
+      256
+    ],
+    "mask": "all-ones",
+    "full_layer_count": 1
+  },
+  "unprofiled": [
+    {
+      "keys": 65536,
+      "tokens": 1,
+      "ms": 1.3637600932270288,
+      "unique_bytes": 268435456,
+      "unique_gbps": 196.8348079205107,
+      "unique_pct_of_roofline": 82.53031778637767,
+      "logical_gbps": 1574.6784633640857,
+      "logical_pct_of_roofline": 660.2425422910213
+    },
+    {
+      "keys": 65536,
+      "tokens": 256,
+      "ms": 59.36180695425719,
+      "unique_bytes": 68719476736,
+      "unique_gbps": 1157.6378864099202,
+      "unique_pct_of_roofline": 485.3827615974508,
+      "logical_gbps": 9261.103091279361,
+      "logical_pct_of_roofline": 3883.0620927796062
+    }
+  ],
+  "counter_groups": {
+    "fetch": {
+      "csv": "/tmp/priority-current-fetch/zbook/1440667_counter_collection.csv",
+      "dispatches": [
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 128,
+          "grid_threads": 4096,
+          "duration_ms": 1.809084,
+          "counters": {
+            "FETCH_SIZE": 262304.8125
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 128,
+          "grid_threads": 4096,
+          "duration_ms": 1.442803,
+          "counters": {
+            "FETCH_SIZE": 262321.125
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 256,
+          "grid_threads": 32768,
+          "duration_ms": 66.30701,
+          "counters": {
+            "FETCH_SIZE": 691586.0625
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 256,
+          "grid_threads": 32768,
+          "duration_ms": 65.6587,
+          "counters": {
+            "FETCH_SIZE": 691616.8125
+          }
+        }
+      ]
+    },
+    "l2": {
+      "csv": "/tmp/priority-current-l2/zbook/1440810_counter_collection.csv",
+      "dispatches": [
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 128,
+          "grid_threads": 4096,
+          "duration_ms": 1.840329,
+          "counters": {
+            "L2CacheHit": 0.571615831
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 128,
+          "grid_threads": 4096,
+          "duration_ms": 1.419149,
+          "counters": {
+            "L2CacheHit": 0.518882586
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 256,
+          "grid_threads": 32768,
+          "duration_ms": 66.181324,
+          "counters": {
+            "L2CacheHit": 74.570591
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 256,
+          "grid_threads": 32768,
+          "duration_ms": 64.327481,
+          "counters": {
+            "L2CacheHit": 74.629585
+          }
+        }
+      ]
+    },
+    "issue": {
+      "csv": "/tmp/priority-current-issue/zbook/1439565_counter_collection.csv",
+      "dispatches": [
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 128,
+          "grid_threads": 4096,
+          "duration_ms": 1.839622,
+          "counters": {
+            "SQ_INSTS_BRANCH": 1807392.0,
+            "SQ_INSTS_FLAT": 565888.0,
+            "SQ_INSTS_LDS": 9242656.0,
+            "SQ_INSTS_SALU": 5501888.0,
+            "SQ_INSTS_VALU": 18265984.0,
+            "SQ_WAVES": 128.0
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 128,
+          "grid_threads": 4096,
+          "duration_ms": 1.395356,
+          "counters": {
+            "SQ_INSTS_BRANCH": 1807392.0,
+            "SQ_INSTS_FLAT": 565888.0,
+            "SQ_INSTS_LDS": 9242656.0,
+            "SQ_INSTS_SALU": 5501888.0,
+            "SQ_INSTS_VALU": 18265984.0,
+            "SQ_WAVES": 128.0
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 256,
+          "grid_threads": 32768,
+          "duration_ms": 63.546358,
+          "counters": {
+            "SQ_INSTS_BRANCH": 163317376.0,
+            "SQ_INSTS_FLAT": 37753344.0,
+            "SQ_INSTS_LDS": 787097728.0,
+            "SQ_INSTS_SALU": 565405440.0,
+            "SQ_INSTS_VALU": 2033801984.0,
+            "SQ_WAVES": 1024.0
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 256,
+          "grid_threads": 32768,
+          "duration_ms": 63.656002,
+          "counters": {
+            "SQ_INSTS_BRANCH": 163317376.0,
+            "SQ_INSTS_FLAT": 37753344.0,
+            "SQ_INSTS_LDS": 787097728.0,
+            "SQ_INSTS_SALU": 565405440.0,
+            "SQ_INSTS_VALU": 2033801984.0,
+            "SQ_WAVES": 1024.0
+          }
+        }
+      ]
+    },
+    "occupancy": {
+      "csv": "/tmp/priority-current-occupancy/zbook/1439699_counter_collection.csv",
+      "dispatches": [
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 128,
+          "grid_threads": 4096,
+          "duration_ms": 1.862346,
+          "counters": {
+            "ALUStalledByLDS": 34.503287,
+            "LDSBankConflict": 0.0,
+            "MeanOccupancyPerActiveCU": 6.520663,
+            "MeanOccupancyPerCU": 3.063473,
+            "OccupancyPercent": 9.573352
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 128,
+          "grid_threads": 4096,
+          "duration_ms": 1.334043,
+          "counters": {
+            "ALUStalledByLDS": 115.513223,
+            "LDSBankConflict": 0.0,
+            "MeanOccupancyPerActiveCU": 6.478793,
+            "MeanOccupancyPerCU": 24.430813,
+            "OccupancyPercent": 76.346291
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 256,
+          "grid_threads": 32768,
+          "duration_ms": 63.159789,
+          "counters": {
+            "ALUStalledByLDS": 25.363931,
+            "LDSBankConflict": 10.308963,
+            "MeanOccupancyPerActiveCU": 15.190121,
+            "MeanOccupancyPerCU": 6.594869,
+            "OccupancyPercent": 20.608966
+          }
+        },
+        {
+          "kernel": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+          "workgroup_threads": 256,
+          "grid_threads": 32768,
+          "duration_ms": 64.921653,
+          "counters": {
+            "ALUStalledByLDS": 24.915222,
+            "LDSBankConflict": 10.308963,
+            "MeanOccupancyPerActiveCU": 15.185081,
+            "MeanOccupancyPerCU": 6.492838,
+            "OccupancyPercent": 20.290119
+          }
+        }
+      ]
+    }
+  },
+  "registers": [
+    {
+      "display_name": "(anonymous namespace)::gemma4_attention_wmma_combine_kernel(float const*, float const*, unsigned short*, long, long, long, long)",
+      "arch_vgpr_count": 192,
+      "sgpr_count": 128,
+      "private_segment_size": 60,
+      "group_segment_size": 0
+    },
+    {
+      "display_name": "(anonymous namespace)::gemma4_attention_decode_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+      "arch_vgpr_count": 240,
+      "sgpr_count": 128,
+      "private_segment_size": 0,
+      "group_segment_size": 0
+    },
+    {
+      "display_name": "(anonymous namespace)::gemma4_attention_wmma_combine_kernel(float const*, float const*, unsigned short*, long, long, long, long)",
+      "arch_vgpr_count": 192,
+      "sgpr_count": 128,
+      "private_segment_size": 60,
+      "group_segment_size": 0
+    },
+    {
+      "display_name": "(anonymous namespace)::gemma4_attention_prefill_wmma_full_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, long, long, float*, float*, long)",
+      "arch_vgpr_count": 256,
+      "sgpr_count": 128,
+      "private_segment_size": 0,
+      "group_segment_size": 0
+    }
+  ],
+  "device_metadata": {
+    "Node_Id": "1",
+    "Logical_Node_Id": "1",
+    "Agent_Type": "GPU",
+    "Cpu_Cores_Count": "0",
+    "Simd_Count": "80",
+    "Cpu_Core_Id_Base": "0",
+    "Simd_Id_Base": "2147487744",
+    "Max_Waves_Per_Simd": "16",
+    "Lds_Size_In_Kb": "64",
+    "Gds_Size_In_Kb": "0",
+    "Num_Gws": "64",
+    "Wave_Front_Size": "32",
+    "Num_Xcc": "1",
+    "Cu_Count": "40",
+    "Array_Count": "4",
+    "Num_Shader_Banks": "2",
+    "Simd_Arrays_Per_Engine": "2",
+    "Cu_Per_Simd_Array": "10",
+    "Simd_Per_Cu": "2",
+    "Max_Slots_Scratch_Cu": "32",
+    "Gfx_Target_Version": "110501",
+    "Vendor_Id": "4098",
+    "Device_Id": "5510",
+    "Location_Id": "49920",
+    "Domain": "0",
+    "Drm_Render_Minor": "128",
+    "Num_Sdma_Engines": "1",
+    "Num_Sdma_Xgmi_Engines": "0",
+    "Num_Sdma_Queues_Per_Engine": "6",
+    "Num_Cp_Queues": "8",
+    "Max_Engine_Clk_Ccompute": "5187",
+    "Max_Engine_Clk_Fcompute": "2900",
+    "Sdma_Fw_Version": "18",
+    "Fw_Version": "36",
+    "Capability": "671326848",
+    "Cu_Per_Engine": "20",
+    "Max_Waves_Per_Cu": "32",
+    "Family_Id": "150",
+    "Workgroup_Max_Size": "1024",
+    "Grid_Max_Size": "2147483647",
+    "Local_Mem_Size": "0",
+    "Hive_Id": "0",
+    "Gpu_Id": "59041",
+    "Workgroup_Max_Dim_X": "1024",
+    "Workgroup_Max_Dim_Y": "1024",
+    "Workgroup_Max_Dim_Z": "1024",
+    "Grid_Max_Dim_X": "2147483647",
+    "Grid_Max_Dim_Y": "65535",
+    "Grid_Max_Dim_Z": "65535",
+    "Name": "gfx1151",
+    "Vendor_Name": "AMD",
+    "Product_Name": "AMD Radeon 8060S Graphics",
+    "Model_Name": "ip discovery"
+  },
+  "geometry": {
+    "prefill_dynamic_lds_bytes": 58112,
+    "prefill_blocks": 128,
+    "prefill_threads_per_block": 256,
+    "decode_blocks": 32,
+    "decode_threads_per_block": 128
+  },
+  "limitations": [
+    "Counter-derived occupancy is suspect: decode MeanOccupancyPerCU24.43 times40 exceeds128 launched waves; ALUStalledByLDS115.51 exceeds documented100%. Do not present these derived numbers as validated hardware efficiency.",
+    "Raw instruction counts are not directly comparable to older multi-counter runs without calibration; instruction shares are counts, not time shares.",
+    "Low DRAM rate is not a 25x speedup guarantee; cache reuse changes the roofline regime.",
+    "Profiler timings are diagnostic; unprofiled medians are separate.",
+    "FETCH_SIZE/WRITE_SIZE/L2CacheHit combined collection aborted with hardware error38; FETCH_SIZE and L2CacheHit collected in separate runs."
+  ],
+  "source_sha256": {
+    "gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+    "gemma4_attention_prefill_wmma_full.hip": "39507883359b3df454878a407be11224a7a550853da00570a13123b60536325c",
+    "gemma4_attention_prefill_wmma_full.py": "0a9b9c75e9437e6f372ff45057997846ff3c745690d2d7b76fda97c3f28b7301"
+  },
+  "commands": {
+    "unprofiled": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/g4_compiler_version.txt .venv/bin/python scripts/gemma4_prefill_kernel_bw.py --reps 3 --keys 65536 --tokens 1 256",
+    "profiler_prefix": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/g4_compiler_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3",
+    "profiler_workload": "-- .venv/bin/python scripts/gemma4_prefill_kernel_bw.py --reps 1 --keys 65536 --tokens 1 256"
+  }
+}

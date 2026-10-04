@@ -36,6 +36,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
     register_gguf_q4_k_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
+    register_gguf_q4_k_t16_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
     register_gguf_q4_k_pack8_gemv_kernels,
 )
@@ -3447,6 +3450,10 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             use_wmma=use_wmma,
+        )
+        dispatch = _q8_t16_tiles_prefill_dispatch(
+            dispatch, weight=weight, rows=rows,
+            in_features=in_features, out_features=out_features,
         )
         dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
             dispatch,
@@ -8100,6 +8107,36 @@ def _weight_has_tiles_allocation(weight) -> bool:
         return False
 
 
+def _q8_t16_tiles_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    weight,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Preserve repaired T16 WMMA prefill for dual-resident Q8 projections."""
+    # Raw WMMA stages activations in FP16 and can overflow on finite GeGLU
+    # outputs; the registered T16 consumer repairs that range in FP32.
+    if (
+        rows > 1
+        and dispatch.abi == "wmma_raw"
+        and dispatch.key.quant == "gguf_q8_0"
+        and dispatch.key.variant == "wmma_prefill_bf16_bf16_out"
+        and not in_features % 16
+        and not out_features % 16
+        and _weight_has_tiles_allocation(weight)
+    ):
+        candidate = KernelKey(
+            dispatch.key.backend, dispatch.key.layer, _Q8_T16_TILES_QUANT,
+            f"t16_{dispatch.key.variant}",
+        )
+        _ensure_linear_kernel_registered(candidate)
+        if is_registered(candidate):
+            return GGUFLinearDispatch(candidate, "t16")
+    return dispatch
+
+
 def _q8_t16_tiles_decode_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -9230,6 +9267,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_k_mmq_prefill_kernels()
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()
+    register_gguf_q4_k_t16_selected_prefill_kernels()
     register_gguf_q4_k_pack8_gemv_kernels()
     register_gguf_q5_k_f32_rocblas_prefill_kernels()
     register_gguf_q5_k_qmicro_planar_gemv_kernels()

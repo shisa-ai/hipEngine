@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-02",
+  "device": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo)",
+  "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "artifact_head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+  "change": "kDimGroups becomes the per-shape build parameter GEMMA4_WMMA_FULL_DIM_GROUPS (default 2, decode shim 4), so the decode shape of the WMMA full-layer kernel runs 128 threads where it ran 64.",
+
+  "how_it_was_found": {
+    "trigger": "The decode shape's attention walk measured 74.7% of the DRAM roofline at 262,144 keys while the prefill shape's measured 105-118%. The difference had to be in the block geometry.",
+    "wrong_answer_being_corrected": "A committed entry blamed the residual on the KV layout: 'a block reads 1024 of every 2048 bytes, one KV head's row out of a two-head record, so consecutive 64-byte sectors are half-used by any single block.' 1024 bytes is sixteen full 64-byte sectors, and between them the two blockIdx.y values demand the whole record, so that mechanism cannot be right.",
+    "measured_instead": "A pure-read probe (/tmp/kv_read_pattern_probe.py, /tmp/gemma4_kv_read_probe.hip) reads the same 536,870,912 bytes two ways with the same grid and threads, varying only the address sequence."
+  },
+
+  "read_pattern_probe": {
+    "total_bytes": 536870912,
+    "rows": [
+      {"grid": "32 blocks x 64 threads (the walk's grid)", "contiguous_gbps": 101.1, "strided_gbps": 158.8, "valid": true},
+      {"grid": "1024 blocks x 256 threads", "contiguous_gbps": 227.3, "strided_gbps": 116.0, "valid": false,
+       "invalid_reason": "The strided kernel parallelises `for (i = threadIdx.x; i < half4; i += blockDim.x)` with half4 = 64, so a 256-thread block idles three quarters of its threads. Reported to record that it was run and why it does not count."}
+    ],
+    "control": {"contiguous_at_1024x256_gbps": 231.0, "pct_of_238_5_roofline": 97.0},
+    "reading": "At the walk's own grid the strided read is 1.571x FASTER than a flat contiguous read (158.8 vs 101.1), so the KV stride is not the walk's residual -- a 32x64 grid is 2,048 threads, and a grid-stride loop over a flat array with that few threads has each thread walking the whole buffer. The same contiguous read at 1024x256 reaches 231.0 GB/s, 97% of roofline. The grid is the residual."
+  },
+
+  "the_geometry": {
+    "rule": "kWaves = kColumnGroups * kDimGroups; kThreads = 32 * kWaves.",
+    "before": {"prefill": {"column_groups": 2, "dim_groups": 2, "waves": 4, "threads": 128}, "decode": {"column_groups": 1, "dim_groups": 2, "waves": 2, "threads": 64}},
+    "after": {"prefill": {"column_groups": 2, "dim_groups": 2, "waves": 4, "threads": 128}, "decode": {"column_groups": 1, "dim_groups": 4, "waves": 4, "threads": 128}},
+    "staging_loop_agrees": "kRowStep = kThreads / kChunksPerRow is 2 at 128 threads and 1 at 64, and the source comment above the loop says '128 threads cover two rows per iteration and each thread walks its own key stride'. At 64 threads the decode shape was staging one row per iteration with half the loop it was written for.",
+    "shared_bytes_unchanged": {"decode": 33280, "prefill": 49920, "note": "One block per CU either way, so this is more threads inside the same occupancy rather than a second resident block."}
+  },
+
+  "walk_sweep": {
+    "method": "One full layer, tokens=1, shipped decode shape, identical buffers, median of 9, planner monkeypatched so the split is swept independently. Percentages against the 238.5 GB/s roofline.",
+    "at_128_threads": {
+      "16384":  {"1": 7.9,  "8": 48.8, "16": 66.5, "32": 47.8, "64": 30.2, "128": 25.3, "256": 17.4},
+      "65536":  {"1": 8.0,  "8": 53.6, "16": 80.4, "32": 68.2, "64": 41.2, "128": 40.0, "256": 33.7},
+      "131072": {"1": 8.1,  "8": 53.4, "16": 77.4, "32": 68.4, "64": 43.6, "128": 43.0, "256": 38.6},
+      "262144": {"1": 8.1,  "8": 56.8, "16": 87.2, "32": 70.2, "64": 45.4, "128": 45.8, "256": 44.3}
+    },
+    "ms_at_262144": {"16_slices_64_threads": 6.02, "16_slices_128_threads": 5.16, "64_slices_64_threads": 6.42},
+    "gain_64_to_128_threads": {"16384": 1.31, "65536": 1.21, "131072": 1.06, "262144": 1.17},
+    "gain_against_the_previously_shipped_configuration": {"262144": 1.244, "note": "64 slices AND 64 threads -> 16 slices and 128 threads."},
+    "16_slices_still_optimal": "Yes, at every key count and both thread counts."
+  },
+
+  "the_two_fixes_interact": {
+    "finding": "At 128 threads, 64 slices measures 9.92 ms against 16 slices' 5.16 at 262,144 keys -- 1.92x, where at 64 threads the same comparison was 1.07x.",
+    "reading": "More threads per block makes the block-count target relatively smaller. That the split was corrected in the preceding unit is what kept this one from being a regression."
+  },
+
+  "256_threads_is_worse": {
+    "tested": "GEMMA4_WMMA_FULL_DIM_GROUPS = 8 (kDimPerWave 64, kDimTilesPerWave 4), then reverted to 4.",
+    "ms_at_262144": 7.09,
+    "pct_of_roofline_at_262144": 63.5,
+    "reading": "Worse than 128 threads (5.16 ms, 87.2%) and worse than 64 threads (6.02 ms). So 128 is an optimum, not a waypoint. The reason is not established: kMaxIters falls from 8 to 4 as kRowStep rises from 2 to 4, so each thread keeps fewer loads in flight, but the extra warps should offset that and do not."
+  },
+
+  "arithmetic_unchanged": {
+    "parity": "tests/test_gpu_gemma4_attention_prefill_wmma_full.py: 27/27, exit 0.",
+    "gate": {"passed": true, "failed": [], "kl_max": 0.022933083436323335, "kl_mean": 1.5775760632637358e-05, "top1_rate": 1.0},
+    "note": "kl_max is bit-identical to the value the preceding split unit measured. The thread count moves work between lanes; it does not change any lane's accumulation order. The decode shape's report also remains bit-identical to the prefill shape's, which is what the split unit established."
+  },
+
+  "end_to_end": {
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_campaign_bench.py --artifact <artifact> --prompt P --output 128 --context P+128 --samples 3 --warmup 1 --expect-gpu 8060S",
+    "rows": [
+      {"prompt": 8192,  "before_decode_tps": 28.9454, "after_decode_tps": 29.4064, "ratio": 1.016},
+      {"prompt": 32768, "before_decode_tps": 26.5296, "after_decode_tps": 27.2888, "ratio": 1.029}
+    ],
+    "prefill_unchanged": "path parity=True on both; the change touches only the decode shape's build.",
+    "cumulative_from_the_campaign_start": {"8192": {"before": 16.83, "after": 29.4064, "ratio": 1.75}}
+  },
+
+  "not_supplied_by_this_evaluator": [
+    "category gates",
+    "isolation gates",
+    "task gates",
+    "the 500-1000 paired-row promotion standard (this is 4095 single-chain rows)"
+  ]
+}
