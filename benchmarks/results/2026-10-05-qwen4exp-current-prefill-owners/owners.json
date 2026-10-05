@@ -1,0 +1,1064 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_current_prefill_owner_audit",
+ "performance_claim": false,
+ "source": {
+  "path": "/home/lhl/hipEngine",
+  "head": "eb02f3d87cc9a74160d98b196c6f61281d30d05d",
+  "tracked_clean": true
+ },
+ "host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "Current active profile: accelerator-performance",
+  "cpu_governors": {
+   "performance": 32
+  },
+  "gpu_clock_policies": {
+   "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+  },
+  "rocm_platform": "10.0.0",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "architecture": "gfx1151"
+ },
+ "model": "Qwen3.8-Flash-Next",
+ "quant": "UD-Q4_K_XL",
+ "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "command": [
+  "qwen4exp_profile_gap.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--mode",
+  "prefill",
+  "--case-id",
+  "code-p4096",
+  "--execution-profile",
+  "production",
+  "--prefill-chunk-size",
+  "4096",
+  "--max-sequence-length",
+  "4352",
+  "--repetitions",
+  "2",
+  "--compiler-version-file",
+  "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+  "--require-cached-build",
+  "--profile",
+  "--role-markers",
+  "--launch-census",
+  "/tmp/qwen4exp-current-prefill-20261005/launch-census.json",
+  "--output",
+  "/tmp/qwen4exp-current-prefill-20261005/profile.json"
+ ],
+ "profiler_command": [
+  "rocprofv3",
+  "--kernel-trace",
+  "--marker-trace",
+  "--hip-trace",
+  "--memory-copy-trace",
+  "--scratch-memory-trace",
+  "--output-format",
+  "csv",
+  "--output-file",
+  "current",
+  "--output-directory",
+  "/tmp/qwen4exp-current-prefill-20261005/raw",
+  "--",
+  "uv",
+  "run",
+  "--no-sync",
+  "python",
+  "scripts/qwen4exp_profile_gap.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--mode",
+  "prefill",
+  "--case-id",
+  "code-p4096",
+  "--execution-profile",
+  "production",
+  "--prefill-chunk-size",
+  "4096",
+  "--max-sequence-length",
+  "4352",
+  "--repetitions",
+  "2",
+  "--compiler-version-file",
+  "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+  "--require-cached-build",
+  "--profile",
+  "--role-markers",
+  "--launch-census",
+  "/tmp/qwen4exp-current-prefill-20261005/launch-census.json",
+  "--output",
+  "/tmp/qwen4exp-current-prefill-20261005/profile.json"
+ ],
+ "unprofiled_command": [
+  "qwen4exp_profile_gap.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--mode",
+  "prefill",
+  "--case-id",
+  "code-p4096",
+  "--execution-profile",
+  "production",
+  "--prefill-chunk-size",
+  "4096",
+  "--max-sequence-length",
+  "4352",
+  "--repetitions",
+  "1",
+  "--compiler-version-file",
+  "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+  "--output",
+  "/tmp/qwen4exp-current-prefill-20261005/warm.json"
+ ],
+ "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+ "case": {
+  "id": "code-p4096",
+  "category": "code",
+  "prompt_tokens": 4096,
+  "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75"
+ },
+ "prefill_chunk_size": 4096,
+ "max_sequence_length": 4352,
+ "profile": "production",
+ "manifest_sha256": "850829d509ebf741403e71e30450b8b7b681994f16e0f02038ba672c1f493d5b",
+ "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+ "unprofiled_wall_seconds": [
+  12.84826878271997
+ ],
+ "profiled_wall_seconds": [
+  12.884316663257778,
+  13.029418404214084
+ ],
+ "instrumentation_checks": {
+  "named_profile_intact": true,
+  "no_overrides": true,
+  "warm_profile_logits_equal": true,
+  "full_logits_sha256": "219578ac13b323d50ecb8cd720f2f818517874f766c934883303549c96804e25",
+  "lifecycle_passed": true,
+  "clean_source": true
+ },
+ "windows": [
+  {
+   "marker": "qwen4exp_prefill_p4096_0",
+   "window_ms": 12884.388798,
+   "kernel_union_ms": 12580.107019,
+   "outside_kernel_union_ms": 304.281779,
+   "kernel_and_copy_union_ms": 12580.786813,
+   "outside_kernel_and_copy_union_ms": 303.601985,
+   "scratch_operation_rows": [],
+   "resources": [
+    {
+     "kernel": "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<float, float, 8, 8, 4, true, false, true>(float const*, unsigned char const*, float*, int, int, int)",
+     "launches": 109,
+     "kernel_sum_ms": 2241.83466,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      80
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+     "launches": 47,
+     "kernel_sum_ms": 2218.635119,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      216
+     ],
+     "lds_bytes_observed": [
+      16384
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true, true, 4, true>(float const*, unsigned char const*, float const*, float*, float*, int, int, int, int)",
+     "launches": 96,
+     "kernel_sum_ms": 1533.940825,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      64
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q5_1_selected_wmma_iu8_risk_prefill_kernel<16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long)",
+     "launches": 43,
+     "kernel_sum_ms": 1206.821866,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      192
+     ],
+     "lds_bytes_observed": [
+      16384
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+     "launches": 36,
+     "kernel_sum_ms": 783.00083,
+     "scratch_bytes_observed": [
+      36
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+     "launches": 48,
+     "kernel_sum_ms": 617.033697,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      32
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q5_1_selected_sparse_exact_repair_row_publish_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long)",
+     "launches": 43,
+     "kernel_sum_ms": 527.092209,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      48
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, false, 1>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+     "launches": 219,
+     "kernel_sum_ms": 469.370587,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      55296
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, int, 4>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+     "launches": 12,
+     "kernel_sum_ms": 454.416047,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      56
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4>(float const*, unsigned short const*, unsigned short const*, long const*, int const*, int const*, float*, long, long, long, long, long, long, float)",
+     "launches": 12,
+     "kernel_sum_ms": 448.767167,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      112
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long)",
+     "launches": 24,
+     "kernel_sum_ms": 282.549403,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      1024
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)",
+     "launches": 216,
+     "kernel_sum_ms": 218.995011,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      1024
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true, 1>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+     "launches": 70,
+     "kernel_sum_ms": 214.409309,
+     "scratch_bytes_observed": [
+      92
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      55296
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+     "launches": 47,
+     "kernel_sum_ms": 172.555457,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      64
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q8_0_f32_to_f16_kernel(float const*, _Float16*, long)",
+     "launches": 289,
+     "kernel_sum_ms": 151.337361,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      8
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::qsa_score_f32_kernel(float const*, float const*, float*, long, long, long)",
+     "launches": 12,
+     "kernel_sum_ms": 128.254853,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    }
+   ],
+   "copy_rows": 27,
+   "kernel_rows": 2761,
+   "attributed_rows": 2761,
+   "attributed_time_pct": 100.0,
+   "roles": [
+    {
+     "name": "moe:layers.*.expert_gate",
+     "ms": 5274.426046,
+     "rows": 1056,
+     "symbols": 22
+    },
+    {
+     "name": "qsa_prefill:layers.*.attn_q",
+     "ms": 1092.599174,
+     "rows": 168,
+     "symbols": 11
+    },
+    {
+     "name": "gdn:layers.*.attn_qkv",
+     "ms": 839.631535,
+     "rows": 108,
+     "symbols": 3
+    },
+    {
+     "name": "gr_read:layers.*.hc_ffn_down",
+     "ms": 836.679277,
+     "rows": 144,
+     "symbols": 3
+    },
+    {
+     "name": "gr_read:layers.*.hc_attn_down",
+     "ms": 824.418256,
+     "rows": 144,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_qkv",
+     "ms": 773.573144,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.ssm_out",
+     "ms": 502.47602,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_gate",
+     "ms": 472.607128,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_q",
+     "ms": 310.512553,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.hc_ffn_down",
+     "ms": 259.36519,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.hc_attn_down",
+     "ms": 254.694336,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.index_q",
+     "ms": 230.309902,
+     "rows": 12,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.attn_output",
+     "ms": 154.116974,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "prefill_boundary",
+     "ms": 115.05873,
+     "rows": 199,
+     "symbols": 6
+    },
+    {
+     "name": "linear:layers.*.shared_down",
+     "ms": 87.292181,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_up",
+     "ms": 75.784916,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_gate",
+     "ms": 75.410459,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.ssm_alpha",
+     "ms": 68.539082,
+     "rows": 36,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ssm_beta",
+     "ms": 65.098032,
+     "rows": 36,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ple_key",
+     "ms": 63.432302,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.index_k",
+     "ms": 52.239501,
+     "rows": 12,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.hc_ffn_inject",
+     "ms": 35.744832,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.hc_attn_inject",
+     "ms": 34.887829,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ple_value",
+     "ms": 16.297299,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.attn_k",
+     "ms": 15.824892,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "ple:layers.*.ple_key",
+     "ms": 15.696853,
+     "rows": 8,
+     "symbols": 7
+    },
+    {
+     "name": "linear:layers.*.attn_v",
+     "ms": 15.564523,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_expert_gate",
+     "ms": 14.725236,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.lm_head",
+     "ms": 3.033331,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.head_hc_down",
+     "ms": 0.030176,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.head_hc_up",
+     "ms": 0.02665,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "gr_read:root.head_hc_down",
+     "ms": 0.010981,
+     "rows": 4,
+     "symbols": 4
+    }
+   ],
+   "resource_families": 55,
+   "other_kernel_sum_ms": 911.092939
+  },
+  {
+   "marker": "qwen4exp_prefill_p4096_1",
+   "window_ms": 13029.440696,
+   "kernel_union_ms": 12579.225158,
+   "outside_kernel_union_ms": 450.215538,
+   "kernel_and_copy_union_ms": 12580.208927,
+   "outside_kernel_and_copy_union_ms": 449.231769,
+   "scratch_operation_rows": [],
+   "resources": [
+    {
+     "kernel": "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<float, float, 8, 8, 4, true, false, true>(float const*, unsigned char const*, float*, int, int, int)",
+     "launches": 109,
+     "kernel_sum_ms": 2240.013046,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      80
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+     "launches": 47,
+     "kernel_sum_ms": 2218.893477,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      216
+     ],
+     "lds_bytes_observed": [
+      16384
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true, true, 4, true>(float const*, unsigned char const*, float const*, float*, float*, int, int, int, int)",
+     "launches": 96,
+     "kernel_sum_ms": 1534.585344,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      64
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q5_1_selected_wmma_iu8_risk_prefill_kernel<16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long)",
+     "launches": 43,
+     "kernel_sum_ms": 1206.779347,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      192
+     ],
+     "lds_bytes_observed": [
+      16384
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+     "launches": 36,
+     "kernel_sum_ms": 783.197155,
+     "scratch_bytes_observed": [
+      36
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+     "launches": 48,
+     "kernel_sum_ms": 617.494804,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      32
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q5_1_selected_sparse_exact_repair_row_publish_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long)",
+     "launches": 43,
+     "kernel_sum_ms": 526.267622,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      48
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, false, 1>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+     "launches": 219,
+     "kernel_sum_ms": 469.104453,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      55296
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, int, 4>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+     "launches": 12,
+     "kernel_sum_ms": 454.987799,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      56
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4>(float const*, unsigned short const*, unsigned short const*, long const*, int const*, int const*, float*, long, long, long, long, long, long, float)",
+     "launches": 12,
+     "kernel_sum_ms": 448.673916,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      112
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long)",
+     "launches": 24,
+     "kernel_sum_ms": 282.682936,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      1024
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)",
+     "launches": 216,
+     "kernel_sum_ms": 219.13337,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      1024
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true, 1>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+     "launches": 70,
+     "kernel_sum_ms": 215.015686,
+     "scratch_bytes_observed": [
+      92
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      55296
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+     "launches": 47,
+     "kernel_sum_ms": 173.44312,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      64
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q8_0_f32_to_f16_kernel(float const*, _Float16*, long)",
+     "launches": 289,
+     "kernel_sum_ms": 151.330427,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      8
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::qsa_score_f32_kernel(float const*, float const*, float*, long, long, long)",
+     "launches": 12,
+     "kernel_sum_ms": 128.291722,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    }
+   ],
+   "copy_rows": 27,
+   "kernel_rows": 2761,
+   "attributed_rows": 2761,
+   "attributed_time_pct": 100.0,
+   "roles": [
+    {
+     "name": "moe:layers.*.expert_gate",
+     "ms": 5273.392049,
+     "rows": 1056,
+     "symbols": 22
+    },
+    {
+     "name": "qsa_prefill:layers.*.attn_q",
+     "ms": 1093.114705,
+     "rows": 168,
+     "symbols": 11
+    },
+    {
+     "name": "gdn:layers.*.attn_qkv",
+     "ms": 839.832021,
+     "rows": 108,
+     "symbols": 3
+    },
+    {
+     "name": "gr_read:layers.*.hc_ffn_down",
+     "ms": 837.209094,
+     "rows": 144,
+     "symbols": 3
+    },
+    {
+     "name": "gr_read:layers.*.hc_attn_down",
+     "ms": 824.52077,
+     "rows": 144,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_qkv",
+     "ms": 772.737613,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.ssm_out",
+     "ms": 502.364765,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_gate",
+     "ms": 472.321269,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_q",
+     "ms": 310.446549,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.hc_ffn_down",
+     "ms": 260.141679,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.hc_attn_down",
+     "ms": 254.332778,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.index_q",
+     "ms": 230.430773,
+     "rows": 12,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.attn_output",
+     "ms": 153.575447,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "prefill_boundary",
+     "ms": 115.046027,
+     "rows": 199,
+     "symbols": 6
+    },
+    {
+     "name": "linear:layers.*.shared_down",
+     "ms": 87.223906,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_up",
+     "ms": 75.68321,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_gate",
+     "ms": 75.396994,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.ssm_alpha",
+     "ms": 68.596953,
+     "rows": 36,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ssm_beta",
+     "ms": 65.135774,
+     "rows": 36,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ple_key",
+     "ms": 63.455826,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.index_k",
+     "ms": 52.252163,
+     "rows": 12,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.hc_ffn_inject",
+     "ms": 35.762825,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.hc_attn_inject",
+     "ms": 34.906821,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ple_value",
+     "ms": 16.34062,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.attn_v",
+     "ms": 15.751196,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "ple:layers.*.ple_key",
+     "ms": 15.727472,
+     "rows": 8,
+     "symbols": 7
+    },
+    {
+     "name": "linear:layers.*.attn_k",
+     "ms": 15.69176,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_expert_gate",
+     "ms": 14.730997,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.lm_head",
+     "ms": 3.034854,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.head_hc_down",
+     "ms": 0.030337,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.head_hc_up",
+     "ms": 0.02661,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "gr_read:root.head_hc_down",
+     "ms": 0.011301,
+     "rows": 4,
+     "symbols": 4
+    }
+   ],
+   "resource_families": 55,
+   "other_kernel_sum_ms": 909.330934
+  }
+ ],
+ "next_mechanism": {
+  "owner": "qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>",
+  "proposal": "Preserve per-thread FMA and 256-way tree; keep inter-wave strides128/64/32 in LDS, complete strides16/8/4/2/1 through ordered DPP in wave0.",
+  "baseline_mean_ms": 617.2642505,
+  "binding_screen": "Direct uint32 parent parity including cancellation/tails; exact real-activation router values/expert selections plus model state/full-logit trajectories; no default change before correctness and complete-owner counterbalanced timing.",
+  "expected_cost": "Remove five block barriers and shared-memory round trips at unchanged accumulator assignment; savings unknown until measured; no claim that entire617ms is recoverable."
+ },
+ "limitations": [
+  "One category/shape on one host; profile owner evidence is not a canonical-suite throughput result.",
+  "Warm/profile final full-logit equality is instrumentation integrity, not a new arithmetic qualification.",
+  "No scratch operations occur inside measured windows, but trigger/victim scratch-throttle causality is not tested.",
+  "Historical captures use different source stacks/protocols and do not supply a controlled before/after rate.",
+  "Quantized launch census was empty for this run; no tensor shape/GFLOP join is inferred from it."
+ ]
+}

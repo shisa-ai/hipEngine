@@ -5,6 +5,24 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next current prefill owner diagnostic
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, clean-source
+production UD-Q4_K_XL `code-p4096` at chunk4096 attributes all 2,761
+launches per pass. Two separately marked cached-only profiler windows have
+kernel unions 12.580/12.579 s. Warm/profile final logits match and teardown
+is leak-free. This is diagnostic attribution, not a throughput comparison.
+
+| Kernel owner | Mean ms/pass | Kernel-union share |
+| --- | ---: | ---: |
+| Dense F32 coltile | 2240.924 | 17.81% |
+| MoE Q4_K gate/up | 2218.764 | 17.64% |
+| GR-up DPP | 1534.263 | 12.20% |
+| MoE Q5_1 down | 1206.801 | 9.59% |
+| Router F32 tile4 | 617.264 | 4.91% |
+
+[Protocol and artifacts](results/2026-10-05-qwen4exp-current-prefill-owners/README.md).
+
 ## Qwen3.8 Flash Next split-operand dense operation screen
 
 On Radeon 8060S physical host `55ea6c509d0b49eea8de7094a1023668`, the
