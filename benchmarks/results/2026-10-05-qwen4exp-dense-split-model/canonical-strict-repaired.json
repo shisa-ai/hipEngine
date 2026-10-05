@@ -1,0 +1,2152 @@
+{
+  "status": "completed",
+  "command": [
+    "scripts/qwen4exp_q8_repair_depth_gate.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+    "--candidate",
+    "dense_split_early",
+    "--decode-steps",
+    "128",
+    "--repeats",
+    "3",
+    "--prefill-chunk-size",
+    "4096",
+    "--allocation-evidence",
+    "/tmp/qwen4exp-dense-split-strict-allocation-repaired.json",
+    "--output",
+    "/tmp/qwen4exp-dense-split-canonical-strict-repaired.json"
+  ],
+  "source": {
+    "path": "/tmp/hipengine-dense-split-qualified-fdb026c95",
+    "head": "fdb026c958b8dda4c095cd1e5f79344eb1d809b4",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "candidate": "dense_split_early",
+  "arithmetic_class": "T2",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "lifecycle": {
+    "strict": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 84210200480,
+      "total_allocated_bytes": 84210200480,
+      "total_freed_bytes": 84210200480,
+      "active_allocations": 0,
+      "peak_allocations": 1617
+    },
+    "candidate": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 89404925864,
+      "total_allocated_bytes": 174401558376,
+      "total_freed_bytes": 174401558376,
+      "active_allocations": 0,
+      "peak_allocations": 1622
+    }
+  },
+  "performance_claim": false,
+  "promotion_claim": false,
+  "protocol": {
+    "chunk": 4096,
+    "strict_chunk": 1024,
+    "kv": "BF16",
+    "decode_steps": 128,
+    "repeats": 3,
+    "task_gate": "separate",
+    "complete_fixture": true,
+    "case_ids": [
+      "code-p512",
+      "code-p1024",
+      "code-p4096",
+      "general_en-p512",
+      "general_en-p1024",
+      "general_en-p4096",
+      "general_ja-p512",
+      "general_ja-p1024",
+      "general_ja-p4096",
+      "mixed_ja_en-p512",
+      "mixed_ja_en-p1024",
+      "mixed_ja_en-p4096"
+    ]
+  },
+  "allocation_evidence": {
+    "schema": 3,
+    "status": "passed",
+    "performance_claim": false,
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "fdb026c958b8dda4c095cd1e5f79344eb1d809b4",
+      "tracked_clean": true
+    },
+    "host": {
+      "hostname": "gfx1151",
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "kernel": "7.1.6-1-cachyos",
+      "tuned_active": "Current active profile: accelerator-performance",
+      "cpu_governors": {
+        "performance": 32
+      },
+      "gpu_clock_policies": {
+        "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+      },
+      "rocm_platform": "10.0.0",
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    },
+    "model_identity": {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+      "fingerprint": {
+        "algorithm": "sha256-directory-manifest-v1",
+        "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+        "size_bytes": 111334654784,
+        "sampled_bytes": 12582912,
+        "file_count": 4,
+        "exists": true,
+        "path_type": "directory"
+      }
+    },
+    "command": [
+      "scripts/qwen4exp_chunk_memory_probe.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+      "--chunk-size",
+      "4096",
+      "--capacity",
+      "1",
+      "--context-length",
+      "4352",
+      "--output",
+      "/tmp/qwen4exp-dense-split-strict-allocation-repaired.json"
+    ],
+    "chunk_size": 4096,
+    "resident_capacity": 1,
+    "requested_context_length": 4352,
+    "manifest_sha256": "850829d509ebf741403e71e30450b8b7b681994f16e0f02038ba672c1f493d5b",
+    "limits": "Allocation/admission only; constructor and worst-case grouped repair queues. No inference, hidden-seed export, graph capture or driver-owned scratch certificate. Existing reserve remains.",
+    "admission": {
+      "mode": "explicit",
+      "device_free_bytes": 128844787712,
+      "device_total_bytes": 128849018880,
+      "vision_weight_reserve_bytes": 0,
+      "plan": {
+        "available_device_bytes": 128844787712,
+        "required_bytes": 93785202440,
+        "device_weight_bytes": 82523491840,
+        "staging_bytes": 83886080,
+        "kv_bytes": 106954752,
+        "index_bytes": 34035120,
+        "runtime_state_bytes": 119533568,
+        "scratch_bytes": 6622333784,
+        "reserve_bytes": 4294967296,
+        "context_tokens": 4352,
+        "resident_capacity": 1
+      },
+      "scratch_policy": "max(4GiB floor, mandatory runner scratch and repair queues) per runner; optional resources require separate qualification"
+    },
+    "first_runner_memory": {
+      "current_allocated_bytes": 88483602176,
+      "peak_allocated_bytes": 88483602176,
+      "total_allocated_bytes": 88483602176,
+      "total_freed_bytes": 0,
+      "active_allocations": 1617,
+      "peak_allocations": 1617
+    },
+    "before_lazy_memory": {
+      "current_allocated_bytes": 88483602176,
+      "peak_allocated_bytes": 88483602176,
+      "total_allocated_bytes": 88483602176,
+      "total_freed_bytes": 0,
+      "active_allocations": 1617,
+      "peak_allocations": 1617
+    },
+    "lazy_group_risk": [
+      {
+        "runner_index": 0,
+        "queues": [
+          {
+            "owner": "gdn_prefill_scratch",
+            "rows": 4096,
+            "compact_rows": 40960,
+            "output_width": 2560,
+            "nbytes": 419430404
+          },
+          {
+            "owner": "qsa_prefill_scratch",
+            "rows": 4096,
+            "compact_rows": 40960,
+            "output_width": 2560,
+            "nbytes": 419430404
+          }
+        ]
+      }
+    ],
+    "prepared_context": 4352,
+    "prepared_runners": 1,
+    "prepared_memory": {
+      "current_allocated_bytes": 89322462984,
+      "peak_allocated_bytes": 89322462984,
+      "total_allocated_bytes": 89322462984,
+      "total_freed_bytes": 0,
+      "active_allocations": 1621,
+      "peak_allocations": 1621
+    },
+    "allocation_margins": {
+      "explicit_components_bytes": 82867901360,
+      "observed_remainder_bytes": 6454561624,
+      "scratch_allowance_bytes": 6622333784,
+      "scratch_margin_bytes": 167772160,
+      "including_reserve_margin_bytes": 4462739456
+    },
+    "device_allocation_margins": {
+      "device_components_bytes": 82784015280,
+      "host_staging_reservation_bytes": 83886080,
+      "observed_device_scratch_bytes": 6538447704,
+      "device_scratch_margin_bytes": 83886080
+    },
+    "memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 89322462984,
+      "total_allocated_bytes": 89322462984,
+      "total_freed_bytes": 89322462984,
+      "active_allocations": 0,
+      "peak_allocations": 1621
+    },
+    "elapsed_seconds": 50.3192877843976
+  },
+  "chunk_dispatches": [
+    {
+      "arm": "strict",
+      "case_id": "code-p512",
+      "repeat": 0,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "code-p1024",
+      "repeat": 0,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "code-p4096",
+      "repeat": 0,
+      "chunks": [
+        1024,
+        1024,
+        1024,
+        1024
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "general_en-p512",
+      "repeat": 0,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "general_en-p1024",
+      "repeat": 0,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "general_en-p4096",
+      "repeat": 0,
+      "chunks": [
+        1024,
+        1024,
+        1024,
+        1024
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "general_ja-p512",
+      "repeat": 0,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "general_ja-p1024",
+      "repeat": 0,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "general_ja-p4096",
+      "repeat": 0,
+      "chunks": [
+        1024,
+        1024,
+        1024,
+        1024
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "mixed_ja_en-p512",
+      "repeat": 0,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "mixed_ja_en-p1024",
+      "repeat": 0,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "strict",
+      "case_id": "mixed_ja_en-p4096",
+      "repeat": 0,
+      "chunks": [
+        1024,
+        1024,
+        1024,
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "code-p512",
+      "repeat": 0,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "code-p512",
+      "repeat": 1,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "code-p512",
+      "repeat": 2,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "code-p1024",
+      "repeat": 0,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "code-p1024",
+      "repeat": 1,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "code-p1024",
+      "repeat": 2,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "code-p4096",
+      "repeat": 0,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "code-p4096",
+      "repeat": 1,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "code-p4096",
+      "repeat": 2,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_en-p512",
+      "repeat": 0,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_en-p512",
+      "repeat": 1,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_en-p512",
+      "repeat": 2,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_en-p1024",
+      "repeat": 0,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_en-p1024",
+      "repeat": 1,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_en-p1024",
+      "repeat": 2,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_en-p4096",
+      "repeat": 0,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_en-p4096",
+      "repeat": 1,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_en-p4096",
+      "repeat": 2,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_ja-p512",
+      "repeat": 0,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_ja-p512",
+      "repeat": 1,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_ja-p512",
+      "repeat": 2,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_ja-p1024",
+      "repeat": 0,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_ja-p1024",
+      "repeat": 1,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_ja-p1024",
+      "repeat": 2,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_ja-p4096",
+      "repeat": 0,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_ja-p4096",
+      "repeat": 1,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "general_ja-p4096",
+      "repeat": 2,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "mixed_ja_en-p512",
+      "repeat": 0,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "mixed_ja_en-p512",
+      "repeat": 1,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "mixed_ja_en-p512",
+      "repeat": 2,
+      "chunks": [
+        512
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "mixed_ja_en-p1024",
+      "repeat": 0,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "mixed_ja_en-p1024",
+      "repeat": 1,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "mixed_ja_en-p1024",
+      "repeat": 2,
+      "chunks": [
+        1024
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "mixed_ja_en-p4096",
+      "repeat": 0,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "mixed_ja_en-p4096",
+      "repeat": 1,
+      "chunks": [
+        4096
+      ]
+    },
+    {
+      "arm": "candidate",
+      "case_id": "mixed_ja_en-p4096",
+      "repeat": 2,
+      "chunks": [
+        4096
+      ]
+    }
+  ],
+  "strict_manifest": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+  "production_base_manifest": "850829d509ebf741403e71e30450b8b7b681994f16e0f02038ba672c1f493d5b",
+  "overrides": {
+    "HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS": "0,1,2,3,4,5,6,7,8,9,10,11,12"
+  },
+  "quality": {
+    "finite": true,
+    "top_k": 5,
+    "thresholds": {
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "max_kl_max": 0.05,
+      "top1_min": 0.99,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02
+    },
+    "summary": {
+      "rows": 1548,
+      "kl_mean": 0.0014385845613123875,
+      "kl_p50": 3.545259976348647e-05,
+      "kl_p95": 0.007533554928899366,
+      "kl_p99": 0.017430476265290273,
+      "kl_max": 0.05974351276410918,
+      "top1_agreement": 0.9857881136950905,
+      "top1_matches": 1526,
+      "topk_overlap_mean": 0.9732558139534883,
+      "strict_teacher_nll_mean": 0.16364383554177955,
+      "candidate_teacher_nll_mean": 0.16397546585814232,
+      "teacher_nll_delta": 0.00033163031636276874,
+      "teacher_delta_p_mean": -2.3531372155597804e-05,
+      "strict_margin_min": 0.0010280609130859375,
+      "max_abs_logit_delta": 8.675281584262848,
+      "flip_eligible_rows": 264,
+      "flip_eligible_share": 0.17054263565891473,
+      "top1_mismatches_flip_eligible": 22,
+      "top1_mismatches_outside_flip_eligible": 0
+    },
+    "by_scope": {
+      "category": {
+        "code": {
+          "rows": 387,
+          "kl_mean": 0.0014510904298619023,
+          "kl_p50": 1.091654246817582e-05,
+          "kl_p95": 0.008700229726185811,
+          "kl_p99": 0.019908161513099015,
+          "kl_max": 0.0501571953823484,
+          "top1_agreement": 0.9896640826873385,
+          "top1_matches": 383,
+          "topk_overlap_mean": 0.972093023255814,
+          "strict_teacher_nll_mean": 0.13117818990836336,
+          "candidate_teacher_nll_mean": 0.13156787188876243,
+          "teacher_nll_delta": 0.0003896819803990703,
+          "teacher_delta_p_mean": 8.138402267731698e-05,
+          "strict_margin_min": 0.0062084197998046875,
+          "max_abs_logit_delta": 1.9604454040527344,
+          "flip_eligible_rows": 55,
+          "flip_eligible_share": 0.1421188630490956,
+          "top1_mismatches_flip_eligible": 4,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": false
+        },
+        "general_en": {
+          "rows": 387,
+          "kl_mean": 0.0017631959055989313,
+          "kl_p50": 0.0001011827718409511,
+          "kl_p95": 0.007714603543673418,
+          "kl_p99": 0.01584364010228183,
+          "kl_max": 0.05974351276410918,
+          "top1_agreement": 0.979328165374677,
+          "top1_matches": 379,
+          "topk_overlap_mean": 0.9746770025839793,
+          "strict_teacher_nll_mean": 0.21525573266816933,
+          "candidate_teacher_nll_mean": 0.21627650383922206,
+          "teacher_nll_delta": 0.0010207711710527312,
+          "teacher_delta_p_mean": -0.00045243217900149864,
+          "strict_margin_min": 0.0010280609130859375,
+          "max_abs_logit_delta": 1.723347544670105,
+          "flip_eligible_rows": 87,
+          "flip_eligible_share": 0.2248062015503876,
+          "top1_mismatches_flip_eligible": 8,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": false
+        },
+        "general_ja": {
+          "rows": 387,
+          "kl_mean": 0.001324907112411753,
+          "kl_p50": 4.284681329740984e-05,
+          "kl_p95": 0.0069253992993922805,
+          "kl_p99": 0.016034514709430306,
+          "kl_max": 0.03885931067983986,
+          "top1_agreement": 0.9870801033591732,
+          "top1_matches": 382,
+          "topk_overlap_mean": 0.9767441860465116,
+          "strict_teacher_nll_mean": 0.15941646101724255,
+          "candidate_teacher_nll_mean": 0.16048779440846186,
+          "teacher_nll_delta": 0.0010713333912193146,
+          "teacher_delta_p_mean": -0.0006803735401748928,
+          "strict_margin_min": 0.00433349609375,
+          "max_abs_logit_delta": 2.5701438188552856,
+          "flip_eligible_rows": 63,
+          "flip_eligible_share": 0.16279069767441862,
+          "top1_mismatches_flip_eligible": 5,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": false
+        },
+        "mixed_ja_en": {
+          "rows": 387,
+          "kl_mean": 0.0012151447973769635,
+          "kl_p50": 1.2583272648107468e-05,
+          "kl_p95": 0.006608857668878019,
+          "kl_p99": 0.014636076181642775,
+          "kl_max": 0.025056196724203873,
+          "top1_agreement": 0.9870801033591732,
+          "top1_matches": 382,
+          "topk_overlap_mean": 0.9695090439276487,
+          "strict_teacher_nll_mean": 0.14872495857334306,
+          "candidate_teacher_nll_mean": 0.1475696932961229,
+          "teacher_nll_delta": -0.0011552652772201522,
+          "teacher_delta_p_mean": 0.0009572962078766834,
+          "strict_margin_min": 0.024736404418945312,
+          "max_abs_logit_delta": 8.675281584262848,
+          "flip_eligible_rows": 59,
+          "flip_eligible_share": 0.1524547803617571,
+          "top1_mismatches_flip_eligible": 5,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": false
+        }
+      },
+      "shape": {
+        "p1024_c1": {
+          "rows": 512,
+          "kl_mean": 0.0014372201086064918,
+          "kl_p50": 4.62989489176226e-05,
+          "kl_p95": 0.007859460186286383,
+          "kl_p99": 0.016055292991814397,
+          "kl_max": 0.03885931067983986,
+          "top1_agreement": 0.978515625,
+          "top1_matches": 501,
+          "topk_overlap_mean": 0.9769531250000001,
+          "strict_teacher_nll_mean": 0.18087731849632882,
+          "candidate_teacher_nll_mean": 0.18061204581001752,
+          "teacher_nll_delta": -0.0002652726863112964,
+          "teacher_delta_p_mean": 0.00011307804804476745,
+          "strict_margin_min": 0.00433349609375,
+          "max_abs_logit_delta": 1.8250904083251953,
+          "flip_eligible_rows": 91,
+          "flip_eligible_share": 0.177734375,
+          "top1_mismatches_flip_eligible": 11,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": false
+        },
+        "p1024_prefill_last": {
+          "rows": 4,
+          "kl_mean": 6.733816093050614e-09,
+          "kl_p50": 2.2280703740833094e-12,
+          "kl_p95": 2.289128666266206e-08,
+          "kl_p99": 2.6122502546296164e-08,
+          "kl_max": 2.6930306517204695e-08,
+          "top1_agreement": 1.0,
+          "top1_matches": 4,
+          "topk_overlap_mean": 1.0,
+          "strict_teacher_nll_mean": 7.752604049709963e-09,
+          "candidate_teacher_nll_mean": 1.6728167684578643e-09,
+          "teacher_nll_delta": -6.079787281252098e-09,
+          "teacher_delta_p_mean": 6.079787145951698e-09,
+          "strict_margin_min": 17.566280364990234,
+          "max_abs_logit_delta": 1.8935978412628174,
+          "flip_eligible_rows": 0,
+          "flip_eligible_share": 0.0,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": true
+        },
+        "p4096_c1": {
+          "rows": 512,
+          "kl_mean": 0.00163395661216439,
+          "kl_p50": 1.2098050475640003e-05,
+          "kl_p95": 0.00787936632242528,
+          "kl_p99": 0.021047580282612107,
+          "kl_max": 0.05974351276410918,
+          "top1_agreement": 0.98828125,
+          "top1_matches": 506,
+          "topk_overlap_mean": 0.970703125,
+          "strict_teacher_nll_mean": 0.14380087310893605,
+          "candidate_teacher_nll_mean": 0.14360688394586008,
+          "teacher_nll_delta": -0.0001939891630759749,
+          "teacher_delta_p_mean": 0.0004701722299614887,
+          "strict_margin_min": 0.06828689575195312,
+          "max_abs_logit_delta": 8.675281584262848,
+          "flip_eligible_rows": 81,
+          "flip_eligible_share": 0.158203125,
+          "top1_mismatches_flip_eligible": 6,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": false
+        },
+        "p4096_prefill_last": {
+          "rows": 4,
+          "kl_mean": 2.0867897319446617e-08,
+          "kl_p50": 5.923000318830346e-09,
+          "kl_p95": 6.265581678296397e-08,
+          "kl_p99": 6.983045355362371e-08,
+          "kl_max": 7.162411274628866e-08,
+          "top1_agreement": 1.0,
+          "top1_matches": 4,
+          "topk_overlap_mean": 0.95,
+          "strict_teacher_nll_mean": 1.4283119419976535e-08,
+          "candidate_teacher_nll_mean": 3.700961463236503e-08,
+          "teacher_nll_delta": 2.2726495212388492e-08,
+          "teacher_delta_p_mean": -2.2726493131841607e-08,
+          "strict_margin_min": 17.556577682495117,
+          "max_abs_logit_delta": 2.0883798599243164,
+          "flip_eligible_rows": 0,
+          "flip_eligible_share": 0.0,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": true
+        },
+        "p512_c1": {
+          "rows": 512,
+          "kl_mean": 0.0012782928461979048,
+          "kl_p50": 5.2007771003822884e-05,
+          "kl_p95": 0.006902865699170568,
+          "kl_p99": 0.014112452683704545,
+          "kl_max": 0.036644752290238815,
+          "top1_agreement": 0.990234375,
+          "top1_matches": 507,
+          "topk_overlap_mean": 0.972265625,
+          "strict_teacher_nll_mean": 0.17008871623896402,
+          "candidate_teacher_nll_mean": 0.1715506421736787,
+          "teacher_nll_delta": 0.0014619259347146973,
+          "teacher_delta_p_mean": -0.0006543964617070949,
+          "strict_margin_min": 0.0010280609130859375,
+          "max_abs_logit_delta": 2.3098506927490234,
+          "flip_eligible_rows": 92,
+          "flip_eligible_share": 0.1796875,
+          "top1_mismatches_flip_eligible": 5,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": false
+        },
+        "p512_prefill_last": {
+          "rows": 4,
+          "kl_mean": 9.305417588430692e-08,
+          "kl_p50": 4.795018527473421e-10,
+          "kl_p95": 3.1565237550593165e-07,
+          "kl_p99": 3.6009472828316003e-07,
+          "kl_max": 3.7120531647746723e-07,
+          "top1_agreement": 1.0,
+          "top1_matches": 4,
+          "topk_overlap_mean": 0.95,
+          "strict_teacher_nll_mean": 1.285716655861956e-07,
+          "candidate_teacher_nll_mean": 4.1435439433819264e-08,
+          "teacher_nll_delta": -8.713622615237635e-08,
+          "teacher_delta_p_mean": 8.713619698008657e-08,
+          "strict_margin_min": 14.672698974609375,
+          "max_abs_logit_delta": 2.171328544616699,
+          "flip_eligible_rows": 0,
+          "flip_eligible_share": 0.0,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": true
+        }
+      },
+      "transition": {
+        "prefill_to_c1": {
+          "rows": 12,
+          "kl_mean": 4.021862976560138e-08,
+          "kl_p50": 7.950519626484979e-11,
+          "kl_p95": 2.0643565442531883e-07,
+          "kl_p99": 3.382513840670378e-07,
+          "kl_max": 3.7120531647746723e-07,
+          "top1_agreement": 1.0,
+          "top1_matches": 12,
+          "topk_overlap_mean": 0.9666666666666667,
+          "strict_teacher_nll_mean": 5.020246301862737e-08,
+          "candidate_teacher_nll_mean": 2.6705956944880715e-08,
+          "teacher_nll_delta": -2.3496506073746652e-08,
+          "teacher_delta_p_mean": 2.3496496998065552e-08,
+          "strict_margin_min": 14.672698974609375,
+          "max_abs_logit_delta": 2.171328544616699,
+          "flip_eligible_rows": 0,
+          "flip_eligible_share": 0.0,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": true
+        },
+        "steady": {
+          "rows": 1536,
+          "kl_mean": 0.0014498231889895953,
+          "kl_p50": 3.662776853319905e-05,
+          "kl_p95": 0.007541880745613343,
+          "kl_p99": 0.01756639391628611,
+          "kl_max": 0.05974351276410918,
+          "top1_agreement": 0.9856770833333334,
+          "top1_matches": 1514,
+          "topk_overlap_mean": 0.9733072916666666,
+          "strict_teacher_nll_mean": 0.16492230261474297,
+          "candidate_teacher_nll_mean": 0.16525652397651877,
+          "teacher_nll_delta": 0.0003342213617757994,
+          "teacher_delta_p_mean": -2.371539456694619e-05,
+          "strict_margin_min": 0.0010280609130859375,
+          "max_abs_logit_delta": 8.675281584262848,
+          "flip_eligible_rows": 264,
+          "flip_eligible_share": 0.171875,
+          "top1_mismatches_flip_eligible": 22,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "passed": false
+        }
+      }
+    },
+    "scope_failures": [
+      {
+        "dimension": "category",
+        "value": "code"
+      },
+      {
+        "dimension": "category",
+        "value": "general_en"
+      },
+      {
+        "dimension": "category",
+        "value": "general_ja"
+      },
+      {
+        "dimension": "category",
+        "value": "mixed_ja_en"
+      },
+      {
+        "dimension": "shape",
+        "value": "p1024_c1"
+      },
+      {
+        "dimension": "shape",
+        "value": "p4096_c1"
+      },
+      {
+        "dimension": "shape",
+        "value": "p512_c1"
+      },
+      {
+        "dimension": "transition",
+        "value": "steady"
+      }
+    ],
+    "rows_over_review_boundary": [
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 15,
+        "request_id": "code-p512",
+        "teacher_step": 15,
+        "category": "code",
+        "shape": "p512_c1",
+        "transition": "steady",
+        "teacher_token_id": 13,
+        "row_index": 15,
+        "kl": 0.021953410193046082,
+        "top1_equal": true,
+        "strict_top1_token_id": 13,
+        "candidate_top1_token_id": 13,
+        "topk_overlap": 1.0,
+        "strict_margin": 1.7255821228027344,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.31201225884014216,
+        "candidate_teacher_nll": 0.20638099200044588,
+        "teacher_delta_p": 0.08155051641081779,
+        "max_abs_logit_delta": 0.7572345733642578
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 259,
+        "request_id": "code-p4096",
+        "teacher_step": 1,
+        "category": "code",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 198,
+        "row_index": 259,
+        "kl": 0.0501571953823484,
+        "top1_equal": true,
+        "strict_top1_token_id": 198,
+        "candidate_top1_token_id": 198,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.5735340118408203,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.4469468458595378,
+        "candidate_teacher_nll": 0.2497510205933228,
+        "teacher_delta_p": 0.13941680898449682,
+        "max_abs_logit_delta": 1.9604454040527344
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 346,
+        "request_id": "code-p4096",
+        "teacher_step": 88,
+        "category": "code",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 469,
+        "row_index": 346,
+        "kl": 0.02871006629915422,
+        "top1_equal": true,
+        "strict_top1_token_id": 469,
+        "candidate_top1_token_id": 469,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.4688758850097656,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.880765009537268,
+        "candidate_teacher_nll": 0.8006064143971552,
+        "teacher_delta_p": 0.034590847024390914,
+        "max_abs_logit_delta": 0.5925273895263672
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 350,
+        "request_id": "code-p4096",
+        "teacher_step": 92,
+        "category": "code",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 494,
+        "row_index": 350,
+        "kl": 0.02121469503547405,
+        "top1_equal": true,
+        "strict_top1_token_id": 494,
+        "candidate_top1_token_id": 494,
+        "topk_overlap": 1.0,
+        "strict_margin": 2.0322723388671875,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.19901284990292675,
+        "candidate_teacher_nll": 0.30661015908784295,
+        "teacher_delta_p": -0.08360191874761502,
+        "max_abs_logit_delta": 0.47499656677246094
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 398,
+        "request_id": "general_en-p512",
+        "teacher_step": 11,
+        "category": "general_en",
+        "shape": "p512_c1",
+        "transition": "steady",
+        "teacher_token_id": 5081,
+        "row_index": 398,
+        "kl": 0.036644752290238815,
+        "top1_equal": true,
+        "strict_top1_token_id": 5081,
+        "candidate_top1_token_id": 5081,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.6084442138671875,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.8506589365320737,
+        "candidate_teacher_nll": 1.1577254083655562,
+        "teacher_delta_p": -0.11293333991193899,
+        "max_abs_logit_delta": 0.620750904083252
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 639,
+        "request_id": "general_en-p1024",
+        "teacher_step": 123,
+        "category": "general_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 14053,
+        "row_index": 639,
+        "kl": 0.02393483186642512,
+        "top1_equal": false,
+        "strict_top1_token_id": 14053,
+        "candidate_top1_token_id": 13996,
+        "topk_overlap": 0.8,
+        "strict_margin": 0.12617874145507812,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.7123038406810416,
+        "candidate_teacher_nll": 0.9564168279850317,
+        "teacher_delta_p": -0.10624551331086218,
+        "max_abs_logit_delta": 0.5650174617767334
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 646,
+        "request_id": "general_en-p4096",
+        "teacher_step": 1,
+        "category": "general_en",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 198,
+        "row_index": 646,
+        "kl": 0.05974351276410918,
+        "top1_equal": true,
+        "strict_top1_token_id": 198,
+        "candidate_top1_token_id": 198,
+        "topk_overlap": 1.0,
+        "strict_margin": 1.953338623046875,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.13260715727690545,
+        "candidate_teacher_nll": 0.041094773576978626,
+        "teacher_delta_p": 0.08392908805670807,
+        "max_abs_logit_delta": 1.4836711883544922
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 882,
+        "request_id": "general_ja-p512",
+        "teacher_step": 108,
+        "category": "general_ja",
+        "shape": "p512_c1",
+        "transition": "steady",
+        "teacher_token_id": 14996,
+        "row_index": 882,
+        "kl": 0.0225103042070967,
+        "top1_equal": true,
+        "strict_top1_token_id": 14996,
+        "candidate_top1_token_id": 14996,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.15114593505859375,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.6479479880466232,
+        "candidate_teacher_nll": 0.46823948559415446,
+        "teacher_delta_p": 0.10298544212754546,
+        "max_abs_logit_delta": 0.45325565338134766
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 941,
+        "request_id": "general_ja-p1024",
+        "teacher_step": 38,
+        "category": "general_ja",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 369,
+        "row_index": 941,
+        "kl": 0.03885931067983986,
+        "top1_equal": true,
+        "strict_top1_token_id": 369,
+        "candidate_top1_token_id": 369,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.25948524475097656,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.8044546616549977,
+        "candidate_teacher_nll": 0.6276101434961553,
+        "teacher_delta_p": 0.08653433388291709,
+        "max_abs_logit_delta": 0.7734527587890625
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1047,
+        "request_id": "general_ja-p4096",
+        "teacher_step": 15,
+        "category": "general_ja",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 4602,
+        "row_index": 1047,
+        "kl": 0.03214330127455504,
+        "top1_equal": true,
+        "strict_top1_token_id": 4602,
+        "candidate_top1_token_id": 4602,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.7547626495361328,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.8185689019182759,
+        "candidate_teacher_nll": 1.0383344286471112,
+        "teacher_delta_p": -0.08701853014016758,
+        "max_abs_logit_delta": 0.6718082427978516
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1289,
+        "request_id": "mixed_ja_en-p512",
+        "teacher_step": 128,
+        "category": "mixed_ja_en",
+        "shape": "p512_c1",
+        "transition": "steady",
+        "teacher_token_id": 10539,
+        "row_index": 1289,
+        "kl": 0.025056196724203873,
+        "top1_equal": true,
+        "strict_top1_token_id": 10539,
+        "candidate_top1_token_id": 10539,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.5008735656738281,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.7920465519024918,
+        "candidate_teacher_nll": 0.9187746702562247,
+        "teacher_delta_p": -0.05390927052505573,
+        "max_abs_logit_delta": 1.0425233840942383
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1429,
+        "request_id": "mixed_ja_en-p4096",
+        "teacher_step": 10,
+        "category": "mixed_ja_en",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 440,
+        "row_index": 1429,
+        "kl": 0.02148348524925106,
+        "top1_equal": true,
+        "strict_top1_token_id": 440,
+        "candidate_top1_token_id": 440,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.4525871276855469,
+        "strict_top1_candidate_rank": 1,
+        "strict_teacher_nll": 0.5009039138383803,
+        "candidate_teacher_nll": 0.686097825108418,
+        "teacher_delta_p": -0.10244552564475051,
+        "max_abs_logit_delta": 0.6528453826904297
+      }
+    ],
+    "top1_mismatch_rows": [
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 20,
+        "request_id": "code-p512",
+        "teacher_step": 20,
+        "category": "code",
+        "shape": "p512_c1",
+        "transition": "steady",
+        "teacher_token_id": 660,
+        "row_index": 20,
+        "kl": 0.007380930251016529,
+        "top1_equal": false,
+        "strict_top1_token_id": 660,
+        "candidate_top1_token_id": 25,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.04459953308105469,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.8769537085396806,
+        "candidate_teacher_nll": 0.9932812229422439,
+        "teacher_delta_p": -0.04568892470054953,
+        "max_abs_logit_delta": 0.7235431671142578
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 204,
+        "request_id": "code-p1024",
+        "teacher_step": 75,
+        "category": "code",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 469,
+        "row_index": 204,
+        "kl": 0.00902965066997778,
+        "top1_equal": false,
+        "strict_top1_token_id": 469,
+        "candidate_top1_token_id": 31038,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.02801513671875,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.9635666834213626,
+        "candidate_teacher_nll": 0.9421435493240452,
+        "teacher_delta_p": 0.008261741306306636,
+        "max_abs_logit_delta": 0.4175264835357666
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 269,
+        "request_id": "code-p4096",
+        "teacher_step": 11,
+        "category": "code",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 11,
+        "row_index": 269,
+        "kl": 0.005954583695827539,
+        "top1_equal": false,
+        "strict_top1_token_id": 11,
+        "candidate_top1_token_id": 11173,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.13534164428710938,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.721187539174476,
+        "candidate_teacher_nll": 0.7947666771999073,
+        "teacher_delta_p": -0.03448795025925944,
+        "max_abs_logit_delta": 1.000168800354004
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 355,
+        "request_id": "code-p4096",
+        "teacher_step": 97,
+        "category": "code",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 2324,
+        "row_index": 355,
+        "kl": 0.013999956443429926,
+        "top1_equal": false,
+        "strict_top1_token_id": 2324,
+        "candidate_top1_token_id": 4699,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.2615966796875,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 1.0852967669462654,
+        "candidate_teacher_nll": 1.2955200869974401,
+        "teacher_delta_p": -0.06404607204117141,
+        "max_abs_logit_delta": 0.5601434707641602
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 520,
+        "request_id": "general_en-p1024",
+        "teacher_step": 4,
+        "category": "general_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 682,
+        "row_index": 520,
+        "kl": 0.004950848216774284,
+        "top1_equal": false,
+        "strict_top1_token_id": 682,
+        "candidate_top1_token_id": 579,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.022840499877929688,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.7115436275616229,
+        "candidate_teacher_nll": 0.8161335175394829,
+        "teacher_delta_p": -0.04874799518951051,
+        "max_abs_logit_delta": 0.8349580764770508
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 532,
+        "request_id": "general_en-p1024",
+        "teacher_step": 16,
+        "category": "general_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 6007,
+        "row_index": 532,
+        "kl": 0.007369145053345562,
+        "top1_equal": false,
+        "strict_top1_token_id": 6007,
+        "candidate_top1_token_id": 1534,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.01216888427734375,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 1.5878516551566852,
+        "candidate_teacher_nll": 1.5907976143427671,
+        "teacher_delta_p": -0.0006011626136755432,
+        "max_abs_logit_delta": 1.1225347518920898
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 533,
+        "request_id": "general_en-p1024",
+        "teacher_step": 17,
+        "category": "general_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 1622,
+        "row_index": 533,
+        "kl": 0.011717009624657628,
+        "top1_equal": false,
+        "strict_top1_token_id": 1622,
+        "candidate_top1_token_id": 7154,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.1547679901123047,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.73581148353927,
+        "candidate_teacher_nll": 0.888756139757109,
+        "teacher_delta_p": -0.06794963709439333,
+        "max_abs_logit_delta": 0.5254008769989014
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 542,
+        "request_id": "general_en-p1024",
+        "teacher_step": 26,
+        "category": "general_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 61446,
+        "row_index": 542,
+        "kl": 0.005559160902271262,
+        "top1_equal": false,
+        "strict_top1_token_id": 61446,
+        "candidate_top1_token_id": 11567,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.049732208251953125,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.7100326506413698,
+        "candidate_teacher_nll": 0.8226204980537258,
+        "teacher_delta_p": -0.05234913010784775,
+        "max_abs_logit_delta": 0.3469071388244629
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 639,
+        "request_id": "general_en-p1024",
+        "teacher_step": 123,
+        "category": "general_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 14053,
+        "row_index": 639,
+        "kl": 0.02393483186642512,
+        "top1_equal": false,
+        "strict_top1_token_id": 14053,
+        "candidate_top1_token_id": 13996,
+        "topk_overlap": 0.8,
+        "strict_margin": 0.12617874145507812,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.7123038406810416,
+        "candidate_teacher_nll": 0.9564168279850317,
+        "teacher_delta_p": -0.10624551331086218,
+        "max_abs_logit_delta": 0.5650174617767334
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 660,
+        "request_id": "general_en-p4096",
+        "teacher_step": 15,
+        "category": "general_en",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 4087,
+        "row_index": 660,
+        "kl": 0.007559146503598379,
+        "top1_equal": false,
+        "strict_top1_token_id": 4087,
+        "candidate_top1_token_id": 4089,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.1687183380126953,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.9366079332290631,
+        "candidate_teacher_nll": 0.9657307721821741,
+        "teacher_delta_p": -0.01125023138842568,
+        "max_abs_logit_delta": 0.883204460144043
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 662,
+        "request_id": "general_en-p4096",
+        "teacher_step": 17,
+        "category": "general_en",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 4752,
+        "row_index": 662,
+        "kl": 0.005831854984463622,
+        "top1_equal": false,
+        "strict_top1_token_id": 4752,
+        "candidate_top1_token_id": 799,
+        "topk_overlap": 0.8,
+        "strict_margin": 0.15077590942382812,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 1.0835999309305686,
+        "candidate_teacher_nll": 1.1987759476771225,
+        "teacher_delta_p": -0.036812087945402194,
+        "max_abs_logit_delta": 0.5418014526367188
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 743,
+        "request_id": "general_en-p4096",
+        "teacher_step": 98,
+        "category": "general_en",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 46058,
+        "row_index": 743,
+        "kl": 0.004849939292113436,
+        "top1_equal": false,
+        "strict_top1_token_id": 46058,
+        "candidate_top1_token_id": 318,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.10533905029296875,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 1.2380656041966425,
+        "candidate_teacher_nll": 1.3274596892970374,
+        "teacher_delta_p": -0.024794573526669472,
+        "max_abs_logit_delta": 0.6643854975700378
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 793,
+        "request_id": "general_ja-p512",
+        "teacher_step": 19,
+        "category": "general_ja",
+        "shape": "p512_c1",
+        "transition": "steady",
+        "teacher_token_id": 4602,
+        "row_index": 793,
+        "kl": 0.011886776140419946,
+        "top1_equal": false,
+        "strict_top1_token_id": 4602,
+        "candidate_top1_token_id": 49219,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.014661788940429688,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 1.318886336333335,
+        "candidate_teacher_nll": 1.413266682611225,
+        "teacher_delta_p": -0.024085920792906362,
+        "max_abs_logit_delta": 0.6745996475219727
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 886,
+        "request_id": "general_ja-p512",
+        "teacher_step": 112,
+        "category": "general_ja",
+        "shape": "p512_c1",
+        "transition": "steady",
+        "teacher_token_id": 17439,
+        "row_index": 886,
+        "kl": 0.0027896395799531753,
+        "top1_equal": false,
+        "strict_top1_token_id": 17439,
+        "candidate_top1_token_id": 6302,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.08067703247070312,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.6805125954690814,
+        "candidate_teacher_nll": 0.7542086303218783,
+        "teacher_delta_p": -0.0359746552431337,
+        "max_abs_logit_delta": 0.32268238067626953
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 890,
+        "request_id": "general_ja-p512",
+        "teacher_step": 116,
+        "category": "general_ja",
+        "shape": "p512_c1",
+        "transition": "steady",
+        "teacher_token_id": 15494,
+        "row_index": 890,
+        "kl": 0.001684743495181906,
+        "top1_equal": false,
+        "strict_top1_token_id": 15494,
+        "candidate_top1_token_id": 7123,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.039760589599609375,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.709546118552955,
+        "candidate_teacher_nll": 0.7698818855845961,
+        "teacher_delta_p": -0.028799636230817605,
+        "max_abs_logit_delta": 0.22960186004638672
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1025,
+        "request_id": "general_ja-p1024",
+        "teacher_step": 122,
+        "category": "general_ja",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 3050,
+        "row_index": 1025,
+        "kl": 0.004927021579598531,
+        "top1_equal": false,
+        "strict_top1_token_id": 3050,
+        "candidate_top1_token_id": 87941,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.13735008239746094,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.6352668516138611,
+        "candidate_teacher_nll": 0.7309293403092721,
+        "teacher_delta_p": -0.04833275236203688,
+        "max_abs_logit_delta": 0.40984511375427246
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1045,
+        "request_id": "general_ja-p4096",
+        "teacher_step": 13,
+        "category": "general_ja",
+        "shape": "p4096_c1",
+        "transition": "steady",
+        "teacher_token_id": 13139,
+        "row_index": 1045,
+        "kl": 0.006756496210587168,
+        "top1_equal": false,
+        "strict_top1_token_id": 13139,
+        "candidate_top1_token_id": 49219,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.17151832580566406,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.6765378547282735,
+        "candidate_teacher_nll": 0.7890532523910792,
+        "teacher_delta_p": -0.0540993385480138,
+        "max_abs_logit_delta": 0.8091899156570435
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1175,
+        "request_id": "mixed_ja_en-p512",
+        "teacher_step": 14,
+        "category": "mixed_ja_en",
+        "shape": "p512_c1",
+        "transition": "steady",
+        "teacher_token_id": 7701,
+        "row_index": 1175,
+        "kl": 0.004793954173917492,
+        "top1_equal": false,
+        "strict_top1_token_id": 7701,
+        "candidate_top1_token_id": 369,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.07919692993164062,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.6990712842525207,
+        "candidate_teacher_nll": 0.8001215228492722,
+        "teacher_delta_p": -0.04777234090603644,
+        "max_abs_logit_delta": 0.42790794372558594
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1297,
+        "request_id": "mixed_ja_en-p1024",
+        "teacher_step": 7,
+        "category": "mixed_ja_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 1546,
+        "row_index": 1297,
+        "kl": 0.019421035739347843,
+        "top1_equal": false,
+        "strict_top1_token_id": 1546,
+        "candidate_top1_token_id": 11173,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.20292282104492188,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 1.3308572022285112,
+        "candidate_teacher_nll": 1.341838027082734,
+        "teacher_delta_p": -0.00288581676123173,
+        "max_abs_logit_delta": 1.0859375
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1318,
+        "request_id": "mixed_ja_en-p1024",
+        "teacher_step": 28,
+        "category": "mixed_ja_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 176217,
+        "row_index": 1318,
+        "kl": 0.0030408479312843285,
+        "top1_equal": false,
+        "strict_top1_token_id": 176217,
+        "candidate_top1_token_id": 498,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.09640693664550781,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 1.5763190212866083,
+        "candidate_teacher_nll": 1.5752594924309062,
+        "teacher_delta_p": 0.00021915744587841512,
+        "max_abs_logit_delta": 0.5050501823425293
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1374,
+        "request_id": "mixed_ja_en-p1024",
+        "teacher_step": 84,
+        "category": "mixed_ja_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 1330,
+        "row_index": 1374,
+        "kl": 0.005005126338039687,
+        "top1_equal": false,
+        "strict_top1_token_id": 1330,
+        "candidate_top1_token_id": 13139,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.0471649169921875,
+        "strict_top1_candidate_rank": 3,
+        "strict_teacher_nll": 1.0728035583806543,
+        "candidate_teacher_nll": 1.1832661404986557,
+        "teacher_delta_p": -0.03577145950895272,
+        "max_abs_logit_delta": 0.6079730987548828
+      },
+      {
+        "scenario_id": "q8-repair-canonical-depth",
+        "scenario_step": 1384,
+        "request_id": "mixed_ja_en-p1024",
+        "teacher_step": 94,
+        "category": "mixed_ja_en",
+        "shape": "p1024_c1",
+        "transition": "steady",
+        "teacher_token_id": 2942,
+        "row_index": 1384,
+        "kl": 0.003090377314817095,
+        "top1_equal": false,
+        "strict_top1_token_id": 2942,
+        "candidate_top1_token_id": 12,
+        "topk_overlap": 1.0,
+        "strict_margin": 0.08320999145507812,
+        "strict_top1_candidate_rank": 2,
+        "strict_teacher_nll": 0.7019644368832653,
+        "candidate_teacher_nll": 0.7803406699489768,
+        "teacher_delta_p": -0.03736087809212574,
+        "max_abs_logit_delta": 0.4861869812011719
+      }
+    ],
+    "hard_gates_passed": false,
+    "requires_outlier_review": true,
+    "eligible_for_automatic_admission": false
+  },
+  "deterministic": true,
+  "state_gate": {
+    "passed": true,
+    "mismatches": [],
+    "prompts": [
+      {
+        "prompt_id": "code-p512",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "e136887ca668bba392eaf0b3c003a620241d614024f472ec11caf355965d3afd",
+        "candidate_state_sha256": [
+          "581bd2c94be30c76a5f72ae568ec0a3ecdd9eacd4b82916ae5723931f8fa71d6",
+          "581bd2c94be30c76a5f72ae568ec0a3ecdd9eacd4b82916ae5723931f8fa71d6",
+          "581bd2c94be30c76a5f72ae568ec0a3ecdd9eacd4b82916ae5723931f8fa71d6"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "code-p1024",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "48d7a14ea0229b4b73895ee8d94bbe02d6c15d4fc95a3acda66180c1a07e8a39",
+        "candidate_state_sha256": [
+          "a75ab48cc04167316f8e6c92cdc86db3862f920f4a0c305a670630e607cc6c32",
+          "a75ab48cc04167316f8e6c92cdc86db3862f920f4a0c305a670630e607cc6c32",
+          "a75ab48cc04167316f8e6c92cdc86db3862f920f4a0c305a670630e607cc6c32"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "code-p4096",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "ca68539e9e999ff3b3f0295285e168a85f342e8fbd7a6c0a814829612641dc5b",
+        "candidate_state_sha256": [
+          "4139f4deec6eb737cf21314ed50bc1fb1aa809331a69108389380c6b7450331a",
+          "4139f4deec6eb737cf21314ed50bc1fb1aa809331a69108389380c6b7450331a",
+          "4139f4deec6eb737cf21314ed50bc1fb1aa809331a69108389380c6b7450331a"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_en-p512",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "5baa567ae269a95a027e7120da0dd360e62e61272bbf8f19dc174d3812efeee3",
+        "candidate_state_sha256": [
+          "d36a5b42cf7ecea00a31317fd5eafee8ba85d39194af110163f8d0444ced97b9",
+          "d36a5b42cf7ecea00a31317fd5eafee8ba85d39194af110163f8d0444ced97b9",
+          "d36a5b42cf7ecea00a31317fd5eafee8ba85d39194af110163f8d0444ced97b9"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_en-p1024",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "e6fbc99eac01ab299ccfc024901d99809958879bdee5d089b30f206546715e08",
+        "candidate_state_sha256": [
+          "6e0a1eacc60699fe479471ee9ef1769929823b554ef9165dbc6d1c281cc0f347",
+          "6e0a1eacc60699fe479471ee9ef1769929823b554ef9165dbc6d1c281cc0f347",
+          "6e0a1eacc60699fe479471ee9ef1769929823b554ef9165dbc6d1c281cc0f347"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_en-p4096",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "77f499a8f354f0aad6fbd0ca8315cef3d3b1126f1b0085e3a77d9553452e44ca",
+        "candidate_state_sha256": [
+          "fe64ef2588d7ac11e67f60165f0910dcb87aee30bb01f2bd1c84b8d61833edb9",
+          "fe64ef2588d7ac11e67f60165f0910dcb87aee30bb01f2bd1c84b8d61833edb9",
+          "fe64ef2588d7ac11e67f60165f0910dcb87aee30bb01f2bd1c84b8d61833edb9"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_ja-p512",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "85b46edb3c6000fdbd1018479530ad5871e616504f9f80ad7288a89ec35274ff",
+        "candidate_state_sha256": [
+          "6044d64329165764777fb7c497cdbc7e8f19bcaf9104265e987bcf759454e10f",
+          "6044d64329165764777fb7c497cdbc7e8f19bcaf9104265e987bcf759454e10f",
+          "6044d64329165764777fb7c497cdbc7e8f19bcaf9104265e987bcf759454e10f"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_ja-p1024",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "6333f05e3e1a7d59aa7a805e630531ea9b9a89377517703e0516417f5f08fd27",
+        "candidate_state_sha256": [
+          "c4a99ae14cbe272419133a5f9c9458131c217ae6866bf446d02353041e8fa7b3",
+          "c4a99ae14cbe272419133a5f9c9458131c217ae6866bf446d02353041e8fa7b3",
+          "c4a99ae14cbe272419133a5f9c9458131c217ae6866bf446d02353041e8fa7b3"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_ja-p4096",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "f5d5200e7ecac89c3df13a0e616fe15a0b3717ee20f6b6d8affd2db902698b5d",
+        "candidate_state_sha256": [
+          "a0a3895b84dee8fe6d41852f57e95700ad549419b7396c6cc2e73a80fd6a6f27",
+          "a0a3895b84dee8fe6d41852f57e95700ad549419b7396c6cc2e73a80fd6a6f27",
+          "a0a3895b84dee8fe6d41852f57e95700ad549419b7396c6cc2e73a80fd6a6f27"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "mixed_ja_en-p512",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "3cdc7e68c12143c0297f1b95eae52819b227c3fcd33222c5ab7eda8d963e2c2a",
+        "candidate_state_sha256": [
+          "f7d03209f5112088add3287327fb017ca3d9af0e2c9fdc11bd738691e9e1c659",
+          "f7d03209f5112088add3287327fb017ca3d9af0e2c9fdc11bd738691e9e1c659",
+          "f7d03209f5112088add3287327fb017ca3d9af0e2c9fdc11bd738691e9e1c659"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "mixed_ja_en-p1024",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "ac5a433dc282ce5bcf0a32166ce329d43b11fb4073634921635ece3ccce9c7cb",
+        "candidate_state_sha256": [
+          "9fb1a6662d2fbb169f9485a730528df80a444934df756189bf947450914a711c",
+          "9fb1a6662d2fbb169f9485a730528df80a444934df756189bf947450914a711c",
+          "9fb1a6662d2fbb169f9485a730528df80a444934df756189bf947450914a711c"
+        ],
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "mixed_ja_en-p4096",
+        "finite": true,
+        "layout_exact": true,
+        "metadata_exact": true,
+        "repeat_exact": true,
+        "strict_state_sha256": "3cee1fec5f8624ab5fea5c2c6de4f35cfe482d21f8819fa138d851f019d2bc86",
+        "candidate_state_sha256": [
+          "d1c59c2fcd88dab84a5ac79e2510b22c06489a9a081db6fd0fec349a4d9dbbf9",
+          "d1c59c2fcd88dab84a5ac79e2510b22c06489a9a081db6fd0fec349a4d9dbbf9",
+          "d1c59c2fcd88dab84a5ac79e2510b22c06489a9a081db6fd0fec349a4d9dbbf9"
+        ],
+        "strict_candidate_state_exact": false
+      }
+    ]
+  },
+  "candidate_dispatch_calls": 3924,
+  "candidate_dispatch_shapes": [
+    {
+      "arguments": [
+        512,
+        640,
+        2560
+      ],
+      "calls": 156
+    },
+    {
+      "arguments": [
+        512,
+        2560,
+        512
+      ],
+      "calls": 72
+    },
+    {
+      "arguments": [
+        512,
+        2560,
+        640
+      ],
+      "calls": 312
+    },
+    {
+      "arguments": [
+        512,
+        2560,
+        2560
+      ],
+      "calls": 12
+    },
+    {
+      "arguments": [
+        512,
+        2560,
+        6144
+      ],
+      "calls": 120
+    },
+    {
+      "arguments": [
+        512,
+        2560,
+        10240
+      ],
+      "calls": 132
+    },
+    {
+      "arguments": [
+        512,
+        2560,
+        12288
+      ],
+      "calls": 36
+    },
+    {
+      "arguments": [
+        512,
+        6144,
+        2560
+      ],
+      "calls": 156
+    },
+    {
+      "arguments": [
+        512,
+        10240,
+        320
+      ],
+      "calls": 312
+    },
+    {
+      "arguments": [
+        1024,
+        640,
+        2560
+      ],
+      "calls": 156
+    },
+    {
+      "arguments": [
+        1024,
+        2560,
+        512
+      ],
+      "calls": 72
+    },
+    {
+      "arguments": [
+        1024,
+        2560,
+        640
+      ],
+      "calls": 312
+    },
+    {
+      "arguments": [
+        1024,
+        2560,
+        2560
+      ],
+      "calls": 12
+    },
+    {
+      "arguments": [
+        1024,
+        2560,
+        6144
+      ],
+      "calls": 120
+    },
+    {
+      "arguments": [
+        1024,
+        2560,
+        10240
+      ],
+      "calls": 132
+    },
+    {
+      "arguments": [
+        1024,
+        2560,
+        12288
+      ],
+      "calls": 36
+    },
+    {
+      "arguments": [
+        1024,
+        6144,
+        2560
+      ],
+      "calls": 156
+    },
+    {
+      "arguments": [
+        1024,
+        10240,
+        320
+      ],
+      "calls": 312
+    },
+    {
+      "arguments": [
+        4096,
+        640,
+        2560
+      ],
+      "calls": 156
+    },
+    {
+      "arguments": [
+        4096,
+        2560,
+        512
+      ],
+      "calls": 72
+    },
+    {
+      "arguments": [
+        4096,
+        2560,
+        640
+      ],
+      "calls": 312
+    },
+    {
+      "arguments": [
+        4096,
+        2560,
+        2560
+      ],
+      "calls": 12
+    },
+    {
+      "arguments": [
+        4096,
+        2560,
+        6144
+      ],
+      "calls": 120
+    },
+    {
+      "arguments": [
+        4096,
+        2560,
+        10240
+      ],
+      "calls": 132
+    },
+    {
+      "arguments": [
+        4096,
+        2560,
+        12288
+      ],
+      "calls": 36
+    },
+    {
+      "arguments": [
+        4096,
+        6144,
+        2560
+      ],
+      "calls": 156
+    },
+    {
+      "arguments": [
+        4096,
+        10240,
+        320
+      ],
+      "calls": 312
+    }
+  ],
+  "candidate_dispatch_shape_positions": [
+    3,
+    4,
+    5
+  ],
+  "candidate_direct_dispatch_target": null,
+  "candidate_direct_dispatch_reference": null,
+  "candidate_registered_key": [
+    "hip_gfx1151",
+    "linear",
+    "gguf_q8_0",
+    "dense_split64x128_f32_f32_out"
+  ],
+  "candidate_dispatch_mode": "registry"
+}

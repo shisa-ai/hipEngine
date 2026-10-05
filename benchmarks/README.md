@@ -18,11 +18,17 @@ case at rows 512/1024/4096.
 | --- | --- | --- |
 | Complete compensated range-safe Q8 projection, 15 cases | 1.270–2.031x; wall -21.3% to -50.8% | Independent CPU F64 sampled top-1 100%, relative L2 ≤9.93e-8; ten split GPU fixtures pass |
 
-This is not a model-throughput result. The earlier uncompensated composition
-fails the full numerical envelope; the repaired composition has not yet
-completed that gate. No default changes. Control/task/heldout qualification
-and model-wall evidence are still required. An out-of-range block uses an
-in-kernel strict F32 fallback, and the strict F32 parent stays registered.
+The complete gate compares strict chunk1024 with production plus the
+compensated `dense_split_early` route at chunk4096: 12 canonical cases, 1,548
+full-vocabulary rows, 128 teacher-forced transitions and three repeats. The
+candidate fails the production envelope: mean KL 1.4386e-3 (limit 1e-3), p95
+7.5336e-3 (5e-3), maximum 5.9744e-2 (5e-2), and top-1 98.579% (1526/1548,
+limit 99%). All categories and steady transition fail at least one scope;
+prefill-last and prefill-to-c1 remain near-zero. Finite outputs, registered
+route engagement, state/layout metadata, deterministic repeats and teardown
+pass. The candidate stays default-off; this is not a model-throughput result.
+No heldout, task, BF16-relative, isolation or engine-wall promotion gate was
+run after the binding numerical failure.
 [Protocol and artifacts](results/2026-10-05-qwen4exp-dense-split-model/README.md).
 
 ## Qwen3.8 Flash Next GR-up DPP production route

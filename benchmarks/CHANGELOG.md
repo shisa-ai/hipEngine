@@ -1,5 +1,16 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-05 — Repaired dense split model qualification fails
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL, strict chunk1024 vs production plus compensated split chunk4096,
+  12 cases/128 transitions/three repeats: mean KL 1.4386e-3, p95 7.5336e-3,
+  max 5.9744e-2 and top-1 1526/1548 fail the production envelope. Finite
+  outputs, repeats, state metadata and teardown pass. Default unchanged;
+  no model speed claim. Source:
+  `results/2026-10-05-qwen4exp-dense-split-model/canonical-strict-repaired.json`,
+  candidate `fdb026c95`.
+
 ## 2026-10-05 — Compensated dense split operation screen (diagnostic)
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
@@ -9,9 +20,9 @@
   228.139→149.753 ms (-34.57%/-33.97%/-34.36%). Per-case ratios are
   1.270–2.031x; sampled F64 relative L2 ≤9.93e-8/top-1 100%, ten GPU
   split fixtures pass. Extra signed-dot/TwoSum work trades throughput for
-  numerical accuracy; the earlier composition failed full model numerics,
-  repaired qualification is incomplete, default unchanged. Source:
-  `results/2026-10-05-qwen4exp-dense-split-model/compensated-screen.json`,
+  numerical accuracy; the candidate remains default-off after the repaired
+  model composition's numerical failure. No model-rate claim or promotion.
+  Source: `results/2026-10-05-qwen4exp-dense-split-model/compensated-screen.json`,
   candidate `fdb026c95`.
 
 ## 2026-10-05 — Range-safe dense split route admission (diagnostic)

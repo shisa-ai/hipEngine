@@ -10,14 +10,15 @@
   Scope and layer identity are in the live dispatch cache key.
   It is distinct from the historical identical-product `dense_wide256_split3`
   timing probe. The exact raw-F32 coltile chain remains available.
-- **Current repair experiment:** the split leaf now uses compensated F32
-  high-high accumulation, positive/negative high-high WMMA averaging and
-  ordinary cross-plane summation. The route remains default-off until the
-  complete model gates pass. If it fails with no further justified repair,
-  remove the runtime candidate while preserving immutable failure evidence.
-  Retain independently useful numerical RED fixtures or migrate their oracle
-  coverage to the replacement path; do not delete evidence to erase a failure.
-  If it passes, replace the early-layer fallback only in the certified scope.
+- **Failed repaired composition:** compensated F32 high-high accumulation,
+  positive/negative WMMA averaging and cross-plane summation pass projection
+  fixtures but fail the complete canonical production envelope (mean KL
+  1.4386e-3, p95 7.5336e-3, max 0.059744, top-1 1526/1548). Keep the route
+  default-off. The remaining activation attribution is diagnostic, not proof
+  of model causation; it does not justify another unchanged qualification run.
+  Reopen only with a new arithmetic or ownership mechanism and a predeclared
+  screen. If none is justified, remove the runtime candidate while preserving
+  immutable failure evidence and independently useful numerical RED coverage.
 - Out-of-range operands trigger an in-kernel strict F32 fallback with no host
   readback, extra launch or shared workspace. That guard reduces the primitive
   win; the complete range-safe owner, not the unguarded leaf, is the perf basis.

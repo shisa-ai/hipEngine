@@ -1,0 +1,1095 @@
+{
+  "case_summaries": {
+    "code-p512": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 109,
+      "max_bf16_flips": 813,
+      "max_candidate_f64_relative_l2": 2.0276179100139642e-07,
+      "max_candidate_parent_kl_max": 2.3717915974606443e-11,
+      "max_candidate_parent_relative_l2": 2.9341633413680496e-07
+    },
+    "general_en-p512": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 109,
+      "max_bf16_flips": 789,
+      "max_candidate_f64_relative_l2": 2.0494634764977438e-07,
+      "max_candidate_parent_kl_max": 2.7829442232845265e-11,
+      "max_candidate_parent_relative_l2": 2.861753362636488e-07
+    },
+    "general_ja-p512": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 109,
+      "max_bf16_flips": 792,
+      "max_candidate_f64_relative_l2": 2.0555880739929237e-07,
+      "max_candidate_parent_kl_max": 2.3541869828979588e-11,
+      "max_candidate_parent_relative_l2": 2.9297231657149916e-07
+    },
+    "mixed_ja_en-p512": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 109,
+      "max_bf16_flips": 812,
+      "max_candidate_f64_relative_l2": 2.1283878482416737e-07,
+      "max_candidate_parent_kl_max": 2.80685834902532e-11,
+      "max_candidate_parent_relative_l2": 3.031405916098603e-07
+    }
+  },
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "gfx1151",
+    "kernel": "7.1.6-1-cachyos",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_dense_split_repaired_natural_localize_summary",
+  "memory_after_close": {
+    "active_allocations": 0,
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 84362249992,
+    "peak_allocations": 1623,
+    "total_allocated_bytes": 86913435408,
+    "total_freed_bytes": 86913435408
+  },
+  "note": "Compact summary of the full local packet retained outside the repository; private NPZ captures remain under /tmp.",
+  "parent_trajectory_checks": [
+    {
+      "case_id": "code-p512",
+      "logits_bit_identical": true
+    },
+    {
+      "case_id": "general_en-p512",
+      "logits_bit_identical": true
+    },
+    {
+      "case_id": "general_ja-p512",
+      "logits_bit_identical": true
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "logits_bit_identical": true
+    }
+  ],
+  "performance_claim": false,
+  "profile_qualification_claim": false,
+  "projection_count": 436,
+  "protocol": {
+    "chunk": 1024,
+    "cpu_oracle": "F64 matmul, evenly spaced rows and every output column",
+    "layers": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "observation": "first eligible projection per slot per case; split output never published",
+    "profile": "production"
+  },
+  "role_summaries": {
+    "layers.0.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 153,
+      "max_candidate_f64_relative_l2": 5.193361448485931e-08,
+      "max_candidate_parent_kl_max": 3.46060269449255e-13,
+      "max_candidate_parent_relative_l2": 7.491189818698945e-08
+    },
+    "layers.0.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 760,
+      "max_candidate_f64_relative_l2": 5.7367045904299314e-08,
+      "max_candidate_parent_kl_max": 1.7465728185051736e-12,
+      "max_candidate_parent_relative_l2": 8.06253170886103e-08
+    },
+    "layers.0.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 9,
+      "max_candidate_f64_relative_l2": 5.195004792776478e-08,
+      "max_candidate_parent_kl_max": 5.843622845262716e-12,
+      "max_candidate_parent_relative_l2": 8.552199898288194e-08
+    },
+    "layers.0.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 10,
+      "max_candidate_f64_relative_l2": 5.002316350983895e-08,
+      "max_candidate_parent_kl_max": 2.7829442232845265e-11,
+      "max_candidate_parent_relative_l2": 8.640941763831767e-08
+    },
+    "layers.0.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 271,
+      "max_candidate_f64_relative_l2": 1.0207943680587457e-07,
+      "max_candidate_parent_kl_max": 1.3070620382842874e-13,
+      "max_candidate_parent_relative_l2": 9.148893803386047e-08
+    },
+    "layers.0.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 59,
+      "max_candidate_f64_relative_l2": 6.114687378100465e-08,
+      "max_candidate_parent_kl_max": 1.864975717218702e-15,
+      "max_candidate_parent_relative_l2": 8.839575767847609e-08
+    },
+    "layers.0.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 74,
+      "max_candidate_f64_relative_l2": 4.935690277030836e-08,
+      "max_candidate_parent_kl_max": 1.5194706803313703e-13,
+      "max_candidate_parent_relative_l2": 6.936023439724202e-08
+    },
+    "layers.0.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 286,
+      "max_candidate_f64_relative_l2": 8.915543325022681e-08,
+      "max_candidate_parent_kl_max": 1.1797738449005088e-15,
+      "max_candidate_parent_relative_l2": 1.583053367656024e-07
+    },
+    "layers.1.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 111,
+      "max_candidate_f64_relative_l2": 4.286107063301379e-08,
+      "max_candidate_parent_kl_max": 2.7957359252012626e-14,
+      "max_candidate_parent_relative_l2": 6.422548594657182e-08
+    },
+    "layers.1.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 789,
+      "max_candidate_f64_relative_l2": 5.6027643889813973e-08,
+      "max_candidate_parent_kl_max": 7.120721949097024e-13,
+      "max_candidate_parent_relative_l2": 8.269523668544987e-08
+    },
+    "layers.1.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 33,
+      "max_candidate_f64_relative_l2": 9.285422952052247e-08,
+      "max_candidate_parent_kl_max": 1.6217987501613175e-11,
+      "max_candidate_parent_relative_l2": 1.5036247240264656e-07
+    },
+    "layers.1.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 17,
+      "max_candidate_f64_relative_l2": 5.359259956865105e-08,
+      "max_candidate_parent_kl_max": 1.5495882936118993e-11,
+      "max_candidate_parent_relative_l2": 8.829227949960757e-08
+    },
+    "layers.1.ple_key": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 665,
+      "max_candidate_f64_relative_l2": 5.06332367633077e-08,
+      "max_candidate_parent_kl_max": 1.7184801548256407e-15,
+      "max_candidate_parent_relative_l2": 7.015235385831368e-08
+    },
+    "layers.1.ple_value": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 277,
+      "max_candidate_f64_relative_l2": 7.734631940409806e-08,
+      "max_candidate_parent_kl_max": 9.563258930290431e-16,
+      "max_candidate_parent_relative_l2": 1.2584827983619202e-07
+    },
+    "layers.1.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 209,
+      "max_candidate_f64_relative_l2": 9.719826854608389e-08,
+      "max_candidate_parent_kl_max": 9.941969396696085e-16,
+      "max_candidate_parent_relative_l2": 1.2468979604731054e-07
+    },
+    "layers.1.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 41,
+      "max_candidate_f64_relative_l2": 6.759288446028967e-08,
+      "max_candidate_parent_kl_max": 2.514979853328966e-15,
+      "max_candidate_parent_relative_l2": 9.880444977252484e-08
+    },
+    "layers.1.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 65,
+      "max_candidate_f64_relative_l2": 8.551108967815531e-08,
+      "max_candidate_parent_kl_max": 1.970389231375115e-15,
+      "max_candidate_parent_relative_l2": 1.3096289920980136e-07
+    },
+    "layers.1.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 348,
+      "max_candidate_f64_relative_l2": 1.1343421519547907e-07,
+      "max_candidate_parent_kl_max": 1.3035370573097654e-15,
+      "max_candidate_parent_relative_l2": 1.812056751061315e-07
+    },
+    "layers.10.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 128,
+      "max_candidate_f64_relative_l2": 4.615655916176939e-08,
+      "max_candidate_parent_kl_max": 2.0755260295456732e-14,
+      "max_candidate_parent_relative_l2": 6.908946942942441e-08
+    },
+    "layers.10.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 713,
+      "max_candidate_f64_relative_l2": 6.356188606939548e-08,
+      "max_candidate_parent_kl_max": 6.459916630392974e-13,
+      "max_candidate_parent_relative_l2": 9.45011600863982e-08
+    },
+    "layers.10.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 19,
+      "max_candidate_f64_relative_l2": 4.912351246656323e-08,
+      "max_candidate_parent_kl_max": 2.3717915974606443e-11,
+      "max_candidate_parent_relative_l2": 9.014789470212313e-08
+    },
+    "layers.10.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 6,
+      "max_candidate_f64_relative_l2": 4.430826042780054e-08,
+      "max_candidate_parent_kl_max": 2.3347440587532034e-11,
+      "max_candidate_parent_relative_l2": 8.004885638814787e-08
+    },
+    "layers.10.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 227,
+      "max_candidate_f64_relative_l2": 1.0589393392873746e-07,
+      "max_candidate_parent_kl_max": 9.909505382216677e-16,
+      "max_candidate_parent_relative_l2": 1.327271900144753e-07
+    },
+    "layers.10.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 52,
+      "max_candidate_f64_relative_l2": 7.744210604871889e-08,
+      "max_candidate_parent_kl_max": 2.3217044197093227e-15,
+      "max_candidate_parent_relative_l2": 1.1331231510493716e-07
+    },
+    "layers.10.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 70,
+      "max_candidate_f64_relative_l2": 8.598140090915298e-08,
+      "max_candidate_parent_kl_max": 1.8330700183956793e-14,
+      "max_candidate_parent_relative_l2": 1.262974235501502e-07
+    },
+    "layers.10.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 336,
+      "max_candidate_f64_relative_l2": 1.1590952130185106e-07,
+      "max_candidate_parent_kl_max": 1.3480275794450651e-15,
+      "max_candidate_parent_relative_l2": 1.963340520677542e-07
+    },
+    "layers.11.attn_k": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 41,
+      "max_candidate_f64_relative_l2": 7.305453747234208e-08,
+      "max_candidate_parent_kl_max": 1.3573700524678105e-14,
+      "max_candidate_parent_relative_l2": 1.0622662405592607e-07
+    },
+    "layers.11.attn_output": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 525,
+      "max_candidate_f64_relative_l2": 2.1283878482416737e-07,
+      "max_candidate_parent_kl_max": 3.291274676508573e-15,
+      "max_candidate_parent_relative_l2": 3.031405916098603e-07
+    },
+    "layers.11.attn_q": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 535,
+      "max_candidate_f64_relative_l2": 4.9753346294788284e-08,
+      "max_candidate_parent_kl_max": 4.2048925008322205e-13,
+      "max_candidate_parent_relative_l2": 7.357680864972146e-08
+    },
+    "layers.11.attn_v": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 40,
+      "max_candidate_f64_relative_l2": 6.786360233960098e-08,
+      "max_candidate_parent_kl_max": 1.996550077795023e-14,
+      "max_candidate_parent_relative_l2": 9.714496126047907e-08
+    },
+    "layers.11.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 10,
+      "max_candidate_f64_relative_l2": 4.850975406967949e-08,
+      "max_candidate_parent_kl_max": 7.204001667894075e-12,
+      "max_candidate_parent_relative_l2": 8.564625524593853e-08
+    },
+    "layers.11.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 8,
+      "max_candidate_f64_relative_l2": 4.449941323595352e-08,
+      "max_candidate_parent_kl_max": 2.80685834902532e-11,
+      "max_candidate_parent_relative_l2": 7.957352597272851e-08
+    },
+    "layers.11.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 216,
+      "max_candidate_f64_relative_l2": 1.0643427943254024e-07,
+      "max_candidate_parent_kl_max": 1.0118691601954337e-15,
+      "max_candidate_parent_relative_l2": 1.3167877015012485e-07
+    },
+    "layers.11.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 50,
+      "max_candidate_f64_relative_l2": 8.093012371249154e-08,
+      "max_candidate_parent_kl_max": 2.349151494696585e-15,
+      "max_candidate_parent_relative_l2": 1.15915778622649e-07
+    },
+    "layers.11.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 65,
+      "max_candidate_f64_relative_l2": 9.189494236830003e-08,
+      "max_candidate_parent_kl_max": 4.839293132861471e-15,
+      "max_candidate_parent_relative_l2": 1.3281113955749447e-07
+    },
+    "layers.12.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 123,
+      "max_candidate_f64_relative_l2": 4.592495067587513e-08,
+      "max_candidate_parent_kl_max": 1.152207781982874e-14,
+      "max_candidate_parent_relative_l2": 6.869607469172715e-08
+    },
+    "layers.12.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 740,
+      "max_candidate_f64_relative_l2": 6.164018716919891e-08,
+      "max_candidate_parent_kl_max": 5.037549088662301e-13,
+      "max_candidate_parent_relative_l2": 9.126857108442827e-08
+    },
+    "layers.12.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 18,
+      "max_candidate_f64_relative_l2": 5.006411488821303e-08,
+      "max_candidate_parent_kl_max": 1.3121459683214135e-11,
+      "max_candidate_parent_relative_l2": 9.83509444611107e-08
+    },
+    "layers.12.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 10,
+      "max_candidate_f64_relative_l2": 4.7173188989838886e-08,
+      "max_candidate_parent_kl_max": 1.5919079072964448e-11,
+      "max_candidate_parent_relative_l2": 8.297575868122802e-08
+    },
+    "layers.12.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 237,
+      "max_candidate_f64_relative_l2": 1.0280680836651897e-07,
+      "max_candidate_parent_kl_max": 1.029937285569997e-15,
+      "max_candidate_parent_relative_l2": 1.2802552731546817e-07
+    },
+    "layers.12.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 48,
+      "max_candidate_f64_relative_l2": 7.660449603372038e-08,
+      "max_candidate_parent_kl_max": 3.0822508671895266e-15,
+      "max_candidate_parent_relative_l2": 1.131667959454422e-07
+    },
+    "layers.12.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 59,
+      "max_candidate_f64_relative_l2": 8.06641757359176e-08,
+      "max_candidate_parent_kl_max": 1.9413836444887517e-14,
+      "max_candidate_parent_relative_l2": 1.1567040261782237e-07
+    },
+    "layers.12.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 342,
+      "max_candidate_f64_relative_l2": 1.1699823788303218e-07,
+      "max_candidate_parent_kl_max": 1.1340168254953534e-15,
+      "max_candidate_parent_relative_l2": 2.0375884744980112e-07
+    },
+    "layers.2.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 105,
+      "max_candidate_f64_relative_l2": 4.3558588600075245e-08,
+      "max_candidate_parent_kl_max": 1.192605415657013e-14,
+      "max_candidate_parent_relative_l2": 6.548658218929535e-08
+    },
+    "layers.2.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 749,
+      "max_candidate_f64_relative_l2": 6.084743105002163e-08,
+      "max_candidate_parent_kl_max": 9.184288201652734e-13,
+      "max_candidate_parent_relative_l2": 8.986893549097124e-08
+    },
+    "layers.2.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 14,
+      "max_candidate_f64_relative_l2": 5.542146740374336e-08,
+      "max_candidate_parent_kl_max": 1.997949262696051e-11,
+      "max_candidate_parent_relative_l2": 8.76599822108458e-08
+    },
+    "layers.2.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 11,
+      "max_candidate_f64_relative_l2": 6.239439831427962e-08,
+      "max_candidate_parent_kl_max": 1.674809324454167e-11,
+      "max_candidate_parent_relative_l2": 1.0112180535237684e-07
+    },
+    "layers.2.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 269,
+      "max_candidate_f64_relative_l2": 7.178609881139633e-08,
+      "max_candidate_parent_kl_max": 1.0178607824264117e-15,
+      "max_candidate_parent_relative_l2": 9.640662335501172e-08
+    },
+    "layers.2.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 49,
+      "max_candidate_f64_relative_l2": 6.632849597212679e-08,
+      "max_candidate_parent_kl_max": 2.986206549175033e-15,
+      "max_candidate_parent_relative_l2": 9.524063533907829e-08
+    },
+    "layers.2.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 60,
+      "max_candidate_f64_relative_l2": 7.17149065272272e-08,
+      "max_candidate_parent_kl_max": 1.5232382610431892e-14,
+      "max_candidate_parent_relative_l2": 1.0621001839332411e-07
+    },
+    "layers.2.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 318,
+      "max_candidate_f64_relative_l2": 1.0352678550742361e-07,
+      "max_candidate_parent_kl_max": 1.3087774206376572e-15,
+      "max_candidate_parent_relative_l2": 1.8068136998287908e-07
+    },
+    "layers.3.attn_k": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 50,
+      "max_candidate_f64_relative_l2": 7.377517373259708e-08,
+      "max_candidate_parent_kl_max": 4.192438485279141e-14,
+      "max_candidate_parent_relative_l2": 1.0814242305611365e-07
+    },
+    "layers.3.attn_output": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 390,
+      "max_candidate_f64_relative_l2": 1.3169342637656747e-07,
+      "max_candidate_parent_kl_max": 1.2608061028908936e-15,
+      "max_candidate_parent_relative_l2": 2.2162018952313643e-07
+    },
+    "layers.3.attn_q": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 467,
+      "max_candidate_f64_relative_l2": 4.520640601584951e-08,
+      "max_candidate_parent_kl_max": 7.285186576300851e-13,
+      "max_candidate_parent_relative_l2": 6.811685415013843e-08
+    },
+    "layers.3.attn_v": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 47,
+      "max_candidate_f64_relative_l2": 7.609520757039245e-08,
+      "max_candidate_parent_kl_max": 5.868644306944825e-14,
+      "max_candidate_parent_relative_l2": 1.1013614676675029e-07
+    },
+    "layers.3.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 15,
+      "max_candidate_f64_relative_l2": 5.342857984673343e-08,
+      "max_candidate_parent_kl_max": 5.890324442513074e-13,
+      "max_candidate_parent_relative_l2": 8.539351917197682e-08
+    },
+    "layers.3.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 7,
+      "max_candidate_f64_relative_l2": 4.989697132188841e-08,
+      "max_candidate_parent_kl_max": 1.5331381925421548e-11,
+      "max_candidate_parent_relative_l2": 7.65321824564168e-08
+    },
+    "layers.3.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 219,
+      "max_candidate_f64_relative_l2": 1.0024273136273638e-07,
+      "max_candidate_parent_kl_max": 1.1144991844778226e-15,
+      "max_candidate_parent_relative_l2": 1.2854968881255093e-07
+    },
+    "layers.3.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 53,
+      "max_candidate_f64_relative_l2": 6.911745457968177e-08,
+      "max_candidate_parent_kl_max": 2.562196295251098e-15,
+      "max_candidate_parent_relative_l2": 1.0475710667967441e-07
+    },
+    "layers.3.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 60,
+      "max_candidate_f64_relative_l2": 9.243444275855752e-08,
+      "max_candidate_parent_kl_max": 2.8939501189702805e-15,
+      "max_candidate_parent_relative_l2": 1.3517242159311852e-07
+    },
+    "layers.4.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 99,
+      "max_candidate_f64_relative_l2": 4.383576599663334e-08,
+      "max_candidate_parent_kl_max": 6.105102724626006e-14,
+      "max_candidate_parent_relative_l2": 6.623036836320299e-08
+    },
+    "layers.4.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 762,
+      "max_candidate_f64_relative_l2": 6.152768066488087e-08,
+      "max_candidate_parent_kl_max": 9.930442347502267e-13,
+      "max_candidate_parent_relative_l2": 8.975533048463279e-08
+    },
+    "layers.4.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 14,
+      "max_candidate_f64_relative_l2": 5.622639580459662e-08,
+      "max_candidate_parent_kl_max": 2.476640459063423e-11,
+      "max_candidate_parent_relative_l2": 8.806296658454933e-08
+    },
+    "layers.4.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 7,
+      "max_candidate_f64_relative_l2": 4.9051006432458755e-08,
+      "max_candidate_parent_kl_max": 2.7462209026012145e-11,
+      "max_candidate_parent_relative_l2": 7.494666103561937e-08
+    },
+    "layers.4.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 227,
+      "max_candidate_f64_relative_l2": 9.976908737484224e-08,
+      "max_candidate_parent_kl_max": 1.1192940228945738e-15,
+      "max_candidate_parent_relative_l2": 1.32547663160435e-07
+    },
+    "layers.4.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 44,
+      "max_candidate_f64_relative_l2": 7.785865720579602e-08,
+      "max_candidate_parent_kl_max": 3.666236196289414e-15,
+      "max_candidate_parent_relative_l2": 1.1638157187892124e-07
+    },
+    "layers.4.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 63,
+      "max_candidate_f64_relative_l2": 8.601269077260012e-08,
+      "max_candidate_parent_kl_max": 3.221578499945929e-15,
+      "max_candidate_parent_relative_l2": 1.2670623162616888e-07
+    },
+    "layers.4.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 338,
+      "max_candidate_f64_relative_l2": 1.1206843198218365e-07,
+      "max_candidate_parent_kl_max": 1.2668589828060836e-15,
+      "max_candidate_parent_relative_l2": 1.9277635094741477e-07
+    },
+    "layers.5.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 100,
+      "max_candidate_f64_relative_l2": 4.35774653864887e-08,
+      "max_candidate_parent_kl_max": 8.042438568728163e-14,
+      "max_candidate_parent_relative_l2": 6.52532511916354e-08
+    },
+    "layers.5.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 723,
+      "max_candidate_f64_relative_l2": 5.938662418226879e-08,
+      "max_candidate_parent_kl_max": 7.594489229228882e-13,
+      "max_candidate_parent_relative_l2": 8.595844182053526e-08
+    },
+    "layers.5.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 19,
+      "max_candidate_f64_relative_l2": 5.389751678654684e-08,
+      "max_candidate_parent_kl_max": 1.8527020183921436e-11,
+      "max_candidate_parent_relative_l2": 8.437243175134463e-08
+    },
+    "layers.5.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 7,
+      "max_candidate_f64_relative_l2": 5.1261353271905075e-08,
+      "max_candidate_parent_kl_max": 7.247466647440049e-12,
+      "max_candidate_parent_relative_l2": 8.325135850090418e-08
+    },
+    "layers.5.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 240,
+      "max_candidate_f64_relative_l2": 9.222547638089916e-08,
+      "max_candidate_parent_kl_max": 9.807819133961335e-16,
+      "max_candidate_parent_relative_l2": 1.2440711991584778e-07
+    },
+    "layers.5.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 50,
+      "max_candidate_f64_relative_l2": 7.529620381404384e-08,
+      "max_candidate_parent_kl_max": 2.5450170167229742e-15,
+      "max_candidate_parent_relative_l2": 1.0623758159159116e-07
+    },
+    "layers.5.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 60,
+      "max_candidate_f64_relative_l2": 8.812570797676862e-08,
+      "max_candidate_parent_kl_max": 2.3518482153696855e-15,
+      "max_candidate_parent_relative_l2": 1.2627596765113013e-07
+    },
+    "layers.5.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 339,
+      "max_candidate_f64_relative_l2": 1.1212127396014209e-07,
+      "max_candidate_parent_kl_max": 1.1067375761744458e-15,
+      "max_candidate_parent_relative_l2": 1.9892582831657142e-07
+    },
+    "layers.6.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 137,
+      "max_candidate_f64_relative_l2": 4.620877072626605e-08,
+      "max_candidate_parent_kl_max": 1.237251420005903e-14,
+      "max_candidate_parent_relative_l2": 6.742437266374019e-08
+    },
+    "layers.6.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 759,
+      "max_candidate_f64_relative_l2": 6.427508015726152e-08,
+      "max_candidate_parent_kl_max": 7.552591880178842e-13,
+      "max_candidate_parent_relative_l2": 9.38852829449936e-08
+    },
+    "layers.6.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 13,
+      "max_candidate_f64_relative_l2": 5.0882076030048556e-08,
+      "max_candidate_parent_kl_max": 7.150061454671739e-12,
+      "max_candidate_parent_relative_l2": 8.011532693335863e-08
+    },
+    "layers.6.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 9,
+      "max_candidate_f64_relative_l2": 4.982588714829917e-08,
+      "max_candidate_parent_kl_max": 1.6305449907132168e-11,
+      "max_candidate_parent_relative_l2": 8.086117274684757e-08
+    },
+    "layers.6.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 232,
+      "max_candidate_f64_relative_l2": 1.0473322079133339e-07,
+      "max_candidate_parent_kl_max": 9.713236057976823e-16,
+      "max_candidate_parent_relative_l2": 1.3739878987889756e-07
+    },
+    "layers.6.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 47,
+      "max_candidate_f64_relative_l2": 6.6629819246107e-08,
+      "max_candidate_parent_kl_max": 5.834231349900644e-15,
+      "max_candidate_parent_relative_l2": 9.78093496256032e-08
+    },
+    "layers.6.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 69,
+      "max_candidate_f64_relative_l2": 8.898248114355678e-08,
+      "max_candidate_parent_kl_max": 3.2556326648765148e-15,
+      "max_candidate_parent_relative_l2": 1.3168121449221202e-07
+    },
+    "layers.6.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 330,
+      "max_candidate_f64_relative_l2": 9.207735015009964e-08,
+      "max_candidate_parent_kl_max": 4.311919007703622e-15,
+      "max_candidate_parent_relative_l2": 1.6518032270747308e-07
+    },
+    "layers.7.attn_k": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 37,
+      "max_candidate_f64_relative_l2": 7.529897856860896e-08,
+      "max_candidate_parent_kl_max": 1.3602537860629051e-14,
+      "max_candidate_parent_relative_l2": 1.1130880409918515e-07
+    },
+    "layers.7.attn_output": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 519,
+      "max_candidate_f64_relative_l2": 1.873799023262129e-07,
+      "max_candidate_parent_kl_max": 3.2327878473518103e-15,
+      "max_candidate_parent_relative_l2": 2.865732864703161e-07
+    },
+    "layers.7.attn_q": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 524,
+      "max_candidate_f64_relative_l2": 4.733292960976111e-08,
+      "max_candidate_parent_kl_max": 4.529127456823938e-13,
+      "max_candidate_parent_relative_l2": 7.094839257778415e-08
+    },
+    "layers.7.attn_v": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 36,
+      "max_candidate_f64_relative_l2": 6.377349002317162e-08,
+      "max_candidate_parent_kl_max": 5.845211940508123e-15,
+      "max_candidate_parent_relative_l2": 9.399977486200778e-08
+    },
+    "layers.7.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 11,
+      "max_candidate_f64_relative_l2": 4.662099011687805e-08,
+      "max_candidate_parent_kl_max": 7.224593293583792e-12,
+      "max_candidate_parent_relative_l2": 7.819402908882848e-08
+    },
+    "layers.7.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 12,
+      "max_candidate_f64_relative_l2": 4.694166638819677e-08,
+      "max_candidate_parent_kl_max": 1.5739961724403617e-11,
+      "max_candidate_parent_relative_l2": 7.62787799516529e-08
+    },
+    "layers.7.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 270,
+      "max_candidate_f64_relative_l2": 1.0757889597736807e-07,
+      "max_candidate_parent_kl_max": 1.067295914637926e-15,
+      "max_candidate_parent_relative_l2": 1.33839049169718e-07
+    },
+    "layers.7.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 39,
+      "max_candidate_f64_relative_l2": 6.929023586174092e-08,
+      "max_candidate_parent_kl_max": 2.369555323843739e-15,
+      "max_candidate_parent_relative_l2": 1.031457176332246e-07
+    },
+    "layers.7.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 57,
+      "max_candidate_f64_relative_l2": 8.402962810593713e-08,
+      "max_candidate_parent_kl_max": 4.5233887383951995e-15,
+      "max_candidate_parent_relative_l2": 1.2772941627606288e-07
+    },
+    "layers.8.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 96,
+      "max_candidate_f64_relative_l2": 4.599865703389231e-08,
+      "max_candidate_parent_kl_max": 1.114630550805463e-14,
+      "max_candidate_parent_relative_l2": 6.666495175183926e-08
+    },
+    "layers.8.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 813,
+      "max_candidate_f64_relative_l2": 6.812803673479613e-08,
+      "max_candidate_parent_kl_max": 4.685957262428088e-13,
+      "max_candidate_parent_relative_l2": 9.912732945130721e-08
+    },
+    "layers.8.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 16,
+      "max_candidate_f64_relative_l2": 4.807740468475729e-08,
+      "max_candidate_parent_kl_max": 1.6334956196092194e-11,
+      "max_candidate_parent_relative_l2": 8.083538322453301e-08
+    },
+    "layers.8.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 5,
+      "max_candidate_f64_relative_l2": 4.336316715218582e-08,
+      "max_candidate_parent_kl_max": 1.5948209761658028e-11,
+      "max_candidate_parent_relative_l2": 7.57840347915398e-08
+    },
+    "layers.8.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 231,
+      "max_candidate_f64_relative_l2": 1.0525484998720448e-07,
+      "max_candidate_parent_kl_max": 1.0472151853916613e-15,
+      "max_candidate_parent_relative_l2": 1.3300801817452863e-07
+    },
+    "layers.8.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 49,
+      "max_candidate_f64_relative_l2": 7.632008857979998e-08,
+      "max_candidate_parent_kl_max": 2.4525940197432115e-15,
+      "max_candidate_parent_relative_l2": 1.1481496504725756e-07
+    },
+    "layers.8.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 59,
+      "max_candidate_f64_relative_l2": 8.856582389027125e-08,
+      "max_candidate_parent_kl_max": 5.922620963031797e-15,
+      "max_candidate_parent_relative_l2": 1.2896091328857305e-07
+    },
+    "layers.8.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 298,
+      "max_candidate_f64_relative_l2": 9.594364858274588e-08,
+      "max_candidate_parent_kl_max": 1.0259773900044332e-15,
+      "max_candidate_parent_relative_l2": 1.5512681473300733e-07
+    },
+    "layers.9.attn_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 117,
+      "max_candidate_f64_relative_l2": 4.563391383483482e-08,
+      "max_candidate_parent_kl_max": 9.501682472264238e-15,
+      "max_candidate_parent_relative_l2": 6.806804104514637e-08
+    },
+    "layers.9.attn_qkv": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 792,
+      "max_candidate_f64_relative_l2": 6.794222224541703e-08,
+      "max_candidate_parent_kl_max": 5.41177069951698e-13,
+      "max_candidate_parent_relative_l2": 9.987021957051603e-08
+    },
+    "layers.9.hc_attn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 22,
+      "max_candidate_f64_relative_l2": 5.048685485856266e-08,
+      "max_candidate_parent_kl_max": 1.5307110004320127e-11,
+      "max_candidate_parent_relative_l2": 9.762404356027531e-08
+    },
+    "layers.9.hc_ffn_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 6,
+      "max_candidate_f64_relative_l2": 4.536914315262321e-08,
+      "max_candidate_parent_kl_max": 2.0957892951963964e-11,
+      "max_candidate_parent_relative_l2": 7.95212493770922e-08
+    },
+    "layers.9.shared_down": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 248,
+      "max_candidate_f64_relative_l2": 1.0949431108453835e-07,
+      "max_candidate_parent_kl_max": 1.0991109162423136e-15,
+      "max_candidate_parent_relative_l2": 1.3634149546322896e-07
+    },
+    "layers.9.shared_gate": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 49,
+      "max_candidate_f64_relative_l2": 7.687542481778884e-08,
+      "max_candidate_parent_kl_max": 2.9707508684402495e-15,
+      "max_candidate_parent_relative_l2": 1.130428018405819e-07
+    },
+    "layers.9.shared_up": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 77,
+      "max_candidate_f64_relative_l2": 8.887846884540314e-08,
+      "max_candidate_parent_kl_max": 5.199529845432325e-15,
+      "max_candidate_parent_relative_l2": 1.3164588735105386e-07
+    },
+    "layers.9.ssm_out": {
+      "all_deterministic": true,
+      "all_finite": true,
+      "count": 4,
+      "max_bf16_flips": 376,
+      "max_candidate_f64_relative_l2": 1.1986450507082056e-07,
+      "max_candidate_parent_kl_max": 1.2274798029775184e-15,
+      "max_candidate_parent_relative_l2": 2.0558457322434389e-07
+    }
+  },
+  "schema": 1,
+  "source": {
+    "head": "45a902a6e3dc92461f817a420329873cefb9b364",
+    "path": "/home/lhl/hipEngine",
+    "tracked_clean": true
+  }
+}
