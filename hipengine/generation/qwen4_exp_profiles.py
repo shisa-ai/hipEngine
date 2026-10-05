@@ -160,6 +160,9 @@ _HALO_PF13_EVIDENCE = (
     "benchmarks/results/"
     "2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json"
 )
+_GR_UP_DPP_ENGINE_EVIDENCE = (
+    "benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/README.md"
+)
 
 
 def _selection(
@@ -478,10 +481,18 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
         _selection(
             "linear+gr_gated_mean",
             "qwen4exp_rows_gt256_gr_up",
-            "coltile2_branch4_rowbatch4_wave_scale_f32_exact",
+            (
+                "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact"
+                if recovery
+                else "coltile2_branch4_rowbatch4_wave_scale_f32_exact"
+            ),
             "coltile2_branch4_rowbatch4_f32_exact",
             "gguf_q8_0",
-            evidence="benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json",
+            evidence=(
+                _GR_UP_DPP_ENGINE_EVIDENCE
+                if recovery
+                else "benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json"
+            ),
         ),
         _selection(
             "router_logits",
@@ -616,8 +627,16 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
         result.append(replace(
             selection,
             selected_variant=variant,
-            evidence_artifact=(_Q8_QSA_RESTORATION_EVIDENCE if restored
-                               else _ARITHMETIC_RECOVERY_EVIDENCE),
+            evidence_artifact=(
+                _GR_UP_DPP_ENGINE_EVIDENCE
+                if (
+                    selection.layer == "linear+gr_gated_mean"
+                    and selection.scope == "qwen4exp_rows_gt256_gr_up"
+                )
+                else _Q8_QSA_RESTORATION_EVIDENCE
+                if restored
+                else _ARITHMETIC_RECOVERY_EVIDENCE
+            ),
         ))
     return tuple(result)
 
@@ -764,6 +783,15 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
+        # Exact ordered DPP replacement for the wave-scale GR-up owner. The
+        # registered wave-scale owner remains the strict fallback through the
+        # runtime resolver, while the profile's declared strict fallback is
+        # the unscaled fused parent above.
+        "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION": (
+            "1"
+            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+            else "0"
+        ),
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR": "1" if production else "0",

@@ -1,9 +1,12 @@
-# GR-up ordered DPP reduction: kernel and state admission
+# GR-up ordered DPP reduction: promoted production route
 
 The complete GR-up operation is **1.54–1.57x faster** than its wave-scale
 parent on 12 real-weight cases, with both F32 outputs bit-identical. The
-candidate is registered and default-off until the tracked-clean engine-wall
-A/B completes. No full-engine speedup is claimed here.
+tracked-clean canonical engine A/B qualifies the DPP route for the measured
+UD-Q4_K_XL production profile: prefill is **6.57% / 7.15% / 6.98% faster** at
+512 / 1024 / 4096 prompt tokens, respectively. All 12 cases improve, all 72
+measured trajectories are exact across arms, and within-mode runs are
+deterministic. Decode is effectively flat and is not claimed as a gain.
 
 ## Measurement basis
 
@@ -60,9 +63,9 @@ The state gate uses the production execution profile with BF16 KV. Its profile
 manifest hash is `a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786`;
 strict hash is `1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed`.
 This is an exact substitution against the live parent, not admission of a new
-arithmetic budget. The candidate override is explicitly recorded by the route
-package and measured call counts; the profile manifest still names the parent
-until default promotion.
+arithmetic budget. The profile manifest names the DPP owner for the measured UD
+production quant, and the exact fused parent remains its strict fallback. The
+candidate override and measured call counts are retained in the engine artifact.
 
 The complete reviewed CPU unit tier has five failures, all reproduced in a clean
 baseline worktree at `5bb831283` without the candidate: stale pair32 assertion,

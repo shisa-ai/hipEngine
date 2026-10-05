@@ -64,6 +64,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE",
+        "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR",
@@ -247,6 +248,31 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     )
 
 
+def test_ud_production_binds_the_promoted_gr_dpp_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(
+        ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl"
+    )
+    production.binder(SimpleNamespace(), production)
+    gr_up = _selection_map(production)[
+        ("linear+gr_gated_mean", "qwen4exp_rows_gt256_gr_up")
+    ]
+    assert gr_up["selected_variant"] == (
+        "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact"
+    )
+    assert gr_up["strict_fallback_variant"] == (
+        "coltile2_branch4_rowbatch4_f32_exact"
+    )
+    assert gr_up["evidence_artifact"].endswith(
+        "qwen4exp-gr-dpp-reduction/README.md"
+    )
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == "1"
+
+
 def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -273,6 +299,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"] == "1"
