@@ -92,5 +92,28 @@ uv run --no-sync python scripts/execution_profile_q8_wmma_prefill_layers_gate.py
   --output /tmp/qwen4exp-dense-split-canonical-increment.json
 ```
 
-The full canonical command is the next qualification step, not completed
-evidence in this admission artifact.
+The [complete canonical incremental run](canonical-increment.json) on clean
+`ad9c2c5d3` compares early split layers 0–12 against current production at
+chunk 4096, preserving late dense-wide layers 13–47 in both arms. All 12 cases
+supply 128 decode transitions, 1,548 full-vocabulary rows and three candidate
+repeats.
+
+| Metric | Measured | Limit | Result |
+| --- | ---: | ---: | --- |
+| Mean KL | 1.3716e-3 | ≤1e-3 | Fail |
+| p95 KL | 7.0943e-3 | ≤5e-3 | Fail |
+| p99 KL | 1.7567e-2 | ≤2e-2 | Pass |
+| Maximum KL | 0.051950 | ≤0.05 | Fail |
+| Overall top-1 | 1538/1548 (99.354%) | ≥99% | Pass |
+
+All four category scopes, the c1 shape and the steady transition fail one or
+more continuous limits. Twelve rows exceed the 0.02 review boundary. Logits
+are finite, repeats are bit-identical, and actual split dispatch counts are
+**0 teacher / 3,924 candidate**. Provenance and complete coverage pass; the
+collector exits 1 because quality fails, not because collection crashed.
+
+This teacher is current production, **not named strict**. The result blocks
+incremental qualification but does not establish the binding strict-teacher
+composition verdict. That comparison, engaging heldout, task/control and
+applicable BF16-relative gates are still required. No model throughput or
+promotion is claimed; the runtime candidate remains default-off.
