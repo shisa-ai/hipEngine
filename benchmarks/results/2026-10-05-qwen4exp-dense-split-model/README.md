@@ -1,11 +1,14 @@
 # Range-safe split-operand dense Q8 candidate
 
-The range-safe high/low split WMMA kernel reduces complete projection wall
-39.7–64.1% (1.659–2.786x) against the live pipelined F32 DPP coltile parent
+The compensated high/low split WMMA candidate measures **1.270–2.031x**
+complete-projection speedup against the live pipelined F32 DPP coltile parent
 across 15 real-weight cases. This is an operation-level diagnostic, not model
-throughput or production qualification. The default remains unchanged.
+throughput or production qualification. The candidate is default-off; the
+uncompensated composition fails the full numerical gate, and the repaired
+composition's gate is incomplete. Historical uncompensated leaf measurements
+and failures below describe the earlier source, not the repaired kernel.
 
-## Comparison basis
+## Historical uncompensated comparison basis
 
 - Physical host `gfx1151`, machine-id `55ea6c509d0b49eea8de7094a1023668`,
   AMD Radeon 8060S / Strix Halo, HIP 7.15.26333 / clang 23.
@@ -31,7 +34,7 @@ These sums describe independent projections, not one model request. The
 measured 2.047–3.691x; its faster timing does not include the range guard and
 must not be used as the range-safe runtime candidate's cost.
 
-## Safety and integration
+## Historical uncompensated safety and integration
 
 The kernel splits each F32 operand into F16 high plus a 2048-scaled F16
 residual, computes high-high and both cross products, and omits low-low. Any
@@ -64,7 +67,10 @@ the route under the complete protocol. Full canonical, engaging heldout,
 strict-teacher composition, task, control/lifecycle and engine-wall gates are
 still required before a default change.
 
-## Reproduce
+## Historical uncompensated reproduction
+
+The following commands reproduce these earlier measurements only when run
+from `ad9c2c5d3`; HEAD now runs the repaired split arithmetic.
 
 ```bash
 ROCMLIB=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel
@@ -153,6 +159,8 @@ the teacher dispatches zero split calls while the candidates dispatch 2,520,
 show that layer-range narrowing alone has not found a qualifying route; they
 do not establish independent per-role arithmetic error or justify promotion.
 
+## Natural-input attribution before repair
+
 The [natural-input attribution packet](natural-localize.json) observes 436
 projections across four canonical p512 categories and 14 early-layer role kinds.
 It runs the parent normally, evaluates split outputs in private buffers, and
@@ -169,13 +177,52 @@ untracked during execution, so the packet explicitly disclaims complete
 qualification provenance. Natural-input NPZ captures remain local and are not
 part of the repository.
 
-The existing candidate has now been numerically repaired at the leaf boundary:
-compensated F32 accumulation, positive/negative high-high WMMA averaging, and
-ordinary cross-plane summation. The complete projection screen remains
-operation-level only. Across 15 real-weight cases, candidate speedups are
-**1.270–2.031x** (all counterbalanced order strata improve); aggregate parent →
+## Compensated candidate
+
+The current candidate uses compensated F32 high-high summation,
+positive/negative high-high WMMA averaging, and ordinary cross-plane
+summation. TwoSum's high-high correction shares the 2048-scaled cross
+accumulator; the low-low term is still omitted. All non-split variants and
+the range-miss strict F32 fallback are unchanged. The complete projection
+screen remains operation-level only. Across 15 real-weight cases, candidate
+speedups are **1.270–2.031x** (all counterbalanced order strata improve); aggregate parent →
 candidate walls are 28.777 → 18.828 ms at 512, 57.486 → 37.960 ms at 1024,
 and 228.139 → 149.753 ms at 4096. The [compensated screen](compensated-screen.json)
 records the exact cases and provenance. It is not a model-rate claim.
+
+The final TwoSum kernel passes the `<1.2e-7` F64-relative long-K RED at
+K2560 and K10240. The earlier `1.019e-7` values printed during exploration
+belong to an intermediate signed-dot variant with a separate Kahan accumulator
+plane, not the final TwoSum implementation. Final real-weight sampled error
+is ≤`9.93e-8`, with top-1 100% and deterministic repeats across all 15 cases.
+Five layer0 natural-capture diagnostics improve sampled relative L2 from
+`1.53e-7–3.61e-7` to `4.93e-8–9.48e-8`; these are not model gates.
+
+The [cached-only final trace](trace-compensated.json) identifies the split
+kernel at rows129/K2560/N72 and rows129/K10240/N72. Durations are
+311,900 ns and 1,233,229 ns, VGPR256, LDS55,808 B, scratch16 B. The larger
+separate Kahan-plane exploration used scratch96 B and was not retained.
+The final source is `fdb026c95`; source SHA256 and exact operation command,
+build, environment, and raw trace hash are in the compact packets.
+
+A [fresh chunk4096 allocation probe](allocation-compensated.json) at
+`fdb026c95` passes at 89,322,462,984 tracked bytes, 83,886,080
+device-scratch margin, and zero after-close
+allocations. Its production manifest is still
+`850829d509ebf741403e71e30450b8b7b681994f16e0f02038ba672c1f493d5b`:
+the manifest hashes registry selections, not kernel bodies, and the opt-in
+split candidate is not part of that named production plan. Source/build
+identity must distinguish the repair; manifest identity alone cannot.
+
+For the current operation screen, use the environment in
+[compensated-screen.json](compensated-screen.json), prebuild outside profiling,
+and run:
+
+```bash
+uv run --no-sync python scripts/qwen4exp_dense_split_screen.py \
+  --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
+  --rows 512 1024 4096 --pairs 20 \
+  --output /tmp/qwen4exp-dense-split-screen-compensated.json
+```
 
 The candidate remains default-off.

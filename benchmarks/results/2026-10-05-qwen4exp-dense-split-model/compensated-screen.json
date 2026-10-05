@@ -1383,5 +1383,57 @@
    ]
   }
  ],
- "correctness": "all cases candidate CPU F64 top-1 100%; candidate deterministic; no model qualification"
+ "correctness": "all cases candidate CPU F64 top-1 100%; candidate deterministic; no model qualification",
+ "command": [
+  "scripts/qwen4exp_dense_split_screen.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--rows",
+  "512",
+  "1024",
+  "4096",
+  "--pairs",
+  "20",
+  "--output",
+  "/tmp/qwen4exp-dense-split-screen-compensated.json"
+ ],
+ "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "pairs": 20,
+ "input_kind": "real early-layer Q8_0 weights, seeded synthetic F32 activations",
+ "correctness_boundary": "independent F64 CPU dequant/matmul on 8 evenly spaced rows; full-output parent comparison",
+ "status": "completed",
+ "candidate_source": {
+  "commit": "fdb026c958b8dda4c095cd1e5f79344eb1d809b4",
+  "path": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip",
+  "sha256": "4ce748a32f9726fcdb098b836138cf735c723502c327d9f5796d6a488a52272f",
+  "note": "Operation screen and trace used the final TwoSum arithmetic with one additional blank line before wide_split_low. Before commit fdb026c95 that blank line was removed. The .hip source-byte hash therefore differs; arithmetic is unchanged. The committed source SHA is sha256, measured whitespace variant is measured_source_sha256.",
+  "measured_source_sha256": "ae9eee8d3ff5e48979487dea98c8bd1e9025891e9ec62e3d5cf59213154ffb4f"
+ },
+ "environment": {
+  "LD_LIBRARY_PATH": "$ROCMLIB/lib:$ROCMLIB/lib64:$ROCMLIB/lib/llvm/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}",
+  "ROCMLIB": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+  "PATH": "/home/lhl/miniforge3/envs/therock/bin:$PATH",
+  "HIPENGINE_HIP_ARCH": "gfx1151",
+  "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+  "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+  "OPENBLAS_NUM_THREADS": "4",
+  "PYTHONUNBUFFERED": "1",
+  "python": "/home/lhl/hipEngine/.venv/bin/python"
+ },
+ "build": {
+  "family": "gguf_q8_0_dense_wide",
+  "profile": "decode",
+  "target_arch": "gfx1151",
+  "cache_key": "3aeff05b5497b3a3d8a4308e122bd9eac47532afcc5b45747864e30e11a989d0",
+  "output_path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-3aeff05b5497b3a3/gguf_q8_0_dense_wide.so",
+  "flags": [
+   "-mllvm",
+   "-amdgpu-unroll-threshold-local=600",
+   "-mcumode",
+   "--offload-arch=gfx1151"
+  ],
+  "compiler_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "key_note": "Planner cache key includes source absolute path; qualification worktree has a distinct key despite identical source bytes.",
+  "note": "Post-run planner identity for committed fdb026c95 source, not the code-object key used in the measured whitespace variant. Keys hash absolute source path as well as bytes; the isolated qualification worktree has a distinct cached build."
+ }
 }

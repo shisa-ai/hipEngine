@@ -1,0 +1,121 @@
+{
+ "schema": 1,
+ "performance_claim": false,
+ "profile_qualification_claim": false,
+ "candidate_source": {
+  "commit": "fdb026c958b8dda4c095cd1e5f79344eb1d809b4",
+  "path": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip",
+  "sha256": "4ce748a32f9726fcdb098b836138cf735c723502c327d9f5796d6a488a52272f",
+  "note": "Operation screen and trace used the final TwoSum arithmetic with one additional blank line before wide_split_low. Before commit fdb026c95 that blank line was removed. The .hip source-byte hash therefore differs; arithmetic is unchanged. The committed source SHA is sha256, measured whitespace variant is measured_source_sha256.",
+  "measured_source_sha256": "ae9eee8d3ff5e48979487dea98c8bd1e9025891e9ec62e3d5cf59213154ffb4f"
+ },
+ "host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "Current active profile: accelerator-performance",
+  "cpu_governors": {
+   "performance": 32
+  },
+  "gpu_clock_policies": {
+   "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+  },
+  "rocm_platform": "10.0.0",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+ },
+ "command": [
+  "rocprofv3",
+  "--kernel-trace",
+  "--output-format",
+  "csv",
+  "--output-directory",
+  "/tmp/hipengine-dense-split-20261005/twosum-trace",
+  "--",
+  "uv",
+  "run",
+  "--no-sync",
+  "pytest",
+  "-q",
+  "tests/test_gpu_qwen4exp_dense_split_wmma.py::test_split_wmma_long_k_accuracy_beats_uncompensated_drift"
+ ],
+ "environment": {
+  "LD_LIBRARY_PATH": "$ROCMLIB/lib:$ROCMLIB/lib64:$ROCMLIB/lib/llvm/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}",
+  "ROCMLIB": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+  "PATH": "/home/lhl/miniforge3/envs/therock/bin:$PATH",
+  "HIPENGINE_HIP_ARCH": "gfx1151",
+  "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+  "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+  "OPENBLAS_NUM_THREADS": "4",
+  "PYTHONUNBUFFERED": "1",
+  "python": "/home/lhl/hipEngine/.venv/bin/python"
+ },
+ "profile": "default-off T1/T2 diagnostic; no certified split manifest",
+ "raw_sha256": {
+  "/tmp/hipengine-dense-split-20261005/twosum-trace/gfx1151/3399991_kernel_trace.csv": "f354bc361fbce66a2e6d85f44682f3774959ff4541ee9a57fd1a7e0a597bd7fa"
+ },
+ "records": [
+  {
+   "Kind": "KERNEL_DISPATCH",
+   "Agent_Id": "Agent 1",
+   "Queue_Id": "1",
+   "Stream_Id": "0",
+   "Thread_Id": "3399991",
+   "Dispatch_Id": "1",
+   "Kernel_Id": "23",
+   "Kernel_Name": "void (anonymous namespace)::q8_0_dense_split64x128_kernel<true>(float const*, unsigned char const*, float*, int, int, int)",
+   "Correlation_Id": "1",
+   "Start_Timestamp": "4507773888289558",
+   "End_Timestamp": "4507773888601458",
+   "LDS_Block_Size": "55808",
+   "Scratch_Size": "16",
+   "VGPR_Count": "256",
+   "Accum_VGPR_Count": "0",
+   "SGPR_Count": "128",
+   "Workgroup_Size_X": "256",
+   "Workgroup_Size_Y": "1",
+   "Workgroup_Size_Z": "1",
+   "Grid_Size_X": "512",
+   "Grid_Size_Y": "2",
+   "Grid_Size_Z": "1",
+   "DurationNs": 311900
+  },
+  {
+   "Kind": "KERNEL_DISPATCH",
+   "Agent_Id": "Agent 1",
+   "Queue_Id": "1",
+   "Stream_Id": "0",
+   "Thread_Id": "3399991",
+   "Dispatch_Id": "2",
+   "Kernel_Id": "23",
+   "Kernel_Name": "void (anonymous namespace)::q8_0_dense_split64x128_kernel<true>(float const*, unsigned char const*, float*, int, int, int)",
+   "Correlation_Id": "2",
+   "Start_Timestamp": "4507773907942858",
+   "End_Timestamp": "4507773909176087",
+   "LDS_Block_Size": "55808",
+   "Scratch_Size": "16",
+   "VGPR_Count": "256",
+   "Accum_VGPR_Count": "0",
+   "SGPR_Count": "128",
+   "Workgroup_Size_X": "256",
+   "Workgroup_Size_Y": "1",
+   "Workgroup_Size_Z": "1",
+   "Grid_Size_X": "512",
+   "Grid_Size_Y": "2",
+   "Grid_Size_Z": "1",
+   "DurationNs": 1233229
+  }
+ ],
+ "test_shapes": [
+  [
+   129,
+   2560,
+   72
+  ],
+  [
+   129,
+   10240,
+   72
+  ]
+ ],
+ "test_verdict": "Both final TwoSum long-K cases pass relative_l2 < 1.2e-7 vs F64. Exact final error values were not printed; previously reported 1.019e-7 values refer to the intermediate signed-dot plus separate Kahan-plane experiment."
+}

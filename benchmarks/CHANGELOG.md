@@ -1,5 +1,19 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-05 — Compensated dense split operation screen (diagnostic)
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL, five real early-layer Q8 banks, rows512/1024/4096, synthetic
+  F32 activations, twenty alternating-order pairs: live F32 DPP parent →
+  compensated range-safe split sums 28.777→18.828 / 57.486→37.960 /
+  228.139→149.753 ms (-34.57%/-33.97%/-34.36%). Per-case ratios are
+  1.270–2.031x; sampled F64 relative L2 ≤9.93e-8/top-1 100%, ten GPU
+  split fixtures pass. Extra signed-dot/TwoSum work trades throughput for
+  numerical accuracy; the earlier composition failed full model numerics,
+  repaired qualification is incomplete, default unchanged. Source:
+  `results/2026-10-05-qwen4exp-dense-split-model/compensated-screen.json`,
+  candidate `fdb026c95`.
+
 ## 2026-10-05 — Range-safe dense split route admission (diagnostic)
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,

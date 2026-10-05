@@ -7,19 +7,22 @@ authoritative evidence. It is not an optimization journal.
 
 ## Qwen3.8 Flash Next split-operand dense operation screen
 
-On Radeon 8060S physical host `55ea6c509d0b49eea8de7094a1023668`, a
-default-off range-safe Q8_0 high/low split WMMA sibling reduces complete
-projection wall against the live pipelined F32 DPP coltile leaf. UD-Q4_K_XL
-real weights, synthetic F32 activations, five early-layer banks, twenty
-counterbalanced pairs per case, rows 512/1024/4096.
+On Radeon 8060S physical host `55ea6c509d0b49eea8de7094a1023668`, the
+default-off compensated Q8_0 high/low split WMMA candidate is faster per
+projection than the pipelined F32 DPP coltile parent. The operation-only
+screen uses Qwen3.8-Flash-Next UD-Q4_K_XL real weights, synthetic F32
+activations, five early-layer banks, and twenty counterbalanced pairs per
+case at rows 512/1024/4096.
 
 | Boundary | Parent -> candidate | Correctness scope |
 | --- | --- | --- |
-| Complete range-safe Q8 projection, 15 cases | 1.659–2.786x; wall -39.7% to -64.1% | Independent CPU F64 sampled top-1 100%, max KL 6.58e-15; eight GPU fixtures pass |
+| Complete compensated range-safe Q8 projection, 15 cases | 1.270–2.031x; wall -21.3% to -50.8% | Independent CPU F64 sampled top-1 100%, relative L2 ≤9.93e-8; ten split GPU fixtures pass |
 
-No default or model-rate change. Full-model numerical/control/task qualification
-is pending; an out-of-range block uses an in-kernel strict F32 fallback, and the
-strict F32 parent stays registered.
+This is not a model-throughput result. The earlier uncompensated composition
+fails the full numerical envelope; the repaired composition has not yet
+completed that gate. No default changes. Control/task/heldout qualification
+and model-wall evidence are still required. An out-of-range block uses an
+in-kernel strict F32 fallback, and the strict F32 parent stays registered.
 [Protocol and artifacts](results/2026-10-05-qwen4exp-dense-split-model/README.md).
 
 ## Qwen3.8 Flash Next GR-up DPP production route
