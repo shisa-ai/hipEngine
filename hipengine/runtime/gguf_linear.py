@@ -3155,6 +3155,10 @@ def _variant_scoped_library(
 
     if libraries is None:
         return None
+    # The split leaf owns a different shared object from the raw-Q8 default.
+    # With no explicit entry let its wrapper build/load the correct family.
+    if key.variant == _Q8_DENSE_SPLIT_VARIANT:
+        return libraries.get(f"{key.quant}:{key.variant}")
     return libraries.get(f"{key.quant}:{key.variant}", libraries.get(key.quant))
 
 
@@ -3447,6 +3451,54 @@ def _raw_k_coltile_pipelined_dispatch(dispatch: GGUFLinearDispatch) -> GGUFLinea
         if is_registered(key):
             return GGUFLinearDispatch(key, "raw")
     return dispatch
+
+
+_Q8_DENSE_SPLIT_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS"
+_Q8_DENSE_SPLIT_VARIANT = "dense_split64x128_f32_f32_out"
+_Q8_DENSE_SPLIT_PARENTS = frozenset({
+    "prefill_f32_f32_out", "coltile8_rowbatch4_f32_f32_out",
+    "coltile8_rowbatch4_wave_scale_f32_f32_out",
+    "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+    "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out",
+})
+
+
+def _q8_dense_split_layers() -> frozenset[int] | None:
+    """Empty means off; a nonempty comma-joined layer set is explicit opt-in."""
+    return _parse_layer_scope(os.environ.get(_Q8_DENSE_SPLIT_LAYERS_ENV, ""))
+
+
+def _q8_dense_split_dispatch(
+    dispatch: GGUFLinearDispatch, *, rows: int, in_features: int,
+    out_features: int, weight: object | None = None,
+) -> GGUFLinearDispatch:
+    """Measurement-only split WMMA; never replace a wide/WMMA/selected owner.
+
+    Only raw F32 parents inside the explicit layer scope and bulk row floor
+    are eligible. The kernel itself checks operand range and uses its strict
+    F32 fallback in-block, without host synchronization or borrowed workspace.
+    """
+    scope = _q8_dense_split_layers()
+    reason = None
+    if scope is None:
+        reason = "selector off"
+    elif (rows <= 256 or in_features <= 0 or in_features % 64
+          or out_features <= 0):
+        reason = "ineligible shape"
+    elif dispatch.abi != "raw" or dispatch.key.variant not in _Q8_DENSE_SPLIT_PARENTS:
+        reason = "parent not claimable"
+    elif _weight_layer_index(weight) not in scope:
+        reason = "outside layer scope"
+    key = KernelKey(dispatch.key.backend, dispatch.key.layer,
+                    dispatch.key.quant, _Q8_DENSE_SPLIT_VARIANT)
+    if reason is None and not is_registered(key):
+        # Backend registration owns this surface. Never register all raw
+        # families on a non-Q8 candidate-key miss: that would churn registry
+        # generation and destroy dispatch caching for other quant owners.
+        reason = "kernel not registered"
+    _record_route_engagement("dense_split", rows=rows, engaged=reason is None,
+                            reason=reason or "claimed", detail=key.variant)
+    return GGUFLinearDispatch(key, "raw") if reason is None else dispatch
 
 
 _Q8_STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
@@ -4134,6 +4186,8 @@ def launch_gguf_linear(
     # candidate/teacher logits and a KL of exactly zero, which reads as a
     # flawless pass. The layer index is in the key for the reason above: without
     # it the scope becomes an artifact of cache-fill order.
+    _split_scope = _q8_dense_split_layers()
+    _split_key = (_split_scope, _weight_layer_index(weight) if _split_scope is not None else None)
     _staged_f32_scope = _q8_staged_f32_layers()
     _staged_f32_key = (
         _staged_f32_scope,
@@ -4165,6 +4219,7 @@ def launch_gguf_linear(
     cache_key = (
         generation(),
         _dense_wide_key,
+        _split_key,
         _staged_f32_key,
         _wmma_scope_key,
         weight.spec.layout,
@@ -4391,6 +4446,10 @@ def launch_gguf_linear(
         # Last, so every route keeps the parent it already matches on: only the
         # leaf kernel of the exact Q8/F32 coltile scope is replaced.
         dispatch = _raw_k_coltile_pipelined_dispatch(dispatch)
+        dispatch = _q8_dense_split_dispatch(
+            dispatch, rows=rows, in_features=in_features,
+            out_features=out_features, weight=weight,
+        )
         # After the pipelined leaf, so an opt-in staged-f32 scope replaces it.
         # Off unless explicitly bound, and it never claims a dispatch the exact
         # chain would otherwise own. See the docstring for the gate it owes.

@@ -17,6 +17,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.cpu_reference import gguf_q8_0_gemv
 from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_dense_wide as dw
+from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as kg
 from tests.test_gpu_gguf_q8_0_dense_wide import _dequantize_weight
 
 
@@ -103,3 +104,24 @@ def test_split_wmma_recovers_f32_operand_precision(rows, k, n, cancel):
     logpb = b - np.log(np.exp(b).sum(axis=1, keepdims=True))
     assert np.mean(np.sum(pa * (logpa - logpb), axis=1)) <= 0.05
     assert np.mean(exact.argmax(axis=1) == out.argmax(axis=1)) >= 0.90
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime/device not available")
+@pytest.mark.parametrize("large_weight", [False, True])
+def test_split_wmma_range_miss_runs_the_strict_f32_fallback(large_weight):
+    x, weight = make_split_fixture(137, 192, 72)
+    if large_weight:
+        blocks = weight.reshape(72, 6, 34)
+        scales = np.full((72, 6), 600, dtype=np.float16)
+        blocks[:, :, :2] = scales[:, :, None].view(np.uint8)
+        blocks[:, :, 2] = np.uint8(127)
+    else:
+        # One outlier in each 128-row tile forces fallback for every column
+        # tile, while most operands stay ordinary. F16 cannot represent it.
+        x[::128, 0] = np.float32(70000)
+    out = _launch(x, weight, dw.gguf_q8_0_dense_split64x128_f32_f32_out,
+                  dw.build_gguf_q8_0_dense_wide(load=True))
+    parent = _launch(x, weight, kg.gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out,
+                     kg.build_gguf_k_gemv(load=True))
+    assert np.isfinite(out).all()
+    np.testing.assert_array_equal(out.view(np.uint32), parent.view(np.uint32))

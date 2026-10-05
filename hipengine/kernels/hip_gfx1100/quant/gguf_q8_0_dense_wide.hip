@@ -140,7 +140,7 @@ __device__ __forceinline__ half_t wide_split_low(float v, half_t hi) {
 
 __device__ __forceinline__ void wide_dq_q8_0_split_tile(
     const uint4 w0, const uint4 w1, const uint4 w3, const uint4 w4,
-    const uint32_t w2, half_t* dst_hi, half_t* dst_lo) {
+    const uint32_t w2, half_t* dst_hi, half_t* dst_lo, int* range_miss) {
   const uint32_t words[17] = {w0.x, w0.y, w0.z, w0.w, w1.x, w1.y, w1.z, w1.w,
                              w3.x, w3.y, w3.z, w3.w, w4.x, w4.y, w4.z, w4.w, w2};
   const float d0 = wide_half_bits_to_float(static_cast<uint16_t>(
@@ -156,6 +156,7 @@ __device__ __forceinline__ void wide_dq_q8_0_split_tile(
       for (int e = 0; e < 2; ++e) {
         const float v = (block == 0 ? d0 : d1) * static_cast<float>(
             static_cast<int8_t>(wide_stage_byte(words, block * 34 + 2 + m * 2 + e)));
+        if (!(fabsf(v) <= 65504.0f)) atomicExch(range_miss, 1);
         hi.h[e] = static_cast<half_t>(v);
         lo.h[e] = wide_split_low(v, hi.h[e]);
       }
@@ -244,6 +245,61 @@ __device__ __forceinline__ half8_t wide_load_act8(const half_t* p) {
   return *reinterpret_cast<const half8_t*>(p);
 }
 
+// Cold in-block exact fallback for a split-range miss. It matches the
+// registered 128-thread coltile8/rowbatch4 wave-scale parent: same per-lane
+// FMA partition, shuffle order and four-wave publication. All 256 threads
+// participate in barriers; only the first 128 do arithmetic. Reuse operand
+// LDS after the split K loop, with no workspace, host readback or extra launch.
+__device__ __noinline__ void wide_split_range_fallback(
+    const float* x, const uint8_t* qw, float* out, int rows, int K, int M,
+    int t0, int m0, float* wave_sums) {
+  const int tid = threadIdx.x;
+  const int wb = (K / 32) * 34;
+  for (int rb = t0; rb < rows && rb < t0 + 128; rb += 4) {
+    for (int cb = m0; cb < M && cb < m0 + 64; cb += 8) {
+      float acc[4][8] = {};
+      if (tid < 128) {
+        for (int k = tid; k < K; k += 128) {
+          float weights[8];
+#pragma unroll
+          for (int c = 0; c < 8; ++c) {
+            float v = 0.0f;
+            if (cb + c < M) {
+              const uint8_t* block = qw + static_cast<size_t>(cb + c) * wb + (k / 32) * 34;
+              const float d = wide_half_bits_to_float(static_cast<uint16_t>(block[0] | (block[1] << 8)));
+              v = d * static_cast<float>(static_cast<int8_t>(block[2 + k % 32]));
+            }
+            weights[c] = v;
+          }
+#pragma unroll
+          for (int r = 0; r < 4; ++r) {
+            const float a = rb + r < rows ? x[static_cast<size_t>(rb + r) * K + k] : 0.0f;
+#pragma unroll
+            for (int c = 0; c < 8; ++c) acc[r][c] = fmaf(a, weights[c], acc[r][c]);
+          }
+        }
+#pragma unroll
+        for (int r = 0; r < 4; ++r) {
+#pragma unroll
+          for (int c = 0; c < 8; ++c) {
+            for (int offset = 16; offset > 0; offset >>= 1)
+              acc[r][c] += __shfl_down(acc[r][c], offset);
+            if ((tid & 31) == 0) wave_sums[(tid >> 5) * 32 + r * 8 + c] = acc[r][c];
+          }
+        }
+      }
+      __syncthreads();
+      if (tid < 32 && rb + tid / 8 < rows && cb + tid % 8 < M) {
+        float total = 0.0f;
+#pragma unroll
+        for (int w = 0; w < 4; ++w) total += wave_sums[w * 32 + tid];
+        out[static_cast<size_t>(rb + tid / 8) * M + cb + tid % 8] = total;
+      }
+      __syncthreads();
+    }
+  }
+}
+
 // ``x_t`` is the activation element type: ``float`` converts during LDS
 // staging, ``half_t`` is an activation already converted by
 // ``hipengine_gguf_q8_0_f32_to_f16``. Both paths put the same f16 bytes in LDS
@@ -274,7 +330,8 @@ __device__ __forceinline__ void wide_tile_gemm(
     half_t* As,
     half_t* Bs,
     half_t* As_lo = nullptr,
-    half_t* Bs_lo = nullptr) {
+    half_t* Bs_lo = nullptr,
+    int* range_miss = nullptr) {
   constexpr int WAVES_M = BM / WTM;
   constexpr int TM = WTM / 16;
   constexpr int TN = WTN / 16;
@@ -334,7 +391,10 @@ __device__ __forceinline__ void wide_tile_gemm(
         h = wide_load_act8(p);
         if constexpr (SPLIT) {
 #pragma unroll
-          for (int e = 0; e < 8; ++e) bst_lo[i][e] = wide_split_low(p[e], h[e]);
+          for (int e = 0; e < 8; ++e) {
+            if (!(fabsf(p[e]) <= 65504.0f)) atomicExch(range_miss, 1);
+            bst_lo[i][e] = wide_split_low(p[e], h[e]);
+          }
         }
       } else {
 #pragma unroll
@@ -358,7 +418,7 @@ __device__ __forceinline__ void wide_tile_gemm(
         if constexpr (SPLIT) {
           wide_dq_q8_0_split_tile(a0[i], a1[i], a3[i], a4[i], a2[i],
                                 As + row * WIDE_LDS_STRIDE,
-                                As_lo + row * WIDE_LDS_STRIDE);
+                                As_lo + row * WIDE_LDS_STRIDE, range_miss);
         } else {
           wide_dq_q8_0_tile(a0[i], a1[i], a3[i], a4[i], a2[i],
                             As + row * WIDE_LDS_STRIDE);
@@ -469,6 +529,17 @@ __device__ __forceinline__ void wide_tile_gemm(
     __syncthreads();
   }
 
+  if constexpr (SPLIT) {
+    // The preceding block barrier publishes every range flag. This branch is
+    // block-uniform, including its fallback barriers; do not publish poisoned
+    // split arithmetic from an unrepresentable operand.
+    if (*range_miss) {
+      wide_split_range_fallback(x, w_base - static_cast<size_t>(m0) * wrow_bytes,
+                                out, rows, K, M, t0, m0, reinterpret_cast<float*>(Bs));
+      return;
+    }
+  }
+
   // ---- epilogue ----------------------------------------------------------
   // Bs is 36,864 bytes, so the eight per-wave 1 KB staging regions live there.
   // The loop above ends on a block-wide barrier, so no wave is still reading
@@ -529,12 +600,15 @@ q8_0_dense_split64x128_kernel(const float* __restrict__ x,
   __shared__ __align__(16) half_t Bs[128 * WIDE_LDS_STRIDE];
   __shared__ __align__(16) half_t As_lo[64 * WIDE_LDS_STRIDE];
   __shared__ __align__(16) half_t Bs_lo[128 * WIDE_LDS_STRIDE];
+  __shared__ int range_miss;
+  if (threadIdx.x == 0) range_miss = 0;
+  __syncthreads();
   const int m0 = blockIdx.x * 64;
   const int t0 = blockIdx.y * 128;
   const size_t wb = static_cast<size_t>(K / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
   wide_tile_gemm<float, 64, 128, 32, 32, TAIL, 1, true>(
       qweight + static_cast<size_t>(m0) * wb, wb, M - m0, x, K,
-      out, M, rows, t0, m0, As, Bs, As_lo, Bs_lo);
+      out, M, rows, t0, m0, As, Bs, As_lo, Bs_lo, &range_miss);
 }
 
 // f32 -> f16 activation conversion: the hoisted form of the staging conversion

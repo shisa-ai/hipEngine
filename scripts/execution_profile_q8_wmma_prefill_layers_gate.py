@@ -1,29 +1,25 @@
 #!/usr/bin/env python3
-"""Whole-model gate for a layer-scoped f16 Q8_0 dense prefill route.
+"""Whole-model gate for layer-scoped Q8_0 dense prefill candidates.
 
-Evaluates one of the layer-scoped f16 WMMA-class dense Q8_0 prefill selectors
-against the exact coltile chain on the Qwen4Exp UD-Q4_K_XL canonical
-exact-token fixture: full-vocabulary logits trajectories with the candidate
-consuming the strict generated prefix at every compared transition, evaluated
-with the calibrated mean/tail/max KL and top-1 thresholds, plus same-schedule
-repeat determinism. Schema v2 distinguishes complete canonical numerical
-coverage from profile admission: partial runs are screens, and this collector
-alone never claims full profile qualification. ``--route`` picks which route is measured; see
-:data:`SELECTORS`.
+Evaluates a layer-scoped dense Q8_0 prefill selector on the Qwen4Exp
+UD-Q4_K_XL canonical exact-token fixture: full-vocabulary logits trajectories
+with the candidate consuming the teacher generated prefix at every compared
+transition, evaluated with the calibrated mean/tail/max KL and top-1
+thresholds, plus same-schedule repeat determinism. Schema v2 distinguishes
+complete canonical numerical coverage from profile admission: partial runs
+are screens, and this collector alone never claims full profile qualification.
+``--route`` picks which route is measured; see :data:`SELECTORS`.
 
-The teacher is the named production profile with the route's selectors cleared,
-so the measured drift is that route's own contribution and not the rest of the
-production stack. That is the same candidate-local isolation the Q8 MMQ plane
-gate uses.
+The teacher is the named production profile with the route's selectors cleared.
+For ``dense_split`` the certified late dense-wide route stays active in both
+arms, isolating the early-layer increment. ``dense_split_composed_vs_exact``
+clears late dense-wide in the teacher as well. Neither teacher is model strict;
+independent named-strict composition evidence is still required for promotion.
 
 Every route here is a post-binder selector: the named production binder writes
 its env keys during its own pass, so setting them before construction is
 silently inert. This gate constructs the generator first and flips the
 selectors per arm.
-
-Phases per canonical case:
-- teacher: selectors cleared -> exact ``coltile8_rowbatch4`` chain
-- candidate x N: selectors set to ``--layers`` -> the route's candidate chain
 """
 
 from __future__ import annotations
@@ -33,6 +29,7 @@ import hashlib
 import json
 import os
 import sys
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -67,6 +64,8 @@ WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
 DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
 DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
 STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
+DENSE_SPLIT_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS"
+DENSE_WIDE_CERTIFIED_SCOPE = ",".join(str(layer) for layer in range(13, 48))
 # The certified f16 WMMA scope, written as the comma-joined list these selectors
 # actually parse. A "16-47" range string is accepted by ``--layers`` (which runs
 # it through ``_parse_layers``) but **not** by the selectors themselves, which
@@ -162,6 +161,8 @@ HELDOUT_PROTOCOLS = {
 ROUTE_ROW_FLOORS = {
     "wmma": 2,
     "dense_wide": 257,
+    "dense_split": 257,
+    "dense_split_composed_vs_exact": 257,
     "staged_f32": 1,
     "staged_f32_composed_vs_exact": 1,
     "staged_f32_over_wmma": 2,
@@ -182,6 +183,8 @@ ROUTE_ROW_FLOORS = {
 ROUTE_ENGAGEMENT_SELECTORS = {
     "wmma": "wmma_prefill",
     "dense_wide": "dense_wide",
+    "dense_split": "dense_split",
+    "dense_split_composed_vs_exact": "dense_split",
 }
 
 
@@ -379,6 +382,16 @@ def qualification_verdict(coverage, *, quality_passed, deterministic, clean):
         "category_heldout_evidence_complete": heldout_complete,
         "profile_qualification_claim": False,
         "qualification_blockers": [name for name, ok in checks.items() if not ok] + missing,
+    }
+
+
+def _split_dispatch_validity(calls: Mapping[str, int]) -> dict[str, Any]:
+    """Actual leaf calls, not cache-miss selector observations, prove the arms."""
+    passed = calls.get("teacher", 0) == 0 and calls.get("candidate", 0) > 0
+    return {
+        "passed": passed,
+        "teacher_clear": calls.get("teacher", 0) == 0,
+        "candidate_engaged": calls.get("candidate", 0) > 0,
     }
 
 
@@ -621,6 +634,11 @@ class Route:
     # Smallest ``rows`` at which this route engages. Read from its dispatch's own
     # guard, not inferred: see ROUTE_ROW_FLOORS.
     min_engaging_rows: int = 1
+    teacher_chain: str = "exact coltile8_rowbatch4_f32_f32_out"
+    teacher_scope: str = (
+        "production profile with the route's selectors cleared; "
+        "candidate-local isolation of the changed route"
+    )
 
     def env_for(self, *, candidate: bool, layers: str) -> dict[str, str]:
         bindings = self.candidate_env if candidate else self.teacher_env
@@ -637,6 +655,42 @@ class Route:
 # in every case, so the measured drift is the route's own contribution and the
 # figures are comparable across routes.
 SELECTORS: dict[str, Route] = {
+    "dense_split": Route(
+        kind="hipengine_execution_profile_q8_dense_split_prefill_layers_gate",
+        scenario_prefix="qwen4exp-ud-q4-k-xl-q8-dense-split-increment",
+        candidate_chain="dense_split64x128_f32_f32_out",
+        candidate_env={
+            WMMA_LAYERS_ENV: "", DENSE_WIDE_ENV: "1",
+            DENSE_WIDE_LAYERS_ENV: DENSE_WIDE_CERTIFIED_SCOPE,
+            DENSE_SPLIT_LAYERS_ENV: "{layers}", STAGED_F32_LAYERS_ENV: "",
+        },
+        teacher_env={
+            WMMA_LAYERS_ENV: "", DENSE_WIDE_ENV: "1",
+            DENSE_WIDE_LAYERS_ENV: DENSE_WIDE_CERTIFIED_SCOPE,
+            DENSE_SPLIT_LAYERS_ENV: "", STAGED_F32_LAYERS_ENV: "",
+        },
+        surface="early split increment; certified late dense-wide composition unchanged",
+        min_engaging_rows=ROUTE_ROW_FLOORS["dense_split"],
+        teacher_chain="current production: early raw-F32 + late dense-wide layers13-47",
+        teacher_scope="current production composition, split selector cleared only",
+    ),
+    "dense_split_composed_vs_exact": Route(
+        kind="hipengine_execution_profile_q8_dense_split_composed_vs_exact_gate",
+        scenario_prefix="qwen4exp-ud-q4-k-xl-q8-dense-split-composed",
+        candidate_chain="dense_split64x128_f32_f32_out + dense_wide256_f32_f32_out",
+        candidate_env={
+            WMMA_LAYERS_ENV: "", DENSE_WIDE_ENV: "1",
+            DENSE_WIDE_LAYERS_ENV: DENSE_WIDE_CERTIFIED_SCOPE,
+            DENSE_SPLIT_LAYERS_ENV: "{layers}", STAGED_F32_LAYERS_ENV: "",
+        },
+        teacher_env={
+            WMMA_LAYERS_ENV: "", DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "", DENSE_SPLIT_LAYERS_ENV: "",
+            STAGED_F32_LAYERS_ENV: "",
+        },
+        surface="early split plus certified late dense-wide against raw-F32 dense chain",
+        min_engaging_rows=ROUTE_ROW_FLOORS["dense_split_composed_vs_exact"],
+    ),
     "wmma": Route(
         kind=KIND,
         scenario_prefix="qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers",
@@ -920,6 +974,17 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     # else moved the output"; four times in one packet that ambiguity produced a
     # measurement attributed to a route that had not engaged.
     engagement: dict[str, list[dict[str, Any]]] = {"teacher": [], "candidate": []}
+    dispatch_stack = ExitStack()
+    split_counter = None
+    split_calls = {"teacher": 0, "candidate": 0}
+    if str(args.route).startswith("dense_split"):
+        from hipengine.kernels.registry import KernelKey
+        from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch
+        split_counter = dispatch_stack.enter_context(count_candidate_dispatch(
+            key=KernelKey(QWEN4_EXP_BACKEND, "linear", "gguf_q8_0",
+                          "dense_split64x128_f32_f32_out"),
+            shape_positions=(3, 4, 5),
+        ))
     command = ["python3", str(Path(__file__).resolve().relative_to(REPO_ROOT)), *sys.argv[1:]]
     try:
         for position, row in enumerate(cases):
@@ -927,16 +992,22 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             tokens = [int(t) for t in row["prompt_token_ids"]]
             _apply_route_env(route, candidate=False, layers="")
             _warm(runner, tokens)
+            before_calls = 0 if split_counter is None else split_counter["calls"]
             with wmma_prefill_dispatch_recorder(engagement["teacher"]):
                 teacher = _strict_trajectory(runner, tokens, decode_steps)
+            if split_counter is not None:
+                split_calls["teacher"] += split_counter["calls"] - before_calls
             forced = [step["token_id"] for step in teacher[:-1]]
             _apply_route_env(route, candidate=True, layers=candidate_layers)
             _warm(runner, tokens)
+            before_calls = 0 if split_counter is None else split_counter["calls"]
             with wmma_prefill_dispatch_recorder(engagement["candidate"]):
                 runs = tuple(
                     _forced_trajectory(runner, tokens, forced)
                     for _ in range(int(args.repeat_runs))
                 )
+            if split_counter is not None:
+                split_calls["candidate"] += split_counter["calls"] - before_calls
             captures.append(
                 PromptCalibrationCapture(
                     prompt_id=prompt_id,
@@ -963,6 +1034,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             )
     finally:
         _restore_env(bound_route_env)
+        dispatch_stack.close()
 
     evaluated = build_candidate_quality(
         captures,
@@ -984,7 +1056,8 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         selections=(
             VariantSelection(
                 layer="linear",
-                scope="prefill_dense_q8_wmma_layers",
+                scope=(f"prefill_dense_q8_{args.route}_layers_{candidate_layers}"
+                       if str(args.route).startswith("dense_split") else "prefill_dense_q8_wmma_layers"),
                 selected_variant=route.candidate_chain,
                 strict_fallback_variant="coltile8_rowbatch4_f32_f32_out",
                 registry_quant="gguf_q8_0",
@@ -1033,6 +1106,14 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     verdict = qualification_verdict(
         coverage, quality_passed=quality_passed, deterministic=deterministic, clean=clean,
     )
+    split_validity = _split_dispatch_validity(split_calls) if split_counter is not None else None
+    if split_validity is not None and not split_validity["passed"]:
+        verdict.update(
+            status="invalid_or_screen_only", measurement_valid=False,
+            canonical_numerical_qualification_claim=False,
+            category_heldout_qualification_claim=False,
+        )
+        verdict["qualification_blockers"].append("actual split leaf dispatch validity")
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": route.kind,
@@ -1044,8 +1125,8 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             "name": str(args.route),
             "surface": route.surface,
             "candidate_layers": candidate_layers,
-            "teacher_selector": "cleared",
-            "teacher_chain": "exact coltile8_rowbatch4_f32_f32_out",
+            "teacher_selector": route.env_for(candidate=False, layers=""),
+            "teacher_chain": route.teacher_chain,
             "candidate_chain": route.candidate_chain,
             "warmup_request_after_selector_flip": True,
             "selector_restored_after_capture": True,
@@ -1060,13 +1141,10 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             "execution_profile": str(args.execution_profile),
             "prefill_chunk_size": int(args.prefill_chunk_size),
             "same_context_rule": (
-                "candidate consumes the strict generated token prefix at every "
+                "candidate consumes the teacher generated token prefix at every "
                 "compared transition"
             ),
-            "teacher_scope": (
-                "production profile with the route's selectors cleared; "
-                "candidate-local isolation of the changed route"
-            ),
+            "teacher_scope": route.teacher_scope,
             "thresholds_evaluated": EvaluationThresholds().to_dict(),
             "profile_manifest_sha256": resolved.manifest_sha256,
             "strict_manifest_sha256": resolved.strict_manifest_sha256,
@@ -1076,6 +1154,13 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         "strict_logits_sha256": evaluated["strict_logits_sha256"],
         "candidate_logits_sha256": evaluated["candidate_logits_sha256"],
         "variant_manifests": {"candidate_evidentiary": manifest},
+        "split_dispatch_validity": split_validity,
+        "split_dispatch_calls": split_calls if split_counter is not None else None,
+        "split_dispatch_shapes": (
+            [{"arguments": list(shape), "calls": calls}
+             for shape, calls in sorted(split_counter["shapes"].items())]
+            if split_counter is not None else None
+        ),
         "route_engagement": _summarise_engagement(
             engagement,
             route_selector=ROUTE_ENGAGEMENT_SELECTORS.get(str(args.route)),

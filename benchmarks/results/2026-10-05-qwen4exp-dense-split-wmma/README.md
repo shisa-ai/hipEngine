@@ -65,9 +65,11 @@ The 64-column x 128-row tile uses 55,296 bytes of LDS.
   [Trace](trace-summary.json), [static census](register-census-noscratch.json).
 
 The exact raw-F32 coltile remains registered. gfx1100 execution is unverified.
-The F16-high formulation requires representable operands; range-safe model
-integration and the unchanged full-logit production/control/task/heldout gate
-are still required before a public binding.
+These timings describe the unguarded leaf, whose F16-high operands require
+representable values. The [range-safe runtime candidate](../2026-10-05-qwen4exp-dense-split-model/README.md)
+adds an in-kernel strict fallback and measures a lower 1.659–2.786x win.
+Full-logit production/control/task/heldout gates remain required before a
+public binding; the unguarded timings are not its runtime cost.
 
 ## Reproduce
 
