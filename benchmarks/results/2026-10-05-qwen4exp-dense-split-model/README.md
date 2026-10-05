@@ -135,4 +135,22 @@ logits are finite, three repeats are bit-identical, state metadata/layout and
 teardown pass, and the allocation packet passes. This is a strict-teacher
 numerical failure, not a runtime crash or ownership failure. No heldout, task,
 BF16-relative, isolation/graph or engine-wall promotion evidence was collected.
+
+Three disjoint early-layer ranges were screened against current production at
+chunk1024 using all 12 canonical cases, 24 transitions and three repeats. The
+[scope-screen packet](scope-screen.json) is diagnostic only: it uses neither the
+full depth nor the named-strict teacher.
+
+| Layers | Mean KL | p95 KL | Max KL | Top-1 |
+| --- | ---: | ---: | ---: | ---: |
+| 0–3 | 3.6121e-3 | 1.7708e-2 | 5.9101e-2 | 289/300 (96.33%) |
+| 4–7 | 2.1360e-3 | 8.1354e-3 | 2.5518e-2 | 293/300 (97.67%) |
+| 8–12 | 1.8151e-3 | 9.2457e-3 | 1.9402e-2 | 292/300 (97.33%) |
+
+All ranges fail the calibrated envelope. Outputs are finite and deterministic;
+the teacher dispatches zero split calls while the candidates dispatch 2,520,
+2,376 and 2,952 calls respectively. Clean source is `ad9c2c5d3`. These results
+show that layer-range narrowing alone has not found a qualifying route; they
+do not establish independent per-role arithmetic error or justify promotion.
+
 The candidate remains default-off.
