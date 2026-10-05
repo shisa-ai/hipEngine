@@ -8,8 +8,10 @@ memory once per 256 rows instead of once per 4-32 rows. See the header of the
 
 The ``dense_split64x128`` variant is an opt-in F32-input/output
 precision-recovering sibling. Both operands are represented as F16 high plus
-2048-scaled F16 residual; high-high dots are added in F32 and the two cross
-products are accumulated separately. The low-low term is omitted. A block
+2048-scaled F16 residual. High-high dots average positive/negative WMMA
+results and use compensated F32 summation; TwoSum corrections share the
+scaled cross accumulator. Both cross products start from zero WMMA
+accumulators and are added in ordinary F32. The low-low term is omitted. A block
 with operands outside the F16-high range runs the in-kernel strict F32
 fallback. The leaf has no certified/default runtime binding.
 

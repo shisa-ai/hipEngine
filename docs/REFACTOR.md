@@ -13,9 +13,11 @@
 - **Current repair experiment:** the split leaf now uses compensated F32
   high-high accumulation, positive/negative high-high WMMA averaging and
   ordinary cross-plane summation. The route remains default-off until the
-  complete model gates pass. If the repair fails, revert the leaf change and
-  remove the associated RED evidence; if it passes, replace the early-layer
-  fallback only in the certified scope.
+  complete model gates pass. If it fails with no further justified repair,
+  remove the runtime candidate while preserving immutable failure evidence.
+  Retain independently useful numerical RED fixtures or migrate their oracle
+  coverage to the replacement path; do not delete evidence to erase a failure.
+  If it passes, replace the early-layer fallback only in the certified scope.
 - Out-of-range operands trigger an in-kernel strict F32 fallback with no host
   readback, extra launch or shared workspace. That guard reduces the primitive
   win; the complete range-safe owner, not the unguarded leaf, is the perf basis.
