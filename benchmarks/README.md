@@ -5,6 +5,26 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next GR-up DPP production route
+
+On physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), Radeon
+8060S, UD-Q4_K_XL, the ordered DPP reduction is enabled in the production
+profile for the Q8_0 GR-up owner. The tracked-clean canonical A/B used one
+process and one model residency, three measured repetitions per arm, 128 decode
+transitions, and a 4096-token prefill chunk.
+
+| Prompt tokens | Prefill before (tok/s) | Prefill after (tok/s) | Change |
+| ---: | ---: | ---: | ---: |
+| 512 | 271.63 | 289.49 | **+6.57%** |
+| 1024 | 294.31 | 315.36 | **+7.15%** |
+| 4096 | 302.20 | 323.28 | **+6.98%** |
+
+All 12 canonical cases improve in prefill, all 72 measured output trajectories
+are exact across arms, and within-mode runs are deterministic. Candidate
+engagement is 0/96/0 across the before/after/before sequence. Decode is
+reported as non-regressive but not as a speed improvement. The exact fused
+parent remains the strict fallback. [Protocol and artifacts](results/2026-10-05-qwen4exp-gr-dpp-reduction/README.md).
+
 ## Qwen3.8 Flash Next GR-up DPP operation screen
 
 On physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), Radeon

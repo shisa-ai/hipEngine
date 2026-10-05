@@ -8412,17 +8412,21 @@ Two consequences worth knowing:
 
 ## GR-up ordered DPP candidate
 
-- `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` is default-off during admission.
-  It replaces only the existing rows>256, four-branch wave-scale GR-up
-  reduction. Missing registration falls back to the wave-scale parent,
-  then the unscaled fused parent; the unfused primitive chain stays available.
+- `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` is enabled for the measured
+  `gguf_ud_q4_k_xl` production profile after the tracked-clean canonical
+  twelve-case A/B. It replaces only the existing rows>256, four-branch
+  wave-scale GR-up reduction. Missing registration falls back to the
+  wave-scale parent, then the unscaled fused parent; the unfused primitive
+  chain stays available.
 - The real-weight operation screen is bit-identical and 1.54-1.57x faster
-  on gfx1151 at rows 512/1024/4096. Full-model admission and engine-wall
-  measurements decide production promotion, not the screen alone.
-- Removal condition: if the state or complete-suite performance gate fails,
-  remove the selector and candidate after recording the failed evidence. If
-  promoted, retain `=0` for one campaign checkpoint, then remove the selector
-  once bisection no longer needs the shuffle parent.
+  on gfx1151 at rows 512/1024/4096. The tracked-clean engine A/B then measured
+  weighted prefill gains of 6.57%, 7.15%, and 6.98% at 512/1024/4096 tokens,
+  with every canonical category winning and all 72 output trajectories exact.
+  Decode was effectively flat and is not claimed. The UD production manifest
+  names the DPP variant and retains the exact fused parent as its fallback.
+- Removal condition: retain `=0` for one campaign checkpoint for bisection,
+  then remove the selector once the DPP leaf is the only qualified gfx1151
+  owner for this tile shape.
 - Evidence: `benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/`.
 
 ## Exact-iu8 risk multiplier: pinned at 4.0 in production, and why

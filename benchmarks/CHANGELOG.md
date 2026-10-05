@@ -1,6 +1,15 @@
 # hipEngine Benchmark Changelog
 
-## 2026-10-05 — Exact GR-up DPP kernel and state admission
+## 2026-10-05 — GR-up DPP production promotion
+
+- On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+  the tracked-clean canonical twelve-case A/B promotes the ordered GR-up DPP
+  reduction to the production profile. Prefill improves **+6.57% / +7.15% /
+  +6.98%** at 512 / 1024 / 4096 prompt tokens (271.63 -> 289.49, 294.31 ->
+  315.36, and 302.20 -> 323.28 tok/s), with every case winning. All 72
+  trajectories are exact and deterministic; decode is not claimed as a gain.
+  Source: `benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/engine-ab.json`.
+
 
 - Radeon 8060S, physical host `55ea6c509d0b49eea8de7094a1023668`,
   UD-Q4_K_XL real Q8_0 GR-up banks: ordered DPP reduction cuts complete-owner

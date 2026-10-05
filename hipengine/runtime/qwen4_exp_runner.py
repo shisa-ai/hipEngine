@@ -3403,15 +3403,25 @@ def _qwen4_exp_q8_down_row4_key(key: KernelKey, *, rows: int) -> KernelKey:
 
 
 def _qwen4_exp_gr_wave_scale_key(key: KernelKey, *, rows: int, branches: int) -> KernelKey:
-    if rows <= 256 or branches != 4 or os.environ.get(
-        "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE", "0"
-    ) in {"", "0", "false", "False"}:
+    if rows <= 256 or branches != 4:
         return key
-    if os.environ.get("HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "0") == "1":
+    wave_scale_enabled = os.environ.get(
+        "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE", "0"
+    ) not in {"", "0", "false", "False"}
+    dpp_enabled = os.environ.get(
+        "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "0"
+    ) not in {"", "0", "false", "False"}
+    if not wave_scale_enabled and not dpp_enabled:
+        return key
+    if dpp_enabled:
         dpp = KernelKey(key.backend, key.layer, key.quant,
-                       "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact")
+                        "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact")
         if is_registered(dpp):
             return dpp
+    # DPP is an exact replacement for the wave-scale owner. Keep that owner as
+    # the first fallback even when a recovery profile has closed its legacy
+    # gate; otherwise a missing DPP registration would silently lose the
+    # profile's exact wave-scale fallback.
     candidate = KernelKey(key.backend, key.layer, key.quant,
                           "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
     return candidate if is_registered(candidate) else key
