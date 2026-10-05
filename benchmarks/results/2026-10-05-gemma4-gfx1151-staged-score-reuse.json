@@ -1,0 +1,692 @@
+{
+  "schema": 1,
+  "kind": "gemma4_staged_score_reuse",
+  "status": "retained",
+  "created": "2026-10-05",
+  "performance_claim": true,
+  "model": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "quant": "UD-Q4_K_XL",
+  "physical_host": "zbook",
+  "hardware": "Radeon 8060S (gfx1151)",
+  "kv_dtype": "bf16",
+  "execution_profile": "production",
+  "arithmetic_class": "T0",
+  "baseline_commit": "f2eefb9fa24c4b8390825aed4c8de73ce3d8e30e",
+  "baseline_source_sha256": "913c77f0751bd3d90e38a40ee1b9b9706fec17fb572d1246047688a772f4c1bf",
+  "candidate_source_sha256": "f5628131123873b241e42e52f11e1aa00af84141319d31cdd9dfdaf1efe735a4",
+  "current_library_sha256": "a4190c2c885938aac138ed7f8eecd7496b16c735b635288970c6c3fd51a9a502",
+  "protocol": {
+    "scope": "public generation synchronized wall, one greedy output token; not decode throughput",
+    "context": 33024,
+    "prompts": [
+      512,
+      8192,
+      32768
+    ],
+    "warmup_requests_per_arm_per_shape": 1,
+    "samples_per_arm_per_shape": 2,
+    "measured_order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "same_process": true,
+    "same_weights_prompts_sampling": true,
+    "default_variant": "gemma4_staged",
+    "strict_fallback": "gemma4_plain"
+  },
+  "commands": [
+    "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_staged_reuse_bench.py --baseline-library /tmp/gemma4-score-reuse/baseline.so --out /tmp/gemma4-score-reuse/micro.json",
+    "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_staged_reuse_bench.py --mode model --model /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --baseline-library /tmp/gemma4-score-reuse/baseline.so --warmups 1 --repeats 2 --out /tmp/gemma4-score-reuse/public.json",
+    "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python -m pytest tests/test_unit_gemma4_attention_staged.py tests/test_gpu_gemma4_attention_staged.py tests/test_unit_gemma4_attention_staged_selection.py tests/test_unit_gemma4_prefill_attention_selection.py tests/test_unit_gemma4_attention_scratch.py tests/test_unit_gemma4_attention_prefill_routing.py tests/test_unit_gemma4_attention_geometry.py -q",
+    "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/gemma4-score-reuse/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/gemma4-score-reuse/trace -- .venv/bin/python scripts/gemma4_staged_reuse_bench.py --baseline-library /tmp/gemma4-score-reuse/baseline.so --keys 1024 --warmups 1 --repeats 2 --out /tmp/gemma4-score-reuse/trace-micro.json"
+  ],
+  "provenance": {
+    "host": "zbook",
+    "git_commit": "f2eefb9fa24c4b8390825aed4c8de73ce3d8e30e",
+    "git_dirty": true,
+    "git_dirty_files": [
+      "M audit/findings/doc-path-drift.json",
+      " M audit/inventory/kernels.json",
+      " M audit/inventory/ledger.json",
+      " M audit/inventory/meta.json",
+      " M audit/inventory/worklog.json",
+      " M benchmarks/CHANGELOG.md",
+      " M benchmarks/HARNESSES.md",
+      " M benchmarks/results/2026-10-02-gemma4-gfx1151-262144-capacity-tier1.json",
+      " M benchmarks/results/2026-10-04-gemma4-gfx1151-staged-attention-stage-split.json",
+      " M docs/KERNELS.md",
+      " M docs/REFACTOR.md",
+      " M hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.hip",
+      " M hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.py",
+      " M scripts/gemma4_staged_attention_stage_split.py",
+      " M scripts/gguf_capacity_probe.py",
+      " M tests/test_gpu_gemma4_attention_staged.py",
+      " M tests/test_unit_gemma4_attention_staged.py",
+      " M tests/test_unit_gguf_capacity_probe.py",
+      "?? scripts/gemma4_staged_reuse_bench.py",
+      "?? worklog/entries/20261003T080759.400176Z-lhl-gemma4-capacity-probe-depth-rehearsal-494d0d.md",
+      "?? worklog/entries/20261003T081954.711360Z-lhl-gemma4-capacity-probe-review-corrections-94a1b1.md",
+      "?? worklog/entries/20261005T152628.367992Z-lhl-gemma4-score-reuse-e96b93.md"
+    ],
+    "gpu_name_device0": "AMD Radeon 8060S Graphics",
+    "artifact": {
+      "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "bytes": 17010980576,
+      "mtime": "2026-09-26T19:11:54.689845+00:00",
+      "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+    },
+    "env": {
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "hipcc": [
+      "HIP version: 7.15.26333-0000000",
+      "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)"
+    ],
+    "rocm_smi_clock_power": [
+      "============================ ROCm System Management Interface ============================",
+      "====================================== Temperature =======================================",
+      "GPU[0]\t\t: Temperature (Sensor edge) (C): 67.0",
+      "==========================================================================================",
+      "=============================== Current clock frequencies ================================",
+      "GPU[0]\t\t: mclk clock level: 2: (1000Mhz)",
+      "GPU[0]\t\t: sclk clock level: 1: (1441Mhz)",
+      "==========================================================================================",
+      "=================================== Power Consumption ====================================",
+      "GPU[0]\t\t: Current Socket Graphics Package Power (W): 50.232",
+      "==========================================================================================",
+      "================================== End of ROCm SMI Log ==================================="
+    ],
+    "python": "3.13.13",
+    "platform": "Linux-7.2.7-1-cachyos-x86_64-with-glibc2.44"
+  },
+  "loading": {
+    "resolve_s": 0.4495829140068963,
+    "load_s": 17.442193537950516,
+    "internal_load_s": 17.214654681971297,
+    "resolution": {
+      "_resolved_backend": "hip_gfx1151",
+      "_resolved_quant": "gguf_q4_k_m",
+      "_resolved_execution_profile": "production",
+      "_resolved_execution_profile_manifest": {
+        "manifest_sha256": "1af72d62088bfeadbcfe2c3fb0bb91ba10d633015d12bbf8c70b2d31d32b3871",
+        "fell_back_to_strict": false
+      },
+      "generator_type": "SubmitPollTextGenerator"
+    },
+    "context_length": 33024,
+    "runner_capacity": 33024,
+    "max_block": 1024
+  },
+  "libraries": {
+    "baseline": {
+      "path": "/tmp/gemma4-score-reuse/baseline.so",
+      "sha256": "245e8b181cce573684b74ed724eba8fd897a2ccf7434e44d225bac3880f08859"
+    },
+    "candidate": {
+      "path": "/home/lhl/.cache/hipengine/build/gemma4_attention_staged-ee5f82a34423645d/gemma4_attention_staged.so",
+      "sha256": "8235ec5ff09a5a13482f887e6d0c695e2fefef6e0642e5bd6421045f6e80b6d0"
+    }
+  },
+  "arm_library_calls": {
+    "baseline": 3690,
+    "candidate": 3690
+  },
+  "rows": [
+    {
+      "prompt_tokens": 512,
+      "output_tokens": 1,
+      "context": 33024,
+      "prompt_ids_sha256": "fba226ff8653b8b10e532f12d1d9b8fa364e57f552f51fab8c9079b23b0b268c",
+      "samples": {
+        "baseline": [
+          {
+            "public_wall_s": 0.46358799294102937,
+            "public_tps": 2.157087791803971,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              13718
+            ],
+            "synchronized_wall_s": 0.4637545340228826,
+            "route": "gemma4_staged"
+          },
+          {
+            "public_wall_s": 0.4629901630105451,
+            "public_tps": 2.1598731029134717,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              13718
+            ],
+            "synchronized_wall_s": 0.4632065180921927,
+            "route": "gemma4_staged"
+          }
+        ],
+        "candidate": [
+          {
+            "public_wall_s": 0.4544346359325573,
+            "public_tps": 2.2005364928838964,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              13718
+            ],
+            "synchronized_wall_s": 0.4546127909561619,
+            "route": "gemma4_staged"
+          },
+          {
+            "public_wall_s": 0.4531417560065165,
+            "public_tps": 2.206814946415177,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              13718
+            ],
+            "synchronized_wall_s": 0.4533060039393604,
+            "route": "gemma4_staged"
+          }
+        ]
+      },
+      "median_s": {
+        "baseline": 0.46348052605753765,
+        "candidate": 0.45395939744776115
+      },
+      "speedup": 1.0209735246440672,
+      "exact_ids": true
+    },
+    {
+      "prompt_tokens": 8192,
+      "output_tokens": 1,
+      "context": 33024,
+      "prompt_ids_sha256": "ea1766ee5530c7028e61cc93c4162cee2e0f54738e9b3a097306013efe8daaba",
+      "samples": {
+        "baseline": [
+          {
+            "public_wall_s": 14.55035154602956,
+            "public_tps": 0.06872686181062586,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              236769
+            ],
+            "synchronized_wall_s": 14.550560958101414,
+            "route": "gemma4_staged"
+          },
+          {
+            "public_wall_s": 14.561274331994355,
+            "public_tps": 0.06867530802594508,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              236769
+            ],
+            "synchronized_wall_s": 14.561468956060708,
+            "route": "gemma4_staged"
+          }
+        ],
+        "candidate": [
+          {
+            "public_wall_s": 13.688206953927875,
+            "public_tps": 0.07305558743857586,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              236769
+            ],
+            "synchronized_wall_s": 13.688390017021447,
+            "route": "gemma4_staged"
+          },
+          {
+            "public_wall_s": 13.692884708056226,
+            "public_tps": 0.07303063023758966,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              236769
+            ],
+            "synchronized_wall_s": 13.69308810995426,
+            "route": "gemma4_staged"
+          }
+        ]
+      },
+      "median_s": {
+        "baseline": 14.55601495708106,
+        "candidate": 13.690739063487854
+      },
+      "speedup": 1.0632015473803624,
+      "exact_ids": true
+    },
+    {
+      "prompt_tokens": 32768,
+      "output_tokens": 1,
+      "context": 33024,
+      "prompt_ids_sha256": "4c9f993372aa2f928bd77a633ba4ec927bbebc9c69eb8549587d74c2990dc358",
+      "samples": {
+        "baseline": [
+          {
+            "public_wall_s": 110.83863050304353,
+            "public_tps": 0.009022125187414156,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              573
+            ],
+            "synchronized_wall_s": 110.83883026696276,
+            "route": "gemma4_staged"
+          },
+          {
+            "public_wall_s": 117.53018785407767,
+            "public_tps": 0.008508452324109047,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              573
+            ],
+            "synchronized_wall_s": 117.5304814480478,
+            "route": "gemma4_staged"
+          }
+        ],
+        "candidate": [
+          {
+            "public_wall_s": 103.22760711598676,
+            "public_tps": 0.009687331014816588,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              573
+            ],
+            "synchronized_wall_s": 103.22782961302437,
+            "route": "gemma4_staged"
+          },
+          {
+            "public_wall_s": 105.9421401959844,
+            "public_tps": 0.009439114578486717,
+            "generated_tokens": 1,
+            "finish_reason": "length",
+            "sampler_mode": "greedy",
+            "finite_logits": null,
+            "generated_token_ids": [
+              573
+            ],
+            "synchronized_wall_s": 105.94250456802547,
+            "route": "gemma4_staged"
+          }
+        ]
+      },
+      "median_s": {
+        "baseline": 114.18465585750528,
+        "candidate": 104.58516709052492
+      },
+      "speedup": 1.0917863310259992,
+      "exact_ids": true
+    }
+  ],
+  "unmodified_default_request": {
+    "public_wall_s": 2.2073271800763905,
+    "public_tps": 3.6242927972839705,
+    "generated_tokens": 8,
+    "finish_reason": "length",
+    "sampler_mode": "greedy",
+    "finite_logits": null,
+    "generated_token_ids": [
+      13718,
+      8633,
+      653,
+      618,
+      496,
+      45726,
+      11059,
+      2541
+    ],
+    "route": "gemma4_staged"
+  },
+  "correctness": {
+    "passed": true,
+    "oracle": "monolithic strict block parent on identical device buffers, independent float64 oracle at long keys",
+    "contract": "bitwise BF16 and F32 parent parity; same-row masks, window/offset and workspace ownership",
+    "scoped_pytest_nodes_passed": 249,
+    "public_ids_exact_across_arms_and_repeats": true,
+    "cpu_reference_outer_floor": "KL <= 0.05 and top-1 >= 90% in existing long-key oracle fixtures",
+    "control_coverage": "GQA ratios 1/2/3/4/5/8/12/16; masks causal/sliding/holes/all-masked; singleton and multi-query; odd tail at 17003 keys; saturated coordinates and scratch ownership",
+    "full_model_logits": "not newly captured; primitive byte equality is binding for this T0 change"
+  },
+  "primitive": {
+    "kind": "gemma4_staged_attention_library_ab",
+    "performance_claim": false,
+    "command": "scripts/gemma4_staged_reuse_bench.py --baseline-library /tmp/gemma4-score-reuse/baseline.so --out /tmp/gemma4-score-reuse/micro.json",
+    "dtype": "bf16",
+    "warmups": 3,
+    "repeats": 6,
+    "timing_scope": "three attention stages, HIP events",
+    "libraries": {
+      "baseline": {
+        "path": "/tmp/gemma4-score-reuse/baseline.so",
+        "sha256": "245e8b181cce573684b74ed724eba8fd897a2ccf7434e44d225bac3880f08859"
+      },
+      "candidate": {
+        "path": "/home/lhl/.cache/hipengine/build/gemma4_attention_staged-ee5f82a34423645d/gemma4_attention_staged.so",
+        "sha256": "8235ec5ff09a5a13482f887e6d0c695e2fefef6e0642e5bd6421045f6e80b6d0"
+      }
+    },
+    "rows": [
+      {
+        "tokens": 16,
+        "keys": 1024,
+        "head_dim": 512,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "window": 0,
+        "row_offset": 1008,
+        "scale": 0.05,
+        "samples_ms": {
+          "baseline": [
+            1.8043709993362427,
+            0.6844390034675598,
+            0.6977239847183228,
+            0.7001879811286926,
+            0.6770250201225281,
+            0.6854000091552734
+          ],
+          "candidate": [
+            0.6713339686393738,
+            0.6565459966659546,
+            0.6613849997520447,
+            0.6623870134353638,
+            0.6963009834289551,
+            0.6761429905891418
+          ]
+        },
+        "median_ms": {
+          "baseline": 0.6915619969367981,
+          "candidate": 0.6668604910373688
+        },
+        "speedup": 1.0370414895340458,
+        "bitwise_equal": true
+      },
+      {
+        "tokens": 16,
+        "keys": 8192,
+        "head_dim": 512,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "window": 0,
+        "row_offset": 8176,
+        "scale": 0.05,
+        "samples_ms": {
+          "baseline": [
+            6.6724019050598145,
+            6.733406066894531,
+            6.694764137268066,
+            6.716403961181641,
+            6.7582831382751465,
+            6.727105140686035
+          ],
+          "candidate": [
+            6.5166401863098145,
+            6.564128875732422,
+            6.549871921539307,
+            6.525687217712402,
+            6.607240200042725,
+            6.56600284576416
+          ]
+        },
+        "median_ms": {
+          "baseline": 6.721754550933838,
+          "candidate": 6.557000398635864
+        },
+        "speedup": 1.025126451468914,
+        "bitwise_equal": true
+      },
+      {
+        "tokens": 16,
+        "keys": 32768,
+        "head_dim": 512,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "window": 0,
+        "row_offset": 32752,
+        "scale": 0.05,
+        "samples_ms": {
+          "baseline": [
+            27.40281105041504,
+            27.385820388793945,
+            27.252912521362305,
+            27.526044845581055,
+            27.47963523864746,
+            27.41038703918457
+          ],
+          "candidate": [
+            26.131763458251953,
+            25.981281280517578,
+            26.218034744262695,
+            25.990447998046875,
+            26.16970443725586,
+            26.072683334350586
+          ]
+        },
+        "median_ms": {
+          "baseline": 27.406599044799805,
+          "candidate": 26.10222339630127
+        },
+        "speedup": 1.0499718215071046,
+        "bitwise_equal": true
+      },
+      {
+        "tokens": 16,
+        "keys": 1024,
+        "head_dim": 256,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "window": 1024,
+        "row_offset": 1008,
+        "scale": 0.05,
+        "samples_ms": {
+          "baseline": [
+            0.4205470085144043,
+            0.4278709888458252,
+            0.41862401366233826,
+            0.4415470063686371,
+            0.4187439978122711,
+            0.42138901352882385
+          ],
+          "candidate": [
+            0.42186999320983887,
+            0.41096898913383484,
+            0.40644100308418274,
+            0.4163399934768677,
+            0.417822003364563,
+            0.38820698857307434
+          ]
+        },
+        "median_ms": {
+          "baseline": 0.4209680110216141,
+          "candidate": 0.41365449130535126
+        },
+        "speedup": 1.0176802618368384,
+        "bitwise_equal": true
+      },
+      {
+        "tokens": 16,
+        "keys": 8192,
+        "head_dim": 256,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "window": 1024,
+        "row_offset": 8176,
+        "scale": 0.05,
+        "samples_ms": {
+          "baseline": [
+            0.482463002204895,
+            0.47384700179100037,
+            0.47364699840545654,
+            0.4702000021934509,
+            0.47216400504112244,
+            0.46234598755836487
+          ],
+          "candidate": [
+            0.39300599694252014,
+            0.43530499935150146,
+            0.4370580017566681,
+            0.45489099621772766,
+            0.4248349964618683,
+            0.43473300337791443
+          ]
+        },
+        "median_ms": {
+          "baseline": 0.4729055017232895,
+          "candidate": 0.43501900136470795
+        },
+        "speedup": 1.0870915988490777,
+        "bitwise_equal": true
+      },
+      {
+        "tokens": 16,
+        "keys": 32768,
+        "head_dim": 256,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "window": 1024,
+        "row_offset": 32752,
+        "scale": 0.05,
+        "samples_ms": {
+          "baseline": [
+            0.5156049728393555,
+            0.5117679834365845,
+            0.5153539776802063,
+            0.5138819813728333,
+            0.4988130033016205,
+            0.5040630102157593
+          ],
+          "candidate": [
+            0.491800993680954,
+            0.4622649848461151,
+            0.4455539882183075,
+            0.43240898847579956,
+            0.45565301179885864,
+            0.46182501316070557
+          ]
+        },
+        "median_ms": {
+          "baseline": 0.5128249824047089,
+          "candidate": 0.4587390124797821
+        },
+        "speedup": 1.117901395899505,
+        "bitwise_equal": true
+      }
+    ]
+  },
+  "profiler_smoke": {
+    "cached_only": true,
+    "kernels": [
+      {
+        "kernel": "gemma4_attention_staged_score_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned char const*, float*, float*, long, long, long, float, long, long, long, long)",
+        "grid": [
+          "65536",
+          "1",
+          "1"
+        ],
+        "vgpr": "40",
+        "profiler_lds": "0",
+        "scratch_bytes": "0",
+        "calls": 8,
+        "median_us": 388.9755
+      },
+      {
+        "kernel": "gemma4_attention_staged_pv_kernel<unsigned short, 2, 8, true>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long, long)",
+        "grid": [
+          "4096",
+          "2",
+          "1"
+        ],
+        "vgpr": "56",
+        "profiler_lds": "0",
+        "scratch_bytes": "0",
+        "calls": 8,
+        "median_us": 368.31600000000003
+      },
+      {
+        "kernel": "gemma4_attention_staged_softmax_kernel(float*, float const*, float*, long, long, long, long, long)",
+        "grid": [
+          "65536",
+          "1",
+          "1"
+        ],
+        "vgpr": "16",
+        "profiler_lds": "0",
+        "scratch_bytes": "0",
+        "calls": 16,
+        "median_us": 6.593
+      },
+      {
+        "kernel": "gemma4_attention_staged_score_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned char const*, float*, float*, long, long, long, float, long, long, long, long)",
+        "grid": [
+          "32768",
+          "1",
+          "1"
+        ],
+        "vgpr": "56",
+        "profiler_lds": "0",
+        "scratch_bytes": "0",
+        "calls": 8,
+        "median_us": 246.98649999999998
+      },
+      {
+        "kernel": "gemma4_attention_staged_pv_kernel<unsigned short, 1, 2, true>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long, long)",
+        "grid": [
+          "4096",
+          "8",
+          "1"
+        ],
+        "vgpr": "32",
+        "profiler_lds": "0",
+        "scratch_bytes": "0",
+        "calls": 8,
+        "median_us": 229.494
+      }
+    ],
+    "note": "Profiler grid dimensions here report work items, not CTA counts. LDS_Block_Size omits dynamic LDS; score launch reserves 2112/4160 bytes at D256/D512. No scratch spill reported. Profiler timings are smoke evidence only.",
+    "libraries": {
+      "baseline": {
+        "path": "/tmp/gemma4-score-reuse/baseline.so",
+        "sha256": "245e8b181cce573684b74ed724eba8fd897a2ccf7434e44d225bac3880f08859"
+      },
+      "candidate": {
+        "path": "/home/lhl/.cache/hipengine/build/gemma4_attention_staged-d6eccf373cd5bc38/gemma4_attention_staged.so",
+        "sha256": "a4190c2c885938aac138ed7f8eecd7496b16c735b635288970c6c3fd51a9a502"
+      }
+    },
+    "candidate_hash_matches_current": true
+  },
+  "limitations": [
+    "Two timing samples per arm; 32K baseline samples vary 110.84-117.53 s.",
+    "Dirty shared tree recorded; baseline and candidate library hashes bind measured kernel code. Only comments changed after measured candidate build.",
+    "No new 128K/256K capacity or performance measurement, no llama.cpp comparison, no decode throughput claim.",
+    "gfx1151 hardware validation only; gfx1100 uses the shared source but was not measured.",
+    "Earlier LDS-zero/no-staging interpretation corrected: Q and weights were already staged; WMMA also changes arithmetic."
+  ]
+}

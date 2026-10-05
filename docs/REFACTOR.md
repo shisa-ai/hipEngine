@@ -49,27 +49,23 @@ is historical evidence, not coverage of the failing categories or a performance
 claim for staged attention. Its original kernel-speed artifacts likewise measure
 WMMA, not the staged default.
 
-**Measured value, and the cheaper route (2026-10-04).** The candidates are worth
-more than the arithmetic question alone suggests, and less than they look. A
-same-session A/B with both arms in one process
-(`scripts/gemma4_prefill_attention_variant_ab.py`, which reads
-`last_prefill_attention_route()` back per arm and refuses a collapsed
-comparison) measures the shipped staged path at 93.3 tok/s against the
-candidates' 477.8 at 131072 tokens: **5.121x**, growing from 2.073x at 8192.
-Against the paired llama.cpp ladder that moves the 131072 prefill ratio from
-0.23x to 1.20x. **That is not a reason to promote them** — they fail the
-envelope. It is a reason to look at why the shipped path is slow, and a
-`rocprofv3` trace of it at 32768 answers that: the score and P*V stages both
-report **LDS 0**, one thread per (query, key, head) score with nothing staged,
-so the score pass computes 50.7 TFLOP per prefill at 0.914 TFLOP/s — about 1
-percent of this part's measured 84.8 TFLOP/s BF16 WMMA rate — and would move
-101 TB of Q and K per prefill if nothing were reused. Tiling Q and K into LDS
-changes no floating-point operation: the strict head-dimension accumulation
-order is preserved, and the 256-lane softmax denominator already lives in its
-own stage. Take that route first; it needs no numerical gate. The candidates'
-own remaining work is the P*V divergence, and it is worth 5.121x at 131072 once
-that is closed. Evidence: `benchmarks/results/2026-10-04-gemma4-gfx1151-prefill-attention-variant-ab.json`,
-`benchmarks/results/2026-10-04-gemma4-gfx1151-staged-attention-stage-split.json`.
+**Diagnostic timing (2026-10-04; interpretation corrected 2026-10-05).**
+The same-process A/B in
+`benchmarks/results/2026-10-04-gemma4-gfx1151-prefill-attention-variant-ab.json`
+measures staged/WMMA prefill at 93.3/477.8 tok/s at 131072 tokens (5.121x).
+The candidate remains an arithmetic evaluation path, not a production default.
+The stage trace at 32768 attributes 59.5% of attention time to scores, 37.8%
+to P*V and 2.7% to softmax.
+
+The trace's `LDS_Block_Size=0` does not account for dynamically allocated
+shared memory. The staged source already loads Q into shared memory and stages
+weights for grouped-head V reuse. Scores use one warp per key, not one thread
+per score. The hypothetical 101 TB unstaged read calculation is not measured
+traffic. WMMA also changes arithmetic, so its speedup cannot be attributed to
+staging alone. Arithmetic-preserving reuse changes still require strict
+parent-parity validation; only the reassociated-arithmetic promotion packet
+can be avoided. See the correction and implementation in
+`worklog/entries/20261005T152628.367992Z-lhl-gemma4-score-reuse-e96b93.md`.
 
 Removal condition: delete the WMMA wrappers, HIP sources and explicit routing
 branches once their remaining arithmetic-evaluation work is closed. Preserve

@@ -12,6 +12,11 @@ comes from the model's own geometry (per-layer head counts, head dims, and the
 sliding window, read from the GGUF metadata without loading weights), so the
 achieved TFLOP/s and the read amplification are arithmetic on measurements.
 
+The `LDS_Block_Size` value is copied as a raw profiler field: it does not account
+for dynamic shared-memory launch arguments. A zero there does not mean that
+Q, weights or other inputs were unstaged. Hypothetical unstaged read bytes
+are not measured device traffic.
+
 Usage:
     .venv/bin/python scripts/gemma4_staged_attention_stage_split.py \
         --trace /tmp/gemma4-prof/pf32768_kernel_trace.csv \
@@ -127,8 +132,8 @@ def main() -> int:
         layer_pairs = key_pairs(tokens, window) * layer["heads"]
         pairs += layer_pairs
         macs += layer_pairs * layer["head_dim"]
-        # One Q row and one K row read per (query, key, head) triple when nothing
-        # is staged: this is the amplification the LDS figure is about.
+        # Hypothetical Q+K reads without any reuse, not the staged kernel's
+        # actual traffic. Q is already loaded into dynamic shared memory.
         qk_bytes += layer_pairs * layer["head_dim"] * 2 * 2
 
     flops = 2.0 * macs
@@ -172,10 +177,10 @@ def main() -> int:
             "note": (
                 "QK and P*V each cost one multiply-accumulate per (query, key, head) "
                 "element of the head dimension, so both are reported at the same "
-                "FLOP count. The effective read rate is what the kernel would move "
-                "if it staged nothing; it exceeds the part's DRAM roofline, so a "
-                "large part of it is served from cache. The point is the "
-                "amplification, not the rate."
+                "FLOP count. The unstaged read count and rate are hypothetical, "
+                "not measured memory traffic: the staged source already shares Q "
+                "and reuses V across GQA heads. LDS_Block_Size does not account "
+                "for dynamic shared-memory launch arguments."
             ),
         },
         "top_kernels": [

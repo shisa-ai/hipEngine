@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-03**
+Last updated: **2026-10-05**
 
 **Halo-box Vulkan MTP** (`strix-llama.cpp@03895887abe6`) completes the same
 Qwen3.6 Q4_K_M 140-turn replay on Radeon 8060S in **643.08 s** (mean **4.593 s**),
@@ -1977,6 +1977,29 @@ numeric 128K row is carried forward. Evidence:
 [`SH14-C1 completion gate`](results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
 
 ### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
+
+#### Paired-head score reuse (2026-10-05)
+
+On **zbook / Radeon 8060S (gfx1151)**, the production staged-attention path
+shares each K-vector load across two query heads of the same KV head. A
+same-process public-generation A/B uses identical prompts and weights, BF16
+KV, context 33024, one greedy output token, one warmup per arm/shape and two
+samples per arm in alternating order. The table reports synchronized request
+wall time, including prefill and first-token sampling, not decode throughput.
+
+| Prompt tokens | Original score path | Paired-head reuse | Wall reduction |
+| ---: | ---: | ---: | ---: |
+| 512 | 0.4635 s | 0.4540 s | 2.05% |
+| 8192 | 14.5560 s | 13.6907 s | 5.94% |
+| 32768 | 114.1847 s | 104.5852 s | 8.41% |
+
+The change is on the default path. All compared output IDs match; 249 scoped
+CPU/GPU checks include BF16/F32 parent parity, independent long-key oracle,
+mask/window edges and workspace ownership. A separate eight-output public
+request confirms the unmodified default route. The 32K baseline samples vary
+from 110.84 to 117.53 s; two samples do not establish a general performance
+bound. No new 128K/256K, decode-rate, gfx1100 or llama.cpp result is claimed.
+[Commands, samples, library hashes and correctness checks](results/2026-10-05-gemma4-gfx1151-staged-score-reuse.json).
 
 #### End-to-end comparison checkpoint (2026-10-03)
 
