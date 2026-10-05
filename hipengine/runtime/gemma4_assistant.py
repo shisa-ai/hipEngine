@@ -214,6 +214,7 @@ def gemma4_assistant_keep_mask(
     keys: int,
     *,
     sliding_window: int | None,
+    base: int = 0,
 ) -> np.ndarray:
     """Return the ``(1, keys)`` uint8 keep-mask for one query row.
 
@@ -221,13 +222,20 @@ def gemma4_assistant_keep_mask(
     ``k <= position`` and, with a window, when ``k > position - window``. The
     head is single-token, so there is no row-to-row variation to encode and this
     is the same predicate ``_keep_mask`` uses for the backbone.
+
+    ``base`` is the cache's base. Slot ``s`` holds absolute position
+    ``base + s``, so the predicate is evaluated on absolute positions while the
+    returned mask stays indexed by slot; a global block's base is 0 and this is
+    the identity.
     """
 
     if position < 0:
         raise ValueError(f"position must be non-negative, got {position}")
     if keys <= 0:
         raise ValueError(f"keys must be positive, got {keys}")
-    index = np.arange(keys, dtype=np.int64)
+    if base < 0:
+        raise ValueError(f"base must be non-negative, got {base}")
+    index = np.arange(keys, dtype=np.int64) + int(base)
     keep = index <= position
     if sliding_window is not None:
         keep &= index > position - int(sliding_window)
@@ -545,8 +553,17 @@ class Gemma4AssistantHead:
 
             # attention against the backbone's cache, scale 1.0
             view = shared_kv[int(block.kv_layer)]
+            # The cache may be rebased: slot ``s`` holds absolute position
+            # ``base + s``. The head reads a shared view by absolute position,
+            # so both the mask predicate and the kernel's ``row_offset`` are
+            # taken in the cache's slot frame, ``position - base``; that is the
+            # identity for a global layer, whose base is 0.
+            slot_position = int(position) - int(view.base)
             mask = gemma4_assistant_keep_mask(
-                position, int(view.live), sliding_window=block.sliding_window
+                position,
+                int(view.live),
+                sliding_window=block.sliding_window,
+                base=int(view.base),
             )
             mask_buf = self._stage(f"mask{block_id}", np.ascontiguousarray(mask))
             gemma4_attention_prefill_bf16(
@@ -561,19 +578,19 @@ class Gemma4AssistantHead:
                 num_kv_heads=block.num_kv_heads,
                 head_dim=head_dim,
                 scale=1.0,
-                # The single query's absolute position, which is what the kernel
-                # uses to skip a row's own masked prefix. The head passes
-                # key_begin = 0 (it reads the whole live cache), so this is the
-                # position itself; leaving it at the default 0 would make the
-                # kernel treat the query as position 0 and attend to almost
+                # The single query's position in the cache's slot frame, which
+                # is what the kernel uses to skip a row's own masked prefix. The
+                # head passes key_begin = 0 (it reads the whole live cache), so
+                # this is ``position - base``; leaving it at the default 0 would
+                # make the kernel treat the query as slot 0 and attend to almost
                 # nothing.
-                row_offset=int(position),
+                row_offset=slot_position,
                 # A global block's window is the whole live cache, and saying
                 # so rather than leaving it at 0 is what lets the kernel trim
                 # the trailing masked run: `window > 0` is the promise that the
                 # mask is sliding-causal, which is zero above the query's own
-                # position too. The single query here sits at `position`, so
-                # `keys` is exactly the sliding-causal mask with an unbounded
+                # position too. The single query here sits at ``slot_position``,
+                # so `keys` is exactly the sliding-causal mask with an unbounded
                 # window. This is a no-op when the query is the last live token,
                 # which is the ordinary decode step.
                 window=int(view.live)

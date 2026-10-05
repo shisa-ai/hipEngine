@@ -883,9 +883,14 @@ def test_shared_kv_view_reports_geometry_and_live_positions(
     """
 
     config = _config(num_layers=4)
-    runner, _ = _make_runner(monkeypatch, config=config, capacity=64, max_block=8)
+    runner, _ = _make_runner(monkeypatch, config=config, capacity=256, max_block=8)
     try:
         assert runner.layer_count == 4
+        # Every layer is sliding (window 16) at an 8-row block with the 64-row
+        # graph reserve, so each owns the 143-row band it can read -- window - 1
+        # plus the reserve plus max(block, reserve) -- not the 256-position
+        # context.
+        assert runner._kv_capacity == [143, 143, 143, 143]
         # Nothing has run, so a reader sees zero live positions.
         assert runner.shared_kv(0).live == 0
 
@@ -895,7 +900,8 @@ def test_shared_kv_view_reports_geometry_and_live_positions(
             assert view.layer_index == index
             assert view.key_cache == runner._kv[index].key_cache
             assert view.value_cache == runner._kv[index].value_cache
-            assert view.capacity == 64
+            assert view.capacity == 143
+            assert view.base == 0
             assert view.num_kv_heads == attention.num_kv_heads
             assert view.head_dim == attention.head_dim
             assert view.kv_width == attention.num_kv_heads * attention.head_dim

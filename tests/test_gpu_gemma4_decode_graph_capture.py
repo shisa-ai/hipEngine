@@ -22,13 +22,13 @@ requires (a cold route would load modules while capture is active).
 
 from __future__ import annotations
 
-import contextlib
 import ctypes
 
 import numpy as np
 import pytest
 
 from scripts.gemma4_campaign_bench import resolve_artifact
+from tests._gemma4_decode_graph_llm import owned_llm
 
 _TARGET = resolve_artifact()
 
@@ -59,32 +59,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@contextlib.contextmanager
-def _owned_llm(model: str):
-    """Open a public ``LLM`` and release its device owner on every exit path.
-
-    The graph session closes itself, but the model weights and KV cache belong
-    to the ``LLM``'s text generator. A bare ``LLM(...)`` that is never closed
-    keeps those buffers resident for the rest of the process, and a later large
-    model load in the same process can then fail with a HIP out-of-memory
-    error. The ``finally`` releases the owner on success, assertion failure, or
-    any other exception.
-    """
-
-    import hipengine
-
-    llm = hipengine.LLM(model=model)
-    try:
-        yield llm
-    finally:
-        llm.close()
-
-
 @pytest.fixture
 def gemma4_llm():
     """A loaded public ``LLM`` whose device owner is always closed."""
 
-    with _owned_llm(str(_TARGET)) as llm:
+    with owned_llm(str(_TARGET)) as llm:
         yield llm
 
 
