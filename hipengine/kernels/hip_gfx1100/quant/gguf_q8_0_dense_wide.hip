@@ -505,15 +505,27 @@ __device__ __forceinline__ void wide_tile_gemm(
         for (int j = 0; j < TN; ++j) {
           if (TAIL && !jact[j]) continue;
           if constexpr (SPLIT) {
-            // gfx11 WMMA's long high-high accumulation loses precision as K
-            // grows. Round one 16-term dot independently, then sum the dots
-            // with ordinary F32 addition instead of feeding the growing sum
-            // back through the matrix accumulator.
+            // Keep the growing sum out of WMMA and compensate its ordinary
+            // F32 additions; long-K high-high sums otherwise dominate the
+            // recovered operand error. Non-split variants are unchanged.
             const float8_t zero = {};
-            const float8_t dot = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a[i], zero);
-            acc[i][j] += dot;
-            cross[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a_lo[i], cross[i][j]);
-            cross[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b_lo[j], a[i], cross[i][j]);
+            // Average opposite-sign dots to reduce the measured signed WMMA
+            // dot-rounding bias before compensated F32 summation.
+            const float8_t dot_positive = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a[i], zero);
+            const half16_t b_neg = -b[j];
+            const float8_t dot_negative = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b_neg, a[i], zero);
+            const float8_t dot = (dot_positive - dot_negative) * 0.5f;
+            const float8_t next = acc[i][j] + dot;
+            const float8_t recovered_dot = next - acc[i][j];
+            const float8_t sum_error = (acc[i][j] - (next - recovered_dot)) + (dot - recovered_dot);
+            acc[i][j] = next;
+            // Cross terms are scaled but still must not feed a growing
+            // accumulator back through WMMA's reduced-precision adder.
+            const float8_t x_low_dot = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a_lo[i], zero);
+            const float8_t w_low_dot = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b_lo[j], a[i], zero);
+            // Reuse the scaled cross plane for TwoSum's correction instead
+            // of adding a third accumulator plane that spills at this tile.
+            cross[i][j] += sum_error * SPLIT_SCALE + x_low_dot + w_low_dot;
           } else {
 #pragma unroll
             for (int rep = 0; rep < WMMA_REP; ++rep) {

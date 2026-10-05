@@ -169,4 +169,13 @@ untracked during execution, so the packet explicitly disclaims complete
 qualification provenance. Natural-input NPZ captures remain local and are not
 part of the repository.
 
+The existing candidate has now been numerically repaired at the leaf boundary:
+compensated F32 accumulation, positive/negative high-high WMMA averaging, and
+ordinary cross-plane summation. The complete projection screen remains
+operation-level only. Across 15 real-weight cases, candidate speedups are
+**1.270–2.031x** (all counterbalanced order strata improve); aggregate parent →
+candidate walls are 28.777 → 18.828 ms at 512, 57.486 → 37.960 ms at 1024,
+and 228.139 → 149.753 ms at 4096. The [compensated screen](compensated-screen.json)
+records the exact cases and provenance. It is not a model-rate claim.
+
 The candidate remains default-off.
