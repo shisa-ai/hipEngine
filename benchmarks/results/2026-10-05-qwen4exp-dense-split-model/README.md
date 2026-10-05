@@ -5,8 +5,9 @@ complete-projection speedup against the live pipelined F32 DPP coltile parent
 across 15 real-weight cases. This is an operation-level diagnostic, not model
 throughput or production qualification. The candidate is default-off; the
 uncompensated composition fails the full numerical gate, and the repaired
-composition's gate is incomplete. Historical uncompensated leaf measurements
-and failures below describe the earlier source, not the repaired kernel.
+composition has now completed that gate but also fails its production numerical
+envelope. Historical uncompensated leaf measurements and failures below
+describe the earlier source, not the repaired kernel.
 
 ## Historical uncompensated comparison basis
 
@@ -118,29 +119,42 @@ are finite, repeats are bit-identical, and actual split dispatch counts are
 **0 teacher / 3,924 candidate**. Provenance and complete coverage pass; the
 collector exits 1 because quality fails, not because collection crashed.
 
-The full named-strict composition packet is now available at
-[canonical-strict.json](canonical-strict.json). It compares the strict profile
-at chunk 1024 with production plus `dense_split_early` at chunk 4096 over all 12
-canonical cases, 128 transitions and three candidate repeats.
+The [repaired candidate's named-strict production gate](canonical-strict-repaired.json) is complete. It compares
+strict chunk1024 with production plus `dense_split_early` at chunk4096 over all
+12 canonical cases, 1,548 full-vocabulary rows, 128 teacher-forced transitions
+and three candidate repeats. Candidate split dispatch is engaged for 3,924
+calls; the strict teacher has zero split calls. The candidate is finite,
+repeat-deterministic, state/layout-valid and leak-free, but fails the binding
+quality envelope:
 
 | Metric | Measured | Limit | Result |
 | --- | ---: | ---: | --- |
-| Mean KL | 1.3342e-3 | ≤1e-3 | Fail |
-| p95 KL | 7.3716e-3 | ≤5e-3 | Fail |
-| p99 KL | 1.5581e-2 | ≤2e-2 | Pass |
-| Maximum KL | 3.5568e-2 | ≤5e-2 | Pass |
-| Overall top-1 | 1532/1548 (98.966%) | ≥99% | Fail |
+| Mean KL | 1.4386e-3 | ≤1e-3 | Fail |
+| p95 KL | 7.5336e-3 | ≤5e-3 | Fail |
+| p99 KL | 1.7430e-2 | ≤2e-2 | Pass |
+| Maximum KL | 5.9744e-2 | ≤5e-2 | Fail |
+| Overall top-1 | 1526/1548 (98.579%) | ≥99% | Fail |
 
-Category means are code `9.964e-4`, general_en `1.881e-3`, general_ja
-`1.320e-3` and mixed_ja_en `1.140e-3`; every category scope fails at least
-one binding limit. The steady scope also fails. Prefill-last and prefill-to-c1
-rows remain near zero drift; the failure is in steady decode transitions.
+All four categories and the steady transition fail at least one scope gate;
+prefill-last and prefill-to-c1 remain near-zero. Since the binding numerical
+gate fails, heldout, task, BF16-relative, isolation and engine-wall promotion
+gates were not run. The strict fallback remains the admitted early-layer route.
+The historical uncompensated strict result is preserved separately in
+[canonical-strict.json](canonical-strict.json).
 
-The candidate engaged for 3,924 leaf calls and the teacher for zero. Candidate
-logits are finite, three repeats are bit-identical, state metadata/layout and
-teardown pass, and the allocation packet passes. This is a strict-teacher
-numerical failure, not a runtime crash or ownership failure. No heldout, task,
-BF16-relative, isolation/graph or engine-wall promotion evidence was collected.
+The [repaired natural-input attribution summary](natural-localize-repaired-summary.json)
+covers 436 projections across four p512 categories, layers 0–12 and 14 role kinds.
+Parent full logits remain bit-identical with observation enabled, all candidate
+repeats are deterministic and finite, and teardown leaves zero allocations.
+Sampled candidate-vs-F64 relative L2 is at most 2.13e-7; full-projection
+candidate-vs-parent relative L2 is at most 3.03e-7. This collector evaluates
+candidate outputs privately and does not establish model-level causation.
+
+The [fresh allocation probe](allocation-repaired.json) prepares 89,322,462,984
+tracked bytes with an 83,886,080-byte device-scratch margin. The repaired gate's
+candidate peak is 89,404,925,864 bytes; both packets report zero allocations
+after close. Allocation, projection error and repeat checks are independent of
+the failed whole-model quality gate.
 
 Three disjoint early-layer ranges were screened against current production at
 chunk1024 using all 12 canonical cases, 24 transitions and three repeats. The
