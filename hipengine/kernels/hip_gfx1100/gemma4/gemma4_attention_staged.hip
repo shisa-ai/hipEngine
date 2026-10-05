@@ -8,8 +8,8 @@
 // that does not mention `keys` at all:
 //
 //   1. `gemma4_attention_staged_score_kernel` writes FP32 logits -- one warp per
-//      key, the strict warp-key tree -- and one running maximum per
-//      (row, key chunk).
+//      key with two query heads sharing each decoded K vector -- and one
+//      running maximum per (row, key chunk). The strict warp-key tree is unchanged.
 //   2. `gemma4_attention_staged_softmax_kernel` reduces those maxima to the row
 //      maximum and runs the strict pass 2: the 256-lane `j mod 256` partition,
 //      the 128/64/32 shared tree and the 16..1 shuffle stages, every weight
@@ -46,7 +46,8 @@
 // export.
 //
 // The launch shape, for whoever measures it: three kernels, three traversals of
-// the workspace, a score grid of `tokens * num_heads * ceil(keys / 1024)` CTAs
+// the workspace, a score grid of
+// `tokens * num_kv_heads * ceil(GQA / 2) * ceil(keys / 1024)` CTAs
 // and a PV grid of `tokens * num_kv_heads * ceil(GQA / 8)` -- or
 // `tokens * num_kv_heads * ceil(GQA / 2) * head_dim / 32` when a single query
 // token takes the singleton decomposition. Exactness pins each output dimension
@@ -88,6 +89,9 @@ namespace {
 constexpr int kStagedThreads = 256;
 // Keys per score CTA. Sets the workspace's chunk-maximum array: one float per
 // (row, chunk). A power of two so the partial-max reduction is a short loop.
+// Two query heads per score CTA share each decoded K vector. Groups never
+// cross a KV-head boundary; an odd GQA ratio leaves one row in its last group.
+constexpr int kStagedScoreRows = 2;
 constexpr int kStagedScoreChunkKeys = 1024;
 // Query rows per PV CTA. Rows in one CTA share a KV head, so this is the V
 // reuse factor. The accumulator array is `kStagedMaxRows * kDimsPerThread`
@@ -176,28 +180,29 @@ __device__ inline float gemma4_staged_to_float<uint16_t>(uint16_t value) {
   return gemma4_staged_bf16_bits_to_float(value);
 }
 
-// Warp-per-key logit for one key, byte for byte the strict kernel's
-// `gemma4_warp_key_logit` (see that file for why every stage is ordered the way
-// it is: `kLeaves` is head_dim / 32, the first half is uncontracted so a leaf
+// Warp-per-key logit for one key, preserving the strict kernel's
+// `gemma4_warp_key_logit` tree. K is already decoded into one lane-local vector
+// shared by the paired query heads (see the strict file for the reduction order:
+// `kLeaves` is head_dim / 32, the first half is uncontracted so a leaf
 // rounds once, the second half at 512 is an fmaf into it, and the intra-lane
 // stages plus the shuffles reproduce `gemma4_attn_block_sum`'s pair order).
-template <typename scalar_t, int kLeaves>
+template <int kLeaves>
 __device__ __forceinline__ float gemma4_staged_warp_key_logit(
-    const float* q_s, const scalar_t* k_row, int lane) {
+    const float* q_s, const float* k_lane, int lane) {
   float p[kLeaves];
   {
 #pragma clang fp contract(off)
 #pragma unroll
     for (int k = 0; k < 8; ++k) {
       const int d = lane + 32 * k;
-      p[k] = q_s[d] * gemma4_staged_to_float(k_row[d]);
+      p[k] = q_s[d] * k_lane[k];
     }
   }
   if (kLeaves == 16) {
 #pragma unroll
     for (int k = 0; k < 8; ++k) {
       const int d = lane + 32 * (k + 8);
-      p[k] = fmaf(q_s[d], gemma4_staged_to_float(k_row[d]), p[k]);
+      p[k] = fmaf(q_s[d], k_lane[k + 8], p[k]);
     }
   }
 #pragma unroll
@@ -328,9 +333,11 @@ __device__ inline float gemma4_staged_tree1(
 // ---------------------------------------------------------------------------
 // Stage 1: one warp per key.
 //
-// Grid (tokens * num_heads, key chunks); 256 threads = 8 warps; warp w owns the
-// columns w, w + 8, ... of this chunk, and lane 0 writes each logit to the
-// workspace. A column outside `[first_kept, walk_end)` or masked out is
+// Grid (tokens * num_kv_heads * ceil(GQA / 2), key chunks); each CTA holds
+// two query heads of one KV head (one in an odd tail). 256 threads = 8 warps;
+// warp w owns columns w, w + 8, ... and reuses each decoded K vector for both
+// heads. Lane 0 writes each head's logit to its own workspace row.
+// A column outside `[first_kept, walk_end)` or masked out is
 // -INFINITY, which is exactly what the strict kernel stores for it, so the
 // softmax stage needs no mask of its own: expf(-INFINITY - row_max) is 0.
 //
@@ -355,13 +362,21 @@ __global__ void gemma4_attention_staged_score_kernel(
     int64_t chunks) {
   extern __shared__ float shared[];
   float* q_s = shared;
-  float* max_s = q_s + head_dim;
+  float* max_s = q_s + kStagedScoreRows * head_dim;
 
-  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  const int64_t block = static_cast<int64_t>(blockIdx.x);
   const int64_t chunk = static_cast<int64_t>(blockIdx.y);
-  const int64_t token = row / num_heads;
-  const int64_t head = row - token * num_heads;
-  const int64_t kv_head = head / (num_heads / num_kv_heads);
+  const int64_t ratio = num_heads / num_kv_heads;
+  const int64_t groups = (ratio + kStagedScoreRows - 1) / kStagedScoreRows;
+  const int64_t group = block % groups;
+  const int64_t token_kv = block / groups;
+  const int64_t token = token_kv / num_kv_heads;
+  const int64_t kv_head = token_kv % num_kv_heads;
+  const int64_t head = kv_head * ratio + group * kStagedScoreRows;
+  const int64_t row = token * num_heads + head;
+  const int resident = static_cast<int>(
+      ratio - group * kStagedScoreRows < kStagedScoreRows
+          ? ratio - group * kStagedScoreRows : kStagedScoreRows);
 
   const int64_t j0 = chunk * kStagedScoreChunkKeys;
   const int64_t j1 =
@@ -376,14 +391,18 @@ __global__ void gemma4_attention_staged_score_kernel(
   // branch is uniform across the CTA, so it is safe before any barrier.
   if (j1 <= first_kept || j0 >= walk_end) {
     if (threadIdx.x == 0) {
-      chunk_max[row * chunks + chunk] = -INFINITY;
+      for (int r = 0; r < resident; ++r) {
+        chunk_max[(row + r) * chunks + chunk] = -INFINITY;
+      }
     }
     return;
   }
 
-  const scalar_t* q_row = query + row * head_dim;
-  for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
-    q_s[d] = gemma4_staged_to_float(q_row[d]);
+  for (int r = 0; r < resident; ++r) {
+    const scalar_t* q_row = query + (row + r) * head_dim;
+    for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
+      q_s[r * head_dim + d] = gemma4_staged_to_float(q_row[d]);
+    }
   }
   __syncthreads();
 
@@ -396,31 +415,57 @@ __global__ void gemma4_attention_staged_score_kernel(
   int64_t j = j0 + warp;
   const int64_t j_load = j < keys ? j : 0;
   const scalar_t* k_row = key + (j_load * num_kv_heads + kv_head) * head_dim;
-  float running_max = -INFINITY;
+  float running_max[kStagedScoreRows] = {-INFINITY, -INFINITY};
   for (; j < j1; j += 8) {
-    float logit = -INFINITY;
-    if (j >= first_kept && j < walk_end && mask_row[j] != 0) {
-      logit = (head_dim == 512)
-                  ? gemma4_staged_warp_key_logit<scalar_t, 16>(q_s, k_row, lane)
-                  : gemma4_staged_warp_key_logit<scalar_t, 8>(q_s, k_row, lane);
-      logit *= scale;
+    const bool keep = j >= first_kept && j < walk_end && mask_row[j] != 0;
+    // The same exact scalar-to-FP32 conversion as the parent, done once for
+    // both heads. Per-row multiply/FMA and shuffle order remain unchanged.
+    float k_lane[16];
+    if (keep) {
+#pragma unroll
+      for (int k = 0; k < 8; ++k) {
+        k_lane[k] = gemma4_staged_to_float(k_row[lane + 32 * k]);
+      }
+      if (head_dim == 512) {
+#pragma unroll
+        for (int k = 8; k < 16; ++k) {
+          k_lane[k] = gemma4_staged_to_float(k_row[lane + 32 * k]);
+        }
+      }
     }
-    if (lane == 0) {
-      scores_row[j] = logit;
+#pragma unroll
+    for (int r = 0; r < kStagedScoreRows; ++r) {
+      if (r >= resident) {
+        continue;
+      }
+      float logit = -INFINITY;
+      if (keep) {
+        logit = (head_dim == 512)
+                    ? gemma4_staged_warp_key_logit<16>(q_s + r * head_dim, k_lane, lane)
+                    : gemma4_staged_warp_key_logit<8>(q_s + r * head_dim, k_lane, lane);
+        logit *= scale;
+      }
+      if (lane == 0) {
+        scores_row[r * keys + j] = logit;
+      }
+      running_max[r] = fmaxf(running_max[r], logit);
     }
-    running_max = fmaxf(running_max, logit);
     k_row += 8 * k_stride;
   }
   if (lane == 0) {
-    max_s[warp] = running_max;
+    for (int r = 0; r < resident; ++r) {
+      max_s[r * (kStagedThreads >> 5) + warp] = running_max[r];
+    }
   }
   __syncthreads();
   if (threadIdx.x == 0) {
-    float chunk_running_max = -INFINITY;
-    for (int w = 0; w < (kStagedThreads >> 5); ++w) {
-      chunk_running_max = fmaxf(chunk_running_max, max_s[w]);
+    for (int r = 0; r < resident; ++r) {
+      float chunk_running_max = -INFINITY;
+      for (int w = 0; w < (kStagedThreads >> 5); ++w) {
+        chunk_running_max = fmaxf(chunk_running_max, max_s[r * (kStagedThreads >> 5) + w]);
+      }
+      chunk_max[(row + r) * chunks + chunk] = chunk_running_max;
     }
-    chunk_max[row * chunks + chunk] = chunk_running_max;
   }
 }
 
@@ -734,11 +779,11 @@ __global__ void gemma4_attention_staged_pv_singleton_kernel(
 }
 
 // Shared footprint of each stage, in bytes, for a given head_dim. Constant in
-// `keys`: the score stage holds the query row and eight warp maxima, the
-// softmax stage holds the 256-lane tree plus the broadcast maximum, and the PV
+// `keys`: the score stage holds two query rows and their eight warp maxima,
+// the softmax stage holds the 256-lane tree plus the broadcast maximum, and the PV
 // stage holds one weight tile per row.
 size_t gemma4_staged_score_shared_bytes(int64_t head_dim) {
-  return static_cast<size_t>(head_dim + (kStagedThreads >> 5)) * sizeof(float);
+  return static_cast<size_t>(kStagedScoreRows * (head_dim + (kStagedThreads >> 5))) * sizeof(float);
 }
 
 size_t gemma4_staged_softmax_shared_bytes() {
@@ -1101,8 +1146,10 @@ int launch_gemma4_attention_staged(
   float* chunk_max = scores + rows * keys;
   float* denominator = chunk_max + rows * chunks;
 
+  const int64_t score_groups = (num_heads / num_kv_heads + kStagedScoreRows - 1) / kStagedScoreRows;
+  const int64_t score_blocks = tokens * num_kv_heads * score_groups;
   gemma4_attention_staged_score_kernel<scalar_t>
-      <<<dim3(static_cast<unsigned int>(rows), static_cast<unsigned int>(chunks)),
+      <<<dim3(static_cast<unsigned int>(score_blocks), static_cast<unsigned int>(chunks)),
          dim3(kStagedThreads), score_shared, stream>>>(
           query, key, keep_mask, scores, chunk_max, num_heads, num_kv_heads,
           head_dim, scale, keys, window, row_offset, chunks);

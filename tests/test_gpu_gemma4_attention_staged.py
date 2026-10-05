@@ -78,12 +78,17 @@ _PARITY_SHAPES = [
     (3, 257, 32, 2, 512, "causal", 0, 0, 1.0),  # the same geometry, 3-token block
     (2, 1025, 24, 2, 256, "holes", 0, 0, 1.0),  # ratio 12: a full group, then 4 rows
     (3, 257, 16, 2, 512, "causal", 0, 0, 1.0),
+    (3, 33, 6, 2, 512, "holes", 0, 0, 0.375),  # paired score, odd GQA tail
+    (2, 1023, 10, 2, 256, "sliding", 129, 900, 0.375),
+    (3, 1024, 6, 2, 512, "keep", 0, 0, 0.05),
+    (2, 1025, 10, 2, 512, "holes", 0, 0, 0.05),
     (7, 257, 16, 2, 512, "causal", 0, 0, 1.0),
     (5, 1025, 16, 8, 256, "causal", 0, 0, 1.0),
     (4, 512, 4, 1, 512, "causal", 0, 0, 1.0),  # GQA ratio 4
     (1, 1025, 16, 2, 512, "sliding", 96, 1024, 1.0),
     (3, 1025, 16, 8, 256, "sliding", 64, 900, 1.0),
     (2, 2055, 16, 2, 512, "sliding", 128, 1500, 1.0),
+    (3, 17003, 6, 2, 512, "holes", 0, 0, 0.05),  # global parent, odd paired tail
     (2, 1025, 16, 2, 512, "holes", 0, 0, 1.0),
     # Single-token shapes, which take the 32-thread singleton PV decomposition:
     # both head widths, the GQA ratios 1/2/4/8 and the odd ratios whose last row
@@ -446,7 +451,7 @@ def test_returned_plan_names_the_decomposition_that_ran(staged_library):
         shape, dtype="bf16", mask=mask, scale=1.0, window=0, row_offset=0,
         library=staged_library,
     )
-    assert plan.score_grid == (48, 4)
+    assert plan.score_grid == (24, 4)
     assert plan.softmax_grid == (48, 1)
     assert plan.pv_grid == (3, 2, 1)
     assert plan.rows_per_head == 8

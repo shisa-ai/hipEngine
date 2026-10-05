@@ -14,6 +14,11 @@ shipped strict wrapper bitwise on identical device buffers.
 the workspace layout and the launch shape; this module states the host side of
 the same contract.
 
+The score stage pairs two query heads of the same KV head, stages both Q rows
+and reuses each decoded K vector in registers. Odd GQA ratios leave one query
+head in the last group. Each head retains the strict warp-key reduction tree;
+the per-row workspace, softmax and P*V arithmetic are unchanged.
+
 The PV stage has two work decompositions, and the plan reports which one a
 launch selected. A single query token -- the shape with the fewest independent
 PV CTAs, because one CTA holds a whole query row's dimensions -- uses the
@@ -102,6 +107,7 @@ _ARGTYPES_STAGED = (
 # `test_staged_workspace_bytes_matches_the_kernel_export` compares them against
 # the kernel's exports on a device.
 THREADS = 256
+SCORE_ROWS_PER_BLOCK = 2
 SCORE_CHUNK_KEYS = 1024
 MAX_ROWS_PER_BLOCK = 8
 PV_TILE_KEYS = 256
@@ -293,7 +299,8 @@ class StagedAttentionPlan:
 
     @property
     def score_grid(self) -> tuple[int, int]:
-        return (self.rows, self.chunks)
+        groups = -(-self.rows_per_head // SCORE_ROWS_PER_BLOCK)
+        return (self.tokens * self.num_kv_heads * groups, self.chunks)
 
     @property
     def softmax_grid(self) -> tuple[int, int]:
@@ -388,7 +395,9 @@ def _staged_workspace_layout(tokens: int, num_heads: int, keys: int) -> StagedWo
 def _staged_launch_shape(tokens: int, num_heads: int, keys: int) -> int:
     """Validate the dimensions that drive this launch's grids; return the rows.
 
-    The score launch is ``(rows, chunks)`` CTAs; PV is
+    The score launch pairs query heads within each KV head and uses
+    ``(tokens * num_kv_heads * ceil(GQA / 2), chunks)`` CTAs; its X dimension
+    is no larger than the validated workspace row count. PV uses
     ``(tokens, num_kv_heads, row_groups)`` CTAs. X allows ``MAX_GRID_X`` CTAs;
     Y/Z allow ``MAX_GRID_DIM``. KV heads and
     row groups are checked by the full planner, which knows those dimensions.
@@ -425,9 +434,9 @@ def _staged_launch_shape(tokens: int, num_heads: int, keys: int) -> int:
 
 
 def staged_score_lds_bytes(head_dim: int) -> int:
-    """Shared bytes the score stage reserves: the query row and eight warp maxima."""
+    """Shared bytes for two query rows and their eight warp maxima each."""
 
-    return (int(head_dim) + (THREADS // 32)) * 4
+    return SCORE_ROWS_PER_BLOCK * (int(head_dim) + (THREADS // 32)) * 4
 
 
 def staged_softmax_lds_bytes() -> int:
@@ -724,8 +733,9 @@ def gemma4_attention_staged_bf16(
     strict wrapper for ``window``/``row_offset``: the trim they license is the
     same one, and it only drops columns whose weight is zero.
 
-    The output is bit-identical to the strict wrapper's for the same inputs,
-    including its ``tokens == 1`` decode routing. Pass ``scratch=`` to own the
+    The output is bit-identical to the monolithic strict block parent for the
+    same inputs, including singleton queries. The adaptive decode wrapper may
+    select implementations with a different arithmetic contract. Pass ``scratch=`` to own the
     workspace across calls; without it the launcher allocates and frees a
     temporary one. Returns the :class:`StagedAttentionPlan` it launched, so the
     decomposition that ran is observable rather than inferred.

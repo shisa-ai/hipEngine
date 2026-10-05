@@ -102,7 +102,7 @@
   "pv_tflops": 1.438,
   "score_read_bytes_per_prefill_if_unstaged": 101492971274240,
   "score_effective_gbps_if_unstaged": 1828.3,
-  "note": "QK and P*V each cost one multiply-accumulate per (query, key, head) element of the head dimension, so both are reported at the same FLOP count. The effective read rate is what the kernel would move if it staged nothing; it exceeds the part's DRAM roofline, so a large part of it is served from cache. The point is the amplification, not the rate."
+  "note": "QK and P*V each cost one multiply-accumulate per (query, key, head) element of the head dimension, so both are reported at the same FLOP count. The unstaged read count and rate are hypothetical, not measured memory traffic: the staged source already shares Q and reuses V across GQA heads. LDS_Block_Size does not account for dynamic shared-memory launch arguments."
  },
  "top_kernels": [
   {
