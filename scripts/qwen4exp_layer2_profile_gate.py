@@ -530,16 +530,6 @@ CANDIDATES["production_gdn_tiled16_q4km"] = CandidateSpec(
                   "qwen4exp_sigmoid_strict_prefill"),
     count_registered_dispatch=True,
 )
-CANDIDATES["dense_split_early"] = CandidateSpec(
-    name="dense_split_early", classification="T1/T2",
-    mechanism="Range-guarded split F16-high/scaled-low WMMA on raw-F32 early dense Q8 projections; late dense-wide and all other production owners unchanged",
-    environment={"HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS": ",".join(map(str, range(13)))},
-    base_profile="production", scenario_id="qwen4exp-ud-q4-k-xl-dense-split-early",
-    candidate_key=("hip_gfx1151", "linear", "gguf_q8_0", "dense_split64x128_f32_f32_out"),
-    fallback_key=("hip_gfx1151", "linear", "gguf_q8_0", "coltile8_rowbatch4_f32_f32_out"),
-    count_registered_dispatch=True, dispatch_shape_positions=(3, 4, 5),
-)
-
 CANDIDATES["production_gr_up_restore"] = CandidateSpec(
     name="production_gr_up_restore", classification="T2",
     mechanism="GR-up three-plane IU8 projection plus existing sigmoid/mean; dense and GR-down off",

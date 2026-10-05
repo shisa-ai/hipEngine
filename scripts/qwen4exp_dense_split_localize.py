@@ -214,9 +214,6 @@ def main(argv=None):
         gen_args = SimpleNamespace(model_root=args.model_root, max_sequence_length=4352, prefill_chunk_size=1024)
         generator, profile, _ = _make_generator(gen_args, "production")
         report["manifest_sha256"] = profile.manifest_sha256
-        if os.environ.get("HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS"):
-            generator.close()
-            raise RuntimeError("parent trajectory requires split selector off")
         try:
             for case in cases:
                 baseline = generator.runner.prefill(case["prompt_token_ids"]).logits.copy()

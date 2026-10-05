@@ -1,5 +1,13 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-05 — Failed dense split runtime route removed
+
+- Remove the unqualified dense split layer selector, dispatch cache fields,
+  profile-binder entry and full-model gate modes after the complete canonical
+  numerical failure. The diagnostic leaf, private-buffer collector and F64/
+  long-K RED fixtures remain; admitted defaults and manifests are unchanged.
+  Source: `worklog/entries/20261005T224525.619135Z-pi-qwen4exp-dense-split-runtime-removal-ab3694.md`.
+
 ## 2026-10-05 — Repaired dense split model qualification fails
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next

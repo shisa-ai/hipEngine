@@ -1,13 +1,13 @@
-# Range-safe split-operand dense Q8 candidate
+# Range-safe split-operand dense Q8 diagnostic
 
 The compensated high/low split WMMA candidate measures **1.270–2.031x**
 complete-projection speedup against the live pipelined F32 DPP coltile parent
 across 15 real-weight cases. This is an operation-level diagnostic, not model
-throughput or production qualification. The candidate is default-off; the
-uncompensated composition fails the full numerical gate, and the repaired
-composition has now completed that gate but also fails its production numerical
-envelope. Historical uncompensated leaf measurements and failures below
-describe the earlier source, not the repaired kernel.
+throughput or production qualification. Both the uncompensated and repaired
+compositions fail the full production numerical envelope. The failed runtime
+selector is removed; the diagnostic leaf remains available for direct operation
+and private-buffer attribution tests. Historical uncompensated measurements
+below describe the earlier source, not the repaired kernel.
 
 ## Historical uncompensated comparison basis
 
@@ -119,7 +119,10 @@ are finite, repeats are bit-identical, and actual split dispatch counts are
 **0 teacher / 3,924 candidate**. Provenance and complete coverage pass; the
 collector exits 1 because quality fails, not because collection crashed.
 
-The [repaired candidate's named-strict production gate](canonical-strict-repaired.json) is complete. It compares
+## Repaired composition qualification
+
+The [repaired candidate's named-strict production gate](canonical-strict-repaired.json)
+compares
 strict chunk1024 with production plus `dense_split_early` at chunk4096 over all
 12 canonical cases, 1,548 full-vocabulary rows, 128 teacher-forced transitions
 and three candidate repeats. Candidate split dispatch is engaged for 3,924
@@ -155,6 +158,8 @@ tracked bytes with an 83,886,080-byte device-scratch margin. The repaired gate's
 candidate peak is 89,404,925,864 bytes; both packets report zero allocations
 after close. Allocation, projection error and repeat checks are independent of
 the failed whole-model quality gate.
+
+## Historical uncompensated scope screens
 
 Three disjoint early-layer ranges were screened against current production at
 chunk1024 using all 12 canonical cases, 24 transitions and three repeats. The
@@ -239,4 +244,6 @@ uv run --no-sync python scripts/qwen4exp_dense_split_screen.py \
   --output /tmp/qwen4exp-dense-split-screen-compensated.json
 ```
 
-The candidate remains default-off.
+The candidate's runtime selector and full-model gate modes are removed after
+this failed qualification. Direct operation/F64 and private-buffer natural-input
+diagnostics retain the low-level leaf and its numerical RED fixtures.

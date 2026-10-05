@@ -6,14 +6,15 @@ and a converted activation tile in LDS, so each weight byte is read from global
 memory once per 256 rows instead of once per 4-32 rows. See the header of the
 ``.hip`` file for the port provenance and the tiling.
 
-The ``dense_split64x128`` variant is an opt-in F32-input/output
+The ``dense_split64x128`` variant is a diagnostic F32-input/output
 precision-recovering sibling. Both operands are represented as F16 high plus
 2048-scaled F16 residual. High-high dots average positive/negative WMMA
 results and use compensated F32 summation; TwoSum corrections share the
 scaled cross accumulator. Both cross products start from zero WMMA
 accumulators and are added in ordinary F32. The low-low term is omitted. A block
 with operands outside the F16-high range runs the in-kernel strict F32
-fallback. The leaf has no certified/default runtime binding.
+fallback. Its failed model composition has no runtime selector or generator
+binding; direct operation and private-buffer diagnostics retain the leaf.
 
 The ``f32`` variants convert the activation during LDS staging and are the
 profile-qualified production default for the certified lane (layers 13-47 of
