@@ -1188,7 +1188,8 @@ void q8_0_iu8_wmma_prefill_f32_f32_kernel(
 // width still loses. Reopen only on a machine class where 130 VGPR still buys 32
 // waves/CU, or with a body change that lowers the accumulator cost.
 // Evidence: benchmarks/results/2026-10-04-qwen4exp-gr-row-batch-width/
-template <bool WAVE_SCALE = false, bool WRITE_GATE = true, int ROW_BATCH = 4>
+template <bool WAVE_SCALE = false, bool WRITE_GATE = true, int ROW_BATCH = 4,
+          bool DPP_REDUCTION = false>
 __launch_bounds__(128, 2)
 __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
     const float* __restrict__ x,
@@ -1245,15 +1246,24 @@ __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
       }
     }
   }
+  // Only lane zero is published. The DPP helper preserves its ordered
+  // shuffle16/8/4/2/1 sum; FMAs and the four-wave epilogue stay unchanged.
+  if constexpr (DPP_REDUCTION) {
 #pragma unroll
-  for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+      h7c_reduce_wave_accumulators_dpp<BRANCHES, HIDDEN_TILE>(acc[row_idx]);
+    }
+  } else {
 #pragma unroll
-    for (int branch = 0; branch < BRANCHES; ++branch) {
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
 #pragma unroll
-      for (int col = 0; col < HIDDEN_TILE; ++col) {
-        for (int offset = 16; offset > 0; offset >>= 1) {
-          acc[row_idx][branch][col] +=
-              __shfl_down(acc[row_idx][branch][col], offset);
+      for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+        for (int col = 0; col < HIDDEN_TILE; ++col) {
+          for (int offset = 16; offset > 0; offset >>= 1) {
+            acc[row_idx][branch][col] +=
+                __shfl_down(acc[row_idx][branch][col], offset);
+          }
         }
       }
     }
@@ -5355,7 +5365,8 @@ HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(32)
 
 #undef HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT
 
-template <bool WAVE_SCALE, bool WRITE_GATE = true, int ROW_BATCH = 4>
+template <bool WAVE_SCALE, bool WRITE_GATE = true, int ROW_BATCH = 4,
+          bool DPP_REDUCTION = false>
 int launch_q8_gr_up_scale(
     const float* x,
     const uint8_t* qweight,
@@ -5377,7 +5388,7 @@ int launch_q8_gr_up_scale(
   }
   hipLaunchKernelGGL(
       (q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<WAVE_SCALE, WRITE_GATE,
-                                                                      ROW_BATCH>),
+                                                                      ROW_BATCH, DPP_REDUCTION>),
       dim3(
           static_cast<unsigned int>(hidden / 2),
           static_cast<unsigned int>((rows + ROW_BATCH - 1) / ROW_BATCH)),
@@ -5417,6 +5428,15 @@ Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbat
 Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_wave_scale_f32, true, true, 8)
 Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch16_wave_scale_f32, true, true, 16)
 #undef Q8_GR_SCALE_ENTRY
+
+extern "C" int hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_f32(
+    const float* x, const uint8_t* qweight, const float* normalized,
+    float* gate, float* mixed, int64_t rows, int64_t in_features, int64_t branches,
+    int64_t hidden, int64_t threads, hipStream_t stream) {
+  return launch_q8_gr_up_scale<true, true, 4, true>(
+      x, qweight, normalized, gate, mixed, rows, in_features, branches, hidden,
+      threads, stream);
+}
 
 #define HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(COL_TILE, ROW_BATCH) \
 extern "C" int hipengine_gguf_q8_0_gemv_coltile##COL_TILE##_rowbatch##ROW_BATCH##_f32_f32_out( \

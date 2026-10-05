@@ -1,9 +1,28 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-04 UTC**
+Last updated: **2026-10-05 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
+
+## Qwen3.8 Flash Next GR-up DPP operation screen
+
+On physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), Radeon
+8060S, UD-Q4_K_XL, the ordered data-parallel primitive (DPP) reduction
+preserves both F32 outputs and improves the complete GR-up composite on
+real Q8_0 attention/FFN up weights from layers 0 and 22. Twenty
+counterbalanced pairs per case, K=320, N=10240, synthetic F32 activations.
+
+| Rows | Wave-scale parent (ms) | DPP candidate (ms) | Speedup |
+| ---: | ---: | ---: | ---: |
+| 512 | 3.219–3.232 | 2.061–2.091 | 1.539–1.564x |
+| 1024 | 6.346–6.392 | 4.056–4.086 | 1.553–1.570x |
+| 4096 | 24.767–24.870 | 15.968–15.981 | 1.550–1.556x |
+
+All 12 engine state/KV cases pass exactly with measured route engagement.
+The candidate is default-off pending the tracked-clean full-suite engine-wall
+comparison; these are operation-level results, not a model throughput claim.
+[Protocol, correctness and artifacts](results/2026-10-05-qwen4exp-gr-dpp-reduction/README.md).
 
 ## Qwen3.8 Flash Next F16-input prefill comparison
 

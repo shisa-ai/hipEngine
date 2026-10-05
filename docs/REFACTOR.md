@@ -8410,6 +8410,21 @@ Two consequences worth knowing:
   drop the flag once the DPP leaf is the only qualified gfx1151 owner for this
   tile shape.
 
+## GR-up ordered DPP candidate
+
+- `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` is default-off during admission.
+  It replaces only the existing rows>256, four-branch wave-scale GR-up
+  reduction. Missing registration falls back to the wave-scale parent,
+  then the unscaled fused parent; the unfused primitive chain stays available.
+- The real-weight operation screen is bit-identical and 1.54-1.57x faster
+  on gfx1151 at rows 512/1024/4096. Full-model admission and engine-wall
+  measurements decide production promotion, not the screen alone.
+- Removal condition: if the state or complete-suite performance gate fails,
+  remove the selector and candidate after recording the failed evidence. If
+  promoted, retain `=0` for one campaign checkpoint, then remove the selector
+  once bisection no longer needs the shuffle parent.
+- Evidence: `benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/`.
+
 ## Exact-iu8 risk multiplier: pinned at 4.0 in production, and why
 
 - `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is now **explicitly bound to `"4.0"`** in

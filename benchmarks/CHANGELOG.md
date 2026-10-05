@@ -1,5 +1,15 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-05 — Exact GR-up DPP kernel and state admission
+
+- Radeon 8060S, physical host `55ea6c509d0b49eea8de7094a1023668`,
+  UD-Q4_K_XL real Q8_0 GR-up banks: ordered DPP reduction cuts complete-owner
+  wall 35.0–36.3% (1.539–1.570x), e.g. layer0 FFN rows1024 6.351 -> 4.056 ms.
+  All12 real-weight cases are bit-identical;12 canonical full logits/state/KV
+  cases pass with candidate engagement0/96/0. Default remains off until the
+  tracked-clean engine-wall A/B. No model-rate claim.
+  Source: `benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/`.
+
 ## 2026-10-04 — Qwen3.8 Flash Next prefill stall census (diagnostic)
 
 - Prefill-only `rocprofv3` capture at `code-p4096`, production, chunk 4096

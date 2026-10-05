@@ -3407,6 +3407,11 @@ def _qwen4_exp_gr_wave_scale_key(key: KernelKey, *, rows: int, branches: int) ->
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE", "0"
     ) in {"", "0", "false", "False"}:
         return key
+    if os.environ.get("HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "0") == "1":
+        dpp = KernelKey(key.backend, key.layer, key.quant,
+                       "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact")
+        if is_registered(dpp):
+            return dpp
     candidate = KernelKey(key.backend, key.layer, key.quant,
                           "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
     return candidate if is_registered(candidate) else key

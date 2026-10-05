@@ -291,6 +291,14 @@ def mmq_token64_expected_calls(tokens: int, chunk: int) -> int:
     return 12*(full*(chunk>=512)+(tail>=512))
 
 
+def gr_dpp_expected_calls(tokens: int, chunk: int) -> int:
+    """Two GR reads per layer, only for prefill chunks above 256 rows."""
+    if tokens < 1 or chunk < 1:
+        raise ValueError("positive token and chunk sizes required")
+    full, tail = divmod(tokens, chunk)
+    return 96 * (full * (chunk > 256) + (tail > 256))
+
+
 def apply_chunk_mode(runner: Any, mode: str, *, allocated_chunk_size: int) -> None:
     if mode not in {"before","after"}:
         raise ValueError("invalid chunk mode")
@@ -314,6 +322,11 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
+    if route_package == "gr-dpp-reduction":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        environment["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] = "1" if mode == "after" else "0"
+        return
     if route_package == "chunk1024":
         if mode not in {"before","after"}:
             raise ValueError("invalid chunk mode")
@@ -427,7 +440,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="One full-suite pair, then stop for multiple clear losses or finish remaining pairs in-residency")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-mmq-planes2"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-mmq-planes2", "gr-dpp-reduction"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -603,6 +616,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     row4_calls = [0]
     register_mapped_calls = [0]
     original_row4 = None
+    if args.route_package == "gr-dpp-reduction":
+        from hipengine.kernels.registry import KernelKey, register, resolve
+        row4_key = KernelKey("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+                             "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact")
+        original_row4 = resolve(backend=row4_key.backend, layer=row4_key.layer,
+                                quant=row4_key.quant, variant=row4_key.variant)
+
+        def counted_gr_dpp(*call_args, **call_kwargs):
+            row4_calls[0] += 1
+            return original_row4(*call_args, **call_kwargs)
+
+        register(row4_key, counted_gr_dpp, replace=True)
+        artifact["arms"] = {
+            "before": {"gr_up": "coltile2_branch4_rowbatch4_wave_scale_f32_exact"},
+            "after": {"gr_up": row4_key.variant},
+        }
     gr_iu8_module = None
     if args.route_package in {"gr-iu8", "gr-iu8-down"}:
         import hipengine.runtime.qwen4_exp_runner as _gr_runner_module
@@ -939,6 +968,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if calls != expected:
                     raise AssertionError(
                         f"ordered v2 decode calls {calls} != {expected}")
+            elif args.route_package == "gr-dpp-reduction":
+                expected = (gr_dpp_expected_calls(int(case["prompt_tokens"]),
+                                                 args.prefill_chunk_size)
+                            if mode == "after" else 0)
+                if calls != expected:
+                    raise AssertionError(f"GR DPP calls {calls} != {expected}")
             elif args.route_package == "gr-iu8-down":
                 prompt_tokens = int(case["prompt_tokens"])
                 full_chunks, tail = divmod(prompt_tokens, args.prefill_chunk_size)
