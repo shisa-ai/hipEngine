@@ -49,8 +49,12 @@ from hipengine.generation.registry import (
 )
 from hipengine.loading.gguf import scan_gguf
 from hipengine.loading.gemma4_assistant_device import load_gemma4_assistant_device_weights
+from hipengine.loading.gemma4_assistant_gguf import gemma4_assistant_config_from_metadata
 from hipengine.loading.gemma4_gguf import gemma4_gguf_config_from_metadata
-from hipengine.runtime.gemma4_assistant import Gemma4AssistantHead, Gemma4MtpDrafter
+from hipengine.loading.gemma4_mtp_gguf import require_gemma4_mtp
+from hipengine.runtime.gemma4_assistant import (
+    Gemma4AssistantHead, Gemma4MtpDrafter, gemma4_assistant_geometry,
+)
 from hipengine.speculative.registry import (
     QUANT_AGNOSTIC,
     SpeculativeProviderCapabilities,
@@ -110,6 +114,18 @@ class Gemma4MTPTextProvider:
 
     def _ensure_drafter(self) -> Gemma4MtpDrafter:
         generator = self.target_generator
+        if self._drafter is None:
+            # Validate the target/sidecar contract before either device owner
+            # allocates. Standalone assistant shape checks cannot establish the
+            # target hidden width or shared vocabulary compatibility.
+            require_gemma4_mtp(generator.model_path, self.config.draft_model)
+            backbone_config = gemma4_gguf_config_from_metadata(scan_gguf(generator.model_path))
+            assistant_config = gemma4_assistant_config_from_metadata(
+                scan_gguf(self.config.draft_model).metadata
+            )
+            # Share the head's geometry checks rather than relying on aggregate
+            # KV width: equal widths can still have incompatible head layouts.
+            gemma4_assistant_geometry(assistant_config, backbone_config)
         runner = generator._ensure_runner()
         if self._drafter is not None:
             self._drafter.runner = runner
@@ -121,9 +137,7 @@ class Gemma4MTPTextProvider:
         try:
             head = Gemma4AssistantHead(
                 weights=weights,
-                backbone=gemma4_gguf_config_from_metadata(
-                    scan_gguf(generator.model_path)
-                ),
+                backbone=backbone_config,
                 backbone_embedding=backbone_weights.embed_tokens,
                 backbone_output_norm=backbone_weights.final_norm.buffer,
                 capacity=int(runner.capacity),
@@ -435,16 +449,17 @@ def register_gemma4_mtp_providers(*, replace: bool = True) -> None:
     name if the file is missing.
     """
 
-    register_speculative_provider(
-        SpeculativeProviderKey(
-            provider=_PROVIDER,
-            target_model=_TARGET_MODEL,
-            backend="hip_gfx1151",
-            quant=QUANT_AGNOSTIC,
-        ),
-        make_gemma4_mtp_provider,
-        replace=replace,
-    )
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        register_speculative_provider(
+            SpeculativeProviderKey(
+                provider=_PROVIDER,
+                target_model=_TARGET_MODEL,
+                backend=backend,
+                quant=QUANT_AGNOSTIC,
+            ),
+            make_gemma4_mtp_provider,
+            replace=replace,
+        )
 
 
 register_gemma4_mtp_providers()
