@@ -6,12 +6,19 @@ and a converted activation tile in LDS, so each weight byte is read from global
 memory once per 256 rows instead of once per 4-32 rows. See the header of the
 ``.hip`` file for the port provenance and the tiling.
 
+The ``dense_split64x128`` variant is a measurement-only F32-input/output
+precision-recovering sibling. Both operands are represented as F16 high plus
+2048-scaled F16 residual; high-high dots are added in F32 and the two cross
+products are accumulated separately. The low-low term is omitted. Its high
+operands must be F16-representable; it has no automatic runtime binding.
+
 The ``f32`` variants convert the activation during LDS staging and are the
-registered production default for the certified lane (layers 16-47 of
+profile-qualified production default for the certified lane (layers 13-47 of
 ``gguf_ud_q4_k_xl`` on ``hip_gfx1151``, gated in ``docs/EXECUTION-PROFILES.md``
 rather than by strict bit parity). The ``f16in`` variants take an activation
 already converted by :func:`f32_to_f16`, for a caller that hoists that conversion
-out of the K loop; they are measurement surface, not a bound route.
+out of the K loop. Runtime profile selection is owned by the model plan, not
+by registering one of these callable leaves.
 """
 
 from __future__ import annotations
@@ -186,6 +193,9 @@ def _make_wrapper(symbol: str, variant: str):
 # ``f16in`` variants take a pre-converted f16 activation instead of f32, for a
 # caller that hoists the conversion out of the K loop with :func:`f32_to_f16`.
 _VARIANTS = {
+    "dense_split64x128_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_split64x128_f32_f32_out"
+    ),
     "dense_wide256_f32_f32_out": "hipengine_gguf_q8_0_dense_wide256_f32_f32_out",
     "dense_wide64x256_f32_f32_out": "hipengine_gguf_q8_0_dense_wide64x256_f32_f32_out",
     "dense_wide128x128_f32_f32_out": "hipengine_gguf_q8_0_dense_wide128x128_f32_f32_out",
@@ -209,6 +219,9 @@ _WRAPPERS = {
     variant: _make_wrapper(symbol, variant) for variant, symbol in _VARIANTS.items()
 }
 
+gguf_q8_0_dense_split64x128_f32_f32_out = _WRAPPERS[
+    "dense_split64x128_f32_f32_out"
+]
 gguf_q8_0_dense_wide256_f32_f32_out = _WRAPPERS["dense_wide256_f32_f32_out"]
 gguf_q8_0_dense_wide256_f16in_f32_f32_out = _WRAPPERS[
     "dense_wide256_f16in_f32_f32_out"
@@ -234,6 +247,7 @@ __all__ = [
     "K_TILE",
     "build_gguf_q8_0_dense_wide",
     "f32_to_f16",
+    "gguf_q8_0_dense_split64x128_f32_f32_out",
     "gguf_q8_0_dense_wide256_f16in_f32_f32_out",
     "gguf_q8_0_dense_wide256_f32_f32_out",
     "plan_gguf_q8_0_dense_wide_build",

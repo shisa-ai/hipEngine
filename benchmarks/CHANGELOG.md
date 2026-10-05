@@ -1,5 +1,16 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-05 — Dense split-operand leaf admission (diagnostic)
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL real
+  early-layer Q8 weights: true high/low split WMMA cuts complete-operation wall
+  51.2–72.9% versus live F32 DPP coltile (2.047–3.691x; QKV rows4096
+  63.203 -> 23.788 ms). All15 order-balanced cases improve; six GPU numerical
+  fixtures and sampled CPU F64 checks pass. Full/tail scratch0 after discarding
+  the204B/lane spilling full-tile specialization; all output hashes unchanged.
+  Measurement-only, no default or
+  model-throughput claim. Source: `results/2026-10-05-qwen4exp-dense-split-wmma/`.
+
 ## 2026-10-05 — GR-up DPP production promotion
 
 - On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,

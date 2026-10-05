@@ -5,6 +5,22 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next split-operand dense operation screen
+
+On Radeon 8060S physical host `55ea6c509d0b49eea8de7094a1023668`, a
+measurement-only Q8_0 high/low split WMMA sibling reduces complete projection
+wall against the live pipelined F32 DPP coltile leaf. UD-Q4_K_XL real weights,
+synthetic F32 activations, five early-layer banks, twenty counterbalanced pairs
+per case, rows 512/1024/4096.
+
+| Boundary | Parent -> candidate | Correctness scope |
+| --- | --- | --- |
+| Complete Q8 projection, 15 cases | 2.047–3.691x; wall -51.2% to -72.9% | Independent CPU F64 sampled top-1 100%, max KL 6.58e-15; six GPU fixtures pass |
+
+No default or model-rate change. Full-model numerical/control/task qualification
+is pending; the strict F32 fallback stays registered.
+[Protocol and artifacts](results/2026-10-05-qwen4exp-dense-split-wmma/README.md).
+
 ## Qwen3.8 Flash Next GR-up DPP production route
 
 On physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), Radeon
@@ -40,8 +56,9 @@ counterbalanced pairs per case, K=320, N=10240, synthetic F32 activations.
 | 4096 | 24.767–24.870 | 15.968–15.981 | 1.550–1.556x |
 
 All 12 engine state/KV cases pass exactly with measured route engagement.
-The candidate is default-off pending the tracked-clean full-suite engine-wall
-comparison; these are operation-level results, not a model throughput claim.
+The DPP owner is now selected by the measured production profile after the
+tracked-clean engine A/B above. These table values remain operation-level
+results, not model throughput rates.
 [Protocol, correctness and artifacts](results/2026-10-05-qwen4exp-gr-dpp-reduction/README.md).
 
 ## Qwen3.8 Flash Next F16-input prefill comparison

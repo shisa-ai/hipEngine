@@ -30,10 +30,8 @@ CENSUS = (
 )
 
 _EXPORT = re.compile(
-    # ``..._EXPORT_REP`` is the DP-3 probe macro. Both are real export sites, so
-    # the parser must know about both: a probe export that the parser cannot see
-    # would look like an unwrapped variant and the guard would be vacuous for it.
-    r"^\s*HIPENGINE_DENSE_WIDE_EXPORT(?:_REP)?\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*,",
+    # All export macros are parsed, including the true hi/lo split sibling.
+    r"^\s*HIPENGINE_DENSE_WIDE_EXPORT(?:_REP|_SPLIT)?\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*,",
     re.MULTILINE,
 )
 
@@ -69,6 +67,39 @@ def test_activation_abi_matches_the_variant_name() -> None:
     for symbol, x_type in _exports().items():
         expects_f16 = "_f16in_" in symbol
         assert (x_type == "half_t") is expects_f16, (symbol, x_type)
+
+
+def test_split64x128_candidate_has_a_registry_surface() -> None:
+    """The precision-recovering candidate must have a separately named leaf."""
+
+    from hipengine.kernels.registry import KernelKey, is_registered
+
+    variant = "dense_split64x128_f32_f32_out"
+    key = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", variant)
+    assert hasattr(wide, "gguf_q8_0_dense_split64x128_f32_f32_out")
+    assert variant in wide._VARIANTS
+    assert is_registered(key)
+    # The strict reference remains registered; registration does not bind
+    # the candidate into any production profile or dispatch route.
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import register_gguf_k_gemv_kernels
+    from hipengine.kernels.registry import resolve
+    register_gguf_k_gemv_kernels()
+    assert callable(resolve(backend="hip_gfx1100", layer="linear", quant="gguf_q8_0",
+                            variant="coltile8_rowbatch4_f32_f32_out"))
+
+
+def test_split_candidate_rejects_invalid_shapes_before_loading() -> None:
+    for rows, k, n in ((0, 64, 64), (128, 32, 64), (128, 64, 0)):
+        with pytest.raises(ValueError):
+            wide.gguf_q8_0_dense_split64x128_f32_f32_out(1, 2, 3, rows, k, n)
+
+
+def test_split_candidate_reaches_gfx1151_registry() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import KernelKey, is_registered
+    register_gfx1151_kernels()
+    assert is_registered(KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
+                                   "dense_split64x128_f32_f32_out"))
 
 
 def test_f16in_variants_are_registered() -> None:
