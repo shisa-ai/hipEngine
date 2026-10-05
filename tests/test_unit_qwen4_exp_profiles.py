@@ -489,16 +489,12 @@ def test_binder_does_not_report_its_own_previous_bind_as_a_conflict(
 
 
 def test_production_binds_the_certified_q8_dense_wide_prefill_scope() -> None:
-    """The wide-row Q8_0 dense prefill route is the default at its certified scope.
+    """UD-Q4_K_XL binds dense-wide layers 13-47; lower layers stay exact.
 
-    Layers 16-47 passes the calibrated envelope with a candidate logits digest
-    byte-identical to the certified f16 WMMA route's (mean KL 3.80e-4 against
-    1e-3, top-1 1538/1548, 3/3 deterministic) and measures 5.4% less prefill wall
-    at 1K/4K against it, so it replaces that route instead of sitting beside it.
-    Both families selectable for the same layers is the contention the route fix
-    had to resolve. Layers below 16 stay on the exact coltile chain, which
-    remains the registered strict fallback: 12-47 and 8-47 screen inconclusive
-    and 0-47 fails the mean and p95 gates.
+    The 12-case certificate is recorded in
+    benchmarks/results/2026-10-04-qwen4exp-dense-wide-13-47-frontier/.
+    The previous f16 WMMA scope stays disabled rather than competing with
+    dense-wide on the same shapes.
     """
 
     register_gfx1151_kernels(replace=True)
@@ -508,10 +504,10 @@ def test_production_binds_the_certified_q8_dense_wide_prefill_scope() -> None:
 
     production.binder(SimpleNamespace(runner=None), production)
 
-    assert PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS == tuple(range(16, 48))
+    assert PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS == tuple(range(13, 48))
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(
-        str(n) for n in range(16, 48)
+        str(n) for n in range(13, 48)
     )
     # The f16 WMMA dense route is retired at this scope for this quant; the
     # selector and its env var stay available for explicit opt-in and gating.
@@ -535,7 +531,7 @@ def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
 
 
 def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() -> None:
-    """A caller that names no profile must still get the wide kernel at 16-47.
+    """A caller that names no profile must still get the wide kernel at 13-47.
 
     Promotion is only real if the shipped default reaches the route, and that
     guarantee is split across three places: the default profile resolution, the
@@ -602,12 +598,12 @@ def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() ->
             )
         )
 
-    for layer in (16, 47):
+    for layer in (13, 16, 47):
         assert _q8_dense_wide_dispatch(
             parent, rows=1024, in_features=2560, out_features=640, weight=weight(layer)
         ) == GGUFLinearDispatch(candidate, "raw"), layer
 
-    for layer in (0, 15):
+    for layer in (0, 12):
         assert (
             _q8_dense_wide_dispatch(
                 parent,
