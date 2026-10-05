@@ -112,8 +112,27 @@ are finite, repeats are bit-identical, and actual split dispatch counts are
 **0 teacher / 3,924 candidate**. Provenance and complete coverage pass; the
 collector exits 1 because quality fails, not because collection crashed.
 
-This teacher is current production, **not named strict**. The result blocks
-incremental qualification but does not establish the binding strict-teacher
-composition verdict. That comparison, engaging heldout, task/control and
-applicable BF16-relative gates are still required. No model throughput or
-promotion is claimed; the runtime candidate remains default-off.
+The full named-strict composition packet is now available at
+[canonical-strict.json](canonical-strict.json). It compares the strict profile
+at chunk 1024 with production plus `dense_split_early` at chunk 4096 over all 12
+canonical cases, 128 transitions and three candidate repeats.
+
+| Metric | Measured | Limit | Result |
+| --- | ---: | ---: | --- |
+| Mean KL | 1.3342e-3 | ≤1e-3 | Fail |
+| p95 KL | 7.3716e-3 | ≤5e-3 | Fail |
+| p99 KL | 1.5581e-2 | ≤2e-2 | Pass |
+| Maximum KL | 3.5568e-2 | ≤5e-2 | Pass |
+| Overall top-1 | 1532/1548 (98.966%) | ≥99% | Fail |
+
+Category means are code `9.964e-4`, general_en `1.881e-3`, general_ja
+`1.320e-3` and mixed_ja_en `1.140e-3`; every category scope fails at least
+one binding limit. The steady scope also fails. Prefill-last and prefill-to-c1
+rows remain near zero drift; the failure is in steady decode transitions.
+
+The candidate engaged for 3,924 leaf calls and the teacher for zero. Candidate
+logits are finite, three repeats are bit-identical, state metadata/layout and
+teardown pass, and the allocation packet passes. This is a strict-teacher
+numerical failure, not a runtime crash or ownership failure. No heldout, task,
+BF16-relative, isolation/graph or engine-wall promotion evidence was collected.
+The candidate remains default-off.
