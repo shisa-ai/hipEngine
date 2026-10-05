@@ -520,6 +520,22 @@
   fused kernel without changing operand or accumulation order. Evidence:
   `benchmarks/results/2026-09-27-gr-up-wide-tile-screen/`.
 
+## Router ordered DPP diagnostic leaf
+
+- `f32_hidden_token_tile4_dpp_exact` is a registered operation-only sibling;
+  no added env flag or runtime/default selector. It preserves the parent
+  FMA/tree via one LDS publication, register inter-wave folds and DPP finish.
+- Complete logits plus top-10 operation screen improves 1.135–1.172× on real
+  layer 0/22/47 weights at rows 512/1024/4096, 180 counterbalanced pairs, exact
+  logits/IDs/routing. New/existing GPU fixtures: 32 pass. Evidence:
+  `benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md`.
+- Remove the diagnostic-only status after exact real-activation/model
+  state/KV gates and complete-suite model timing qualify a default; preserve
+  the strict parent fallback. If that screen loses, remove the unused
+  candidate implementation rather than adding another persistent selector.
+- This is not the removed shuffle-tail or rejected warp-per-token route;
+  their previous dispositions do not measure this one-barrier implementation.
+
 ## Router Producer Variant (`HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`)
 
 - Selects the multirow F32 router logits producer. Default

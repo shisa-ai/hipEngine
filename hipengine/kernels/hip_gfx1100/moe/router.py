@@ -33,6 +33,9 @@ _SYMBOL_LOGITS_F32_F32W = "hipengine_qwen35_router_logits_f32_f32w"
 _SYMBOL_LOGITS_F32_F32W_TILE4_DENSE_EXACT = (
     "hipengine_qwen35_router_logits_f32_f32w_token_tile4_dense_exact"
 )
+_SYMBOL_LOGITS_F32_F32W_TILE4_DPP_EXACT = (
+    "hipengine_qwen35_router_logits_f32_f32w_token_tile4_dpp_exact"
+)
 _SYMBOL_LOGITS_F32_F32W_WARP_REDUCE_DENSE_EXACT = (
     "hipengine_qwen35_router_logits_f32_f32w_warp_reduce_dense_exact"
 )
@@ -589,6 +592,36 @@ def qwen35_router_logits_f32_f32w_token_tile4_dense_exact(
     _check_launch(runtime, err)
 
 
+def qwen35_router_logits_f32_f32w_token_tile4_dpp_exact(
+    hidden_ptr: int,
+    weight_ptr: int,
+    logits_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_rows: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the tile4 parent FMA/tree with one barrier and ordered wave DPP."""
+    _check_positive(tokens, "tokens")
+    _check_positive(hidden_size, "hidden_size")
+    _check_positive(num_rows, "num_rows")
+    if threads != 256:
+        raise ValueError("DPP-exact F32 router token tile requires 256 threads")
+    library = library or _router_library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, _SYMBOL_LOGITS_F32_F32W_TILE4_DPP_EXACT,
+        _ARGTYPES_ROUTER_LOGITS, ctypes.c_int,
+    )
+    err = fn(hidden_ptr, weight_ptr, logits_ptr, tokens, hidden_size,
+             num_rows, threads, stream)
+    _check_launch(runtime, err)
+
+
 def qwen35_router_logits_f32_f32w_warp_reduce_dense_exact(
     hidden_ptr: int,
     weight_ptr: int,
@@ -1141,6 +1174,16 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
             "f32_hidden_token_tile4_dense_exact",
         ),
         qwen35_router_logits_f32_f32w_token_tile4_dense_exact,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "router_logits",
+            "f32",
+            "f32_hidden_token_tile4_dpp_exact",
+        ),
+        qwen35_router_logits_f32_f32w_token_tile4_dpp_exact,
         replace=replace,
     )
     register(

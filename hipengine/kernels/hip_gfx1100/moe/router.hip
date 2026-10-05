@@ -290,6 +290,106 @@ __global__ void qwen35_router_logits_f32_token_tile_dense_exact_kernel(
   }
 }
 
+// Same FMA assignment and 256-way reduction tree as tile4_dense_exact.
+// After one LDS publication barrier, wave0 folds the inter-wave pairs in
+// registers and completes the ordered 16/8/4/2/1 tree with VALU peer moves.
+// Unlike the rejected shuffle-tail sibling, this has no reduction barriers
+// and uses DPP rather than LDS-backed shuffle peer exchanges.
+__device__ inline float router_permlanex16_f32(float value) {
+  union { float f; uint32_t u; } bits;
+  bits.f = value;
+  bits.u = __builtin_amdgcn_permlanex16(
+      bits.u, bits.u, 0x76543210U, 0xFEDCBA98U, false, false);
+  return bits.f;
+}
+
+template <int CTRL>
+__device__ inline float router_dpp_move_f32(float value) {
+  union { float f; int u; } bits;
+  bits.f = value;
+  bits.u = __builtin_amdgcn_mov_dpp(bits.u, CTRL, 0xF, 0xF, true);
+  return bits.f;
+}
+
+__device__ inline float router_dpp_add_row_shl1_f32(float value) {
+  float result;
+  asm volatile(
+      "v_add_f32_dpp %0, %1, %1 row_shl:1 row_mask:0xf bank_mask:0xf bound_ctrl:1"
+      : "=v"(result) : "v"(value));
+  return result;
+}
+
+template <int TOKENS_PER_BLOCK>
+__global__ void qwen35_router_logits_f32_token_tile4_dpp_exact_kernel(
+    const float* __restrict__ hidden,
+    const float* __restrict__ weight,
+    float* __restrict__ logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_experts) {
+  extern __shared__ float partial[];
+  const int64_t expert = blockIdx.x;
+  const int64_t token_base = static_cast<int64_t>(blockIdx.y) * TOKENS_PER_BLOCK;
+  if (expert >= num_experts) return;
+  float acc[TOKENS_PER_BLOCK] = {};
+  const int64_t weight_row = expert * hidden_size;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (hidden_size / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(threadIdx.x) * 8;
+       k_base < main_end;
+       k_base += vec_stride) {
+    const float* w_ptr = weight + weight_row + k_base;
+#pragma unroll
+    for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+      const int64_t token = token_base + t;
+      if (token < tokens) {
+        const float* x_ptr = hidden + token * hidden_size + k_base;
+        acc[t] = fmaf(x_ptr[0], w_ptr[0], acc[t]);
+        acc[t] = fmaf(x_ptr[1], w_ptr[1], acc[t]);
+        acc[t] = fmaf(x_ptr[2], w_ptr[2], acc[t]);
+        acc[t] = fmaf(x_ptr[3], w_ptr[3], acc[t]);
+        acc[t] = fmaf(x_ptr[4], w_ptr[4], acc[t]);
+        acc[t] = fmaf(x_ptr[5], w_ptr[5], acc[t]);
+        acc[t] = fmaf(x_ptr[6], w_ptr[6], acc[t]);
+        acc[t] = fmaf(x_ptr[7], w_ptr[7], acc[t]);
+      }
+    }
+  }
+  for (int64_t k = main_end + threadIdx.x; k < hidden_size; k += blockDim.x) {
+    const float w = weight[weight_row + k];
+#pragma unroll
+    for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+      const int64_t token = token_base + t;
+      if (token < tokens) acc[t] = fmaf(hidden[token * hidden_size + k], w, acc[t]);
+    }
+  }
+#pragma unroll
+  for (int t = 0; t < TOKENS_PER_BLOCK; ++t)
+    partial[t * blockDim.x + threadIdx.x] = acc[t];
+  __syncthreads();
+  if (threadIdx.x < 32) {
+    const int lane = threadIdx.x;
+#pragma unroll
+    for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+      const float* p = partial + t * blockDim.x + lane;
+      float a = p[0] + p[128];
+      float b = p[64] + p[192];
+      a += b;
+      float c = p[32] + p[160];
+      float d = p[96] + p[224];
+      c += d;
+      a += c;
+      a += router_permlanex16_f32(a);
+      a += router_dpp_move_f32<0x108>(a);
+      a += router_dpp_move_f32<0x104>(a);
+      a += router_dpp_move_f32<0x102>(a);
+      a = router_dpp_add_row_shl1_f32(a);
+      if (lane == 0 && token_base + t < tokens)
+        logits[(token_base + t) * num_experts + expert] = a;
+    }
+  }
+}
+
 // Warp-per-token reduction: each warp owns one token, so the reduction is a
 // 5-step shuffle instead of the parent's 256-thread LDS tree (8 barriers per
 // block). The expert row is staged once per block in LDS so the WPB warps read
@@ -1098,6 +1198,28 @@ extern "C" int hipengine_qwen35_router_logits_f32_f32w_token_tile4_dense_exact(
       tokens,
       hidden_size,
       num_rows);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_router_logits_f32_f32w_token_tile4_dpp_exact(
+    const float* hidden,
+    const float* weight,
+    float* logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t threads,
+    hipStream_t stream) {
+  if (hidden == nullptr || weight == nullptr || logits == nullptr || tokens <= 0 ||
+      hidden_size <= 0 || num_rows <= 0 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (qwen35_router_logits_f32_token_tile4_dpp_exact_kernel<4>),
+      dim3(static_cast<unsigned int>(num_rows),
+           static_cast<unsigned int>((tokens + 3) / 4)),
+      dim3(256), 256 * 4 * sizeof(float), stream,
+      hidden, weight, logits, tokens, hidden_size, num_rows);
   return static_cast<int>(hipGetLastError());
 }
 

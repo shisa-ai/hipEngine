@@ -5,6 +5,23 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next ordered router DPP operation screen
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL
+real F32 router weights at layers 0/22/47, synthetic activations and 20
+counterbalanced pairs per case, the same-tree DPP leaf improves complete
+router logits plus top-10 selection with exact logits/IDs/routing.
+
+| Rows | Parent ms | Candidate ms | Speedup |
+| ---: | ---: | ---: | ---: |
+| 512 | 1.558–1.561 | 1.335–1.336 | 1.167–1.169x |
+| 1024 | 3.062–3.078 | 2.615–2.626 | 1.167–1.172x |
+| 4096 | 12.970–12.974 | 11.410–11.423 | 1.135–1.137x |
+
+Thirty-two GPU tests pass and cached trace confirms the leaf. The runtime
+parent remains selected; no full-model gate or model-speed claim yet.
+[Protocol and artifacts](results/2026-10-05-qwen4exp-router-dpp/README.md).
+
 ## Qwen3.8 Flash Next current prefill owner diagnostic
 
 On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, clean-source
