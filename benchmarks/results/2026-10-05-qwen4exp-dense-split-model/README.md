@@ -153,4 +153,20 @@ the teacher dispatches zero split calls while the candidates dispatch 2,520,
 show that layer-range narrowing alone has not found a qualifying route; they
 do not establish independent per-role arithmetic error or justify promotion.
 
+The [natural-input attribution packet](natural-localize.json) observes 436
+projections across four canonical p512 categories and 14 early-layer role kinds.
+It runs the parent normally, evaluates split outputs in private buffers, and
+compares eight evenly spaced rows/all columns against F64 CPU matmul. All four
+parent full-logit arrays are bit-identical with observation enabled. Candidate
+repeats are deterministic and teardown leaves zero allocations.
+
+Candidate sampled relative L2 is `1.225e-7–7.195e-7`, projection top-1 is 100%,
+and maximum projection KL is `7.228e-10`. Long-K hyper-connection projections
+have the largest errors; no large operand error appears. Full-projection
+parent/candidate BF16 cast crossings total 118,679. Those counts are diagnostic,
+not an admission gate or proof of model-level causation. The collector was
+untracked during execution, so the packet explicitly disclaims complete
+qualification provenance. Natural-input NPZ captures remain local and are not
+part of the repository.
+
 The candidate remains default-off.
