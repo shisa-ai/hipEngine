@@ -24,8 +24,11 @@ import numpy as np
 import pytest
 
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+    _GROUPED_FOLD128_MAX_IN_FEATURES,
+    _GROUPED_FOLD128_PREFILL_VARIANT,
     _GROUPED_PREFILL_VARIANTS,
     Gemma4ExpertScratch,
+    _grouped_prefill_variant_order,
     gemma4_moe_expert_route_counts,
     gemma4_moe_gate_up_mmq_enabled,
     gemma4_moe_grouped_variant_counts,
@@ -51,23 +54,26 @@ _needs_hip = pytest.mark.skipif(
 )
 
 # The registry key the prefill route resolves against: the variant the
-# preference order tries first, pinned as a literal so renaming it in the
-# registry without updating the route fails here instead of silently falling
-# back. It has to track the order rather than a fixed variant, because the route
-# tries the variants in that order and a stub on a later one would never be
-# called - the real kernel would run against the test's fake pointers instead.
+# preference order tries first for this tree's Q5_1 geometry, pinned as a
+# literal so renaming it in the registry without updating the route fails here
+# instead of silently falling back. It has to track the order rather than a fixed
+# variant, because the route tries the variants in that order and a stub on a
+# later one would never be called - the real kernel would run against the test's
+# fake pointers instead. The leading variant is width-dependent (the paired/
+# folded owner leads only up to its fold limit), so this is the leading variant
+# at the 704-wide Q5_1 down geometry these tests use.
 _GROUPED_KEY = KernelKey(
     "hip_gfx1100",
     "moe_linear",
     "gguf_q5_1",
-    "selected_grouped_prefill_staged_out4_bf16_bf16_out",
+    "selected_grouped_prefill_pair2_fold128_bf16_bf16_out",
 )
 
 
 def test_grouped_key_matches_the_preference_order() -> None:
     """The stub key above must be the variant the route tries first."""
 
-    assert _GROUPED_KEY.variant == _GROUPED_PREFILL_VARIANTS[0]
+    assert _GROUPED_KEY.variant == _grouped_prefill_variant_order(704)[0]
 
 # The route the grouped family has to beat, and to be bit-exact against.
 _SELECTED_KEY = KernelKey(
@@ -97,7 +103,7 @@ def _quant_without_a_grouped_family() -> str:
 
     for quant in _GROUPED_CANDIDATES:
         registered = False
-        for variant in _GROUPED_PREFILL_VARIANTS:
+        for variant in _grouped_prefill_variant_order(704):
             key = KernelKey("hip_gfx1100", "moe_linear", quant, variant)
             _ensure_linear_kernel_registered(key)
             registered = registered or is_registered(key)
@@ -268,7 +274,7 @@ def test_grouped_prefill_launches_the_registered_family() -> None:
     # stubs would be installed, which would overwrite them.
     from hipengine.runtime import gguf_linear as _gguf_linear  # noqa: F401
 
-    for variant in _GROUPED_PREFILL_VARIANTS:
+    for variant in _grouped_prefill_variant_order(704):
         register(
             KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", variant),
             stub,
@@ -306,7 +312,8 @@ def test_grouped_prefill_prefers_the_earlier_variant_in_the_order() -> None:
     key happens to resolve first.
     """
 
-    preferred, fallback = _GROUPED_PREFILL_VARIANTS[0], _GROUPED_PREFILL_VARIANTS[1]
+    order = _grouped_prefill_variant_order(704)
+    preferred, fallback = order[0], order[1]
     calls: list[str] = []
     for variant, label in ((preferred, "preferred"), (fallback, "fallback")):
         register(
@@ -320,10 +327,104 @@ def test_grouped_prefill_prefers_the_earlier_variant_in_the_order() -> None:
     assert calls == ["preferred"]
 
 
+def test_grouped_prefill_prefers_fold128_inside_its_fold_limit() -> None:
+    """The paired/folded owner leads the order wherever it registers.
+
+    It is the cheapest fetch strategy in the family and bit-identical to the
+    rest of it, so a registered fold128 owner must win over the staged owner
+    that used to lead. This is the preference the route change is about; the
+    fold owner is registered here as a stub so the assertion is about the
+    dispatch decision and not about a device launch.
+    """
+
+    calls: list[str] = []
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", _GROUPED_FOLD128_PREFILL_VARIANT),
+        (lambda *args, **kwargs: calls.append("fold128")),
+        replace=True,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100", "moe_linear", "gguf_q5_1", _GROUPED_PREFILL_VARIANTS[0]
+        ),
+        (lambda *args, **kwargs: calls.append("staged_out4")),
+        replace=True,
+    )
+
+    weight = _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1")
+    assert (
+        gemma4_project_experts_grouped_prefill(weight, 1, 2, 3, 4, 5, 704, 2816) is True
+    )
+    assert calls == ["fold128"]
+
+
+def test_grouped_prefill_drops_fold128_past_its_fold_limit() -> None:
+    """A width past the fold limit falls back to the order below it.
+
+    The fold wrapper rejects an input wider than its fold limit outright rather
+    than declining, so the route must not offer it there. A registered fold128
+    stub at a wider width proves the probe filters by width, not by whether the
+    key happens to resolve.
+    """
+
+    calls: list[str] = []
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", _GROUPED_FOLD128_PREFILL_VARIANT),
+        (lambda *args, **kwargs: calls.append("fold128")),
+        replace=True,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100", "moe_linear", "gguf_q5_1", _GROUPED_PREFILL_VARIANTS[0]
+        ),
+        (lambda *args, **kwargs: calls.append("staged_out4")),
+        replace=True,
+    )
+
+    weight = _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1")
+    assert (
+        gemma4_project_experts_grouped_prefill(
+            weight, 1, 2, 3, 4, 5, _GROUPED_FOLD128_MAX_IN_FEATURES + 1, 2816
+        )
+        is True
+    )
+    assert calls == ["staged_out4"]
+
+
+def test_grouped_prefill_falls_to_the_base_order_without_fold128() -> None:
+    """A quant with no fold128 owner keeps the arithmetic it had before.
+
+    Fold128 leads the order only when it is registered; with the key absent the
+    route has to walk past it to the staged owner rather than reaching for a
+    kernel that is not there.
+    """
+
+    calls: list[str] = []
+    register(
+        KernelKey(
+            "hip_gfx1100", "moe_linear", "gguf_q5_1", _GROUPED_PREFILL_VARIANTS[0]
+        ),
+        (lambda *args, **kwargs: calls.append("staged_out4")),
+        replace=True,
+    )
+    # The fold key is absent from the collection-time baseline, but clear it
+    # anyway so the test is order-independent rather than relying on it.
+    unregister(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", _GROUPED_FOLD128_PREFILL_VARIANT)
+    )
+
+    weight = _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1")
+    assert (
+        gemma4_project_experts_grouped_prefill(weight, 1, 2, 3, 4, 5, 704, 2816) is True
+    )
+    assert calls == ["staged_out4"]
+
+
 def test_grouped_prefill_falls_through_to_the_next_variant() -> None:
     """A quant that registers only a later variant still runs it."""
 
-    preferred, fallback = _GROUPED_PREFILL_VARIANTS[0], _GROUPED_PREFILL_VARIANTS[1]
+    order = _grouped_prefill_variant_order(704)
+    preferred, fallback = order[0], order[1]
     calls: list[str] = []
     register(
         KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", fallback),
@@ -339,6 +440,49 @@ def test_grouped_prefill_falls_through_to_the_next_variant() -> None:
     weight = _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1")
     assert gemma4_project_experts_grouped_prefill(weight, 1, 2, 3, 4, 5, 6, 7) is True
     assert calls == ["fallback"]
+
+
+def test_grouped_prefill_order_leads_with_fold128_within_its_fold_limit() -> None:
+    """The route's order leads with the folded owner up to its fold limit.
+
+    The limit is exercised on both sides and at a width unrelated to it, so
+    this pins the width gate rather than the two configured values.
+    """
+
+    inside = _grouped_prefill_variant_order(_GROUPED_FOLD128_MAX_IN_FEATURES - 1)
+    at_limit = _grouped_prefill_variant_order(_GROUPED_FOLD128_MAX_IN_FEATURES)
+    past = _grouped_prefill_variant_order(_GROUPED_FOLD128_MAX_IN_FEATURES + 1)
+    unrelated = _grouped_prefill_variant_order(704)
+
+    for order in (inside, at_limit, unrelated):
+        assert order[0] == _GROUPED_FOLD128_PREFILL_VARIANT
+        assert order[1:] == _GROUPED_PREFILL_VARIANTS
+    assert past == _GROUPED_PREFILL_VARIANTS
+    assert _GROUPED_FOLD128_PREFILL_VARIANT not in past
+
+
+def test_grouped_prefill_leaves_a_quant_without_fold128_on_its_own_variant() -> None:
+    """An unrelated quant keeps the variant it had: fold128 is not offered to it.
+
+    Q8_0 registers only the plain compact grouped owner and no fold128 owner, so
+    the width-gated order has nothing new to try for it. Registering the compact
+    owner as a stub pins the resolution to that variant rather than to the fold
+    owner that now leads the Q5_1 order.
+    """
+
+    compact = _GROUPED_PREFILL_VARIANTS[-1]
+    calls: list[str] = []
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q8_0", compact),
+        (lambda *args, **kwargs: calls.append("compact")),
+        replace=True,
+    )
+
+    weight = _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q8_0")
+    assert (
+        gemma4_project_experts_grouped_prefill(weight, 1, 2, 3, 4, 5, 704, 2816) is True
+    )
+    assert calls == ["compact"]
 
 
 def test_route_counts_hand_back_a_snapshot() -> None:
@@ -370,13 +514,8 @@ def test_grouped_prefill_records_the_variant_it_resolved() -> None:
     the preference order selected, not merely a registered one.
     """
 
-    preferred = _GROUPED_PREFILL_VARIANTS[0]
+    preferred = _GROUPED_KEY.variant
     register(_GROUPED_KEY, lambda *args, **kwargs: None, replace=True)
-    register(
-        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", preferred),
-        lambda *args, **kwargs: None,
-        replace=True,
-    )
     before = gemma4_moe_grouped_variant_counts().get(preferred, 0)
     assert gemma4_project_experts_grouped_prefill(
         _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1"),
@@ -1029,9 +1168,11 @@ def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
         )
         # Every grouped variant this quant registers has to agree, not just the
         # one the route prefers: they are the same reduction with different
-        # fetch strategies, and the route picks between them on cost alone.
+        # fetch strategies, and the route picks between them on cost alone. The
+        # route's own order is width-gated, so the variants it did not use are
+        # the tail of that order, not a fixed slice of the base list.
         extra_outputs = []
-        for variant in _GROUPED_PREFILL_VARIANTS[1:]:
+        for variant in _grouped_prefill_variant_order(in_features)[1:]:
             from hipengine.kernels.registry import resolve as resolve_kernel
             from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 

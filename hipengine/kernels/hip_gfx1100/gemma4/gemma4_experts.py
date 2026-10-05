@@ -199,7 +199,9 @@ def _ds4_block_count(width: int) -> int:
 # for the quant that registers it (asserted per quant in
 # tests/test_unit_gemma4_expert_route.py), so preferring the later ones is a cost
 # decision, not an accuracy one. A quant that registers only the first name
-# still runs; the list is a preference, not a requirement.
+# still runs; the list is a preference, not a requirement. The route walks this
+# list through :func:`_grouped_prefill_variant_order`, which prepends the
+# paired/folded owner wherever its width limit admits the call.
 _GROUPED_PREFILL_VARIANTS = (
     "selected_grouped_prefill_staged_out4_bf16_bf16_out",
     "selected_grouped_prefill_staged_out8_bf16_bf16_out",
@@ -1084,6 +1086,21 @@ _GROUPED_FOLD128_PREFILL_VARIANT = (
 # The paired Q5_1 forms reject wider inputs outright rather than declining, so
 # the probe only offers them inside the width their wrapper accepts.
 _GROUPED_FOLD128_MAX_IN_FEATURES = 4096
+
+
+def _grouped_prefill_variant_order(in_features: int) -> tuple[str, ...]:
+    """The grouped-prefill preference order the route walks for one width.
+
+    The paired/folded owner is the same reduction as the rest of the family and
+    bit-identical to it, but it is the cheapest fetch strategy where it
+    registers, so it leads. Its wrapper rejects an input wider than its fold
+    limit outright rather than declining, so a wider call keeps the order below
+    it and cannot be handed a shape that would refuse to launch.
+    """
+
+    if int(in_features) <= _GROUPED_FOLD128_MAX_IN_FEATURES:
+        return (_GROUPED_FOLD128_PREFILL_VARIANT, *_GROUPED_PREFILL_VARIANTS)
+    return _GROUPED_PREFILL_VARIANTS
 
 # The same owner with the loop nest swapped so one CTA covers four output
 # columns and reuses the input row batch across them. Only quants that register
@@ -2146,6 +2163,11 @@ def gemma4_project_experts_grouped_prefill(
 
     Returns ``False`` when this weight has no registered grouped-prefill family,
     which is a property of the quant key, not of a model or an artifact.
+
+    The preference order is width-aware: the paired/folded owner leads wherever
+    its wrapper accepts the input width, and every other variant stays behind it
+    as the fallback for a quant that does not register it or a width past its
+    fold limit. See :func:`_grouped_prefill_variant_order`.
     """
 
     if isinstance(weight, int):
@@ -2153,7 +2175,7 @@ def gemma4_project_experts_grouped_prefill(
     from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
     from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 
-    for variant in _GROUPED_PREFILL_VARIANTS:
+    for variant in _grouped_prefill_variant_order(in_features):
         key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, variant)
         _ensure_linear_kernel_registered(key)
         try:
