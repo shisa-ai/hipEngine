@@ -845,7 +845,6 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
             else ""
         ),
-        "HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS": "",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
         "HIPENGINE_QWEN4_EXP_Q4_TILE_M": "16",

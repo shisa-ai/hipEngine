@@ -26,7 +26,8 @@ candidate fails the production envelope: mean KL 1.4386e-3 (limit 1e-3), p95
 limit 99%). All categories and steady transition fail at least one scope;
 prefill-last and prefill-to-c1 remain near-zero. Finite outputs, registered
 route engagement, state/layout metadata, deterministic repeats and teardown
-pass. The candidate stays default-off; this is not a model-throughput result.
+pass. The failed runtime selector is removed; the diagnostic leaf remains.
+This is not a model-throughput result.
 No heldout, task, BF16-relative, isolation or engine-wall promotion gate was
 run after the binding numerical failure.
 [Protocol and artifacts](results/2026-10-05-qwen4exp-dense-split-model/README.md).

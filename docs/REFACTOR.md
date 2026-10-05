@@ -1,30 +1,28 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Dense split-operand WMMA diagnostic
+## Dense split-operand WMMA runtime cleanup — complete
 
-- `dense_split64x128_f32_f32_out` in `quant/gguf_q8_0_dense_wide.{hip,py}`
-  is an explicitly scoped measurement candidate, with no certified binding.
-  `HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS` is empty/off; `0` means layer0,
-  not off. Named binders clear it; gate/harness overrides apply post-binder.
-  It replaces only bulk raw-F32 parents, never late wide/WMMA/selected owners.
-  Scope and layer identity are in the live dispatch cache key.
-  It is distinct from the historical identical-product `dense_wide256_split3`
-  timing probe. The exact raw-F32 coltile chain remains available.
-- **Failed repaired composition:** compensated F32 high-high accumulation,
-  positive/negative WMMA averaging and cross-plane summation pass projection
-  fixtures but fail the complete canonical production envelope (mean KL
-  1.4386e-3, p95 7.5336e-3, max 0.059744, top-1 1526/1548). Keep the route
-  default-off. The remaining activation attribution is diagnostic, not proof
-  of model causation; it does not justify another unchanged qualification run.
-  Reopen only with a new arithmetic or ownership mechanism and a predeclared
-  screen. If none is justified, remove the runtime candidate while preserving
-  immutable failure evidence and independently useful numerical RED coverage.
-- Out-of-range operands trigger an in-kernel strict F32 fallback with no host
-  readback, extra launch or shared workspace. That guard reduces the primitive
-  win; the complete range-safe owner, not the unguarded leaf, is the perf basis.
-- Evidence: worklogs `20261005T190602.972589Z` / `20261005T193641.549710Z`,
+- The failed `HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS` runtime selector,
+  cache-key fields, profile-binder entry and full-model gate modes are removed.
+  The obsolete environment variable has no runtime reader. Admitted raw-F32,
+  late dense-wide and staged-F32 routes are unchanged.
+- The independent `dense_split64x128_f32_f32_out` diagnostic leaf remains in
+  `quant/gguf_q8_0_dense_wide.{hip,py}`, with its GPU numerical RED fixtures,
+  CPU/F64 operation screen and private-buffer natural-input collector. It has
+  no generator/runtime binding. The low-level registry key is for diagnostics,
+  not production admission.
+- Compensated F32 high-high accumulation, positive/negative WMMA averaging and
+  cross-plane summation pass projection fixtures but fail the complete
+  canonical production envelope: mean KL 1.4386e-3, p95 7.5336e-3, max
+  0.059744, top-1 1526/1548. Projection error rankings do not prove model
+  causation or justify another unchanged qualification run. Reopen only with
+  a new arithmetic or ownership mechanism and a predeclared screen.
+- Out-of-range operands still trigger the diagnostic leaf's in-kernel strict
+  F32 fallback. Preserve immutable results at
   `benchmarks/results/2026-10-05-qwen4exp-dense-split-wmma/` and
-  `benchmarks/results/2026-10-05-qwen4exp-dense-split-model/`.
+  `benchmarks/results/2026-10-05-qwen4exp-dense-split-model/`. Remove the
+  diagnostic leaf only after its independently useful oracle coverage moves
+  to a replacement; never remove committed failure evidence.
 
 
 ## Prefill chunk capacity guard
