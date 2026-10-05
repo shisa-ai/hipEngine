@@ -334,6 +334,7 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
     _wave_scale: bool = False,
     _no_gate: bool = False,
     _row_batch: int = 4,
+    _dpp: bool = False,
 ) -> None:
     """Launch exact raw-Q8 GR up, sigmoid gate, and branch mean.
 
@@ -361,9 +362,13 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
         raise ValueError("row_batch must be one of 4, 8, 16")
     if _no_gate and _row_batch != 4:
         raise ValueError("no_gate exists only for row_batch 4")
+    if _dpp and (not _wave_scale or _no_gate or _row_batch != 4):
+        raise ValueError("DPP requires wave_scale, gate writes, and row_batch 4")
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    if _no_gate:
+    if _dpp:
+        tail = "wave_scale_dpp_f32"
+    elif _no_gate:
         tail = "no_gate_f32"
     elif _wave_scale:
         tail = "wave_scale_f32"
@@ -397,6 +402,13 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
 
 def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32(*args, **kwargs):
     gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(*args, **kwargs, _wave_scale=True)
+
+
+def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_f32(*args, **kwargs):
+    """Preserve the parent lane-zero sum with a VALU-only DPP wave reduction."""
+    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+        *args, **kwargs, _wave_scale=True, _dpp=True
+    )
 
 
 def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_f32(*args, **kwargs):
@@ -1067,6 +1079,10 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     register(KernelKey("hip_gfx1100", "linear+gr_gated_mean", "gguf_q8_0",
                        "coltile2_branch4_rowbatch4_wave_scale_f32_exact"),
              gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32,
+             replace=replace)
+    register(KernelKey("hip_gfx1100", "linear+gr_gated_mean", "gguf_q8_0",
+                       "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact"),
+             gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_f32,
              replace=replace)
     # ROW_BATCH 8/16 are deliberately NOT registered. They are bit-exact and measured
     # slower at every shape (0.833-0.844x / 0.430-0.437x, occupancy-bound: 130 and 256
@@ -1831,6 +1847,7 @@ __all__ = [
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_f32",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_f32",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_wave_scale_f32",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch16_wave_scale_f32",

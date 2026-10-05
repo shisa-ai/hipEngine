@@ -549,6 +549,25 @@ Fallback requirements:
 - Removing a strict fallback is an architectural change and requires updating this table plus `PLAN.md` if the invariant changes.
 - A library call can be one stage of an unfused chain, but it does not waive the independent primitive/oracle route.
 
+## Qwen4Exp GR-up ordered DPP sibling
+
+`quant/gguf_k_gemv.{hip,py}` registers
+`linear+gr_gated_mean/gguf_q8_0/coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact`
+for gfx1100 and its gfx1151 peer. It keeps the parent's FMA, four-wave
+publication, sigmoid and branch-mean order, changing only the published
+lane-zero reduction to `permlanex16` plus `row_shl8/4/2/1` data-parallel
+primitive (DPP) operations. The wave-scale fused parent, unscaled fused
+parent and projection/sigmoid/mean primitive chain remain available.
+
+During admission `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION=1` selects the
+sibling only within the existing rows>256/four-branch route. Raw-bit tests
+cover tails through 4096 rows; real Q8_0 banks at rows512/1024/4096 improve
+1.54-1.57x on physical gfx1151 host
+`55ea6c509d0b49eea8de7094a1023668`. The compiler reduces VGPR72->57 and
+static instructions311->243. These are operation-level results, not an
+engine-rate claim; gfx1100 execution is unverified.
+Evidence: `benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/`.
+
 ## Source-lineage audit
 
 R7 compiler-version override-identity cache (2026-09-10): the env compiler-
