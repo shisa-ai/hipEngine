@@ -10354,8 +10354,8 @@
           "hipengine/generation/qwen4_exp_profiles.py:485",
           "hipengine/generation/qwen35_gguf.py:718",
           "hipengine/runtime/prefill.py:68",
-          "hipengine/runtime/gemma4.py:750",
-          "hipengine/runtime/gemma4.py:1410",
+          "hipengine/runtime/gemma4.py:864",
+          "hipengine/runtime/gemma4.py:1615",
           "hipengine/runtime/gguf_linear.py:153",
           "hipengine/runtime/gguf_linear.py:1787",
           "hipengine/runtime/gguf_linear.py:3114"
@@ -10379,7 +10379,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_WMMA_PREFILL",
-      "evidence_hash": "f128167f87dc"
+      "evidence_hash": "76ae50756930"
     },
     {
       "kind": "flag",

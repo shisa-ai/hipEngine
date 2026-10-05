@@ -111,6 +111,13 @@ class Gemma4SharedKV:
     live: int
     num_kv_heads: int
     head_dim: int
+    #: Absolute position cache slot 0 holds. 0 for a global layer, which is
+    #: indexed by absolute position, and nonzero for a bounded sliding layer
+    #: whose retained band has been rebased. Slot ``s`` holds absolute position
+    #: ``base + s``, so a consumer converting an absolute position ``p`` to a
+    #: slot subtracts ``base`` (``p - base``); converting a slot back to an
+    #: absolute position adds it.
+    base: int = 0
 
     @property
     def kv_width(self) -> int:
@@ -168,6 +175,14 @@ DEFAULT_PREFILL_BLOCK = 1024
 # image. Half a gigabyte against a 3.29 GB difference between the two blocks.
 _FIT_RESERVE_BYTES = 512 * 1024 * 1024
 
+#: Positions per decode-graph capture window. A bounded sliding cache keeps one
+#: such window of history extra so the graph's frozen bucket origin (one window
+#: below the bucket start) and frozen bucket end are always inside the retained
+#: band. Without it a rebase moves the base past the frozen origin, the captured
+#: attention shape has to be clamped, and the presented key count -- and with it
+#: the flash/split partition -- changes across the rebase.
+GEMMA4_SLIDING_BUCKET_WIDTH = 64
+
 
 def _resident_bytes(
     *,
@@ -178,6 +193,7 @@ def _resident_bytes(
     dense_widths: Sequence[int],
     kv_storage: str = "bf16",
     kv_scale_dtype: DType = DType.FP16,
+    sliding_reserve: int = GEMMA4_SLIDING_BUCKET_WIDTH,
 ) -> int:
     """Bytes the runner holds for a prefill block of ``block`` rows.
 
@@ -189,7 +205,10 @@ def _resident_bytes(
     rather than over the names one path touches.
 
     The KV term follows the selected storage: BF16 K/V planes, or the INT8
-    payload, scale planes and FP32 consumer scratch of the INT8 owner.
+    payload, scale planes and FP32 consumer scratch of the INT8 owner. A BF16
+    sliding layer is charged only the ``window + block - 1`` band it can read,
+    not the whole context, plus the runner's one compaction-staging plane for
+    the widest bounded sliding layer.
     """
     total = (
         block * _I64_BYTES
@@ -220,9 +239,28 @@ def _resident_bytes(
         )
     else:
         for attention in config.attention:
-            total += (
-                capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES * 2
+            rows = gemma4_sliding_cache_rows(
+                attention, capacity, rows=block, reserve=sliding_reserve
             )
+            total += rows * attention.num_kv_heads * attention.head_dim * _BF16_BYTES * 2
+        # Compaction staging: one plane, owned once, sized for the widest
+        # bounded sliding layer's retained tail. A rebase shifts at most
+        # ``window - 1 + reserve`` rows through it.
+        staging = 0
+        for attention in config.attention:
+            if attention.sliding_window is None:
+                continue
+            rows = gemma4_sliding_cache_rows(
+                attention, capacity, rows=block, reserve=sliding_reserve
+            )
+            if rows >= capacity:
+                continue
+            retained = max(0, int(attention.sliding_window) - 1 + int(sliding_reserve))
+            staging = max(
+                staging,
+                retained * attention.num_kv_heads * attention.head_dim * _BF16_BYTES,
+            )
+        total += staging
     return total
 
 
@@ -235,6 +273,7 @@ def _fit_prefill_block(
     dense_widths: Sequence[int],
     kv_storage: str = "bf16",
     kv_scale_dtype: DType = DType.FP16,
+    sliding_reserve: int = GEMMA4_SLIDING_BUCKET_WIDTH,
 ) -> int:
     """Shrink ``block`` until the resident set fits free device memory.
 
@@ -267,6 +306,7 @@ def _fit_prefill_block(
             dense_widths=dense_widths,
             kv_storage=kv_storage,
             kv_scale_dtype=kv_scale_dtype,
+            sliding_reserve=sliding_reserve,
         )
         if needed <= budget:
             return block
@@ -487,11 +527,85 @@ def gemma4_text_config_from_reader(
 def gemma4_layer_key_count(
     attention: Gemma4AttentionGeometry, capacity: int, *, rows: int = 1
 ) -> int:
-    """Return the cached key span presented by a layer's widest block."""
+    """Return the cached key span presented by a layer's widest block.
+
+    A windowless (global) layer reads the whole context; a sliding layer reads
+    at most ``window + rows - 1`` keys for any block of ``rows``. This is the
+    span the LDS admission charges, and it is a lower bound on the cache rows a
+    sliding layer must own. The cache owns a little more than this -- see
+    :func:`gemma4_sliding_cache_rows` -- so the decode graph's frozen bucket
+    origin and end stay inside the retained band.
+    """
+
     capacity = int(capacity)
     if attention.sliding_window is None:
         return capacity
     return min(capacity, int(attention.sliding_window) + int(rows) - 1)
+
+
+def gemma4_sliding_cache_rows(
+    attention: Gemma4AttentionGeometry,
+    capacity: int,
+    *,
+    rows: int,
+    reserve: int = GEMMA4_SLIDING_BUCKET_WIDTH,
+) -> int:
+    """KV rows a layer's cache owns, including the graph history reserve.
+
+    A windowless layer keeps the whole context. A sliding layer keeps
+    ``window - 1 + reserve + max(rows, reserve)`` rows: the ``window + rows - 1``
+    band it reads, plus ``reserve`` rows of history below the first live key and
+    ``reserve`` rows above the block, so that for any decode-graph bucket the
+    frozen origin and end both fall inside the cache (see
+    :func:`gemma4_sliding_cache_base`). Never more than the context.
+    """
+
+    capacity = int(capacity)
+    if attention.sliding_window is None:
+        return capacity
+    reserve = int(reserve)
+    band = int(attention.sliding_window) - 1 + reserve + max(int(rows), reserve)
+    return min(capacity, band)
+
+
+def gemma4_sliding_cache_base(
+    *,
+    base: int,
+    capacity: int,
+    window: int,
+    start: int,
+    rows: int,
+    reserve: int = GEMMA4_SLIDING_BUCKET_WIDTH,
+) -> int:
+    """Absolute position a sliding layer's cache slot 0 must hold for a block.
+
+    ``base`` is where slot 0 currently sits and ``capacity`` is how many rows the
+    cache owns. While the block and the decode graph's bucket fit -- ``start +
+    max(rows, reserve) <= base + capacity`` -- the base is returned unchanged and
+    nothing is copied. Otherwise the cache is rebased to ``max(0, start - window
+    + 1 - reserve)``: the earliest position any row of the block can read, minus
+    one bucket of history.
+
+    The extra ``reserve`` rows are what keep the frozen bucket origin
+    ``(start // reserve) * reserve - window`` at or above the base. Without it
+    the base can land up to ``reserve - 1`` above that origin, and the graph
+    would have to clamp its first key -- changing the presented key count and
+    the flash/split partition across the rebase.
+
+    The base only ever moves forward (a block that overflows starts past the
+    first live key of the previous block), so a retained position is never
+    overwritten by a later copy.
+    """
+
+    base = int(base)
+    capacity = int(capacity)
+    start = int(start)
+    rows = int(rows)
+    window = int(window)
+    reserve = int(reserve)
+    if start + max(rows, reserve) <= base + capacity:
+        return base
+    return max(0, start - window + 1 - reserve)
 
 
 def gemma4_require_context_capacity(
@@ -813,6 +927,12 @@ class Gemma4Runner:
     weights: Gemma4DeviceWeights
     capacity: int
     max_block: int = 0
+    #: History reserve, in rows, kept below the first live key of a bounded
+    #: sliding layer so the decode graph's frozen bucket origin and end stay
+    #: inside the cache. Defaults to the graph's bucket width; the graph refuses
+    #: a runner whose reserve is smaller than its bucket. Lowering it only saves
+    #: a few hundred rows per sliding layer.
+    sliding_reserve: int = GEMMA4_SLIDING_BUCKET_WIDTH
     #: Bound on the logits projection buffers, in rows. A speculative verify
     #: reads one row per verified position; the default of one row is what keeps
     #: a wide prefill from sizing its logits scratch for the whole block.
@@ -832,6 +952,21 @@ class Gemma4Runner:
     _buffers: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _scratches: list[Gemma4LayerScratch] = field(default_factory=list, repr=False)
     _kv: list[Gemma4LayerKV] = field(default_factory=list, repr=False)
+    #: Rows of KV each layer's cache owns: the full context for a global layer,
+    #: the ``window - 1 + reserve + max(max_block, reserve)`` band for a sliding
+    #: one. Parallel to ``_kv``.
+    _kv_capacity: list[int] = field(default_factory=list, repr=False)
+    #: Absolute position of each layer's cache slot 0. 0 for a global layer;
+    #: a sliding layer's base moves forward as its bounded cache is rebased.
+    _kv_base: list[int] = field(default_factory=list, repr=False)
+    #: True when at least one layer's cache is smaller than ``capacity``.
+    _bounded_sliding: bool = field(default=False, repr=False)
+    #: Reusable staging buffer for a rebase copy, allocated once at
+    #: construction for the widest bounded sliding layer. A rebase shifts the
+    #: retained band toward slot 0, and the source and destination can overlap,
+    #: so the copy goes through here rather than risking an undefined
+    #: overlapping device memcpy. One plane serves every layer.
+    _compact_staging: Any = field(default=None, repr=False)
     _int8_kv: Any = field(default=None, repr=False)
     _kv_storage_resolved: str = field(default="bf16", repr=False)
     _kv_scale_dtype_resolved: DType = field(default=DType.FP16, repr=False)
@@ -862,6 +997,10 @@ class Gemma4Runner:
         config = self.weights.config
         if self.capacity <= 0:
             raise ValueError("capacity must be positive")
+        if self.sliding_reserve < 0:
+            raise ValueError(
+                f"sliding_reserve must be non-negative, got {self.sliding_reserve}"
+            )
         # Remember whether the block was chosen here rather than handed in, so
         # the fit check below may shrink only the block we picked. An explicit
         # block is the caller's request and fails loudly if it does not fit.
@@ -897,6 +1036,10 @@ class Gemma4Runner:
                 dense_widths=dense_widths,
                 kv_storage=self._kv_storage_resolved,
                 kv_scale_dtype=self._kv_scale_dtype_resolved,
+                # The fit must charge the same reserve the allocation below
+                # uses, or a non-default reserve would make the chosen block
+                # overrun the device budget it was picked against.
+                sliding_reserve=self.sliding_reserve,
             )
         # A verify block projects one logits row per verified position, so the
         # projection buffers are sized from this bound. Validated after the fit
@@ -964,21 +1107,57 @@ class Gemma4Runner:
                 )
                 if self._kv_storage_resolved == "int8_per_token_head":
                     continue
+                # A sliding layer reads only its window band, plus the decode
+                # graph's history reserve, so it owns only that many rows. The
+                # global layers keep the whole context; the INT8 owner below
+                # keeps its own full-context layout.
+                layer_capacity = gemma4_sliding_cache_rows(
+                    attention,
+                    self.capacity,
+                    rows=self.max_block,
+                    reserve=self.sliding_reserve,
+                )
+                self._kv_capacity.append(layer_capacity)
+                self._kv_base.append(0)
                 key = self._alloc(
-                    self.capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES
+                    layer_capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES
                 )
                 value = self._alloc(
-                    self.capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES
+                    layer_capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES
                 )
                 self._caches.extend((key, value))
                 self._kv.append(
                     Gemma4LayerKV(
                         key_cache=key.ptr,
                         value_cache=value.ptr,
-                        capacity=self.capacity,
+                        capacity=layer_capacity,
                         write_offset=0,
                     )
                 )
+            self._bounded_sliding = any(
+                bounded < self.capacity for bounded in self._kv_capacity
+            )
+            if self._bounded_sliding:
+                # One staging plane, sized once for the widest bounded sliding
+                # layer's retained tail. Allocating on demand retained every
+                # superseded plane in ``_buffers`` for the runner's lifetime and
+                # made ``_resident_bytes`` undercount the real peak.
+                staging_bytes = 0
+                for index, attention in enumerate(config.attention):
+                    if attention.sliding_window is None:
+                        continue
+                    if self._kv_capacity[index] >= self.capacity:
+                        continue
+                    retained = int(attention.sliding_window) - 1 + self.sliding_reserve
+                    staging_bytes = max(
+                        staging_bytes,
+                        retained
+                        * attention.num_kv_heads
+                        * attention.head_dim
+                        * _BF16_BYTES,
+                    )
+                if staging_bytes:
+                    self._compact_staging = self._alloc(staging_bytes)
             if self._kv_storage_resolved == "int8_per_token_head":
                 # The INT8 owner allocates the payload, scale planes, page table
                 # and FP32 consumer scratch; the runner keeps no BF16 K/V cache
@@ -1128,9 +1307,10 @@ class Gemma4Runner:
             self._kv[index] = Gemma4LayerKV(
                 key_cache=self._kv[index].key_cache,
                 value_cache=self._kv[index].value_cache,
-                capacity=self.capacity,
+                capacity=self._kv_capacity[index],
                 write_offset=0,
             )
+            self._kv_base[index] = 0
 
     def _release_owned(self) -> None:
         """Free every allocation this runner owns, once.
@@ -1208,12 +1388,14 @@ class Gemma4Runner:
             )
         attention = self.weights.config.attention[layer_index]
         entry = self._kv[layer_index]
+        base = int(self._kv_base[layer_index])
         return Gemma4SharedKV(
             layer_index=int(layer_index),
             key_cache=int(entry.key_cache),
             value_cache=int(entry.value_cache),
-            capacity=int(self.capacity),
-            live=int(self._position),
+            capacity=int(self._kv_capacity[layer_index]),
+            live=int(self._position) - base,
+            base=base,
             num_kv_heads=int(attention.num_kv_heads),
             head_dim=int(attention.head_dim),
         )
@@ -1275,13 +1457,36 @@ class Gemma4Runner:
             raise ValueError(
                 f"cannot rewind to {target} from position {self._position}"
             )
+        # Validate every layer before mutating: a bounded sliding layer has
+        # compacted away everything below its base, and rewinding below the
+        # first key the next block can read would silently attend over a
+        # shifted window. Refuse by name instead, leaving the runner untouched:
+        # the caller can reset and re-prefill, or rewind only within the
+        # retained band. A speculative rejection rewinds to a prefix of the
+        # block it just appended, which is always at or above the base.
+        for index in range(len(self._kv)):
+            attention = self.weights.config.attention[index]
+            if attention.sliding_window is None:
+                continue
+            base = int(self._kv_base[index])
+            first_live = _sliding_read_range(attention, target, 1)
+            if first_live < base:
+                raise ValueError(
+                    f"cannot rewind layer {index} to position {target}: its "
+                    f"sliding window starts at key {first_live}, below the "
+                    f"retained cache base {base}. History below the base was "
+                    "compacted away; reset() and re-prefill, or rewind only "
+                    "within the retained band."
+                )
         self._position = target
         for index in range(len(self._kv)):
             entry = self._kv[index]
+            # The base is left in place: a rewind target inside the retained
+            # band keeps the slots its positions already occupy.
             self._kv[index] = Gemma4LayerKV(
                 key_cache=entry.key_cache,
                 value_cache=entry.value_cache,
-                capacity=self.capacity,
+                capacity=self._kv_capacity[index],
                 write_offset=target,
             )
 
@@ -1583,6 +1788,10 @@ class Gemma4Runner:
             )
 
         tables, masks = self._stage_block_content(tokens, stream=0)
+        # Rebase any bounded sliding-layer cache before the launches that read
+        # it. The mask was staged from absolute positions, so it is unaffected;
+        # only the per-layer cache slot a block lands in moves.
+        self._prepare_sliding_caches(self._position, rows, stream=0)
         self._launch_block(
             tokens,
             tables=tables,
@@ -1751,6 +1960,10 @@ class Gemma4Runner:
                 )
                 tables[attention.rope] = staged
             if attention.sliding_window not in masks:
+                # ``key_begin_at`` supplies the decode graph's frozen first key,
+                # which the cache's history reserve keeps at or above the
+                # layer's base, so the mask's column 0 and the kernel's key
+                # pointer address the same key without any clamp.
                 masks[attention.sliding_window] = self._stage_upload(
                     f"mask{attention.sliding_window}",
                     _keep_mask(
@@ -1760,6 +1973,92 @@ class Gemma4Runner:
                     stream=stream,
                 )
         return tables, masks
+
+    def _prepare_sliding_caches(
+        self, start: int, rows: int, *, stream: int
+    ) -> None:
+        """Rebase every bounded sliding-layer cache so a block at ``start`` fits.
+
+        Global layers keep absolute indexing and are untouched. A sliding
+        layer's cache owns only ``window - 1 + reserve + max(rows, reserve)``
+        rows, so once the block or the decode graph's bucket would run past its
+        end the retained band is shifted toward slot 0 and the base moves with
+        it. The shift is exact: every byte copied is a position some row of the
+        block can still read, and the positions dropped are outside every row's
+        window. The copy is enqueued on ``stream`` ahead of the launches that
+        read the cache, so a later layer's kernels are ordered behind it.
+        """
+
+        if not self._bounded_sliding:
+            return
+        config = self.weights.config
+        for index, attention in enumerate(config.attention):
+            window = attention.sliding_window
+            if window is None:
+                continue
+            base = int(self._kv_base[index])
+            new_base = gemma4_sliding_cache_base(
+                base=base,
+                capacity=int(self._kv_capacity[index]),
+                window=int(window),
+                start=int(start),
+                rows=int(rows),
+                reserve=self.sliding_reserve,
+            )
+            if new_base == base:
+                continue
+            self._compact_sliding_layer(index, base, new_base, start, stream=stream)
+            self._kv_base[index] = new_base
+
+    def _compact_sliding_layer(
+        self,
+        index: int,
+        old_base: int,
+        new_base: int,
+        start: int,
+        *,
+        stream: int,
+    ) -> None:
+        """Shift a sliding layer's retained band down to the rebased origin.
+
+        The copy moves ``[new_base, start)`` to slot 0. Source and destination
+        can overlap (the shift can be shorter than the retained run), so the
+        bytes go through one shared staging buffer rather than an overlapping
+        device memcpy whose result is undefined.
+        """
+
+        retained = int(start) - int(new_base)
+        if retained <= 0:
+            return
+        entry = self._kv[index]
+        geometry = self.weights.config.geometry(index)
+        kv_width = int(geometry.num_kv_heads) * int(geometry.head_dim)
+        nbytes = retained * kv_width * _BF16_BYTES
+        staging = self._compact_staging
+        if staging is None or staging.nbytes < nbytes:
+            raise RuntimeError(
+                f"sliding compaction for layer {index} needs {nbytes} bytes but "
+                f"the staging plane is {0 if staging is None else staging.nbytes}"
+            )
+        from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
+
+        runtime = get_hip_runtime()
+        src_offset = (int(new_base) - int(old_base)) * kv_width * _BF16_BYTES
+        for cache_ptr in (int(entry.key_cache), int(entry.value_cache)):
+            runtime.memcpy_async(
+                int(staging.ptr),
+                cache_ptr + src_offset,
+                nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                cache_ptr,
+                int(staging.ptr),
+                nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
 
     def _launch_block(
         self,
@@ -1833,11 +2132,21 @@ class Gemma4Runner:
             attention = config.geometry(index)
             cos_buf, sin_buf = tables[attention.rope]
             mask_buf = masks[attention.sliding_window]
-            key_begin = (
+            # ``key_begin_at`` and the mask are absolute positions; the layer
+            # reads cache-relative slots. A global layer's base is 0, so its
+            # translation is the identity. A bounded sliding layer's base is
+            # where its retained band starts; the history reserve keeps it at or
+            # below both the block's first live key and the decode graph's
+            # frozen bucket origin, so ``key_begin_abs >= base`` and the max is
+            # the identity for every supported path.
+            base = int(self._kv_base[index]) if self._kv else 0
+            key_begin_abs = (
                 _sliding_read_range(attention, kv_write_offset, rows)
                 if key_begin_at is None
                 else int(key_begin_at(attention))
             )
+            key_begin = max(0, key_begin_abs - base)
+            slot_write = int(kv_write_offset) - base
             gemma4_layer_forward_bf16(
                 self._hidden.ptr,
                 cos_buf.ptr,
@@ -1850,8 +2159,8 @@ class Gemma4Runner:
                 else Gemma4LayerKV(
                     key_cache=self._kv[index].key_cache,
                     value_cache=self._kv[index].value_cache,
-                    capacity=self.capacity,
-                    write_offset=kv_write_offset,
+                    capacity=self._kv_capacity[index],
+                    write_offset=slot_write,
                 ),
                 int8_kv=None
                 if int8_block is None
@@ -1870,7 +2179,7 @@ class Gemma4Runner:
                 # own window.
                 window=(
                     0 if key_begin_at is not None else (
-                        kv_write_offset + rows - key_begin
+                        slot_write + rows - key_begin
                         if attention.sliding_window is None
                         else int(attention.sliding_window)
                     )

@@ -22,6 +22,23 @@ context bucket and re-targets the two things that must move:
   counterparts, so the graph attends a superset of the true range and the
   mask — not a host argument — is what bounds it.
 
+  A bounded sliding layer rebases, so its cache slot ``s`` holds absolute
+  position ``base + s``. The step rebases the caches on the session stream
+  *before* capture, and every frozen absolute offset is translated to a slot
+  by subtracting the layer's base: the append slot is ``bucket.end - 1 -
+  base``, the frozen ``key_begin`` stays at or above the base, and the replay
+  targets ``position - base``. The per-layer bases are part of the capture
+  key, so a rebase recaptures instead of replaying a graph whose slots no
+  longer line up.
+
+  The captured attention shape must not change when the base moves: the
+  presented key count is ``bucket.end - key_begin``, and the flash/split
+  partition follows it. So a bounded sliding cache keeps one bucket of
+  history extra (``Gemma4Runner.sliding_reserve``) below the block, which
+  keeps the frozen bucket origin and end inside the retained band at every
+  rebase. ``_capture`` refuses a runner whose reserve is smaller than the
+  bucket width rather than clamping the mask and changing the shape.
+
 * **Memcpy node updates.** The KV append is a device-to-device copy whose
   destination is the live position, which the host knows and the capture
   cannot. Each replay re-targets the captured append nodes with
@@ -36,10 +53,11 @@ context bucket and re-targets the two things that must move:
   (Measured: a fresh cache held 1,644 NaN-pattern elements past live, and
   the first bucket-crossing replay returned NaN logits for every element.)
   So each capture zeroes the not-yet-written tail of every layer's key and
-  value cache for ``[position + 1, end)`` once, on the capture stream,
-  before the first replay — after that, every slot the graph can read is
-  either written by an append or exactly zero, and a zeroed masked lane is
-  bit-identical to the live-shaped launch.
+  value cache for ``[position + 1, end)`` in *cache slots* (``base``
+  subtracted), once, on the capture stream, before the first replay — after
+  that, every slot the graph can read is either written by an append or
+  exactly zero, and a zeroed masked lane is bit-identical to the live-shaped
+  launch.
 
 The capture runs on its own stream. Position-dependent content is staged on
 that stream *before* ``hipStreamBeginCapture``, so it executes immediately
@@ -83,12 +101,16 @@ from hipengine.core.hip import (
 )
 from hipengine.core.memory import MemcpyKind
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import KEY_TILE
-from hipengine.runtime.gemma4 import Gemma4Runner
+from hipengine.runtime.gemma4 import GEMMA4_SLIDING_BUCKET_WIDTH, Gemma4Runner
 
 #: Positions per capture window. Small enough that a bucket crossing costs a
 #: recapture only once per ``width`` steps, large enough that the frozen
 #: ``key_begin`` walks at most ``width`` keys past the true sliding window.
-BUCKET_WIDTH = 64
+#: A bounded sliding cache keeps one window of history extra so the frozen
+#: bucket origin and end stay inside the retained band at every rebase; the
+#: runner owns that reserve (``Gemma4Runner.sliding_reserve``), and ``_capture``
+#: refuses a runner whose reserve is smaller than this width.
+BUCKET_WIDTH = GEMMA4_SLIDING_BUCKET_WIDTH
 
 
 @dataclass(frozen=True)
@@ -116,6 +138,12 @@ class _Bucket:
            bucket ``[multiple - 1, multiple)``: its key count *is* the
            multiple, so graph and launched path agree on the tiled route with
            identical parameters.
+
+        A bounded sliding cache's history reserve keeps the frozen origin and
+        end inside the retained band, so this never cuts at the sliding band;
+        ``_capture`` asserts that invariant instead of silently changing shape.
+        It is cut at the physical context end by :func:`_context_end_bucket`, which
+        every global layer's full-context cache requires.
         """
 
         live = int(position) + 1
@@ -129,6 +157,30 @@ class _Bucket:
         return _Bucket(start=start, end=end)
 
 
+def _context_end_bucket(position: int, capacity: int) -> _Bucket:
+    """The capture bucket for ``position``, cut at the physical context end.
+
+    ``_Bucket.for_position`` rounds the end up to a bucket boundary, so at a
+    context that is not a multiple of the bucket width the last bucket's end
+    runs past ``capacity``. Every *global* layer's cache holds exactly
+    ``capacity`` rows indexed by absolute position, and a bounded runner keeps
+    those global caches at the full context, so the frozen end has to be cut
+    here for a bounded runner as much as for an unbounded one.
+
+    The cut only ever lowers the end (``min``), so a bounded sliding layer's
+    reserve invariant -- ``base <= bucket.start - window`` and ``bucket.end -
+    base <= band`` -- still holds; ``_capture`` asserts it against the cut
+    bucket. Clamping to the sliding band instead would change the frozen
+    attention shape at every rebase, which is why this cuts at the context and
+    not at the band.
+    """
+
+    bucket = _Bucket.for_position(position)
+    if bucket.end > capacity:
+        bucket = _Bucket(bucket.start, capacity)
+    return bucket
+
+
 @dataclass(frozen=True)
 class _CaptureAppend:
     """One captured KV append node, with everything a re-target needs."""
@@ -138,6 +190,9 @@ class _CaptureAppend:
     count: int
     cache_base: int
     kv_width: int
+    #: The layer's cache base: the captured slot is ``frozen_write - base`` and
+    #: a replay targets ``position - base``. 0 for a global layer.
+    base: int = 0
 
 
 class Gemma4DecodeGraphSession:
@@ -224,8 +279,16 @@ class Gemma4DecodeGraphSession:
         if position + 1 > runner.capacity:
             raise ValueError(f"one token from position {position} exceeds capacity {runner.capacity}")
 
-        bucket = _Bucket.for_position(position)
-        bucket = _Bucket(bucket.start, min(bucket.end, runner.capacity))
+        # Rebase the bounded sliding caches before freezing the bucket. The
+        # capture bakes cache-relative slots and the replay targets
+        # ``position - base``, so it must see the base the replay will run
+        # with; a base change is part of the capture key, so a rebase
+        # recaptures. The rebase copies run on this session's stream ahead of
+        # ``stream_begin_capture``, so they execute immediately and are not
+        # recorded into the graph.
+        if getattr(runner, "_bounded_sliding", False):
+            runner._prepare_sliding_caches(position, 1, stream=self._stream)
+        bucket = _context_end_bucket(position, runner.capacity)
         tables, masks = runner._stage_block_content(
             [int(token)], stream=self._stream, keys_extent=bucket.end,
             key_begin_at=lambda attention: self._frozen_key_begin(attention, bucket),
@@ -301,6 +364,10 @@ class Gemma4DecodeGraphSession:
             bucket.end,
             staged,
             kv,
+            # A rebase moves a sliding layer's base without moving any pointer,
+            # so the base is what makes the frozen slots valid: capture the
+            # bases and recapture when one changes.
+            tuple(runner._kv_base),
             runner._hidden.ptr,
             runner._token_ids.ptr,
             runner._logits.ptr,
@@ -326,6 +393,35 @@ class Gemma4DecodeGraphSession:
                 "graph records is registered and loaded"
             )
         self._retire()
+
+        # The sliding history reserve must cover this graph's bucket. A runner
+        # built with a smaller reserve would have a base above the frozen origin
+        # or an end past the band, which would silently change the captured
+        # attention shape across a rebase; refuse by name instead of clamping.
+        if getattr(runner, "_bounded_sliding", False):
+            reserve = int(getattr(runner, "sliding_reserve", 0))
+            if reserve < BUCKET_WIDTH:
+                raise RuntimeError(
+                    f"decode-graph capture needs a sliding history reserve of at "
+                    f"least {BUCKET_WIDTH} rows, but the runner was built with "
+                    f"{reserve}. Construct Gemma4Runner with "
+                    f"sliding_reserve >= {BUCKET_WIDTH}."
+                )
+            for index in range(len(runner.weights.layers)):
+                attention = runner.weights.config.geometry(index)
+                if attention.sliding_window is None:
+                    continue
+                base = int(runner._kv_base[index])
+                origin = self._frozen_key_begin(attention, bucket)
+                band = int(runner._kv_capacity[index])
+                if base > origin or bucket.end - base > band:
+                    raise RuntimeError(
+                        f"decode-graph bucket [{bucket.start}, {bucket.end}) does "
+                        f"not fit layer {index}'s retained band: base {base}, "
+                        f"frozen origin {origin}, band {band}. The sliding history "
+                        f"reserve ({reserve}) must cover the bucket width "
+                        f"({BUCKET_WIDTH})."
+                    )
 
         frozen_write = bucket.end - 1
         runtime = get_hip_runtime()
@@ -370,8 +466,12 @@ class Gemma4DecodeGraphSession:
         library = build_gemma4_attention(load=True)
         for index in range(len(runner.weights.layers)):
             attention = runner.weights.config.geometry(index)
-            key_begin = self._frozen_key_begin(attention, bucket)
-            keys = frozen_write + 1 - key_begin
+            base = int(runner._kv_base[index]) if getattr(runner, "_kv", None) else 0
+            # The launch the capture records uses cache-relative slots; reserve
+            # for exactly the keys it will walk, which for a rebased sliding
+            # layer starts at the base when the frozen key is below it.
+            key_begin = max(0, self._frozen_key_begin(attention, bucket) - base)
+            keys = (frozen_write - base) + 1 - key_begin
             if runner.prefill_attention_variants is not None:
                 selected = select_prefill_attention(
                     requested_variant=runner.prefill_attention_variants,
@@ -436,9 +536,35 @@ class Gemma4DecodeGraphSession:
             raise
         if graph == 0:
             raise RuntimeError("stream capture produced no graph")
-        exec_handle = runtime.graph_instantiate(graph)
-        appends = self._identify_appends(graph, frozen_write=frozen_write)
-        self._zero_pending_tail(bucket)
+        self._finalize_capture(graph, frozen_write=frozen_write, bucket=bucket, key=key)
+
+    def _finalize_capture(
+        self,
+        graph: int,
+        *,
+        frozen_write: int,
+        bucket: _Bucket,
+        key: tuple[object, ...],
+    ) -> None:
+        """Instantiate the captured graph and adopt it, releasing on any failure.
+
+        ``graph_instantiate``, ``_identify_appends`` and ``_zero_pending_tail``
+        all run after ``stream_end_capture`` and can all fail. Each must release
+        the captured graph (and the executable, once instantiated) or a failed
+        capture leaks both until the process exits.
+        """
+
+        runtime = get_hip_runtime()
+        exec_handle = 0
+        try:
+            exec_handle = runtime.graph_instantiate(graph)
+            appends = self._identify_appends(graph, frozen_write=frozen_write)
+            self._zero_pending_tail(bucket)
+        except BaseException:
+            if exec_handle:
+                runtime.graph_exec_destroy(exec_handle)
+            runtime.graph_destroy(graph)
+            raise
         self._graph = graph
         self._exec = exec_handle
         self._key = key
@@ -459,14 +585,19 @@ class Gemma4DecodeGraphSession:
         runner = self._runner
         config = runner.weights.config
         layers = len(runner.weights.layers)
-        expected: dict[int, tuple[int, str, int, int]] = {}
+        expected: dict[int, tuple[int, str, int, int, int]] = {}
         for index in range(layers):
             geometry = config.geometry(index)
             kv_width = int(geometry.num_kv_heads) * int(geometry.head_dim)
+            base = int(runner._kv_base[index]) if runner._kv else 0
             scratch = runner._scratches[index]
             kv = runner._kv[index]
-            expected[scratch.buffer("k_rot").ptr] = (index, "k", kv.key_cache, kv_width)
-            expected[scratch.buffer("v").ptr] = (index, "v", kv.value_cache, kv_width)
+            expected[scratch.buffer("k_rot").ptr] = (
+                index, "k", kv.key_cache, kv_width, base
+            )
+            expected[scratch.buffer("v").ptr] = (
+                index, "v", kv.value_cache, kv_width, base
+            )
 
         found: dict[tuple[int, str], _CaptureAppend] = {}
         runtime = get_hip_runtime()
@@ -480,13 +611,13 @@ class Gemma4DecodeGraphSession:
                     f"capture contains a memcpy from {src:#x}, which is not a "
                     "layer's rotated-K or V scratch buffer"
                 )
-            layer, which, cache_base, kv_width = entry
+            layer, which, cache_base, kv_width, base = entry
             if int(count) != kv_width * 2:
                 raise RuntimeError(
                     f"append for layer {layer} ({which}) copied {count} bytes, "
                     f"expected one row of {kv_width * 2}"
                 )
-            want = int(cache_base) + frozen_write * kv_width * 2
+            want = int(cache_base) + (frozen_write - base) * kv_width * 2
             if int(dst) != want:
                 raise RuntimeError(
                     f"append for layer {layer} ({which}) captured dst {dst:#x}, "
@@ -501,6 +632,7 @@ class Gemma4DecodeGraphSession:
                 count=int(count),
                 cache_base=int(cache_base),
                 kv_width=kv_width,
+                base=base,
             )
         if len(found) != 2 * layers:
             raise RuntimeError(
@@ -524,17 +656,23 @@ class Gemma4DecodeGraphSession:
 
         runner = self._runner
         config = runner.weights.config
-        first_pending = int(runner.position) + 1
-        if first_pending >= bucket.end:
-            return
         runtime = get_hip_runtime()
         for index in range(len(runner.weights.layers)):
             geometry = config.geometry(index)
             kv_width = int(geometry.num_kv_heads) * int(geometry.head_dim)
             kv = runner._kv[index]
+            base = int(runner._kv_base[index]) if runner._kv else 0
+            # The frozen shape addresses cache slots ``[0, bucket.end - base)``;
+            # everything at or above the live slot is either stale-but-finite
+            # (the mask drops it) or unwritten (a NaN would poison the
+            # reduction), so zero it once per capture.
+            first_pending = int(runner.position) + 1 - base
+            end_slot = bucket.end - base
+            if first_pending >= end_slot:
+                continue
             slot_bytes = kv_width * 2  # one row of BF16
             offset = first_pending * slot_bytes
-            nbytes = (bucket.end - first_pending) * slot_bytes
+            nbytes = (end_slot - first_pending) * slot_bytes
             runtime.memset_async(int(kv.key_cache) + offset, 0, nbytes, self._stream)
             runtime.memset_async(int(kv.value_cache) + offset, 0, nbytes, self._stream)
 
@@ -543,7 +681,7 @@ class Gemma4DecodeGraphSession:
 
         runtime = get_hip_runtime()
         for append in self._appends:
-            dst = append.cache_base + int(position) * append.kv_width * 2
+            dst = append.cache_base + (int(position) - append.base) * append.kv_width * 2
             runtime.graph_exec_memcpy_node_set_1d(
                 self._exec,
                 append.node,

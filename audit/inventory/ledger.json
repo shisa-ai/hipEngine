@@ -40,7 +40,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 44,
+        "age_days": 46,
         "body_chars": 12949
       },
       "signals": [
@@ -70,7 +70,7 @@
         ]
       },
       "id": "ledger/2026-08-21-codebase-simplification-review-efc4d27f9131",
-      "evidence_hash": "249997077927"
+      "evidence_hash": "37dac48f4711"
     },
     {
       "kind": "ledger",
@@ -82,7 +82,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 39,
+        "age_days": 41,
         "body_chars": 540
       },
       "signals": [
@@ -103,7 +103,7 @@
         ]
       },
       "id": "ledger/2026-08-26-speculative-mtp-default-capability-migr-73a76cd9e086",
-      "evidence_hash": "df79e050d070"
+      "evidence_hash": "0c5fa456b755"
     },
     {
       "kind": "ledger",
@@ -124,7 +124,7 @@
           "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 39,
+        "age_days": 41,
         "body_chars": 4371
       },
       "signals": [
@@ -149,7 +149,7 @@
         ]
       },
       "id": "ledger/2026-08-26-speculative-mtp-default-capability-migr-a4adf7edace0",
-      "evidence_hash": "6ec7b67ef141"
+      "evidence_hash": "9ce9bf6aeb07"
     },
     {
       "kind": "ledger",
@@ -161,7 +161,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 551
       },
       "signals": [
@@ -182,7 +182,7 @@
         ]
       },
       "id": "ledger/2026-08-27-automatic-realized-singleton-intent-sea-c8e4141d87b5",
-      "evidence_hash": "cd4335359076"
+      "evidence_hash": "491f4dd46b06"
     },
     {
       "kind": "ledger",
@@ -196,7 +196,7 @@
           "HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION"
         ],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 275
       },
       "signals": [
@@ -217,7 +217,7 @@
         ]
       },
       "id": "ledger/2026-08-27-qwen4exp-batched-qsa-selection-bisectio-9def8c3022bf",
-      "evidence_hash": "92dedb321b48"
+      "evidence_hash": "aa04e2b622f5"
     },
     {
       "kind": "ledger",
@@ -229,7 +229,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 735
       },
       "signals": [
@@ -248,7 +248,7 @@
         ]
       },
       "id": "ledger/2026-08-27-qwen4exp-bounded-chunked-prefill-86573363c651",
-      "evidence_hash": "3850f74f53a3"
+      "evidence_hash": "47ea616421f9"
     },
     {
       "kind": "ledger",
@@ -263,7 +263,7 @@
           "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"
         ],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 512
       },
       "signals": [
@@ -286,7 +286,7 @@
         ]
       },
       "id": "ledger/2026-08-27-qwen4exp-exact-chunked-prefill-bisectio-817556b47725",
-      "evidence_hash": "8e02a387ea16"
+      "evidence_hash": "e19bf7fb0a09"
     },
     {
       "kind": "ledger",
@@ -301,7 +301,7 @@
           "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL"
         ],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 374
       },
       "signals": [
@@ -323,7 +323,7 @@
         ]
       },
       "id": "ledger/2026-08-27-qwen4exp-exact-grouped-q4-k-bisection-e74e9803cb6a",
-      "evidence_hash": "a63f5ab9a8c3"
+      "evidence_hash": "436653314890"
     },
     {
       "kind": "ledger",
@@ -337,7 +337,7 @@
           "HIPENGINE_QWEN4_EXP_Q4_OUT4"
         ],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 219
       },
       "signals": [
@@ -359,7 +359,7 @@
         ]
       },
       "id": "ledger/2026-08-27-qwen4exp-exact-grouped-q4-k-output-batc-7c1035a1f75a",
-      "evidence_hash": "ec05222a6ea0"
+      "evidence_hash": "2ab041690ba9"
     },
     {
       "kind": "ledger",
@@ -373,7 +373,7 @@
           "HIPENGINE_QWEN4_EXP_Q5_1_OUT8"
         ],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 224
       },
       "signals": [
@@ -395,7 +395,7 @@
         ]
       },
       "id": "ledger/2026-08-27-qwen4exp-exact-grouped-q5-1-output-batc-9d5c9618dfb4",
-      "evidence_hash": "e956ba5deb57"
+      "evidence_hash": "7bd36c2ee5bb"
     },
     {
       "kind": "ledger",
@@ -415,7 +415,7 @@
           "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA"
         ],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 1663
       },
       "signals": [],
@@ -440,7 +440,7 @@
         ]
       },
       "id": "ledger/2026-08-27-qwen4exp-grouped-prefill-performance-ca-2f17981783e8",
-      "evidence_hash": "bdff1049bc4f"
+      "evidence_hash": "8ff96eb97507"
     },
     {
       "kind": "ledger",
@@ -454,7 +454,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 716
       },
       "signals": [],
@@ -474,7 +474,7 @@
         ]
       },
       "id": "ledger/2026-08-27-qwen4exp-scalable-device-top-512-select-e767c1a20935",
-      "evidence_hash": "21a49f951130"
+      "evidence_hash": "9e0c9b971d1d"
     },
     {
       "kind": "ledger",
@@ -488,7 +488,7 @@
           "HIPENGINE_QWEN4_EXP_QSA_WAVE32"
         ],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 295
       },
       "signals": [
@@ -510,7 +510,7 @@
         ]
       },
       "id": "ledger/2026-08-27-qwen4exp-wave32-h128-sparse-attention-b-f73716c8886e",
-      "evidence_hash": "633deba15087"
+      "evidence_hash": "eb5d00425b83"
     },
     {
       "kind": "ledger",
@@ -524,7 +524,7 @@
           "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE"
         ],
         "flags_unread": [],
-        "age_days": 37,
+        "age_days": 39,
         "body_chars": 576
       },
       "signals": [
@@ -545,7 +545,7 @@
         ]
       },
       "id": "ledger/2026-08-28-qwen3-8-production-verifier-q4-selector-76353945546a",
-      "evidence_hash": "01503246041b"
+      "evidence_hash": "e6111f97807c"
     },
     {
       "kind": "ledger",
@@ -557,7 +557,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 37,
+        "age_days": 39,
         "body_chars": 631
       },
       "signals": [
@@ -576,7 +576,7 @@
         ]
       },
       "id": "ledger/2026-08-28-qwen4exp-bounded-general-multimodal-468f7c3394c2",
-      "evidence_hash": "31af8285e904"
+      "evidence_hash": "b460da664c0f"
     },
     {
       "kind": "ledger",
@@ -592,7 +592,7 @@
           "HIPENGINE_QWEN4_EXP_RAW_VARIANT"
         ],
         "flags_unread": [],
-        "age_days": 37,
+        "age_days": 39,
         "body_chars": 726
       },
       "signals": [
@@ -615,7 +615,7 @@
         ]
       },
       "id": "ledger/2026-08-28-qwen4exp-exact-raw-q8-prefill-tiling-bb2fa4d2cd49",
-      "evidence_hash": "585d650d87a7"
+      "evidence_hash": "9cc2322b9fc9"
     },
     {
       "kind": "ledger",
@@ -627,7 +627,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 37,
+        "age_days": 39,
         "body_chars": 617
       },
       "signals": [
@@ -646,7 +646,7 @@
         ]
       },
       "id": "ledger/2026-08-28-qwen4exp-native-c2-runner-pool-7918fab64901",
-      "evidence_hash": "bb327236ee49"
+      "evidence_hash": "1462b0c64bc4"
     },
     {
       "kind": "ledger",
@@ -667,7 +667,7 @@
           "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
         ],
         "flags_unread": [],
-        "age_days": 36,
+        "age_days": 38,
         "body_chars": 1545
       },
       "signals": [
@@ -694,7 +694,7 @@
         ]
       },
       "id": "ledger/2026-08-29-qwen4exp-late-layer-production-prefill-9b22818ae78b",
-      "evidence_hash": "44c2fc314957"
+      "evidence_hash": "df9d8610da74"
     },
     {
       "kind": "ledger",
@@ -708,7 +708,7 @@
           "HIPENGINE_QWEN4_EXP_MOE_GRAPH"
         ],
         "flags_unread": [],
-        "age_days": 36,
+        "age_days": 38,
         "body_chars": 281
       },
       "signals": [
@@ -729,7 +729,7 @@
         ]
       },
       "id": "ledger/2026-08-29-qwen4exp-per-layer-moe-graphs-5d49361736b6",
-      "evidence_hash": "1af43a30150f"
+      "evidence_hash": "50b70b8eff0d"
     },
     {
       "kind": "ledger",
@@ -746,7 +746,7 @@
           "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA"
         ],
         "flags_unread": [],
-        "age_days": 35,
+        "age_days": 37,
         "body_chars": 1471
       },
       "signals": [],
@@ -768,7 +768,7 @@
         ]
       },
       "id": "ledger/2026-08-30-qwen4exp-p1-device-driven-grouped-q8-0-99a3b1834707",
-      "evidence_hash": "92955a80d4ff"
+      "evidence_hash": "8a7997149b20"
     },
     {
       "kind": "ledger",
@@ -782,7 +782,7 @@
           "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 751
       },
       "signals": [
@@ -802,7 +802,7 @@
         ]
       },
       "id": "ledger/2026-08-31-qwen4exp-p1-layer-2-grouped-q5-k-5bf1f4b17ac9",
-      "evidence_hash": "8186d49bd6ba"
+      "evidence_hash": "aac6c6beef1c"
     },
     {
       "kind": "ledger",
@@ -814,7 +814,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 446
       },
       "signals": [
@@ -834,7 +834,7 @@
         ]
       },
       "id": "ledger/2026-08-31-qwen4exp-p2-exact-grouped-scheduling-sc-94a66595ddcd",
-      "evidence_hash": "b4372ab93268"
+      "evidence_hash": "8dfc3788c97f"
     },
     {
       "kind": "ledger",
@@ -848,7 +848,7 @@
           "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"
         ],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 524
       },
       "signals": [
@@ -869,7 +869,7 @@
         ]
       },
       "id": "ledger/2026-08-31-qwen4exp-p3-q8-mmq-attention-gate-scope-5330f1e84e99",
-      "evidence_hash": "4effe323c849"
+      "evidence_hash": "9b4178e754b1"
     },
     {
       "kind": "ledger",
@@ -883,7 +883,7 @@
           "HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER"
         ],
         "flags_unread": [],
-        "age_days": 33,
+        "age_days": 35,
         "body_chars": 390
       },
       "signals": [
@@ -906,7 +906,7 @@
         ]
       },
       "id": "ledger/2026-09-01-gfx1100-fused-packed-state-transfer-rol-867702dded21",
-      "evidence_hash": "41472ea9c158"
+      "evidence_hash": "757fe8dc5e1c"
     },
     {
       "kind": "ledger",
@@ -920,7 +920,7 @@
           "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6"
         ],
         "flags_unread": [],
-        "age_days": 33,
+        "age_days": 35,
         "body_chars": 289
       },
       "signals": [
@@ -943,7 +943,7 @@
         ]
       },
       "id": "ledger/2026-09-01-gfx1100-grouped-q4-rows6-pair-seam-roll-06cff9e69aad",
-      "evidence_hash": "4214143da36e"
+      "evidence_hash": "050133a0b86a"
     },
     {
       "kind": "ledger",
@@ -957,7 +957,7 @@
           "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6"
         ],
         "flags_unread": [],
-        "age_days": 33,
+        "age_days": 35,
         "body_chars": 314
       },
       "signals": [
@@ -978,7 +978,7 @@
         ]
       },
       "id": "ledger/2026-09-01-gfx1100-grouped-q4-rows6-rollback-close-01ba0df50fbf",
-      "evidence_hash": "e19be912aff9"
+      "evidence_hash": "a9827ef03494"
     },
     {
       "kind": "ledger",
@@ -992,7 +992,7 @@
           "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6"
         ],
         "flags_unread": [],
-        "age_days": 33,
+        "age_days": 35,
         "body_chars": 271
       },
       "signals": [
@@ -1013,7 +1013,7 @@
         ]
       },
       "id": "ledger/2026-09-01-gfx1100-grouped-q5-rows6-rollback-close-d1a8119f328b",
-      "evidence_hash": "c82bbe0bbb5f"
+      "evidence_hash": "fe497e0619d9"
     },
     {
       "kind": "ledger",
@@ -1027,7 +1027,7 @@
           "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES"
         ],
         "flags_unread": [],
-        "age_days": 33,
+        "age_days": 35,
         "body_chars": 287
       },
       "signals": [
@@ -1049,7 +1049,7 @@
         ]
       },
       "id": "ledger/2026-09-01-gfx1100-grouped-q6-mixed-rowtile-rollba-29898fbb6fd8",
-      "evidence_hash": "d513202746d8"
+      "evidence_hash": "bb8bd9d8a33a"
     },
     {
       "kind": "ledger",
@@ -1064,7 +1064,7 @@
           "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2"
         ],
         "flags_unread": [],
-        "age_days": 33,
+        "age_days": 35,
         "body_chars": 799
       },
       "signals": [
@@ -1087,7 +1087,7 @@
         ]
       },
       "id": "ledger/2026-09-01-gfx1100-q4-row6-two-wave-screen-closed-8af20647670e",
-      "evidence_hash": "c3d847749d87"
+      "evidence_hash": "567924a9a390"
     },
     {
       "kind": "ledger",
@@ -1101,7 +1101,7 @@
           "HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE"
         ],
         "flags_unread": [],
-        "age_days": 33,
+        "age_days": 35,
         "body_chars": 457
       },
       "signals": [
@@ -1123,7 +1123,7 @@
         ]
       },
       "id": "ledger/2026-09-01-gfx1100-segmented-gdn-wave-reduction-cl-c26a89cbbb41",
-      "evidence_hash": "d8ca2a774bc6"
+      "evidence_hash": "61c2a4d326c5"
     },
     {
       "kind": "ledger",
@@ -1137,7 +1137,7 @@
           "HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4"
         ],
         "flags_unread": [],
-        "age_days": 33,
+        "age_days": 35,
         "body_chars": 1015
       },
       "signals": [
@@ -1159,7 +1159,7 @@
         ]
       },
       "id": "ledger/2026-09-01-w1-wide-q6-shared-weight-candidate-cont-76e79b1cd276",
-      "evidence_hash": "707ab1cf31ec"
+      "evidence_hash": "e79c1f2d6612"
     },
     {
       "kind": "ledger",
@@ -1174,7 +1174,7 @@
           "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 1674
       },
       "signals": [
@@ -1196,7 +1196,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-c8-adaptive-source-q5-mmq-close-c4c3a2006945",
-      "evidence_hash": "397ff92e1f50"
+      "evidence_hash": "4879f3cdf9dd"
     },
     {
       "kind": "ledger",
@@ -1210,7 +1210,7 @@
           "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 786
       },
       "signals": [
@@ -1230,7 +1230,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-c8-raw-q5-mmq-closed-ec691ddeb139",
-      "evidence_hash": "4cb465f0fee3"
+      "evidence_hash": "66a9babd2750"
     },
     {
       "kind": "ledger",
@@ -1244,7 +1244,7 @@
           "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 596
       },
       "signals": [
@@ -1267,7 +1267,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-direct-resident-verifier-linear-c50fd8ddc5e7",
-      "evidence_hash": "8ba68c20aea0"
+      "evidence_hash": "91d979cbfecf"
     },
     {
       "kind": "ledger",
@@ -1281,7 +1281,7 @@
           "HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 559
       },
       "signals": [
@@ -1303,7 +1303,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-exact-physical-c7-target-rows-c-53b5c8a463b9",
-      "evidence_hash": "8db4c36258e1"
+      "evidence_hash": "e3f9fb3ba79e"
     },
     {
       "kind": "ledger",
@@ -1317,7 +1317,7 @@
           "HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 508
       },
       "signals": [
@@ -1340,7 +1340,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-fused-q4-row32-exact-c8-target-69c055334b82",
-      "evidence_hash": "6d56ae8c7bcf"
+      "evidence_hash": "9bdeba11aef2"
     },
     {
       "kind": "ledger",
@@ -1354,7 +1354,7 @@
           "HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 489
       },
       "signals": [
@@ -1374,7 +1374,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-grouped-q4-r8-at-active-c5-c6-c-586949371cad",
-      "evidence_hash": "9a88eb17cea2"
+      "evidence_hash": "dacf42ec6f6a"
     },
     {
       "kind": "ledger",
@@ -1388,7 +1388,7 @@
           "HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 302
       },
       "signals": [
@@ -1408,7 +1408,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-grouped-q5-r8-c8-rollback-open-6e8e890a7188",
-      "evidence_hash": "236a7ce7494c"
+      "evidence_hash": "81d5a97e6dc2"
     },
     {
       "kind": "ledger",
@@ -1426,7 +1426,7 @@
         "flags_unread": [
           "HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH"
         ],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 498
       },
       "signals": [
@@ -1451,7 +1451,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-packed-verifier-model-graph-clo-192c43906ea3",
-      "evidence_hash": "55bf3e9ce7c8"
+      "evidence_hash": "9395b458db98"
     },
     {
       "kind": "ledger",
@@ -1465,7 +1465,7 @@
           "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 495
       },
       "signals": [
@@ -1488,7 +1488,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-periodic-strict-fused-q4-r28-ro-631eb2b38482",
-      "evidence_hash": "3a427432bed9"
+      "evidence_hash": "ce9f7811b076"
     },
     {
       "kind": "ledger",
@@ -1502,7 +1502,7 @@
           "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 303
       },
       "signals": [
@@ -1523,7 +1523,7 @@
         ]
       },
       "id": "ledger/2026-09-02-gfx1100-planar-q6-root-r8-rollback-clos-168f311a30c9",
-      "evidence_hash": "edfff1c9fa72"
+      "evidence_hash": "def6d007db85"
     },
     {
       "kind": "ledger",
@@ -1537,7 +1537,7 @@
           "HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 573
       },
       "signals": [
@@ -1558,7 +1558,7 @@
         ]
       },
       "id": "ledger/2026-09-02-nextn-accepted-tail-k-v-only-integratio-7679b92e4af6",
-      "evidence_hash": "c39d8cd22274"
+      "evidence_hash": "702ef05b95b0"
     },
     {
       "kind": "ledger",
@@ -1574,7 +1574,7 @@
         "flags_unread": [
           "HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT"
         ],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 755
       },
       "signals": [
@@ -1598,7 +1598,7 @@
         ]
       },
       "id": "ledger/2026-09-02-qwen4exp-p11-compact-draft-output-selec-5424ca2d972c",
-      "evidence_hash": "41c74ba57848"
+      "evidence_hash": "490b69f48f8a"
     },
     {
       "kind": "ledger",
@@ -1612,7 +1612,7 @@
           "HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 605
       },
       "signals": [
@@ -1632,7 +1632,7 @@
         ]
       },
       "id": "ledger/2026-09-02-qwen4exp-p9-load-drop-behind-4fd7ea0e1614",
-      "evidence_hash": "8a1d30818393"
+      "evidence_hash": "bd5b67924f19"
     },
     {
       "kind": "ledger",
@@ -1650,7 +1650,7 @@
           "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
         ],
         "flags_unread": [],
-        "age_days": 30,
+        "age_days": 32,
         "body_chars": 1488
       },
       "signals": [
@@ -1674,7 +1674,7 @@
         ]
       },
       "id": "ledger/2026-09-04-qwen4exp-pf-1-fork-b-grouped-selected-d-88effb315b3e",
-      "evidence_hash": "7d0338368417"
+      "evidence_hash": "959aa0619e14"
     },
     {
       "kind": "ledger",
@@ -1690,7 +1690,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 30,
+        "age_days": 32,
         "body_chars": 1164
       },
       "signals": [
@@ -1716,7 +1716,7 @@
         ]
       },
       "id": "ledger/2026-09-04-qwen4exp-pf-5-gdn-w32-prefill-variant-r-c91e31104f73",
-      "evidence_hash": "ca8a49e0f6f0"
+      "evidence_hash": "fe9fa2573954"
     },
     {
       "kind": "ledger",
@@ -1736,7 +1736,7 @@
           "HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 29,
+        "age_days": 31,
         "body_chars": 819
       },
       "signals": [
@@ -1764,7 +1764,7 @@
         ]
       },
       "id": "ledger/2026-09-05-qwen4exp-pf-5-gdn-tile-16-prefill-opt-o-9639b8df5969",
-      "evidence_hash": "5937960196da"
+      "evidence_hash": "03e9157acd39"
     },
     {
       "kind": "ledger",
@@ -1776,7 +1776,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 28,
+        "age_days": 30,
         "body_chars": 0
       },
       "signals": [
@@ -1798,7 +1798,7 @@
         ]
       },
       "id": "ledger/2026-09-06-gguf-file-type-stamp-switches-open-f6d10d1f7f1a",
-      "evidence_hash": "626171b0a1a5"
+      "evidence_hash": "18bc03200945"
     },
     {
       "kind": "ledger",
@@ -1812,7 +1812,7 @@
           "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
         ],
         "flags_unread": [],
-        "age_days": 28,
+        "age_days": 30,
         "body_chars": 1560
       },
       "signals": [
@@ -1831,7 +1831,7 @@
         ]
       },
       "id": "ledger/2026-09-06-hipengine-mtp2-screen-unqualified-cells-16c84d2cda79",
-      "evidence_hash": "fc834a2a49f8"
+      "evidence_hash": "46f2a39c732f"
     },
     {
       "kind": "ledger",
@@ -1843,7 +1843,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 28,
+        "age_days": 30,
         "body_chars": 1370
       },
       "signals": [
@@ -1867,7 +1867,7 @@
         ]
       },
       "id": "ledger/2026-09-06-qwen3-5-family-xml-tool-call-surface-op-b4d0c3a8604f",
-      "evidence_hash": "fcfa5c8ee491"
+      "evidence_hash": "82b7a056aacc"
     },
     {
       "kind": "ledger",
@@ -1879,7 +1879,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 27,
+        "age_days": 29,
         "body_chars": 742
       },
       "signals": [
@@ -1899,7 +1899,7 @@
         ]
       },
       "id": "ledger/2026-09-07-dms-codec-evaluation-bootstrap-open-75b3877fdb9a",
-      "evidence_hash": "41dae9265816"
+      "evidence_hash": "49676e41bf0b"
     },
     {
       "kind": "ledger",
@@ -1915,7 +1915,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 27,
+        "age_days": 29,
         "body_chars": 508
       },
       "signals": [
@@ -1938,7 +1938,7 @@
         ]
       },
       "id": "ledger/2026-09-07-dms-int8-device-correctness-path-open-48b096c84521",
-      "evidence_hash": "62eea750fccc"
+      "evidence_hash": "e0531ca250ee"
     },
     {
       "kind": "ledger",
@@ -1952,7 +1952,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 27,
+        "age_days": 29,
         "body_chars": 1127
       },
       "signals": [],
@@ -1973,7 +1973,7 @@
         ]
       },
       "id": "ledger/2026-09-07-dual-c1-target-route-dispatch-singleton-e7bf54797b21",
-      "evidence_hash": "eafec29245d9"
+      "evidence_hash": "06e1a7ec5b56"
     },
     {
       "kind": "ledger",
@@ -1985,7 +1985,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 27,
+        "age_days": 29,
         "body_chars": 1036
       },
       "signals": [
@@ -2005,7 +2005,7 @@
         ]
       },
       "id": "ledger/2026-09-07-gguf-native-execution-authorization-bou-2cb7eb63beb4",
-      "evidence_hash": "796e268c3594"
+      "evidence_hash": "9685eeb8ef14"
     },
     {
       "kind": "ledger",
@@ -2017,7 +2017,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 27,
+        "age_days": 29,
         "body_chars": 1103
       },
       "signals": [
@@ -2036,7 +2036,7 @@
         ]
       },
       "id": "ledger/2026-09-07-ud-cleanup-reduce-authorization-surface-a5bac11f200d",
-      "evidence_hash": "a4f06cfa566f"
+      "evidence_hash": "0fbe73a51589"
     },
     {
       "kind": "ledger",
@@ -2053,7 +2053,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 27,
+        "age_days": 29,
         "body_chars": 1217
       },
       "signals": [
@@ -2079,7 +2079,7 @@
         ]
       },
       "id": "ledger/2026-09-07-ud-u1-f3-raw-rank-3-q4-k-selected-exper-33ab2743cef5",
-      "evidence_hash": "80535de3e506"
+      "evidence_hash": "5308648a1e66"
     },
     {
       "kind": "ledger",
@@ -2093,7 +2093,7 @@
           "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
         ],
         "flags_unread": [],
-        "age_days": 27,
+        "age_days": 29,
         "body_chars": 927
       },
       "signals": [],
@@ -2112,7 +2112,7 @@
         ]
       },
       "id": "ledger/2026-09-07-w7900-packed-c1-target-qualification-op-4a7b3644a14f",
-      "evidence_hash": "268f8f72ec34"
+      "evidence_hash": "7f69e55c2613"
     },
     {
       "kind": "ledger",
@@ -2124,7 +2124,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 26,
+        "age_days": 28,
         "body_chars": 1453
       },
       "signals": [
@@ -2142,7 +2142,7 @@
         ]
       },
       "id": "ledger/2026-09-08-native-c1-context-admission-e81db83e8387",
-      "evidence_hash": "aacc17562a99"
+      "evidence_hash": "ac3c63376dc8"
     },
     {
       "kind": "ledger",
@@ -2154,7 +2154,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 25,
+        "age_days": 27,
         "body_chars": 1944
       },
       "signals": [
@@ -2177,7 +2177,7 @@
         ]
       },
       "id": "ledger/2026-09-09-dense-iq-mmq-four-quant-policy-retained-7fbf3ba573c4",
-      "evidence_hash": "7b79469b9a06"
+      "evidence_hash": "517ea15e4f10"
     },
     {
       "kind": "ledger",
@@ -2192,7 +2192,7 @@
           "HIPENGINE_GGUF_INT8_PREFILL_KERNEL"
         ],
         "flags_unread": [],
-        "age_days": 25,
+        "age_days": 27,
         "body_chars": 2500
       },
       "signals": [
@@ -2221,7 +2221,7 @@
         ]
       },
       "id": "ledger/2026-09-09-gguf-direct-int8-prefill-attention-spee-7be98833dcc4",
-      "evidence_hash": "511fdca37035"
+      "evidence_hash": "bd27d7768e3e"
     },
     {
       "kind": "ledger",
@@ -2236,7 +2236,7 @@
           "HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS"
         ],
         "flags_unread": [],
-        "age_days": 25,
+        "age_days": 27,
         "body_chars": 882
       },
       "signals": [
@@ -2263,7 +2263,7 @@
         ]
       },
       "id": "ledger/2026-09-09-int8-layer-outer-hidden-plane-alias-rou-becc1b11f792",
-      "evidence_hash": "eaf44082eaae"
+      "evidence_hash": "5e19bf78af6c"
     },
     {
       "kind": "ledger",
@@ -2282,7 +2282,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 25,
+        "age_days": 27,
         "body_chars": 2123
       },
       "signals": [
@@ -2304,7 +2304,7 @@
         ]
       },
       "id": "ledger/2026-09-09-w4a16-iq-prefill-registered-unrouted-64e7d166ef52",
-      "evidence_hash": "5e1914897383"
+      "evidence_hash": "492c5056f76d"
     },
     {
       "kind": "ledger",
@@ -2316,7 +2316,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 24,
+        "age_days": 26,
         "body_chars": 648
       },
       "signals": [
@@ -2339,7 +2339,7 @@
         ]
       },
       "id": "ledger/2026-09-10-timesfm-kernel-families-lack-four-axis-4876f364f3e6",
-      "evidence_hash": "5e369ab42ec9"
+      "evidence_hash": "119d26460b9a"
     },
     {
       "kind": "ledger",
@@ -2358,7 +2358,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 23,
+        "age_days": 25,
         "body_chars": 1954
       },
       "signals": [
@@ -2386,7 +2386,7 @@
         ]
       },
       "id": "ledger/2026-09-11-committed-profiler-traces-and-oversized-f322a12d4a0c",
-      "evidence_hash": "180471eae69c"
+      "evidence_hash": "745febd7d1d2"
     },
     {
       "kind": "ledger",
@@ -2398,7 +2398,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 23,
+        "age_days": 25,
         "body_chars": 1124
       },
       "signals": [
@@ -2419,7 +2419,7 @@
         ]
       },
       "id": "ledger/2026-09-11-mtp-verify-journal-allocation-cost-on-g-b0456d8a66f2",
-      "evidence_hash": "12723d7706d4"
+      "evidence_hash": "4f3fc8295c1c"
     },
     {
       "kind": "ledger",
@@ -2434,7 +2434,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 23,
+        "age_days": 25,
         "body_chars": 721
       },
       "signals": [],
@@ -2456,7 +2456,7 @@
         ]
       },
       "id": "ledger/2026-09-11-surya-hip-runtime-direct-backend-import-62f98c9ab2c9",
-      "evidence_hash": "f04a7a6d2872"
+      "evidence_hash": "df6627ba1de2"
     },
     {
       "kind": "ledger",
@@ -2471,7 +2471,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 23,
+        "age_days": 25,
         "body_chars": 2167
       },
       "signals": [
@@ -2495,7 +2495,7 @@
         ]
       },
       "id": "ledger/2026-09-11-surya-kv-write-and-decode-dense-offset-2345037ce2bc",
-      "evidence_hash": "09bbcb7663c4"
+      "evidence_hash": "94e64194f9f4"
     },
     {
       "kind": "ledger",
@@ -2511,7 +2511,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 23,
+        "age_days": 25,
         "body_chars": 1675
       },
       "signals": [
@@ -2536,7 +2536,7 @@
         ]
       },
       "id": "ledger/2026-09-11-surya-vision-attention-quadratic-score-314f55f7544b",
-      "evidence_hash": "0a35e4728b31"
+      "evidence_hash": "35ccef12eb6b"
     },
     {
       "kind": "ledger",
@@ -2551,7 +2551,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 23,
+        "age_days": 25,
         "body_chars": 1465
       },
       "signals": [],
@@ -2570,7 +2570,7 @@
         ]
       },
       "id": "ledger/2026-09-11-u6-ud-mtp-scope-pin-is-withheld-cd506dd65ff9",
-      "evidence_hash": "289d86f26e7e"
+      "evidence_hash": "a6b14e193370"
     },
     {
       "kind": "ledger",
@@ -2586,7 +2586,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 1241
       },
       "signals": [],
@@ -2608,7 +2608,7 @@
         ]
       },
       "id": "ledger/2026-09-12-ar-decode-mode-eager-retained-as-a-diag-b172b2d0af2c",
-      "evidence_hash": "342158f2206e"
+      "evidence_hash": "b21b39ea5ba8"
     },
     {
       "kind": "ledger",
@@ -2628,7 +2628,7 @@
           "HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN"
         ],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 2439
       },
       "signals": [],
@@ -2652,7 +2652,7 @@
         ]
       },
       "id": "ledger/2026-09-12-gguf-automatic-context-sizing-knobs-5dcc0d79e76d",
-      "evidence_hash": "21241a1f725e"
+      "evidence_hash": "7218bd3f9980"
     },
     {
       "kind": "ledger",
@@ -2674,7 +2674,7 @@
           "HIPENGINE_KV_STORAGE"
         ],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 2251
       },
       "signals": [
@@ -2704,7 +2704,7 @@
         ]
       },
       "id": "ledger/2026-09-12-gguf-serving-defaults-int8-kv-fp32-scal-eabb179881a5",
-      "evidence_hash": "56b2e7c31393"
+      "evidence_hash": "8cef9d956cfe"
     },
     {
       "kind": "ledger",
@@ -2718,7 +2718,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 903
       },
       "signals": [
@@ -2739,7 +2739,7 @@
         ]
       },
       "id": "ledger/2026-09-12-mtp-scope-grant-on-the-c1-c8-server-ben-63209c868220",
-      "evidence_hash": "4a8014fd4f3d"
+      "evidence_hash": "a4336697c871"
     },
     {
       "kind": "ledger",
@@ -2751,7 +2751,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 577
       },
       "signals": [
@@ -2771,7 +2771,7 @@
         ]
       },
       "id": "ledger/2026-09-12-only-surya-reports-generationoutput-pro-413ba5474626",
-      "evidence_hash": "bfcfb6461500"
+      "evidence_hash": "5ec235faf0ff"
     },
     {
       "kind": "ledger",
@@ -2786,7 +2786,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 1717
       },
       "signals": [
@@ -2810,7 +2810,7 @@
         ]
       },
       "id": "ledger/2026-09-12-paro-paged-attention-backend-pin-remova-f617bf161086",
-      "evidence_hash": "4b22e95f73f4"
+      "evidence_hash": "3d58966a254b"
     },
     {
       "kind": "ledger",
@@ -2825,7 +2825,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 826
       },
       "signals": [
@@ -2849,7 +2849,7 @@
         ]
       },
       "id": "ledger/2026-09-12-surya-a4-page-has-no-torch-fp32-referen-8c1c47a29825",
-      "evidence_hash": "32fbd3c39e0f"
+      "evidence_hash": "09a00258c962"
     },
     {
       "kind": "ledger",
@@ -2868,7 +2868,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 1615
       },
       "signals": [
@@ -2897,7 +2897,7 @@
         ]
       },
       "id": "ledger/2026-09-12-surya-bench-suite-pages-clip-their-own-556acefa99d4",
-      "evidence_hash": "8a490a075769"
+      "evidence_hash": "6cc934ca3315"
     },
     {
       "kind": "ledger",
@@ -2909,7 +2909,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 806
       },
       "signals": [
@@ -2932,7 +2932,7 @@
         ]
       },
       "id": "ledger/2026-09-12-surya-prefill-tiles-still-compute-the-m-4ef8a81679c1",
-      "evidence_hash": "cb3329a45baf"
+      "evidence_hash": "20f5896d16b1"
     },
     {
       "kind": "ledger",
@@ -2947,7 +2947,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 1570
       },
       "signals": [
@@ -2972,7 +2972,7 @@
         ]
       },
       "id": "ledger/2026-09-12-surya-text-prefill-quadratic-causal-sco-9cb739b9ec93",
-      "evidence_hash": "f8f55c8efa03"
+      "evidence_hash": "e181b8f23280"
     },
     {
       "kind": "ledger",
@@ -2986,7 +2986,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 901
       },
       "signals": [
@@ -3008,7 +3008,7 @@
         ]
       },
       "id": "ledger/2026-09-13-generation-registry-clears-cannot-be-re-2db3a4c3f069",
-      "evidence_hash": "9840506df369"
+      "evidence_hash": "463880ec2cdb"
     },
     {
       "kind": "ledger",
@@ -3020,7 +3020,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 1056
       },
       "signals": [
@@ -3043,7 +3043,7 @@
         ]
       },
       "id": "ledger/2026-09-13-q5-k-gate-up-wmma-prefill-pair-now-unre-b84b21d39c06",
-      "evidence_hash": "0f8245b6eeb7"
+      "evidence_hash": "d8890edd3db4"
     },
     {
       "kind": "ledger",
@@ -3059,7 +3059,7 @@
           "HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE"
         ],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 879
       },
       "signals": [
@@ -3084,7 +3084,7 @@
         ]
       },
       "id": "ledger/2026-09-13-q5t16-single-wave-verifier-rowtile-env-9e968a5202e2",
-      "evidence_hash": "1b9f57afe7b4"
+      "evidence_hash": "793d9c8c0961"
     },
     {
       "kind": "ledger",
@@ -3099,7 +3099,7 @@
           "HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES"
         ],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 956
       },
       "signals": [
@@ -3124,7 +3124,7 @@
         ]
       },
       "id": "ledger/2026-09-13-q8t16-shape-explicit-rowtile-admission-4d50d25a660a",
-      "evidence_hash": "611d00c1836a"
+      "evidence_hash": "ba292a647339"
     },
     {
       "kind": "ledger",
@@ -3140,7 +3140,7 @@
           "HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120"
         ],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 1152
       },
       "signals": [
@@ -3166,7 +3166,7 @@
         ]
       },
       "id": "ledger/2026-09-13-rounded-add-rmsnorm-fixed-5120-leaf-env-a62be6e95168",
-      "evidence_hash": "4261009c8e2f"
+      "evidence_hash": "b2204488c544"
     },
     {
       "kind": "ledger",
@@ -3182,7 +3182,7 @@
           "HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN"
         ],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 802
       },
       "signals": [
@@ -3209,7 +3209,7 @@
         ]
       },
       "id": "ledger/2026-09-13-strict-dense-iq-row-slab-covers-the-pro-6b9bf0cc8996",
-      "evidence_hash": "430ef612d055"
+      "evidence_hash": "11c0ac036145"
     },
     {
       "kind": "ledger",
@@ -3232,7 +3232,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 4203
       },
       "signals": [
@@ -3263,7 +3263,7 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-attention-tile-shape-the-vision-e-12331f020659",
-      "evidence_hash": "e5e8792c147e"
+      "evidence_hash": "0ecea5e34b82"
     },
     {
       "kind": "ledger",
@@ -3277,7 +3277,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 2124
       },
       "signals": [
@@ -3300,7 +3300,7 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-decode-split-chunk-keyed-to-max-s-ca0fb84476a8",
-      "evidence_hash": "4f49c741edc6"
+      "evidence_hash": "6d65571f733b"
     },
     {
       "kind": "ledger",
@@ -3318,7 +3318,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 909
       },
       "signals": [
@@ -3345,7 +3345,7 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-lane-comparison-is-measured-one-p-e8705846b696",
-      "evidence_hash": "20a736a0d133"
+      "evidence_hash": "65753b966c4b"
     },
     {
       "kind": "ledger",
@@ -3359,7 +3359,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 2023
       },
       "signals": [
@@ -3384,7 +3384,7 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-tile-shape-4096-patch-spikes-have-8ef38fc749fa",
-      "evidence_hash": "a5f533b069c2"
+      "evidence_hash": "22cedf3f4de5"
     },
     {
       "kind": "ledger",
@@ -3396,7 +3396,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 490
       },
       "signals": [
@@ -3418,7 +3418,7 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-tile-shape-grid-divisibility-was-06a00c6437ff",
-      "evidence_hash": "2027bfff8ed9"
+      "evidence_hash": "66c919b4072b"
     },
     {
       "kind": "ledger",
@@ -3430,7 +3430,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 994
       },
       "signals": [
@@ -3453,7 +3453,7 @@
         ]
       },
       "id": "ledger/2026-09-13-surya-vision-admission-is-gpu-only-and-ae3c5257c4ef",
-      "evidence_hash": "4c82e1d15735"
+      "evidence_hash": "b90c07c57d2d"
     },
     {
       "kind": "ledger",
@@ -3468,7 +3468,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 13,
+        "age_days": 15,
         "body_chars": 1149
       },
       "signals": [],
@@ -3494,7 +3494,7 @@
         ]
       },
       "id": "ledger/a-failed-wide-startup-probe-leaves-the-process-una-48dd869443e1",
-      "evidence_hash": "ce39b002372e"
+      "evidence_hash": "a0dba9ba2887"
     },
     {
       "kind": "ledger",
@@ -3506,7 +3506,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 47,
+        "age_days": 49,
         "body_chars": 850
       },
       "signals": [
@@ -3526,7 +3526,7 @@
         ]
       },
       "id": "ledger/c2-6-guarded-idle-packed-workspace-release-api-bd7801f3e0b1",
-      "evidence_hash": "544b778e57ef"
+      "evidence_hash": "0071a23ab434"
     },
     {
       "kind": "ledger",
@@ -3538,7 +3538,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 48,
+        "age_days": 50,
         "body_chars": 961
       },
       "signals": [
@@ -3557,7 +3557,7 @@
         ]
       },
       "id": "ledger/c2-6-production-oracle-process-partition-seam-4a367de123b6",
-      "evidence_hash": "24341c9fabb5"
+      "evidence_hash": "b2364dd9025a"
     },
     {
       "kind": "ledger",
@@ -3569,7 +3569,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 30,
+        "age_days": 32,
         "body_chars": 1205
       },
       "signals": [
@@ -3591,7 +3591,7 @@
         ]
       },
       "id": "ledger/c8-direct-resident-verify-route-scope-added-2026-0-85f931783ecf",
-      "evidence_hash": "3fc84e1ebd19"
+      "evidence_hash": "a8b1d6795a62"
     },
     {
       "kind": "ledger",
@@ -3675,7 +3675,7 @@
           "HIPENGINE_GGUF_DECODE_GRAPH"
         ],
         "flags_unread": [],
-        "age_days": 73,
+        "age_days": 75,
         "body_chars": 159085
       },
       "signals": [
@@ -3861,7 +3861,7 @@
         ]
       },
       "id": "ledger/cleanup-ledger-d60f3cd4305e",
-      "evidence_hash": "6b18fc350264"
+      "evidence_hash": "554bcd498f11"
     },
     {
       "kind": "ledger",
@@ -3928,7 +3928,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 21,
+        "age_days": 23,
         "body_chars": 1273
       },
       "signals": [
@@ -3955,7 +3955,7 @@
         ]
       },
       "id": "ledger/compact-scoreboard-2-line-headroom-at-498-500-1574446b396b",
-      "evidence_hash": "e6eab64cac06"
+      "evidence_hash": "75eeaa843084"
     },
     {
       "kind": "ledger",
@@ -3967,7 +3967,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 17,
+        "age_days": 19,
         "body_chars": 2323
       },
       "signals": [
@@ -3988,7 +3988,7 @@
         ]
       },
       "id": "ledger/concurrent-prompt-activation-is-refused-instead-of-2e93a5d18f0b",
-      "evidence_hash": "367de8cbe696"
+      "evidence_hash": "21dc357a816f"
     },
     {
       "kind": "ledger",
@@ -4000,7 +4000,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 1050
       },
       "signals": [
@@ -4020,7 +4020,7 @@
         ]
       },
       "id": "ledger/dense-h5120-b4-exact-eager-mtp-seam-12d925a88545",
-      "evidence_hash": "e830b0c4fa48"
+      "evidence_hash": "32bccf6529a9"
     },
     {
       "kind": "ledger",
@@ -4032,7 +4032,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 52,
+        "age_days": 54,
         "body_chars": 1527
       },
       "signals": [
@@ -4053,7 +4053,7 @@
         ]
       },
       "id": "ledger/dense-h5120-bounded-q4-q5-q6-source-f16-rollback-s-53294ffcb6fc",
-      "evidence_hash": "7bd8dce68fd4"
+      "evidence_hash": "70c3b56de06e"
     },
     {
       "kind": "ledger",
@@ -4065,7 +4065,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 52,
+        "age_days": 54,
         "body_chars": 725
       },
       "signals": [
@@ -4086,7 +4086,7 @@
         ]
       },
       "id": "ledger/dense-h5120-exact-unequal-q4-pair-context-seam-4bd3704958cd",
-      "evidence_hash": "5c9a744b2585"
+      "evidence_hash": "937e06c16f5e"
     },
     {
       "kind": "ledger",
@@ -4100,7 +4100,7 @@
           "HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA"
         ],
         "flags_unread": [],
-        "age_days": 51,
+        "age_days": 53,
         "body_chars": 1565
       },
       "signals": [
@@ -4121,7 +4121,7 @@
         ]
       },
       "id": "ledger/dense-h5120-private-c1-decode-scratch-arena-52390d193962",
-      "evidence_hash": "89fbbd5c7a7e"
+      "evidence_hash": "5a647f01df22"
     },
     {
       "kind": "ledger",
@@ -4141,7 +4141,7 @@
           "HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG"
         ],
         "flags_unread": [],
-        "age_days": 44,
+        "age_days": 46,
         "body_chars": 4178
       },
       "signals": [
@@ -4170,7 +4170,7 @@
         ]
       },
       "id": "ledger/dense-long-split-k-multi-row-eager-verifier-row-wi-1cd6a3c6e35e",
-      "evidence_hash": "50c806529911"
+      "evidence_hash": "37dd5aa035b9"
     },
     {
       "kind": "ledger",
@@ -4184,7 +4184,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 8,
+        "age_days": 10,
         "body_chars": 1902
       },
       "signals": [],
@@ -4207,7 +4207,7 @@
         ]
       },
       "id": "ledger/dense-q8-mmq-prefill-branch-is-unreachable-behind-3cddd3893a21",
-      "evidence_hash": "206bc16e4318"
+      "evidence_hash": "6f148e2718e5"
     },
     {
       "kind": "ledger",
@@ -4219,7 +4219,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 53,
+        "age_days": 55,
         "body_chars": 933
       },
       "signals": [
@@ -4241,7 +4241,7 @@
         ]
       },
       "id": "ledger/dense-qwen3-6-bulk-prefill-mtp-native-verifier-gap-9d59ef46a7ad",
-      "evidence_hash": "bec811a276fa"
+      "evidence_hash": "bb5e2b80d35c"
     },
     {
       "kind": "ledger",
@@ -4317,7 +4317,7 @@
           "HIPENGINE_PREFIX_CACHE"
         ],
         "flags_unread": [],
-        "age_days": 14,
+        "age_days": 16,
         "body_chars": 4369
       },
       "signals": [
@@ -4346,7 +4346,7 @@
         ]
       },
       "id": "ledger/dense27b-prefix-oracle-disagreement-after-prefix-m-3d39d7f8c13b",
-      "evidence_hash": "b13cdada88eb"
+      "evidence_hash": "70c34d2f8507"
     },
     {
       "kind": "ledger",
@@ -4365,7 +4365,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 9,
+        "age_days": 11,
         "body_chars": 5986
       },
       "signals": [
@@ -4397,7 +4397,7 @@
         ]
       },
       "id": "ledger/dormant-q3-k-gate-iq4-xs-up-iq4-xs-gate-q3-k-up-iq-ca22d77d62ed",
-      "evidence_hash": "45eff0bea3ef"
+      "evidence_hash": "3e1da06e2d4a"
     },
     {
       "kind": "ledger",
@@ -4411,7 +4411,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 9,
+        "age_days": 11,
         "body_chars": 1795
       },
       "signals": [],
@@ -4434,7 +4434,7 @@
         ]
       },
       "id": "ledger/dormant-q5-t16-rows-1-dual-block-with-poisoned-var-e82c4ab9d843",
-      "evidence_hash": "e0172c361a54"
+      "evidence_hash": "535a632d4a7a"
     },
     {
       "kind": "ledger",
@@ -4452,7 +4452,7 @@
           "HIPENGINE_EXECUTION_PROFILE"
         ],
         "flags_unread": [],
-        "age_days": 22,
+        "age_days": 24,
         "body_chars": 1390
       },
       "signals": [
@@ -4473,7 +4473,7 @@
         ]
       },
       "id": "ledger/execution-profile-migration-seam-665bda3638a2",
-      "evidence_hash": "f447458deef0"
+      "evidence_hash": "c6819020cc0c"
     },
     {
       "kind": "ledger",
@@ -4552,7 +4552,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 11,
+        "age_days": 13,
         "body_chars": 1124
       },
       "signals": [],
@@ -4576,7 +4576,7 @@
         ]
       },
       "id": "ledger/forced-token-requests-skip-the-captured-graph-samp-cc96515f4d0f",
-      "evidence_hash": "3ff34e960fd3"
+      "evidence_hash": "1d7eafe60382"
     },
     {
       "kind": "ledger",
@@ -4603,7 +4603,7 @@
           "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
         ],
         "flags_unread": [],
-        "age_days": 46,
+        "age_days": 48,
         "body_chars": 5978
       },
       "signals": [
@@ -4631,7 +4631,7 @@
         ]
       },
       "id": "ledger/fp16-recurrent-state-hipengine-gguf-fp16-recurrent-07259e2e591e",
-      "evidence_hash": "155e91d566bf"
+      "evidence_hash": "06a75d07da45"
     },
     {
       "kind": "ledger",
@@ -4645,7 +4645,7 @@
           "HIPENGINE_QWEN35_NATIVE_SAMPLER"
         ],
         "flags_unread": [],
-        "age_days": 13,
+        "age_days": 15,
         "body_chars": 1631
       },
       "signals": [
@@ -4668,7 +4668,7 @@
         ]
       },
       "id": "ledger/full-vocabulary-native-sampler-fallback-and-gguf-p-3d651e7da2c1",
-      "evidence_hash": "b603c00d1507"
+      "evidence_hash": "b0d3f93d088a"
     },
     {
       "kind": "ledger",
@@ -4682,7 +4682,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 96,
+        "age_days": 98,
         "body_chars": 903
       },
       "signals": [],
@@ -4703,7 +4703,7 @@
         ]
       },
       "id": "ledger/fused-b1-block-probe-resident-fused-b1-block-direc-5e9603726e0c",
-      "evidence_hash": "e1ff72e70969"
+      "evidence_hash": "4ded5a9b3c3b"
     },
     {
       "kind": "ledger",
@@ -4758,7 +4758,7 @@
           "HIPENGINE_GEMMA4_MOE_DOWN_MMQ"
         ],
         "flags_unread": [],
-        "age_days": 1,
+        "age_days": 3,
         "body_chars": 4415
       },
       "signals": [],
@@ -4786,7 +4786,7 @@
         ]
       },
       "id": "ledger/gemma-4-expert-down-mmq-exact-automatic-default-af-37b7b38e8b35",
-      "evidence_hash": "9406c33628d3"
+      "evidence_hash": "3051e48f8afd"
     },
     {
       "kind": "ledger",
@@ -4806,7 +4806,7 @@
           "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"
         ],
         "flags_unread": [],
-        "age_days": 7,
+        "age_days": 9,
         "body_chars": 4608
       },
       "signals": [],
@@ -4835,7 +4835,7 @@
         ]
       },
       "id": "ledger/gemma-4-fused-mmq-gate-up-prefill-is-the-default-t-6220355182ae",
-      "evidence_hash": "91665e17ddbd"
+      "evidence_hash": "f925a18a9080"
     },
     {
       "kind": "ledger",
@@ -4852,7 +4852,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 7,
+        "age_days": 9,
         "body_chars": 1706
       },
       "signals": [
@@ -4877,7 +4877,7 @@
         ]
       },
       "id": "ledger/gemma-4-gate-up-split-allocation-resolved-2026-09-60ed92c0452f",
-      "evidence_hash": "12fa9a10d60a"
+      "evidence_hash": "d15fed613f2e"
     },
     {
       "kind": "ledger",
@@ -4902,7 +4902,7 @@
         "flags_unread": [
           "HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT"
         ],
-        "age_days": 6,
+        "age_days": 8,
         "body_chars": 3123
       },
       "signals": [
@@ -4935,7 +4935,7 @@
         ]
       },
       "id": "ledger/gemma-4-s-pack8-expert-layout-is-deleted-settled-a-540bbc0b2966",
-      "evidence_hash": "362169d8eefa"
+      "evidence_hash": "0ee717977b90"
     },
     {
       "kind": "ledger",
@@ -4952,7 +4952,7 @@
           "HIPENGINE_EXECUTION_PROFILE"
         ],
         "flags_unread": [],
-        "age_days": 1,
+        "age_days": 3,
         "body_chars": 1606
       },
       "signals": [],
@@ -4976,7 +4976,7 @@
         ]
       },
       "id": "ledger/gemma-4-wmma-attention-candidates-are-explicit-eva-5a4be0e92840",
-      "evidence_hash": "348e69593f55"
+      "evidence_hash": "7fc97b23ec7f"
     },
     {
       "kind": "ledger",
@@ -4994,7 +4994,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 8,
+        "age_days": 10,
         "body_chars": 1469
       },
       "signals": [],
@@ -5018,7 +5018,7 @@
         ]
       },
       "id": "ledger/gemma-attention-legacy-slice-count-abi-2026-09-26-dc0882aa5961",
-      "evidence_hash": "eac757b01264"
+      "evidence_hash": "c91d9d05ede0"
     },
     {
       "kind": "ledger",
@@ -5032,7 +5032,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 6,
+        "age_days": 8,
         "body_chars": 1608
       },
       "signals": [],
@@ -5054,7 +5054,7 @@
         ]
       },
       "id": "ledger/gemma-prefill-attention-tiled-variant-is-a-dead-ro-6da572e5d982",
-      "evidence_hash": "104959576d5e"
+      "evidence_hash": "63c03ee99db0"
     },
     {
       "kind": "ledger",
@@ -5066,7 +5066,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 48,
+        "age_days": 50,
         "body_chars": 1990
       },
       "signals": [
@@ -5086,7 +5086,7 @@
         ]
       },
       "id": "ledger/generation-1-gguf-single-backing-kv-compatibility-12b750ec83c7",
-      "evidence_hash": "99907ec6fda4"
+      "evidence_hash": "85a93d6ad8b5"
     },
     {
       "kind": "ledger",
@@ -5098,7 +5098,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 48,
+        "age_days": 50,
         "body_chars": 807
       },
       "signals": [
@@ -5118,7 +5118,7 @@
         ]
       },
       "id": "ledger/generation-1-prefill-decode-policy-compatibility-c-5e6002aa67ba",
-      "evidence_hash": "e96ebc081ede"
+      "evidence_hash": "e1c12eb62f11"
     },
     {
       "kind": "ledger",
@@ -5132,7 +5132,7 @@
           "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
         ],
         "flags_unread": [],
-        "age_days": 45,
+        "age_days": 47,
         "body_chars": 1868
       },
       "signals": [],
@@ -5150,7 +5150,7 @@
         ]
       },
       "id": "ledger/generation-2-gguf-width-selection-hardcoding-1f263ff83099",
-      "evidence_hash": "63c526513ba3"
+      "evidence_hash": "db836f53cc09"
     },
     {
       "kind": "ledger",
@@ -5164,7 +5164,7 @@
           "HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS"
         ],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 859
       },
       "signals": [
@@ -5185,7 +5185,7 @@
         ]
       },
       "id": "ledger/gfx1100-dense-specdec2-c8-physical-width-rollback-f0c4e349a45d",
-      "evidence_hash": "00c23da2ad43"
+      "evidence_hash": "605d7cace3ff"
     },
     {
       "kind": "ledger",
@@ -5199,7 +5199,7 @@
           "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE"
         ],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 895
       },
       "signals": [
@@ -5221,7 +5221,7 @@
         ]
       },
       "id": "ledger/gfx1100-fused-q4-t16-prefill-row-retile-bisection-bbf62fc3cd81",
-      "evidence_hash": "7b348f6838c3"
+      "evidence_hash": "be8e1226e49a"
     },
     {
       "kind": "ledger",
@@ -5235,7 +5235,7 @@
           "HIPENGINE_PREFILL_DECODE_POLICY"
         ],
         "flags_unread": [],
-        "age_days": 48,
+        "age_days": 50,
         "body_chars": 1340
       },
       "signals": [],
@@ -5257,7 +5257,7 @@
         ]
       },
       "id": "ledger/gfx1100-gguf-q4-k-m-fair-launch-policy-default-sco-afab2dc4532e",
-      "evidence_hash": "906375348b09"
+      "evidence_hash": "de0bc1cca5fa"
     },
     {
       "kind": "ledger",
@@ -5279,7 +5279,7 @@
           "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS"
         ],
         "flags_unread": [],
-        "age_days": 35,
+        "age_days": 37,
         "body_chars": 8849
       },
       "signals": [
@@ -5306,7 +5306,7 @@
         ]
       },
       "id": "ledger/gfx1100-grouped-multi-request-prefill-is-unreachab-a9184bdfa19b",
-      "evidence_hash": "fcc032c6ca39"
+      "evidence_hash": "f0a1935f058f"
     },
     {
       "kind": "ledger",
@@ -5322,7 +5322,7 @@
           "HIPENGINE_SUBMISSION_TRANSPORT"
         ],
         "flags_unread": [],
-        "age_days": 58,
+        "age_days": 60,
         "body_chars": 2453
       },
       "signals": [
@@ -5345,7 +5345,7 @@
         ]
       },
       "id": "ledger/gfx1100-in-tree-retained-pm4-transport-comparison-00b62c721f14",
-      "evidence_hash": "d507a8ef31ea"
+      "evidence_hash": "3679a0b83761"
     },
     {
       "kind": "ledger",
@@ -5357,7 +5357,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 736
       },
       "signals": [
@@ -5378,7 +5378,7 @@
         ]
       },
       "id": "ledger/gfx1100-laguna-h5b-packed-attention-qualification-f2413be602d8",
-      "evidence_hash": "cf8d69082973"
+      "evidence_hash": "f7caa50d1676"
     },
     {
       "kind": "ledger",
@@ -5392,7 +5392,7 @@
           "HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 954
       },
       "signals": [
@@ -5413,7 +5413,7 @@
         ]
       },
       "id": "ledger/gfx1100-planar-q6-exact-prefill-retile-bisection-d437fc2e4e6d",
-      "evidence_hash": "a0e2bdd9a569"
+      "evidence_hash": "925d5270b644"
     },
     {
       "kind": "ledger",
@@ -5456,7 +5456,7 @@
           "HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 35,
+        "age_days": 37,
         "body_chars": 18462
       },
       "signals": [
@@ -5505,7 +5505,7 @@
         ]
       },
       "id": "ledger/gfx1100-prefill-route-booleans-are-duplicated-and-3fd1e2100df6",
-      "evidence_hash": "d265cb62ae86"
+      "evidence_hash": "8b419e5fe306"
     },
     {
       "kind": "ledger",
@@ -5519,7 +5519,7 @@
           "HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS"
         ],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 688
       },
       "signals": [
@@ -5540,7 +5540,7 @@
         ]
       },
       "id": "ledger/gfx1100-q4-t16-row64-down-projection-bisection-aa254197e6ec",
-      "evidence_hash": "205edfe63ca8"
+      "evidence_hash": "41bf9255aa9a"
     },
     {
       "kind": "ledger",
@@ -5554,7 +5554,7 @@
           "HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS"
         ],
         "flags_unread": [],
-        "age_days": 45,
+        "age_days": 47,
         "body_chars": 712
       },
       "signals": [
@@ -5577,7 +5577,7 @@
         ]
       },
       "id": "ledger/gfx1151-c1-short-batch-attention-thread-geometry-g-76b598676802",
-      "evidence_hash": "db0baffb6e0b"
+      "evidence_hash": "bbd3983d3537"
     },
     {
       "kind": "ledger",
@@ -5628,7 +5628,7 @@
           "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX"
         ],
         "flags_unread": [],
-        "age_days": 49,
+        "age_days": 51,
         "body_chars": 690
       },
       "signals": [
@@ -5652,7 +5652,7 @@
         ]
       },
       "id": "ledger/gfx1151-dense-27b-grouped-gqa-split-attention-roll-d7931e8670bc",
-      "evidence_hash": "794efcd8c411"
+      "evidence_hash": "2a05002bf1be"
     },
     {
       "kind": "ledger",
@@ -5666,7 +5666,7 @@
           "HIPENGINE_GGUF_DENSE_WMMA_BULK"
         ],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 445
       },
       "signals": [
@@ -5687,7 +5687,7 @@
         ]
       },
       "id": "ledger/gfx1151-dense-bf16-wmma-bulk-prefill-4bb43d9c7358",
-      "evidence_hash": "e256943a5523"
+      "evidence_hash": "4a296088a0fb"
     },
     {
       "kind": "ledger",
@@ -5701,7 +5701,7 @@
           "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL"
         ],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 641
       },
       "signals": [
@@ -5723,7 +5723,7 @@
         ]
       },
       "id": "ledger/gfx1151-dense-bf16-wmma-residual-rollback-seam-cbd70d1328fc",
-      "evidence_hash": "1fb90756feed"
+      "evidence_hash": "54495953f51b"
     },
     {
       "kind": "ledger",
@@ -5737,7 +5737,7 @@
           "HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE"
         ],
         "flags_unread": [],
-        "age_days": 43,
+        "age_days": 45,
         "body_chars": 979
       },
       "signals": [
@@ -5762,7 +5762,7 @@
         ]
       },
       "id": "ledger/gfx1151-native-full-attention-prefill-dynamic-lds-12bd7b6d0d77",
-      "evidence_hash": "6889ae3d5c0d"
+      "evidence_hash": "6bf2bd522b21"
     },
     {
       "kind": "ledger",
@@ -5776,7 +5776,7 @@
           "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 588
       },
       "signals": [
@@ -5799,7 +5799,7 @@
         ]
       },
       "id": "ledger/gfx1151-q4-operation-complete-pack8-prefill-rollba-93f0fd5069b3",
-      "evidence_hash": "420a046923ef"
+      "evidence_hash": "5fde146a0d61"
     },
     {
       "kind": "ledger",
@@ -5813,7 +5813,7 @@
           "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK"
         ],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 605
       },
       "signals": [
@@ -5835,7 +5835,7 @@
         ]
       },
       "id": "ledger/gfx1151-q4-pack8-bulk-prefill-wmma-rollback-env-ee29b9029f78",
-      "evidence_hash": "519a0a78998e"
+      "evidence_hash": "d3a7f948f3eb"
     },
     {
       "kind": "ledger",
@@ -5849,7 +5849,7 @@
           "HIPENGINE_GGUF_GDN_PREFILL_MODE"
         ],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 326
       },
       "signals": [
@@ -5869,7 +5869,7 @@
         ]
       },
       "id": "ledger/gfx1151-q8-0-gdn-cluster8-route-005e063a791f",
-      "evidence_hash": "e9266e7f3948"
+      "evidence_hash": "f20a4e1a6497"
     },
     {
       "kind": "ledger",
@@ -5883,7 +5883,7 @@
           "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 558
       },
       "signals": [
@@ -5906,7 +5906,7 @@
         ]
       },
       "id": "ledger/gfx1151-q8t16-dual-wmma-alpha-beta-rollback-seam-64d22eb9d083",
-      "evidence_hash": "07d3e333ef1b"
+      "evidence_hash": "f89f3af1a8a2"
     },
     {
       "kind": "ledger",
@@ -5920,7 +5920,7 @@
           "HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE"
         ],
         "flags_unread": [],
-        "age_days": 49,
+        "age_days": 51,
         "body_chars": 674
       },
       "signals": [
@@ -5941,7 +5941,7 @@
         ]
       },
       "id": "ledger/gfx1151-qwen3-8-c1-down-residual-rollback-seam-6711867ef20b",
-      "evidence_hash": "7c1622e9378a"
+      "evidence_hash": "870ba6912af6"
     },
     {
       "kind": "ledger",
@@ -5953,7 +5953,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 897
       },
       "signals": [
@@ -5974,7 +5974,7 @@
         ]
       },
       "id": "ledger/gfx1151-qwen3-8-compact-peer-gdn-rollback-seam-1d0e9121162d",
-      "evidence_hash": "33e97dc28aa7"
+      "evidence_hash": "aecda8130c34"
     },
     {
       "kind": "ledger",
@@ -5988,7 +5988,7 @@
           "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
         ],
         "flags_unread": [],
-        "age_days": 48,
+        "age_days": 50,
         "body_chars": 1413
       },
       "signals": [
@@ -6009,7 +6009,7 @@
         ]
       },
       "id": "ledger/gfx1151-qwen3-8-q4-host-embedding-and-bounded-4k-s-3665da8964c4",
-      "evidence_hash": "f18fc32b797e"
+      "evidence_hash": "746ba850e47f"
     },
     {
       "kind": "ledger",
@@ -6021,7 +6021,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 49,
+        "age_days": 51,
         "body_chars": 980
       },
       "signals": [
@@ -6041,7 +6041,7 @@
         ]
       },
       "id": "ledger/gfx1151-qwen3-8-q4-k-m-residual-q8-1x2-diagnostic-00ca6489bc32",
-      "evidence_hash": "a8fee03702f2"
+      "evidence_hash": "db212786afee"
     },
     {
       "kind": "ledger",
@@ -6053,7 +6053,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 920
       },
       "signals": [
@@ -6074,7 +6074,7 @@
         ]
       },
       "id": "ledger/gfx1151-qwen3-8-q5-source-f16-rollback-and-workspa-60574627f42f",
-      "evidence_hash": "3c88e83416b4"
+      "evidence_hash": "7f5341a555f4"
     },
     {
       "kind": "ledger",
@@ -6086,7 +6086,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 2185
       },
       "signals": [
@@ -6106,7 +6106,7 @@
         ]
       },
       "id": "ledger/gfx1151-qwen3-8-role-qualified-q6-rollback-seams-26a8bbe44c2a",
-      "evidence_hash": "19023cebfef3"
+      "evidence_hash": "a66d8d0cbed2"
     },
     {
       "kind": "ledger",
@@ -6118,7 +6118,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 1027
       },
       "signals": [
@@ -6134,7 +6134,7 @@
         ]
       },
       "id": "ledger/gguf-q8-0-t16-dual-gemv-decode-q8-1-dp4a-bf16-bf16-a68bcfe8e056",
-      "evidence_hash": "9ca59fda77ef"
+      "evidence_hash": "224f05247a8a"
     },
     {
       "kind": "ledger",
@@ -6150,7 +6150,7 @@
           "HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS"
         ],
         "flags_unread": [],
-        "age_days": 15,
+        "age_days": 17,
         "body_chars": 3580
       },
       "signals": [],
@@ -6175,7 +6175,7 @@
         ]
       },
       "id": "ledger/grown-kv-pool-could-not-serve-an-allocation-spanni-58125df31877",
-      "evidence_hash": "27e9d90944c5"
+      "evidence_hash": "316abeed3a92"
     },
     {
       "kind": "ledger",
@@ -6226,7 +6226,7 @@
           "HIPENGINE_GEMMA4_MOE_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 8,
+        "age_days": 10,
         "body_chars": 1310
       },
       "signals": [],
@@ -6249,7 +6249,7 @@
         ]
       },
       "id": "ledger/hipengine-gemma4-moe-prefill-selects-a-prefill-rou-2dbb14d850b5",
-      "evidence_hash": "4b73cbf2cfd1"
+      "evidence_hash": "f304f4ffbf4d"
     },
     {
       "kind": "ledger",
@@ -6265,7 +6265,7 @@
           "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV"
         ],
         "flags_unread": [],
-        "age_days": 61,
+        "age_days": 63,
         "body_chars": 1268
       },
       "signals": [],
@@ -6280,7 +6280,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-aotriton-head-major-kv-118a2cf4df50",
-      "evidence_hash": "d12774edb813"
+      "evidence_hash": "ce024c740cd3"
     },
     {
       "kind": "ledger",
@@ -6294,7 +6294,7 @@
           "HIPENGINE_GGUF_AR_PACKED_DECODE"
         ],
         "flags_unread": [],
-        "age_days": 91,
+        "age_days": 93,
         "body_chars": 1527
       },
       "signals": [],
@@ -6311,7 +6311,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-ar-packed-decode-default-on-packed-21377380202c",
-      "evidence_hash": "2e91aa37878c"
+      "evidence_hash": "2cf2cd9271b8"
     },
     {
       "kind": "ledger",
@@ -6325,7 +6325,7 @@
           "HIPENGINE_GGUF_AR_PACKED_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 91,
+        "age_days": 93,
         "body_chars": 1709
       },
       "signals": [],
@@ -6343,7 +6343,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-ar-packed-prefill-default-on-packed-1283154a2ad7",
-      "evidence_hash": "c9f65a77a56a"
+      "evidence_hash": "963beac3d0ee"
     },
     {
       "kind": "ledger",
@@ -6358,7 +6358,7 @@
           "HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX"
         ],
         "flags_unread": [],
-        "age_days": 15,
+        "age_days": 17,
         "body_chars": 2308
       },
       "signals": [
@@ -6384,7 +6384,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-gapped-gather-kill-switch-for-the-g-f70bcb5f7712",
-      "evidence_hash": "8c768c68518e"
+      "evidence_hash": "a8f80d11347b"
     },
     {
       "kind": "ledger",
@@ -6400,7 +6400,7 @@
           "HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH"
         ],
         "flags_unread": [],
-        "age_days": 23,
+        "age_days": 25,
         "body_chars": 2556
       },
       "signals": [],
@@ -6418,7 +6418,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-int8-kv-decode-graph-int8-kv-c1-dec-9fdfffec8054",
-      "evidence_hash": "6d61d38583c7"
+      "evidence_hash": "1f4c0067313f"
     },
     {
       "kind": "ledger",
@@ -6434,7 +6434,7 @@
           "HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON"
         ],
         "flags_unread": [],
-        "age_days": 24,
+        "age_days": 26,
         "body_chars": 1073
       },
       "signals": [],
@@ -6452,7 +6452,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-int8-prefill-slot-local-aotriton-pr-1df87bb83715",
-      "evidence_hash": "ac78d0a12e16"
+      "evidence_hash": "814ee11ef900"
     },
     {
       "kind": "ledger",
@@ -6466,7 +6466,7 @@
           "HIPENGINE_GGUF_PACKED_LAYER_OUTER"
         ],
         "flags_unread": [],
-        "age_days": 23,
+        "age_days": 25,
         "body_chars": 934
       },
       "signals": [],
@@ -6483,7 +6483,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-packed-layer-outer-promoted-to-defa-ae7a52e497af",
-      "evidence_hash": "dfa97f17848d"
+      "evidence_hash": "9d62b936df3d"
     },
     {
       "kind": "ledger",
@@ -6530,7 +6530,7 @@
           "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 1317
       },
       "signals": [],
@@ -6547,7 +6547,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-q6-top1-stage1-shape-pack16-diagnos-c35e94385dcb",
-      "evidence_hash": "b150c4250876"
+      "evidence_hash": "b8b85743e485"
     },
     {
       "kind": "ledger",
@@ -6561,7 +6561,7 @@
           "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 1166
       },
       "signals": [],
@@ -6578,7 +6578,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-q6-top1-stage1-shape-pack8-llama-di-dc5a288b244d",
-      "evidence_hash": "fe14e43a952d"
+      "evidence_hash": "ee7447fae978"
     },
     {
       "kind": "ledger",
@@ -6592,7 +6592,7 @@
           "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 1171
       },
       "signals": [],
@@ -6609,7 +6609,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-q6-top1-stage1-shape-pack8-scalehoi-f846ae2f9f0d",
-      "evidence_hash": "6a6b3c514132"
+      "evidence_hash": "216e9a5fc6ff"
     },
     {
       "kind": "ledger",
@@ -6623,7 +6623,7 @@
           "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 1115
       },
       "signals": [],
@@ -6642,7 +6642,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-q6-top1-stage1-shape-row-row-q6-top-842430aa3230",
-      "evidence_hash": "ec2bd65bfa95"
+      "evidence_hash": "c83e4b6cc94b"
     },
     {
       "kind": "ledger",
@@ -6658,7 +6658,7 @@
           "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 1239
       },
       "signals": [],
@@ -6676,7 +6676,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-q6-top1-stage1-shape-x8-dscale-diag-1bd6a85c9939",
-      "evidence_hash": "988b02a561e1"
+      "evidence_hash": "0d2a523d22d8"
     },
     {
       "kind": "ledger",
@@ -6691,7 +6691,7 @@
           "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 1150
       },
       "signals": [
@@ -6711,7 +6711,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-q8-t16-pair-rowtile-hipengine-gguf-1ff99da1ebaa",
-      "evidence_hash": "b80899da9aba"
+      "evidence_hash": "81aef886a73e"
     },
     {
       "kind": "ledger",
@@ -6726,7 +6726,7 @@
           "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 1882
       },
       "signals": [
@@ -6746,7 +6746,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-q8-t16-rowtile-all-gfx1151-c4-c8-ro-8ac3599d08b8",
-      "evidence_hash": "77f8eeef4df9"
+      "evidence_hash": "ad60e3206629"
     },
     {
       "kind": "ledger",
@@ -6760,7 +6760,7 @@
           "HIPENGINE_GGUF_Q8_T16_THREADS"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 862
       },
       "signals": [],
@@ -6776,7 +6776,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-q8-t16-threads-diagnostic-rejected-5189c1aec6c2",
-      "evidence_hash": "f4a61ae5b133"
+      "evidence_hash": "ec9860ad0b98"
     },
     {
       "kind": "ledger",
@@ -6790,7 +6790,7 @@
           "HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 728
       },
       "signals": [],
@@ -6806,7 +6806,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-t16-selected-dp4a-threads-diagnosti-dd3bfdcc2aa2",
-      "evidence_hash": "5a2b55aa1e16"
+      "evidence_hash": "626496d86d13"
     },
     {
       "kind": "ledger",
@@ -6844,7 +6844,7 @@
           "HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN"
         ],
         "flags_unread": [],
-        "age_days": 94,
+        "age_days": 96,
         "body_chars": 8599
       },
       "signals": [],
@@ -6894,7 +6894,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-verify-f32-residual-hipengine-gguf-93a32c400de5",
-      "evidence_hash": "e5acf865cb3f"
+      "evidence_hash": "4d128477039f"
     },
     {
       "kind": "ledger",
@@ -6909,7 +6909,7 @@
           "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING"
         ],
         "flags_unread": [],
-        "age_days": 93,
+        "age_days": 95,
         "body_chars": 963
       },
       "signals": [],
@@ -6924,7 +6924,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-verify-f32-token-embedding-8815beb4516e",
-      "evidence_hash": "f50968e0545b"
+      "evidence_hash": "89c04456b14b"
     },
     {
       "kind": "ledger",
@@ -6944,7 +6944,7 @@
           "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
         ],
         "flags_unread": [],
-        "age_days": 84,
+        "age_days": 86,
         "body_chars": 2980
       },
       "signals": [],
@@ -6963,7 +6963,7 @@
         ]
       },
       "id": "ledger/hipengine-qwen35-aotriton-isolated-prefill-stream-7ba6ed483e9f",
-      "evidence_hash": "924b43c4dd17"
+      "evidence_hash": "bba5096eab69"
     },
     {
       "kind": "ledger",
@@ -6977,7 +6977,7 @@
           "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"
         ],
         "flags_unread": [],
-        "age_days": 94,
+        "age_days": 96,
         "body_chars": 1012
       },
       "signals": [],
@@ -6993,7 +6993,7 @@
         ]
       },
       "id": "ledger/hipengine-resident-mtp-draft-dense-q8-dp4a-diagnos-953a64135409",
-      "evidence_hash": "3b0b9d53b787"
+      "evidence_hash": "d1c500f1c202"
     },
     {
       "kind": "ledger",
@@ -7007,7 +7007,7 @@
           "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"
         ],
         "flags_unread": [],
-        "age_days": 94,
+        "age_days": 96,
         "body_chars": 1001
       },
       "signals": [
@@ -7023,7 +7023,7 @@
         ]
       },
       "id": "ledger/hipengine-resident-mtp-draft-router-row-parallel-1dc3418bb0c9",
-      "evidence_hash": "19a4edd9e07b"
+      "evidence_hash": "04da446d2b37"
     },
     {
       "kind": "ledger",
@@ -7037,7 +7037,7 @@
           "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"
         ],
         "flags_unread": [],
-        "age_days": 94,
+        "age_days": 96,
         "body_chars": 1009
       },
       "signals": [],
@@ -7053,7 +7053,7 @@
         ]
       },
       "id": "ledger/hipengine-resident-mtp-draft-selected-silu-down-fu-9f29f501dce0",
-      "evidence_hash": "9e70eac4395e"
+      "evidence_hash": "6ff54eb726db"
     },
     {
       "kind": "ledger",
@@ -7071,7 +7071,7 @@
           "HIPENGINE_YUE2_NAR_ATTENTION"
         ],
         "flags_unread": [],
-        "age_days": 17,
+        "age_days": 19,
         "body_chars": 1266
       },
       "signals": [
@@ -7093,7 +7093,7 @@
         ]
       },
       "id": "ledger/hipengine-yue2-nar-attention-scalar-fallback-for-t-4ca88ef2d8dc",
-      "evidence_hash": "bf7093080218"
+      "evidence_hash": "aad62fbe2e0c"
     },
     {
       "kind": "ledger",
@@ -7184,7 +7184,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 3536
       },
       "signals": [
@@ -7203,7 +7203,7 @@
         ]
       },
       "id": "ledger/laguna-cached-only-attention-scheduling-rollback-7badb8cfeac3",
-      "evidence_hash": "9d4afea515ec"
+      "evidence_hash": "fc23a8469c49"
     },
     {
       "kind": "ledger",
@@ -7215,7 +7215,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 712
       },
       "signals": [
@@ -7235,7 +7235,7 @@
         ]
       },
       "id": "ledger/laguna-d8-row-vector-selected-gate-up-rollback-1e1005fedc70",
-      "evidence_hash": "1d4a21930da5"
+      "evidence_hash": "cecf0dd8ff28"
     },
     {
       "kind": "ledger",
@@ -7385,7 +7385,7 @@
           "HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE"
         ],
         "flags_unread": [],
-        "age_days": 71,
+        "age_days": 73,
         "body_chars": 1293
       },
       "signals": [],
@@ -7402,7 +7402,7 @@
         ]
       },
       "id": "ledger/laguna-dense-q4-prefill-mode-wmma-pack8-6f518bb9336f",
-      "evidence_hash": "d4a5cc7954d0"
+      "evidence_hash": "b1155b1987ba"
     },
     {
       "kind": "ledger",
@@ -7414,7 +7414,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 1000
       },
       "signals": [
@@ -7434,7 +7434,7 @@
         ]
       },
       "id": "ledger/laguna-direct-packed-query-producer-rollback-f40a0918b673",
-      "evidence_hash": "eea0ae15b7ce"
+      "evidence_hash": "a8d5f850a3eb"
     },
     {
       "kind": "ledger",
@@ -7446,7 +7446,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 8126
       },
       "signals": [
@@ -7465,7 +7465,7 @@
         ]
       },
       "id": "ledger/laguna-exact-grouped-iq-prefill-selector-561433b4d0df",
-      "evidence_hash": "2f9283475a97"
+      "evidence_hash": "9d0e9911d47d"
     },
     {
       "kind": "ledger",
@@ -7477,7 +7477,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 3665
       },
       "signals": [
@@ -7497,7 +7497,7 @@
         ]
       },
       "id": "ledger/laguna-exact-ordered-f32-q5-q6-production-selector-77361d02800f",
-      "evidence_hash": "a2e84c7d4a5f"
+      "evidence_hash": "dcbe7ef95b4d"
     },
     {
       "kind": "ledger",
@@ -7509,7 +7509,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 4850
       },
       "signals": [
@@ -7529,7 +7529,7 @@
         ]
       },
       "id": "ledger/laguna-exact-qrow4-swa-prefill-selector-72ca1b62aa04",
-      "evidence_hash": "cfe92d826527"
+      "evidence_hash": "1376ae3c8528"
     },
     {
       "kind": "ledger",
@@ -7541,7 +7541,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 1602
       },
       "signals": [
@@ -7561,7 +7561,7 @@
         ]
       },
       "id": "ledger/laguna-exact-swa-producer-gate-selector-47a9f8add0c0",
-      "evidence_hash": "dd9cb334b40b"
+      "evidence_hash": "62704eae72e1"
     },
     {
       "kind": "ledger",
@@ -7573,7 +7573,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 1431
       },
       "signals": [
@@ -7593,7 +7593,7 @@
         ]
       },
       "id": "ledger/laguna-exact-swa-producer-maximum-selector-a8414b790986",
-      "evidence_hash": "c68bfcf2b5df"
+      "evidence_hash": "4a015585bcce"
     },
     {
       "kind": "ledger",
@@ -7605,7 +7605,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 71,
+        "age_days": 73,
         "body_chars": 1835
       },
       "signals": [
@@ -7622,7 +7622,7 @@
         ]
       },
       "id": "ledger/laguna-f16-prefill-mode-hipblaslt-range-direct-63c1498284cd",
-      "evidence_hash": "5eed0378da05"
+      "evidence_hash": "d13725f8c8ec"
     },
     {
       "kind": "ledger",
@@ -7634,7 +7634,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 1077
       },
       "signals": [
@@ -7654,7 +7654,7 @@
         ]
       },
       "id": "ledger/laguna-fused-selected-silu-pack-rollback-a9f7214ec7ef",
-      "evidence_hash": "b0b2eecf43f3"
+      "evidence_hash": "3ac7c664d131"
     },
     {
       "kind": "ledger",
@@ -7670,7 +7670,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 65,
+        "age_days": 67,
         "body_chars": 1053
       },
       "signals": [
@@ -7693,7 +7693,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-decode-shared-stream-priority-selec-5a3f0bf221e9",
-      "evidence_hash": "d1ba746f2957"
+      "evidence_hash": "6bbd45f287c0"
     },
     {
       "kind": "ledger",
@@ -7705,7 +7705,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 846
       },
       "signals": [
@@ -7727,7 +7727,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-dense-shared-dual-interleaved-t16-s-1f1f7b26a5b6",
-      "evidence_hash": "82f075c33e3b"
+      "evidence_hash": "f0037719c68f"
     },
     {
       "kind": "ledger",
@@ -7739,7 +7739,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 1038
       },
       "signals": [
@@ -7760,7 +7760,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-dense-shared-q4-t16-sidecar-selecto-2ffcbf7ccc23",
-      "evidence_hash": "65896e4f8e94"
+      "evidence_hash": "613e6319e364"
     },
     {
       "kind": "ledger",
@@ -7772,7 +7772,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 1083
       },
       "signals": [
@@ -7793,7 +7793,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-exact-global-exp-domain-selector-0d6ae2c9fc19",
-      "evidence_hash": "48fb6d325f57"
+      "evidence_hash": "587ab368f3c1"
     },
     {
       "kind": "ledger",
@@ -7805,7 +7805,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 868
       },
       "signals": [
@@ -7825,7 +7825,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-exact-global-exp32-selector-a9d944115ef2",
-      "evidence_hash": "ebb310dea2d6"
+      "evidence_hash": "9f8fabc8784c"
     },
     {
       "kind": "ledger",
@@ -7837,7 +7837,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 65,
+        "age_days": 67,
         "body_chars": 1304
       },
       "signals": [
@@ -7857,7 +7857,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-exact-global-local1024-selector-df3f502616b7",
-      "evidence_hash": "f1ab9e2e3f96"
+      "evidence_hash": "5ea4cb11c3c3"
     },
     {
       "kind": "ledger",
@@ -7869,7 +7869,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 1220
       },
       "signals": [
@@ -7889,7 +7889,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-exact-global-mixed32-selector-103840699f6b",
-      "evidence_hash": "00ac0d20cd57"
+      "evidence_hash": "586b370f781f"
     },
     {
       "kind": "ledger",
@@ -7901,7 +7901,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 1619
       },
       "signals": [
@@ -7922,7 +7922,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-exact-global-producer-max-selector-01b1a621c87d",
-      "evidence_hash": "b148cb2b6ec9"
+      "evidence_hash": "5b3cdba1d5c1"
     },
     {
       "kind": "ledger",
@@ -7934,7 +7934,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 1153
       },
       "signals": [
@@ -7955,7 +7955,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-exact-swa-exp-domain-selector-6b39e02c2077",
-      "evidence_hash": "80f54ef786c8"
+      "evidence_hash": "c51d2d87b320"
     },
     {
       "kind": "ledger",
@@ -7967,7 +7967,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 65,
+        "age_days": 67,
         "body_chars": 1127
       },
       "signals": [
@@ -7987,7 +7987,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-exact-swa-local1024-selector-46e368b735cc",
-      "evidence_hash": "5436e41e5be0"
+      "evidence_hash": "4375116bcd82"
     },
     {
       "kind": "ledger",
@@ -7999,7 +7999,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 68,
+        "age_days": 70,
         "body_chars": 987
       },
       "signals": [
@@ -8018,7 +8018,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-head-kv-transfer-selector-2906f32d675e",
-      "evidence_hash": "cc8e42d0ea03"
+      "evidence_hash": "0975f7823a1d"
     },
     {
       "kind": "ledger",
@@ -8030,7 +8030,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 63,
+        "age_days": 65,
         "body_chars": 4837
       },
       "signals": [
@@ -8052,7 +8052,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-lc-d3-long-global-geometry-and-cont-cb5291234f82",
-      "evidence_hash": "4ee44ad5aadd"
+      "evidence_hash": "1aef77de08f6"
     },
     {
       "kind": "ledger",
@@ -8064,7 +8064,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 1042
       },
       "signals": [
@@ -8084,7 +8084,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-mixed32-exact-exp16-selector-5ede6a842283",
-      "evidence_hash": "3e9d6d34a2dd"
+      "evidence_hash": "dc418cf26de6"
     },
     {
       "kind": "ledger",
@@ -8096,7 +8096,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 920
       },
       "signals": [
@@ -8116,7 +8116,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-mixed32-exact-exp32-selector-518080511678",
-      "evidence_hash": "b53acaa9ba85"
+      "evidence_hash": "f8d855a9b257"
     },
     {
       "kind": "ledger",
@@ -8128,7 +8128,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 954
       },
       "signals": [
@@ -8148,7 +8148,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-mixed32-exact-exp4-selector-b83937ce1f83",
-      "evidence_hash": "76333964e5fd"
+      "evidence_hash": "d22a89506962"
     },
     {
       "kind": "ledger",
@@ -8160,7 +8160,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 1044
       },
       "signals": [
@@ -8180,7 +8180,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-mixed32-exact-exp8-selector-6ee0959cf5a1",
-      "evidence_hash": "604911eda2b1"
+      "evidence_hash": "d52c45a75961"
     },
     {
       "kind": "ledger",
@@ -8192,7 +8192,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 896
       },
       "signals": [
@@ -8212,7 +8212,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-mixed32-swa-decode-selector-015673faf62e",
-      "evidence_hash": "89503e2b70df"
+      "evidence_hash": "ad4cb85f0718"
     },
     {
       "kind": "ledger",
@@ -8224,7 +8224,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 65,
+        "age_days": 67,
         "body_chars": 938
       },
       "signals": [
@@ -8245,7 +8245,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-q4-selected-down-paired-coefficient-aa20970f5627",
-      "evidence_hash": "66b4f363470b"
+      "evidence_hash": "a241fa916575"
     },
     {
       "kind": "ledger",
@@ -8257,7 +8257,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 1758
       },
       "signals": [
@@ -8278,7 +8278,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-q4t16-dual-interleaved-expert-produ-4932d3cd4170",
-      "evidence_hash": "2c0ff9861846"
+      "evidence_hash": "60aeb90b796d"
     },
     {
       "kind": "ledger",
@@ -8290,7 +8290,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 65,
+        "age_days": 67,
         "body_chars": 1086
       },
       "signals": [
@@ -8310,7 +8310,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-q4t16-shared-down-selector-f1d2a9ca75ed",
-      "evidence_hash": "7c2b43fac830"
+      "evidence_hash": "c10ad15bf3d3"
     },
     {
       "kind": "ledger",
@@ -8322,7 +8322,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 65,
+        "age_days": 67,
         "body_chars": 944
       },
       "signals": [
@@ -8342,7 +8342,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-router-projection-wave-0-selector-1a6db5a787a6",
-      "evidence_hash": "f19076e6d316"
+      "evidence_hash": "9732eb8a5e36"
     },
     {
       "kind": "ledger",
@@ -8354,7 +8354,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 1177
       },
       "signals": [
@@ -8375,7 +8375,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-selected-down-parallel-weighted-sel-256e2f5275a5",
-      "evidence_hash": "00cb71375364"
+      "evidence_hash": "3038bbd2ea12"
     },
     {
       "kind": "ledger",
@@ -8387,7 +8387,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 65,
+        "age_days": 67,
         "body_chars": 857
       },
       "signals": [
@@ -8406,7 +8406,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-selected-gate-up-halfdot-rollback-e2f0ac9e8c0f",
-      "evidence_hash": "38ec080c592a"
+      "evidence_hash": "9cda25349f21"
     },
     {
       "kind": "ledger",
@@ -8418,7 +8418,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 808
       },
       "signals": [
@@ -8437,7 +8437,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-selected-q4-scalar-q-rollback-3cf15f46ab63",
-      "evidence_hash": "5095307c5d84"
+      "evidence_hash": "6f739cd5635b"
     },
     {
       "kind": "ledger",
@@ -8449,7 +8449,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 1109
       },
       "signals": [
@@ -8471,7 +8471,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-shared-down-d9-native-host-batch-se-e18173d37c19",
-      "evidence_hash": "593b51586f13"
+      "evidence_hash": "352c4bcb5eb7"
     },
     {
       "kind": "ledger",
@@ -8483,7 +8483,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 1117
       },
       "signals": [
@@ -8504,7 +8504,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-source-f16-attention-quad-selector-4a61f1a32852",
-      "evidence_hash": "8aaf18ca8966"
+      "evidence_hash": "200b6cf74a3b"
     },
     {
       "kind": "ledger",
@@ -8516,7 +8516,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 65,
+        "age_days": 67,
         "body_chars": 1438
       },
       "signals": [
@@ -8540,7 +8540,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-source-f16-non-temporal-decode-comp-3e79b580a79c",
-      "evidence_hash": "99869ef626bf"
+      "evidence_hash": "a29fe96f71e1"
     },
     {
       "kind": "ledger",
@@ -8552,7 +8552,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 1265
       },
       "signals": [
@@ -8574,7 +8574,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-source-f16-output-add-rmsnorm-selec-dfd25d8da9bb",
-      "evidence_hash": "3915c8d174df"
+      "evidence_hash": "93f28602ff5a"
     },
     {
       "kind": "ledger",
@@ -8586,7 +8586,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 1515
       },
       "signals": [
@@ -8607,7 +8607,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-source-f16-projection-head-kv-selec-42b7231f09fc",
-      "evidence_hash": "9ff9af11d039"
+      "evidence_hash": "70afe474c931"
     },
     {
       "kind": "ledger",
@@ -8619,7 +8619,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 68,
+        "age_days": 70,
         "body_chars": 1011
       },
       "signals": [
@@ -8638,7 +8638,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-split-attention-transfer-selector-29149d30805a",
-      "evidence_hash": "62081b1da7e6"
+      "evidence_hash": "9611e7eb6e05"
     },
     {
       "kind": "ledger",
@@ -8650,7 +8650,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 1033
       },
       "signals": [
@@ -8670,7 +8670,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-swa-exponential-decode-selector-e56038370f12",
-      "evidence_hash": "297c3cf1ec38"
+      "evidence_hash": "cf7d2dce43de"
     },
     {
       "kind": "ledger",
@@ -8682,7 +8682,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 66,
+        "age_days": 68,
         "body_chars": 758
       },
       "signals": [
@@ -8703,7 +8703,7 @@
         ]
       },
       "id": "ledger/laguna-gfx1151-swa-producer-value-tail-diagnostic-c5043bde80bc",
-      "evidence_hash": "b6504d2fd878"
+      "evidence_hash": "d9f8b115807c"
     },
     {
       "kind": "ledger",
@@ -8715,7 +8715,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 68,
+        "age_days": 70,
         "body_chars": 574
       },
       "signals": [
@@ -8735,7 +8735,7 @@
         ]
       },
       "id": "ledger/laguna-global-m2048-attention-query-route-49fba2a601d8",
-      "evidence_hash": "bf07798f62ce"
+      "evidence_hash": "62e3baa606a4"
     },
     {
       "kind": "ledger",
@@ -8747,7 +8747,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 64,
+        "age_days": 66,
         "body_chars": 987
       },
       "signals": [
@@ -8769,7 +8769,7 @@
         ]
       },
       "id": "ledger/laguna-h6z-bounded-default-off-global-attention-ca-02373c53c9f9",
-      "evidence_hash": "d09bb55b5f23"
+      "evidence_hash": "e7246ad3e6d5"
     },
     {
       "kind": "ledger",
@@ -8781,7 +8781,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 63,
+        "age_days": 65,
         "body_chars": 610
       },
       "signals": [
@@ -8803,7 +8803,7 @@
         ]
       },
       "id": "ledger/laguna-h7e-bounded-default-off-iq3-residual-d4-own-95abd08dd75c",
-      "evidence_hash": "a5d8fcc964e2"
+      "evidence_hash": "b2face226888"
     },
     {
       "kind": "ledger",
@@ -8815,7 +8815,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 63,
+        "age_days": 65,
         "body_chars": 727
       },
       "signals": [
@@ -8834,7 +8834,7 @@
         ]
       },
       "id": "ledger/laguna-h7u-parallel-moe-compactor-0f92eb011b6a",
-      "evidence_hash": "5cecca6ddc99"
+      "evidence_hash": "28f4f80480c1"
     },
     {
       "kind": "ledger",
@@ -8846,7 +8846,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 62,
+        "age_days": 64,
         "body_chars": 930
       },
       "signals": [
@@ -8870,7 +8870,7 @@
         ]
       },
       "id": "ledger/laguna-h7y-bounded-default-off-lane-major-swa-cach-fe52460f919a",
-      "evidence_hash": "791b912b11e6"
+      "evidence_hash": "ee3be9798742"
     },
     {
       "kind": "ledger",
@@ -8882,7 +8882,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 62,
+        "age_days": 64,
         "body_chars": 1167
       },
       "signals": [
@@ -8904,7 +8904,7 @@
         ]
       },
       "id": "ledger/laguna-h8a-resident-global-q5-f32-cache-production-d3d0d694aa60",
-      "evidence_hash": "370f3a11da2d"
+      "evidence_hash": "c706ede5f0bb"
     },
     {
       "kind": "ledger",
@@ -8916,7 +8916,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 62,
+        "age_days": 64,
         "body_chars": 1008
       },
       "signals": [
@@ -8938,7 +8938,7 @@
         ]
       },
       "id": "ledger/laguna-h8b-scoped-activation-pack-reuse-production-be768e67d605",
-      "evidence_hash": "6827251aeb8a"
+      "evidence_hash": "249df0f3c952"
     },
     {
       "kind": "ledger",
@@ -8950,7 +8950,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 1049
       },
       "signals": [
@@ -8971,7 +8971,7 @@
         ]
       },
       "id": "ledger/laguna-long-context-f32-hipblaslt-rollback-routes-c270cff71236",
-      "evidence_hash": "a4d8340e9f8a"
+      "evidence_hash": "00e2de9ebb8a"
     },
     {
       "kind": "ledger",
@@ -8983,7 +8983,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 68,
+        "age_days": 70,
         "body_chars": 572
       },
       "signals": [
@@ -9003,7 +9003,7 @@
         ]
       },
       "id": "ledger/laguna-m4096-m8192-explicit-matrix-diagnostics-ebea78323c24",
-      "evidence_hash": "d5239eb46ac4"
+      "evidence_hash": "3f04600be597"
     },
     {
       "kind": "ledger",
@@ -9015,7 +9015,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 5173
       },
       "signals": [
@@ -9036,7 +9036,7 @@
         ]
       },
       "id": "ledger/laguna-moe-shared-routed-branch-concurrency-candid-6476e56b09c8",
-      "evidence_hash": "2049e6b65196"
+      "evidence_hash": "e415220e05d4"
     },
     {
       "kind": "ledger",
@@ -9079,7 +9079,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 1480
       },
       "signals": [
@@ -9098,7 +9098,7 @@
         ]
       },
       "id": "ledger/laguna-packed-attention-output-rollback-1ffcc1140870",
-      "evidence_hash": "c35f27615e3d"
+      "evidence_hash": "042c6972f416"
     },
     {
       "kind": "ledger",
@@ -9110,7 +9110,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 819
       },
       "signals": [
@@ -9131,7 +9131,7 @@
         ]
       },
       "id": "ledger/laguna-packed-query-f32-hipblaslt-attention-select-7c6d363a8b48",
-      "evidence_hash": "746a07479927"
+      "evidence_hash": "b2fa3d4c595e"
     },
     {
       "kind": "ledger",
@@ -9143,7 +9143,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 67,
+        "age_days": 69,
         "body_chars": 875
       },
       "signals": [
@@ -9162,7 +9162,7 @@
         ]
       },
       "id": "ledger/laguna-prefill-matrix-capacity-selector-b09679ca5d90",
-      "evidence_hash": "ac86101c0c1c"
+      "evidence_hash": "e0abf0ca8aba"
     },
     {
       "kind": "ledger",
@@ -9174,7 +9174,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 850
       },
       "signals": [
@@ -9193,7 +9193,7 @@
         ]
       },
       "id": "ledger/laguna-prefill-only-routed-width-selector-81eda74a2b9f",
-      "evidence_hash": "bd86f00975cc"
+      "evidence_hash": "e5f47daeb5c7"
     },
     {
       "kind": "ledger",
@@ -9205,7 +9205,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 747
       },
       "signals": [
@@ -9226,7 +9226,7 @@
         ]
       },
       "id": "ledger/laguna-q4-down-pair-decode-wave-column-rollback-1a26ac918433",
-      "evidence_hash": "1c10b6b8ad25"
+      "evidence_hash": "039938f96d72"
     },
     {
       "kind": "ledger",
@@ -9238,7 +9238,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 741
       },
       "signals": [
@@ -9257,7 +9257,7 @@
         ]
       },
       "id": "ledger/laguna-q4-down-row-vector-rollback-4448c51ec4aa",
-      "evidence_hash": "8431eb964e1c"
+      "evidence_hash": "b2261ec536e6"
     },
     {
       "kind": "ledger",
@@ -9269,7 +9269,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 1556
       },
       "signals": [
@@ -9289,7 +9289,7 @@
         ]
       },
       "id": "ledger/laguna-q4-gate-up-activation-double-buffer-candida-af88feb49782",
-      "evidence_hash": "575a21c9d024"
+      "evidence_hash": "8f686e1a2c1b"
     },
     {
       "kind": "ledger",
@@ -9301,7 +9301,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 812
       },
       "signals": [
@@ -9322,7 +9322,7 @@
         ]
       },
       "id": "ledger/laguna-q4-gate-up-pair-decode-wave-column-rollback-1914e95c1dc7",
-      "evidence_hash": "06e4c6e50b32"
+      "evidence_hash": "9a9f66eaf0af"
     },
     {
       "kind": "ledger",
@@ -9334,7 +9334,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 1325
       },
       "signals": [
@@ -9353,7 +9353,7 @@
         ]
       },
       "id": "ledger/laguna-q4-precomputed-activation-sum-rollback-f83f23fa2de7",
-      "evidence_hash": "33646d96580f"
+      "evidence_hash": "5ad82c751b22"
     },
     {
       "kind": "ledger",
@@ -9369,7 +9369,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 3733
       },
       "signals": [
@@ -9390,7 +9390,7 @@
         ]
       },
       "id": "ledger/laguna-q4-projection-role-quality-candidate-47517895f3e1",
-      "evidence_hash": "7f606ce25cb9"
+      "evidence_hash": "d3373a13af7d"
     },
     {
       "kind": "ledger",
@@ -9402,7 +9402,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 1716
       },
       "signals": [
@@ -9421,7 +9421,7 @@
         ]
       },
       "id": "ledger/laguna-q4-raw-nibble-p8-prefetch-rollback-85ba05e2c2c9",
-      "evidence_hash": "7f263e7049ff"
+      "evidence_hash": "e65b487832cc"
     },
     {
       "kind": "ledger",
@@ -9433,7 +9433,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 919
       },
       "signals": [
@@ -9453,7 +9453,7 @@
         ]
       },
       "id": "ledger/laguna-q4-selected-down-raw-nibble-p8-rollback-21c55b90c7f6",
-      "evidence_hash": "9b2901cf0fc3"
+      "evidence_hash": "dda726704d60"
     },
     {
       "kind": "ledger",
@@ -9465,7 +9465,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 1098
       },
       "signals": [
@@ -9483,7 +9483,7 @@
         ]
       },
       "id": "ledger/laguna-q6-compact-activation-rollback-36c23409ff97",
-      "evidence_hash": "d8d7e5adcf53"
+      "evidence_hash": "a1a94bb46ff8"
     },
     {
       "kind": "ledger",
@@ -9495,7 +9495,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 947
       },
       "signals": [
@@ -9514,7 +9514,7 @@
         ]
       },
       "id": "ledger/laguna-q6-half-row-activation-rollback-4f3b866b7a41",
-      "evidence_hash": "faac06036d07"
+      "evidence_hash": "3677a2313757"
     },
     {
       "kind": "ledger",
@@ -9526,7 +9526,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 927
       },
       "signals": [
@@ -9544,7 +9544,7 @@
         ]
       },
       "id": "ledger/laguna-q6-padded-activation-rollback-997d53264e6b",
-      "evidence_hash": "1fe15a532b00"
+      "evidence_hash": "1557dcd997e4"
     },
     {
       "kind": "ledger",
@@ -9556,7 +9556,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 1061
       },
       "signals": [
@@ -9575,7 +9575,7 @@
         ]
       },
       "id": "ledger/laguna-q6-planar-qmicro-candidate-rollback-0ac6738d51c8",
-      "evidence_hash": "e4decd14eed3"
+      "evidence_hash": "b1a9d944cb75"
     },
     {
       "kind": "ledger",
@@ -9587,7 +9587,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 882
       },
       "signals": [
@@ -9605,7 +9605,7 @@
         ]
       },
       "id": "ledger/laguna-q6-qmicro-permute-rollback-ed9e9b774be1",
-      "evidence_hash": "106e6b54bddd"
+      "evidence_hash": "2da85f595cb4"
     },
     {
       "kind": "ledger",
@@ -9617,7 +9617,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 1091
       },
       "signals": [
@@ -9636,7 +9636,7 @@
         ]
       },
       "id": "ledger/laguna-q6-qmicro-resident-layout-rollback-268bbc9d1094",
-      "evidence_hash": "0164544555d5"
+      "evidence_hash": "34b491b09696"
     },
     {
       "kind": "ledger",
@@ -9648,7 +9648,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 825
       },
       "signals": [
@@ -9667,7 +9667,7 @@
         ]
       },
       "id": "ledger/laguna-q6-selected-down-32-row-rollback-aec8c801e878",
-      "evidence_hash": "5f8d9baccaa5"
+      "evidence_hash": "b9cf828d1b63"
     },
     {
       "kind": "ledger",
@@ -9679,7 +9679,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 2059
       },
       "signals": [
@@ -9700,7 +9700,7 @@
         ]
       },
       "id": "ledger/laguna-q6-selected-down-integer-wmma-leaf-selector-3323252bbace",
-      "evidence_hash": "3e112a433cb7"
+      "evidence_hash": "707e30f90edc"
     },
     {
       "kind": "ledger",
@@ -9712,7 +9712,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 2623
       },
       "signals": [
@@ -9731,7 +9731,7 @@
         ]
       },
       "id": "ledger/laguna-q6-wmma-weight-prefetch-rollback-3d65c138cd99",
-      "evidence_hash": "64633e7d9173"
+      "evidence_hash": "fbf1b776fc7d"
     },
     {
       "kind": "ledger",
@@ -9745,7 +9745,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 68,
+        "age_days": 70,
         "body_chars": 1888
       },
       "signals": [
@@ -9765,7 +9765,7 @@
         ]
       },
       "id": "ledger/laguna-raw-q5-q6-prefill-mmq-selector-29a9d59d9b12",
-      "evidence_hash": "49fb292c1fe9"
+      "evidence_hash": "de28292bdcfd"
     },
     {
       "kind": "ledger",
@@ -9777,7 +9777,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 68,
+        "age_days": 70,
         "body_chars": 2100
       },
       "signals": [
@@ -9796,7 +9796,7 @@
         ]
       },
       "id": "ledger/laguna-raw-q5-q6-prefill-rowbatch-selector-7fde990d4c20",
-      "evidence_hash": "e7afdfedefa1"
+      "evidence_hash": "dc3a23fa9c3a"
     },
     {
       "kind": "ledger",
@@ -9808,7 +9808,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 511
       },
       "signals": [
@@ -9829,7 +9829,7 @@
         ]
       },
       "id": "ledger/laguna-rejected-q6-down-wave-column-template-branc-f0a123de67e6",
-      "evidence_hash": "f1af1ceb1c53"
+      "evidence_hash": "7465ba808b01"
     },
     {
       "kind": "ledger",
@@ -9841,7 +9841,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 68,
+        "age_days": 70,
         "body_chars": 577
       },
       "signals": [
@@ -9861,7 +9861,7 @@
         ]
       },
       "id": "ledger/laguna-rolling-swa-hipblaslt-production-route-4fdf46d167a4",
-      "evidence_hash": "2b61f49d82fe"
+      "evidence_hash": "a180fc75e41c"
     },
     {
       "kind": "ledger",
@@ -9873,7 +9873,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 68,
+        "age_days": 70,
         "body_chars": 969
       },
       "signals": [
@@ -9893,7 +9893,7 @@
         ]
       },
       "id": "ledger/laguna-selected-natural-tile8-decode-selector-b3e3b9898e85",
-      "evidence_hash": "2c15d1ee2159"
+      "evidence_hash": "3ad1b0dc6877"
     },
     {
       "kind": "ledger",
@@ -9905,7 +9905,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 71,
+        "age_days": 73,
         "body_chars": 1180
       },
       "signals": [
@@ -9927,7 +9927,7 @@
         ]
       },
       "id": "ledger/laguna-selected-one-plane-fp32-scale-mmq-modes-e6583fc68876",
-      "evidence_hash": "42635f161b34"
+      "evidence_hash": "6d5afab66fe1"
     },
     {
       "kind": "ledger",
@@ -9939,7 +9939,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 743
       },
       "signals": [
@@ -9959,7 +9959,7 @@
         ]
       },
       "id": "ledger/laguna-serial-stable-moe-compaction-rollback-57d7c30d84a0",
-      "evidence_hash": "16a3f3f0418b"
+      "evidence_hash": "e077181f8ac0"
     },
     {
       "kind": "ledger",
@@ -9971,7 +9971,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 70,
+        "age_days": 72,
         "body_chars": 1115
       },
       "signals": [
@@ -9991,7 +9991,7 @@
         ]
       },
       "id": "ledger/laguna-source-f16-boundary-fusion-rollback-886a21a4e1b0",
-      "evidence_hash": "3f82d8e80537"
+      "evidence_hash": "92bc08b7e638"
     },
     {
       "kind": "ledger",
@@ -10005,7 +10005,7 @@
           "HIPENGINE_LAGUNA_F16_DECODE"
         ],
         "flags_unread": [],
-        "age_days": 68,
+        "age_days": 70,
         "body_chars": 1685
       },
       "signals": [
@@ -10026,7 +10026,7 @@
         ]
       },
       "id": "ledger/laguna-source-f16-decode-fixed-k-selector-156a8d6ffd63",
-      "evidence_hash": "8c6f1ad77100"
+      "evidence_hash": "725fe058adeb"
     },
     {
       "kind": "ledger",
@@ -10102,7 +10102,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 69,
+        "age_days": 71,
         "body_chars": 1067
       },
       "signals": [
@@ -10122,7 +10122,7 @@
         ]
       },
       "id": "ledger/laguna-wave-per-row-causal-softmax-rollback-693d2881248a",
-      "evidence_hash": "c8f50b45a377"
+      "evidence_hash": "79e3097a14bf"
     },
     {
       "kind": "ledger",
@@ -10134,7 +10134,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 96,
+        "age_days": 98,
         "body_chars": 2840
       },
       "signals": [
@@ -10155,7 +10155,7 @@
         ]
       },
       "id": "ledger/llama-compat-llama-compat-routes-default-off-seman-b011a73934ea",
-      "evidence_hash": "1946506ecf13"
+      "evidence_hash": "60a29201bcc5"
     },
     {
       "kind": "ledger",
@@ -10169,7 +10169,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 11,
+        "age_days": 13,
         "body_chars": 1014
       },
       "signals": [],
@@ -10191,7 +10191,7 @@
         ]
       },
       "id": "ledger/logprobs-requests-skip-the-captured-graph-sampled-e165d1802768",
-      "evidence_hash": "3fec6a6f2d7f"
+      "evidence_hash": "0e9a0b3e1727"
     },
     {
       "kind": "ledger",
@@ -10216,7 +10216,7 @@
           "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS"
         ],
         "flags_unread": [],
-        "age_days": 17,
+        "age_days": 19,
         "body_chars": 3243
       },
       "signals": [
@@ -10248,7 +10248,7 @@
         ]
       },
       "id": "ledger/long-context-mtp-window-override-found-2026-09-17-b7ade242eeaf",
-      "evidence_hash": "f8525aab0a16"
+      "evidence_hash": "dce8856dc6f8"
     },
     {
       "kind": "ledger",
@@ -10266,7 +10266,7 @@
           "HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG"
         ],
         "flags_unread": [],
-        "age_days": 17,
+        "age_days": 19,
         "body_chars": 2626
       },
       "signals": [
@@ -10297,7 +10297,7 @@
         ]
       },
       "id": "ledger/long-context-verifier-rows-are-coupled-to-the-glob-016abe173c83",
-      "evidence_hash": "4742f6833648"
+      "evidence_hash": "0e6e20e3299a"
     },
     {
       "kind": "ledger",
@@ -10311,7 +10311,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 57,
+        "age_days": 59,
         "body_chars": 1007
       },
       "signals": [
@@ -10333,7 +10333,7 @@
         ]
       },
       "id": "ledger/maple-cuda-sm-120a-native-prefill-follow-ups-a207c6d47f06",
-      "evidence_hash": "6f2093ea132e"
+      "evidence_hash": "3d2467c1c950"
     },
     {
       "kind": "ledger",
@@ -10347,7 +10347,7 @@
           "HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT"
         ],
         "flags_unread": [],
-        "age_days": 57,
+        "age_days": 59,
         "body_chars": 899
       },
       "signals": [
@@ -10367,7 +10367,7 @@
         ]
       },
       "id": "ledger/maple-d0-exact-wave32-affine4-c1-head-46701853c1f2",
-      "evidence_hash": "7898981da228"
+      "evidence_hash": "67d312ae6007"
     },
     {
       "kind": "ledger",
@@ -10381,7 +10381,7 @@
           "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH"
         ],
         "flags_unread": [],
-        "age_days": 57,
+        "age_days": 59,
         "body_chars": 843
       },
       "signals": [
@@ -10400,7 +10400,7 @@
         ]
       },
       "id": "ledger/maple-d0-one-dispatch-c1-router-bb192354e8f6",
-      "evidence_hash": "1834921c106f"
+      "evidence_hash": "d34cf3d1b422"
     },
     {
       "kind": "ledger",
@@ -10414,7 +10414,7 @@
           "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT"
         ],
         "flags_unread": [],
-        "age_days": 57,
+        "age_days": 59,
         "body_chars": 1215
       },
       "signals": [
@@ -10436,7 +10436,7 @@
         ]
       },
       "id": "ledger/maple-d1-exact-batched-affine4-row-reuse-head-b8cc3b4e5126",
-      "evidence_hash": "1a7e9fcb87aa"
+      "evidence_hash": "28466ff23ce8"
     },
     {
       "kind": "ledger",
@@ -10561,7 +10561,7 @@
           "HIPENGINE_MAPLE_PREFILL_GQA4"
         ],
         "flags_unread": [],
-        "age_days": 57,
+        "age_days": 59,
         "body_chars": 834
       },
       "signals": [
@@ -10582,7 +10582,7 @@
         ]
       },
       "id": "ledger/maple-p2-exact-wave32-gqa4-prefill-attention-93229918500d",
-      "evidence_hash": "df22406b37ed"
+      "evidence_hash": "60471fa10e64"
     },
     {
       "kind": "ledger",
@@ -10597,7 +10597,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 57,
+        "age_days": 59,
         "body_chars": 1002
       },
       "signals": [
@@ -10618,7 +10618,7 @@
         ]
       },
       "id": "ledger/maple-p4-public-fixed-slot-admission-2806c1fbc38f",
-      "evidence_hash": "cfe244fd9a7c"
+      "evidence_hash": "6afe75cf6052"
     },
     {
       "kind": "ledger",
@@ -10703,7 +10703,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 14,
+        "age_days": 16,
         "body_chars": 692
       },
       "signals": [
@@ -10726,7 +10726,7 @@
         ]
       },
       "id": "ledger/mtp-admission-no-longer-reads-the-artifact-s-byte-427fcc5db88e",
-      "evidence_hash": "8d358ec85aea"
+      "evidence_hash": "8df1ce01b9f1"
     },
     {
       "kind": "ledger",
@@ -10744,7 +10744,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 17,
+        "age_days": 19,
         "body_chars": 1498
       },
       "signals": [
@@ -10773,7 +10773,7 @@
         ]
       },
       "id": "ledger/mtp-output-attribution-two-ar-in-plan-paths-and-a-3d108ac1c74e",
-      "evidence_hash": "699358396c1c"
+      "evidence_hash": "cf03e161dcf5"
     },
     {
       "kind": "ledger",
@@ -10785,7 +10785,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 16,
+        "age_days": 18,
         "body_chars": 1147
       },
       "signals": [
@@ -10806,7 +10806,7 @@
         ]
       },
       "id": "ledger/one-process-multi-arm-prefix-a-b-is-unsafe-found-2-d3a141363635",
-      "evidence_hash": "3d06e82a97fa"
+      "evidence_hash": "e0e349b0c9c0"
     },
     {
       "kind": "ledger",
@@ -10823,7 +10823,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 25,
+        "age_days": 27,
         "body_chars": 1681
       },
       "signals": [
@@ -10848,7 +10848,7 @@
         ]
       },
       "id": "ledger/packed-execution-workspace-doubles-the-declared-co-22e34bdd6bad",
-      "evidence_hash": "b4ef28353f9d"
+      "evidence_hash": "b048e6bacb82"
     },
     {
       "kind": "ledger",
@@ -10894,7 +10894,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 47,
+        "age_days": 49,
         "body_chars": 986
       },
       "signals": [
@@ -10915,7 +10915,7 @@
         ]
       },
       "id": "ledger/packed-workspace-page-table-and-identity-table-dev-94b022ceb37b",
-      "evidence_hash": "4d62695f6b02"
+      "evidence_hash": "51d88ff57526"
     },
     {
       "kind": "ledger",
@@ -10929,7 +10929,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 41,
+        "age_days": 43,
         "body_chars": 632
       },
       "signals": [
@@ -10951,7 +10951,7 @@
         ]
       },
       "id": "ledger/paro-mtp-verifier-numerical-evaluator-migration-20-1f129f72c497",
-      "evidence_hash": "f6092bffed84"
+      "evidence_hash": "93d10f8170e2"
     },
     {
       "kind": "ledger",
@@ -10971,7 +10971,7 @@
         "flags_unread": [
           "HIPENGINE_GGUF_PREFIX_SUFFIX_PACKED"
         ],
-        "age_days": 16,
+        "age_days": 18,
         "body_chars": 1644
       },
       "signals": [
@@ -10997,7 +10997,7 @@
         ]
       },
       "id": "ledger/per-token-reused-prefix-suffix-prefill-found-2026-8c8576e4589f",
-      "evidence_hash": "b4110f12f203"
+      "evidence_hash": "04e60bcb19aa"
     },
     {
       "kind": "ledger",
@@ -11014,7 +11014,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 507
       },
       "signals": [
@@ -11035,7 +11035,7 @@
         ]
       },
       "id": "ledger/pf-1d-mmq-tile-template-2026-09-02-f0b62b60bc62",
-      "evidence_hash": "8a12b25e8771"
+      "evidence_hash": "f71dc41e4121"
     },
     {
       "kind": "ledger",
@@ -11055,7 +11055,7 @@
         "flags_unread": [
           "HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE"
         ],
-        "age_days": 30,
+        "age_days": 32,
         "body_chars": 1220
       },
       "signals": [
@@ -11081,7 +11081,7 @@
         ]
       },
       "id": "ledger/pf-4-lever-2-fused-combine-is-opt-in-pending-valid-9c3025e79ebb",
-      "evidence_hash": "a0c8a9061316"
+      "evidence_hash": "a6da6c8fa607"
     },
     {
       "kind": "ledger",
@@ -11097,7 +11097,7 @@
           "HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS"
         ],
         "flags_unread": [],
-        "age_days": 15,
+        "age_days": 17,
         "body_chars": 3106
       },
       "signals": [
@@ -11123,7 +11123,7 @@
         ]
       },
       "id": "ledger/placement-decides-the-prefill-route-and-the-routes-be52d0cebb1f",
-      "evidence_hash": "67aaf53f155c"
+      "evidence_hash": "22a8616de87e"
     },
     {
       "kind": "ledger",
@@ -11140,7 +11140,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 1,
+        "age_days": 3,
         "body_chars": 1001
       },
       "signals": [
@@ -11166,7 +11166,7 @@
         ]
       },
       "id": "ledger/plain-gemma-attention-needs-raw-coordinate-boundar-82810694ded9",
-      "evidence_hash": "64f8462f0555"
+      "evidence_hash": "f681bd63179f"
     },
     {
       "kind": "ledger",
@@ -11228,7 +11228,7 @@
           "HIPENGINE_GGUF_WMMA_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 35,
+        "age_days": 37,
         "body_chars": 5128
       },
       "signals": [
@@ -11256,7 +11256,7 @@
         ]
       },
       "id": "ledger/post-optimal-path-cleanup-targets-3dc606594965",
-      "evidence_hash": "16d754a42e3a"
+      "evidence_hash": "1a72038a80fe"
     },
     {
       "kind": "ledger",
@@ -11268,7 +11268,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 16,
+        "age_days": 18,
         "body_chars": 744
       },
       "signals": [
@@ -11292,7 +11292,7 @@
         ]
       },
       "id": "ledger/prefix-eligibility-floor-excludes-short-multi-turn-e7caae7b6b0d",
-      "evidence_hash": "106805b431f1"
+      "evidence_hash": "d69f92e21438"
     },
     {
       "kind": "ledger",
@@ -11306,7 +11306,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 16,
+        "age_days": 18,
         "body_chars": 1450
       },
       "signals": [
@@ -11327,7 +11327,7 @@
         ]
       },
       "id": "ledger/prefix-reuse-k0-prompt-sink-refusal-found-2026-09-e1fd150139a8",
-      "evidence_hash": "6d16a0fbf647"
+      "evidence_hash": "d561129ed8c1"
     },
     {
       "kind": "ledger",
@@ -11341,7 +11341,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 16,
+        "age_days": 18,
         "body_chars": 1157
       },
       "signals": [
@@ -11365,7 +11365,7 @@
         ]
       },
       "id": "ledger/prefix-snapshot-capture-allocates-and-frees-its-bu-fb2f6fc41e36",
-      "evidence_hash": "4992af7c60d2"
+      "evidence_hash": "5b4fefbcdfb6"
     },
     {
       "kind": "ledger",
@@ -11382,7 +11382,7 @@
           "HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES"
         ],
         "flags_unread": [],
-        "age_days": 16,
+        "age_days": 18,
         "body_chars": 3298
       },
       "signals": [
@@ -11409,7 +11409,7 @@
         ]
       },
       "id": "ledger/prefix-snapshot-eviction-destroys-the-retained-ent-f543223c6242",
-      "evidence_hash": "90fbb44c48a3"
+      "evidence_hash": "003f2c92cdc7"
     },
     {
       "kind": "ledger",
@@ -11437,7 +11437,7 @@
           "HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS"
         ],
         "flags_unread": [],
-        "age_days": 15,
+        "age_days": 17,
         "body_chars": 4715
       },
       "signals": [
@@ -11470,7 +11470,7 @@
         ]
       },
       "id": "ledger/priming-source-refusals-that-still-zero-the-budget-1ee82413bff2",
-      "evidence_hash": "ef2b6ac7a0a0"
+      "evidence_hash": "ea1abd11c519"
     },
     {
       "kind": "ledger",
@@ -11484,7 +11484,7 @@
           "HIPENGINE_GGUF_DECODE_GRAPH"
         ],
         "flags_unread": [],
-        "age_days": 84,
+        "age_days": 86,
         "body_chars": 2040
       },
       "signals": [],
@@ -11500,7 +11500,7 @@
         ]
       },
       "id": "ledger/priority-cleanup-do-first-a60097c66e1e",
-      "evidence_hash": "407c21b40a8a"
+      "evidence_hash": "50b67c06cb76"
     },
     {
       "kind": "ledger",
@@ -11552,7 +11552,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 31,
+        "age_days": 33,
         "body_chars": 1187
       },
       "signals": [
@@ -11574,7 +11574,7 @@
         ]
       },
       "id": "ledger/q8-mmq-policy-planes-is-variant-scoped-2026-09-03-14e393a08b04",
-      "evidence_hash": "d678e7876506"
+      "evidence_hash": "4b78ff18dac8"
     },
     {
       "kind": "ledger",
@@ -11746,7 +11746,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 60,
+        "age_days": 62,
         "body_chars": 802
       },
       "signals": [
@@ -11768,7 +11768,7 @@
         ]
       },
       "id": "ledger/qwen3-6-alpha-beta-plus-snapshot-conv-composite-pr-8b183480386a",
-      "evidence_hash": "f51cf68cb46c"
+      "evidence_hash": "9168dd26df0a"
     },
     {
       "kind": "ledger",
@@ -11780,7 +11780,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 60,
+        "age_days": 62,
         "body_chars": 927
       },
       "signals": [
@@ -11801,7 +11801,7 @@
         ]
       },
       "id": "ledger/qwen3-6-dense-q4t16-ffn-dual-residency-closed-6e84b7d42443",
-      "evidence_hash": "fdd9c88477cb"
+      "evidence_hash": "aef8847a3e10"
     },
     {
       "kind": "ledger",
@@ -11821,7 +11821,7 @@
           "HIPENGINE_GGUF_Q6_PLANAR_Q8_1",
           "HIPENGINE_GGUF_Q6_X8_C1_SIDECAR"
         ],
-        "age_days": 59,
+        "age_days": 61,
         "body_chars": 1235
       },
       "signals": [
@@ -11846,7 +11846,7 @@
         ]
       },
       "id": "ledger/qwen3-6-planar-q6-q8-1-scalar-dot-diagnostic-close-e84bf8c65637",
-      "evidence_hash": "be2d39b78ec6"
+      "evidence_hash": "0b29f4a4fd1e"
     },
     {
       "kind": "ledger",
@@ -11858,7 +11858,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 60,
+        "age_days": 62,
         "body_chars": 807
       },
       "signals": [
@@ -11878,7 +11878,7 @@
         ]
       },
       "id": "ledger/qwen3-6-shared-cache-verifier-kv-batch-primitive-2085ed91f86b",
-      "evidence_hash": "9705f93ae3f8"
+      "evidence_hash": "299199a1cece"
     },
     {
       "kind": "ledger",
@@ -11930,7 +11930,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 46,
+        "age_days": 48,
         "body_chars": 2080
       },
       "signals": [
@@ -11956,7 +11956,7 @@
         ]
       },
       "id": "ledger/qwen3-8-27b-gfx1100-packed-route-t2-production-dri-7952a20b0fc8",
-      "evidence_hash": "48ad3be7e672"
+      "evidence_hash": "8e2264f4fd74"
     },
     {
       "kind": "ledger",
@@ -11970,7 +11970,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 50,
+        "age_days": 52,
         "body_chars": 2033
       },
       "signals": [
@@ -11990,7 +11990,7 @@
         ]
       },
       "id": "ledger/qwen3-8-c-1-mirrored-int8-serving-seam-10fe40af6438",
-      "evidence_hash": "1ab0b1eea389"
+      "evidence_hash": "45d721e2964d"
     },
     {
       "kind": "ledger",
@@ -12004,7 +12004,7 @@
           "HIPENGINE_GGUF_MTP_HOT_VOCAB"
         ],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 754
       },
       "signals": [
@@ -12025,7 +12025,7 @@
         ]
       },
       "id": "ledger/qwen3-8-nextn-selected-vocabulary-proposal-head-c7a209d98764",
-      "evidence_hash": "f4dd80aed8d8"
+      "evidence_hash": "18b8498f351d"
     },
     {
       "kind": "ledger",
@@ -12244,7 +12244,7 @@
           "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 29,
+        "age_days": 31,
         "body_chars": 551
       },
       "signals": [
@@ -12265,7 +12265,7 @@
         ]
       },
       "id": "ledger/qwen4exp-h256-wave-sparse-rows-2026-09-05-48ebcc5db47b",
-      "evidence_hash": "e4588a8d6e25"
+      "evidence_hash": "fc736cf9e980"
     },
     {
       "kind": "ledger",
@@ -12483,7 +12483,7 @@
           "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 29,
+        "age_days": 31,
         "body_chars": 425
       },
       "signals": [
@@ -12502,7 +12502,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q4-bundled-publication-2026-09-05-439fa17844ba",
-      "evidence_hash": "42cfacbb71fd"
+      "evidence_hash": "4a6f1904ee85"
     },
     {
       "kind": "ledger",
@@ -12718,7 +12718,7 @@
           "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 29,
+        "age_days": 31,
         "body_chars": 440
       },
       "signals": [
@@ -12739,7 +12739,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q5-1-output-pair-reuse-2026-09-05-b6df7b091773",
-      "evidence_hash": "6fff2ad97716"
+      "evidence_hash": "2f696f4f3d6f"
     },
     {
       "kind": "ledger",
@@ -12859,7 +12859,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 28,
+        "age_days": 30,
         "body_chars": 457
       },
       "signals": [
@@ -12881,7 +12881,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q5-k-bundled-row4-candidate-removed-4ed9c395181e",
-      "evidence_hash": "21ce6038d3be"
+      "evidence_hash": "25ec055021be"
     },
     {
       "kind": "ledger",
@@ -12895,7 +12895,7 @@
           "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 29,
+        "age_days": 31,
         "body_chars": 431
       },
       "signals": [
@@ -12916,7 +12916,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q5-k-grouped-row4-candidate-2026-09-05-a5de400077f2",
-      "evidence_hash": "236a275e344f"
+      "evidence_hash": "98429fba8ad6"
     },
     {
       "kind": "ledger",
@@ -13070,7 +13070,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 27,
+        "age_days": 29,
         "body_chars": 447
       },
       "signals": [
@@ -13091,7 +13091,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q8-early-wave-publication-removed-fda1415a970b",
-      "evidence_hash": "93553eb0713f"
+      "evidence_hash": "2e1384e75d84"
     },
     {
       "kind": "ledger",
@@ -13105,7 +13105,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 27,
+        "age_days": 29,
         "body_chars": 417
       },
       "signals": [
@@ -13126,7 +13126,7 @@
         ]
       },
       "id": "ledger/qwen4exp-q8-expanded-f32-cache-removed-d5addbeaa352",
-      "evidence_hash": "efe0cee64f39"
+      "evidence_hash": "c49a3f55558d"
     },
     {
       "kind": "ledger",
@@ -13178,7 +13178,7 @@
           "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2"
         ],
         "flags_unread": [],
-        "age_days": 26,
+        "age_days": 28,
         "body_chars": 1277
       },
       "signals": [
@@ -13200,7 +13200,7 @@
         ]
       },
       "id": "ledger/qwen4exp-qsa-ordered-v2-decode-rollback-bde385e49623",
-      "evidence_hash": "ffd41bb39cb2"
+      "evidence_hash": "9029fd3d7c2a"
     },
     {
       "kind": "ledger",
@@ -13416,7 +13416,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 94,
+        "age_days": 96,
         "body_chars": 1024
       },
       "signals": [
@@ -13433,7 +13433,7 @@
         ]
       },
       "id": "ledger/record-draft-stage-stats-8fe991864e6c",
-      "evidence_hash": "82b3ecd1e4e6"
+      "evidence_hash": "f25857e832c7"
     },
     {
       "kind": "ledger",
@@ -13448,7 +13448,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 93,
+        "age_days": 95,
         "body_chars": 1351
       },
       "signals": [],
@@ -13466,7 +13466,7 @@
         ]
       },
       "id": "ledger/record-target-topk-scores-ae7576275b8c",
-      "evidence_hash": "28041a48e380"
+      "evidence_hash": "4cfff82ac101"
     },
     {
       "kind": "ledger",
@@ -13478,7 +13478,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 860
       },
       "signals": [
@@ -13500,7 +13500,7 @@
         ]
       },
       "id": "ledger/resident-mtp-draft-sync-stage-timings-default-off-dbefffa97911",
-      "evidence_hash": "25ac51ba04fd"
+      "evidence_hash": "fd6aa419f431"
     },
     {
       "kind": "ledger",
@@ -13517,7 +13517,7 @@
           "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
         ],
         "flags_unread": [],
-        "age_days": 16,
+        "age_days": 18,
         "body_chars": 2441
       },
       "signals": [
@@ -13544,7 +13544,7 @@
         ]
       },
       "id": "ledger/reused-suffix-prefill-has-two-routes-and-only-one-39281cb16d2c",
-      "evidence_hash": "54f08b6c1d90"
+      "evidence_hash": "b9c16d61bfb5"
     },
     {
       "kind": "ledger",
@@ -13558,7 +13558,7 @@
           "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 492
       },
       "signals": [
@@ -13581,7 +13581,7 @@
         ]
       },
       "id": "ledger/rf-b1a-mtp-serving-target-wmma-prefill-transfer-20-36edffa810ca",
-      "evidence_hash": "d2856cf5bdc0"
+      "evidence_hash": "8c95047dfaf2"
     },
     {
       "kind": "ledger",
@@ -13595,7 +13595,7 @@
           "HIPENGINE_GGUF_PREFILL_F16_STAGING"
         ],
         "flags_unread": [],
-        "age_days": 32,
+        "age_days": 34,
         "body_chars": 555
       },
       "signals": [
@@ -13617,7 +13617,7 @@
         ]
       },
       "id": "ledger/rf-b2a-prefill-f16-staging-route-switch-2026-09-02-77efc9275fec",
-      "evidence_hash": "ebf7af3dcde3"
+      "evidence_hash": "9d5ba1ad2522"
     },
     {
       "kind": "ledger",
@@ -13631,7 +13631,7 @@
           "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL"
         ],
         "flags_unread": [],
-        "age_days": 31,
+        "age_days": 33,
         "body_chars": 570
       },
       "signals": [
@@ -13653,7 +13653,7 @@
         ]
       },
       "id": "ledger/rf-b5a-selective-planar-q6-integer-mmq-route-2026-5a8fb3e37190",
-      "evidence_hash": "05c374a9c92c"
+      "evidence_hash": "aaa6e9527068"
     },
     {
       "kind": "ledger",
@@ -13667,7 +13667,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 1815
       },
       "signals": [
@@ -13694,7 +13694,7 @@
         ]
       },
       "id": "ledger/rf-m5-production-whole-batch-ar-route-for-over-wid-c4a20f66aa54",
-      "evidence_hash": "749df7db3414"
+      "evidence_hash": "e41566e7d542"
     },
     {
       "kind": "ledger",
@@ -13712,7 +13712,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 40,
+        "age_days": 42,
         "body_chars": 1234
       },
       "signals": [
@@ -13738,7 +13738,7 @@
         ]
       },
       "id": "ledger/rf-oi2-default-off-adaptive-mtp-budget-diagnostic-becaa06e26bd",
-      "evidence_hash": "70e789f9aec2"
+      "evidence_hash": "8b4d3587cce5"
     },
     {
       "kind": "ledger",
@@ -13755,7 +13755,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 40,
+        "age_days": 42,
         "body_chars": 1068
       },
       "signals": [
@@ -13781,7 +13781,7 @@
         ]
       },
       "id": "ledger/rf-oi4-default-off-post-norm-draft-hidden-diagnost-9bda804e63d3",
-      "evidence_hash": "d81f10009d5c"
+      "evidence_hash": "e6aeeb08974d"
     },
     {
       "kind": "ledger",
@@ -13797,7 +13797,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 29,
+        "age_days": 31,
         "body_chars": 1654
       },
       "signals": [
@@ -13824,7 +13824,7 @@
         ]
       },
       "id": "ledger/rf-oi5-resolved-profile-owned-mtp-width-depth-poli-ba5541867820",
-      "evidence_hash": "9510f64f2339"
+      "evidence_hash": "9f9b1abfe76f"
     },
     {
       "kind": "ledger",
@@ -13836,7 +13836,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 42,
+        "age_days": 44,
         "body_chars": 959
       },
       "signals": [
@@ -13856,7 +13856,7 @@
         ]
       },
       "id": "ledger/rf1-1024-target-proposal-sentinel-blocker-3ae9a3f294a8",
-      "evidence_hash": "57538d0ec25d"
+      "evidence_hash": "d5f9f1676cfd"
     },
     {
       "kind": "ledger",
@@ -13872,7 +13872,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 43,
+        "age_days": 45,
         "body_chars": 929
       },
       "signals": [
@@ -13897,7 +13897,7 @@
         ]
       },
       "id": "ledger/rf2-long-context-target-graphs-are-exact-but-not-a-6f007c71c839",
-      "evidence_hash": "68dde640e10c"
+      "evidence_hash": "aaf814f32af4"
     },
     {
       "kind": "ledger",
@@ -13913,7 +13913,7 @@
           "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
         ],
         "flags_unread": [],
-        "age_days": 17,
+        "age_days": 19,
         "body_chars": 2198
       },
       "signals": [
@@ -13937,7 +13937,7 @@
         ]
       },
       "id": "ledger/screening-override-now-spans-the-plan-layer-extend-29c052de2c83",
-      "evidence_hash": "1e3b5e4383e7"
+      "evidence_hash": "81f0a2401359"
     },
     {
       "kind": "ledger",
@@ -13949,7 +13949,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 87,
+        "age_days": 89,
         "body_chars": 1079
       },
       "signals": [
@@ -13969,7 +13969,7 @@
         ]
       },
       "id": "ledger/scripts-qwen35-batch-hidden-bisect-py-compare-full-18af3f3e81e4",
-      "evidence_hash": "aa145a57d99a"
+      "evidence_hash": "3ba9f4c4a49c"
     },
     {
       "kind": "ledger",
@@ -13983,7 +13983,7 @@
           "HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT"
         ],
         "flags_unread": [],
-        "age_days": 34,
+        "age_days": 36,
         "body_chars": 925
       },
       "signals": [
@@ -14003,7 +14003,7 @@
         ]
       },
       "id": "ledger/server-default-ar-ready-cohort-rollback-0dbe8dcbbd41",
-      "evidence_hash": "14d8bfc61fa6"
+      "evidence_hash": "a708dd7f8a72"
     },
     {
       "kind": "ledger",
@@ -14019,7 +14019,7 @@
         "flags_unread": [
           "HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA"
         ],
-        "age_days": 59,
+        "age_days": 61,
         "body_chars": 982
       },
       "signals": [
@@ -14042,7 +14042,7 @@
         ]
       },
       "id": "ledger/sh15-gfx1151-private-c1-persistent-allocation-aren-ba20c7924164",
-      "evidence_hash": "d53891731aa1"
+      "evidence_hash": "3705386e96f3"
     },
     {
       "kind": "ledger",
@@ -14056,7 +14056,7 @@
           "HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA"
         ],
         "flags_unread": [],
-        "age_days": 59,
+        "age_days": 61,
         "body_chars": 2230
       },
       "signals": [
@@ -14077,7 +14077,7 @@
         ]
       },
       "id": "ledger/sh16-private-c1-selective-immutable-weight-arena-5c905f029f89",
-      "evidence_hash": "d713f0458625"
+      "evidence_hash": "8a2d690043b8"
     },
     {
       "kind": "ledger",
@@ -14094,7 +14094,7 @@
           "HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS"
         ],
         "flags_unread": [],
-        "age_days": 16,
+        "age_days": 18,
         "body_chars": 1988
       },
       "signals": [
@@ -14123,7 +14123,7 @@
         ]
       },
       "id": "ledger/shared-prefix-suffix-prefill-runs-one-token-at-a-t-062238cf896e",
-      "evidence_hash": "b3119ee26925"
+      "evidence_hash": "4003f0794071"
     },
     {
       "kind": "ledger",
@@ -14137,7 +14137,7 @@
           "HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON"
         ],
         "flags_unread": [],
-        "age_days": 25,
+        "age_days": 27,
         "body_chars": 1099
       },
       "signals": [
@@ -14160,7 +14160,7 @@
         ]
       },
       "id": "ledger/slot-local-int8-oracle-prefill-aotriton-admission-c275fb456ec1",
-      "evidence_hash": "9a3e9ab326f8"
+      "evidence_hash": "e4558e6e0b85"
     },
     {
       "kind": "ledger",
@@ -14176,7 +14176,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 40,
+        "age_days": 42,
         "body_chars": 688
       },
       "signals": [
@@ -14199,7 +14199,7 @@
         ]
       },
       "id": "ledger/specdec2-dense-nextn-host-device-proposal-duplicat-c244a78fdb73",
-      "evidence_hash": "26b4a62d6098"
+      "evidence_hash": "f101ff7dbca4"
     },
     {
       "kind": "ledger",
@@ -14213,7 +14213,7 @@
           "HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT"
         ],
         "flags_unread": [],
-        "age_days": 40,
+        "age_days": 42,
         "body_chars": 971
       },
       "signals": [
@@ -14233,7 +14233,7 @@
         ]
       },
       "id": "ledger/specdec2-dense-prompt-activation-fallback-6ce3ba55cfce",
-      "evidence_hash": "4dcccb746fe2"
+      "evidence_hash": "d58333005ceb"
     },
     {
       "kind": "ledger",
@@ -14245,7 +14245,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 40,
+        "age_days": 42,
         "body_chars": 870
       },
       "signals": [
@@ -14265,7 +14265,7 @@
         ]
       },
       "id": "ledger/specdec2-gfx1100-packed-paro-c1-bring-up-debt-7f2c75b0b7ff",
-      "evidence_hash": "ebc9e35fd484"
+      "evidence_hash": "e19e2d78bfbe"
     },
     {
       "kind": "ledger",
@@ -14277,7 +14277,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 739
       },
       "signals": [
@@ -14297,7 +14297,7 @@
         ]
       },
       "id": "ledger/specdec2-moe-physical-c2-exact-linear-fallback-f51f74bb6e09",
-      "evidence_hash": "09c0e2e2c0c0"
+      "evidence_hash": "7d881975d5c1"
     },
     {
       "kind": "ledger",
@@ -14309,7 +14309,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 675
       },
       "signals": [
@@ -14327,7 +14327,7 @@
         ]
       },
       "id": "ledger/specdec2-moe-physical-c2-numerical-scope-9724cc2aa3fa",
-      "evidence_hash": "c7d9ef2765ac"
+      "evidence_hash": "f247a9147159"
     },
     {
       "kind": "ledger",
@@ -14339,7 +14339,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 460
       },
       "signals": [
@@ -14359,7 +14359,7 @@
         ]
       },
       "id": "ledger/specdec2-moe-physical-c2-q4-pair-reuse-scope-1911e5e2b7c9",
-      "evidence_hash": "597805fb84c1"
+      "evidence_hash": "861319517721"
     },
     {
       "kind": "ledger",
@@ -14371,7 +14371,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 612
       },
       "signals": [
@@ -14390,7 +14390,7 @@
         ]
       },
       "id": "ledger/specdec2-moe-request-local-c2-prototype-ddab9db3b5dc",
-      "evidence_hash": "d0d3768b565f"
+      "evidence_hash": "7d7e0546c1ce"
     },
     {
       "kind": "ledger",
@@ -14404,7 +14404,7 @@
           "HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE"
         ],
         "flags_unread": [],
-        "age_days": 40,
+        "age_days": 42,
         "body_chars": 838
       },
       "signals": [
@@ -14424,7 +14424,7 @@
         ]
       },
       "id": "ledger/specdec2-p4-device-chain-qualification-oracle-67b374004436",
-      "evidence_hash": "2c0a11dab9b1"
+      "evidence_hash": "087182b4a3e2"
     },
     {
       "kind": "ledger",
@@ -14439,7 +14439,7 @@
           "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES"
         ],
         "flags_unread": [],
-        "age_days": 38,
+        "age_days": 40,
         "body_chars": 3251
       },
       "signals": [
@@ -14459,7 +14459,7 @@
         ]
       },
       "id": "ledger/specdec2-physical-production-scope-472affa17b07",
-      "evidence_hash": "e4576d26f3c4"
+      "evidence_hash": "2724b7e3f443"
     },
     {
       "kind": "ledger",
@@ -14473,7 +14473,7 @@
           "HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN"
         ],
         "flags_unread": [],
-        "age_days": 36,
+        "age_days": 38,
         "body_chars": 848
       },
       "signals": [
@@ -14494,7 +14494,7 @@
         ]
       },
       "id": "ledger/specdec2-post-reject-cooldown-experiment-2026-08-2-dbc530727296",
-      "evidence_hash": "53ddff06d9c7"
+      "evidence_hash": "d6f03b5d1aa0"
     },
     {
       "kind": "ledger",
@@ -14509,7 +14509,7 @@
           "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD"
         ],
         "flags_unread": [],
-        "age_days": 37,
+        "age_days": 39,
         "body_chars": 1799
       },
       "signals": [
@@ -14531,7 +14531,7 @@
         ]
       },
       "id": "ledger/specdec2-request-local-ngram-mod-experiment-693dedea159c",
-      "evidence_hash": "cfb890f32a2d"
+      "evidence_hash": "cae1a8e40780"
     },
     {
       "kind": "ledger",
@@ -14547,7 +14547,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 41,
+        "age_days": 43,
         "body_chars": 1063
       },
       "signals": [
@@ -14568,7 +14568,7 @@
         ]
       },
       "id": "ledger/specdec2-whole-request-compatibility-seam-2df815daeae3",
-      "evidence_hash": "c0c8c1860746"
+      "evidence_hash": "302d11cb2a54"
     },
     {
       "kind": "ledger",
@@ -14586,7 +14586,7 @@
           "HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"
         ],
         "flags_unread": [],
-        "age_days": 17,
+        "age_days": 19,
         "body_chars": 1373
       },
       "signals": [
@@ -14612,7 +14612,7 @@
         ]
       },
       "id": "ledger/speculative-candidate-budget-default-vs-qualified-f11d457f8c0b",
-      "evidence_hash": "edd16ff1c285"
+      "evidence_hash": "563ea744647c"
     },
     {
       "kind": "ledger",
@@ -14629,7 +14629,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 17,
+        "age_days": 19,
         "body_chars": 1407
       },
       "signals": [
@@ -14656,7 +14656,7 @@
         ]
       },
       "id": "ledger/speculative-mtp-serving-evidence-rows-shape-axis-r-ce723110fafa",
-      "evidence_hash": "b30b9be9d415"
+      "evidence_hash": "b2acf9f909a5"
     },
     {
       "kind": "ledger",
@@ -14670,7 +14670,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 15,
+        "age_days": 17,
         "body_chars": 3084
       },
       "signals": [
@@ -14692,7 +14692,7 @@
         ]
       },
       "id": "ledger/split-prefill-diverges-from-a-single-call-found-20-f6dc42b03191",
-      "evidence_hash": "753ac8c2033f"
+      "evidence_hash": "f83707d53773"
     },
     {
       "kind": "ledger",
@@ -14706,7 +14706,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 13,
+        "age_days": 15,
         "body_chars": 977
       },
       "signals": [],
@@ -14729,7 +14729,7 @@
         ]
       },
       "id": "ledger/startup-scratch-probe-warms-the-packed-route-only-b123a424fa2c",
-      "evidence_hash": "26c4b7ff944d"
+      "evidence_hash": "c91db8e25dd5"
     },
     {
       "kind": "ledger",
@@ -14744,7 +14744,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 17,
+        "age_days": 19,
         "body_chars": 1072
       },
       "signals": [
@@ -14771,7 +14771,7 @@
         ]
       },
       "id": "ledger/streaming-consumer-pays-one-threadpool-round-trip-9f20f37a012c",
-      "evidence_hash": "fc3f83079870"
+      "evidence_hash": "8dd22cabd3e3"
     },
     {
       "kind": "ledger",
@@ -14788,7 +14788,7 @@
           "HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX"
         ],
         "flags_unread": [],
-        "age_days": 15,
+        "age_days": 17,
         "body_chars": 1946
       },
       "signals": [
@@ -14815,7 +14815,7 @@
         ]
       },
       "id": "ledger/strict-prefix-gate-cannot-bind-a-batched-candidate-d8fce3531cab",
-      "evidence_hash": "dce72949af08"
+      "evidence_hash": "200d91d032c7"
     },
     {
       "kind": "ledger",
@@ -14834,7 +14834,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 94,
+        "age_days": 96,
         "body_chars": 3589
       },
       "signals": [],
@@ -14858,7 +14858,7 @@
         ]
       },
       "id": "ledger/target-block-direct-partial-replay-mode-c8ed41f854ce",
-      "evidence_hash": "118961da0dc0"
+      "evidence_hash": "023af0c595a6"
     },
     {
       "kind": "ledger",
@@ -14870,7 +14870,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 790
       },
       "signals": [
@@ -14891,7 +14891,7 @@
         ]
       },
       "id": "ledger/target-block-sync-stage-timings-default-off-attrib-14f64d6f8949",
-      "evidence_hash": "f4af6b8d0d35"
+      "evidence_hash": "1dcac6efc6d7"
     },
     {
       "kind": "ledger",
@@ -14906,7 +14906,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 6,
+        "age_days": 8,
         "body_chars": 2260
       },
       "signals": [],
@@ -14929,7 +14929,7 @@
         ]
       },
       "id": "ledger/the-128-wide-mmq32-k-pass-is-implemented-correct-a-34ce9f35971f",
-      "evidence_hash": "0be200780134"
+      "evidence_hash": "f4c82a3ffab3"
     },
     {
       "kind": "ledger",
@@ -14949,7 +14949,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 5,
+        "age_days": 7,
         "body_chars": 1215
       },
       "signals": [
@@ -14977,7 +14977,7 @@
         ]
       },
       "id": "ledger/the-split-dense-geglu-wrapper-lost-its-only-caller-11597417418b",
-      "evidence_hash": "ed9f72037744"
+      "evidence_hash": "0d1023fe66fd"
     },
     {
       "kind": "ledger",
@@ -14991,7 +14991,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 14,
+        "age_days": 16,
         "body_chars": 1086
       },
       "signals": [],
@@ -15014,7 +15014,7 @@
         ]
       },
       "id": "ledger/three-qwen36-dense-serving-rows-carry-no-execution-895d872df29b",
-      "evidence_hash": "8943532242bd"
+      "evidence_hash": "8c9849746b34"
     },
     {
       "kind": "ledger",
@@ -15030,7 +15030,7 @@
         ],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 15,
+        "age_days": 17,
         "body_chars": 1885
       },
       "signals": [
@@ -15054,7 +15054,7 @@
         ]
       },
       "id": "ledger/two-mtp-entry-points-disagree-on-the-sampling-cont-dbe10f87f2e1",
-      "evidence_hash": "a002c03b75be"
+      "evidence_hash": "29ddce5c9e86"
     },
     {
       "kind": "ledger",
@@ -15096,7 +15096,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 96,
+        "age_days": 98,
         "body_chars": 759
       },
       "signals": [
@@ -15118,7 +15118,7 @@
         ]
       },
       "id": "ledger/verify-dp4a-pmin05-dp4a-route-default-off-opt-in-a-be8569d2e345",
-      "evidence_hash": "6d67eae254b9"
+      "evidence_hash": "71256963cac8"
     },
     {
       "kind": "ledger",
@@ -15133,7 +15133,7 @@
           "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
         ],
         "flags_unread": [],
-        "age_days": 95,
+        "age_days": 97,
         "body_chars": 1059
       },
       "signals": [
@@ -15155,7 +15155,7 @@
         ]
       },
       "id": "ledger/verify-lm-head-q6-top1-dp4a-verifier-lm-head-x8-si-0440d22eda42",
-      "evidence_hash": "91e368b7a5aa"
+      "evidence_hash": "df5e2bc54c9e"
     },
     {
       "kind": "ledger",
@@ -15290,7 +15290,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 18,
+        "age_days": 20,
         "body_chars": 1042
       },
       "signals": [
@@ -15316,7 +15316,7 @@
         ]
       },
       "id": "ledger/vibevoice-tts-per-step-diffusion-d2h-readback-reso-962eb52cba04",
-      "evidence_hash": "c47d978c0723"
+      "evidence_hash": "59a5679cabc3"
     },
     {
       "kind": "ledger",
@@ -15417,7 +15417,7 @@
         "paths_missing": [],
         "flags_named": [],
         "flags_unread": [],
-        "age_days": 15,
+        "age_days": 17,
         "body_chars": 3383
       },
       "signals": [
@@ -15451,7 +15451,7 @@
         ]
       },
       "id": "ledger/wide-mtp-groups-run-without-a-prompt-provider-and-e24995b4babd",
-      "evidence_hash": "b4c6bc6b6d55"
+      "evidence_hash": "6adf3215dcf7"
     },
     {
       "kind": "ledger",
