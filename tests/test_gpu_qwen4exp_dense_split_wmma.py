@@ -107,6 +107,21 @@ def test_split_wmma_recovers_f32_operand_precision(rows, k, n, cancel):
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime/device not available")
+@pytest.mark.parametrize("k", [2560, 10240])
+def test_split_wmma_long_k_accuracy_beats_uncompensated_drift(k):
+    """Numerical repair target, not a parent-bit-parity promotion requirement."""
+    x, weight = make_split_fixture(129, k, 72)
+    wh = _dequantize_weight(weight, k)
+    exact = x.astype(np.float64) @ wh.astype(np.float64).T
+    library = dw.build_gguf_q8_0_dense_wide(load=True)
+    out = _launch(x, weight, dw.gguf_q8_0_dense_split64x128_f32_f32_out, library)
+    relative_l2 = np.linalg.norm(out.astype(np.float64) - exact) / np.linalg.norm(exact)
+    # Independently declared tighter primitive target after natural-input
+    # attribution: ordinary split is 2e-7--7e-7 at these K regimes.
+    assert relative_l2 < 1.2e-7, relative_l2
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime/device not available")
 @pytest.mark.parametrize("large_weight", [False, True])
 def test_split_wmma_range_miss_runs_the_strict_f32_fallback(large_weight):
     x, weight = make_split_fixture(137, 192, 72)

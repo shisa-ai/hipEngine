@@ -10,9 +10,12 @@
   Scope and layer identity are in the live dispatch cache key.
   It is distinct from the historical identical-product `dense_wide256_split3`
   timing probe. The exact raw-F32 coltile chain remains available.
-- Remove this sibling if the unchanged full-model numerical or complete-owner
-  wall gate fails and no concrete revised mechanism is queued. If qualified,
-  replace the early-layer fallback only inside its certified model/shape scope.
+- **Current repair experiment:** the split leaf now uses compensated F32
+  high-high accumulation, positive/negative high-high WMMA averaging and
+  ordinary cross-plane summation. The route remains default-off until the
+  complete model gates pass. If the repair fails, revert the leaf change and
+  remove the associated RED evidence; if it passes, replace the early-layer
+  fallback only in the certified scope.
 - Out-of-range operands trigger an in-kernel strict F32 fallback with no host
   readback, extra launch or shared workspace. That guard reduces the primitive
   win; the complete range-safe owner, not the unguarded leaf, is the perf basis.
