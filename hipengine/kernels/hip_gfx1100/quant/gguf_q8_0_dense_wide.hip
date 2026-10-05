@@ -128,6 +128,43 @@ __device__ __forceinline__ void wide_dq_q8_0_tile(const uint4 w0,
   }
 }
 
+// Precision-recovering split: scale the residual before the F16 cast to keep
+// small residuals out of the F16 subnormal/flush range. Cross products are
+// accumulated separately from the large high-high sum, then unscaled once.
+constexpr float SPLIT_SCALE = 2048.0f;
+constexpr float SPLIT_INV_SCALE = 1.0f / SPLIT_SCALE;
+
+__device__ __forceinline__ half_t wide_split_low(float v, half_t hi) {
+  return static_cast<half_t>((v - static_cast<float>(hi)) * SPLIT_SCALE);
+}
+
+__device__ __forceinline__ void wide_dq_q8_0_split_tile(
+    const uint4 w0, const uint4 w1, const uint4 w3, const uint4 w4,
+    const uint32_t w2, half_t* dst_hi, half_t* dst_lo) {
+  const uint32_t words[17] = {w0.x, w0.y, w0.z, w0.w, w1.x, w1.y, w1.z, w1.w,
+                             w3.x, w3.y, w3.z, w3.w, w4.x, w4.y, w4.z, w4.w, w2};
+  const float d0 = wide_half_bits_to_float(static_cast<uint16_t>(
+      wide_stage_byte(words, 0) | (wide_stage_byte(words, 1) << 8)));
+  const float d1 = wide_half_bits_to_float(static_cast<uint16_t>(
+      wide_stage_byte(words, 34) | (wide_stage_byte(words, 35) << 8)));
+#pragma unroll
+  for (int block = 0; block < 2; ++block) {
+#pragma unroll
+    for (int m = 0; m < 16; ++m) {
+      union { half_t h[2]; uint32_t u; } hi, lo;
+#pragma unroll
+      for (int e = 0; e < 2; ++e) {
+        const float v = (block == 0 ? d0 : d1) * static_cast<float>(
+            static_cast<int8_t>(wide_stage_byte(words, block * 34 + 2 + m * 2 + e)));
+        hi.h[e] = static_cast<half_t>(v);
+        lo.h[e] = wide_split_low(v, hi.h[e]);
+      }
+      reinterpret_cast<uint32_t*>(dst_hi)[block * 16 + m] = hi.u;
+      reinterpret_cast<uint32_t*>(dst_lo)[block * 16 + m] = lo.u;
+    }
+  }
+}
+
 // One 16x16 accumulator fragment to global memory.
 //
 // The WMMA C fragment puts element e of lane L at (row = 2e + (L >> 4),
@@ -222,7 +259,7 @@ __device__ __forceinline__ half8_t wide_load_act8(const half_t* p) {
 // on the split's cost. A negative here kills the scheme cheaply; a positive
 // says the split is worth scoping.
 template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
-          int WMMA_REP = 1>
+          int WMMA_REP = 1, bool SPLIT = false>
 __device__ __forceinline__ void wide_tile_gemm(
     const uint8_t* __restrict__ w_base,  // first weight row of this block
     const size_t wrow_bytes,
@@ -235,7 +272,9 @@ __device__ __forceinline__ void wide_tile_gemm(
     const int t0,
     const int m0,
     half_t* As,
-    half_t* Bs) {
+    half_t* Bs,
+    half_t* As_lo = nullptr,
+    half_t* Bs_lo = nullptr) {
   constexpr int WAVES_M = BM / WTM;
   constexpr int TM = WTM / 16;
   constexpr int TN = WTN / 16;
@@ -259,6 +298,7 @@ __device__ __forceinline__ void wide_tile_gemm(
   uint4 a0[A_ITEMS], a1[A_ITEMS], a3[A_ITEMS], a4[A_ITEMS];
   uint32_t a2[A_ITEMS];
   half8_t bst[B_ITEMS];
+  half8_t bst_lo[SPLIT ? B_ITEMS : 1];
 
   int weight_ks = 0;
   auto load_regs = [&](const int ks) {
@@ -292,9 +332,16 @@ __device__ __forceinline__ void wide_tile_gemm(
         const x_t* p = x + static_cast<size_t>(brow) * K +
                        static_cast<size_t>(ks) * WIDE_BK + off;
         h = wide_load_act8(p);
+        if constexpr (SPLIT) {
+#pragma unroll
+          for (int e = 0; e < 8; ++e) bst_lo[i][e] = wide_split_low(p[e], h[e]);
+        }
       } else {
 #pragma unroll
-        for (int e = 0; e < 8; ++e) h[e] = static_cast<half_t>(0.0f);
+        for (int e = 0; e < 8; ++e) {
+          h[e] = static_cast<half_t>(0.0f);
+          if constexpr (SPLIT) bst_lo[i][e] = static_cast<half_t>(0.0f);
+        }
       }
       bst[i] = h;
     }
@@ -308,8 +355,14 @@ __device__ __forceinline__ void wide_tile_gemm(
     for (int i = 0; i < A_ITEMS; ++i) {
       const int row = tid + i * WIDE_THREADS;
       if (row < BM) {
-        wide_dq_q8_0_tile(a0[i], a1[i], a3[i], a4[i], a2[i],
-                          As + row * WIDE_LDS_STRIDE);
+        if constexpr (SPLIT) {
+          wide_dq_q8_0_split_tile(a0[i], a1[i], a3[i], a4[i], a2[i],
+                                As + row * WIDE_LDS_STRIDE,
+                                As_lo + row * WIDE_LDS_STRIDE);
+        } else {
+          wide_dq_q8_0_tile(a0[i], a1[i], a3[i], a4[i], a2[i],
+                            As + row * WIDE_LDS_STRIDE);
+        }
       }
     }
     // Activation tile: the f16 values are already in registers; this is a
@@ -319,17 +372,24 @@ __device__ __forceinline__ void wide_tile_gemm(
       const int c = tid + i * WIDE_THREADS;
       const int off = (c & 7) * 8;
       *reinterpret_cast<half8_t*>(Bs + (c >> 3) * WIDE_LDS_STRIDE + off) = bst[i];
+      if constexpr (SPLIT) {
+        *reinterpret_cast<half8_t*>(Bs_lo + (c >> 3) * WIDE_LDS_STRIDE + off) = bst_lo[i];
+      }
     }
   };
 
   // ---- accumulators ------------------------------------------------------
   float8_t acc[TM][TN];
+  float8_t cross[SPLIT ? TM : 1][SPLIT ? TN : 1];
 #pragma unroll
   for (int i = 0; i < TM; ++i) {
 #pragma unroll
     for (int j = 0; j < TN; ++j) {
 #pragma unroll
-      for (int e = 0; e < 8; ++e) acc[i][j][e] = 0.0f;
+      for (int e = 0; e < 8; ++e) {
+        acc[i][j][e] = 0.0f;
+        if constexpr (SPLIT) cross[i][j][e] = 0.0f;
+      }
     }
   }
 
@@ -350,6 +410,7 @@ __device__ __forceinline__ void wide_tile_gemm(
 #pragma unroll
     for (int kk = 0; kk < WIDE_BK; kk += 16) {
       half16_t a[TM], b[TN];
+      half16_t a_lo[SPLIT ? TM : 1], b_lo[SPLIT ? TN : 1];
       const int r = lane & 15;
 #pragma unroll
       for (int i = 0; i < TM; ++i) {
@@ -357,6 +418,12 @@ __device__ __forceinline__ void wide_tile_gemm(
         const half8_t lo = *reinterpret_cast<const half8_t*>(p);
         const half8_t hi = *reinterpret_cast<const half8_t*>(p + 8);
         a[i] = __builtin_bit_cast(half16_t, (half8_t[2]){lo, hi});
+        if constexpr (SPLIT) {
+          const half_t* pl = As_lo + (wm * WTM + i * 16 + r) * WIDE_LDS_STRIDE + kk;
+          const half8_t l0 = *reinterpret_cast<const half8_t*>(pl);
+          const half8_t l1 = *reinterpret_cast<const half8_t*>(pl + 8);
+          a_lo[i] = __builtin_bit_cast(half16_t, (half8_t[2]){l0, l1});
+        }
       }
 #pragma unroll
       for (int j = 0; j < TN; ++j) {
@@ -365,15 +432,33 @@ __device__ __forceinline__ void wide_tile_gemm(
         const half8_t lo = *reinterpret_cast<const half8_t*>(p);
         const half8_t hi = *reinterpret_cast<const half8_t*>(p + 8);
         b[j] = __builtin_bit_cast(half16_t, (half8_t[2]){lo, hi});
+        if constexpr (SPLIT) {
+          const half_t* pl = Bs_lo + (wn * WTN + j * 16 + r) * WIDE_LDS_STRIDE + kk;
+          const half8_t l0 = *reinterpret_cast<const half8_t*>(pl);
+          const half8_t l1 = *reinterpret_cast<const half8_t*>(pl + 8);
+          b_lo[j] = __builtin_bit_cast(half16_t, (half8_t[2]){l0, l1});
+        }
       }
 #pragma unroll
       for (int i = 0; i < TM; ++i) {
 #pragma unroll
         for (int j = 0; j < TN; ++j) {
           if (TAIL && !jact[j]) continue;
+          if constexpr (SPLIT) {
+            // gfx11 WMMA's long high-high accumulation loses precision as K
+            // grows. Round one 16-term dot independently, then sum the dots
+            // with ordinary F32 addition instead of feeding the growing sum
+            // back through the matrix accumulator.
+            const float8_t zero = {};
+            const float8_t dot = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a[i], zero);
+            acc[i][j] += dot;
+            cross[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a_lo[i], cross[i][j]);
+            cross[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b_lo[j], a[i], cross[i][j]);
+          } else {
 #pragma unroll
-          for (int rep = 0; rep < WMMA_REP; ++rep) {
-            acc[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a[i], acc[i][j]);
+            for (int rep = 0; rep < WMMA_REP; ++rep) {
+              acc[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a[i], acc[i][j]);
+            }
           }
         }
       }
@@ -397,6 +482,12 @@ __device__ __forceinline__ void wide_tile_gemm(
 #pragma unroll
     for (int j = 0; j < TN; ++j) {
       if (ok && (!TAIL || jact[j])) {
+        if constexpr (SPLIT) {
+#pragma unroll
+          for (int e = 0; e < 8; ++e) {
+            acc[i][j][e] = __builtin_fmaf(cross[i][j][e], SPLIT_INV_SCALE, acc[i][j][e]);
+          }
+        }
         wide_store_tile(acc[i][j], stg, out, M, rows, t0,
                         wn * WTN + j * 16, m0 + ml, lane);
       }
@@ -424,6 +515,26 @@ q8_0_dense_wide_kernel(const x_t* __restrict__ x,
   wide_tile_gemm<x_t, BM, BN, WTM, WTN, TAIL, WMMA_REP>(
       qweight + static_cast<size_t>(m0) * wrow_bytes, wrow_bytes,
       out_features - m0, x, in_features, out, out_features, rows, t0, m0, As, Bs);
+}
+
+// Measurement-only true split sibling. BM64/BN128 keeps doubled operand LDS
+// at 55,296 bytes. Existing kernel instantiations retain their original arrays.
+template <bool TAIL>
+__global__ void __launch_bounds__(WIDE_THREADS, 1)
+q8_0_dense_split64x128_kernel(const float* __restrict__ x,
+                             const uint8_t* __restrict__ qweight,
+                             float* __restrict__ out,
+                             const int rows, const int K, const int M) {
+  __shared__ __align__(16) half_t As[64 * WIDE_LDS_STRIDE];
+  __shared__ __align__(16) half_t Bs[128 * WIDE_LDS_STRIDE];
+  __shared__ __align__(16) half_t As_lo[64 * WIDE_LDS_STRIDE];
+  __shared__ __align__(16) half_t Bs_lo[128 * WIDE_LDS_STRIDE];
+  const int m0 = blockIdx.x * 64;
+  const int t0 = blockIdx.y * 128;
+  const size_t wb = static_cast<size_t>(K / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  wide_tile_gemm<float, 64, 128, 32, 32, TAIL, 1, true>(
+      qweight + static_cast<size_t>(m0) * wb, wb, M - m0, x, K,
+      out, M, rows, t0, m0, As, Bs, As_lo, Bs_lo);
 }
 
 // f32 -> f16 activation conversion: the hoisted form of the staging conversion
@@ -533,6 +644,31 @@ extern "C" int hipengine_gguf_q8_0_f32_to_f16(const void* x,
                                                    in_features, out_features,  \
                                                    stream);                    \
   }
+
+// Use the predicated specialization even on full tiles: the tail-free LLVM
+// specialization spills 204 bytes/lane at 256 VGPR, whereas the predicated
+// body is scratch-free at 241 static VGPR. This is a resource dispatch choice,
+// not a numerical change; full tiles simply pass all of its predicates.
+#define HIPENGINE_DENSE_WIDE_EXPORT_SPLIT(name, x_t, BM, BN)                   \
+  extern "C" int name(const void* x, const void* qweight, void* out,           \
+                      int64_t rows, int64_t in_features, int64_t out_features, \
+                      int64_t threads, hipStream_t stream) {                   \
+    (void)threads;                                                             \
+    if (!x || !qweight || !out || rows <= 0 || in_features <= 0 ||              \
+        in_features % WIDE_BK || out_features <= 0 || rows > INT32_MAX ||      \
+        in_features > INT32_MAX || out_features > INT32_MAX)                   \
+      return static_cast<int>(hipErrorInvalidValue);                           \
+    const dim3 grid((out_features + BM - 1) / BM, (rows + BN - 1) / BN);       \
+    hipLaunchKernelGGL((q8_0_dense_split64x128_kernel<true>), grid,              \
+        dim3(WIDE_THREADS), 0, stream, static_cast<const x_t*>(x),              \
+        static_cast<const uint8_t*>(qweight), static_cast<float*>(out),         \
+        static_cast<int>(rows), static_cast<int>(in_features),                 \
+        static_cast<int>(out_features));                                      \
+    return static_cast<int>(hipGetLastError());                                \
+  }
+
+HIPENGINE_DENSE_WIDE_EXPORT_SPLIT(
+    hipengine_gguf_q8_0_dense_split64x128_f32_f32_out, float, 64, 128)
 
 // ``x_t`` selects the activation ABI. The f32 exports convert during staging;
 // the f16in exports consume an activation already converted by
