@@ -1,5 +1,16 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-05 — Range-safe dense split route admission (diagnostic)
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+  five real early-layer Q8 banks, rows512/1024/4096: range-safe split WMMA
+  reduces complete projection wall 39.7–64.1% versus live F32 DPP coltile
+  (1.659–2.786x; QKV rows4096 63.215 -> 31.295 ms). The guard increases
+  that candidate cost from the unguarded leaf's23.788ms; eight GPU fixtures
+  and sampled CPU F64 checks pass, full/tail scratch0. Explicit layer route
+  remains default-off pending complete model gates; no model-rate claim.
+  Source: `results/2026-10-05-qwen4exp-dense-split-model/`.
+
 ## 2026-10-05 — Dense split-operand leaf admission (diagnostic)
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL real

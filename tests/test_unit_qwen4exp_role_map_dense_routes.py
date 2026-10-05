@@ -65,6 +65,7 @@ STEM_EXAMPLES = {
     "gguf_q8_0_rowvec8_dual_split_gemv":
         "gguf_q8_0_rowvec8_dual_split_gemv_kernel<unsigned short>",
     "dense_wide_kernel": "q8_0_dense_wide_kernel<128, 256, 64, 64>",
+    "q8_0_dense_split64x128_kernel": "q8_0_dense_split64x128_kernel<true>",
     "gguf_q8_0_prefill_wmma": "gguf_q8_0_prefill_wmma_kernel",
     "gguf_q8_0_prefill_dual_wmma": "gguf_q8_0_prefill_dual_wmma_kernel",
     "gguf_q8_0_t16_prefill_wmma": "gguf_q8_0_t16_prefill_wmma_kernel",

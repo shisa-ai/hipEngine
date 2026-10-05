@@ -57,6 +57,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS",
         "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE",
         "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS",
+        "HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS",
         "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL",
@@ -98,6 +99,17 @@ def _resolve(profile: ExecutionProfile, *, quant: str = QWEN4_EXP_QUANTS[0]):
         quant=quant,
         profile=profile,
     )
+
+
+@pytest.mark.parametrize("profile", [ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION])
+def test_uncertified_dense_split_is_cleared_by_named_binders(profile, monkeypatch):
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS", "0,1,2")
+    resolved = _resolve(profile, quant="gguf_ud_q4_k_xl")
+    with pytest.warns(RuntimeWarning, match="DENSE_SPLIT_LAYERS"):
+        resolved.construct_generator(lambda: SimpleNamespace())
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS"] == ""
 
 
 def _selection_map(resolved):

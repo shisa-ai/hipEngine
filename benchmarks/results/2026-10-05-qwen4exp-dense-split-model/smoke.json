@@ -1,0 +1,533 @@
+{
+ "schema_version": 2,
+ "kind": "hipengine_execution_profile_q8_dense_split_prefill_layers_gate",
+ "created_at": "2026-10-05T19:53:14.259752+00:00",
+ "performance_claim": false,
+ "status": "invalid_or_screen_only",
+ "measurement_valid": false,
+ "canonical_numerical_qualification_claim": false,
+ "category_heldout_qualification_claim": false,
+ "category_heldout_evidence_complete": false,
+ "profile_qualification_claim": false,
+ "qualification_blockers": [
+  "complete canonical numerical coverage",
+  "calibrated quality thresholds",
+  "execution-affecting worktree provenance",
+  "category-heldout numerical evidence",
+  "strict-teacher and applicable BF16-relative evidence",
+  "exact control/isolation/graph/lifecycle evidence",
+  "task-quality evidence",
+  "candidate route engagement and repair-oracle coverage"
+ ],
+ "qualification_coverage": {
+  "protocol": "canonical_12_case_d128_three_repeat_numerical_v1",
+  "complete": false,
+  "checks": {
+   "canonical_fixture_identity": true,
+   "canonical_cases_once_each": false,
+   "canonical_categories": true,
+   "teacher_d128": false,
+   "candidate_d128_three_repeats": false,
+   "positive_chunk_size": true
+  },
+  "required_fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "observed_fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "fixture_kind": "canonical",
+  "observed_case_ids": [
+   "code-p512"
+  ],
+  "observed_teacher_rows": 5,
+  "prefill_chunk_size": 4096,
+  "scope": "this route/layer set, manifest and chunk size only"
+ },
+ "route": {
+  "name": "dense_split",
+  "surface": "early split increment; certified late dense-wide composition unchanged",
+  "candidate_layers": "0,1,2,3,4,5,6,7,8,9,10,11,12",
+  "teacher_selector": "cleared",
+  "teacher_chain": "exact coltile8_rowbatch4_f32_f32_out",
+  "candidate_chain": "dense_split64x128_f32_f32_out",
+  "warmup_request_after_selector_flip": true,
+  "selector_restored_after_capture": true
+ },
+ "protocol": {
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "case_count": 1,
+  "decode_steps": 4,
+  "candidate_repeat_runs": 3,
+  "execution_profile": "production",
+  "prefill_chunk_size": 4096,
+  "same_context_rule": "candidate consumes the strict generated token prefix at every compared transition",
+  "teacher_scope": "production profile with the route's selectors cleared; candidate-local isolation of the changed route",
+  "thresholds_evaluated": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "profile_manifest_sha256": "850829d509ebf741403e71e30450b8b7b681994f16e0f02038ba672c1f493d5b",
+  "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed"
+ },
+ "quality": {
+  "finite": true,
+  "top_k": 5,
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "summary": {
+   "rows": 5,
+   "kl_mean": 0.0009712259686996568,
+   "kl_p50": 1.6942282011847395e-06,
+   "kl_p95": 0.0036727416366724355,
+   "kl_p99": 0.0043370418499227145,
+   "kl_max": 0.004503116903235284,
+   "top1_agreement": 1.0,
+   "top1_matches": 5,
+   "topk_overlap_mean": 0.96,
+   "strict_teacher_nll_mean": 0.20708819445221258,
+   "candidate_teacher_nll_mean": 0.19596583346947183,
+   "teacher_nll_delta": -0.011122360982740748,
+   "teacher_delta_p_mean": 0.003579682729406908,
+   "strict_margin_min": 0.12865638732910156,
+   "max_abs_logit_delta": 0.7664284706115723,
+   "flip_eligible_rows": 1,
+   "flip_eligible_share": 0.2,
+   "top1_mismatches_flip_eligible": 0,
+   "top1_mismatches_outside_flip_eligible": 0
+  },
+  "by_scope": {
+   "category": {
+    "code": {
+     "rows": 5,
+     "kl_mean": 0.0009712259686996568,
+     "kl_p50": 1.6942282011847395e-06,
+     "kl_p95": 0.0036727416366724355,
+     "kl_p99": 0.0043370418499227145,
+     "kl_max": 0.004503116903235284,
+     "top1_agreement": 1.0,
+     "top1_matches": 5,
+     "topk_overlap_mean": 0.96,
+     "strict_teacher_nll_mean": 0.20708819445221258,
+     "candidate_teacher_nll_mean": 0.19596583346947183,
+     "teacher_nll_delta": -0.011122360982740748,
+     "teacher_delta_p_mean": 0.003579682729406908,
+     "strict_margin_min": 0.12865638732910156,
+     "max_abs_logit_delta": 0.7664284706115723,
+     "flip_eligible_rows": 1,
+     "flip_eligible_share": 0.2,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   },
+   "shape": {
+    "c1": {
+     "rows": 4,
+     "kl_mean": 0.0012140324570139415,
+     "kl_p50": 0.00017646739931111488,
+     "kl_p95": 0.0038803354533131465,
+     "kl_p99": 0.004378560613250856,
+     "kl_max": 0.004503116903235284,
+     "top1_agreement": 1.0,
+     "top1_matches": 4,
+     "topk_overlap_mean": 0.95,
+     "strict_teacher_nll_mean": 0.2588602430059496,
+     "candidate_teacher_nll_mean": 0.24495729175643094,
+     "teacher_nll_delta": -0.01390295124951868,
+     "teacher_delta_p_mean": 0.004474603432851373,
+     "strict_margin_min": 0.12865638732910156,
+     "max_abs_logit_delta": 0.7664284706115723,
+     "flip_eligible_rows": 1,
+     "flip_eligible_share": 0.25,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    },
+    "prefill_last": {
+     "rows": 1,
+     "kl_mean": 1.5442517633154827e-11,
+     "kl_p50": 1.5442517633154827e-11,
+     "kl_p95": 1.5442517633154827e-11,
+     "kl_p99": 1.5442517633154827e-11,
+     "kl_max": 1.5442517633154827e-11,
+     "top1_agreement": 1.0,
+     "top1_matches": 1,
+     "topk_overlap_mean": 1.0,
+     "strict_teacher_nll_mean": 2.3726443029686546e-10,
+     "candidate_teacher_nll_mean": 3.2163538494046694e-10,
+     "teacher_nll_delta": 8.437095464360148e-11,
+     "teacher_delta_p_mean": -8.437095466717892e-11,
+     "strict_margin_min": 23.898694038391113,
+     "max_abs_logit_delta": 0.6945352554321289,
+     "flip_eligible_rows": 0,
+     "flip_eligible_share": 0.0,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   },
+   "transition": {
+    "prefill_to_c1": {
+     "rows": 1,
+     "kl_mean": 1.5442517633154827e-11,
+     "kl_p50": 1.5442517633154827e-11,
+     "kl_p95": 1.5442517633154827e-11,
+     "kl_p99": 1.5442517633154827e-11,
+     "kl_max": 1.5442517633154827e-11,
+     "top1_agreement": 1.0,
+     "top1_matches": 1,
+     "topk_overlap_mean": 1.0,
+     "strict_teacher_nll_mean": 2.3726443029686546e-10,
+     "candidate_teacher_nll_mean": 3.2163538494046694e-10,
+     "teacher_nll_delta": 8.437095464360148e-11,
+     "teacher_delta_p_mean": -8.437095466717892e-11,
+     "strict_margin_min": 23.898694038391113,
+     "max_abs_logit_delta": 0.6945352554321289,
+     "flip_eligible_rows": 0,
+     "flip_eligible_share": 0.0,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "steady": {
+     "rows": 4,
+     "kl_mean": 0.0012140324570139415,
+     "kl_p50": 0.00017646739931111488,
+     "kl_p95": 0.0038803354533131465,
+     "kl_p99": 0.004378560613250856,
+     "kl_max": 0.004503116903235284,
+     "top1_agreement": 1.0,
+     "top1_matches": 4,
+     "topk_overlap_mean": 0.95,
+     "strict_teacher_nll_mean": 0.2588602430059496,
+     "candidate_teacher_nll_mean": 0.24495729175643094,
+     "teacher_nll_delta": -0.01390295124951868,
+     "teacher_delta_p_mean": 0.004474603432851373,
+     "strict_margin_min": 0.12865638732910156,
+     "max_abs_logit_delta": 0.7664284706115723,
+     "flip_eligible_rows": 1,
+     "flip_eligible_share": 0.25,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    }
+   }
+  },
+  "scope_failures": [
+   {
+    "dimension": "shape",
+    "value": "c1"
+   },
+   {
+    "dimension": "transition",
+    "value": "steady"
+   }
+  ],
+  "rows_over_review_boundary": [],
+  "top1_mismatch_rows": [],
+  "hard_gates_passed": false,
+  "requires_outlier_review": false,
+  "eligible_for_automatic_admission": false
+ },
+ "repeat_determinism": {
+  "runs": 3,
+  "passed": true,
+  "mismatches": [],
+  "trajectory_sha256_by_prompt": [
+   [
+    "fe262279e42a18d2f5a3dd2663a1f7d8b10e40e424af6bc82d40d0cd2d324b70",
+    "fe262279e42a18d2f5a3dd2663a1f7d8b10e40e424af6bc82d40d0cd2d324b70",
+    "fe262279e42a18d2f5a3dd2663a1f7d8b10e40e424af6bc82d40d0cd2d324b70"
+   ]
+  ]
+ },
+ "strict_logits_sha256": "fe78a08159aa940af01fcd23ecf6b5e566cc878e8be64d17ecddd0b9b4e713eb",
+ "candidate_logits_sha256": "ea22d938781b707539ee4161262ed64b620b29413b2356abf6d1a065abf52eac",
+ "variant_manifests": {
+  "candidate_evidentiary": {
+   "kind": "hipengine_execution_profile_manifest",
+   "schema_version": 1,
+   "execution_profile": "production",
+   "backend": "hip_gfx1151",
+   "model": "qwen4_exp_gguf",
+   "quant": "gguf_ud_q4_k_xl",
+   "kv_policy": "paged_bf16_qsa_index_f32",
+   "graph_policy": "request_owned_exact_moe_graph_c1",
+   "selections": [
+    {
+     "layer": "linear",
+     "scope": "prefill_dense_q8_wmma_layers",
+     "selected_variant": "dense_split64x128_f32_f32_out",
+     "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+     "evidence_artifact": null,
+     "registry_quant": "gguf_q8_0"
+    }
+   ]
+  }
+ },
+ "route_engagement": {
+  "teacher": {
+   "launches": 10226,
+   "engaged_launches": 3542,
+   "engaged_variants": {
+    "None": 3542
+   },
+   "decline_reasons": {
+    "active": 3253,
+    "claimed": 289,
+    "inactive": 3253,
+    "ineligible shape": 842,
+    "outside layer scope": 109,
+    "selector off": 1240,
+    "use_wmma_false": 1240
+   },
+   "rows_seen": [
+    1,
+    512
+   ],
+   "per_selector": {
+    "dense_split": {
+     "active": 0,
+     "inactive": 1240
+    },
+    "dense_wide": {
+     "active": 289,
+     "inactive": 951
+    },
+    "native_batch_decode_session": {
+     "active": 0,
+     "inactive": 3253
+    },
+    "q4k_rowtile": {
+     "active": 3253,
+     "inactive": 0
+    },
+    "wmma_prefill": {
+     "active": 0,
+     "inactive": 1240
+    }
+   }
+  },
+  "candidate": {
+   "launches": 19638,
+   "engaged_launches": 8717,
+   "engaged_variants": {
+    "None": 8717
+   },
+   "decline_reasons": {
+    "active": 8319,
+    "claimed": 398,
+    "inactive": 8319,
+    "ineligible shape": 1048,
+    "outside layer scope": 109,
+    "parent not claimable": 445,
+    "use_wmma_false": 1000
+   },
+   "rows_seen": [
+    1,
+    512
+   ],
+   "per_selector": {
+    "dense_split": {
+     "active": 109,
+     "inactive": 891
+    },
+    "dense_wide": {
+     "active": 289,
+     "inactive": 711
+    },
+    "native_batch_decode_session": {
+     "active": 0,
+     "inactive": 8319
+    },
+    "q4k_rowtile": {
+     "active": 8319,
+     "inactive": 0
+    },
+    "wmma_prefill": {
+     "active": 0,
+     "inactive": 1000
+    }
+   }
+  },
+  "selector_states": {
+   "dense_split": {
+    "teacher_engaged_rate": 0.0,
+    "candidate_engaged_rate": 0.109,
+    "differs": true
+   },
+   "dense_wide": {
+    "teacher_engaged_rate": 0.233065,
+    "candidate_engaged_rate": 0.289,
+    "differs": true
+   },
+   "native_batch_decode_session": {
+    "teacher_engaged_rate": 0.0,
+    "candidate_engaged_rate": 0.0,
+    "differs": false
+   },
+   "q4k_rowtile": {
+    "teacher_engaged_rate": 1.0,
+    "candidate_engaged_rate": 1.0,
+    "differs": false
+   },
+   "wmma_prefill": {
+    "teacher_engaged_rate": 0.0,
+    "candidate_engaged_rate": 0.0,
+    "differs": false
+   }
+  },
+  "selectors_differing_between_arms": [
+   "dense_split",
+   "dense_wide"
+  ],
+  "selectors_observed_in_one_arm_only": [],
+  "attribution": "the drift this run measures can only come from dense_split, dense_wide",
+  "candidate_route_engaged": true,
+  "teacher_route_engaged": false,
+  "route": "dense_split",
+  "route_engagement_recorded": true,
+  "wmma_route_engaged_candidate_only": true,
+  "covers_other_use_wmma_selectors": false,
+  "verdict": "this route engaged in the candidate arm only - which does NOT mean the arms are isolated: use_wmma also gates f_rowtile, enabled=not use_wmma, use_rowtile and the rows-2-8 native batch-decode session, and this recorder cannot observe those"
+ },
+ "prompts": [
+  {
+   "id": "code-p512",
+   "category": "code",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7"
+  }
+ ],
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 3,
+  "collected_at": "2026-10-05T19:53:14.037075+00:00",
+  "host_name": "gfx1151",
+  "repo_root": "/home/lhl/hipEngine",
+  "hipengine_commit": "e433a8472b46963bd609b81a8b3f7ecdb4d0dfa4",
+  "git_branch": "qwen3.8-flash-next",
+  "staged_dirty": false,
+  "unstaged_dirty": true,
+  "untracked_dirty": true,
+  "untracked_count": 32,
+  "dirty": true,
+  "dirty_paths": [
+   "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip",
+   "hipengine/runtime/gguf_linear.py",
+   "scripts/execution_profile_q8_wmma_prefill_layers_gate.py",
+   "tests/test_gpu_qwen4exp_dense_split_wmma.py",
+   "tests/test_unit_q8_dense_prefill_route_gate.py"
+  ],
+  "dirty_path_count": 5,
+  "untracked_paths": [
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/census.json",
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/warm.json",
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/warm.log",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/decode-baseline.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/decode-dp4a.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/prof-baseline.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/prof-dp4a.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/trace-baseline.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/trace-dp4a.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/trace-promoted.json",
+   "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_memory_allocation_trace.csv",
+   "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_memory_copy_trace.csv",
+   "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_scratch_memory_trace.csv",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/de5-clean-ar.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/reset-split-mem.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/reset-split.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-clocks.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-hostgpu.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-long.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-p1024.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-perstep.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-prefill.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-production.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-resync.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-settle.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-trend.json",
+   "benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-gate/gate.json",
+   "benchmarks/results/2026-10-04-qwen4exp-decode-linear-owner/census.json",
+   "docs/superpowers/plans/2026-09-13-qwen38-gfx1151-release-qualification.md",
+   "scripts/qwen4exp_workspace_footprint_probe.py",
+   "tests/test_unit_qwen4exp_dense_split_route.py",
+   "worklog/entries/20261005T193641.549710Z-pi-qwen4exp-dense-split-model-006083.md"
+  ],
+  "execution_affecting_dirty": true,
+  "execution_affecting_paths": [
+   "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip",
+   "hipengine/runtime/gguf_linear.py",
+   "scripts/execution_profile_q8_wmma_prefill_layers_gate.py",
+   "scripts/qwen4exp_workspace_footprint_probe.py",
+   "tests/test_gpu_qwen4exp_dense_split_wmma.py",
+   "tests/test_unit_q8_dense_prefill_route_gate.py",
+   "tests/test_unit_qwen4exp_dense_split_route.py"
+  ],
+  "configured_backend": "hip_gfx1151",
+  "resolved_backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "device_name": "AMD Radeon 8060S Graphics",
+  "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-directory-manifest-v1",
+   "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+   "size_bytes": 111334654784,
+   "sampled_bytes": 12582912,
+   "file_count": 4,
+   "exists": true,
+   "path_type": "directory"
+  },
+  "quant": "gguf_ud_q4_k_xl",
+  "kv_dtype": "bf16",
+  "command": [
+   "python3",
+   "scripts/execution_profile_q8_wmma_prefill_layers_gate.py",
+   "--model-root",
+   "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+   "--route",
+   "dense_split",
+   "--layers",
+   "0-12",
+   "--case-id",
+   "code-p512",
+   "--decode-steps",
+   "4",
+   "--prefill-chunk-size",
+   "4096",
+   "--output",
+   "/tmp/qwen4exp-dense-split-model-smoke.json"
+  ],
+  "environment": {
+   "HIPENGINE_HIP_ARCH": "gfx1151",
+   "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "",
+   "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "1",
+   "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": "13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS": "0,1,2,3,4,5,6,7,8,9,10,11,12",
+   "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS": ""
+  },
+  "rocm_version": "HIP version: 7.15.26333-0000000",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "build_profile": "hipengine_execution_profile_q8_dense_split_prefill_layers_gate",
+  "timing_protocol": "none_full_logits_only_v1",
+  "warmups": 1,
+  "repetitions": 3,
+  "profiler": {
+   "enabled": false,
+   "kind": null,
+   "command": null
+  }
+ }
+}

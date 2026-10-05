@@ -40,7 +40,7 @@ LAYERS = "16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,3
 
 def test_every_layer_scoped_route_is_selectable():
     assert set(SELECTORS) == {
-        "wmma", "dense_wide", "staged_f32",
+        "wmma", "dense_wide", "dense_split", "dense_split_composed_vs_exact", "staged_f32",
         "staged_f32_over_wmma", "staged_f32_composed_vs_exact",
     }
     for name in SELECTORS:

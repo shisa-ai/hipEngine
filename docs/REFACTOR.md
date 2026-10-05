@@ -3,16 +3,22 @@
 ## Dense split-operand WMMA diagnostic
 
 - `dense_split64x128_f32_f32_out` in `quant/gguf_q8_0_dense_wide.{hip,py}`
-  is a registered measurement-only sibling, with no production binding.
+  is an explicitly scoped measurement candidate, with no certified binding.
+  `HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS` is empty/off; `0` means layer0,
+  not off. Named binders clear it; gate/harness overrides apply post-binder.
+  It replaces only bulk raw-F32 parents, never late wide/WMMA/selected owners.
+  Scope and layer identity are in the live dispatch cache key.
   It is distinct from the historical identical-product `dense_wide256_split3`
   timing probe. The exact raw-F32 coltile chain remains available.
 - Remove this sibling if the unchanged full-model numerical or complete-owner
   wall gate fails and no concrete revised mechanism is queued. If qualified,
   replace the early-layer fallback only inside its certified model/shape scope.
-- Do not use its current F16-high implementation on out-of-range F32 operands;
-  range-safe dispatch or a scaled representation must precede public binding.
-- Evidence: worklog `20261005T190602.972589Z` and
-  `benchmarks/results/2026-10-05-qwen4exp-dense-split-wmma/`.
+- Out-of-range operands trigger an in-kernel strict F32 fallback with no host
+  readback, extra launch or shared workspace. That guard reduces the primitive
+  win; the complete range-safe owner, not the unguarded leaf, is the perf basis.
+- Evidence: worklogs `20261005T190602.972589Z` / `20261005T193641.549710Z`,
+  `benchmarks/results/2026-10-05-qwen4exp-dense-split-wmma/` and
+  `benchmarks/results/2026-10-05-qwen4exp-dense-split-model/`.
 
 
 ## Prefill chunk capacity guard
