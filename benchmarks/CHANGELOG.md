@@ -1,5 +1,15 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-05 — Ordered router DPP operation screen
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+  real router layer 0/22/47 weights, synthetic rows 512/1024/4096: complete
+  logits plus top-10 wall 1.558–1.561→1.335–1.336 / 3.062–3.078→2.615–2.626 /
+  12.970–12.974→11.410–11.423 ms (-14.3%/-14.4%/-12.0%, approximately).
+  One publication barrier plus ordered DPP replaces shared-tree reductions;
+  exact bits/selection, 32 GPU tests and cached trace pass. Operation-only,
+  runtime default unchanged. Source: `results/2026-10-05-qwen4exp-router-dpp/README.md`.
+
 ## 2026-10-05 — Current prefill owner trace (diagnostic)
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,

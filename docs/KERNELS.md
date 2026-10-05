@@ -549,6 +549,17 @@ Fallback requirements:
 - Removing a strict fallback is an architectural change and requires updating this table plus `PLAN.md` if the invariant changes.
 - A library call can be one stage of an unfused chain, but it does not waive the independent primitive/oracle route.
 
+## Qwen4Exp router ordered DPP sibling
+
+`moe/router.{hip,py}` registers
+`router_logits/f32/f32_hidden_token_tile4_dpp_exact`, aliased to gfx1151
+alongside the unchanged `f32_hidden_token_tile4_dense_exact` strict parent.
+The candidate keeps tile4's per-thread FMA assignment and 256-way reduction
+tree: one LDS publication, register-folded inter-wave pairs, ordered DPP
+wave finish. Raw-pointer signatures, output strides and selection ABI are
+unchanged. It is a direct diagnostic leaf; runtime/profile selection stays
+on the existing parent until model qualification.
+
 ## Qwen4Exp GR-up ordered DPP sibling
 
 `quant/gguf_k_gemv.{hip,py}` registers

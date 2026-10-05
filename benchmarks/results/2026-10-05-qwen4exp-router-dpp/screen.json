@@ -1,0 +1,4185 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_router_dpp_operation_screen",
+ "performance_claim": false,
+ "default_changed": false,
+ "source": {
+  "path": "/home/lhl/hipEngine",
+  "head": "773fe19580256cb6d68e9a9712d25bf4715a89f1",
+  "tracked_clean": false
+ },
+ "host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "Current active profile: accelerator-performance",
+  "cpu_governors": {
+   "performance": 32
+  },
+  "gpu_clock_policies": {
+   "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+  },
+  "rocm_platform": "10.0.0",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "architecture": "gfx1151"
+ },
+ "model": {
+  "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+  "fingerprint": {
+   "algorithm": "sha256-directory-manifest-v1",
+   "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+   "size_bytes": 111334654784,
+   "sampled_bytes": 12582912,
+   "file_count": 4,
+   "exists": true,
+   "path_type": "directory"
+  }
+ },
+ "command": [
+  "scripts/qwen4exp_router_dpp_screen.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--compiler-version-file",
+  "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+  "--require-cached-build",
+  "--output",
+  "/tmp/qwen4exp-router-dpp-screen.json"
+ ],
+ "boundary": "F32 router logits plus unchanged top10 selection; synchronized wall and HIP events, D2H excluded",
+ "inputs": "real F32 weights, synthetic F32 activations; no natural-input/model qualification inferred",
+ "cases": [
+  {
+   "tensor": "blk.0.ffn_gate_inp.weight",
+   "rows": 512,
+   "k": 2560,
+   "n": 512,
+   "weight_sha256": "c367d894cf8ce1f3681d71f4b6fbb4c419cbae8c41fb2593232b40bd49bd7455",
+   "output_hashes": {
+    "parent": "22b0a83d2689eabcb36e5514377f9a70477fa3a6386e22f5a0d672eca2ccfcff",
+    "dpp": "22b0a83d2689eabcb36e5514377f9a70477fa3a6386e22f5a0d672eca2ccfcff"
+   },
+   "bit_exact_logits_ids_routing": true,
+   "median": {
+    "parent": {
+     "event_ms": 1.5371170043945312,
+     "wall_ms": 1.5575578436255455
+    },
+    "dpp": {
+     "event_ms": 1.3147005438804626,
+     "wall_ms": 1.3348697684705257
+    }
+   },
+   "samples": [
+    {
+     "arm": "parent",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.568534016609192,
+     "wall_ms": 1.624898985028267
+    },
+    {
+     "arm": "dpp",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3393059968948364,
+     "wall_ms": 1.3469476252794266
+    },
+    {
+     "arm": "dpp",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.337541937828064,
+     "wall_ms": 1.3582082465291023
+    },
+    {
+     "arm": "parent",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5580350160598755,
+     "wall_ms": 1.578591763973236
+    },
+    {
+     "arm": "parent",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5262149572372437,
+     "wall_ms": 1.5466716140508652
+    },
+    {
+     "arm": "dpp",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3141779899597168,
+     "wall_ms": 1.334584318101406
+    },
+    {
+     "arm": "dpp",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3124140501022339,
+     "wall_ms": 1.3191457837820053
+    },
+    {
+     "arm": "parent",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5446490049362183,
+     "wall_ms": 1.5651676803827286
+    },
+    {
+     "arm": "parent",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.536152958869934,
+     "wall_ms": 1.5564505010843277
+    },
+    {
+     "arm": "dpp",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3137370347976685,
+     "wall_ms": 1.3337917625904083
+    },
+    {
+     "arm": "dpp",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3147790431976318,
+     "wall_ms": 1.3347947970032692
+    },
+    {
+     "arm": "parent",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5322649478912354,
+     "wall_ms": 1.5558386221528053
+    },
+    {
+     "arm": "parent",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5311050415039062,
+     "wall_ms": 1.5511298552155495
+    },
+    {
+     "arm": "dpp",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3095309734344482,
+     "wall_ms": 1.3159802183508873
+    },
+    {
+     "arm": "dpp",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.306805968284607,
+     "wall_ms": 1.3270899653434753
+    },
+    {
+     "arm": "parent",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5310250520706177,
+     "wall_ms": 1.5513114631175995
+    },
+    {
+     "arm": "parent",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5458929538726807,
+     "wall_ms": 1.5659378841519356
+    },
+    {
+     "arm": "dpp",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3029190301895142,
+     "wall_ms": 1.3230927288532257
+    },
+    {
+     "arm": "dpp",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.322916030883789,
+     "wall_ms": 1.342950388789177
+    },
+    {
+     "arm": "parent",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5300639867782593,
+     "wall_ms": 1.5503289178013802
+    },
+    {
+     "arm": "parent",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.534512996673584,
+     "wall_ms": 1.5545673668384552
+    },
+    {
+     "arm": "dpp",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3168660402297974,
+     "wall_ms": 1.3233544304966927
+    },
+    {
+     "arm": "dpp",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3180689811706543,
+     "wall_ms": 1.3384418562054634
+    },
+    {
+     "arm": "parent",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.554751992225647,
+     "wall_ms": 1.5748245641589165
+    },
+    {
+     "arm": "parent",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5422879457473755,
+     "wall_ms": 1.5624621883034706
+    },
+    {
+     "arm": "dpp",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3106149435043335,
+     "wall_ms": 1.3308171182870865
+    },
+    {
+     "arm": "dpp",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3145020008087158,
+     "wall_ms": 1.3349447399377823
+    },
+    {
+     "arm": "parent",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5262179374694824,
+     "wall_ms": 1.5462720766663551
+    },
+    {
+     "arm": "parent",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5491410493850708,
+     "wall_ms": 1.5694648027420044
+    },
+    {
+     "arm": "dpp",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3146220445632935,
+     "wall_ms": 1.3479692861437798
+    },
+    {
+     "arm": "dpp",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.320112943649292,
+     "wall_ms": 1.3401750475168228
+    },
+    {
+     "arm": "parent",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.554311990737915,
+     "wall_ms": 1.574845053255558
+    },
+    {
+     "arm": "parent",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5342739820480347,
+     "wall_ms": 1.541762612760067
+    },
+    {
+     "arm": "dpp",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3231979608535767,
+     "wall_ms": 1.3437606394290924
+    },
+    {
+     "arm": "dpp",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3148239850997925,
+     "wall_ms": 1.3349950313568115
+    },
+    {
+     "arm": "parent",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.520408034324646,
+     "wall_ms": 1.5408210456371307
+    },
+    {
+     "arm": "parent",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5380810499191284,
+     "wall_ms": 1.5586651861667633
+    },
+    {
+     "arm": "dpp",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3184700012207031,
+     "wall_ms": 1.3389931991696358
+    },
+    {
+     "arm": "dpp",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3128589391708374,
+     "wall_ms": 1.333191990852356
+    },
+    {
+     "arm": "parent",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5397650003433228,
+     "wall_ms": 1.5598572790622711
+    }
+   ],
+   "event_speedup": 1.169176518218807,
+   "wall_speedup": 1.166823820881173,
+   "wall_speedup_by_first_arm": {
+    "parent": 1.1674200311537244,
+    "dpp": 1.1669536274611714
+   }
+  },
+  {
+   "tensor": "blk.0.ffn_gate_inp.weight",
+   "rows": 1024,
+   "k": 2560,
+   "n": 512,
+   "weight_sha256": "c367d894cf8ce1f3681d71f4b6fbb4c419cbae8c41fb2593232b40bd49bd7455",
+   "output_hashes": {
+    "parent": "9c993b79cc9889d9acbeaee8a45ad269745a6493aba65ce8946df2a86a831335",
+    "dpp": "9c993b79cc9889d9acbeaee8a45ad269745a6493aba65ce8946df2a86a831335"
+   },
+   "bit_exact_logits_ids_routing": true,
+   "median": {
+    "parent": {
+     "event_ms": 3.0402034521102905,
+     "wall_ms": 3.061925061047077
+    },
+    "dpp": {
+     "event_ms": 2.596791982650757,
+     "wall_ms": 2.6153521612286568
+    }
+   },
+   "samples": [
+    {
+     "arm": "parent",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0306479930877686,
+     "wall_ms": 3.08905728161335
+    },
+    {
+     "arm": "dpp",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5977559089660645,
+     "wall_ms": 2.6047080755233765
+    },
+    {
+     "arm": "dpp",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.582487106323242,
+     "wall_ms": 2.6039257645606995
+    },
+    {
+     "arm": "parent",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.042099952697754,
+     "wall_ms": 3.0633779242634773
+    },
+    {
+     "arm": "parent",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0306880474090576,
+     "wall_ms": 3.0511263757944107
+    },
+    {
+     "arm": "dpp",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.586854934692383,
+     "wall_ms": 2.6073018088936806
+    },
+    {
+     "arm": "dpp",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.5810039043426514,
+     "wall_ms": 2.6014624163508415
+    },
+    {
+     "arm": "parent",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0403459072113037,
+     "wall_ms": 3.0608931556344032
+    },
+    {
+     "arm": "parent",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0346150398254395,
+     "wall_ms": 3.0552735552191734
+    },
+    {
+     "arm": "dpp",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5923850536346436,
+     "wall_ms": 2.6129325851798058
+    },
+    {
+     "arm": "dpp",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.58176589012146,
+     "wall_ms": 2.602263353765011
+    },
+    {
+     "arm": "parent",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.037461042404175,
+     "wall_ms": 3.0577685683965683
+    },
+    {
+     "arm": "parent",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0464730262756348,
+     "wall_ms": 3.066984936594963
+    },
+    {
+     "arm": "dpp",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5979108810424805,
+     "wall_ms": 2.604908309876919
+    },
+    {
+     "arm": "dpp",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.5938239097595215,
+     "wall_ms": 2.6145456358790398
+    },
+    {
+     "arm": "parent",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0340890884399414,
+     "wall_ms": 3.0655330047011375
+    },
+    {
+     "arm": "parent",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0737640857696533,
+     "wall_ms": 3.094206564128399
+    },
+    {
+     "arm": "dpp",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.6092519760131836,
+     "wall_ms": 2.629854716360569
+    },
+    {
+     "arm": "dpp",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.601638078689575,
+     "wall_ms": 2.6218900457024574
+    },
+    {
+     "arm": "parent",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.059175968170166,
+     "wall_ms": 3.0794981867074966
+    },
+    {
+     "arm": "parent",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0199830532073975,
+     "wall_ms": 3.0402550473809242
+    },
+    {
+     "arm": "dpp",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.6022000312805176,
+     "wall_ms": 2.6224907487630844
+    },
+    {
+     "arm": "dpp",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.5982320308685303,
+     "wall_ms": 2.618563361465931
+    },
+    {
+     "arm": "parent",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.031644105911255,
+     "wall_ms": 3.052007406949997
+    },
+    {
+     "arm": "parent",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0424249172210693,
+     "wall_ms": 3.062956966459751
+    },
+    {
+     "arm": "dpp",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5939838886260986,
+     "wall_ms": 2.614285796880722
+    },
+    {
+     "arm": "dpp",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6074891090393066,
+     "wall_ms": 2.628140151500702
+    },
+    {
+     "arm": "parent",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.032526969909668,
+     "wall_ms": 3.0527180060744286
+    },
+    {
+     "arm": "parent",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0439488887786865,
+     "wall_ms": 3.0510742217302322
+    },
+    {
+     "arm": "dpp",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5933830738067627,
+     "wall_ms": 2.6135435327887535
+    },
+    {
+     "arm": "dpp",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.595707893371582,
+     "wall_ms": 2.616690471768379
+    },
+    {
+     "arm": "parent",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.02839994430542,
+     "wall_ms": 3.049110993742943
+    },
+    {
+     "arm": "parent",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.064225912094116,
+     "wall_ms": 3.085079602897167
+    },
+    {
+     "arm": "dpp",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.598031997680664,
+     "wall_ms": 2.6184432208538055
+    },
+    {
+     "arm": "dpp",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.598313093185425,
+     "wall_ms": 2.6186034083366394
+    },
+    {
+     "arm": "parent",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0400609970092773,
+     "wall_ms": 3.060823306441307
+    },
+    {
+     "arm": "parent",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0864288806915283,
+     "wall_ms": 3.106769174337387
+    },
+    {
+     "arm": "dpp",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.595828056335449,
+     "wall_ms": 2.6161586865782738
+    },
+    {
+     "arm": "dpp",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.606208086013794,
+     "wall_ms": 2.626769244670868
+    },
+    {
+     "arm": "parent",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.051241874694824,
+     "wall_ms": 3.071403130888939
+    }
+   ],
+   "event_speedup": 1.170753557628789,
+   "wall_speedup": 1.170750580529326,
+   "wall_speedup_by_first_arm": {
+    "parent": 1.17255968328298,
+    "dpp": 1.1693256252856317
+   }
+  },
+  {
+   "tensor": "blk.0.ffn_gate_inp.weight",
+   "rows": 4096,
+   "k": 2560,
+   "n": 512,
+   "weight_sha256": "c367d894cf8ce1f3681d71f4b6fbb4c419cbae8c41fb2593232b40bd49bd7455",
+   "output_hashes": {
+    "parent": "7a5d9d90cc932f236bf3c67e6f1dfdf22b348df69c5ab878b7330511761e98a4",
+    "dpp": "7a5d9d90cc932f236bf3c67e6f1dfdf22b348df69c5ab878b7330511761e98a4"
+   },
+   "bit_exact_logits_ids_routing": true,
+   "median": {
+    "parent": {
+     "event_ms": 12.943242073059082,
+     "wall_ms": 12.96980306506157
+    },
+    "dpp": {
+     "event_ms": 11.404875755310059,
+     "wall_ms": 11.422873940318823
+    }
+   },
+   "samples": [
+    {
+     "arm": "parent",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.915692329406738,
+     "wall_ms": 12.973835691809654
+    },
+    {
+     "arm": "dpp",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.404315948486328,
+     "wall_ms": 11.412183754146099
+    },
+    {
+     "arm": "dpp",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.403635025024414,
+     "wall_ms": 11.424897238612175
+    },
+    {
+     "arm": "parent",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.898238182067871,
+     "wall_ms": 12.919362634420395
+    },
+    {
+     "arm": "parent",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.944564819335938,
+     "wall_ms": 12.965770438313484
+    },
+    {
+     "arm": "dpp",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.333943367004395,
+     "wall_ms": 11.354707181453705
+    },
+    {
+     "arm": "dpp",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.373896598815918,
+     "wall_ms": 11.381056159734726
+    },
+    {
+     "arm": "parent",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.918394088745117,
+     "wall_ms": 12.925433926284313
+    },
+    {
+     "arm": "parent",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.941919326782227,
+     "wall_ms": 12.962544336915016
+    },
+    {
+     "arm": "dpp",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.426434516906738,
+     "wall_ms": 11.44764106720686
+    },
+    {
+     "arm": "dpp",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.410204887390137,
+     "wall_ms": 11.43121998757124
+    },
+    {
+     "arm": "parent",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.9593505859375,
+     "wall_ms": 12.980136089026928
+    },
+    {
+     "arm": "parent",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 13.02619743347168,
+     "wall_ms": 13.046981766819954
+    },
+    {
+     "arm": "dpp",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.405435562133789,
+     "wall_ms": 11.412515304982662
+    },
+    {
+     "arm": "dpp",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.42094612121582,
+     "wall_ms": 11.44190039485693
+    },
+    {
+     "arm": "parent",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.935226440429688,
+     "wall_ms": 12.95608188956976
+    },
+    {
+     "arm": "parent",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.939152717590332,
+     "wall_ms": 12.960550375282764
+    },
+    {
+     "arm": "dpp",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.417980194091797,
+     "wall_ms": 11.438493616878986
+    },
+    {
+     "arm": "dpp",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.372937202453613,
+     "wall_ms": 11.393790133297443
+    },
+    {
+     "arm": "parent",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.947731018066406,
+     "wall_ms": 12.97539658844471
+    },
+    {
+     "arm": "parent",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 13.007802963256836,
+     "wall_ms": 13.028436340391636
+    },
+    {
+     "arm": "dpp",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.38608169555664,
+     "wall_ms": 11.407474987208843
+    },
+    {
+     "arm": "dpp",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.36528205871582,
+     "wall_ms": 11.385814286768436
+    },
+    {
+     "arm": "parent",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 13.006720542907715,
+     "wall_ms": 13.02726473659277
+    },
+    {
+     "arm": "parent",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.971939086914062,
+     "wall_ms": 12.992349453270435
+    },
+    {
+     "arm": "dpp",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.352940559387207,
+     "wall_ms": 11.360145173966885
+    },
+    {
+     "arm": "dpp",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.429885864257812,
+     "wall_ms": 11.450927704572678
+    },
+    {
+     "arm": "parent",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 13.014900207519531,
+     "wall_ms": 13.035641051828861
+    },
+    {
+     "arm": "parent",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.93422794342041,
+     "wall_ms": 12.954498641192913
+    },
+    {
+     "arm": "dpp",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.39926815032959,
+     "wall_ms": 11.419919319450855
+    },
+    {
+     "arm": "dpp",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.4002685546875,
+     "wall_ms": 11.42085064202547
+    },
+    {
+     "arm": "parent",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.970174789428711,
+     "wall_ms": 12.977481819689274
+    },
+    {
+     "arm": "parent",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 13.002635955810547,
+     "wall_ms": 13.024759478867054
+    },
+    {
+     "arm": "dpp",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.424074172973633,
+     "wall_ms": 11.446598917245865
+    },
+    {
+     "arm": "dpp",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.430246353149414,
+     "wall_ms": 11.450746096670628
+    },
+    {
+     "arm": "parent",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.929497718811035,
+     "wall_ms": 12.9502909258008
+    },
+    {
+     "arm": "parent",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.938034057617188,
+     "wall_ms": 12.958705425262451
+    },
+    {
+     "arm": "dpp",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.428921699523926,
+     "wall_ms": 11.43626868724823
+    },
+    {
+     "arm": "dpp",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.415979385375977,
+     "wall_ms": 11.436890810728073
+    },
+    {
+     "arm": "parent",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.902647018432617,
+     "wall_ms": 12.92336918413639
+    }
+   ],
+   "event_speedup": 1.1348867230783086,
+   "wall_speedup": 1.1354238112777046,
+   "wall_speedup_by_first_arm": {
+    "parent": 1.136085860172115,
+    "dpp": 1.1345530923471112
+   }
+  },
+  {
+   "tensor": "blk.22.ffn_gate_inp.weight",
+   "rows": 512,
+   "k": 2560,
+   "n": 512,
+   "weight_sha256": "29c953059493e5fbd3a6cfe5dccf915aa54156dce065426d63ae5ce4546c71da",
+   "output_hashes": {
+    "parent": "0c02f7b9130103cf9b9f53bc731181076660726de9d57bbe57be04bda35aca76",
+    "dpp": "0c02f7b9130103cf9b9f53bc731181076660726de9d57bbe57be04bda35aca76"
+   },
+   "bit_exact_logits_ids_routing": true,
+   "median": {
+    "parent": {
+     "event_ms": 1.53694349527359,
+     "wall_ms": 1.561194658279419
+    },
+    "dpp": {
+     "event_ms": 1.31540846824646,
+     "wall_ms": 1.3355910778045654
+    }
+   },
+   "samples": [
+    {
+     "arm": "parent",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5313529968261719,
+     "wall_ms": 1.6176346689462662
+    },
+    {
+     "arm": "dpp",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3154289722442627,
+     "wall_ms": 1.323743723332882
+    },
+    {
+     "arm": "dpp",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3101780414581299,
+     "wall_ms": 1.3308068737387657
+    },
+    {
+     "arm": "parent",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5417330265045166,
+     "wall_ms": 1.5624426305294037
+    },
+    {
+     "arm": "parent",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.527825951576233,
+     "wall_ms": 1.548856496810913
+    },
+    {
+     "arm": "dpp",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.323923945426941,
+     "wall_ms": 1.3445736840367317
+    },
+    {
+     "arm": "dpp",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3222010135650635,
+     "wall_ms": 1.3631479814648628
+    },
+    {
+     "arm": "parent",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5591249465942383,
+     "wall_ms": 1.5794327482581139
+    },
+    {
+     "arm": "parent",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.519089937210083,
+     "wall_ms": 1.5398794785141945
+    },
+    {
+     "arm": "dpp",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.313264012336731,
+     "wall_ms": 1.3336418196558952
+    },
+    {
+     "arm": "dpp",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.335947036743164,
+     "wall_ms": 1.3563046231865883
+    },
+    {
+     "arm": "parent",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5384069681167603,
+     "wall_ms": 1.5586549416184425
+    },
+    {
+     "arm": "parent",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.535601019859314,
+     "wall_ms": 1.5560900792479515
+    },
+    {
+     "arm": "dpp",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.311579942703247,
+     "wall_ms": 1.332620158791542
+    },
+    {
+     "arm": "dpp",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3213189840316772,
+     "wall_ms": 1.3420293107628822
+    },
+    {
+     "arm": "parent",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5328760147094727,
+     "wall_ms": 1.5535550191998482
+    },
+    {
+     "arm": "parent",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5526330471038818,
+     "wall_ms": 1.5731221064925194
+    },
+    {
+     "arm": "dpp",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3152680397033691,
+     "wall_ms": 1.3356860727071762
+    },
+    {
+     "arm": "dpp",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.309617042541504,
+     "wall_ms": 1.3300562277436256
+    },
+    {
+     "arm": "parent",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5200519561767578,
+     "wall_ms": 1.5404913574457169
+    },
+    {
+     "arm": "parent",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.530832052230835,
+     "wall_ms": 1.5513012185692787
+    },
+    {
+     "arm": "dpp",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.316789984703064,
+     "wall_ms": 1.337079331278801
+    },
+    {
+     "arm": "dpp",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3188749551773071,
+     "wall_ms": 1.3393042609095573
+    },
+    {
+     "arm": "parent",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5382859706878662,
+     "wall_ms": 1.5587350353598595
+    },
+    {
+     "arm": "parent",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5533549785614014,
+     "wall_ms": 1.5737330541014671
+    },
+    {
+     "arm": "dpp",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3153879642486572,
+     "wall_ms": 1.335466280579567
+    },
+    {
+     "arm": "dpp",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3345839977264404,
+     "wall_ms": 1.355484127998352
+    },
+    {
+     "arm": "parent",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5431749820709229,
+     "wall_ms": 1.5633134171366692
+    },
+    {
+     "arm": "parent",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5391680002212524,
+     "wall_ms": 1.5599466860294342
+    },
+    {
+     "arm": "dpp",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3185139894485474,
+     "wall_ms": 1.3388115912675858
+    },
+    {
+     "arm": "dpp",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3134249448776245,
+     "wall_ms": 1.3336632400751114
+    },
+    {
+     "arm": "parent",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5324349403381348,
+     "wall_ms": 1.5818579122424126
+    },
+    {
+     "arm": "parent",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5546369552612305,
+     "wall_ms": 1.576256938278675
+    },
+    {
+     "arm": "dpp",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3133440017700195,
+     "wall_ms": 1.3342145830392838
+    },
+    {
+     "arm": "dpp",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3113009929656982,
+     "wall_ms": 1.332700252532959
+    },
+    {
+     "arm": "parent",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5305520296096802,
+     "wall_ms": 1.568804495036602
+    },
+    {
+     "arm": "parent",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5437359809875488,
+     "wall_ms": 1.56454648822546
+    },
+    {
+     "arm": "dpp",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3220009803771973,
+     "wall_ms": 1.3426383957266808
+    },
+    {
+     "arm": "dpp",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3150269985198975,
+     "wall_ms": 1.3354960829019547
+    },
+    {
+     "arm": "parent",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5319139957427979,
+     "wall_ms": 1.552453264594078
+    }
+   ],
+   "event_speedup": 1.16841538759626,
+   "wall_speedup": 1.1689166573691845,
+   "wall_speedup_by_first_arm": {
+    "parent": 1.169717320844816,
+    "dpp": 1.166882482690905
+   }
+  },
+  {
+   "tensor": "blk.22.ffn_gate_inp.weight",
+   "rows": 1024,
+   "k": 2560,
+   "n": 512,
+   "weight_sha256": "29c953059493e5fbd3a6cfe5dccf915aa54156dce065426d63ae5ce4546c71da",
+   "output_hashes": {
+    "parent": "40393f35ac6d24b584137dafd05e0c32f99217a1e931bce0e9e3e01b9345a6bf",
+    "dpp": "40393f35ac6d24b584137dafd05e0c32f99217a1e931bce0e9e3e01b9345a6bf"
+   },
+   "bit_exact_logits_ids_routing": true,
+   "median": {
+    "parent": {
+     "event_ms": 3.0445929765701294,
+     "wall_ms": 3.063914831727743
+    },
+    "dpp": {
+     "event_ms": 2.604848027229309,
+     "wall_ms": 2.6252414099872112
+    }
+   },
+   "samples": [
+    {
+     "arm": "parent",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0466370582580566,
+     "wall_ms": 3.131505101919174
+    },
+    {
+     "arm": "dpp",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.635435104370117,
+     "wall_ms": 2.6492010802030563
+    },
+    {
+     "arm": "dpp",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.614264965057373,
+     "wall_ms": 2.636217512190342
+    },
+    {
+     "arm": "parent",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0450339317321777,
+     "wall_ms": 3.066984936594963
+    },
+    {
+     "arm": "parent",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.044152021408081,
+     "wall_ms": 3.0645914375782013
+    },
+    {
+     "arm": "dpp",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.599518060684204,
+     "wall_ms": 2.6202769950032234
+    },
+    {
+     "arm": "dpp",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6026430130004883,
+     "wall_ms": 2.6232730597257614
+    },
+    {
+     "arm": "parent",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0651519298553467,
+     "wall_ms": 3.085480071604252
+    },
+    {
+     "arm": "parent",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0427088737487793,
+     "wall_ms": 3.063238225877285
+    },
+    {
+     "arm": "dpp",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.598356008529663,
+     "wall_ms": 2.6187943294644356
+    },
+    {
+     "arm": "dpp",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.589138984680176,
+     "wall_ms": 2.6096459478139877
+    },
+    {
+     "arm": "parent",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0494420528411865,
+     "wall_ms": 3.060491755604744
+    },
+    {
+     "arm": "parent",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0609829425811768,
+     "wall_ms": 3.081723116338253
+    },
+    {
+     "arm": "dpp",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5953900814056396,
+     "wall_ms": 2.616219222545624
+    },
+    {
+     "arm": "dpp",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.613863945007324,
+     "wall_ms": 2.634243108332157
+    },
+    {
+     "arm": "parent",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.038620948791504,
+     "wall_ms": 3.0590901151299477
+    },
+    {
+     "arm": "parent",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0368189811706543,
+     "wall_ms": 3.0576465651392937
+    },
+    {
+     "arm": "dpp",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.6087749004364014,
+     "wall_ms": 2.6293639093637466
+    },
+    {
+     "arm": "dpp",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6047279834747314,
+     "wall_ms": 2.625065855681896
+    },
+    {
+     "arm": "parent",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0410258769989014,
+     "wall_ms": 3.0613942071795464
+    },
+    {
+     "arm": "parent",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0832250118255615,
+     "wall_ms": 3.103603608906269
+    },
+    {
+     "arm": "dpp",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.6055290699005127,
+     "wall_ms": 2.6293741539120674
+    },
+    {
+     "arm": "dpp",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6141650676727295,
+     "wall_ms": 2.6254169642925262
+    },
+    {
+     "arm": "parent",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.03132700920105,
+     "wall_ms": 3.0557438731193542
+    },
+    {
+     "arm": "parent",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0407049655914307,
+     "wall_ms": 3.0495328828692436
+    },
+    {
+     "arm": "dpp",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5975139141082764,
+     "wall_ms": 2.6195552200078964
+    },
+    {
+     "arm": "dpp",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6014010906219482,
+     "wall_ms": 2.6220204308629036
+    },
+    {
+     "arm": "parent",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.04038405418396,
+     "wall_ms": 3.06074321269989
+    },
+    {
+     "arm": "parent",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0411460399627686,
+     "wall_ms": 3.061555325984955
+    },
+    {
+     "arm": "dpp",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.600800037384033,
+     "wall_ms": 2.6210881769657135
+    },
+    {
+     "arm": "dpp",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.5942280292510986,
+     "wall_ms": 2.6149870827794075
+    },
+    {
+     "arm": "parent",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.036376953125,
+     "wall_ms": 3.0569760128855705
+    },
+    {
+     "arm": "parent",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0793380737304688,
+     "wall_ms": 3.1008487567305565
+    },
+    {
+     "arm": "dpp",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.6116199493408203,
+     "wall_ms": 2.632429823279381
+    },
+    {
+     "arm": "dpp",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6049680709838867,
+     "wall_ms": 2.62568611651659
+    },
+    {
+     "arm": "parent",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0602219104766846,
+     "wall_ms": 3.080902621150017
+    },
+    {
+     "arm": "parent",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0641889572143555,
+     "wall_ms": 3.0848486348986626
+    },
+    {
+     "arm": "dpp",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.6072120666503906,
+     "wall_ms": 2.651175484061241
+    },
+    {
+     "arm": "dpp",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6193149089813232,
+     "wall_ms": 2.639602869749069
+    },
+    {
+     "arm": "parent",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0866310596466064,
+     "wall_ms": 3.10697965323925
+    }
+   ],
+   "event_speedup": 1.1688178906193474,
+   "wall_speedup": 1.1670983171573044,
+   "wall_speedup_by_first_arm": {
+    "parent": 1.1706257771439417,
+    "dpp": 1.1660141799891197
+   }
+  },
+  {
+   "tensor": "blk.22.ffn_gate_inp.weight",
+   "rows": 4096,
+   "k": 2560,
+   "n": 512,
+   "weight_sha256": "29c953059493e5fbd3a6cfe5dccf915aa54156dce065426d63ae5ce4546c71da",
+   "output_hashes": {
+    "parent": "116d3ace49ba98bd50e3603089d0dae94f0a7e4b8b3f4d0f53ef0667c4e311f2",
+    "dpp": "116d3ace49ba98bd50e3603089d0dae94f0a7e4b8b3f4d0f53ef0667c4e311f2"
+   },
+   "bit_exact_logits_ids_routing": true,
+   "median": {
+    "parent": {
+     "event_ms": 12.946171283721924,
+     "wall_ms": 12.972812168300152
+    },
+    "dpp": {
+     "event_ms": 11.388308048248291,
+     "wall_ms": 11.410004924982786
+    }
+   },
+   "samples": [
+    {
+     "arm": "parent",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.940921783447266,
+     "wall_ms": 13.000794686377048
+    },
+    {
+     "arm": "dpp",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.37718677520752,
+     "wall_ms": 11.384822428226471
+    },
+    {
+     "arm": "dpp",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.40195369720459,
+     "wall_ms": 11.42287440598011
+    },
+    {
+     "arm": "parent",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.914912223815918,
+     "wall_ms": 12.936433777213097
+    },
+    {
+     "arm": "parent",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.981918334960938,
+     "wall_ms": 13.003289699554443
+    },
+    {
+     "arm": "dpp",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.383639335632324,
+     "wall_ms": 11.404979974031448
+    },
+    {
+     "arm": "dpp",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.397504806518555,
+     "wall_ms": 11.418054811656475
+    },
+    {
+     "arm": "parent",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.97530460357666,
+     "wall_ms": 12.982381507754326
+    },
+    {
+     "arm": "parent",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.924610137939453,
+     "wall_ms": 12.947364710271358
+    },
+    {
+     "arm": "dpp",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.40592098236084,
+     "wall_ms": 11.427032761275768
+    },
+    {
+     "arm": "dpp",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.401713371276855,
+     "wall_ms": 11.42263412475586
+    },
+    {
+     "arm": "parent",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.925251007080078,
+     "wall_ms": 12.946182861924171
+    },
+    {
+     "arm": "parent",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.952503204345703,
+     "wall_ms": 12.972992844879627
+    },
+    {
+     "arm": "dpp",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.363480567932129,
+     "wall_ms": 11.370906606316566
+    },
+    {
+     "arm": "dpp",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.391213417053223,
+     "wall_ms": 11.412574909627438
+    },
+    {
+     "arm": "parent",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.965766906738281,
+     "wall_ms": 12.986668385565281
+    },
+    {
+     "arm": "parent",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.960556983947754,
+     "wall_ms": 12.98154890537262
+    },
+    {
+     "arm": "dpp",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.376145362854004,
+     "wall_ms": 11.396915651857853
+    },
+    {
+     "arm": "dpp",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.431008338928223,
+     "wall_ms": 11.451748199760914
+    },
+    {
+     "arm": "parent",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.971497535705566,
+     "wall_ms": 12.97847367823124
+    },
+    {
+     "arm": "parent",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.96993637084961,
+     "wall_ms": 12.990747578442097
+    },
+    {
+     "arm": "dpp",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.39065170288086,
+     "wall_ms": 11.411242187023163
+    },
+    {
+     "arm": "dpp",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.35750961303711,
+     "wall_ms": 11.377619579434395
+    },
+    {
+     "arm": "parent",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.913309097290039,
+     "wall_ms": 12.93450128287077
+    },
+    {
+     "arm": "parent",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.951942443847656,
+     "wall_ms": 12.972631491720676
+    },
+    {
+     "arm": "dpp",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.371896743774414,
+     "wall_ms": 11.379392817616463
+    },
+    {
+     "arm": "dpp",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.385082244873047,
+     "wall_ms": 11.406203731894493
+    },
+    {
+     "arm": "parent",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.941762924194336,
+     "wall_ms": 12.96810433268547
+    },
+    {
+     "arm": "parent",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.949577331542969,
+     "wall_ms": 12.973513454198837
+    },
+    {
+     "arm": "dpp",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.402434349060059,
+     "wall_ms": 11.423426680266857
+    },
+    {
+     "arm": "dpp",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.369213104248047,
+     "wall_ms": 11.389811523258686
+    },
+    {
+     "arm": "parent",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.942765235900879,
+     "wall_ms": 12.95000035315752
+    },
+    {
+     "arm": "parent",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.795369148254395,
+     "wall_ms": 12.820697389543056
+    },
+    {
+     "arm": "dpp",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.342211723327637,
+     "wall_ms": 11.366878636181355
+    },
+    {
+     "arm": "dpp",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.385964393615723,
+     "wall_ms": 11.40876766294241
+    },
+    {
+     "arm": "parent",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.938998222351074,
+     "wall_ms": 12.961381115019321
+    },
+    {
+     "arm": "parent",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.984964370727539,
+     "wall_ms": 13.01579363644123
+    },
+    {
+     "arm": "dpp",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.423233985900879,
+     "wall_ms": 11.430758982896805
+    },
+    {
+     "arm": "dpp",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.394139289855957,
+     "wall_ms": 11.414889246225357
+    },
+    {
+     "arm": "parent",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.906617164611816,
+     "wall_ms": 12.930914759635925
+    }
+   ],
+   "event_speedup": 1.1367949680385805,
+   "wall_speedup": 1.1369681480062748,
+   "wall_speedup_by_first_arm": {
+    "parent": 1.1382852893205093,
+    "dpp": 1.135096797930284
+   }
+  },
+  {
+   "tensor": "blk.47.ffn_gate_inp.weight",
+   "rows": 512,
+   "k": 2560,
+   "n": 512,
+   "weight_sha256": "418104d20e8c36a0ad9f0ac27f922b663e3bedc4c998fe4471547734e8e0d454",
+   "output_hashes": {
+    "parent": "d9881c34cfda58c705b00fdd2502f6540b1c425c95dd693188d2f1be43878102",
+    "dpp": "d9881c34cfda58c705b00fdd2502f6540b1c425c95dd693188d2f1be43878102"
+   },
+   "bit_exact_logits_ids_routing": true,
+   "median": {
+    "parent": {
+     "event_ms": 1.5373644828796387,
+     "wall_ms": 1.5582586638629436
+    },
+    "dpp": {
+     "event_ms": 1.3152479529380798,
+     "wall_ms": 1.3357410207390785
+    }
+   },
+   "samples": [
+    {
+     "arm": "parent",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5222560167312622,
+     "wall_ms": 1.611173152923584
+    },
+    {
+     "arm": "dpp",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3147870302200317,
+     "wall_ms": 1.3367673382163048
+    },
+    {
+     "arm": "dpp",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3166699409484863,
+     "wall_ms": 1.3237735256552696
+    },
+    {
+     "arm": "parent",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5238590240478516,
+     "wall_ms": 1.5443479642271996
+    },
+    {
+     "arm": "parent",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5247410535812378,
+     "wall_ms": 1.5458296984434128
+    },
+    {
+     "arm": "dpp",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3112609386444092,
+     "wall_ms": 1.3321805745363235
+    },
+    {
+     "arm": "dpp",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3148670196533203,
+     "wall_ms": 1.3354858383536339
+    },
+    {
+     "arm": "parent",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5485060214996338,
+     "wall_ms": 1.5688538551330566
+    },
+    {
+     "arm": "parent",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.526865005493164,
+     "wall_ms": 1.547633670270443
+    },
+    {
+     "arm": "dpp",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3189949989318848,
+     "wall_ms": 1.3396842405200005
+    },
+    {
+     "arm": "dpp",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3130240440368652,
+     "wall_ms": 1.3336222618818283
+    },
+    {
+     "arm": "parent",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5405709743499756,
+     "wall_ms": 1.5611303970217705
+    },
+    {
+     "arm": "parent",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5221359729766846,
+     "wall_ms": 1.542774960398674
+    },
+    {
+     "arm": "dpp",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3048080205917358,
+     "wall_ms": 1.3253074139356613
+    },
+    {
+     "arm": "dpp",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3099780082702637,
+     "wall_ms": 1.330466940999031
+    },
+    {
+     "arm": "parent",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5382059812545776,
+     "wall_ms": 1.559235155582428
+    },
+    {
+     "arm": "parent",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5297110080718994,
+     "wall_ms": 1.5500597655773163
+    },
+    {
+     "arm": "dpp",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3128629922866821,
+     "wall_ms": 1.3331510126590729
+    },
+    {
+     "arm": "dpp",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3154679536819458,
+     "wall_ms": 1.3356758281588554
+    },
+    {
+     "arm": "parent",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.527987003326416,
+     "wall_ms": 1.5487363561987877
+    },
+    {
+     "arm": "parent",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5378450155258179,
+     "wall_ms": 1.5581734478473663
+    },
+    {
+     "arm": "dpp",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3161089420318604,
+     "wall_ms": 1.3368381187319756
+    },
+    {
+     "arm": "dpp",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3232829570770264,
+     "wall_ms": 1.3438016176223755
+    },
+    {
+     "arm": "parent",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.531473994255066,
+     "wall_ms": 1.5518022701144218
+    },
+    {
+     "arm": "parent",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.545820951461792,
+     "wall_ms": 1.5660887584090233
+    },
+    {
+     "arm": "dpp",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3153879642486572,
+     "wall_ms": 1.3358062133193016
+    },
+    {
+     "arm": "dpp",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3215199708938599,
+     "wall_ms": 1.3420972973108292
+    },
+    {
+     "arm": "parent",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5412520170211792,
+     "wall_ms": 1.5616705641150475
+    },
+    {
+     "arm": "parent",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.562332034111023,
+     "wall_ms": 1.5826402232050896
+    },
+    {
+     "arm": "dpp",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.315788984298706,
+     "wall_ms": 1.3361172750592232
+    },
+    {
+     "arm": "dpp",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3202780485153198,
+     "wall_ms": 1.3404153287410736
+    },
+    {
+     "arm": "parent",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5379259586334229,
+     "wall_ms": 1.558343879878521
+    },
+    {
+     "arm": "parent",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5239399671554565,
+     "wall_ms": 1.5453696250915527
+    },
+    {
+     "arm": "dpp",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.310418963432312,
+     "wall_ms": 1.3313991948962212
+    },
+    {
+     "arm": "dpp",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3151079416275024,
+     "wall_ms": 1.336047425866127
+    },
+    {
+     "arm": "parent",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5385669469833374,
+     "wall_ms": 1.5597175806760788
+    },
+    {
+     "arm": "parent",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.5368839502334595,
+     "wall_ms": 1.5575215220451355
+    },
+    {
+     "arm": "dpp",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 1.3193960189819336,
+     "wall_ms": 1.3400949537754059
+    },
+    {
+     "arm": "dpp",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.3138259649276733,
+     "wall_ms": 1.3347845524549484
+    },
+    {
+     "arm": "parent",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 1.5391680002212524,
+     "wall_ms": 1.5594558790326118
+    }
+   ],
+   "event_speedup": 1.16887806549737,
+   "wall_speedup": 1.1665874145279629,
+   "wall_speedup_by_first_arm": {
+    "parent": 1.1630502524263182,
+    "dpp": 1.1675411015787944
+   }
+  },
+  {
+   "tensor": "blk.47.ffn_gate_inp.weight",
+   "rows": 1024,
+   "k": 2560,
+   "n": 512,
+   "weight_sha256": "418104d20e8c36a0ad9f0ac27f922b663e3bedc4c998fe4471547734e8e0d454",
+   "output_hashes": {
+    "parent": "960812991039370f4f1067aa04c94c136b3671f72aafd90d225f94e6fc4a4e36",
+    "dpp": "960812991039370f4f1067aa04c94c136b3671f72aafd90d225f94e6fc4a4e36"
+   },
+   "bit_exact_logits_ids_routing": true,
+   "median": {
+    "parent": {
+     "event_ms": 3.055553436279297,
+     "wall_ms": 3.077629953622818
+    },
+    "dpp": {
+     "event_ms": 2.6053484678268433,
+     "wall_ms": 2.626242581754923
+    }
+   },
+   "samples": [
+    {
+     "arm": "parent",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.027440071105957,
+     "wall_ms": 3.101901151239872
+    },
+    {
+     "arm": "dpp",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5913429260253906,
+     "wall_ms": 2.5997478514909744
+    },
+    {
+     "arm": "dpp",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.5963521003723145,
+     "wall_ms": 2.616950310766697
+    },
+    {
+     "arm": "parent",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.024635076522827,
+     "wall_ms": 3.045464865863323
+    },
+    {
+     "arm": "parent",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0524868965148926,
+     "wall_ms": 3.0732573941349983
+    },
+    {
+     "arm": "dpp",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.6171510219573975,
+     "wall_ms": 2.639112062752247
+    },
+    {
+     "arm": "dpp",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.612902879714966,
+     "wall_ms": 2.6338333263993263
+    },
+    {
+     "arm": "parent",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0365378856658936,
+     "wall_ms": 3.056945279240608
+    },
+    {
+     "arm": "parent",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.056654930114746,
+     "wall_ms": 3.0773840844631195
+    },
+    {
+     "arm": "dpp",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.6176319122314453,
+     "wall_ms": 2.638530917465687
+    },
+    {
+     "arm": "dpp",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.614706039428711,
+     "wall_ms": 2.6353849098086357
+    },
+    {
+     "arm": "parent",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0579779148101807,
+     "wall_ms": 3.0789487063884735
+    },
+    {
+     "arm": "parent",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.0741679668426514,
+     "wall_ms": 3.094896674156189
+    },
+    {
+     "arm": "dpp",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.602283000946045,
+     "wall_ms": 2.623012289404869
+    },
+    {
+     "arm": "dpp",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6256470680236816,
+     "wall_ms": 2.6462459936738014
+    },
+    {
+     "arm": "parent",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0600619316101074,
+     "wall_ms": 3.0808206647634506
+    },
+    {
+     "arm": "parent",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.066473960876465,
+     "wall_ms": 3.086891956627369
+    },
+    {
+     "arm": "dpp",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.609937906265259,
+     "wall_ms": 2.6304665952920914
+    },
+    {
+     "arm": "dpp",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.5983550548553467,
+     "wall_ms": 2.618633210659027
+    },
+    {
+     "arm": "parent",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.070842981338501,
+     "wall_ms": 3.091501072049141
+    },
+    {
+     "arm": "parent",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.030606985092163,
+     "wall_ms": 3.0512046068906784
+    },
+    {
+     "arm": "dpp",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.610579013824463,
+     "wall_ms": 2.630936913192272
+    },
+    {
+     "arm": "dpp",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.603485107421875,
+     "wall_ms": 2.6245946064591408
+    },
+    {
+     "arm": "parent",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.055332899093628,
+     "wall_ms": 3.0757905915379524
+    },
+    {
+     "arm": "parent",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.034734010696411,
+     "wall_ms": 3.0414871871471405
+    },
+    {
+     "arm": "dpp",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5985560417175293,
+     "wall_ms": 2.6199454441666603
+    },
+    {
+     "arm": "dpp",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6050479412078857,
+     "wall_ms": 2.6262477040290833
+    },
+    {
+     "arm": "parent",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0472381114959717,
+     "wall_ms": 3.067595884203911
+    },
+    {
+     "arm": "parent",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.057096004486084,
+     "wall_ms": 3.0778348445892334
+    },
+    {
+     "arm": "dpp",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.5976738929748535,
+     "wall_ms": 2.61797197163105
+    },
+    {
+     "arm": "dpp",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.6100170612335205,
+     "wall_ms": 2.630246803164482
+    },
+    {
+     "arm": "parent",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.06146502494812,
+     "wall_ms": 3.0820732936263084
+    },
+    {
+     "arm": "parent",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.055773973464966,
+     "wall_ms": 3.0774250626564026
+    },
+    {
+     "arm": "dpp",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.6106579303741455,
+     "wall_ms": 2.6307664811611176
+    },
+    {
+     "arm": "dpp",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.605648994445801,
+     "wall_ms": 2.6262374594807625
+    },
+    {
+     "arm": "parent",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.0389020442962646,
+     "wall_ms": 3.059511072933674
+    },
+    {
+     "arm": "parent",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 3.045353889465332,
+     "wall_ms": 3.0895881354808807
+    },
+    {
+     "arm": "dpp",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 2.591823101043701,
+     "wall_ms": 2.612733282148838
+    },
+    {
+     "arm": "dpp",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 2.596713066101074,
+     "wall_ms": 2.6171719655394554
+    },
+    {
+     "arm": "parent",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 3.08522891998291,
+     "wall_ms": 3.10587789863348
+    }
+   ],
+   "event_speedup": 1.1728002891022005,
+   "wall_speedup": 1.1718757341777113,
+   "wall_speedup_by_first_arm": {
+    "parent": 1.171654068159578,
+    "dpp": 1.1717766174162159
+   }
+  },
+  {
+   "tensor": "blk.47.ffn_gate_inp.weight",
+   "rows": 4096,
+   "k": 2560,
+   "n": 512,
+   "weight_sha256": "418104d20e8c36a0ad9f0ac27f922b663e3bedc4c998fe4471547734e8e0d454",
+   "output_hashes": {
+    "parent": "246610d1e18146d3a1e0256a669ace1e30fb5e4cd2e27885669c3d7f5bf4d543",
+    "dpp": "246610d1e18146d3a1e0256a669ace1e30fb5e4cd2e27885669c3d7f5bf4d543"
+   },
+   "bit_exact_logits_ids_routing": true,
+   "median": {
+    "parent": {
+     "event_ms": 12.953145027160645,
+     "wall_ms": 12.97362893819809
+    },
+    "dpp": {
+     "event_ms": 11.39822769165039,
+     "wall_ms": 11.418882291764021
+    }
+   },
+   "samples": [
+    {
+     "arm": "parent",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.704558372497559,
+     "wall_ms": 12.765583582222462
+    },
+    {
+     "arm": "dpp",
+     "pair": 0,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.24598217010498,
+     "wall_ms": 11.25381700694561
+    },
+    {
+     "arm": "dpp",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.311704635620117,
+     "wall_ms": 11.334769427776337
+    },
+    {
+     "arm": "parent",
+     "pair": 1,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.904253959655762,
+     "wall_ms": 12.927226722240448
+    },
+    {
+     "arm": "parent",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.901808738708496,
+     "wall_ms": 12.92286068201065
+    },
+    {
+     "arm": "dpp",
+     "pair": 2,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.340518951416016,
+     "wall_ms": 11.362802237272263
+    },
+    {
+     "arm": "dpp",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.403117179870605,
+     "wall_ms": 11.423987336456776
+    },
+    {
+     "arm": "parent",
+     "pair": 3,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.925652503967285,
+     "wall_ms": 12.934020720422268
+    },
+    {
+     "arm": "parent",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.94468879699707,
+     "wall_ms": 12.965849600732327
+    },
+    {
+     "arm": "dpp",
+     "pair": 4,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.397065162658691,
+     "wall_ms": 11.41783595085144
+    },
+    {
+     "arm": "dpp",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.400832176208496,
+     "wall_ms": 11.421741917729378
+    },
+    {
+     "arm": "parent",
+     "pair": 5,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.969014167785645,
+     "wall_ms": 12.989984825253487
+    },
+    {
+     "arm": "parent",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.960118293762207,
+     "wall_ms": 12.981398962438107
+    },
+    {
+     "arm": "dpp",
+     "pair": 6,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.424596786499023,
+     "wall_ms": 11.431951075792313
+    },
+    {
+     "arm": "dpp",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.389089584350586,
+     "wall_ms": 11.410350911319256
+    },
+    {
+     "arm": "parent",
+     "pair": 7,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.953225135803223,
+     "wall_ms": 12.974195182323456
+    },
+    {
+     "arm": "parent",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 13.021872520446777,
+     "wall_ms": 13.043254613876343
+    },
+    {
+     "arm": "dpp",
+     "pair": 8,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.409327507019043,
+     "wall_ms": 11.430609039962292
+    },
+    {
+     "arm": "dpp",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.368451118469238,
+     "wall_ms": 11.389261111617088
+    },
+    {
+     "arm": "parent",
+     "pair": 9,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.990735054016113,
+     "wall_ms": 12.998060323297977
+    },
+    {
+     "arm": "parent",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.963483810424805,
+     "wall_ms": 12.98416405916214
+    },
+    {
+     "arm": "dpp",
+     "pair": 10,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.380393981933594,
+     "wall_ms": 11.401203460991383
+    },
+    {
+     "arm": "dpp",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.38748550415039,
+     "wall_ms": 11.4085478708148
+    },
+    {
+     "arm": "parent",
+     "pair": 11,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.9320650100708,
+     "wall_ms": 12.954928912222385
+    },
+    {
+     "arm": "parent",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.962762832641602,
+     "wall_ms": 12.983802706003189
+    },
+    {
+     "arm": "dpp",
+     "pair": 12,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.435737609863281,
+     "wall_ms": 11.44317165017128
+    },
+    {
+     "arm": "dpp",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.406803131103516,
+     "wall_ms": 11.427953839302063
+    },
+    {
+     "arm": "parent",
+     "pair": 13,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.975546836853027,
+     "wall_ms": 12.996387667953968
+    },
+    {
+     "arm": "parent",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.955429077148438,
+     "wall_ms": 12.976229190826416
+    },
+    {
+     "arm": "dpp",
+     "pair": 14,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.403436660766602,
+     "wall_ms": 11.423496529459953
+    },
+    {
+     "arm": "dpp",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.39939022064209,
+     "wall_ms": 11.419928632676601
+    },
+    {
+     "arm": "parent",
+     "pair": 15,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.983080863952637,
+     "wall_ms": 12.99014501273632
+    },
+    {
+     "arm": "parent",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.928499221801758,
+     "wall_ms": 12.950660660862923
+    },
+    {
+     "arm": "dpp",
+     "pair": 16,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.387887954711914,
+     "wall_ms": 11.409479193389416
+    },
+    {
+     "arm": "dpp",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.399869918823242,
+     "wall_ms": 11.420950293540955
+    },
+    {
+     "arm": "parent",
+     "pair": 17,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.91114616394043,
+     "wall_ms": 12.932307086884975
+    },
+    {
+     "arm": "parent",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 12.913350105285645,
+     "wall_ms": 12.934109196066856
+    },
+    {
+     "arm": "dpp",
+     "pair": 18,
+     "order": [
+      "parent",
+      "dpp"
+     ],
+     "event_ms": 11.375825881958008,
+     "wall_ms": 11.383531615138054
+    },
+    {
+     "arm": "dpp",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 11.409168243408203,
+     "wall_ms": 11.43041905015707
+    },
+    {
+     "arm": "parent",
+     "pair": 19,
+     "order": [
+      "dpp",
+      "parent"
+     ],
+     "event_ms": 12.953064918518066,
+     "wall_ms": 12.973062694072723
+    }
+   ],
+   "event_speedup": 1.136417465730158,
+   "wall_speedup": 1.136155764347921,
+   "wall_speedup_by_first_arm": {
+    "parent": 1.1364489703513694,
+    "dpp": 1.136000850064181
+   }
+  }
+ ],
+ "library": {
+  "path": "/home/lhl/.cache/hipengine/build/qwen35_router-71fbd346247f8392/qwen35_router.so",
+  "sha256": "d179678c594e862c3456011103db0680ebf3fb84db451284d2f897b42345b946"
+ },
+ "memory_after_close": {
+  "current_allocated_bytes": 0,
+  "peak_allocated_bytes": 56066048,
+  "total_allocated_bytes": 256831488,
+  "total_freed_bytes": 256831488,
+  "active_allocations": 0,
+  "peak_allocations": 5
+ },
+ "status": "completed_operation_screen",
+ "validation": {
+  "gpu_tests": "32 passed, direct parent uint32 logits/routing, selected IDs, repeats, cancellation/tails, CPU outer KL/top1 gate",
+  "cpu_tests": "54 focused CPU/registry/profile/reference tests pass; prior expanded bundle109pass/1 known baseline stale pair32 assertion;new peer-registration fixture repaired by registering source router family before peer aliases,6 new tests pass",
+  "prior_rejected_candidate": "2026-09-07-framework-qwen4exp-router-shuffle-rejected.json is a different implementation with2 interwave reduction barriers+registerstride32+shuffle finish; current candidate1 publicationbarrier and registerinterwave folds+DPP finish. Not restored unchanged.",
+  "promotion_blocker": "natural-input and fullcanonical state/KV/logits/routing/complete-model AB still required; no model speedup claimed"
+ },
+ "source_files": {
+  "hipengine/kernels/hip_gfx1100/moe/router.hip": "002f506645e4af22d8c39f3ace87d4d3814e543c18e576fe5030f30ac557377c",
+  "hipengine/kernels/hip_gfx1100/moe/router.py": "cbaf41b29fd6fd7c227b612d2c96abb680cec91d7d5c20baf2075cbd3758f7fe",
+  "scripts/qwen4exp_router_dpp_screen.py": "eb3152aaabe8cfab7d4a3128745cdaed098defdf5ea3b67ca2bdf9043413b095"
+ },
+ "cached_trace": {
+  "command": "rocprofv3 --kernel-trace --output-format csv --output-file dpp --output-directory /tmp/qwen4exp-router-dpp-trace -- uv run --no-sync python scripts/qwen4exp_router_dpp_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-gr-dpp-20261005/hipcc-version.txt --require-cached-build --rows 4096 --layers 0 --pairs 2 --output /tmp/qwen4exp-router-dpp-trace.json",
+  "csv_sha256": "0c708f09e76fb15033149493fec22d976cfea53cefba382163cc9432f0de1191",
+  "rows": [
+   {
+    "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+    "duration_ns": 12858840,
+    "vgpr": 32,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 0
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+    "duration_ns": 111928,
+    "vgpr": 24,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 512
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile4_dpp_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+    "duration_ns": 11227553,
+    "vgpr": 32,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 0
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+    "duration_ns": 110646,
+    "vgpr": 24,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 512
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+    "duration_ns": 12781090,
+    "vgpr": 32,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 0
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+    "duration_ns": 111608,
+    "vgpr": 24,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 512
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile4_dpp_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+    "duration_ns": 11250269,
+    "vgpr": 32,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 0
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+    "duration_ns": 110446,
+    "vgpr": 24,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 512
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile4_dpp_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+    "duration_ns": 11170251,
+    "vgpr": 32,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 0
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+    "duration_ns": 110326,
+    "vgpr": 24,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 512
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+    "duration_ns": 12807794,
+    "vgpr": 32,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 0
+   },
+   {
+    "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+    "duration_ns": 110487,
+    "vgpr": 24,
+    "scratch_bytes": 0,
+    "static_lds_bytes": 512
+   }
+  ],
+  "dynamic_lds_bytes": 4096,
+  "note": "Static LDS field excludes dynamic launch allocation;3 kernel calls per arm include warmup+2 timed pairs. No model-rate arithmetic from wholetrace."
+ },
+ "static_census": {
+  "command": "uv run --no-sync python scripts/qwen4exp_repair_register_census.py --source hipengine/kernels/hip_gfx1100/moe/router.hip --threads-per-block 256 --workdir /tmp/qwen4exp-router-dpp-census --output /tmp/qwen4exp-router-dpp-census.json",
+  "flags": [
+   "-O3",
+   "-mllvm",
+   "-amdgpu-unroll-threshold-local=600",
+   "--offload-arch=gfx1151",
+   "-mcumode"
+  ],
+  "kernels": [
+   {
+    "symbol": "_ZN12_GLOBAL__N_154qwen35_router_logits_f32_token_tile_dense_exact_kernelILi4EEEvPKfS2_Pflll",
+    "vgpr": 29,
+    "sgpr": 43,
+    "static_instructions": 249,
+    "top_opcodes": [
+     [
+      "s_delay_alu",
+      28
+     ],
+     [
+      "s_addc_u32",
+      18
+     ],
+     [
+      "s_mul_i32",
+      17
+     ],
+     [
+      "v_fmac_f32_e32",
+      14
+     ],
+     [
+      "s_add_u32",
+      12
+     ],
+     [
+      "s_mov_b32",
+      10
+     ],
+     [
+      "s_lshl_b64",
+      9
+     ],
+     [
+      "s_mul_hi_u32",
+      8
+     ],
+     [
+      "s_cselect_b32",
+      8
+     ],
+     [
+      "global_load_b128",
+      8
+     ],
+     [
+      "s_waitcnt",
+      7
+     ],
+     [
+      "s_and_not1_b32",
+      7
+     ]
+    ],
+    "occupancy": {
+     "vgpr": 29,
+     "vgpr_granule": 32,
+     "waves_per_cu_by_vgpr": 64,
+     "waves_per_cu": 32,
+     "waves_per_simd": 8,
+     "occupancy_fraction": 1.0,
+     "threads_per_cu": 1024,
+     "blocks_per_cu": 4
+    }
+   },
+   {
+    "symbol": "_ZN12_GLOBAL__N_153qwen35_router_logits_f32_token_tile4_dpp_exact_kernelILi4EEEvPKfS2_Pflll",
+    "vgpr": 29,
+    "sgpr": 43,
+    "static_instructions": 251,
+    "top_opcodes": [
+     [
+      "s_delay_alu",
+      23
+     ],
+     [
+      "s_addc_u32",
+      21
+     ],
+     [
+      "s_mul_i32",
+      17
+     ],
+     [
+      "s_add_u32",
+      13
+     ],
+     [
+      "s_waitcnt",
+      12
+     ],
+     [
+      "v_fmac_f32_e32",
+      12
+     ],
+     [
+      "s_mov_b32",
+      11
+     ],
+     [
+      "s_mul_hi_u32",
+      9
+     ],
+     [
+      "s_cselect_b32",
+      8
+     ],
+     [
+      "s_lshl_b64",
+      8
+     ],
+     [
+      "v_cmp_lt_i64_e64",
+      8
+     ],
+     [
+      "global_load_b128",
+      8
+     ]
+    ],
+    "occupancy": {
+     "vgpr": 29,
+     "vgpr_granule": 32,
+     "waves_per_cu_by_vgpr": 64,
+     "waves_per_cu": 32,
+     "waves_per_simd": 8,
+     "occupancy_fraction": 1.0,
+     "threads_per_cu": 1024,
+     "blocks_per_cu": 4
+    }
+   }
+  ],
+  "note": "29 VGPR metadata ->32 allocated per trace, same100% register-limit ceiling;parent1 publication+8 loopbarriers vs candidate1 publication. Static instructions249->251 do not measure dynamic loop work."
+ }
+}
