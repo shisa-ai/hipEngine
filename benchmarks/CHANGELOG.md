@@ -1,5 +1,15 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-05 — Current prefill owner trace (diagnostic)
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+  production code-p4096/chunk4096, clean `eb02f3d87`: kernel union
+  12.580/12.579 s, 2,761 fully attributed launches/pass; dense F32 coltile
+  2240.924 ms, GR DPP 1534.263 ms, router617.264ms. Warm/profile final
+  logits and lifecycle pass. No old→new delta or speed claim; this refresh
+  identifies a same-tree router barrier-removal experiment. Source:
+  `results/2026-10-05-qwen4exp-current-prefill-owners/README.md`.
+
 ## 2026-10-05 — Failed dense split runtime route removed
 
 - Remove the unqualified dense split layer selector, dispatch cache fields,
