@@ -109,14 +109,23 @@ _ROUTER_F32_TILE4_EVIDENCE = (
 _ROUTER_WARP_REDUCE_EVIDENCE = (
     "benchmarks/results/2026-09-27-router-warp-reduce/"
 )
-# Experiment switch for the warp-per-token router logits reduction. It selects a
-# different reduction order (32-lane shuffle instead of a 256-thread LDS tree)
-# and a different weight read (LDS stage instead of the global row), so the two
-# variants are distinct production arithmetics. Remove this switch once the
-# candidate is either promoted or rejected; see docs/REFACTOR.md.
+_ROUTER_DPP_EVIDENCE = (
+    "benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md"
+)
+# Screening switch for the router producer. The tile4 parent is exact and
+# remains the strict fallback; named siblings are selected only for gates.
 _ROUTER_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
 _ROUTER_TILE4_VARIANT = "f32_hidden_token_tile4_dense_exact"
 _ROUTER_WARP_REDUCE_VARIANT = "f32_hidden_warp_reduce_dense_exact"
+_ROUTER_DPP_VARIANT = "f32_hidden_token_tile4_dpp_exact"
+# Exact operation screen and route plumbing are not promotion evidence. The
+# production profile keeps the tile4 parent until the full model gate qualifies
+# the DPP sibling.
+_ROUTER_VARIANTS = (
+    _ROUTER_TILE4_VARIANT,
+    _ROUTER_WARP_REDUCE_VARIANT,
+    _ROUTER_DPP_VARIANT,
+)
 
 
 def _selected_router_producer_variant() -> str:
@@ -127,15 +136,17 @@ def _selected_router_producer_variant() -> str:
     manifest and the launched kernel cannot disagree.
     """
 
-    return os.environ.get(_ROUTER_VARIANT_ENV, "").strip() or _ROUTER_TILE4_VARIANT
+    requested = os.environ.get(_ROUTER_VARIANT_ENV, "").strip() or _ROUTER_TILE4_VARIANT
+    if requested not in _ROUTER_VARIANTS:
+        raise ValueError(f"{_ROUTER_VARIANT_ENV} must be one of {_ROUTER_VARIANTS}; got {requested!r}")
+    return requested
 
 
 _ROUTER_LOGITS_SELECTED_VARIANT = _selected_router_producer_variant()
-_ROUTER_LOGITS_EVIDENCE = (
-    _ROUTER_WARP_REDUCE_EVIDENCE
-    if _ROUTER_LOGITS_SELECTED_VARIANT == _ROUTER_WARP_REDUCE_VARIANT
-    else _ROUTER_F32_TILE4_EVIDENCE
-)
+_ROUTER_LOGITS_EVIDENCE = {
+    _ROUTER_WARP_REDUCE_VARIANT: _ROUTER_WARP_REDUCE_EVIDENCE,
+    _ROUTER_DPP_VARIANT: _ROUTER_DPP_EVIDENCE,
+}.get(_ROUTER_LOGITS_SELECTED_VARIANT, _ROUTER_F32_TILE4_EVIDENCE)
 _GR_UP_SIGMOID_MEAN_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json"
@@ -633,6 +644,8 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
                     selection.layer == "linear+gr_gated_mean"
                     and selection.scope == "qwen4exp_rows_gt256_gr_up"
                 )
+                else _ROUTER_DPP_EVIDENCE
+                if selection.layer == "router_logits" and variant == _ROUTER_DPP_VARIANT
                 else _Q8_QSA_RESTORATION_EVIDENCE
                 if restored
                 else _ARITHMETIC_RECOVERY_EVIDENCE
@@ -739,7 +752,10 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
         # Publish the router producer the manifest declares, so the runner's
         # launch-time switch cannot disagree with the resolved selection.
-        _ROUTER_VARIANT_ENV: _ROUTER_LOGITS_SELECTED_VARIANT,
+        _ROUTER_VARIANT_ENV: next(
+            row["selected_variant"] for row in resolved.manifest["selections"]
+            if row["layer"] == "router_logits"
+        ),
         "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",

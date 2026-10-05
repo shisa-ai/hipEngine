@@ -3533,20 +3533,22 @@ def _qwen4_exp_q8_mmq_policy(policy):
 _ROUTER_PRODUCER_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
 _ROUTER_PRODUCER_TILE4_VARIANT = "f32_hidden_token_tile4_dense_exact"
 _ROUTER_PRODUCER_WARP_REDUCE_VARIANT = "f32_hidden_warp_reduce_dense_exact"
+_ROUTER_PRODUCER_DPP_VARIANT = "f32_hidden_token_tile4_dpp_exact"
 _ROUTER_PRODUCER_VARIANTS = (
     _ROUTER_PRODUCER_TILE4_VARIANT,
     _ROUTER_PRODUCER_WARP_REDUCE_VARIANT,
+    _ROUTER_PRODUCER_DPP_VARIANT,
 )
 
 
 def _qwen4_exp_router_producer_variant(rows: int) -> str | None:
     """Return the multirow F32 router producer variant, or None for the linear path.
 
-    ``HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`` is the screening switch for the
-    warp-per-token reduction candidate. It is removed once that candidate is
-    promoted or rejected; see docs/REFACTOR.md. An unrecognized value raises
-    instead of silently falling back, because a silently inert arm produces a
-    measurement that looks like a null result.
+    The selector accepts the existing rejected warp route and the ordered DPP
+    diagnostic leaf. It is removed once the named candidate is promoted or
+    rejected; see docs/REFACTOR.md. An unrecognized value raises instead of
+    silently falling back, because a silently inert arm produces a measurement
+    that looks like a null result.
     """
 
     if rows < 2:

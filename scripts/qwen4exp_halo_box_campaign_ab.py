@@ -299,6 +299,14 @@ def gr_dpp_expected_calls(tokens: int, chunk: int) -> int:
     return 96 * (full * (chunk > 256) + (tail > 256))
 
 
+def router_dpp_expected_calls(tokens: int, chunk: int) -> int:
+    """One router per layer for multirow chunks; single-row decode is excluded."""
+    if tokens < 1 or chunk < 1:
+        raise ValueError("positive token and chunk sizes required")
+    full, tail = divmod(tokens, chunk)
+    return 48 * (full * (chunk >= 2) + (tail >= 2))
+
+
 def apply_chunk_mode(runner: Any, mode: str, *, allocated_chunk_size: int) -> None:
     if mode not in {"before","after"}:
         raise ValueError("invalid chunk mode")
@@ -322,6 +330,14 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
+    if route_package == "router-dpp":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        environment["HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"] = (
+            "f32_hidden_token_tile4_dpp_exact" if mode == "after"
+            else "f32_hidden_token_tile4_dense_exact"
+        )
+        return
     if route_package == "gr-dpp-reduction":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -440,7 +456,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="One full-suite pair, then stop for multiple clear losses or finish remaining pairs in-residency")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-mmq-planes2", "gr-dpp-reduction"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-mmq-planes2", "gr-dpp-reduction", "router-dpp"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -616,6 +632,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     row4_calls = [0]
     register_mapped_calls = [0]
     original_row4 = None
+    if args.route_package == "router-dpp":
+        from hipengine.kernels.registry import KernelKey, register, resolve
+        router_key = KernelKey("hip_gfx1151", "router_logits", "f32",
+                               "f32_hidden_token_tile4_dpp_exact")
+        router_original = resolve(backend=router_key.backend, layer=router_key.layer,
+                                  quant=router_key.quant, variant=router_key.variant)
+        def counted_router(*call_args, **call_kwargs):
+            row4_calls[0] += 1
+            return router_original(*call_args, **call_kwargs)
+        register(router_key, counted_router, replace=True)
+        artifact["arms"] = {
+            "before": {"router_logits": "f32_hidden_token_tile4_dense_exact"},
+            "after": {"router_logits": router_key.variant},
+        }
     if args.route_package == "gr-dpp-reduction":
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = KernelKey("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
@@ -912,6 +942,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                                     generator.runner.prefill_chunk_size)
             row["executed_prefill_chunks"] = list(observed_chunks)
             row["active_chunk_size"] = generator.runner.prefill_chunk_size
+        if args.route_package == "router-dpp":
+            calls = row4_calls[0] - start_calls
+            expected = (router_dpp_expected_calls(int(case["prompt_tokens"]),
+                                                   generator.runner.prefill_chunk_size)
+                        if mode == "after" else 0)
+            if calls != expected:
+                raise AssertionError(f"router DPP calls {calls} != {expected}")
+            row["candidate_calls"] = calls
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
             if args.route_package=="mmq-token64":
@@ -1098,6 +1136,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"] = "0"
         elif original_row4 is not None:
             register(row4_key, original_row4, replace=True)
+        if args.route_package == "router-dpp":
+            register(router_key, router_original, replace=True)
+            _apply_mode("before", route_package=args.route_package)
         generator.close()
         artifact["memory_after_close"] = memory_stats()
         _write_json(args.output, artifact)
