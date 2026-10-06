@@ -946,6 +946,11 @@ class Gemma4Runner:
     #: for the strict native kernel. Consumed only at the layer's native/exact
     #: attention call site; the prefill routes are unaffected.
     decode_attention_variants: tuple[str, ...] | None = None
+    #: The exact-prefill attention variants the execution profile requests, or
+    #: ``None`` for the strict native kernel. Consumed only at the layer's
+    #: native/exact attention call site and only for a multi-row sliding block;
+    #: the tiled, aotriton, and profile-selected prefill routes are unaffected.
+    exact_prefill_attention_variants: tuple[str, ...] | None = None
     #: KV storage request. ``bf16`` is the BF16 comparison path; ``auto`` is
     #: resolved to ``bf16``. ``int8_per_token_head`` selects the BF16-source INT8
     #: writer and the direct INT8 consumers over the owned INT8 cache.
@@ -2213,6 +2218,18 @@ class Gemma4Runner:
                     None
                     if verification or not decode_phase
                     else self.decode_attention_variants
+                ),
+                # The exact-prefill preference is a prefill scope, so it is
+                # forwarded only for a prefill call: a genuine decode step
+                # (``decode_phase``) disables it outright, so the prefill scope
+                # can never win on a singleton decode. A one-row prefill tail
+                # still forwards it and the layer's selector keeps it native. A
+                # verify block keeps the strict variant, exactly as the
+                # prefill-attention scope does.
+                exact_prefill_attention_variants=(
+                    None
+                    if verification or decode_phase
+                    else self.exact_prefill_attention_variants
                 ),
                 stream=stream,
                 stream_moe=stream_moe,

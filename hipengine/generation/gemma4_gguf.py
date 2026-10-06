@@ -91,6 +91,11 @@ class Gemma4GGUFGenerator:
     # runner is built; the layer applies them only at its native/exact attention
     # call site and keeps every other route unchanged.
     decode_attention_variants: tuple[str, ...] | None = None
+    # The exact-prefill attention variants this run requests, or ``None`` for the
+    # strict native kernel. The execution profile's binder supplies them before
+    # the runner is built; the layer applies them only at its native/exact
+    # attention call site and only for a multi-row sliding block.
+    exact_prefill_attention_variants: tuple[str, ...] | None = None
     last_generation_outputs: tuple[GenerationOutput, ...] = field(
         default=(), init=False, repr=False
     )
@@ -366,6 +371,7 @@ class Gemma4GGUFGenerator:
                 max_logits_rows=max(1, int(self._speculative_max_logits_rows)),
                 prefill_attention_variants=self._resolve_prefill_attention_variants(),
                 decode_attention_variants=self.decode_attention_variants,
+                exact_prefill_attention_variants=self.exact_prefill_attention_variants,
                 kv_storage=storage,
                 kv_scale_dtype=scale_dtype,
                 kv_scale_granularity=granularity,
