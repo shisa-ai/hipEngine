@@ -47,6 +47,10 @@ import pytest
 
 from hipengine import LLM, SamplingParams
 from hipengine.generation.deadline import GenerationCancellationToken
+from hipengine.kernels.backends import (
+    detect_hip_target_arches,
+    hip_target_arch_for_backend,
+)
 
 MODEL = Path(
     os.environ.get("HIPENGINE_INT8_MTP_MODEL", "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
@@ -78,9 +82,17 @@ def _hip_available() -> bool:
     return True
 
 
+# The backend compiles its kernels for its own target arch
+# (``Qwen35GGUFGenerator.target_arch`` -> ``hip_target_arch_for_backend``), so a
+# host whose devices cannot execute that arch would launch an unexecutable code
+# object. Require the arch to be present rather than only the model.
 pytestmark = pytest.mark.skipif(
-    not (_hip_available() and MODEL.exists()),
-    reason="requires ROCm + the dense GGUF model",
+    not (
+        _hip_available()
+        and MODEL.exists()
+        and hip_target_arch_for_backend(BACKEND) in detect_hip_target_arches()
+    ),
+    reason="requires ROCm + the dense GGUF model on a gfx1151 host",
 )
 
 

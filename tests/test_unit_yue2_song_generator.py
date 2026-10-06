@@ -55,7 +55,7 @@ def test_registration_covers_both_amd_backends() -> None:
             model_path=_model_dir(),
             weight_index=None,
             model_plugin=None,
-            vae_model_path=None,
+            vae_model_path=_vae_dir(),
             backend=backend,
         )
         assert isinstance(generator, YuE2SongGenerator)

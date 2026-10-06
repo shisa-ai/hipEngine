@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import pytest
-import torch
+
+torch = pytest.importorskip("torch", reason="DMS training diagnostics require optional torch")
 
 from scripts.qwen38_dms_nonlinear import DMSBottleneckMLP, bf16_export, export_score_equivalence, parameter_count, rank_agreement
 

@@ -37,6 +37,11 @@ from pathlib import Path
 
 import pytest
 
+from hipengine.kernels.backends import (
+    detect_hip_target_arches,
+    hip_target_arch_for_backend,
+)
+
 _MODEL = Path(
     os.environ.get("HIPENGINE_DMS_MTP_MODEL", "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 )
@@ -72,14 +77,21 @@ def _hip_available() -> bool:
 
 
 pytestmark = pytest.mark.skipif(
-    not (_hip_available() and _MODEL.is_file() and _METADATA.is_file()),
-    reason="requires ROCm, the dense GGUF model, and DMS sidecar metadata",
+    not (
+        _hip_available()
+        and _MODEL.is_file()
+        and _METADATA.is_file()
+        and hip_target_arch_for_backend(_BACKEND) in detect_hip_target_arches()
+    ),
+    reason="requires ROCm, the dense GGUF model, DMS sidecar metadata, and a gfx1151 host",
 )
 
 
 def _category_cases() -> list[tuple[str, tuple[int, ...]]]:
     """One prompt per category, first in file order, tokenized once."""
 
+    if not (_hip_available() and _MODEL.is_file() and _METADATA.is_file()):
+        return []
     return list(_category_cases_cached())
 
 

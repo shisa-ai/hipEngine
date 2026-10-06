@@ -8,8 +8,60 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
+## v0.7.0 - 2026-10-06
+
+Adds YuE2 song generation, extends speculative decoding controls, and improves
+shared-context growth and memory admission. APIs remain alpha; support depends
+on the model, backend, storage layout, and request shape.
+
+### Added
+
+- **YuE2 song generation.** A native, torch-free pipeline is available through
+  `LLM.generate_song()` and `POST /v1/audio/songs`. Lyrics and a style prompt
+  produce 48 kHz stereo WAV or JSON provenance. The companion decoder checkpoint
+  can be selected with `--vae-model`; see
+  [the YuE2 model card](docs/model-cards/MODEL-YUE2.md).
+- **More speculative decoding controls.** Supported multi-token prediction (MTP)
+  routes now serve log probabilities, forced-token queues, text-keyed constraints,
+  and sampled thinking budgets. Thinking policy is retained across batching and
+  streaming.
+- **Public compact BF16 DMS serving.** The compact retention path described in
+  [the DMS reference](docs/reference/DMS.md) is exposed through single-request
+  serving.
+- **Elastic shared GGUF KV backing.** HIP virtual memory reserves stable device
+  addresses while physical key/value (KV) storage grows on demand. Prefix
+  snapshots remain reusable across stable-arena growth.
+
+### Changed
+
+- **Parallel tool calls are enabled by default.** XML tool-call streaming and
+  constrained MTP prefill have also been repaired.
+- **Resident-memory admission prices allocation before it happens.** KV arenas,
+  packed workspace leases, and speculative buffers share named budget charges.
+  Virtual-memory admission includes per-plane allocation-granularity padding,
+  both initially and before growth. Eager packed workspace allocation is bounded.
+- **Model-specific kernel improvements.** Selected Strix Halo GGUF routes use
+  revised dense-IQ dispatch, Q5 decode schedules, fused gate/up operations, and
+  residual-add fusion. YuE2 uses paired output-head execution, vocabulary-window
+  sampling, and tensor-core attention. Performance evidence and hardware scope
+  remain in [the benchmark rollup](benchmarks/README.md); these changes do not
+  imply a uniform speedup across models or hardware.
+
 ### Fixed
 
+- Declared serving contexts are respected when sizing resident sessions.
+  Allocation retries remain positive and block-aligned, and stop at the smallest
+  valid context instead of retrying zero or negative lengths.
+- Pool growth and cleanup preserve allocation ownership. Failed releases remain
+  charged until physical handles are released, and packed workspaces close before
+  their KV pool. Prefix reuse, cancellation, reclaim, and refill have additional
+  regression coverage.
+- INT8 routes bind the declared scale dtype and choose automatic MTP width from
+  the storage capability. Compatible layouts support packed multi-choice MTP
+  beyond a 1,024-token live context.
+- DMS compaction separates read and write phases, and transaction journals
+  restore allocator ownership and model state on speculative rollback.
+- Temporary host arrays remain alive through asynchronous uploads.
 - A long-context INT8 KV server no longer returns HTTP 500 on a request that
   follows a concurrent autoregressive/speculative pair, and multi-choice no
   longer fails on such a server. The direct INT8 batch leaf reads retained INT8
@@ -26,6 +78,13 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ### Known Limitations
 
+- Song generation serves one request at a time, takes minutes rather than
+  seconds, and returns only the finished song; there is no streaming form. A
+  concurrent request receives retryable HTTP 429 `engine_busy`. The companion
+  decoder checkpoint is required.
+- Compact BF16 DMS public serving is single-request; broader concurrency and
+  retention-quality claims are not established by exposing this route.
+- APIs and supported combinations may change before 1.0.
 - INT8 speculative decoding's supported scope is dense GGUF with a NextN head,
   uniform paged per-token/head INT8 K/V with `fp32` per-token-head scales, and
   registered gfx11 kernels. Inside that scope, packed verification runs at
