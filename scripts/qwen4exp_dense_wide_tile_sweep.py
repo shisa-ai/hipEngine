@@ -49,6 +49,7 @@ DEFAULT_VARIANT = "dense_wide256_f32_f32_out"
 
 # (BM, BN, WTM, WTN) per export, from the HIPENGINE_DENSE_WIDE_EXPORT table.
 TILE_FAMILY: dict[str, tuple[int, int, int, int]] = {
+    "dense_split64x128_f32_f32_out": (64, 128, 32, 32),
     "dense_wide256_f32_f32_out": (128, 256, 64, 64),
     "dense_wide64x256_f32_f32_out": (64, 256, 32, 64),
     "dense_wide128x128_f32_f32_out": (128, 128, 64, 32),
@@ -57,12 +58,12 @@ TILE_FAMILY: dict[str, tuple[int, int, int, int]] = {
     "dense_wide256_padded_f16in_f32_f32_out": (128, 256, 64, 64),
     "dense_wide256_f16in_f32_f32_out": (128, 256, 64, 64),
     "dense_wide128x128_f16in_f32_f32_out": (128, 128, 64, 32),
+    "dense_wide256_bf16in_f32_f32_out": (128, 256, 64, 64),
     "dense_wide256_split3_f32_f32_out": (128, 256, 64, 64),
 }
 
-# ``split3`` issues three WMMA products per accumulator on identical operands, so
-# its result is deliberately not the reference result - only its timing is
-# meaningful, and it is excluded from the numerical comparison.
+# The BF16 arm uses the same 128x256 tile, but its raw activation ABI is
+# uint16_t BF16 rather than f16. It remains a timing/qualification probe only.
 TIMING_ONLY = frozenset({"dense_wide256_split3_f32_f32_out"})
 
 
@@ -82,26 +83,35 @@ def _time_variant(
 ) -> tuple[list[float], np.ndarray]:
     """Return per-repeat milliseconds and the variant's output."""
 
-    f16in = "f16in" in variant
-    if f16in:
+    f16in = "_f16in_" in variant
+    bf16in = "_bf16in_" in variant
+    if f16in and bf16in:
+        raise ValueError(f"variant cannot be both f16in and bf16in: {variant}")
+    if f16in or bf16in:
         x_dev = malloc(rows * in_features * 2)
-        f16_host = np.zeros(rows * in_features, dtype=np.float16)
-        dw.f32_to_f16(
-            host_array_ptr(np.ascontiguousarray(x_f32)),
-            x_dev.ptr,
-            rows * in_features,
-            runtime=runtime,
-        )
+        if f16in:
+            dw.f32_to_f16(
+                host_array_ptr(np.ascontiguousarray(x_f32)),
+                x_dev.ptr,
+                rows * in_features,
+                runtime=runtime,
+            )
+        else:
+            bf16_host = np.ascontiguousarray(
+                ((x_f32.view(np.uint32) + 0x7FFF + ((x_f32.view(np.uint32) >> 16) & 1)) >> 16),
+                dtype=np.uint16,
+            )
+            copy_host_to_device(x_dev, host_array_ptr(bf16_host), runtime=runtime)
         runtime.device_synchronize()
-        del f16_host
     else:
         x_dev = malloc(x_f32.nbytes)
+
 
     w_dev = malloc(qweight.nbytes)
     out = np.zeros((rows, out_features), dtype=np.float32)
     out_dev = malloc(out.nbytes)
     try:
-        if not f16in:
+        if not f16in and not bf16in:
             copy_host_to_device(x_dev, host_array_ptr(np.ascontiguousarray(x_f32)), runtime=runtime)
         copy_host_to_device(w_dev, host_array_ptr(qweight), runtime=runtime)
 
@@ -158,6 +168,7 @@ def main() -> int:
     x = rng.standard_normal((rows, k), dtype=np.float32)
 
     flops = 2.0 * rows * k * n
+
     print(
         f"shape rows={rows} K={k} N={n}  "
         f"({flops / 1e9:.2f} GFLOP, {qweight.nbytes / 1e6:.1f} MB Q8_0 weights)\n"

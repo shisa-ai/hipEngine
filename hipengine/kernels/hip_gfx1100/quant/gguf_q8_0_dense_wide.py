@@ -210,6 +210,9 @@ _VARIANTS = {
     "dense_wide256_f16in_f32_f32_out": (
         "hipengine_gguf_q8_0_dense_wide256_f16in_f32_f32_out"
     ),
+    "dense_wide256_bf16in_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_wide256_bf16in_f32_f32_out"
+    ),
     "dense_wide256_padded_f32_f32_out": (
         "hipengine_gguf_q8_0_dense_wide256_padded_f32_f32_out"
     ),
@@ -239,6 +242,9 @@ gguf_q8_0_dense_wide256_f32_f32_out = _WRAPPERS["dense_wide256_f32_f32_out"]
 gguf_q8_0_dense_wide256_f16in_f32_f32_out = _WRAPPERS[
     "dense_wide256_f16in_f32_f32_out"
 ]
+gguf_q8_0_dense_wide256_bf16in_f32_f32_out = _WRAPPERS[
+    "dense_wide256_bf16in_f32_f32_out"
+]
 gguf_q8_0_dense_wide256_split3_f32_f32_out = _WRAPPERS[
     "dense_wide256_split3_f32_f32_out"
 ]
@@ -261,6 +267,7 @@ __all__ = [
     "build_gguf_q8_0_dense_wide",
     "f32_to_f16",
     "gguf_q8_0_dense_split64x128_f32_f32_out",
+    "gguf_q8_0_dense_wide256_bf16in_f32_f32_out",
     "gguf_q8_0_dense_wide256_f16in_f32_f32_out",
     "gguf_q8_0_dense_wide256_f32_f32_out",
     "plan_gguf_q8_0_dense_wide_build",

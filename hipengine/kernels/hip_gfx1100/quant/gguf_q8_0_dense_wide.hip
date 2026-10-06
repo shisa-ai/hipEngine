@@ -50,6 +50,8 @@ namespace {
 using half_t = _Float16;
 typedef half_t __attribute__((ext_vector_type(16))) half16_t;
 typedef half_t __attribute__((ext_vector_type(8))) half8_t;
+typedef uint16_t __attribute__((ext_vector_type(16))) bf16x16_t;
+typedef uint16_t __attribute__((ext_vector_type(8))) bf16x8_t;
 typedef float __attribute__((ext_vector_type(8))) float8_t;
 
 constexpr int Q8_0_BLOCK = 32;
@@ -128,9 +130,37 @@ __device__ __forceinline__ void wide_dq_q8_0_tile(const uint4 w0,
   }
 }
 
-// Precision-recovering split: scale the residual before the F16 cast to keep
-// small residuals out of the F16 subnormal/flush range. Cross products are
-// accumulated separately from the large high-high sum, then unscaled once.
+__device__ __forceinline__ uint16_t wide_float_to_bf16_bits(float value) {
+  const uint32_t bits = __float_as_uint(value);
+  const uint32_t rounded = bits + 0x7FFFu + ((bits >> 16) & 1u);
+  return static_cast<uint16_t>(rounded >> 16);
+}
+
+// BF16 sibling of the f16 Q8_0 dequant tile. The scale remains the GGUF
+// FP16 scale, but each dequantized value is rounded to BF16 before WMMA.
+__device__ __forceinline__ void wide_dq_q8_0_tile_bf16(
+    const uint4 w0, const uint4 w1, const uint4 w3, const uint4 w4,
+    const uint32_t w2, uint16_t* __restrict__ dst) {
+  const uint32_t words[17] = {w0.x, w0.y, w0.z, w0.w, w1.x, w1.y, w1.z, w1.w,
+                              w3.x, w3.y, w3.z, w3.w, w4.x, w4.y, w4.z, w4.w, w2};
+  const uint16_t d0_bits = static_cast<uint16_t>(wide_stage_byte(words, 0) |
+                                                (wide_stage_byte(words, 1) << 8));
+  const uint16_t d1_bits = static_cast<uint16_t>(wide_stage_byte(words, 34) |
+                                                (wide_stage_byte(words, 35) << 8));
+  const float d0 = wide_half_bits_to_float(d0_bits);
+  const float d1 = wide_half_bits_to_float(d1_bits);
+#pragma unroll
+  for (int i = 0; i < 2 * Q8_0_BLOCK; ++i) {
+    const int block = i / 32;
+    const int in_block = i & 31;
+    const int byte = block * 34 + 2 + in_block;
+    const float d = block == 0 ? d0 : d1;
+    dst[i] = wide_float_to_bf16_bits(
+        d * static_cast<float>(static_cast<int8_t>(wide_stage_byte(words, byte))));
+  }
+}
+
+
 constexpr float SPLIT_SCALE = 2048.0f;
 constexpr float SPLIT_INV_SCALE = 1.0f / SPLIT_SCALE;
 
@@ -603,8 +633,156 @@ q8_0_dense_wide_kernel(const x_t* __restrict__ x,
       out_features - m0, x, in_features, out, out_features, rows, t0, m0, As, Bs);
 }
 
-// Measurement-only true split sibling. BM64/BN128 keeps doubled operand LDS
-// at 55,296 bytes. Existing kernel instantiations retain their original arrays.
+// BF16-input dense-wide probe. It keeps the F16 route's tile and launch shape,
+// but stores both operands as BF16 and uses the native BF16 WMMA instruction.
+template <bool TAIL>
+__global__ void __launch_bounds__(WIDE_THREADS, 1)
+q8_0_dense_wide_bf16_kernel(const uint16_t* __restrict__ x,
+                            const uint8_t* __restrict__ qweight,
+                            float* __restrict__ out,
+                            const int rows, const int K, const int M) {
+  constexpr int BM = 128;
+  constexpr int BN = 256;
+  constexpr int WTM = 64;
+  constexpr int WTN = 64;
+  constexpr int WAVES_M = BM / WTM;
+  constexpr int TM = WTM / 16;
+  constexpr int TN = WTN / 16;
+  constexpr int A_ITEMS = 1;
+  constexpr int B_ITEMS = (BN * 8) / WIDE_THREADS;
+  using bvec8 = bf16x8_t;
+  using bvec16 = bf16x16_t;
+
+  __shared__ __align__(16) uint16_t As[BM * WIDE_LDS_STRIDE];
+  __shared__ __align__(16) uint16_t Bs[BN * WIDE_LDS_STRIDE];
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  const int wm = wave % WAVES_M;
+  const int wn = wave / WAVES_M;
+  const int m0 = blockIdx.x * BM;
+  const int t0 = blockIdx.y * BN;
+  const size_t wrow_bytes = static_cast<size_t>(K / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+
+  uint4 a0[A_ITEMS], a1[A_ITEMS], a3[A_ITEMS], a4[A_ITEMS];
+  uint32_t a2[A_ITEMS];
+  bvec8 bst[B_ITEMS];
+  auto load_regs = [&](const int ks) {
+#pragma unroll
+    for (int i = 0; i < A_ITEMS; ++i) {
+      const int row = tid + i * WIDE_THREADS;
+      if (row < BM && row < M - m0) {
+        const uint8_t* p = qweight + static_cast<size_t>(m0 + row) * wrow_bytes +
+                           static_cast<size_t>(ks) * 2 * Q8_0_BLOCK_BYTES;
+        a0[i] = *reinterpret_cast<const uint4*>(p);
+        a1[i] = *reinterpret_cast<const uint4*>(p + 16);
+        a3[i] = *reinterpret_cast<const uint4*>(p + 32);
+        a4[i] = *reinterpret_cast<const uint4*>(p + 48);
+        a2[i] = *reinterpret_cast<const uint32_t*>(p + 64);
+      } else {
+        a0[i] = make_uint4(0, 0, 0, 0);
+        a1[i] = a0[i]; a3[i] = a0[i]; a4[i] = a0[i]; a2[i] = 0;
+      }
+    }
+#pragma unroll
+    for (int i = 0; i < B_ITEMS; ++i) {
+      const int c = tid + i * WIDE_THREADS;
+      const int off = (c & 7) * 8;
+      const int brow = t0 + (c >> 3);
+      if (brow < rows) {
+        bst[i] = *reinterpret_cast<const bvec8*>(x + static_cast<size_t>(brow) * K +
+                                                  static_cast<size_t>(ks) * WIDE_BK + off);
+      } else {
+#pragma unroll
+        for (int e = 0; e < 8; ++e) bst[i][e] = 0;
+      }
+    }
+  };
+  auto store_lds = [&]() {
+#pragma unroll
+    for (int i = 0; i < A_ITEMS; ++i) {
+      const int row = tid + i * WIDE_THREADS;
+      if (row < BM) {
+        wide_dq_q8_0_tile_bf16(a0[i], a1[i], a3[i], a4[i], a2[i],
+                               As + row * WIDE_LDS_STRIDE);
+      }
+    }
+#pragma unroll
+    for (int i = 0; i < B_ITEMS; ++i) {
+      const int c = tid + i * WIDE_THREADS;
+      const int off = (c & 7) * 8;
+      *reinterpret_cast<bvec8*>(Bs + (c >> 3) * WIDE_LDS_STRIDE + off) = bst[i];
+    }
+  };
+
+  float8_t acc[TM][TN];
+#pragma unroll
+  for (int i = 0; i < TM; ++i)
+#pragma unroll
+    for (int j = 0; j < TN; ++j)
+#pragma unroll
+      for (int e = 0; e < 8; ++e) acc[i][j][e] = 0.0f;
+
+  bool jact[TN];
+#pragma unroll
+  for (int j = 0; j < TN; ++j)
+    jact[j] = !TAIL || (t0 + wn * WTN + j * 16) < rows;
+
+  const int nks = K / WIDE_BK;
+  load_regs(0);
+  store_lds();
+  __syncthreads();
+  for (int ks = 0; ks < nks; ++ks) {
+    if (ks + 1 < nks) load_regs(ks + 1);
+#pragma unroll
+    for (int kk = 0; kk < WIDE_BK; kk += 16) {
+      bvec16 a[TM], b[TN];
+      const int r = lane & 15;
+#pragma unroll
+      for (int i = 0; i < TM; ++i) {
+        const uint16_t* p = As + (wm * WTM + i * 16 + r) * WIDE_LDS_STRIDE + kk;
+        const bf16x8_t lo = *reinterpret_cast<const bf16x8_t*>(p);
+        const bf16x8_t hi = *reinterpret_cast<const bf16x8_t*>(p + 8);
+        a[i] = __builtin_bit_cast(bvec16, (bf16x8_t[2]){lo, hi});
+      }
+#pragma unroll
+      for (int j = 0; j < TN; ++j) {
+        if (TAIL && !jact[j]) continue;
+        const uint16_t* p = Bs + (wn * WTN + j * 16 + r) * WIDE_LDS_STRIDE + kk;
+        const bf16x8_t lo = *reinterpret_cast<const bf16x8_t*>(p);
+        const bf16x8_t hi = *reinterpret_cast<const bf16x8_t*>(p + 8);
+        b[j] = __builtin_bit_cast(bvec16, (bf16x8_t[2]){lo, hi});
+      }
+#pragma unroll
+      for (int i = 0; i < TM; ++i)
+#pragma unroll
+        for (int j = 0; j < TN; ++j) {
+          if (TAIL && !jact[j]) continue;
+          acc[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+              b[j], a[i], acc[i][j]);
+        }
+    }
+    __syncthreads();
+    if (ks + 1 < nks) store_lds();
+    __syncthreads();
+  }
+
+  float* stg = reinterpret_cast<float*>(Bs) + wave * 256;
+#pragma unroll
+  for (int i = 0; i < TM; ++i) {
+    const int ml = wm * WTM + i * 16;
+    const bool ok = !TAIL || (m0 + ml < M);
+#pragma unroll
+    for (int j = 0; j < TN; ++j) {
+      if (ok && (!TAIL || jact[j])) {
+        wide_store_tile(acc[i][j], stg, out, M, rows, t0,
+                        wn * WTN + j * 16, m0 + ml, lane);
+      }
+    }
+  }
+}
+
+
 template <bool TAIL>
 __global__ void __launch_bounds__(WIDE_THREADS, 1)
 q8_0_dense_split64x128_kernel(const float* __restrict__ x,
@@ -686,6 +864,40 @@ int wide_launch(const void* x,
                     x, qweight, out, rows, in_features, out_features, stream);
 }
 
+template <int BM, int BN, int WTM, int WTN>
+int wide_launch_bf16(const void* x,
+                     const void* qweight,
+                     void* out,
+                     int64_t rows,
+                     int64_t in_features,
+                     int64_t out_features,
+                     hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % WIDE_BK) != 0 || out_features <= 0 ||
+      rows > INT32_MAX || in_features > INT32_MAX || out_features > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const bool tail = (rows % BN) != 0 || (out_features % BM) != 0;
+  const dim3 grid(static_cast<unsigned int>((out_features + BM - 1) / BM),
+                  static_cast<unsigned int>((rows + BN - 1) / BN));
+  if (tail) {
+    hipLaunchKernelGGL((q8_0_dense_wide_bf16_kernel<true>), grid,
+                       dim3(WIDE_THREADS), 0, stream,
+                       static_cast<const uint16_t*>(x),
+                       static_cast<const uint8_t*>(qweight),
+                       static_cast<float*>(out), static_cast<int>(rows),
+                       static_cast<int>(in_features), static_cast<int>(out_features));
+  } else {
+    hipLaunchKernelGGL((q8_0_dense_wide_bf16_kernel<false>), grid,
+                       dim3(WIDE_THREADS), 0, stream,
+                       static_cast<const uint16_t*>(x),
+                       static_cast<const uint8_t*>(qweight),
+                       static_cast<float*>(out), static_cast<int>(rows),
+                       static_cast<int>(in_features), static_cast<int>(out_features));
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_gguf_q8_0_f32_to_f16(const void* x,
                                               void* out,
                                               int64_t n,
@@ -723,8 +935,17 @@ extern "C" int hipengine_gguf_q8_0_f32_to_f16(const void* x,
                                               stream);                         \
   }
 
-// DP-3 probe: the same tile with three WMMA products issued per accumulator
-// instead of one. See the ``WMMA_REP`` comment on ``wide_tile_gemm``.
+#define HIPENGINE_DENSE_WIDE_EXPORT_BF16(name, unused_x_t)                 \
+  extern "C" int name(const void* x, const void* qweight, void* out,       \
+                      int64_t rows, int64_t in_features, int64_t out_features, \
+                      int64_t threads, hipStream_t stream) {                \
+    (void)threads;                                                          \
+    return wide_launch_bf16<128, 256, 64, 64>(                              \
+        x, qweight, out, rows, in_features, out_features, stream);           \
+  }
+
+
+
 #define HIPENGINE_DENSE_WIDE_EXPORT_REP(name, x_t, BM, BN, WTM, WTN, REP)      \
   extern "C" int name(const void* x, const void* qweight, void* out,           \
                       int64_t rows, int64_t in_features, int64_t out_features, \
@@ -776,6 +997,10 @@ HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide256_f16in_f32_f32_out,
                             half_t, 128, 256, 64, 64)
 HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide128x128_f16in_f32_f32_out,
                             half_t, 128, 128, 64, 32)
+HIPENGINE_DENSE_WIDE_EXPORT_BF16(
+    hipengine_gguf_q8_0_dense_wide256_bf16in_f32_f32_out, uint16_t)
+
+
 // Measurement-only padded-fragment siblings. Full tiles retain the original
 // tail-free owner through wide_launch; no runtime profile selects these leaves.
 #define HIPENGINE_DENSE_WIDE_EXPORT_PADDED(name, x_t)                         \

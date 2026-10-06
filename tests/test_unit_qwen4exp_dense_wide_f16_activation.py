@@ -31,7 +31,7 @@ CENSUS = (
 
 _EXPORT = re.compile(
     # All export macros are parsed, including the true hi/lo split sibling.
-    r"^\s*HIPENGINE_DENSE_WIDE_EXPORT(?:_REP|_SPLIT|_PADDED)?\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*[,)]",
+    r"^\s*HIPENGINE_DENSE_WIDE_EXPORT(?:_REP|_SPLIT|_PADDED|_BF16)?\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*[,)]",
     re.MULTILINE,
 )
 
