@@ -1,4 +1,15 @@
-## 2026-10-06 — Bounded HC grouped-norm F16 publication
+## 2026-10-06 — Current owner refresh after bounded DP-5 publication
+
+- Radeon8060S host `55ea6c509d0b49eea8de7094a1023668`, clean source `3e166ef12`,
+  Qwen3.8-Flash-Next UD-Q4_K_XL production `code-p4096`/chunk4096. Two
+  cache-only windows attribute all2,691 launches: dense DPP coltile2241.114ms,
+  Q4 gate/up2218.615ms, GR-up DPP1571.855ms, Q5 down1206.535ms, checked GDN
+  743.301ms and router DPP544.003ms. Named grouped norm publishes70 times
+  and removes70 HC-down casts. Warm/profile logits and lifecycle pass; no
+  old→new throughput claim. The next bounded screen is a K320/full-row GR-up
+  DPP specialization with generic parent fallback. Artifact:
+  `results/2026-10-06-qwen4exp-post-dp5-prefill-owners/`.
+
 
 - Radeon8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
   UD-Q4_K_XL: bounded grouped-norm F16 publication is qualified as a prefill
