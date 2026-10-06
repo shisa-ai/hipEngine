@@ -15,6 +15,7 @@ import contextlib
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import sys
@@ -29,7 +30,6 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
     _git_metadata,
     _hipengine_case_sample,
     _host_metadata,
-    _measurement_order,
     _write_json,
     load_fixture,
     summarize_samples,
@@ -88,8 +88,101 @@ def _arm_order(index: int) -> tuple[str, ...]:
     return ARM_SEQUENCE if int(index) % 2 == 0 else tuple(reversed(ARM_SEQUENCE))
 
 
-def _expected_pairs(rows: int) -> int:
-    return 61 if int(rows) in (1024, 4096) else 0
+def _expected_pairs(tokens: int, chunk_size: int = 1024) -> int:
+    """Count admitted pairs per executed chunk, not per complete prompt."""
+    if tokens <= 0 or chunk_size <= 0:
+        raise ValueError("positive tokens and chunk size required")
+    full, tail = divmod(tokens, chunk_size)
+    return 61 * (full * (chunk_size in (1024, 4096)) + (tail in (1024, 4096)))
+
+
+def _select_cases(cases, prompt_tokens):
+    """Keep full-suite indices when completing an unfinished shape subset."""
+    selected = [(i, case) for i, case in enumerate(cases)
+                if not prompt_tokens or int(case["prompt_tokens"]) in prompt_tokens]
+    if not selected:
+        raise ValueError("no cases match the requested prompt lengths")
+    return selected
+
+
+def summarize_engine_ab(samples, *, chunk_size: int) -> dict[str, Any]:
+    """Validate paired timing evidence; never merge arms into a variance row."""
+    by_case: dict[str, dict[str, list]] = {}
+    for row in samples:
+        if row["mode"] not in ("parent", "candidate"):
+            raise ValueError("invalid arm")
+        if token_ids_sha256(row["output_token_ids"]) != row["output_token_ids_sha256"]:
+            raise ValueError("output token hash mismatch")
+        if any(not math.isfinite(float(row[key])) or float(row[key]) <= 0
+               for key in ("prefill_ms", "decode_ms")):
+            raise ValueError("nonpositive or nonfinite timing")
+        if len(row["output_token_ids"]) != int(row["decode_transitions"]) + 1:
+            raise ValueError("wrong output token count")
+        by_case.setdefault(str(row["case_id"]), {"parent": [], "candidate": []})[row["mode"]].append(row)
+    if not by_case:
+        raise ValueError("no measured cases")
+    case_summary = {}
+    for case_id, modes in by_case.items():
+        rows = sorted(modes["parent"] + modes["candidate"], key=lambda r: r["sequence_slot"])
+        if any(len(modes[mode]) != 3 for mode in ("parent", "candidate")):
+            raise ValueError(f"{case_id}: incomplete measured arm counts")
+        order = tuple(rows[0]["case_sequence"])
+        if (order not in (ARM_SEQUENCE, tuple(reversed(ARM_SEQUENCE)))
+                or [r["sequence_slot"] for r in rows] != list(range(6))
+                or tuple(r["mode"] for r in rows) != order
+                or any(tuple(r["case_sequence"]) != order for r in rows)):
+            raise ValueError(f"{case_id}: invalid counterbalance")
+        for key in ("prompt_tokens", "category", "source", "prompt_token_ids_sha256", "decode_transitions"):
+            if len({r[key] for r in rows}) != 1:
+                raise ValueError(f"{case_id}: inconsistent {key}")
+        if len({r["output_token_ids_sha256"] for r in rows}) != 1:
+            raise ValueError(f"{case_id}: output is not exact/repeat-deterministic")
+        expected = _expected_pairs(int(rows[0]["prompt_tokens"]), chunk_size)
+        for mode in ("parent", "candidate"):
+            expected_mode = expected if mode == "candidate" else 0
+            if any(r["engagement"]["pairs"] != expected_mode
+                   or r["engagement"]["accepted"] != 2 * expected_mode for r in modes[mode]):
+                raise ValueError(f"{case_id}: invalid {mode} pair engagement")
+            if len({r["engagement"]["casts"] for r in modes[mode]}) != 1:
+                raise ValueError(f"{case_id}: cast counts are not repeat-deterministic")
+        if modes["parent"][0]["engagement"]["casts"] - modes["candidate"][0]["engagement"]["casts"] != expected:
+            raise ValueError(f"{case_id}: wrong cast elimination count")
+        means = {mode: {key: sum(float(r[key]) for r in modes[mode]) / 3
+                        for key in ("prefill_ms", "decode_ms")}
+                 for mode in ("parent", "candidate")}
+        case_summary[case_id] = {
+            "source": rows[0]["source"], "category": rows[0]["category"],
+            "prompt_tokens": rows[0]["prompt_tokens"],
+            "parent_prefill_ms_mean": means["parent"]["prefill_ms"],
+            "candidate_prefill_ms_mean": means["candidate"]["prefill_ms"],
+            "prefill_ratio_candidate_over_parent": means["parent"]["prefill_ms"] / means["candidate"]["prefill_ms"],
+            "parent_decode_ms_mean": means["parent"]["decode_ms"],
+            "candidate_decode_ms_mean": means["candidate"]["decode_ms"],
+            "cross_mode_output_exact": True,
+            "output_token_ids_sha256": [rows[0]["output_token_ids_sha256"]],
+            "candidate_engagement": modes["candidate"][0]["engagement"],
+            "parent_engagement": modes["parent"][0]["engagement"],
+        }
+    result = {
+        "samples_by_arm": {mode: summarize_samples([r for r in samples if r["mode"] == mode])
+                           for mode in ("parent", "candidate")},
+        "correctness": {"all_within_arm_deterministic": True, "all_cross_arm_output_exact": True},
+        "by_case": case_summary, "by_shape": {}, "by_category": {},
+    }
+    for grouping, field in (("by_shape", "prompt_tokens"), ("by_category", "category")):
+        for group in sorted({str(r[field]) for r in samples}):
+            rows = [r for r in samples if str(r[field]) == group]
+            arms = {mode: [r for r in rows if r["mode"] == mode] for mode in ("parent", "candidate")}
+            totals = {mode: sum(float(r["prefill_ms"]) for r in arm) for mode, arm in arms.items()}
+            result[grouping][group] = {
+                "case_count": len({r["case_id"] for r in rows}),
+                "parent_prefill_tok_s_weighted": 1000 * sum(int(r["prompt_tokens"]) for r in arms["parent"]) / totals["parent"],
+                "candidate_prefill_tok_s_weighted": 1000 * sum(int(r["prompt_tokens"]) for r in arms["candidate"]) / totals["candidate"],
+                "candidate_over_parent_prefill": totals["parent"] / totals["candidate"],
+                **{f"{mode}_decode_tok_s_weighted": 1000 * sum(int(r["decode_transitions"]) for r in arm) / sum(float(r["decode_ms"]) for r in arm)
+                   for mode, arm in arms.items()},
+            }
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -101,6 +194,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prefill-chunk-size", type=int, default=1024)
     parser.add_argument("--warmups-per-arm", type=int, default=1)
     parser.add_argument("--repetitions-per-arm", type=int, default=3)
+    parser.add_argument("--prompt-tokens", type=int, choices=(512, 1024, 4096), action="append",
+                        default=[], help="Complete only these shapes; preserve full-suite arm order")
     return parser
 
 
@@ -115,7 +210,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     os.environ["HIPENGINE_HIP_ARCH"] = "gfx1151"
     os.environ.pop(PAIR_ENV, None)
 
-    import numpy as np
     from hipengine.benchmark.provenance import collect_artifact_provenance
     from hipengine.core.memory import memory_stats
     from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
@@ -192,10 +286,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "protocol": {
             "one_python_process": True,
             "one_model_residency": True,
-            "canonical_cases": 12,
-            "heldout_cases": 16,
-            "case_count": 28,
-            "case_order": "sorted by rows/category/id; measurement order rotates and reverses per repetition",
+            "canonical_cases": None,
+            "heldout_cases": None,
+            "case_count": None,
+            "case_order": "sorted by rows/category/id; adjacent full-suite cases reverse the six-slot arm order",
+            "requested_prompt_tokens": args.prompt_tokens,
             "warmups_per_arm_per_case": args.warmups_per_arm,
             "measured_repetitions_per_arm_per_case": args.repetitions_per_arm,
             "arm_sequence_even_case": list(ARM_SEQUENCE),
@@ -250,7 +345,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             transitions=int(fixture["decode_transitions"]),
         )
         delta = {key: counts[key] - before[key] for key in counts}
-        expected = _expected_pairs(int(case["prompt_tokens"]))
+        expected = _expected_pairs(int(case["prompt_tokens"]), args.prefill_chunk_size)
         if mode == "candidate" and delta["pairs"] != expected:
             raise AssertionError(f"{case['id']}: candidate pairs {delta['pairs']} != {expected}")
         if mode == "parent" and delta["pairs"] != 0:
@@ -265,9 +360,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             runner_module.wide_f16_activation_pair = counted_scope
             wide.f32_to_f16 = counted_cast
             cases = make_cases()
-            report["protocol"]["case_ids"] = [str(row["id"]) for row in cases]
-            report["protocol"]["canonical_case_ids"] = [str(row["id"]) for row in cases if row.get("source", "canonical") == "canonical"]
-            report["protocol"]["heldout_case_ids"] = [str(row["id"]) for row in cases if row.get("source") == "heldout"]
+            selected_cases = _select_cases(cases, args.prompt_tokens)
+            report["protocol"]["case_ids"] = [str(row["id"]) for _, row in selected_cases]
+            report["protocol"]["canonical_case_ids"] = [str(row["id"]) for _, row in selected_cases if row.get("source", "canonical") == "canonical"]
+            report["protocol"]["heldout_case_ids"] = [str(row["id"]) for _, row in selected_cases if row.get("source") == "heldout"]
+            report["protocol"].update(
+                case_count=len(selected_cases),
+                canonical_cases=len(report["protocol"]["canonical_case_ids"]),
+                heldout_cases=len(report["protocol"]["heldout_case_ids"]),
+                full_suite_counterbalance_indices={row["id"]: i for i, row in selected_cases},
+            )
             report["provenance"] = collect_artifact_provenance(
                 repo_root=ROOT, configured_backend="hip_gfx1151", resolved_backend="hip_gfx1151",
                 target_arch="gfx1151", model_path=model_root,
@@ -276,7 +378,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 timing_protocol="one-residency counterbalanced parent/candidate engine A/B; 128 decode transitions",
                 warmups=args.warmups_per_arm, repetitions=args.repetitions_per_arm,
             )
-            for index_case, case in enumerate(cases):
+            for index_case, case in selected_cases:
                 order = _arm_order(index_case)
                 for warmup_index, mode in enumerate(order[:2]):
                     row = sample(case, mode, warmup_index)
@@ -294,67 +396,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     _write_json(args.output, report)
                     print(f"[measure {measured_counts[mode]-1}] {mode} {row['case_id']} slot={slot} "
                           f"pp={row['prefill_tok_s']:.3f} tg={row['decode_tok_s']:.3f}", flush=True)
-            by_case: dict[str, dict[str, list[dict[str, Any]]]] = {}
-            for row in report["samples"]:
-                by_case.setdefault(str(row["case_id"]), {"parent": [], "candidate": []})[row["mode"]].append(row)
-            mismatches = []
-            case_summary = {}
-            for case in cases:
-                case_id = str(case["id"])
-                modes = by_case[case_id]
-                if any(len(modes[name]) != 3 for name in ("parent", "candidate")):
-                    raise AssertionError(f"{case_id}: incomplete measured arm counts")
-                for mode in ("parent", "candidate"):
-                    if len({row["output_token_ids_sha256"] for row in modes[mode]}) != 1:
-                        raise AssertionError(f"{case_id}: {mode} output is not repeat-deterministic")
-                parent_ids = {row["output_token_ids_sha256"] for row in modes["parent"]}
-                candidate_ids = {row["output_token_ids_sha256"] for row in modes["candidate"]}
-                exact = parent_ids == candidate_ids
-                if not exact:
-                    mismatches.append(case_id)
-                def wall(mode_name: str) -> float:
-                    return sum(float(row["prefill_ms"]) for row in modes[mode_name]) / 3.0
-                case_summary[case_id] = {
-                    "source": case.get("source", "canonical"),
-                    "category": str(case["category"]),
-                    "prompt_tokens": int(case["prompt_tokens"]),
-                    "parent_prefill_ms_mean": wall("parent"),
-                    "candidate_prefill_ms_mean": wall("candidate"),
-                    "prefill_ratio_candidate_over_parent": wall("parent") / wall("candidate"),
-                    "parent_decode_ms_mean": sum(float(row["decode_ms"]) for row in modes["parent"]) / 3.0,
-                    "candidate_decode_ms_mean": sum(float(row["decode_ms"]) for row in modes["candidate"]) / 3.0,
-                    "cross_mode_output_exact": exact,
-                    "output_token_ids_sha256": sorted(parent_ids | candidate_ids),
-                    "candidate_engagement": modes["candidate"][0]["engagement"],
-                    "parent_engagement": modes["parent"][0]["engagement"],
-                }
-            if mismatches:
-                raise AssertionError("cross-arm output mismatch: " + ", ".join(mismatches))
-            report["summary"] = {
-                "samples": summarize_samples(report["samples"]),
-                "correctness": {"all_within_arm_deterministic": True, "all_cross_arm_output_exact": True},
-                "by_case": case_summary,
-                "by_shape": {},
-                "by_category": {},
-            }
-            for grouping, key in (("by_shape", lambda row: str(row["prompt_tokens"])),
-                                  ("by_category", lambda row: str(row["category"]))):
-                groups: dict[str, list[dict[str, Any]]] = {}
-                for row in report["samples"]:
-                    groups.setdefault(key(row), []).append(row)
-                for group, rows in groups.items():
-                    parent = [r for r in rows if r["mode"] == "parent"]
-                    candidate = [r for r in rows if r["mode"] == "candidate"]
-                    parent_prefill = sum(float(r["prefill_ms"]) for r in parent)
-                    candidate_prefill = sum(float(r["prefill_ms"]) for r in candidate)
-                    report["summary"][grouping][group] = {
-                        "case_count": len({r["case_id"] for r in rows}),
-                        "parent_prefill_tok_s_weighted": 1000.0 * sum(int(r["prompt_tokens"]) for r in parent) / parent_prefill,
-                        "candidate_prefill_tok_s_weighted": 1000.0 * sum(int(r["prompt_tokens"]) for r in candidate) / candidate_prefill,
-                        "candidate_over_parent_prefill": parent_prefill / candidate_prefill,
-                        "parent_decode_tok_s_weighted": 1000.0 * sum(int(r["decode_transitions"]) for r in parent) / sum(float(r["decode_ms"]) for r in parent),
-                        "candidate_decode_tok_s_weighted": 1000.0 * sum(int(r["decode_transitions"]) for r in candidate) / sum(float(r["decode_ms"]) for r in candidate),
-                    }
+            report["summary"] = summarize_engine_ab(
+                report["samples"], chunk_size=args.prefill_chunk_size,
+            )
             report["status"] = "completed"
             report["memory_before_close"] = memory_stats()
     except BaseException as error:
@@ -374,7 +418,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_json(args.output, report)
     if report["status"] != "completed":
         raise SystemExit(report["status"])
-    print(json.dumps({"status": report["status"], "output": str(args.output), "cases": len(cases)}, indent=2))
+    print(json.dumps({"status": report["status"], "output": str(args.output),
+                      "cases": report["protocol"]["case_count"]}, indent=2))
     return 0
 
 
