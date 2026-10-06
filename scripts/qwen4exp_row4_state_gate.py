@@ -44,6 +44,7 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # Both arms retain the wave-norm admission; the diagnostic registry hook
         # chooses narrow vs wide indexing without mutating profile arithmetic.
         environment[flag] = "1"
+        environment["HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT"] = "qwen4exp_sigmoid_wave_norm_prefill"
         return
     if package == "router-dpp":
         environment[flag] = (
@@ -339,7 +340,7 @@ def main():
     if narrow_candidate is not None:
         report["diagnostic_registry_substitution"] = {
             "parent": key.variant, "candidate": "qwen4exp_sigmoid_wave_norm_narrow_prefill",
-            "manifest_scope": "named parent profile; candidate installed by diagnostic hook",
+            "manifest_scope": "named profile; diagnostic arms override its GDN selection",
             "runtime_default_changed": False,
         }
     if args.route_package=="chunk1024":

@@ -1,0 +1,2048 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "kind": "native_binder_route_smoke",
+  "performance_claim": false,
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "7a1dc7b22a34fb8f56e6e1cd3b95cbaad28ec8f2",
+    "tracked_clean": false
+  },
+  "commands": {
+    "argv": [
+      "scripts/qwen4exp_gdn_narrow_native_smoke.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+      "--output",
+      "/tmp/qwen4exp-gdn-narrow-20261006/native-smoke.json"
+    ]
+  },
+  "source_diff_sha256": "f6308a7dfe9a2a3db9bd14aa973a5046eeaad45b17ea784c162631c51b626570",
+  "script_sha256": "67110e71e2466381c38e1835d94d701fb33b8bc3a459d8083c3b945e4e46f85f",
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "profile": {
+    "manifest_sha256": "77fad810048c7fc4d4ecce0ba3ae7858aaec081f9777b19726e2252b41cc2cfc",
+    "strict_manifest_sha256": "f58c7110da72e8176d109085608939d128ba7f79fed5065ce2e71b424680639b",
+    "manifest": {
+      "kind": "hipengine_execution_profile_manifest",
+      "schema_version": 1,
+      "execution_profile": "production",
+      "backend": "hip_gfx1151",
+      "model": "qwen4_exp_gguf",
+      "quant": "gguf_ud_q4_k_xl",
+      "kv_policy": "paged_bf16_qsa_index_f32",
+      "graph_policy": "request_owned_exact_moe_graph_c1",
+      "selections": [
+        {
+          "layer": "argmax",
+          "scope": "qwen4exp_normal_greedy_output",
+          "selected_variant": "top1_i64",
+          "strict_fallback_variant": "top1_i64",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "f32"
+        },
+        {
+          "layer": "gdn_recurrence_norm_gate",
+          "scope": "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128",
+          "selected_variant": "qwen4exp_sigmoid_wave_norm_narrow_prefill",
+          "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill",
+          "evidence_artifact": "benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md",
+          "registry_quant": "f32_state"
+        },
+        {
+          "layer": "gdn_recurrence_norm_gate",
+          "scope": "prefill_rows_gt4096_serial_gdn_hk16_hv48_d128",
+          "selected_variant": "qwen4exp_sigmoid_wave_norm_prefill",
+          "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill",
+          "evidence_artifact": "benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-owner.json",
+          "registry_quant": "f32_state"
+        },
+        {
+          "layer": "gr_gated_mean_sigmoid",
+          "scope": "all_gr_reads_rows_le256",
+          "selected_variant": "strict",
+          "strict_fallback_variant": "strict",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "f32"
+        },
+        {
+          "layer": "linear",
+          "scope": "decode_c1_calibrated_q4_dp4a_43_layers",
+          "selected_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "linear",
+          "scope": "grouped_prefill_rows_ge512_q8_0_expert_down",
+          "selected_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "grouped_prefill_rows_lt512_q8_0_expert_down",
+          "selected_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_exact_q8_f32_coltile",
+          "selected_variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_gdn_qkv_ssm_prepacked_mmq",
+          "selected_variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_policy_qwen4exp_raw_q8_shapes",
+          "selected_variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_ge512_k2560_n12288_raw_q",
+          "selected_variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_ge512_token_major_mapped_q8_down",
+          "selected_variant": "selected_grouped_row4_register_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "ungrouped_prefill_rows_ge64_q5k_gate_up",
+          "selected_variant": "selected_grouped_row4_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_k"
+        },
+        {
+          "layer": "linear+gr_gated_mean",
+          "scope": "qwen4exp_rows_gt256_gr_up",
+          "selected_variant": "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact",
+          "strict_fallback_variant": "coltile2_branch4_rowbatch4_f32_exact",
+          "evidence_artifact": "benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/README.md",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_layers27_47_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_layers27_47_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_lt64_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge512_k640_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge64_exact_grouped_q4_gate_up",
+          "selected_variant": "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge64_lt512_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_pair2_fold128_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "paged_attn_decode",
+          "scope": "qwen4exp_multirow_dense_qsa",
+          "selected_variant": "bf16_context_batch_paged_c1_exact_spans",
+          "strict_fallback_variant": "bf16_context_batch_paged_c1_exact_spans",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "w4_paro"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "prefill_h256_page256_sparse_rows_ge16",
+          "selected_variant": "strict_h256_head_quad_rows_spans",
+          "strict_fallback_variant": "strict_rows_spans",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "qwen4exp_c1_h256_indexed_sparse_decode",
+          "selected_variant": "strict_ordered_three_pass_spans",
+          "strict_fallback_variant": "strict_spans",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "qwen4exp_c1_h256_indexed_sparse_decode_v2",
+          "selected_variant": "strict_ordered_three_pass_v2_spans",
+          "strict_fallback_variant": "strict_spans",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "router_logits",
+          "scope": "qwen4exp_multirow_f32_router",
+          "selected_variant": "f32_hidden_token_tile4_dpp_exact",
+          "strict_fallback_variant": "f32_hidden_token_tile4_dense_exact",
+          "evidence_artifact": "benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md",
+          "registry_quant": "f32"
+        }
+      ]
+    },
+    "strict_manifest": {
+      "kind": "hipengine_execution_profile_manifest",
+      "schema_version": 1,
+      "execution_profile": "strict",
+      "backend": "hip_gfx1151",
+      "model": "qwen4_exp_gguf",
+      "quant": "gguf_ud_q4_k_xl",
+      "kv_policy": "paged_bf16_qsa_index_f32",
+      "graph_policy": "request_owned_exact_moe_graph_c1",
+      "selections": [
+        {
+          "layer": "argmax",
+          "scope": "qwen4exp_normal_greedy_output",
+          "selected_variant": "top1_i64",
+          "strict_fallback_variant": "top1_i64",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json",
+          "registry_quant": "f32"
+        },
+        {
+          "layer": "gdn_recurrence_norm_gate",
+          "scope": "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128",
+          "selected_variant": "qwen4exp_sigmoid_strict_prefill",
+          "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill",
+          "evidence_artifact": null,
+          "registry_quant": "f32_state"
+        },
+        {
+          "layer": "gdn_recurrence_norm_gate",
+          "scope": "prefill_rows_gt4096_serial_gdn_hk16_hv48_d128",
+          "selected_variant": "qwen4exp_sigmoid_strict_prefill",
+          "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill",
+          "evidence_artifact": null,
+          "registry_quant": "f32_state"
+        },
+        {
+          "layer": "gr_gated_mean_sigmoid",
+          "scope": "all_gr_reads_rows_le256",
+          "selected_variant": "strict",
+          "strict_fallback_variant": "strict_unfused",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json",
+          "registry_quant": "f32"
+        },
+        {
+          "layer": "linear",
+          "scope": "decode_c1_calibrated_q4_dp4a_43_layers",
+          "selected_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "linear",
+          "scope": "grouped_prefill_rows_ge512_q8_0_expert_down",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "grouped_prefill_rows_lt512_q8_0_expert_down",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_exact_q8_f32_coltile",
+          "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_gdn_qkv_ssm_prepacked_mmq",
+          "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_policy_qwen4exp_raw_q8_shapes",
+          "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_ge512_k2560_n12288_raw_q",
+          "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_ge512_token_major_mapped_q8_down",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "ungrouped_prefill_rows_ge64_q5k_gate_up",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_k"
+        },
+        {
+          "layer": "linear+gr_gated_mean",
+          "scope": "qwen4exp_rows_gt256_gr_up",
+          "selected_variant": "coltile2_branch4_rowbatch4_f32_exact",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_layers27_47_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_layers27_47_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_lt64_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge512_k640_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge64_exact_grouped_q4_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge64_lt512_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "paged_attn_decode",
+          "scope": "qwen4exp_multirow_dense_qsa",
+          "selected_variant": "bf16_context_batch_paged_c1_exact_spans",
+          "strict_fallback_variant": "bf16_context_batch_spans",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json",
+          "registry_quant": "w4_paro"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "prefill_h256_page256_sparse_rows_ge16",
+          "selected_variant": "strict_rows_spans",
+          "strict_fallback_variant": "strict_rows_spans",
+          "evidence_artifact": null,
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "qwen4exp_c1_h256_indexed_sparse_decode",
+          "selected_variant": "strict_spans",
+          "strict_fallback_variant": "strict_spans",
+          "evidence_artifact": null,
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "qwen4exp_c1_h256_indexed_sparse_decode_v2",
+          "selected_variant": "strict_spans",
+          "strict_fallback_variant": "strict_spans",
+          "evidence_artifact": null,
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "router_logits",
+          "scope": "qwen4exp_multirow_f32_router",
+          "selected_variant": "f32_hidden_token_tile4_dense_exact",
+          "strict_fallback_variant": "f32_hidden",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json",
+          "registry_quant": "f32"
+        }
+      ]
+    }
+  },
+  "kv_dtype": "BF16",
+  "prefill_chunk_size": 4096,
+  "max_sequence_length": 4352,
+  "decode_steps": 16,
+  "native_binder_value": "qwen4exp_sigmoid_wave_norm_narrow_prefill",
+  "heldout_suite": {
+    "path": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 89406349064,
+    "total_allocated_bytes": 90192781096,
+    "total_freed_bytes": 90192781096,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  },
+  "raw_artifact_path": "/tmp/qwen4exp-gdn-narrow-20261006/native-smoke.json",
+  "raw_artifact_sha256": "94537d0c538c66f9652c7706d77dd17aaba9ca78d1891314824b0ea05e7259ba",
+  "source_diff_scope": "hipengine (as measured); source remained unchanged after this smoke",
+  "limits": "Routing/correctness-only. Intentionally tracked-dirty source to validate new binder; same source diff as committed runtime. Script report normalization helper and broader diff-hash scope were refactored after measurement; the measured script hash remains unchanged evidence, no numerical/runtime changes.",
+  "cases": [
+    {
+      "case_id": "code-p512",
+      "category": "code",
+      "prompt_tokens": 512,
+      "exact": true,
+      "logits_sha256": "9a4e5fb4005b80b695bb4f6e2e9b7f35f2065831bdaeb37804509cb974fa83d1",
+      "prefill_state": {
+        "state_sha256": "7bd139870a14e76d177397bb8058b1d5bb908c3a6086f7cf9ff84de89cb6a863",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 512,
+        "ple": {
+          "0": {
+            "tokens": [
+              74455,
+              198
+            ],
+            "next_position": 512
+          }
+        },
+        "attention_positions": [
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ]
+        ],
+        "index_counts": [
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ]
+        ]
+      },
+      "state": {
+        "state_sha256": "b4cabffe87d6ff071be1fe1c8597d3baceae88524801d5423b1af209e756ca56",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 528,
+        "ple": {
+          "0": {
+            "tokens": [
+              2942,
+              13
+            ],
+            "next_position": 528
+          }
+        },
+        "attention_positions": [
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ]
+        ],
+        "index_counts": [
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ]
+        ],
+        "full_kv_sha256": "9b949bd913bde7086a7e215f3fce3b284a7c104d06b86dd6710d0ded8d482bda"
+      },
+      "output_token_ids": [
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        364,
+        2943,
+        12654,
+        1970,
+        66320,
+        11,
+        11173,
+        5081,
+        2942,
+        13,
+        353
+      ],
+      "runs": [
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "9a4e5fb4005b80b695bb4f6e2e9b7f35f2065831bdaeb37804509cb974fa83d1"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "9a4e5fb4005b80b695bb4f6e2e9b7f35f2065831bdaeb37804509cb974fa83d1"
+        },
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "9a4e5fb4005b80b695bb4f6e2e9b7f35f2065831bdaeb37804509cb974fa83d1"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "9a4e5fb4005b80b695bb4f6e2e9b7f35f2065831bdaeb37804509cb974fa83d1"
+        }
+      ]
+    },
+    {
+      "case_id": "code-p1024",
+      "category": "code",
+      "prompt_tokens": 1024,
+      "exact": true,
+      "logits_sha256": "e68604b929ea31723de27697efae20a9e320020c7b9e89f0db60711e2539afb9",
+      "prefill_state": {
+        "state_sha256": "f937fb27dd68aa71bd3854f000aff444db835e4b5251fdb0ef241265c33119df",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 1024,
+        "ple": {
+          "0": {
+            "tokens": [
+              74455,
+              198
+            ],
+            "next_position": 1024
+          }
+        },
+        "attention_positions": [
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ],
+          [
+            1023,
+            1024
+          ]
+        ],
+        "index_counts": [
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ],
+          [
+            1024,
+            0
+          ]
+        ]
+      },
+      "state": {
+        "state_sha256": "87e8dd160c4ace0252599ca2c1c392b6cef7e6d3243a63fcfe9db4f7489458e7",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 1040,
+        "ple": {
+          "0": {
+            "tokens": [
+              2942,
+              13
+            ],
+            "next_position": 1040
+          }
+        },
+        "attention_positions": [
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ],
+          [
+            1039,
+            1040
+          ]
+        ],
+        "index_counts": [
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ],
+          [
+            1040,
+            0
+          ]
+        ],
+        "full_kv_sha256": "2f59938316a8bc5a4b025e55db9e0323c8ad5c508e560d7ae58e1d480ecd17e3"
+      },
+      "output_token_ids": [
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        364,
+        2943,
+        12654,
+        1970,
+        9611,
+        11,
+        11173,
+        5081,
+        2942,
+        13,
+        353
+      ],
+      "runs": [
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "e68604b929ea31723de27697efae20a9e320020c7b9e89f0db60711e2539afb9"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "e68604b929ea31723de27697efae20a9e320020c7b9e89f0db60711e2539afb9"
+        },
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "e68604b929ea31723de27697efae20a9e320020c7b9e89f0db60711e2539afb9"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "e68604b929ea31723de27697efae20a9e320020c7b9e89f0db60711e2539afb9"
+        }
+      ]
+    },
+    {
+      "case_id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "exact": true,
+      "logits_sha256": "cfccaf993d5a5ec0ff39c522bad0ea681e1e246e1df9bc88abf9858088a98ee8",
+      "prefill_state": {
+        "state_sha256": "6222de6f6f2f7c44994df9aa93c85a3302dcd4a38b453b4f631e7fea31c6167a",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 4096,
+        "ple": {
+          "0": {
+            "tokens": [
+              74455,
+              198
+            ],
+            "next_position": 4096
+          }
+        },
+        "attention_positions": [
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ],
+          [
+            4095,
+            4096
+          ]
+        ],
+        "index_counts": [
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ],
+          [
+            4096,
+            1024
+          ]
+        ]
+      },
+      "state": {
+        "state_sha256": "116054bf6794625b4371ef1f30685bec767ecf1abcd8569ac687c3fa918a00a5",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 4112,
+        "ple": {
+          "0": {
+            "tokens": [
+              2942,
+              13
+            ],
+            "next_position": 4112
+          }
+        },
+        "attention_positions": [
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ],
+          [
+            4111,
+            4112
+          ]
+        ],
+        "index_counts": [
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ],
+          [
+            4112,
+            1028
+          ]
+        ],
+        "full_kv_sha256": "76f0a1e5b9dfbc854964dbb225d220811578a38d25f5a558c3c049ea9b96fd45"
+      },
+      "output_token_ids": [
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        364,
+        2943,
+        12654,
+        1970,
+        66320,
+        11,
+        11173,
+        1599,
+        2942,
+        13,
+        353
+      ],
+      "runs": [
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "cfccaf993d5a5ec0ff39c522bad0ea681e1e246e1df9bc88abf9858088a98ee8"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "cfccaf993d5a5ec0ff39c522bad0ea681e1e246e1df9bc88abf9858088a98ee8"
+        },
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "cfccaf993d5a5ec0ff39c522bad0ea681e1e246e1df9bc88abf9858088a98ee8"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "cfccaf993d5a5ec0ff39c522bad0ea681e1e246e1df9bc88abf9858088a98ee8"
+        }
+      ]
+    },
+    {
+      "case_id": "general_ja-p512",
+      "category": "general_ja",
+      "prompt_tokens": 512,
+      "exact": true,
+      "logits_sha256": "f7b51f4e09e08d0794131d24f8d5bcf222bc16c05c040134ee6c2a3ccc5a7394",
+      "prefill_state": {
+        "state_sha256": "c22eb7fa39a880441407346bd2ab6c84d11a8636f52941fc71ee5d76841a3bec",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 512,
+        "ple": {
+          "0": {
+            "tokens": [
+              74455,
+              198
+            ],
+            "next_position": 512
+          }
+        },
+        "attention_positions": [
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ],
+          [
+            511,
+            512
+          ]
+        ],
+        "index_counts": [
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ],
+          [
+            512,
+            0
+          ]
+        ]
+      },
+      "state": {
+        "state_sha256": "152d9d637531dd63bbd3e0b706fc9dd7099845ab6cca5f387793ae47a86f0c5e",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 528,
+        "ple": {
+          "0": {
+            "tokens": [
+              1144,
+              310
+            ],
+            "next_position": 528
+          }
+        },
+        "attention_positions": [
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ],
+          [
+            527,
+            528
+          ]
+        ],
+        "index_counts": [
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ],
+          [
+            528,
+            0
+          ]
+        ],
+        "full_kv_sha256": "412dc7a9bdc519272199b7b3674bbca019a5281959e2bf8954816c16e6cdc740"
+      },
+      "output_token_ids": [
+        248068,
+        198,
+        760,
+        1156,
+        682,
+        11173,
+        279,
+        1788,
+        1330,
+        49219,
+        5081,
+        2942,
+        13,
+        353,
+        1144,
+        310,
+        5707
+      ],
+      "runs": [
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "f7b51f4e09e08d0794131d24f8d5bcf222bc16c05c040134ee6c2a3ccc5a7394"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "f7b51f4e09e08d0794131d24f8d5bcf222bc16c05c040134ee6c2a3ccc5a7394"
+        },
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "f7b51f4e09e08d0794131d24f8d5bcf222bc16c05c040134ee6c2a3ccc5a7394"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "f7b51f4e09e08d0794131d24f8d5bcf222bc16c05c040134ee6c2a3ccc5a7394"
+        }
+      ]
+    },
+    {
+      "case_id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "prompt_tokens": 53,
+      "exact": true,
+      "logits_sha256": "f6f448063753b2342c88cf0c098a6d7571c375bcbb9ad618a1461e9334d985c0",
+      "prefill_state": {
+        "state_sha256": "11f2398feff40e06a5cb46bc3565878858a6f7c67bcc1685e0e88ae84fc6a3e9",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 53,
+        "ple": {
+          "0": {
+            "tokens": [
+              248069,
+              271
+            ],
+            "next_position": 53
+          }
+        },
+        "attention_positions": [
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ],
+          [
+            52,
+            53
+          ]
+        ],
+        "index_counts": [
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ],
+          [
+            53,
+            0
+          ]
+        ]
+      },
+      "state": {
+        "state_sha256": "b716f177a989003c850922178f066ad2fa4b72127ee9b58e6b560e58a94f2c59",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "buffer_bytes": {
+          "gdn_conv": 5898240,
+          "gdn_matrix": 113246208,
+          "ple_conv": 368640,
+          "residual": 20480
+        },
+        "finite": true,
+        "position": 69,
+        "ple": {
+          "0": {
+            "tokens": [
+              170872,
+              247864
+            ],
+            "next_position": 69
+          }
+        },
+        "attention_positions": [
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ],
+          [
+            68,
+            69
+          ]
+        ],
+        "index_counts": [
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ],
+          [
+            69,
+            0
+          ]
+        ],
+        "full_kv_sha256": "994c788c27b328e934c48af1720491c6cfacac5dbbe5526b223eacdf63bc30b6"
+      },
+      "output_token_ids": [
+        2,
+        220,
+        247818,
+        37037,
+        5165,
+        4960,
+        99681,
+        247264,
+        52122,
+        96365,
+        99681,
+        175517,
+        50040,
+        96760,
+        170872,
+        247864,
+        247243
+      ],
+      "runs": [
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "f6f448063753b2342c88cf0c098a6d7571c375bcbb9ad618a1461e9334d985c0"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "f6f448063753b2342c88cf0c098a6d7571c375bcbb9ad618a1461e9334d985c0"
+        },
+        {
+          "mode": "native",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 0,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 36
+          },
+          "decode_calls": 0,
+          "logits_sha256": "f6f448063753b2342c88cf0c098a6d7571c375bcbb9ad618a1461e9334d985c0"
+        },
+        {
+          "mode": "parent",
+          "prefill_calls": {
+            "qwen4exp_sigmoid_wave_norm_prefill": 36,
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill": 0
+          },
+          "decode_calls": 0,
+          "logits_sha256": "f6f448063753b2342c88cf0c098a6d7571c375bcbb9ad618a1461e9334d985c0"
+        }
+      ]
+    }
+  ],
+  "engagement": {
+    "native_prefill_calls": 360,
+    "parent_prefill_calls": 360,
+    "decode_calls": 0,
+    "runs": 20
+  }
+}

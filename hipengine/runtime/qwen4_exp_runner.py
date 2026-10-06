@@ -3330,12 +3330,23 @@ def _qwen4_exp_q51_register_cache_key(key: KernelKey, *, rows: int, in_features:
     return candidate if is_registered(candidate) else key
 
 
-def _qwen4_exp_gdn_wave_norm_key(key: KernelKey) -> KernelKey:
+def _qwen4_exp_gdn_wave_norm_key(
+    key: KernelKey, *, rows: int = 0, num_k_heads: int = 0,
+    num_v_heads: int = 0, head_dim: int = 0,
+) -> KernelKey:
     if (key.variant != "qwen4exp_sigmoid_register_prefill"
-            or os.environ.get("HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM","0") != "1"):
+            or os.environ.get("HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM", "0") != "1"):
         return key
-    candidate = KernelKey(key.backend,key.layer,key.quant,"qwen4exp_sigmoid_wave_norm_prefill")
-    return candidate if is_registered(candidate) else key
+    wide = KernelKey(key.backend, key.layer, key.quant,
+                     "qwen4exp_sigmoid_wave_norm_prefill")
+    if (2 <= rows <= 4096 and (num_k_heads, num_v_heads, head_dim) == (16, 48, 128)
+            and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT", "")
+                == "qwen4exp_sigmoid_wave_norm_narrow_prefill"):
+        narrow = KernelKey(key.backend, key.layer, key.quant,
+                           "qwen4exp_sigmoid_wave_norm_narrow_prefill")
+        if is_registered(narrow):
+            return narrow
+    return wide if is_registered(wide) else key
 
 
 def _qwen4_exp_q51_row_publish_key(key: KernelKey, *, rows: int, in_features: int) -> KernelKey:
@@ -6140,9 +6151,12 @@ def run_qwen4_exp_gdn_token_mixer(
                 backend=backend, rows=rows, num_k_heads=num_k_heads,
                 num_v_heads=num_v_heads, head_dim=head_dim,
             ):
-                serial_key = _qwen4_exp_gdn_wave_norm_key(KernelKey(
-                    backend,"gdn_recurrence_norm_gate","f32_state",
-                    "qwen4exp_sigmoid_register_prefill"))
+                serial_key = _qwen4_exp_gdn_wave_norm_key(
+                    KernelKey(backend, "gdn_recurrence_norm_gate", "f32_state",
+                              "qwen4exp_sigmoid_register_prefill"),
+                    rows=rows, num_k_heads=num_k_heads,
+                    num_v_heads=num_v_heads, head_dim=head_dim,
+                )
                 serial_prefill = resolve(
                     backend=serial_key.backend, layer=serial_key.layer,
                     quant=serial_key.quant, variant=serial_key.variant)

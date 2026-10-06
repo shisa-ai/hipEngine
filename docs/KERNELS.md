@@ -734,16 +734,20 @@ actual two-bank512/1024 synthetic-routing screen0.429x/0.412x,
 scratch0 both. Production row8 unchanged; no runtime candidate remains.
 Evidence: `2026-09-07-framework-qwen4exp-q51-row16-rejected.json`.
 
-GDN also registers diagnostic `qwen4exp_sigmoid_wave_norm_narrow_prefill`.
-It keeps the D128 wave-norm parent's FP32 recurrence and reduction tree but
-uses int32 element indexing after QKV/state element counts are checked in
-both Python and the int64 host ABI. Named profiles still select the parent.
-On gfx1151 host55ea6c509d0b49eea8de7094a1023668, synthetic complete-operation
-512/1024/4096 timing improves1.0443x/1.0419x/1.0424x; private scratch36→28B,
-spills8→6, VGPR256 unchanged. Exact replay/guards, state-head isolation,
-CPU-reference floor and cached trace pass. Natural-model216-call owner and
-all20 canonical/heldout full-state/KV gates pass; tracked-clean engine A/B is
-the remaining runtime-admission gate. Evidence:
+GDN registers `qwen4exp_sigmoid_wave_norm_narrow_prefill` as the gfx1151
+UD production serial owner at Hk16/Hv48/D128, 2–4096 rows. It preserves FP32
+recurrence and reduction association, with int32 element indexing checked in
+Python and the int64 host ABI. Wide-index remains outside the bound and for
+explicit plan rollback; strict primitives stay registered. Strict and Q4_K_M
+production do not select the narrow leaf. The UD manifests name disjoint
+bounded/outside serial scopes rather than inactive peer/tiled layer scopes.
+On host `55ea6c509d0b49eea8de7094a1023668`, synthetic complete-operation
+speedup is 1.0443x/1.0419x/1.0424x at 512/1024/4096; scratch 36→28B,
+spills 8→6, VGPR 256 unchanged. Natural-model owner timing improves
+1.027–1.044x; 20 full-state/KV cases and 72 engine trajectories pass exactly.
+Engine weighted prefill gains +0.149%/+0.303%/+0.227%; one case -0.008%
+and mixed request walls remain explicit. Native binder smoke verifies
+selected counts and state/KV parity. Evidence:
 `benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md`.
 
 GDN exposes kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: exact128

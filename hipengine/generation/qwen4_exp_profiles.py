@@ -143,6 +143,24 @@ def _selected_router_producer_variant(*, recovery: bool = False) -> str:
     return requested
 
 
+_GDN_PREFILL_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT"
+_GDN_WIDE_VARIANT = "qwen4exp_sigmoid_wave_norm_prefill"
+_GDN_NARROW_VARIANT = "qwen4exp_sigmoid_wave_norm_narrow_prefill"
+_GDN_NARROW_SCOPE = "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128"
+_GDN_NARROW_EVIDENCE = (
+    "benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md"
+)
+
+
+def _selected_gdn_prefill_variant() -> str:
+    """Resolve the UD production plan, including explicit parent rollback."""
+
+    requested = os.environ.get(_GDN_PREFILL_VARIANT_ENV, "").strip() or _GDN_NARROW_VARIANT
+    if requested not in (_GDN_WIDE_VARIANT, _GDN_NARROW_VARIANT):
+        raise ValueError(f"{_GDN_PREFILL_VARIANT_ENV} must name the wide or narrow wave-norm variant")
+    return requested
+
+
 _ROUTER_LOGITS_SELECTED_VARIANT = _selected_router_producer_variant()
 _ROUTER_UD_LOGITS_SELECTED_VARIANT = _selected_router_producer_variant(recovery=True)
 _ROUTER_VARIANT_EVIDENCE = {
@@ -199,8 +217,8 @@ def _selection(
     )
 
 
-def _strict_selections() -> tuple[VariantSelection, ...]:
-    return (
+def _strict_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...]:
+    selections = (
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47",
             "qwen4exp_sigmoid_strict_prefill", "qwen4exp_sigmoid_strict_prefill", "f32_state",
@@ -370,6 +388,34 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             "gguf_q4_k",
         ),
     )
+    if recovery:
+        return _recovery_gdn_scopes(
+            selections, variant="qwen4exp_sigmoid_strict_prefill", evidence=None,
+        )
+    return selections
+
+
+def _recovery_gdn_scopes(
+    selections: tuple[VariantSelection, ...], *, variant: str,
+    evidence: str | None,
+) -> tuple[VariantSelection, ...]:
+    """Split UD's serial scope equally in strict and production plans."""
+
+    result = []
+    for selection in selections:
+        if selection.layer != "gdn_recurrence_norm_gate":
+            result.append(selection)
+        elif selection.scope == "prefill_rows_ge2_serial_gdn_hk16_hv48_d128":
+            result.append(replace(
+                selection, scope=_GDN_NARROW_SCOPE, selected_variant=variant,
+                evidence_artifact=evidence or selection.evidence_artifact,
+            ))
+            result.append(replace(
+                selection, scope="prefill_rows_gt4096_serial_gdn_hk16_hv48_d128",
+            ))
+        # UD disables all peer/tiled routes. Their historical layer scopes
+        # overlap this serial scope and do not describe actual dispatch.
+    return tuple(result)
 
 
 def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...]:
@@ -635,8 +681,16 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
         "strict_h256_head_quad_rows_spans", "strict_ordered_three_pass_spans",
         "strict_ordered_three_pass_v2_spans",
     }
+    gdn_variant = _selected_gdn_prefill_variant()
+    selections = _recovery_gdn_scopes(
+        selections, variant=gdn_variant,
+        evidence=_GDN_NARROW_EVIDENCE if gdn_variant == _GDN_NARROW_VARIANT else None,
+    )
     result = []
     for selection in selections:
+        if selection.layer == "gdn_recurrence_norm_gate":
+            result.append(selection)
+            continue
         variant = replacements.get(selection.selected_variant, selection.selected_variant)
         restored = selection.selected_variant in restored_qsa
         if selection.scope in restored_q8_scopes:
@@ -829,6 +883,16 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1" if production else "0",
+        # Plan registration captures explicit parent rollback. The binder
+        # publishes that same selection; strict and Q4_K_M stay wide-index.
+        _GDN_PREFILL_VARIANT_ENV: (
+            next(
+                (row["selected_variant"] for row in resolved.manifest["selections"]
+                 if row["layer"] == "gdn_recurrence_norm_gate"
+                 and row["scope"] == _GDN_NARROW_SCOPE),
+                _GDN_WIDE_VARIANT,
+            ) if production else _GDN_WIDE_VARIANT
+        ),
         "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "quad" if production else "0",
@@ -1021,7 +1085,9 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
             quant=quant,
             profile=ExecutionProfile.STRICT,
             plan=RuntimeProfilePlan(
-                selections=_strict_selections(),
+                selections=_strict_selections(
+                    recovery=quant == "gguf_ud_q4_k_xl",
+                ),
                 kv_policy="paged_bf16_qsa_index_f32",
                 graph_policy="request_owned_exact_moe_graph_c1",
                 binder=_strict_binder,

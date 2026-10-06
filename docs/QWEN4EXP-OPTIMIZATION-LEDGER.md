@@ -675,17 +675,22 @@ at **455.4 ms over 48 launches** and `qsa_score_f32` at **106.1 ms**, not
 
 ### 4F. GDN — 821.6 ms (4.9%)
 
-**Checked-index sibling, 2026-10-06:** the current post-router owner trace
-measures GDN805.945ms/pass. A separately registered D128 wave-norm leaf
-narrows checked element indexing without changing FP32 recurrence or norm
-association. On this host, 21 counterbalanced synthetic-input pairs give
-1.0443x/1.0419x/1.0424x complete-operation speedups at512/1024/4096 rows;
-private scratch36→28B and VGPR spills8→6, static VGPR256 unchanged. Exact
-replay, guarded ownership, head isolation, CPU floor and cached trace pass.
-Production still selects the parent. Natural-model216-call owner timing
-improves1.0267–1.0441x; all20 canonical/heldout full-logit/state/KV cases pass
-three repeats and lifecycle. Tracked-clean full12-case engine A/B is the next
-gate before admission, not another unchanged arithmetic screen.
+**Checked-index production leaf, 2026-10-06:** the post-router owner trace
+measures GDN 805.945 ms/pass. A D128 wave-norm leaf narrows checked element
+indexing without changing FP32 recurrence or norm association. Synthetic
+complete-operation speedups are 1.0443x/1.0419x/1.0424x at 512/1024/4096
+rows; private scratch 36→28 bytes/lane, spills 8→6, static VGPR 256 unchanged.
+Exact replay, ownership, head isolation, CPU floor and cached trace pass.
+Natural-model 216-call owner timing improves 1.0267–1.0441x; all 20
+canonical/heldout full-logit/state/KV cases pass three repeats and lifecycle.
+Tracked-clean `7a1dc7b22` twelve-case/three-pair engine A/B has 72 exact
+trajectories and weighted prefill gains +0.149%/+0.303%/+0.227%; both order
+strata are positive. Japanese p512 prefill is -0.008% with within-arm CV up
+to 0.629%; three request cases lose, worst mixed p512 -0.546%. No all-case
+request or decode-speed claim. Retain the independently measured exact
+owner saving under the sub-window policy. UD production now selects the
+narrow leaf only at Hk16/Hv48/D128, 2–4096 rows; wide-index outside/rollback
+and strict primitives remain. Native binder smoke verifies actual dispatch.
 [Evidence](../benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md).
 
 | ID | Mechanism / measured cost | Opportunity and limit | First bounded experiment | Track | State |
