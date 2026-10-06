@@ -1,0 +1,1848 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_post_tail_prefill_owner_audit",
+ "performance_claim": false,
+ "source": {
+  "path": "/home/lhl/hipEngine",
+  "head": "ea818e2c6cb47250512d2cb9cc33e083efc965f4",
+  "tracked_clean": true
+ },
+ "host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "Current active profile: accelerator-performance",
+  "cpu_governors": {
+   "performance": 32
+  },
+  "gpu_clock_policies": {
+   "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+  },
+  "rocm_platform": "10.0.0",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "architecture": "gfx1151"
+ },
+ "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "command": [
+  "qwen4exp_profile_gap.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--mode",
+  "prefill",
+  "--case-id",
+  "code-p4096",
+  "--execution-profile",
+  "production",
+  "--prefill-chunk-size",
+  "4096",
+  "--max-sequence-length",
+  "4352",
+  "--repetitions",
+  "2",
+  "--compiler-version-file",
+  "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+  "--require-cached-build",
+  "--profile",
+  "--role-markers",
+  "--launch-census",
+  "/tmp/qwen4exp-post-tail-prefill-20261006/launch-census.json",
+  "--output",
+  "/tmp/qwen4exp-post-tail-prefill-20261006/profile.json"
+ ],
+ "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+ "case": {
+  "id": "code-p4096",
+  "category": "code",
+  "prompt_tokens": 4096,
+  "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75"
+ },
+ "manifest_sha256": "a3baefbeb6237a4a24b4751c8f46f5c0cfa4c5ef166a289eb7a5fbe124dfdcb0",
+ "strict_manifest_sha256": "13a2117a83e113b2a9afc18ba1f8c762b40b802c74b6b2ab00f7a4b6a2253d27",
+ "model": "Qwen3.8-Flash-Next",
+ "quant": "UD-Q4_K_XL",
+ "kv_dtype": "bf16",
+ "prefill_chunk_size": 4096,
+ "max_sequence_length": 4352,
+ "profile": "production",
+ "reproduction_launcher": "#!/usr/bin/env bash\nset -euo pipefail\ncd /home/lhl/hipEngine\nROCMLIB=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel\nexport LD_LIBRARY_PATH=\"$ROCMLIB/lib:$ROCMLIB/lib64:$ROCMLIB/lib/llvm/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\nexport PATH=\"/home/lhl/miniforge3/envs/therock/bin:$PATH\"\nexport HIPENGINE_HIP_ARCH=gfx1151\nexport HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt\nOUT=/tmp/qwen4exp-post-tail-prefill-20261006\nmkdir -p \"$OUT/raw\"\ntest -z \"$(git status --porcelain --untracked-files=no)\"\npython3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\"\nrocminfo | grep -E 'Name:|gfx'\nunset HIPENGINE_REQUIRE_CACHED_BUILD\nuv run --no-sync python scripts/qwen4exp_profile_gap.py \\\n  --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \\\n  --mode prefill --case-id code-p4096 --execution-profile production \\\n  --prefill-chunk-size 4096 --max-sequence-length 4352 --repetitions 1 \\\n  --compiler-version-file \"$HIPENGINE_COMPILER_VERSION_FILE\" \\\n  --output \"$OUT/warm.json\" > \"$OUT/warm.log\" 2>&1\nexport HIPENGINE_REQUIRE_CACHED_BUILD=1\nrocprofv3 --kernel-trace --marker-trace --hip-trace --memory-copy-trace \\\n  --scratch-memory-trace --output-format csv --output-file post-tail \\\n  --output-directory \"$OUT/raw\" -- \\\n  uv run --no-sync python scripts/qwen4exp_profile_gap.py \\\n    --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \\\n    --mode prefill --case-id code-p4096 --execution-profile production \\\n    --prefill-chunk-size 4096 --max-sequence-length 4352 --repetitions 2 \\\n    --compiler-version-file \"$HIPENGINE_COMPILER_VERSION_FILE\" --require-cached-build \\\n    --profile --role-markers --launch-census \"$OUT/launch-census.json\" \\\n    --output \"$OUT/profile.json\" > \"$OUT/profile.log\" 2>&1\nuv run --no-sync python scripts/qwen4exp_trace_audit.py \\\n  --trace-dir \"$OUT/raw\" --measure-prefix qwen4exp_prefill_p4096_ \\\n  --output \"$OUT/audit.json\" > \"$OUT/audit.log\" 2>&1\npython3 - <<'PY'\nimport json\nfrom pathlib import Path\nroot=Path('/tmp/qwen4exp-post-tail-prefill-20261006')\na=json.loads((root/'audit.json').read_text())\np=json.loads((root/'profile.json').read_text())\nw=json.loads((root/'warm.json').read_text())\nassert p['source']['tracked_clean'] and w['source']['tracked_clean']\nassert p['named_profile_intact'] and not p['overrides']\nassert p['lifecycle']['passed'] and w['lifecycle']['passed']\nassert p['logits_sha256']==w['logits_sha256']\nassert p['manifest_sha256']==w['manifest_sha256']\nassert len(a['windows'])==2\nfor window in a['windows']:\n print(window['marker'], 'window_ms',window['window_ms'],\n       'kernel_union_ms',window['kernel_union_ms'])\n print('role summary', {k:v for k,v in window['roles'].items() if k not in ('roles','layers','kernels')})\n print('top kernels',[(r['kernel'][:120],r['kernel_sum_ms'],r['launches']) for r in window['resources'][:15]])\nprint('finished; named profile, clean source, warm/profile logit equality and lifecycle pass')\nPY\n",
+ "unprofiled_command": [
+  "qwen4exp_profile_gap.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--mode",
+  "prefill",
+  "--case-id",
+  "code-p4096",
+  "--execution-profile",
+  "production",
+  "--prefill-chunk-size",
+  "4096",
+  "--max-sequence-length",
+  "4352",
+  "--repetitions",
+  "1",
+  "--compiler-version-file",
+  "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+  "--output",
+  "/tmp/qwen4exp-post-tail-prefill-20261006/warm.json"
+ ],
+ "unprofiled_wall_seconds": [
+  12.855248400010169
+ ],
+ "profiled_wall_seconds": [
+  12.872975008562207,
+  13.050169586203992
+ ],
+ "instrumentation_checks": {
+  "named_profile_intact": true,
+  "no_overrides": true,
+  "warm_profile_logits_equal": true,
+  "full_logits_sha256": "219578ac13b323d50ecb8cd720f2f818517874f766c934883303549c96804e25",
+  "lifecycle_passed": true,
+  "clean_source": true,
+  "manifest_equal": true
+ },
+ "lifecycle": {
+  "warm": {
+   "after_warmup": {
+    "current_allocated_bytes": 89406349064,
+    "peak_allocated_bytes": 89406349064,
+    "total_allocated_bytes": 89825779472,
+    "total_freed_bytes": 419430408,
+    "active_allocations": 1622,
+    "peak_allocations": 1622
+   },
+   "after_measurement": {
+    "current_allocated_bytes": 89406349064,
+    "peak_allocated_bytes": 89406349064,
+    "total_allocated_bytes": 89825779472,
+    "total_freed_bytes": 419430408,
+    "active_allocations": 1622,
+    "peak_allocations": 1622
+   },
+   "after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 89406349064,
+    "total_allocated_bytes": 89825779472,
+    "total_freed_bytes": 89825779472,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+   },
+   "steady_allocation_growth": 0,
+   "steady_allocated_byte_growth": 0,
+   "passed": true
+  },
+  "profile": {
+   "after_warmup": {
+    "current_allocated_bytes": 89406349064,
+    "peak_allocated_bytes": 89406349064,
+    "total_allocated_bytes": 89825779472,
+    "total_freed_bytes": 419430408,
+    "active_allocations": 1622,
+    "peak_allocations": 1622
+   },
+   "after_measurement": {
+    "current_allocated_bytes": 89406349064,
+    "peak_allocated_bytes": 89406349064,
+    "total_allocated_bytes": 89825779472,
+    "total_freed_bytes": 419430408,
+    "active_allocations": 1622,
+    "peak_allocations": 1622
+   },
+   "after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 89406349064,
+    "total_allocated_bytes": 89825779472,
+    "total_freed_bytes": 89825779472,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+   },
+   "steady_allocation_growth": 0,
+   "steady_allocated_byte_growth": 0,
+   "passed": true
+  }
+ },
+ "windows": [
+  {
+   "marker": "qwen4exp_prefill_p4096_0",
+   "window_ms": 12873.048537,
+   "kernel_union_ms": 12585.50775,
+   "outside_kernel_union_ms": 287.540787,
+   "kernel_and_copy_union_ms": 12586.697178,
+   "outside_kernel_and_copy_union_ms": 286.351359,
+   "scratch_operation_rows": [],
+   "kernel_rows": 2761,
+   "attributed_rows": 2761,
+   "attributed_time_pct": 100.0,
+   "roles": [
+    {
+     "name": "moe:layers.*.expert_gate",
+     "ms": 5226.286643,
+     "rows": 1056,
+     "symbols": 22
+    },
+    {
+     "name": "qsa_prefill:layers.*.attn_q",
+     "ms": 1098.506645,
+     "rows": 168,
+     "symbols": 11
+    },
+    {
+     "name": "gr_read:layers.*.hc_attn_down",
+     "ms": 865.453875,
+     "rows": 144,
+     "symbols": 3
+    },
+    {
+     "name": "gr_read:layers.*.hc_ffn_down",
+     "ms": 863.077838,
+     "rows": 144,
+     "symbols": 3
+    },
+    {
+     "name": "gdn:layers.*.attn_qkv",
+     "ms": 840.223083,
+     "rows": 108,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_qkv",
+     "ms": 774.235991,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.ssm_out",
+     "ms": 504.052938,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_gate",
+     "ms": 473.170791,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_q",
+     "ms": 311.579795,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.hc_ffn_down",
+     "ms": 238.711376,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.hc_attn_down",
+     "ms": 237.931875,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.index_q",
+     "ms": 234.063669,
+     "rows": 12,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.attn_output",
+     "ms": 155.976487,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "prefill_boundary",
+     "ms": 114.769753,
+     "rows": 199,
+     "symbols": 6
+    },
+    {
+     "name": "linear:layers.*.shared_down",
+     "ms": 87.444998,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_up",
+     "ms": 76.566299,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_gate",
+     "ms": 76.374629,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.ssm_alpha",
+     "ms": 69.737311,
+     "rows": 36,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ssm_beta",
+     "ms": 65.531631,
+     "rows": 36,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ple_key",
+     "ms": 63.696244,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.index_k",
+     "ms": 52.398041,
+     "rows": 12,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.hc_ffn_inject",
+     "ms": 36.708619,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.hc_attn_inject",
+     "ms": 36.469057,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ple_value",
+     "ms": 16.483267,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.attn_v",
+     "ms": 16.214922,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_k",
+     "ms": 16.151281,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "ple:layers.*.ple_key",
+     "ms": 15.497504,
+     "rows": 8,
+     "symbols": 7
+    },
+    {
+     "name": "linear:layers.*.shared_expert_gate",
+     "ms": 15.092981,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.lm_head",
+     "ms": 3.033641,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.head_hc_down",
+     "ms": 0.030136,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.head_hc_up",
+     "ms": 0.025568,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "gr_read:root.head_hc_down",
+     "ms": 0.010862,
+     "rows": 4,
+     "symbols": 4
+    }
+   ],
+   "resources": [
+    {
+     "kernel": "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<float, float, 8, 8, 4, true, false, true>(float const*, unsigned char const*, float*, int, int, int)",
+     "launches": 109,
+     "kernel_sum_ms": 2256.531253,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      80
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+     "launches": 47,
+     "kernel_sum_ms": 2218.989044,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      216
+     ],
+     "lds_bytes_observed": [
+      16384
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true, true, 4, true>(float const*, unsigned char const*, float const*, float*, float*, int, int, int, int)",
+     "launches": 96,
+     "kernel_sum_ms": 1599.143928,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      64
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q5_1_selected_wmma_iu8_risk_prefill_kernel<16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long)",
+     "launches": 43,
+     "kernel_sum_ms": 1207.363916,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      192
+     ],
+     "lds_bytes_observed": [
+      16384
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type)",
+     "launches": 36,
+     "kernel_sum_ms": 781.64223,
+     "scratch_bytes_observed": [
+      28
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile4_dpp_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+     "launches": 48,
+     "kernel_sum_ms": 546.74323,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      32
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q5_1_selected_sparse_exact_repair_row_publish_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long)",
+     "launches": 43,
+     "kernel_sum_ms": 539.216658,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      48
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, false, 1, false>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+     "launches": 219,
+     "kernel_sum_ms": 464.119542,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      55296
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, int, 4>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+     "launches": 12,
+     "kernel_sum_ms": 455.552068,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      56
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4>(float const*, unsigned short const*, unsigned short const*, long const*, int const*, int const*, float*, long, long, long, long, long, long, float)",
+     "launches": 12,
+     "kernel_sum_ms": 449.037467,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      112
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long)",
+     "launches": 24,
+     "kernel_sum_ms": 286.46171,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      1024
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)",
+     "launches": 216,
+     "kernel_sum_ms": 223.539599,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      1024
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+     "launches": 47,
+     "kernel_sum_ms": 175.299298,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      64
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true, 1, true>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+     "launches": 70,
+     "kernel_sum_ms": 165.770539,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      55296
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q8_0_f32_to_f16_kernel(float const*, _Float16*, long)",
+     "launches": 289,
+     "kernel_sum_ms": 162.169559,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      8
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::grouped_rmsnorm_bf16_f32_kernel(unsigned short const*, float const*, float*, long, long, float)",
+     "launches": 98,
+     "kernel_sum_ms": 128.78696,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::qsa_score_f32_kernel(float const*, float const*, float*, long, long, long)",
+     "launches": 12,
+     "kernel_sum_ms": 128.503797,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q8_0_selected_sparse_repair_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, int, int, int, int)",
+     "launches": 5,
+     "kernel_sum_ms": 115.57751,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      56
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::gr_write_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long, long)",
+     "launches": 96,
+     "kernel_sum_ms": 99.477602,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<32, 16, true, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long, int*, int*)",
+     "launches": 5,
+     "kernel_sum_ms": 71.61242,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      136
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+     "launches": 48,
+     "kernel_sum_ms": 69.823075,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
+     "launches": 48,
+     "kernel_sum_ms": 65.499011,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      8
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::gguf_q5_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+     "launches": 1,
+     "kernel_sum_ms": 60.327573,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::qwen4_exp_linear_attn_conv_prefill_exact_kernel(float const*, float const*, float const*, float*, long, long)",
+     "launches": 36,
+     "kernel_sum_ms": 58.431177,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    }
+   ],
+   "resource_families": 55,
+   "other_kernel_sum_ms": 255.888584,
+   "copy_rows": 27
+  },
+  {
+   "marker": "qwen4exp_prefill_p4096_1",
+   "window_ms": 13050.192018,
+   "kernel_union_ms": 12582.179335,
+   "outside_kernel_union_ms": 468.012683,
+   "kernel_and_copy_union_ms": 12583.313022,
+   "outside_kernel_and_copy_union_ms": 466.878996,
+   "scratch_operation_rows": [],
+   "kernel_rows": 2761,
+   "attributed_rows": 2761,
+   "attributed_time_pct": 100.0,
+   "roles": [
+    {
+     "name": "moe:layers.*.expert_gate",
+     "ms": 5221.805316,
+     "rows": 1056,
+     "symbols": 22
+    },
+    {
+     "name": "qsa_prefill:layers.*.attn_q",
+     "ms": 1097.603396,
+     "rows": 168,
+     "symbols": 11
+    },
+    {
+     "name": "gr_read:layers.*.hc_attn_down",
+     "ms": 865.254851,
+     "rows": 144,
+     "symbols": 3
+    },
+    {
+     "name": "gr_read:layers.*.hc_ffn_down",
+     "ms": 862.877045,
+     "rows": 144,
+     "symbols": 3
+    },
+    {
+     "name": "gdn:layers.*.attn_qkv",
+     "ms": 840.683212,
+     "rows": 108,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_qkv",
+     "ms": 773.440238,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.ssm_out",
+     "ms": 505.027862,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_gate",
+     "ms": 472.637688,
+     "rows": 62,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_q",
+     "ms": 311.295944,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.hc_attn_down",
+     "ms": 240.745628,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.hc_ffn_down",
+     "ms": 238.875853,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.index_q",
+     "ms": 234.07967,
+     "rows": 12,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.attn_output",
+     "ms": 155.830155,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "prefill_boundary",
+     "ms": 114.793911,
+     "rows": 199,
+     "symbols": 6
+    },
+    {
+     "name": "linear:layers.*.shared_down",
+     "ms": 87.386868,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_up",
+     "ms": 76.360101,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.shared_gate",
+     "ms": 76.352247,
+     "rows": 83,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.ssm_alpha",
+     "ms": 69.760106,
+     "rows": 36,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ssm_beta",
+     "ms": 65.585286,
+     "rows": 36,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ple_key",
+     "ms": 63.659805,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.index_k",
+     "ms": 52.437871,
+     "rows": 12,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.hc_ffn_inject",
+     "ms": 36.614879,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.hc_attn_inject",
+     "ms": 36.49422,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.ple_value",
+     "ms": 16.446996,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:layers.*.attn_k",
+     "ms": 16.261608,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "linear:layers.*.attn_v",
+     "ms": 16.156892,
+     "rows": 21,
+     "symbols": 3
+    },
+    {
+     "name": "ple:layers.*.ple_key",
+     "ms": 15.5205,
+     "rows": 8,
+     "symbols": 7
+    },
+    {
+     "name": "linear:layers.*.shared_expert_gate",
+     "ms": 15.100319,
+     "rows": 48,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.lm_head",
+     "ms": 3.024102,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.head_hc_down",
+     "ms": 0.029816,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "linear:root.head_hc_up",
+     "ms": 0.025969,
+     "rows": 1,
+     "symbols": 1
+    },
+    {
+     "name": "gr_read:root.head_hc_down",
+     "ms": 0.010981,
+     "rows": 4,
+     "symbols": 4
+    }
+   ],
+   "resources": [
+    {
+     "kernel": "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<float, float, 8, 8, 4, true, false, true>(float const*, unsigned char const*, float*, int, int, int)",
+     "launches": 109,
+     "kernel_sum_ms": 2253.988136,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      80
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+     "launches": 47,
+     "kernel_sum_ms": 2218.516664,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      216
+     ],
+     "lds_bytes_observed": [
+      16384
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true, true, 4, true>(float const*, unsigned char const*, float const*, float*, float*, int, int, int, int)",
+     "launches": 96,
+     "kernel_sum_ms": 1598.726431,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      64
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q5_1_selected_wmma_iu8_risk_prefill_kernel<16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long)",
+     "launches": 43,
+     "kernel_sum_ms": 1206.932564,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      192
+     ],
+     "lds_bytes_observed": [
+      16384
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type)",
+     "launches": 36,
+     "kernel_sum_ms": 782.110452,
+     "scratch_bytes_observed": [
+      28
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile4_dpp_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+     "launches": 48,
+     "kernel_sum_ms": 546.850009,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      32
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q5_1_selected_sparse_exact_repair_row_publish_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long)",
+     "launches": 43,
+     "kernel_sum_ms": 539.297711,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      48
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, false, 1, false>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+     "launches": 219,
+     "kernel_sum_ms": 465.331877,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      55296
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, int, 4>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+     "launches": 12,
+     "kernel_sum_ms": 455.184848,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      56
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4>(float const*, unsigned short const*, unsigned short const*, long const*, int const*, int const*, float*, long, long, long, long, long, long, float)",
+     "launches": 12,
+     "kernel_sum_ms": 448.517082,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      112
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long)",
+     "launches": 24,
+     "kernel_sum_ms": 286.517541,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      1024
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)",
+     "launches": 216,
+     "kernel_sum_ms": 223.55481,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      1024
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+     "launches": 47,
+     "kernel_sum_ms": 175.363526,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      64
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true, 1, true>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+     "launches": 70,
+     "kernel_sum_ms": 168.953719,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      256
+     ],
+     "lds_bytes_observed": [
+      55296
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q8_0_f32_to_f16_kernel(float const*, _Float16*, long)",
+     "launches": 289,
+     "kernel_sum_ms": 162.204153,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      8
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::grouped_rmsnorm_bf16_f32_kernel(unsigned short const*, float const*, float*, long, long, float)",
+     "launches": 98,
+     "kernel_sum_ms": 128.80615,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::qsa_score_f32_kernel(float const*, float const*, float*, long, long, long)",
+     "launches": 12,
+     "kernel_sum_ms": 128.521897,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::q8_0_selected_sparse_repair_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, int, int, int, int)",
+     "launches": 5,
+     "kernel_sum_ms": 114.468902,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      56
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::gr_write_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long, long)",
+     "launches": 96,
+     "kernel_sum_ms": 99.479198,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<32, 16, true, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long, int*, int*)",
+     "launches": 5,
+     "kernel_sum_ms": 71.676813,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      136
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+     "launches": 48,
+     "kernel_sum_ms": 69.858527,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      16
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    },
+    {
+     "kernel": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
+     "launches": 48,
+     "kernel_sum_ms": 65.521245,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      8
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::qwen4_exp_linear_attn_conv_prefill_exact_kernel(float const*, float const*, float const*, float*, long, long)",
+     "launches": 36,
+     "kernel_sum_ms": 58.422717,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      0
+     ]
+    },
+    {
+     "kernel": "(anonymous namespace)::gguf_q5_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+     "launches": 1,
+     "kernel_sum_ms": 57.503837,
+     "scratch_bytes_observed": [
+      0
+     ],
+     "scratch_unknown_launches": 0,
+     "vgpr_observed": [
+      24
+     ],
+     "lds_bytes_observed": [
+      512
+     ]
+    }
+   ],
+   "resource_families": 55,
+   "other_kernel_sum_ms": 255.870526,
+   "copy_rows": 27
+  }
+ ],
+ "active_resource_metadata": [
+  {
+   "symbol": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+   "mangled": "_ZN12_GLOBAL__N_152gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernelItLi3ELi16EEEvPKT_PKlS5_S5_PKhS7_PS1_PiS9_lfllllll",
+   "private_segment_fixed_size": 0,
+   "vgpr_count": 211,
+   "sgpr_count": 42,
+   "vgpr_spill_count": 0,
+   "sgpr_spill_count": 0,
+   "group_segment_fixed_size": 16224,
+   "static_instruction_count": 4388,
+   "static_scratch_instructions": 0,
+   "opcodes": {
+    "s_clause": 3,
+    "s_load_b512": 1,
+    "s_load_b64": 3,
+    "s_load_b256": 1,
+    "s_mov_b32": 167,
+    "v_cmpx_eq_u32_e32": 17,
+    "s_cbranch_execz": 187,
+    "s_lshl_b64": 5,
+    "v_mov_b32_e32": 242,
+    "s_waitcnt": 105,
+    "s_add_u32": 6,
+    "s_addc_u32": 6,
+    "v_cmp_lt_i64_e64": 3,
+    "s_cmp_gt_i32": 1,
+    "s_cselect_b32": 20,
+    "s_delay_alu": 451,
+    "s_and_b32": 74,
+    "v_cndmask_b32_e64": 8,
+    "v_cmp_ne_u32_e32": 17,
+    "v_dual_mov_b32": 103,
+    "ds_store_b64": 2,
+    "s_cbranch_vccz": 1,
+    "ds_store_2addr_b64": 2,
+    "s_and_not1_b32": 1,
+    "s_mov_b64": 2,
+    "s_cbranch_vccnz": 3,
+    "s_load_b128": 2,
+    "s_sub_u32": 2,
+    "s_subb_u32": 2,
+    "s_or_b32": 228,
+    "v_cmpx_gt_u32_e32": 1,
+    "ds_store_b32": 39,
+    "s_barrier": 3,
+    "ds_load_b64": 2,
+    "v_cmp_gt_i32_e32": 1,
+    "v_and_b32_e32": 68,
+    "v_or3_b32": 1,
+    "ds_load_2addr_b64": 1,
+    "v_cmp_gt_i64_e64": 2,
+    "v_cmp_le_i64_e32": 1,
+    "v_sub_co_u32": 1,
+    "v_sub_co_ci_u32_e64": 1,
+    "s_ashr_i32": 1,
+    "s_lshr_b32": 1,
+    "s_ashr_i64": 1,
+    "s_and_saveexec_b32": 113,
+    "s_mul_i32": 2,
+    "s_mul_hi_u32": 1,
+    "s_add_i32": 3,
+    "v_mul_lo_u32": 41,
+    "v_mad_u64_u32": 22,
+    "v_cndmask_b32_e32": 5,
+    "v_add3_u32": 81,
+    "v_cmp_lt_u32_e64": 2,
+    "v_cmp_eq_u32_e32": 2,
+    "s_xor_b32": 26,
+    "v_subrev_nc_u32_e32": 1,
+    "v_lshrrev_b32_e32": 42,
+    "s_and_not1_saveexec_b32": 17,
+    "v_lshlrev_b32_e32": 66,
+    "v_cmp_lt_i32_e64": 1,
+    "v_add_co_u32": 69,
+    "v_add_co_ci_u32_e64": 69,
+    "v_mul_u32_u24_e32": 1,
+    "v_lshl_add_u32": 1,
+    "v_add_nc_u32_e32": 86,
+    "v_lshlrev_b64": 33,
+    "s_movk_i32": 1,
+    "s_branch": 4,
+    "s_cmp_eq_u64": 1,
+    "s_cbranch_scc1": 2,
+    "s_cbranch_execnz": 63,
+    "v_cmpx_nlg_f32_e64": 62,
+    "global_load_u16": 32,
+    "v_cmp_nlg_f32_e64": 1,
+    "v_max3_f32": 48,
+    "v_cmp_lt_f32_e64": 1,
+    "v_cmp_gt_f32_e32": 1,
+    "v_div_scale_f32": 12,
+    "v_rcp_f32_e32": 6,
+    "v_fma_f32": 178,
+    "v_fmac_f32_e32": 66,
+    "v_mul_f32_e32": 129,
+    "v_div_fmas_f32": 6,
+    "v_div_fixup_f32": 6,
+    "v_cmpx_nlt_f32_e32": 3,
+    "ds_store_b128": 12,
+    "s_or_saveexec_b32": 4,
+    "v_rndne_f32_e32": 96,
+    "v_cvt_i32_f32_e32": 96,
+    "v_med3_i32": 96,
+    "v_cvt_f32_i32_e32": 160,
+    "v_perm_b32": 36,
+    "v_lshl_or_b32": 18,
+    "v_lshlrev_b16": 28,
+    "v_and_b16": 84,
+    "v_or_b16": 36,
+    "v_cmp_lt_f32_e32": 18,
+    "global_load_b128": 3,
+    "v_lshrrev_b64": 2,
+    "v_alignbit_b32": 1,
+    "v_lshrrev_b16": 24,
+    "v_bfe_u32": 21,
+    "v_cvt_f32_ubyte0_e32": 16,
+    "v_fma_mix_f32": 16,
+    "v_movrels_b32_e32": 2,
+    "v_add_f32_e64": 16,
+    "v_wmma_i32_16x16x16_iu8": 12,
+    "v_dual_fmac_f32": 7,
+    "v_add_f32_e32": 68,
+    "v_sub_f32_e32": 8,
+    "s_cmp_eq_u32": 17,
+    "ds_load_2addr_b32": 48,
+    "v_dual_add_f32": 7,
+    "v_dual_mul_f32": 1,
+    "v_dual_sub_f32": 3,
+    "s_bitcmp0_b32": 1,
+    "v_cndmask_b16": 32,
+    "ds_load_b128": 12,
+    "s_load_b32": 1,
+    "v_cmpx_lt_i64_e64": 15,
+    "v_cmp_gt_i64_e32": 32,
+    "v_cmp_class_f32_e64": 16,
+    "ds_load_b32": 16,
+    "v_readfirstlane_b32": 32,
+    "global_store_d16_hi_b16": 16,
+    "v_mov_b16_e32": 32,
+    "v_cmpx_gt_i32_e32": 16,
+    "v_minmax_f32": 16,
+    "s_or_not1_b32": 16,
+    "v_mbcnt_lo_u32_b32": 16,
+    "s_bcnt1_i32_b32": 16,
+    "global_atomic_add_u32": 16,
+    "v_ashrrev_i32_e32": 16,
+    "global_store_b32": 16,
+    "v_cmp_lt_i64_e32": 1,
+    "s_nop": 1,
+    "s_sendmsg": 1,
+    "s_endpgm": 1
+   },
+   "path": "/home/lhl/.cache/hipengine/build/gguf_q4_k_selected_prefill-e0921ef05b2f8eac/gguf_q4_k_selected_prefill.so",
+   "command": [
+    "hipcc",
+    "-shared",
+    "-fPIC",
+    "-O3",
+    "-mllvm",
+    "-amdgpu-unroll-threshold-local=600",
+    "--offload-arch=gfx1151",
+    "-mcumode",
+    "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip",
+    "-o",
+    "/home/lhl/.cache/hipengine/build/gguf_q4_k_selected_prefill-e0921ef05b2f8eac/gguf_q4_k_selected_prefill.so"
+   ],
+   "sources_sha256": {
+    "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip": "c6ab91257d0e02144ae12b51f4b04a0652adeb63006f81c6ccbd7d5774ab62fa"
+   },
+   "library_sha256": "b6c2823966c9a67b9179f9d759c9adab8d909d7311135172d6d567ac06fc58dc",
+   "code_object_sha256": "e44a7bfc1ff720e332cda27bec2791815d576eb81bd0742626174301ef601bf8",
+   "notes_sha256": "59cac1c26d8dd816ab34b20c3f6a11ac309393ab6e236dba53fb02bf742eea0d",
+   "disassembly_sha256": "944d6bd77d1ccd93b0e2cb4b64034b2b04190c4959a8afc97a0dbe4ded6de2ed"
+  },
+  {
+   "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true, 1, true>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+   "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIDF16_Li128ELi256ELi64ELi64ELb1ELi1ELb1EEEvPKT_PKhPfiii",
+   "private_segment_fixed_size": 0,
+   "vgpr_count": 253,
+   "sgpr_count": 28,
+   "vgpr_spill_count": 0,
+   "sgpr_spill_count": 0,
+   "group_segment_fixed_size": 55296,
+   "static_instruction_count": 3474,
+   "static_scratch_instructions": 0,
+   "opcodes": {
+    "s_clause": 3,
+    "s_load_b128": 2,
+    "s_load_b64": 1,
+    "s_lshl_b32": 2,
+    "v_cmp_gt_u32_e64": 1,
+    "v_dual_mov_b32": 61,
+    "s_waitcnt": 212,
+    "s_ashr_i32": 5,
+    "s_sub_i32": 2,
+    "s_lshr_b32": 2,
+    "v_cmp_gt_i32_e32": 13,
+    "s_add_i32": 6,
+    "v_mov_b32_e32": 258,
+    "s_and_b32": 66,
+    "s_delay_alu": 219,
+    "s_and_saveexec_b32": 269,
+    "s_cbranch_execz": 177,
+    "s_mul_i32": 4,
+    "s_mul_hi_i32": 1,
+    "s_mul_hi_u32": 1,
+    "s_add_u32": 1,
+    "s_addc_u32": 1,
+    "v_mad_u64_u32": 26,
+    "v_mad_i32_i24": 1,
+    "global_load_b128": 24,
+    "global_load_b32": 2,
+    "s_or_b32": 304,
+    "v_lshrrev_b32_e32": 66,
+    "v_or_b32_e32": 53,
+    "v_cndmask_b32_e32": 5,
+    "v_cmp_lt_i32_e64": 12,
+    "v_and_b32_e32": 12,
+    "v_lshlrev_b64": 48,
+    "v_add_co_u32": 94,
+    "v_add_co_ci_u32_e64": 94,
+    "v_or3_b32": 2,
+    "v_add_nc_u32_e32": 10,
+    "v_mul_u32_u24_e32": 5,
+    "v_mov_b16_e64": 120,
+    "v_bfe_i32": 128,
+    "v_mov_b16_e32": 84,
+    "v_cvt_f16_i16_e32": 64,
+    "v_mul_f16_e64": 64,
+    "v_pk_mul_f16": 32,
+    "s_mov_b32": 25,
+    "v_mad_u32_u24": 13,
+    "ds_store_b128": 24,
+    "ds_store_2addr_b32": 76,
+    "ds_store_b96": 2,
+    "ds_store_b32": 2,
+    "v_bfe_u32": 2,
+    "s_cmp_gt_i32": 1,
+    "v_lshlrev_b32_e32": 6,
+    "s_barrier": 3,
+    "s_cbranch_scc1": 3,
+    "s_branch": 37,
+    "s_and_not1_b32": 2,
+    "s_cbranch_vccnz": 2,
+    "v_mul_hi_u32_u24_e32": 1,
+    "v_and_or_b32": 1,
+    "v_mad_i64_i32": 17,
+    "v_mul_lo_u32": 2,
+    "v_lshl_add_u32": 1,
+    "v_add3_u32": 1,
+    "s_cmp_eq_u32": 1,
+    "s_cmp_lt_i32": 1,
+    "s_cselect_b32": 3,
+    "s_cmp_ge_i32": 1,
+    "ds_load_b128": 96,
+    "v_wmma_f32_16x16x16_f16": 64,
+    "v_cvt_f16_i16_e64": 64,
+    "v_ashrrev_i32_e32": 1,
+    "v_lshl_or_b32": 1,
+    "v_cmp_le_i32_e64": 7,
+    "v_cmp_le_i32_e32": 1,
+    "v_cmp_gt_i32_e64": 44,
+    "s_nor_b32": 25,
+    "s_xor_b32": 17,
+    "s_cbranch_execnz": 172,
+    "s_and_not1_saveexec_b32": 32,
+    "global_store_b32": 128,
+    "s_nop": 2,
+    "s_sendmsg": 2,
+    "s_endpgm": 2,
+    "global_store_b128": 16,
+    "global_store_b96": 16
+   },
+   "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-3bbd20374a98eee9/gguf_q8_0_dense_wide.so",
+   "command": [
+    "hipcc",
+    "-shared",
+    "-fPIC",
+    "-O3",
+    "-mllvm",
+    "-amdgpu-unroll-threshold-local=600",
+    "-mcumode",
+    "--offload-arch=gfx1151",
+    "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip",
+    "-o",
+    "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-3bbd20374a98eee9/gguf_q8_0_dense_wide.so"
+   ],
+   "sources_sha256": {
+    "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip": "fb615771a7815d147b87cd09187eeb5d2a1c6c951d1d30a54999eeec5356b1d8"
+   },
+   "library_sha256": "46f15304b097d886cc68c86ab32de010585bd3ff4f7559844c4bc0fb060354bb",
+   "code_object_sha256": "7a95f8ffe0c85d374daabd2a196132f46e8135c0adaaec1d25d3d21c93bce2f5",
+   "notes_sha256": "6b5fa37644cdebe449606bdd58a47ce9bd794f5e028c595684bc5e477b3c1f14",
+   "disassembly_sha256": "bc50955863385c9fb3f9f130d1c678a128c64f0e523e211056f1e7eac28f90e8"
+  },
+  {
+   "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type)",
+   "mangled": "_ZN12_GLOBAL__N_132qwen4_exp_gdn_prefill_f32_kernelILb1ELb1ELb1EEEvPKfS2_S2_S2_S2_S2_S2_PfS3_NSt11conditionalIXT1_EilE4typeES6_S6_S6_S6_",
+   "private_segment_fixed_size": 28,
+   "vgpr_count": 256,
+   "sgpr_count": 44,
+   "vgpr_spill_count": 6,
+   "sgpr_spill_count": 0,
+   "group_segment_fixed_size": 0,
+   "static_instruction_count": 2585,
+   "static_scratch_instructions": 6,
+   "opcodes": {
+    "s_load_b128": 1,
+    "s_waitcnt": 238,
+    "s_cmp_ge_i32": 1,
+    "s_cbranch_scc1": 4,
+    "s_load_b512": 1,
+    "v_lshl_or_b32": 1,
+    "s_abs_i32": 2,
+    "s_cmp_lt_i32": 1,
+    "s_cvt_f32_u32": 1,
+    "s_mov_b32": 4,
+    "v_ashrrev_i32_e32": 5,
+    "s_delay_alu": 385,
+    "v_lshlrev_b64": 5,
+    "v_add_co_u32": 37,
+    "v_add_co_ci_u32_e64": 40,
+    "s_clause": 21,
+    "global_load_b32": 135,
+    "v_rcp_f32_e32": 4,
+    "v_readfirstlane_b32": 10,
+    "s_load_b32": 3,
+    "s_mul_f32": 14,
+    "s_sub_i32": 7,
+    "v_lshlrev_b32_e32": 2,
+    "s_cvt_u32_f32": 1,
+    "v_mov_b32_e32": 65,
+    "v_mbcnt_lo_u32_b32": 1,
+    "s_mul_i32": 4,
+    "v_add_nc_u32_e32": 7,
+    "s_mul_hi_u32": 2,
+    "s_add_i32": 6,
+    "s_ashr_i32": 3,
+    "s_load_b64": 1,
+    "v_cmp_gt_u32_e64": 2,
+    "s_and_b32": 4,
+    "s_cmp_ge_u32": 2,
+    "s_cselect_b32": 8,
+    "s_lshl_b32": 8,
+    "s_xor_b32": 7,
+    "s_lshl_b64": 3,
+    "s_add_u32": 5,
+    "s_addc_u32": 5,
+    "v_or_b32_e32": 2,
+    "scratch_store_b64": 3,
+    "v_cmp_eq_u32_e64": 1,
+    "s_branch": 2,
+    "s_or_b32": 8,
+    "s_waitcnt_vscnt": 2,
+    "s_cmp_eq_u32": 1,
+    "s_barrier": 6,
+    "v_dual_mov_b32": 50,
+    "s_and_saveexec_b32": 6,
+    "s_cbranch_execz": 9,
+    "s_nop": 9,
+    "v_cmp_lt_u32_e32": 1,
+    "v_fmac_f32_e32": 296,
+    "ds_store_2addr_stride64_b32": 1,
+    "v_dual_fmac_f32": 49,
+    "s_and_not1_b32": 1,
+    "s_cbranch_execnz": 1,
+    "v_xor_b32_e32": 2,
+    "ds_store_b32": 7,
+    "v_cmp_gt_u32_e32": 9,
+    "ds_load_2addr_b32": 197,
+    "v_cndmask_b32_e64": 9,
+    "v_add_lshl_u32": 9,
+    "v_dual_add_f32": 7,
+    "v_add_f32_e32": 19,
+    "ds_swizzle_b32": 3,
+    "ds_bpermute_b32": 12,
+    "v_cmp_ne_u32_e32": 3,
+    "ds_load_b32": 5,
+    "s_add_f32": 43,
+    "s_cmp_gt_f32": 1,
+    "s_rndne_f32": 3,
+    "s_fmamk_f32": 8,
+    "s_cmp_nlt_f32": 3,
+    "s_sub_f32": 39,
+    "s_cmp_ngt_f32": 3,
+    "v_exp_f32_e32": 4,
+    "s_cvt_i32_f32": 3,
+    "v_ldexp_f32": 6,
+    "v_cndmask_b32_e32": 13,
+    "v_cmp_neq_f32_e32": 1,
+    "v_frexp_mant_f32_e32": 1,
+    "v_frexp_exp_i32_f32_e32": 1,
+    "s_cmp_lt_f32": 1,
+    "s_subb_u32": 1,
+    "v_subrev_f32_e32": 1,
+    "s_cvt_f32_i32": 1,
+    "s_fmac_f32": 4,
+    "s_fmaak_f32": 2,
+    "v_and_b32_e32": 1,
+    "v_cmp_gt_f32_e32": 4,
+    "scratch_load_b64": 3,
+    "v_mul_f32_e32": 343,
+    "v_rsq_f32_e32": 4,
+    "v_dual_mul_f32": 149,
+    "v_fma_f32": 8,
+    "v_div_scale_f32": 4,
+    "v_div_fmas_f32": 2,
+    "v_div_fixup_f32": 2,
+    "v_sub_f32_e32": 2,
+    "v_dual_cndmask_b32": 1,
+    "v_mad_u64_u32": 1,
+    "v_cmp_nlt_f32_e32": 1,
+    "v_rndne_f32_e32": 1,
+    "v_cvt_i32_f32_e32": 1,
+    "v_cmp_ngt_f32_e32": 1,
+    "v_fmamk_f32": 1,
+    "global_store_b32": 129,
+    "s_sendmsg": 1,
+    "s_endpgm": 1
+   },
+   "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-aabdf2cf9597d091/qwen4_exp_gdn.so",
+   "command": [
+    "hipcc",
+    "-shared",
+    "-fPIC",
+    "-O3",
+    "-mllvm",
+    "-amdgpu-unroll-threshold-local=600",
+    "-mcumode",
+    "--offload-arch=gfx1151",
+    "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip",
+    "-o",
+    "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-aabdf2cf9597d091/qwen4_exp_gdn.so"
+   ],
+   "sources_sha256": {
+    "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip": "2e443bfb6e53d9cf849898914046f3c9b2a529a36087c8565139545b41e6d537"
+   },
+   "library_sha256": "ecd684f157a681bdc04cfcb9548bf2ea1a971e3e3260b5bf07d4ad69d457516e",
+   "code_object_sha256": "a2e45bd7db28730f8426fb11a874b33f54752abba0f359a14608f6bb013b8260",
+   "notes_sha256": "5e43a3c7b844992d10dc2fbf95f0dc64d6f47fe24c47dbc8c4d5e6986be71f66",
+   "disassembly_sha256": "fbdd10dd546e0958211c7a865b142cad6e53b1c070dbd1caed416ad42bf52ac2"
+  }
+ ],
+ "metadata_consistency": {
+  "selected_symbols": 3,
+  "trace_private_segments_match": true,
+  "loaded_library_provenance_verified": false,
+  "scope": "Only three current cached symbols audited; not a whole-tree census or proof of historical loaded binaries."
+ },
+ "whole_capture_scratch_operations": [
+  {
+   "Kind": "SCRATCH_MEMORY",
+   "Operation": "SCRATCH_MEMORY_ALLOC",
+   "Agent_Id": "Agent 1",
+   "Queue_Id": "2",
+   "Thread_Id": "4028848",
+   "Alloc_Flags": "0",
+   "Start_Timestamp": "4530790905825897",
+   "End_Timestamp": "4530790906231386",
+   "Allocation_Size": "1310720"
+  }
+ ],
+ "next_mechanism": {
+  "ledger_family": "EG-1 / EG-3 structural follow-up, not LDS staging or repair removal",
+  "owner": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+  "current_mean_ms": 2218.7528540000003,
+  "proposal": "Register a checked int32 index sibling of the existing 3-plane,16-row Q4_K dual iu8-risk gate/up kernel; preserve activation quantization, accumulation, risk criterion/queue and sparse exact repair. Retain int64 raw host ABI and wide-index parent outside the checked domain.",
+  "mechanism_evidence": {
+   "static_vgpr": 211,
+   "private_bytes": 0,
+   "static_instructions": 4388,
+   "vector_add_carry_pairs": 69,
+   "vector_shift64": 33,
+   "vector_mad64": 22,
+   "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip:1842-2167;64-bit metadata,counters,compact-row/output/weight offsets despite bounded model shape"
+  },
+  "binding_screen": "RED checked-domain/overflow tests, identical repaired output and risk membership/count, adversarial tails/empty experts/nonfinite/subnormal/queue overflow and guards plus CPU reference. Cache/resource and complete packing+iu8-risk+repair+SiLU timing on natural routing before any full-model gate or promotion.",
+  "unknown": "No saving assumed from integer instruction counts or static VGPR. The kernel is scratch-free already; this is not a scratch-elimination hypothesis."
+ },
+ "limitations": [
+  "Diagnostic owner pricing, not a controlled before/after speedup or throughput certificate.",
+  "One canonical case/chunk/host; other populations need candidate-specific coverage.",
+  "HIP API intervals overlap device work and are not additive overhead. Kernel-plus-copy residual is not entirely recoverable host work.",
+  "Quantized launch census empty; no cross-capture tensor-shape/FLOP join inferred.",
+  "Raw resources/code objects stay local; current cached object hashes are not retroactive loaded-library identity.",
+  "Integer static instruction counts motivate a screen, not an expected speedup."
+ ],
+ "raw_evidence": {
+  "profile.json": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/profile.json",
+   "sha256": "623f09bb209f44e4537957f347d2819c7159c9aba8bf159939e09bb68d2d709f"
+  },
+  "warm.json": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/warm.json",
+   "sha256": "8c68c127ce4b4f4a958d2ff206d8cc18a736f02f8c71d1efa14354cf831efa5c"
+  },
+  "audit.json": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/audit.json",
+   "sha256": "2b4ee2605b9f47ee18138a87473c56d7068e8776e8d121c29c3c174c12317b6c"
+  },
+  "metadata.json": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/metadata.json",
+   "sha256": "a31dea7d1c5e7125895647be09bae2236afb4c101dc3a3a629cce12a1737cbf6"
+  },
+  "libraries.json": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/libraries.json",
+   "sha256": "79a96867c99481bdd74e1dd7b72a88fc30390720969f19ee43e33f6e86f21c12"
+  },
+  "launch-census.json": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/launch-census.json",
+   "sha256": "d37af768e8cb44a02f1980a82fc088f14e5977759531909c9164cc1506fb0554"
+  },
+  "raw/post-tail_agent_info.csv": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/raw/post-tail_agent_info.csv",
+   "sha256": "5239c42eb699d523da3e4a43e3533cdb66e3f5754799e8915830891fd581d5a1"
+  },
+  "raw/post-tail_hip_api_trace.csv": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/raw/post-tail_hip_api_trace.csv",
+   "sha256": "f9f4b53ece5b319e350753f083c29cba1ea99fcfe421fe8fe23398bf801fda94"
+  },
+  "raw/post-tail_kernel_trace.csv": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/raw/post-tail_kernel_trace.csv",
+   "sha256": "b7be9b8b7ca51ce1b06b8ceafc0d5f56ec5d39b97695039c8e7f8670c6c36864"
+  },
+  "raw/post-tail_marker_api_trace.csv": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/raw/post-tail_marker_api_trace.csv",
+   "sha256": "8738daffedf47c334e34374c2414c6b448467d0aa8c851a666798494478b7987"
+  },
+  "raw/post-tail_memory_copy_trace.csv": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/raw/post-tail_memory_copy_trace.csv",
+   "sha256": "e3abecdf44a026536b4af4e43e967390c33ac39289d36c1e5a7ac46d6e44846f"
+  },
+  "raw/post-tail_scratch_memory_trace.csv": {
+   "path": "/tmp/qwen4exp-post-tail-prefill-20261006/raw/post-tail_scratch_memory_trace.csv",
+   "sha256": "010547cea3155ca89f3783704c603c63d606a56ecc14ae990fccd97fa16f49e4"
+  }
+ }
+}
