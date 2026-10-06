@@ -1,5 +1,14 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-06 — Post-router production prefill owners (diagnostic)
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL/BF16 code-p4096/chunk4096: two cached-only windows at clean
+  `4779b7278` fully attribute2761 launches each, kernel union12.562/12.562s;
+  full-logit/lifecycle checks pass. No old→new metric or speed claim. Current
+  GDN805.945ms and36B spill metadata motivate a bounded checked-index sibling.
+  Source: `results/2026-10-06-qwen4exp-current-prefill-owners/README.md`.
+
 ## 2026-10-06 — Ordered router DPP production prefill route
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next

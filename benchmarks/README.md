@@ -49,18 +49,19 @@ The full-model correctness and prefill results are reported separately above.
 On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, clean-source
 production UD-Q4_K_XL `code-p4096` at chunk4096 attributes all 2,761
 launches per pass. Two separately marked cached-only profiler windows have
-kernel unions 12.580/12.579 s. Warm/profile final logits match and teardown
+kernel unions 12.562/12.562 s. Warm/profile final logits match and teardown
 is leak-free. This is diagnostic attribution, not a throughput comparison.
 
 | Kernel owner | Mean ms/pass | Kernel-union share |
 | --- | ---: | ---: |
-| Dense F32 coltile | 2240.924 | 17.81% |
-| MoE Q4_K gate/up | 2218.764 | 17.64% |
-| GR-up DPP | 1534.263 | 12.20% |
-| MoE Q5_1 down | 1206.801 | 9.59% |
-| Router F32 tile4 | 617.264 | 4.91% |
+| Dense F32 coltile | 2249.802 | 17.91% |
+| MoE Q4_K gate/up | 2217.705 | 17.65% |
+| GR-up DPP | 1592.421 | 12.68% |
+| MoE Q5_1 down | 1206.285 | 9.60% |
+| GDN recurrence | 805.945 | 6.42% |
+| Router F32 ordered DPP | 546.167 | 4.35% |
 
-[Protocol and artifacts](results/2026-10-05-qwen4exp-current-prefill-owners/README.md).
+[Protocol and artifacts](results/2026-10-06-qwen4exp-current-prefill-owners/README.md).
 
 ## Qwen3.8 Flash Next split-operand dense operation screen
 
