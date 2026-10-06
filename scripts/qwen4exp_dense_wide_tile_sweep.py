@@ -53,6 +53,8 @@ TILE_FAMILY: dict[str, tuple[int, int, int, int]] = {
     "dense_wide64x256_f32_f32_out": (64, 256, 32, 64),
     "dense_wide128x128_f32_f32_out": (128, 128, 64, 32),
     "dense_wide64x128_f32_f32_out": (64, 128, 32, 32),
+    "dense_wide256_padded_f32_f32_out": (128, 256, 64, 64),
+    "dense_wide256_padded_f16in_f32_f32_out": (128, 256, 64, 64),
     "dense_wide256_f16in_f32_f32_out": (128, 256, 64, 64),
     "dense_wide128x128_f16in_f32_f32_out": (128, 128, 64, 32),
     "dense_wide256_split3_f32_f32_out": (128, 256, 64, 64),

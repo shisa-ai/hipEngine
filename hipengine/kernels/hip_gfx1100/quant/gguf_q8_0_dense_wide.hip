@@ -315,7 +315,7 @@ __device__ __noinline__ void wide_split_range_fallback(
 // on the split's cost. A negative here kills the scheme cheaply; a positive
 // says the split is worth scoping.
 template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
-          int WMMA_REP = 1, bool SPLIT = false>
+          int WMMA_REP = 1, bool SPLIT = false, bool PADDED = false>
 __device__ __forceinline__ void wide_tile_gemm(
     const uint8_t* __restrict__ w_base,  // first weight row of this block
     const size_t wrow_bytes,
@@ -487,7 +487,7 @@ __device__ __forceinline__ void wide_tile_gemm(
       }
 #pragma unroll
       for (int j = 0; j < TN; ++j) {
-        if (TAIL && !jact[j]) continue;
+        if (TAIL && !PADDED && !jact[j]) continue;
         const half_t* p = Bs + (wn * WTN + j * 16 + r) * WIDE_LDS_STRIDE + kk;
         const half8_t lo = *reinterpret_cast<const half8_t*>(p);
         const half8_t hi = *reinterpret_cast<const half8_t*>(p + 8);
@@ -503,7 +503,7 @@ __device__ __forceinline__ void wide_tile_gemm(
       for (int i = 0; i < TM; ++i) {
 #pragma unroll
         for (int j = 0; j < TN; ++j) {
-          if (TAIL && !jact[j]) continue;
+          if (TAIL && !PADDED && !jact[j]) continue;
           if constexpr (SPLIT) {
             // Keep the growing sum out of WMMA and compensate its ordinary
             // F32 additions; long-K high-high sums otherwise dominate the
@@ -578,8 +578,11 @@ __device__ __forceinline__ void wide_tile_gemm(
   }
 }
 
+// PADDED computes all WMMA row fragments from the existing zero-filled LDS
+// rows. Only publication remains predicated. This measurement sibling tests
+// tail-control liveness without changing the valid-row K accumulation order.
 template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
-          int WMMA_REP = 1>
+          int WMMA_REP = 1, bool PADDED = false>
 __global__ void __launch_bounds__(WIDE_THREADS, 1)
 q8_0_dense_wide_kernel(const x_t* __restrict__ x,
                        const uint8_t* __restrict__ qweight,
@@ -595,7 +598,7 @@ q8_0_dense_wide_kernel(const x_t* __restrict__ x,
   const size_t wrow_bytes =
       static_cast<size_t>(in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
 
-  wide_tile_gemm<x_t, BM, BN, WTM, WTN, TAIL, WMMA_REP>(
+  wide_tile_gemm<x_t, BM, BN, WTM, WTN, TAIL, WMMA_REP, false, PADDED>(
       qweight + static_cast<size_t>(m0) * wrow_bytes, wrow_bytes,
       out_features - m0, x, in_features, out, out_features, rows, t0, m0, As, Bs);
 }
@@ -638,7 +641,7 @@ __global__ void q8_0_f32_to_f16_kernel(const float* __restrict__ x,
 }  // namespace
 
 template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
-          int WMMA_REP = 1>
+          int WMMA_REP = 1, bool PADDED = false>
 int wide_launch_tail(const void* x,
                      const void* qweight,
                      void* out,
@@ -648,7 +651,7 @@ int wide_launch_tail(const void* x,
                      hipStream_t stream) {
   const dim3 grid(static_cast<unsigned int>((out_features + BM - 1) / BM),
                   static_cast<unsigned int>((rows + BN - 1) / BN));
-  hipLaunchKernelGGL((q8_0_dense_wide_kernel<x_t, BM, BN, WTM, WTN, TAIL, WMMA_REP>),
+  hipLaunchKernelGGL((q8_0_dense_wide_kernel<x_t, BM, BN, WTM, WTN, TAIL, WMMA_REP, PADDED>),
                      grid, dim3(WIDE_THREADS), 0, stream,
                      static_cast<const x_t*>(x),
                      static_cast<const uint8_t*>(qweight),
@@ -662,7 +665,8 @@ int wide_launch_tail(const void* x,
 // The tail-free instantiation has no per-fragment predication at all; the tail
 // one bounds-checks every load and store. Picking between them at launch keeps
 // the common (exactly-divisible) case free of the checks.
-template <typename x_t, int BM, int BN, int WTM, int WTN, int WMMA_REP = 1>
+template <typename x_t, int BM, int BN, int WTM, int WTN,
+          int WMMA_REP = 1, bool PADDED = false>
 int wide_launch(const void* x,
                 const void* qweight,
                 void* out,
@@ -676,7 +680,7 @@ int wide_launch(const void* x,
     return static_cast<int>(hipErrorInvalidValue);
   }
   const bool tail = (rows % BN) != 0 || (out_features % BM) != 0;
-  return tail ? wide_launch_tail<x_t, BM, BN, WTM, WTN, true, WMMA_REP>(
+  return tail ? wide_launch_tail<x_t, BM, BN, WTM, WTN, true, WMMA_REP, PADDED>(
                     x, qweight, out, rows, in_features, out_features, stream)
               : wide_launch_tail<x_t, BM, BN, WTM, WTN, false, WMMA_REP>(
                     x, qweight, out, rows, in_features, out_features, stream);
@@ -772,6 +776,22 @@ HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide256_f16in_f32_f32_out,
                             half_t, 128, 256, 64, 64)
 HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide128x128_f16in_f32_f32_out,
                             half_t, 128, 128, 64, 32)
+// Measurement-only padded-fragment siblings. Full tiles retain the original
+// tail-free owner through wide_launch; no runtime profile selects these leaves.
+#define HIPENGINE_DENSE_WIDE_EXPORT_PADDED(name, x_t)                         \
+  extern "C" int name(const void* x, const void* qweight, void* out,           \
+                      int64_t rows, int64_t in_features, int64_t out_features, \
+                      int64_t threads, hipStream_t stream) {                   \
+    (void)threads;                                                             \
+    return wide_launch<x_t, 128, 256, 64, 64, 1, true>(                        \
+        x, qweight, out, rows, in_features, out_features, stream);              \
+  }
+
+HIPENGINE_DENSE_WIDE_EXPORT_PADDED(
+    hipengine_gguf_q8_0_dense_wide256_padded_f32_f32_out, float)
+HIPENGINE_DENSE_WIDE_EXPORT_PADDED(
+    hipengine_gguf_q8_0_dense_wide256_padded_f16in_f32_f32_out, half_t)
+
 HIPENGINE_DENSE_WIDE_EXPORT_REP(
     hipengine_gguf_q8_0_dense_wide256_split3_f32_f32_out, float, 128, 256, 64,
     64, 3)

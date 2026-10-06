@@ -1,5 +1,14 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-06 — Padded dense-wide tail operation screen
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL
+  K10240/N320 HC-down code-p4096 natural complete-GEMM owner 188.502→138.471 ms
+  (−26.541%, 1.361x), 420 exact calls across six cases; F16 tail scratch 92→0 B,
+  spills 58→0 by removing K-loop row-fragment branches. No model-wall/default
+  claim; full-model qualification pending. Source/artifact:
+  `results/2026-10-06-qwen4exp-dense-wide-padded-screen/`.
+
 ## 2026-10-06 — Checked-index GDN UD production route
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
