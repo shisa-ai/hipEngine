@@ -58,6 +58,12 @@ def _sha256_head(path: Path, limit: int = 64 * 1024 * 1024) -> str:
 
 
 def _identity(args: argparse.Namespace, prompt_ids: list[int]) -> dict:
+    # The fields that determine the state's bytes. The engine commit is NOT
+    # one: a saved KV prefix stays valid across engine revisions whose prefill
+    # is bit-identical (the strict-parity gates own that claim), and binding
+    # states to the commit hash would invalidate every minted state on any
+    # commit, including decode-only or documentation changes. The commit is
+    # recorded in the artifact for provenance instead.
     return {
         "prompt_ids_sha256": hashlib.sha256(
             b"".join(int(t).to_bytes(4, "little") for t in prompt_ids)
@@ -65,7 +71,6 @@ def _identity(args: argparse.Namespace, prompt_ids: list[int]) -> dict:
         "artifact_head_sha256_64MiB": _sha256_head(Path(args.artifact)),
         "context": int(args.context),
         "output_tokens": int(args.output),
-        "engine_commit": _git_commit(),
     }
 
 
@@ -157,6 +162,7 @@ def main() -> int:
         "context": args.context,
         "state": str(args.state),
         "identity": identity,
+        "engine_commit": _git_commit(),
     }
 
     if args.mode == "save":
