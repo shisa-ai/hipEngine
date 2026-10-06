@@ -22,7 +22,10 @@ profile-qualified production default for the certified lane (layers 13-47 of
 rather than by strict bit parity). The ``f16in`` variants take an activation
 already converted by :func:`f32_to_f16`, for a caller that hoists that conversion
 out of the K loop. Runtime profile selection is owned by the model plan, not
-by registering one of these callable leaves.
+by registering one of these callable leaves. The ``padded`` measurement
+siblings compute zero-padded row fragments inside the WMMA K loop, but keep
+all load/store bounds and the same valid-row accumulation. Full tiles use the
+original tail-free owner; no runtime selector or profile chooses the siblings.
 """
 
 from __future__ import annotations
@@ -206,6 +209,12 @@ _VARIANTS = {
     "dense_wide64x128_f32_f32_out": "hipengine_gguf_q8_0_dense_wide64x128_f32_f32_out",
     "dense_wide256_f16in_f32_f32_out": (
         "hipengine_gguf_q8_0_dense_wide256_f16in_f32_f32_out"
+    ),
+    "dense_wide256_padded_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_wide256_padded_f32_f32_out"
+    ),
+    "dense_wide256_padded_f16in_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_wide256_padded_f16in_f32_f32_out"
     ),
     "dense_wide128x128_f16in_f32_f32_out": (
         "hipengine_gguf_q8_0_dense_wide128x128_f16in_f32_f32_out"

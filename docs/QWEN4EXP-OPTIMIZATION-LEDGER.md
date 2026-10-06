@@ -394,6 +394,19 @@ and counterbalanced complete-operation wall before full-model qualification.
 This is a distinct structural candidate, not the failed reassociated tiled/WY
 routes. GDN is6.42% of kernel union; do not assume the whole share recoverable.
 
+The [padded dense-wide tail screen](../benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-screen/README.md)
+then isolates a compiler-liveness mechanism in the203.788ms tail owner:
+remove inactive-row-fragment K-loop branches, but keep zero-padded loads,
+bounded publication and valid-row F16/F32 accumulation. F16 tail code object
+scratch92→0B, VGPRspills58→0, staticVGPR256→253. Corrected real-weight
+K10240/N320 synthetic operation is1.313–1.353x at512/1024/4096rows;
+420natural calls across six cases are exact/input-preserving and1.312–1.361x,
+with about50ms saved at4K. First reversed-GGUF-shape timings areINVALID and
+excluded; the loader is regression-tested. Cached trace confirms scratch0
+and plausible candidate duration. This reopens DP-7/X-5 structurally, not
+failed precision/retiles. No profile binding: full-model canonical/heldout
+state/KV/repeats and tracked-clean engineAB remain the selection blockers.
+
 ## 2. Arithmetic policy and kernel mechanisms
 
 ### 2.1 What the fast engines compute

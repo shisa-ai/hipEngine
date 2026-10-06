@@ -5,6 +5,26 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next padded dense-wide tail operation screen
+
+Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+measures a diagnostic F16-input Q8_0 HC-down GEMM sibling at K10240/N320.
+It computes zero-padded row fragments without K-loop branches while keeping
+load/store bounds and valid-row arithmetic. No production selection changes.
+
+| Natural input | Parent owner ms | Padded owner ms | Speedup |
+| --- | ---: | ---: | ---: |
+| code p512 | 55.228 | 42.099 | 1.312x |
+| code p1024 | 56.171 | 42.510 | 1.321x |
+| code p4096 | 188.502 | 138.471 | 1.361x |
+
+All 420 natural calls across six cases are exact, repeatable and preserve
+input/weight bytes; teardown is leak-free. Private scratch 92→0 bytes/lane,
+spills 58→0. CPU-reference/guard tests and cached trace pass. These are
+complete-GEMM sub-window timings, not a model-wall result; full-model gates
+and engine A/B are required before selection.
+[Protocol and artifacts](results/2026-10-06-qwen4exp-dense-wide-padded-screen/README.md).
+
 ## Qwen3.8 Flash Next checked-index GDN production route
 
 On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,

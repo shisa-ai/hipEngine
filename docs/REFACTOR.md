@@ -1,5 +1,20 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Padded-fragment dense-wide tail qualification
+
+- `dense_wide256_padded_{f32,f16in}_f32_f32_out` leaves in
+  `quant/gguf_q8_0_dense_wide.{hip,py}` are measurement-only: no selector or
+  generator binding. They remove K-loop inactive-row-fragment branches, not
+  load/store bounds or the valid-row arithmetic. Full tiles use the parent.
+- The 2026-10-06 complete-GEMM screen is exact and positive at the live HC-down
+  K10240/N320 owner; F16 tail scratch/spills drop 92/58→0/0. Natural scope is
+  512–4096 rows. Full-model state/KV/repeats and clean engine A/B are still
+  required before bounded selection; operation timing alone is not admission.
+- Remove duplicate experimental launch plumbing after qualified bounded
+  selection replaces it, or remove the sibling if model qualification fails.
+  Preserve the independent guard/CPU fixtures and immutable failure evidence.
+  Evidence: `benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-screen/`.
+
 ## Dense split-operand WMMA runtime cleanup — complete
 
 - The failed `HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS` runtime selector,
