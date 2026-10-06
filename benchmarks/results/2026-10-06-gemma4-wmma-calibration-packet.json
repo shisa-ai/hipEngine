@@ -1,0 +1,1027 @@
+{
+ "schema": 1,
+ "kind": "gemma4_wmma_calibration_packet",
+ "performance_claim": false,
+ "created": "2026-10-06",
+ "question": "Does the WMMA prefill candidate pass a router-MoE-calibrated production envelope, and can such an envelope be derived from strict-side row stability alone?",
+ "protocol": "docs/campaigns/GEMMA4-WMMA-CALIBRATION.md (frozen 2026-10-07 before the run)",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV, zbook / Radeon 8060S (gfx1151)",
+ "candidate_variants": [
+  "gemma4_wmma_flash",
+  "gemma4_wmma_flash_full"
+ ],
+ "verdict": {
+  "stable_row_bars": "FAILED -- no promotion under the frozen protocol",
+  "stable_global": {
+   "kl_mean": 0.0025011656412140303,
+   "kl_p95": 0.010987165547681435,
+   "kl_p99": 0.04475798443506217,
+   "kl_max": 0.2082923182694076,
+   "top1_rate": 0.9937388193202147,
+   "failed": [
+    "kl_mean",
+    "kl_p95",
+    "kl_p99",
+    "kl_max"
+   ]
+  },
+  "stability_totals": {
+   "rows_total": 1152,
+   "rows_stable": 1118,
+   "rows_unstable": 34,
+   "unstable_kl_max": 0.18636646091225903,
+   "unstable_top1_flips": 11
+  },
+  "legacy_all_rows_global": {
+   "kl_mean": 0.0031097291678206626,
+   "kl_p95": 0.013487889091190006,
+   "kl_p99": 0.05943847647716753,
+   "kl_max": 0.2082923182694076,
+   "top1_rate": 0.984375
+  },
+  "task_noninferior_all_cases": true,
+  "repeats_and_isolation_all_green": true
+ },
+ "stable_by_category": {
+  "code": {
+   "kl_mean": 0.0008614696714535242,
+   "kl_p95": 0.004648913159716371,
+   "kl_p99": 0.023873451334272034,
+   "kl_max": 0.04390799912133395,
+   "top1_rate": 1.0,
+   "failed": [
+    "kl_p99"
+   ]
+  },
+  "general_en": {
+   "kl_mean": 0.001851582626468837,
+   "kl_p95": 0.009997597261810657,
+   "kl_p99": 0.030060294309391184,
+   "kl_max": 0.04475798443506217,
+   "top1_rate": 0.9959016393442623,
+   "failed": [
+    "kl_mean",
+    "kl_p95",
+    "kl_p99"
+   ]
+  },
+  "general_ja": {
+   "kl_mean": 0.0028118290312481495,
+   "kl_p95": 0.009982963945935848,
+   "kl_p99": 0.05943847647716753,
+   "kl_max": 0.12079790473804887,
+   "top1_rate": 0.9959514170040485,
+   "failed": [
+    "kl_mean",
+    "kl_p95",
+    "kl_p99",
+    "kl_max"
+   ]
+  },
+  "mixed_ja_en": {
+   "kl_mean": 0.005391485064511634,
+   "kl_p95": 0.02739352731567849,
+   "kl_p99": 0.0741448623444707,
+   "kl_max": 0.2082923182694076,
+   "top1_rate": 0.9795918367346939,
+   "failed": [
+    "kl_mean",
+    "kl_p95",
+    "kl_p99",
+    "kl_max"
+   ]
+  }
+ },
+ "cases": [
+  {
+   "id": "code_merge_intervals",
+   "category": "code",
+   "split": "canonical",
+   "prompt_tokens": 513,
+   "legacy": {
+    "kl_mean": 0.0008207325820953578,
+    "kl_p95": 0.004648913159716371,
+    "kl_p99": 0.018686308044455684,
+    "kl_max": 0.018686308044455684,
+    "top1_rate": 1.0,
+    "passed": true
+   },
+   "stable": {
+    "kl_mean": 0.0008207325820953578,
+    "kl_p95": 0.004648913159716371,
+    "kl_p99": 0.018686308044455684,
+    "kl_max": 0.018686308044455684,
+    "top1_rate": 1.0,
+    "passed": true,
+    "requires_review": false
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 64,
+    "rows_unstable": 0,
+    "unstable_kl_max": 0.0,
+    "unstable_top1_flips": 0
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": true,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 25,
+    "gemma4_wmma_flash_full": 5,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "code_topological_sort",
+   "category": "code",
+   "split": "canonical",
+   "prompt_tokens": 1031,
+   "legacy": {
+    "kl_mean": 0.00016673617621177739,
+    "kl_p95": 0.000572486870294063,
+    "kl_p99": 0.004923982864366311,
+    "kl_max": 0.004923982864366311,
+    "top1_rate": 1.0,
+    "passed": true
+   },
+   "stable": {
+    "kl_mean": 0.00016673617621177739,
+    "kl_p95": 0.000572486870294063,
+    "kl_p99": 0.004923982864366311,
+    "kl_max": 0.004923982864366311,
+    "top1_rate": 1.0,
+    "passed": true,
+    "requires_review": false
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 64,
+    "rows_unstable": 0,
+    "unstable_kl_max": 0.0,
+    "unstable_top1_flips": 0
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": true,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 50,
+    "gemma4_wmma_flash_full": 10,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "code_lru_cache",
+   "category": "code",
+   "split": "canonical",
+   "prompt_tokens": 2053,
+   "legacy": {
+    "kl_mean": 0.00226538717950161,
+    "kl_p95": 0.007431832831115531,
+    "kl_p99": 0.05383683917740223,
+    "kl_max": 0.05383683917740223,
+    "top1_rate": 1.0,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0014467927033444572,
+    "kl_p95": 0.007322160843904706,
+    "kl_p99": 0.029367253944494864,
+    "kl_max": 0.029367253944494864,
+    "top1_rate": 1.0,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 63,
+    "rows_unstable": 1,
+    "unstable_kl_max": 0.05383683917740223,
+    "unstable_top1_flips": 0
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": true,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 75,
+    "gemma4_wmma_flash_full": 15,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "code_markdown_table",
+   "category": "code",
+   "split": "canonical",
+   "prompt_tokens": 4093,
+   "legacy": {
+    "kl_mean": 0.0010271035178255885,
+    "kl_p95": 0.001838644473517805,
+    "kl_p99": 0.04390799912133395,
+    "kl_max": 0.04390799912133395,
+    "top1_rate": 1.0,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0010271035178255885,
+    "kl_p95": 0.001838644473517805,
+    "kl_p99": 0.04390799912133395,
+    "kl_max": 0.04390799912133395,
+    "top1_rate": 1.0,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 64,
+    "rows_unstable": 0,
+    "unstable_kl_max": 0.0,
+    "unstable_top1_flips": 0
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": true,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 100,
+    "gemma4_wmma_flash_full": 320,
+    "gemma4_plain": 1590
+   }
+  },
+  {
+   "id": "general_en_plan",
+   "category": "general_en",
+   "split": "canonical",
+   "prompt_tokens": 8191,
+   "legacy": {
+    "kl_mean": 0.001391028933431186,
+    "kl_p95": 0.006631343105120987,
+    "kl_p99": 0.02192912062968095,
+    "kl_max": 0.02192912062968095,
+    "top1_rate": 1.0,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0013534668589527605,
+    "kl_p95": 0.006631343105120987,
+    "kl_p99": 0.02192912062968095,
+    "kl_max": 0.02192912062968095,
+    "top1_rate": 1.0,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 62,
+    "rows_unstable": 2,
+    "unstable_kl_max": 0.00421868596186251,
+    "unstable_top1_flips": 0
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": true,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 200,
+    "gemma4_wmma_flash_full": 355,
+    "gemma4_plain": 1575
+   }
+  },
+  {
+   "id": "general_en_explain",
+   "category": "general_en",
+   "split": "canonical",
+   "prompt_tokens": 513,
+   "legacy": {
+    "kl_mean": 0.0022203590588609147,
+    "kl_p95": 0.010358843419148743,
+    "kl_p99": 0.030060294309391184,
+    "kl_max": 0.030060294309391184,
+    "top1_rate": 0.96875,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0019253741457617597,
+    "kl_p95": 0.009997597261810657,
+    "kl_p99": 0.030060294309391184,
+    "kl_max": 0.030060294309391184,
+    "top1_rate": 1.0,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 60,
+    "rows_unstable": 4,
+    "unstable_kl_max": 0.012482666064284486,
+    "unstable_top1_flips": 2
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 25,
+    "gemma4_wmma_flash_full": 5,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "general_ja_plan",
+   "category": "general_ja",
+   "split": "canonical",
+   "prompt_tokens": 1031,
+   "legacy": {
+    "kl_mean": 0.0022460483931660575,
+    "kl_p95": 0.009982963945935848,
+    "kl_p99": 0.051614178824811605,
+    "kl_max": 0.051614178824811605,
+    "top1_rate": 0.984375,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0020091724794478456,
+    "kl_p95": 0.008206035693015132,
+    "kl_p99": 0.051614178824811605,
+    "kl_max": 0.051614178824811605,
+    "top1_rate": 0.9836065573770492,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 61,
+    "rows_unstable": 3,
+    "unstable_kl_max": 0.010056152198876426,
+    "unstable_top1_flips": 0
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 50,
+    "gemma4_wmma_flash_full": 10,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "general_ja_explain",
+   "category": "general_ja",
+   "split": "canonical",
+   "prompt_tokens": 2053,
+   "legacy": {
+    "kl_mean": 0.0029942799260179133,
+    "kl_p95": 0.017530039189207654,
+    "kl_p99": 0.06522535998841154,
+    "kl_max": 0.06522535998841154,
+    "top1_rate": 0.984375,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0027635535885069656,
+    "kl_p95": 0.009742349334018727,
+    "kl_p99": 0.06522535998841154,
+    "kl_max": 0.06522535998841154,
+    "top1_rate": 1.0,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 63,
+    "rows_unstable": 1,
+    "unstable_kl_max": 0.017530039189207654,
+    "unstable_top1_flips": 1
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 75,
+    "gemma4_wmma_flash_full": 15,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "mixed_ja_en_translate",
+   "category": "mixed_ja_en",
+   "split": "canonical",
+   "prompt_tokens": 4093,
+   "legacy": {
+    "kl_mean": 0.002118478123510948,
+    "kl_p95": 0.020996064209847315,
+    "kl_p99": 0.03098266117215817,
+    "kl_max": 0.03098266117215817,
+    "top1_rate": 0.984375,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.002118478123510948,
+    "kl_p95": 0.020996064209847315,
+    "kl_p99": 0.03098266117215817,
+    "kl_max": 0.03098266117215817,
+    "top1_rate": 0.984375,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 64,
+    "rows_unstable": 0,
+    "unstable_kl_max": 0.0,
+    "unstable_top1_flips": 0
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 100,
+    "gemma4_wmma_flash_full": 320,
+    "gemma4_plain": 1590
+   }
+  },
+  {
+   "id": "mixed_ja_en_review",
+   "category": "mixed_ja_en",
+   "split": "canonical",
+   "prompt_tokens": 8191,
+   "legacy": {
+    "kl_mean": 0.0029741826378825594,
+    "kl_p95": 0.016253754549207477,
+    "kl_p99": 0.03524248661037959,
+    "kl_max": 0.03524248661037959,
+    "top1_rate": 0.96875,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.002133947632411999,
+    "kl_p95": 0.010562968623987822,
+    "kl_p99": 0.017372840141954452,
+    "kl_max": 0.017372840141954452,
+    "top1_rate": 0.9838709677419355,
+    "passed": false,
+    "requires_review": false
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 62,
+    "rows_unstable": 2,
+    "unstable_kl_max": 0.03524248661037959,
+    "unstable_top1_flips": 1
+   },
+   "task_noninferior": true,
+   "task_strict_passed": false,
+   "task_candidate_passed": false,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 200,
+    "gemma4_wmma_flash_full": 355,
+    "gemma4_plain": 1575
+   }
+  },
+  {
+   "id": "heldout_code_rate_limiter",
+   "category": "code",
+   "split": "heldout",
+   "prompt_tokens": 513,
+   "legacy": {
+    "kl_mean": 0.0005714366447588015,
+    "kl_p95": 0.0035113154342982047,
+    "kl_p99": 0.011960558575785148,
+    "kl_max": 0.011960558575785148,
+    "top1_rate": 1.0,
+    "passed": true
+   },
+   "stable": {
+    "kl_mean": 0.0005714366447588015,
+    "kl_p95": 0.0035113154342982047,
+    "kl_p99": 0.011960558575785148,
+    "kl_max": 0.011960558575785148,
+    "top1_rate": 1.0,
+    "passed": true,
+    "requires_review": false
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 64,
+    "rows_unstable": 0,
+    "unstable_kl_max": 0.0,
+    "unstable_top1_flips": 0
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": true,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 25,
+    "gemma4_wmma_flash_full": 5,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "heldout_code_interval_schedule",
+   "category": "code",
+   "split": "heldout",
+   "prompt_tokens": 1031,
+   "legacy": {
+    "kl_mean": 0.0014945813220634983,
+    "kl_p95": 0.008553275610693457,
+    "kl_p99": 0.02627199849234379,
+    "kl_max": 0.02627199849234379,
+    "top1_rate": 0.984375,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0011496651309125057,
+    "kl_p95": 0.00272750100359867,
+    "kl_p99": 0.02627199849234379,
+    "kl_max": 0.02627199849234379,
+    "top1_rate": 1.0,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 63,
+    "rows_unstable": 1,
+    "unstable_kl_max": 0.023224301364576056,
+    "unstable_top1_flips": 1
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 50,
+    "gemma4_wmma_flash_full": 10,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "heldout_general_en_incident",
+   "category": "general_en",
+   "split": "heldout",
+   "prompt_tokens": 2053,
+   "legacy": {
+    "kl_mean": 0.002110971054267938,
+    "kl_p95": 0.00822553181667016,
+    "kl_p99": 0.04475798443506217,
+    "kl_max": 0.04475798443506217,
+    "top1_rate": 0.96875,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0017270705147300178,
+    "kl_p95": 0.005519305730084335,
+    "kl_p99": 0.04475798443506217,
+    "kl_max": 0.04475798443506217,
+    "top1_rate": 0.9830508474576272,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 59,
+    "rows_unstable": 5,
+    "unstable_kl_max": 0.013880602437743944,
+    "unstable_top1_flips": 1
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 75,
+    "gemma4_wmma_flash_full": 15,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "heldout_general_en_quant",
+   "category": "general_en",
+   "split": "heldout",
+   "prompt_tokens": 4093,
+   "legacy": {
+    "kl_mean": 0.004631820746429774,
+    "kl_p95": 0.017545390723631576,
+    "kl_p99": 0.14598492128295695,
+    "kl_max": 0.14598492128295695,
+    "top1_rate": 0.984375,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0023881207379134696,
+    "kl_p95": 0.01546057330413278,
+    "kl_p99": 0.03285833814729265,
+    "kl_max": 0.03285833814729265,
+    "top1_rate": 1.0,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 63,
+    "rows_unstable": 1,
+    "unstable_kl_max": 0.14598492128295695,
+    "unstable_top1_flips": 1
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 100,
+    "gemma4_wmma_flash_full": 320,
+    "gemma4_plain": 1590
+   }
+  },
+  {
+   "id": "heldout_general_ja_migration",
+   "category": "general_ja",
+   "split": "heldout",
+   "prompt_tokens": 8191,
+   "legacy": {
+    "kl_mean": 0.003733615012544339,
+    "kl_p95": 0.00922671971206563,
+    "kl_p99": 0.12079790473804887,
+    "kl_max": 0.12079790473804887,
+    "top1_rate": 0.984375,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.0035961206506702273,
+    "kl_p95": 0.005778248934379976,
+    "kl_p99": 0.12079790473804887,
+    "kl_max": 0.12079790473804887,
+    "top1_rate": 1.0,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 61,
+    "rows_unstable": 3,
+    "unstable_kl_max": 0.00922671971206563,
+    "unstable_top1_flips": 1
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 200,
+    "gemma4_wmma_flash_full": 355,
+    "gemma4_plain": 1575
+   }
+  },
+  {
+   "id": "heldout_general_ja_speculative",
+   "category": "general_ja",
+   "split": "heldout",
+   "prompt_tokens": 513,
+   "legacy": {
+    "kl_mean": 0.0072377956183843585,
+    "kl_p95": 0.02786865909847859,
+    "kl_p99": 0.18636646091225903,
+    "kl_max": 0.18636646091225903,
+    "top1_rate": 0.984375,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.002878951833954061,
+    "kl_p95": 0.011494498628876068,
+    "kl_p99": 0.05943847647716753,
+    "kl_max": 0.05943847647716753,
+    "top1_rate": 1.0,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 62,
+    "rows_unstable": 2,
+    "unstable_kl_max": 0.18636646091225903,
+    "unstable_top1_flips": 1
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 25,
+    "gemma4_wmma_flash_full": 5,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "heldout_mixed_summary",
+   "category": "mixed_ja_en",
+   "split": "heldout",
+   "prompt_tokens": 1031,
+   "legacy": {
+    "kl_mean": 0.007547425888083402,
+    "kl_p95": 0.035342727669476326,
+    "kl_p99": 0.12475464120673835,
+    "kl_max": 0.12475464120673835,
+    "top1_rate": 0.96875,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.007248620288919648,
+    "kl_p95": 0.035342727669476326,
+    "kl_p99": 0.12475464120673835,
+    "kl_max": 0.12475464120673835,
+    "top1_rate": 0.967741935483871,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 62,
+    "rows_unstable": 2,
+    "unstable_kl_max": 0.032108659617656826,
+    "unstable_top1_flips": 0
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 50,
+    "gemma4_wmma_flash_full": 10,
+    "gemma4_plain": 1890
+   }
+  },
+  {
+   "id": "heldout_mixed_review",
+   "category": "mixed_ja_en",
+   "split": "heldout",
+   "prompt_tokens": 2053,
+   "legacy": {
+    "kl_mean": 0.010423142205735897,
+    "kl_p95": 0.05900720159837029,
+    "kl_p99": 0.2082923182694076,
+    "kl_max": 0.2082923182694076,
+    "top1_rate": 0.953125,
+    "passed": false
+   },
+   "stable": {
+    "kl_mean": 0.010589684732948905,
+    "kl_p95": 0.06962269416765984,
+    "kl_p99": 0.2082923182694076,
+    "kl_max": 0.2082923182694076,
+    "top1_rate": 0.9824561403508771,
+    "passed": false,
+    "requires_review": true
+   },
+   "stability": {
+    "rows_total": 64,
+    "rows_stable": 57,
+    "rows_unstable": 7,
+    "unstable_kl_max": 0.03246471107330186,
+    "unstable_top1_flips": 2
+   },
+   "task_noninferior": true,
+   "task_strict_passed": true,
+   "task_candidate_passed": true,
+   "free_running_equal_diagnostic": false,
+   "three_run_repeat_equal": true,
+   "after_unrelated_request_equal": true,
+   "route_counts": {
+    "gemma4_wmma_flash": 75,
+    "gemma4_wmma_flash_full": 15,
+    "gemma4_plain": 1890
+   }
+  }
+ ],
+ "mechanism_measurements": {
+  "row_local_spikes": "heldout_mixed_review worst row KL 0.208 sits between rows at KL 0.001; the state re-converges between spikes",
+  "worst_row_structure": "strict top-1 token p=0.617 became candidate #2 q=0.326; logit diff mean 0.24, max 1.32 on the 30.0 softcap",
+  "router_ulp_flip_plausibility": {
+   "kind": "gemma4_router_flip_plausibility",
+   "performance_claim": false,
+   "perturbation": "plus/minus one bf16 ulp on the captured residual, per layer, strict trajectory only",
+   "cases": {
+    "heldout_mixed_review": {
+     "rows": 63,
+     "flip_plausible_rows": 21,
+     "spiked_rows_kl_over_0.01": 12,
+     "spike_with_flip_plausible": 1,
+     "spike_without_flip_plausible": 11,
+     "clean_flip_plausible": 20,
+     "min_margin_percentiles": {
+      "p50": 0.001584734083735384,
+      "p90": 0.005416980008044449,
+      "min": 0.00016702208176866407
+     },
+     "flip_plausible_rows_list": [
+      2,
+      3,
+      6,
+      11,
+      12,
+      15,
+      17,
+      19,
+      25,
+      27,
+      28,
+      29,
+      37,
+      41,
+      42,
+      43,
+      44,
+      47,
+      52,
+      54,
+      58
+     ],
+     "spiked_rows_list": [
+      4,
+      5,
+      6,
+      9,
+      16,
+      18,
+      31,
+      45,
+      46,
+      48,
+      49,
+      61
+     ],
+     "max_kl_of_non_flip_plausible": 0.0741448623444707
+    },
+    "heldout_general_ja_migration": {
+     "rows": 63,
+     "flip_plausible_rows": 24,
+     "spiked_rows_kl_over_0.01": 3,
+     "spike_with_flip_plausible": 1,
+     "spike_without_flip_plausible": 2,
+     "clean_flip_plausible": 23,
+     "min_margin_percentiles": {
+      "p50": 0.0015628527908120304,
+      "p90": 0.005545727397475278,
+      "min": 6.52715280011762e-05
+     },
+     "flip_plausible_rows_list": [
+      3,
+      8,
+      10,
+      15,
+      20,
+      22,
+      24,
+      25,
+      26,
+      27,
+      28,
+      30,
+      33,
+      37,
+      38,
+      39,
+      43,
+      48,
+      52,
+      53,
+      57,
+      58,
+      61,
+      62
+     ],
+     "spiked_rows_list": [
+      5,
+      50,
+      58
+     ],
+     "max_kl_of_non_flip_plausible": 0.12079790473804887
+    },
+    "code_merge_intervals": {
+     "rows": 63,
+     "flip_plausible_rows": 29,
+     "spiked_rows_kl_over_0.01": 2,
+     "spike_with_flip_plausible": 2,
+     "spike_without_flip_plausible": 0,
+     "clean_flip_plausible": 27,
+     "min_margin_percentiles": {
+      "p50": 0.0015410472351504723,
+      "p90": 0.005224944833116753,
+      "min": 2.085953735786461e-05
+     },
+     "flip_plausible_rows_list": [
+      3,
+      4,
+      6,
+      9,
+      13,
+      15,
+      19,
+      20,
+      22,
+      23,
+      25,
+      27,
+      30,
+      33,
+      34,
+      37,
+      38,
+      43,
+      46,
+      48,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      57,
+      58,
+      61
+     ],
+     "spiked_rows_list": [
+      23,
+      38
+     ],
+     "max_kl_of_non_flip_plausible": 0.004648913159716371
+    }
+   }
+  },
+  "refuted_row_rules": [
+   "output top-2 gap < 0.25 or pmax < 2^-8: only 34/1152 rows unstable, misses the spikes",
+   "plus/minus one bf16 ulp router-set flip: 33-46% of rows flip-plausible at some layer, yet 11/12 spiked rows on heldout_mixed_review are NOT in the set"
+  ]
+ },
+ "cross_engine_reference": {
+  "source": "benchmarks/results/2026-10-04-gemma4-gfx1151-depth-ladder-paired.json and its raw /tmp rows",
+  "greedy_token_agreement": {
+   "512": "128/128",
+   "1024": "128/128",
+   "2048": "128/128",
+   "4096": "128/128",
+   "8192": "0/128",
+   "16384": "0/128",
+   "32768": "0/128",
+   "65536": "0/128",
+   "131072": "0/128"
+  },
+  "note": "llama.cpp's own repeatability gate also rejected its 8192/16384 rows; strict-adjacency is not an accepted-engine property at depth on this model and quant"
+ },
+ "int8_anchor": {
+  "status": "cited, not re-run",
+  "reason": "paged_attn_prefill for int8_per_token_head is not a registered combination on this branch (MissingKernelError recorded in /tmp/wmma-calib-int8-screen)",
+  "cited_artifact": "benchmarks/results/2026-10-02-gemma4-d12-int8-kv-teacher-forced.json",
+  "cited_numbers": {
+   "kl_mean": 0.1426,
+   "kl_p95": 0.8951,
+   "kl_p99": 2.4264,
+   "top1_rate": 0.875
+  },
+  "separation": "an order of magnitude above any envelope that classifies ~3% of rows unstable"
+ },
+ "notes": [
+  "No numeric bar was widened and no default changed; the candidate fails the frozen stable-row bars and the protocol's integrity clause forbids a post-hoc rule fitted to these results.",
+  "The envelope for router-MoE models is a product decision for the lead; the frozen bars stay binding until a dated EXECUTION-PROFILES decision entry replaces them.",
+  "The sliding WMMA FP16 clamp (commit 9ed6bb132) is part of this packet's build; the candidate ran with masked out-of-range V protection verified."
+ ]
+}
