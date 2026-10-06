@@ -1,0 +1,373 @@
+{
+ "kind": "gemma4_wmma_sliding_prefill_numerics",
+ "date": "2026-10-06",
+ "status": "diagnostic_rejected",
+ "performance_claim": false,
+ "promotion_qualified": false,
+ "quality_qualified": false,
+ "default_promotion": false,
+ "production_unchanged": true,
+ "summary": "Repaired bounded WMMA sliding-prefill numerical screen at base commit 8b0069e8f608607c0fe2107d86d836fa851ebdbf. The candidate gemma4_attention_prefill_wmma_bf16 (variant gemma4_wmma_flash) was substituted for the registered exact_prefill_attention/gemma4_staged scope for the candidate arm only and restored in a finally; the reference arm pinned the scope to the strict gemma4_plain variant. The run was valid (2400/2400 candidate calls, three bit-identical repeats) and the identity control was exactly zero, but the candidate failed all five calibrated limits (mean/p95/p99/max KL and top-1) on the frozen forced chains. Driver exit 1 is a numerical rejection, not a runtime failure. Diagnostic only: no full strict teacher gate, no BF16-relative non-inferiority, no task-quality gate, no performance packet.",
+ "base_commit": "8b0069e8f608607c0fe2107d86d836fa851ebdbf",
+ "git_dirty": true,
+ "candidate_kernel": "gemma4_attention_prefill_wmma_bf16",
+ "candidate_variant": "gemma4_wmma_flash",
+ "reference": "plain",
+ "scope": "registry entry (hip_gfx1100, exact_prefill_attention, gemma4_exact_prefill_attention, gemma4_staged) replaced for the candidate arm and restored in a finally; the tiled, AOTriton, decode, and profile-selected prefill routes are untouched",
+ "workload": {
+  "context": 8448,
+  "chain_tokens": 3073,
+  "cases": 8,
+  "categories": [
+   "code",
+   "general_en",
+   "general_ja",
+   "mixed_ja_en"
+  ],
+  "bands": [
+   {
+    "length": 2560,
+    "rows": 1024
+   },
+   {
+    "length": 3073,
+    "rows": 1
+   }
+  ],
+  "rows_per_arm": 8200,
+  "vocab": 262144,
+  "batch_rows": 64,
+  "repeat": 3,
+  "control": true
+ },
+ "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python prefill_sliding_wmma_numerics.py --context 8448 --per-category 2 --bands 2560:1024,3073:1 --reference plain --repeat 3 --control --batch-rows 64 --capture-dir /mnt/nvme1/hipengine-diagnostics/wmma-sliding-r3 --out /tmp/gemma-llamacpp-512-256k/prefill-sliding-wmma-numerics-r3.json",
+ "cgroup_command": "systemd-run --user --scope --unit=hipengine-wmma-screen-r3b --quiet -p MemoryMax=24G -p MemorySwapMax=2G env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 /home/lhl/hipEngine-gemma4/.venv/bin/python prefill_sliding_wmma_numerics.py --context 8448 --per-category 2 --bands 2560:1024,3073:1 --reference plain --repeat 3 --control --batch-rows 64 --capture-dir /mnt/nvme1/hipengine-diagnostics/wmma-sliding-r3 --out /tmp/gemma-llamacpp-512-256k/prefill-sliding-wmma-numerics-r3.json",
+ "command_cwd": "/tmp/gemma-llamacpp-512-256k",
+ "oom_diagnosis": {
+  "when_local": "2026-10-06T12:28:51",
+  "killer": "kswapd0 invoked oom-killer; constraint=CONSTRAINT_NONE; global_oom",
+  "killed": {
+   "pid": 3142970,
+   "comm": "python",
+   "total_vm_kb": 86576776,
+   "anon_rss_kb": 15229224
+  },
+  "swap": {
+   "free_kb": 364,
+   "total_kb": 65731580
+  },
+  "enclosing_scope": "tmux-spawn-f73b5ecd-0e01-4b1e-95ef-98986170742f.scope",
+  "scope_result": "Failed with result 'oom-kill'",
+  "user_unit_note": "user@1000.service reported the kernel OOM killer killed processes in the unit; only python is explicitly identified",
+  "tmp_backing_store": "tmpfs 32 GiB, reported 31/32 GiB full at diagnosis time",
+  "cause": "The pre-repair driver held ~8.0 GiB per arm (8 cases x 1025 rows x 262,144 vocab x 4 B) for reference + 3 candidate repeats + control (5 arms) in memory and stacked them for the evaluator, peaking past 40 GiB.",
+  "attribution": "Only python (pid 3142970) is explicitly identified by the kernel report; no other specific process is claimed as the cause."
+ },
+ "repair": {
+  "driver": "/tmp/gemma-llamacpp-512-256k/prefill_sliding_wmma_numerics.py",
+  "driver_source_sha256": "27b1f1b108e7fff277a3a17f96ad560098bc6a5bd192851ee7ed30450f7d03fd",
+  "approach": "disk-backed per-case .npy memmaps under --capture-dir plus streamed row-batch evaluation (--batch-rows 64); per-row scalars retained so the verdict reproduces gemma4_teacher_forced_gate.evaluate; preflight refuses a tmpfs capture dir",
+  "cpu_validation_passed": 79,
+  "gpu_validation_passed": 20
+ },
+ "provenance": {
+  "host": "epyc",
+  "gpu_name_device0": "AMD Radeon Pro W7900",
+  "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+  "python": "3.11.11",
+  "hipcc": [
+   "HIP version: 7.2.53211-3d9ef42",
+   "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  ],
+  "env": {
+   "HIPENGINE_GEMMA4_MOE_PREFILL": "auto",
+   "HIP_INCLUDE_PATH": "/opt/rocm/include",
+   "HIP_LIB_PATH": "/opt/rocm/lib",
+   "HIP_PATH": "/opt/rocm",
+   "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+   "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+   "ROCR_VISIBLE_DEVICES": "0"
+  },
+  "artifact": {
+   "bytes": 17010980576,
+   "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+   "mtime": "2026-09-22T10:30:20.793299+00:00",
+   "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+  },
+  "attention_source_sha256": {
+   "hip": "b6b198104cc9b9bdaff6678cb8b2e49cce4c852ba957c1165e62250e41b74401",
+   "py": "bb21c4a0e9639e17faef93a540f9692a6aad5e914db63a5b97aa915fd0885882"
+  },
+  "driver_source_sha256": "27b1f1b108e7fff277a3a17f96ad560098bc6a5bd192851ee7ed30450f7d03fd",
+  "evaluator_source_sha256": "8355d284cffee2483bef596a5d1fabbe280765a28fe94c5485bb006904f279cb",
+  "capture_dir": "/mnt/nvme1/hipengine-diagnostics/wmma-sliding-r3",
+  "capture_resume": false,
+  "preflight_estimate": {
+   "arms": 5,
+   "band_bytes": 1073741824,
+   "batch_bytes": 67108864,
+   "batch_rows": 64,
+   "capture_dir": "/mnt/nvme1/hipengine-diagnostics/wmma-sliding-r3",
+   "disk_bytes": 42991616000,
+   "disk_free_bytes": 506592641024,
+   "filesystem": "ext4",
+   "mem_available_bytes": 43562237952,
+   "mem_bytes": 2348810240,
+   "rows_per_case": 1025,
+   "swap_free_bytes": 36262354944,
+   "total_rows_per_arm": 8200,
+   "vocab": 262144
+  }
+ },
+ "validity": {
+  "valid": true,
+  "reasons": [],
+  "selection_detail": {
+   "actual_calls": 2400,
+   "expected_calls": 2400,
+   "extra_calls": 0,
+   "extra_samples": [],
+   "missing_calls": 0,
+   "missing_samples": []
+  }
+ },
+ "selection_evidence": {
+  "candidate_calls": 2400,
+  "expected_calls": 2400,
+  "candidate_geometries": {
+   "counts": {
+    "tokens=1024,keys=2047,heads=16,kv_heads=8,head_dim=256,window=1024,row_offset=1023": 1800,
+    "tokens=512,keys=1535,heads=16,kv_heads=8,head_dim=256,window=1024,row_offset=1023": 600
+   },
+   "distinct": 2
+  }
+ },
+ "repeatability": {
+  "repeats": 3,
+  "all_raw_bytes_equal": true,
+  "passed": true
+ },
+ "control": {
+  "arm": "registered gemma4_staged vs reference",
+  "overall": {
+   "rows": 8200,
+   "kl_mean": 0.0,
+   "kl_p95": 0.0,
+   "kl_p99": 0.0,
+   "kl_max": 0.0,
+   "top1_rate": 1.0,
+   "top1_flips": 0,
+   "top1_flips_close_margin": 0,
+   "kl_rows_over_limit": 0,
+   "evidence_level": "numerical_rows",
+   "failed": [],
+   "passed": true,
+   "promotion_qualified": false
+  }
+ },
+ "thresholds": {
+  "kl_max": 0.05,
+  "kl_mean": 0.001,
+  "kl_p95": 0.005,
+  "kl_p99": 0.02,
+  "top1_rate": 0.99
+ },
+ "per_scope_top1_bar": 0.97,
+ "quality": {
+  "overall": {
+   "rows": 8200,
+   "kl_mean": 0.04363212384256955,
+   "kl_p95": 0.018544829887687193,
+   "kl_p99": 0.7666135055435126,
+   "kl_max": 19.976366056668642,
+   "top1_rate": 0.9852439024390244,
+   "top1_flips": 121,
+   "top1_flips_close_margin": 24,
+   "kl_rows_over_limit": 315,
+   "evidence_level": "numerical_rows",
+   "failed": [
+    "kl_mean",
+    "kl_p95",
+    "kl_p99",
+    "kl_max",
+    "top1_rate"
+   ],
+   "passed": false,
+   "promotion_qualified": false
+  },
+  "per_band": {
+   "2560:1024": {
+    "rows": 8192,
+    "kl_mean": 0.04336610434846348,
+    "kl_p95": 0.01851311286470939,
+    "kl_p99": 0.7666135055435126,
+    "kl_max": 19.976366056668642,
+    "top1_rate": 0.9852294921875,
+    "top1_flips": 121,
+    "top1_flips_close_margin": 24,
+    "kl_rows_over_limit": 313,
+    "evidence_level": "numerical_rows",
+    "failed": [
+     "kl_mean",
+     "kl_p95",
+     "kl_p99",
+     "kl_max",
+     "top1_rate"
+    ],
+    "passed": false,
+    "promotion_qualified": false
+   },
+   "3073:1": {
+    "rows": 8,
+    "kl_mean": 0.3160360858071861,
+    "kl_p95": 2.216267709947928,
+    "kl_p99": 2.216267709947928,
+    "kl_max": 2.216267709947928,
+    "top1_rate": 1.0,
+    "top1_flips": 0,
+    "top1_flips_close_margin": 0,
+    "kl_rows_over_limit": 2,
+    "evidence_level": "screen",
+    "failed": [
+     "kl_mean",
+     "kl_p95",
+     "kl_p99",
+     "kl_max"
+    ],
+    "passed": false,
+    "promotion_qualified": false
+   }
+  },
+  "per_category": {
+   "code": {
+    "rows": 2050,
+    "kl_mean": 0.019177019892665313,
+    "kl_p95": 0.011129248082026621,
+    "kl_p99": 0.28677463887629184,
+    "kl_max": 6.224573389672652,
+    "top1_rate": 0.9882926829268293,
+    "top1_flips": 24,
+    "top1_flips_close_margin": 5,
+    "kl_rows_over_limit": 60,
+    "evidence_level": "numerical_rows",
+    "failed": [
+     "kl_mean",
+     "kl_p95",
+     "kl_p99",
+     "kl_max",
+     "top1_rate"
+    ],
+    "passed": false,
+    "promotion_qualified": false
+   },
+   "general_en": {
+    "rows": 2050,
+    "kl_mean": 0.07067400176348747,
+    "kl_p95": 0.051163602518701286,
+    "kl_p99": 2.0821157825833954,
+    "kl_max": 11.4910985941124,
+    "top1_rate": 0.9790243902439024,
+    "top1_flips": 43,
+    "top1_flips_close_margin": 8,
+    "kl_rows_over_limit": 103,
+    "evidence_level": "numerical_rows",
+    "failed": [
+     "kl_mean",
+     "kl_p95",
+     "kl_p99",
+     "kl_max",
+     "top1_rate"
+    ],
+    "passed": false,
+    "promotion_qualified": false
+   },
+   "general_ja": {
+    "rows": 2050,
+    "kl_mean": 0.07662681426379771,
+    "kl_p95": 0.07864349886373086,
+    "kl_p99": 1.3156688523384605,
+    "kl_max": 19.976366056668642,
+    "top1_rate": 0.9790243902439024,
+    "top1_flips": 43,
+    "top1_flips_close_margin": 6,
+    "kl_rows_over_limit": 119,
+    "evidence_level": "numerical_rows",
+    "failed": [
+     "kl_mean",
+     "kl_p95",
+     "kl_p99",
+     "kl_max",
+     "top1_rate"
+    ],
+    "passed": false,
+    "promotion_qualified": false
+   },
+   "mixed_ja_en": {
+    "rows": 2050,
+    "kl_mean": 0.008050659450327714,
+    "kl_p95": 0.0033896926423634456,
+    "kl_p99": 0.07955300645034509,
+    "kl_max": 4.94749293218974,
+    "top1_rate": 0.9946341463414634,
+    "top1_flips": 11,
+    "top1_flips_close_margin": 5,
+    "kl_rows_over_limit": 33,
+    "evidence_level": "numerical_rows",
+    "failed": [
+     "kl_mean",
+     "kl_p99",
+     "kl_max"
+    ],
+    "passed": false,
+    "promotion_qualified": false
+   }
+  }
+ },
+ "run_seconds": 569.6,
+ "required_gates": [
+  {
+   "gate": "scoped_reference_row_metrics",
+   "status": "produced"
+  },
+  {
+   "gate": "strict_teacher_full_logits",
+   "status": "missing"
+  },
+  {
+   "gate": "determinism_repeats",
+   "status": "produced"
+  },
+  {
+   "gate": "bf16_relative_non_inferiority",
+   "status": "missing"
+  },
+  {
+   "gate": "task_quality_multicategory_heldout",
+   "status": "missing"
+  },
+  {
+   "gate": "stateful_composition_matrix",
+   "status": "missing"
+  },
+  {
+   "gate": "performance_packet",
+   "status": "missing"
+  },
+  {
+   "gate": "kernel_gpu_parity",
+   "status": "existing"
+  }
+ ],
+ "limitations": [
+  "Diagnostic screen only: the full strict execution-profile teacher gate, BF16-relative non-inferiority, the category/heldout task-quality gate, the stateful c>N composition matrix, and the performance packet are missing (see required_gates).",
+  "No performance claim; production routes and defaults are unchanged.",
+  "Memory and disk figures are preflight estimates; the estimate excludes runtime and pagecache overhead, and no measured peak is claimed.",
+  "Resume is not approved: the checkpoint hashes lack model, code, and band identity and record no route calls.",
+  "Exit code 1 is a numerical rejection of the candidate, not a runtime failure."
+ ],
+ "artifacts": {
+  "result": "/tmp/gemma-llamacpp-512-256k/prefill-sliding-wmma-numerics-r3.json",
+  "log": "/tmp/kendex-pi-bg/bg-142-1791275092450.log",
+  "captures": "/mnt/nvme1/hipengine-diagnostics/wmma-sliding-r3"
+ }
+}
