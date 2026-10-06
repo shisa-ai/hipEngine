@@ -145,6 +145,7 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
     qwen4_exp_gated_mean_sigmoid_f32,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
+    _check_norm_publication,
     qwen4_exp_grouped_rmsnorm_f32,
     qwen4_exp_gr_write_bf16_f32,
     qwen4_exp_repeat_bf16_branches,
@@ -163,7 +164,10 @@ from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
     _q8_dense_wide_enabled,
     wide_f16_activation_enabled,
+    wide_f16_activation_publication,
     wide_f16_activation_session,
+    wide_f16_activation_workspace,
+    wide_f16_publication_keys,
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
     wmma_prefill_session,
@@ -3021,6 +3025,73 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     return scratch.output
 
 
+def _run_qwen4_exp_gr_norm_down(
+    residual_ptr, norm_weight_ptr, down_weight, scratch, *,
+    rows, branches, hidden, low_rank, eps, stream, runtime,
+) -> None:
+    """Publish only for a qualified immediate HC-down consumer; else parent."""
+    width = branches * hidden
+    count = rows * width
+    iu8_down = (
+        _qwen4_exp_gr_iu8_down_enabled(rows)
+        and down_weight.spec.quant_key == "gguf_q8_0"
+        and width % 32 == 0
+    )
+    workspace = wide_f16_activation_workspace()
+    keys = None
+    if (workspace is not None and workspace.nbytes >= count * 2
+            and (rows, branches, hidden, low_rank) == (4096, 4, 2560, 320)
+            and not iu8_down):
+        keys = wide_f16_publication_keys(
+            down_weight, rows=rows, in_features=width, out_features=low_rank,
+        )
+    if keys is not None:
+        try:
+            # Validate every producer range before a write; refused admission
+            # uses the ordinary parent operation, not a partial publication.
+            _check_norm_publication(residual_ptr, norm_weight_ptr,
+                scratch.normalized.ptr, workspace.ptr, rows, branches, hidden)
+            raw = down_weight.allocation("raw")
+            ranges = ((scratch.low_rank.ptr, rows * low_rank * 4),
+                      (raw.tensor.ptr, raw.buffer.nbytes))
+            if any(workspace.ptr < ptr + size and ptr < workspace.ptr + count * 2
+                   for ptr, size in ranges):
+                keys = None
+        except ValueError:
+            keys = None
+    if keys is not None:
+        producer, consumer = keys
+        # Enter before publication so nesting invalidates an earlier loan
+        # before overwriting it. Only the immediately following launch can read.
+        with wide_f16_activation_publication(
+            scratch.normalized.ptr, count, stream=stream, runtime=runtime,
+            consumer_key=consumer,
+        ):
+            resolve(backend=producer.backend, layer=producer.layer,
+                    quant=producer.quant, variant=producer.variant)(
+                residual_ptr, norm_weight_ptr, scratch.normalized.ptr,
+                workspace.ptr, rows, branches, hidden, eps,
+                stream=stream, runtime=runtime,
+            )
+            launch_gguf_linear(down_weight, scratch.normalized.ptr, scratch.low_rank.ptr,
+                rows, width, low_rank, activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32, stream=stream, runtime=runtime)
+        return
+    qwen4_exp_grouped_rmsnorm_bf16_f32(
+        residual_ptr, norm_weight_ptr, scratch.normalized.ptr, rows, branches, hidden, eps,
+        stream=stream, runtime=runtime,
+    )
+    if iu8_down:
+        gguf_q8_0_iu8_wmma_prefill_f32_f32(
+            scratch.normalized.ptr, down_weight.allocation("raw").tensor.ptr,
+            scratch.low_rank.ptr, rows, width, low_rank, stream=stream, runtime=runtime,
+        )
+    else:
+        launch_gguf_linear(down_weight, scratch.normalized.ptr, scratch.low_rank.ptr,
+            rows, width, low_rank, activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32, stream=stream, runtime=runtime)
+
+
 def run_qwen4_exp_gr_read(
     residual_ptr: int,
     norm_weight_ptr: int,
@@ -3047,47 +3118,10 @@ def run_qwen4_exp_gr_read(
     if active_runtime is not scratch.runtime:
         raise ValueError("runtime must match the GR scratch owner")
     residual_width = branches * hidden
-    qwen4_exp_grouped_rmsnorm_bf16_f32(
-        residual_ptr,
-        norm_weight_ptr,
-        scratch.normalized.ptr,
-        rows,
-        branches,
-        hidden,
-        eps,
-        stream=stream,
-        runtime=active_runtime,
-    )
-    if (
-        _qwen4_exp_gr_iu8_down_enabled(rows)
-        and down_weight.spec.quant_key == "gguf_q8_0"
-        and residual_width % 32 == 0
-    ):
-        # T1 candidate for the GR down leg (10240->320, Q8_0, F32 in/out):
-        # same dense iu8-WMMA three-plane chain as the up route; the exact
-        # coltile parent stays the fallback.
-        gguf_q8_0_iu8_wmma_prefill_f32_f32(
-            scratch.normalized.ptr,
-            down_weight.allocation("raw").tensor.ptr,
-            scratch.low_rank.ptr,
-            rows,
-            residual_width,
-            low_rank,
-            stream=stream,
-            runtime=active_runtime,
-        )
-    else:
-        launch_gguf_linear(
-            down_weight,
-            scratch.normalized.ptr,
-            scratch.low_rank.ptr,
-            rows,
-            residual_width,
-            low_rank,
-        activation_dtype=GGUF_ACTIVATION_F32,
-        output_dtype=GGUF_OUTPUT_F32,
-        stream=stream,
-        runtime=active_runtime,
+    _run_qwen4_exp_gr_norm_down(
+        residual_ptr, norm_weight_ptr, down_weight, scratch,
+        rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+        eps=eps, stream=stream, runtime=active_runtime,
     )
     qwen4_exp_scaled_silu_f32(
         scratch.low_rank.ptr,

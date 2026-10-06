@@ -2369,6 +2369,15 @@ GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED = True
 GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED = True
 # Exact padded HC-down tail, qualified on natural inputs and full-model state.
 # Runtime consumes registry-axis keys; peer backends expose no admission.
+GGUF_DENSE_WIDE_F16_PUBLICATION_POLICIES = {
+    ("linear", "gguf_q8_0", "dense_wide256_f32_f32_out"): {
+        "rows": frozenset({4096}),
+        "shape": (10240, 320),
+        "layers": frozenset(range(13, 48)),
+        "roles": frozenset({"hc_attn_down", "hc_ffn_down"}),
+        "producer": ("gr_grouped_rmsnorm", "bf16_f32", "f32_f16_publish"),
+    },
+}
 GGUF_DENSE_WIDE_F16_TAIL_POLICIES = {
     ("linear", "gguf_q8_0", "dense_wide256_f16in_f32_f32_out"): {
         "rows": (512, 4096),
@@ -3414,6 +3423,15 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
     )
     if replace or not is_registered(multi_key):
         register(multi_key, qwen4_exp_gdn_prefill_tiled16_multi_f32, replace=replace)
+    from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
+        qwen4_exp_grouped_rmsnorm_bf16_f32_f16,
+    )
+    publish_key = KernelKey(
+        BACKEND, "gr_grouped_rmsnorm", "bf16_f32", "f32_f16_publish",
+    )
+    if replace or not is_registered(publish_key):
+        register(publish_key, qwen4_exp_grouped_rmsnorm_bf16_f32_f16, replace=replace)
+
     source_keys = [key for key in registered_keys() if key.backend == _SOURCE_BACKEND]
     for key in source_keys:
         if (key.layer, key.quant, key.variant) in _GFX1151_ALIAS_EXCLUSIONS:
@@ -3677,6 +3695,7 @@ __all__ = [
     "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
     "GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED",
     "GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED",
+    "GGUF_DENSE_WIDE_F16_PUBLICATION_POLICIES",
     "GGUF_RAW_K_PREFILL_VARIANT",
     "QWEN4_EXP_MOE_GRAPH",
     "QWEN4_EXP_PRODUCTION_MOE_PREFILL_LAYERS",

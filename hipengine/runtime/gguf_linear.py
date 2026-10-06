@@ -6,7 +6,7 @@ import contextlib
 import ctypes
 import os
 import warnings
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Callable, Iterator, Mapping
@@ -530,6 +530,7 @@ def _launch_prefill_f16_staged(
 # the f32-input owner instead, which costs the saving and never correctness.
 # Set ``HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=0`` for bisection.
 WIDE_F16_ACTIVATION_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"
+NORM_F16_PUBLICATION_ENV = "HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH"
 _WIDE_F16_ACTIVATION_SOURCE_SUFFIX = "_f32_f32_out"
 _WIDE_F16_ACTIVATION_TARGET_SUFFIX = "_f16in_f32_f32_out"
 DENSE_WIDE_TAIL_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT"
@@ -591,6 +592,117 @@ _wide_f16_activation_workspace: ContextVar[
 ] = ContextVar("gguf_wide_f16_activation_workspace", default=None)
 
 
+@dataclass
+class WideF16ActivationPublication:
+    """One same-context, same-stream consumer of already-published F16 bytes.
+
+    This is metadata only. The session owns allocation and stream completion;
+    the producer writes the half plane inside the scope before its consumer.
+    """
+
+    source_ptr: int
+    count: int
+    stream: int
+    runtime: object
+    workspace: WideF16ActivationWorkspace
+    consumer_key: KernelKey | None = None
+    consumed: bool = False
+    context_token: Token | None = None
+
+    def __post_init__(self) -> None:
+        if int(self.source_ptr) <= 0 or int(self.count) <= 0:
+            raise ValueError("publication source and count must be positive")
+        if int(self.count) * 2 > int(self.workspace.nbytes):
+            raise ValueError("publication exceeds workspace capacity")
+        source_end = int(self.source_ptr) + int(self.count) * 4
+        stage_end = int(self.workspace.ptr) + int(self.count) * 2
+        if max(source_end, stage_end) > (1 << 64) - 1:
+            raise ValueError("publication address range exceeds pointer bounds")
+        if int(self.source_ptr) < stage_end and int(self.workspace.ptr) < source_end:
+            raise ValueError("publication source overlaps workspace")
+
+
+_wide_f16_activation_publication: ContextVar[
+    WideF16ActivationPublication | None
+] = ContextVar("gguf_wide_f16_activation_publication", default=None)
+_wide_f16_publication_context = ContextVar("gguf_wide_f16_publication_context", default=None)
+
+
+def _owns_wide_f16_publication(publication) -> bool:
+    # ContextVar copies share references. A token can be reset only in its
+    # creating Context, unlike a copied marker value or a thread/task ID.
+    if publication.context_token is None:
+        return False
+    try:
+        _wide_f16_publication_context.reset(publication.context_token)
+    except ValueError:
+        return False
+    publication.context_token = _wide_f16_publication_context.set(publication)
+    return True
+
+
+def _invalidate_wide_f16_publication() -> None:
+    publication = _wide_f16_activation_publication.get()
+    if publication is not None and _owns_wide_f16_publication(publication):
+        publication.consumed = True
+
+
+@contextlib.contextmanager
+def wide_f16_activation_publication(
+    source_ptr: int,
+    count: int,
+    *,
+    stream: int = 0,
+    runtime=None,
+    consumer_key: KernelKey | None = None,
+) -> Iterator[WideF16ActivationPublication]:
+    """Loan the F16 plane for an immediate producer/consumer pair.
+
+    A copied context cannot publish into its parent's live loan. No allocation,
+    synchronization or persistent source cache is introduced by this scope.
+    """
+
+    prior = _wide_f16_activation_publication.get()
+    if prior is not None and not _owns_wide_f16_publication(prior):
+        raise ValueError("publication requires the workspace's owning context")
+    workspace = wide_f16_activation_workspace()
+    if workspace is None:
+        raise ValueError("publication requires an active F16 workspace")
+    publication = WideF16ActivationPublication(
+        int(source_ptr), int(count), int(stream), runtime, workspace, consumer_key,
+    )
+    _invalidate_wide_f16_publication()
+    publication.context_token = _wide_f16_publication_context.set(publication)
+    token = _wide_f16_activation_publication.set(publication)
+    try:
+        yield publication
+    finally:
+        publication.consumed = True
+        _wide_f16_publication_context.reset(publication.context_token)
+        publication.context_token = None
+        _wide_f16_activation_publication.reset(token)
+
+
+def _consume_wide_f16_publication(
+    source_ptr: int, count: int, *, stream: int = 0, runtime=None,
+    consumer_key: KernelKey | None = None,
+) -> int:
+    publication = _wide_f16_activation_publication.get()
+    if publication is None or publication.consumed or not _owns_wide_f16_publication(publication):
+        return 0
+    publication.consumed = True
+    if (
+        int(source_ptr) != publication.source_ptr
+        or int(count) != publication.count
+        or int(stream) != publication.stream
+        or runtime is not publication.runtime
+        or wide_f16_activation_workspace() is not publication.workspace
+        or consumer_key != publication.consumer_key
+    ):
+        return 0
+    return int(publication.workspace.ptr)
+
+
 @contextlib.contextmanager
 def wide_f16_activation_session(
     enabled: bool = True,
@@ -606,10 +718,12 @@ def wide_f16_activation_session(
             ptr=int(workspace_ptr),
             nbytes=int(workspace_nbytes),
         )
+    _invalidate_wide_f16_publication()
     token = _wide_f16_activation_workspace.set(workspace)
     try:
         yield
     finally:
+        _invalidate_wide_f16_publication()
         _wide_f16_activation_workspace.reset(token)
 
 
@@ -686,10 +800,15 @@ def _launch_dense_wide_f16_staged(
 ) -> bool:
     """Stage x as IEEE half and dispatch the fp16-in sibling; False = skip."""
 
+    publication = _wide_f16_activation_publication.get()
+    if publication is not None and not _owns_wide_f16_publication(publication):
+        return False  # a copied Context cannot overwrite the borrowed workspace
     if not wide_f16_activation_enabled():
+        _invalidate_wide_f16_publication()
         return False
     target = _wide_f16_activation_target_variant(variant)
     if target is None:
+        _invalidate_wide_f16_publication()
         return False
     key = KernelKey(backend, layer, quant, target)
     if not is_registered(key):
@@ -700,10 +819,12 @@ def _launch_dense_wide_f16_staged(
         # select it.
         _ensure_linear_kernel_registered(key)
     if not is_registered(key):
+        _invalidate_wide_f16_publication()
         return False
     count = int(rows) * int(in_features)
     stage_ptr = _wide_f16_activation_stage_ptr(count)
     if stage_ptr <= 0:
+        _invalidate_wide_f16_publication()
         return False
     key = _dense_wide_f16_tail_key(
         key, rows=rows, in_features=in_features, out_features=out_features,
@@ -724,14 +845,19 @@ def _launch_dense_wide_f16_staged(
         f32_to_f16,
     )
 
-    f32_to_f16(
-        x_ptr,
-        stage_ptr,
-        count,
-        stream=stage_kwargs.get("stream", 0),
-        library=library,
-        runtime=runtime,
+    published_ptr = _consume_wide_f16_publication(
+        x_ptr, count, stream=stage_kwargs.get("stream", 0), runtime=runtime,
+        consumer_key=key,
     )
+    if published_ptr == 0:
+        f32_to_f16(
+            x_ptr,
+            stage_ptr,
+            count,
+            stream=stage_kwargs.get("stream", 0),
+            library=library,
+            runtime=runtime,
+        )
     _LAUNCH_ABI["raw"](
         sibling,
         weight,
@@ -743,6 +869,63 @@ def _launch_dense_wide_f16_staged(
         stage_kwargs,
     )
     return True
+
+
+def wide_f16_activation_publication_enabled() -> bool:
+    """Whether a producer may publish a side plane for the wide consumer."""
+
+    value = os.environ.get(NORM_F16_PUBLICATION_ENV, "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def wide_f16_publication_keys(
+    weight: GGUFDeviceWeight, *, rows: int, in_features: int, out_features: int,
+) -> tuple[KernelKey, KernelKey] | None:
+    """Resolve a backend-policy-qualified producer and its immediate consumer.
+
+    No policy means no admission. Probe the same relevant F32 raw rewrites as
+    the live dispatch, so a competing MMQ/staged route cannot claim a loan.
+    """
+    if not wide_f16_activation_publication_enabled() or not wide_f16_activation_enabled():
+        return None
+    dispatch = resolve_gguf_linear_dispatch(
+        weight, activation_dtype=GGUF_ACTIVATION_F32, output_dtype=GGUF_OUTPUT_F32, rows=rows,
+    )
+    dispatch = _q8_mmq_prefill_dispatch(
+        dispatch, rows=rows, in_features=in_features, out_features=out_features,
+    )
+    dispatch = _raw_k_prefill_rowbatch_dispatch(
+        dispatch, rows=rows, in_features=in_features, out_features=out_features,
+        row_batch=raw_k_prefill_rowbatch(),
+        variant="coltile8" if raw_k_prefill_variant() == "coltile8_wave_scale" else raw_k_prefill_variant(),
+    )
+    dispatch = _q8_dense_wide_dispatch(
+        dispatch, rows=rows, in_features=in_features, out_features=out_features, weight=weight,
+    )
+    dispatch = _raw_k_staged_f32_dispatch(dispatch, weight=weight)
+    policies = backend_package_capability(
+        dispatch.key.backend, "GGUF_DENSE_WIDE_F16_PUBLICATION_POLICIES", {},
+    )
+    policy = policies.get((dispatch.key.layer, dispatch.key.quant, dispatch.key.variant))
+    slot = str(getattr(weight.spec, "slot_path", ""))
+    if (policy is None or dispatch.abi != "raw" or int(rows) not in policy["rows"]
+            or (int(in_features), int(out_features)) != policy["shape"]
+            or _weight_layer_index(weight) not in policy["layers"]
+            or slot.split(".")[-1] not in policy["roles"]):
+        return None
+    target = _wide_f16_activation_target_variant(dispatch.key.variant)
+    if target is None:
+        return None
+    key = KernelKey(dispatch.key.backend, dispatch.key.layer, dispatch.key.quant, target)
+    if not is_registered(key):
+        _ensure_linear_kernel_registered(key)
+    if not is_registered(key):
+        return None
+    key = _dense_wide_f16_tail_key(key, rows=rows, in_features=in_features, out_features=out_features)
+    producer = KernelKey(dispatch.key.backend, *policy["producer"])
+    if not is_registered(producer):
+        return None
+    return producer, key
 
 
 def mtp_serving_target_use_wmma_prefill(
@@ -3912,6 +4095,16 @@ def launch_gguf_linear(
     """
 
     resolved_backend = _weight_backend(weight, backend=backend)
+    publication = _wide_f16_activation_publication.get()
+    if publication is not None:
+        expected = publication.consumer_key
+        if (expected is None or expected.backend != resolved_backend
+                or expected.quant != weight.spec.quant_key
+                or int(x_ptr) != publication.source_ptr
+                or int(rows) * int(in_features) != publication.count
+                or int(stream) != publication.stream or runtime is not publication.runtime
+                or activation_dtype != GGUF_ACTIVATION_F32 or output_dtype != GGUF_OUTPUT_F32):
+            _invalidate_wide_f16_publication()
     wide_q6_dispatch = (
         _target_verifier_wide_q6_shared4_variant(
             weight,
@@ -4440,6 +4633,8 @@ def launch_gguf_linear(
         )
         _DISPATCH_RESOLVE_CACHE[cache_key] = cached
     abi, fn, layer, quant, variant = cached
+    if abi != "raw":
+        _invalidate_wide_f16_publication()
     library = None
     if libraries is not None:
         library = _variant_scoped_library(
@@ -4527,6 +4722,7 @@ def launch_gguf_linear(
         libraries=libraries,
     ):
         return
+    _invalidate_wide_f16_publication()
     _LAUNCH_ABI[abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 
