@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "status": "native_owner_screen_passed_rows4096_only",
+  "performance_claim": false,
+  "title": "Qwen4Exp DP-2 complete native owner cost screen",
+  "date": "2026-10-06",
+  "model": "Qwen3.8-Flash-Next",
+  "quant": "UD-Q4_K_XL",
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "rocm": "HIP version: 7.15.26333-0000000",
+    "gpu_clock_policy": "high",
+    "cpu_governors": "performance"
+  },
+  "execution_profile": "production",
+  "kv_dtype": "bf16",
+  "source": {
+    "commit": "5ed9c3e37011aeac5a6b8fa7faa3b8358e93ff32",
+    "repo_root": "/tmp/hipengine-dp2-native-clean",
+    "tracked_clean": true,
+    "raw_artifact": "/tmp/qwen4exp-dp2-native-owner-eight-case.json",
+    "raw_sha256": "20afe4030576b5b9dc538838c0a90da9b2ffd3e096d09cb3150acaf490853a8e"
+  },
+  "model_identity": {
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53"
+  },
+  "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "protocol": {
+    "command": "scripts/qwen4exp_shared_f16_cast_owner.py --native-owner --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --pairs 12 --output /tmp/qwen4exp-dp2-native-owner-eight-case.json",
+    "boundary": "actual runner pair helper: scope admission, both normal dispatches, cast/GEMMs, scope exit, events and final device sync; allocation, validation and surrounding model excluded",
+    "cases": 8,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "rows": [1024, 4096],
+    "layers": [13, 24, 46],
+    "pairs": ["attn_qkv+attn_gate", "shared_gate+shared_up"],
+    "warmups_per_arm": 1,
+    "measured_pairs_per_arm": 12,
+    "order_samples_per_arm": 6
+  },
+  "correctness": {
+    "owner_captures": 48,
+    "all_native_output_hashes_exact": true,
+    "all_f16_staging_hashes_exact": true,
+    "all_inputs_immutable": true,
+    "all_weights_immutable": true,
+    "all_timings_finite_positive": true,
+    "teardown_active_allocations": 0,
+    "teardown_current_allocated_bytes": 0
+  },
+  "engagement": {
+    "parent": {"pairs": 0, "accepted": 0, "casts": 2},
+    "candidate": {"pairs": 1, "accepted": 2, "casts": 1},
+    "candidate_casts_eliminated": 1,
+    "candidate_policy_after_screen": {"backend": "hip_gfx1151", "layers": "13..47", "rows": [4096], "pairs": ["attn_qkv+attn_gate", "shared_gate+shared_up"]}
+  },
+  "timing": {
+    "metric": "candidate one-cast operation / parent two-cast operation host wall median",
+    "rows1024": {
+      "attn_qkv+attn_gate": {"parent_ms": 31.232351902872324, "candidate_ms": 31.623360235244036, "change_pct": 1.2519336794990288, "min_order_stratum_ratio": 0.9790546729832638},
+      "shared_gate+shared_up": {"parent_ms": 7.712360005825758, "candidate_ms": 8.584924042224884, "change_pct": 11.31383954768721, "min_order_stratum_ratio": 0.8237444949590095},
+      "all": {"parent_ms": 38.94471190869808, "candidate_ms": 40.20828427746892, "change_pct": 3.244528735334229, "min_order_stratum_ratio": 0.8237444949590095}
+    },
+    "rows4096": {
+      "attn_qkv+attn_gate": {"parent_ms": 109.37848361209035, "candidate_ms": 107.25946864113212, "change_pct": -1.9373234122291305, "min_order_stratum_ratio": 1.0136599788850509},
+      "shared_gate+shared_up": {"parent_ms": 20.25435119867325, "candidate_ms": 17.20583299174905, "change_pct": -15.051176791700405, "min_order_stratum_ratio": 1.1538646640988364},
+      "all": {"parent_ms": 129.6328348107636, "candidate_ms": 124.46530163288116, "change_pct": -3.9862841736246324, "min_order_stratum_ratio": 1.0136599788850509}
+    },
+    "event_change_pct": {"rows1024": 3.209464837010411, "rows4096": -4.112562649852192}
+  },
+  "decision": {
+    "default": "parent",
+    "candidate": "opt-in rows4096 only; rows1024 removed from admission",
+    "production_profile_enabled": false,
+    "model_wall_claim": false,
+    "reason": "Complete native owner operation wins at rows4096 in both order strata and loses at rows1024 in both order strata. The policy is narrowed to rows4096; a separate clean full-engine A/B is required before profile promotion."
+  }
+}
