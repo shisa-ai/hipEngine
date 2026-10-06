@@ -51,6 +51,7 @@ class GlobalDeviceKVPool:
         growth_chunk_pages: int | None = None,
         on_pressure: Callable[[int], None] | None = None,
         contiguous_growth: bool = False,
+        physical_bytes_for_pages: Callable[[int], int] | None = None,
     ) -> None:
         if int(page_bytes) <= 0:
             raise ValueError("page_bytes must be positive")
@@ -94,6 +95,12 @@ class GlobalDeviceKVPool:
         self._grow_storage = grow_storage
         # Only stable-address providers may merge growth into one binding.
         self._contiguous_growth = bool(contiguous_growth)
+        # A stable-address VMM arena commits granularity-aligned physical bytes
+        # that trail its logical page payload. When the provider supplies this,
+        # the budget prices the real physical commitment -- prospective as well
+        # as current -- instead of the logical pages, so alignment padding is
+        # never silently free. A plain ``hipMalloc`` provider leaves it None.
+        self._physical_bytes_for_pages = physical_bytes_for_pages
         self._before_grow = before_grow
         self._max_pages = None if max_pages is None else int(max_pages)
         if self._max_pages is not None and self._max_pages < self.global_pool.page_capacity:
@@ -107,7 +114,7 @@ class GlobalDeviceKVPool:
         self._primary_plane = sorted(planes)[0]
         self._request_allocations: dict[int, DeviceKVPoolAllocation] = {}
         self._workspace_leases: dict[str, tuple[int, ...]] = {}
-        self._private_workspace_reservations: dict[object, int] = {}
+        self._private_workspace_reservations: dict[object, tuple[str, int]] = {}
         self._pin_counts: dict[int, int] = {}
         self._last_active_seconds = 0.0
         self._high_water_observed_pages = 0
@@ -139,37 +146,158 @@ class GlobalDeviceKVPool:
     @property
     def private_workspace_bytes(self) -> int:
         with self._lock:
-            return sum(self._private_workspace_reservations.values())
+            return sum(
+                charged
+                for _name, charged in self._private_workspace_reservations.values()
+            )
+
+    @property
+    def _arena_physical_bytes(self) -> int:
+        """Physical device bytes the arena holds, granularity overhead included.
+
+        Falls back to the logical page payload when the storage provider does
+        not report a physical commitment (a plain ``hipMalloc`` chunk), where
+        the two are equal.
+        """
+
+        return self._physical_bytes(self.current_pages)
+
+    def _physical_bytes(self, pages: int) -> int:
+        """Prospective physical bytes for a page count, padding included.
+
+        Non-VMM providers have no padding, so this is the logical payload.
+        """
+
+        count = max(0, int(pages))
+        if self._physical_bytes_for_pages is None:
+            return count * self.page_bytes
+        return max(0, int(self._physical_bytes_for_pages(count)))
+
+    def _prospective_growth_bytes(self, pages: int) -> int:
+        """Additional physical bytes a growth of ``pages`` would commit.
+
+        The growth budget must be checked against the padded physical delta, not
+        ``pages * page_bytes``, so a granularity boundary refuses before any
+        physical memory is mapped.
+        """
+
+        count = max(0, int(pages))
+        if self._physical_bytes_for_pages is None:
+            return count * self.page_bytes
+        return max(0, self._physical_bytes(self.current_pages + count) - self._arena_physical_bytes)
+
+    def _max_pages_within_budget(self, upper: int) -> int:
+        """Largest page count at or below ``upper`` whose physical bytes fit.
+
+        The remaining budget is ``budget_bytes`` minus every private-workspace
+        charge. Binary search inverts the monotonic prospective pricing so a
+        granularity boundary is respected before any commit.
+        """
+
+        ceiling = max(0, int(upper))
+        if self._physical_bytes_for_pages is None:
+            budget = self.budget_bytes - self.private_workspace_bytes
+            return max(0, min(ceiling, budget // self.page_bytes))
+        budget = self.budget_bytes - self.private_workspace_bytes
+        if budget <= 0:
+            return 0
+        low, high = 0, ceiling
+        while low < high:
+            mid = (low + high + 1) // 2
+            if self._physical_bytes(mid) <= budget:
+                low = mid
+            else:
+                high = mid - 1
+        return low
+
+    @property
+    def resident_consumers(self) -> tuple[Any, ...]:
+        """Every charged resident consumer: the arena first, then charges in order."""
+
+        from hipengine.runtime.memory_admission import MemoryConsumer
+
+        with self._lock:
+            return (
+                MemoryConsumer("kv_arena", self._arena_physical_bytes),
+                *(
+                    MemoryConsumer(name, charged)
+                    for name, charged in self._private_workspace_reservations.values()
+                ),
+            )
 
     @property
     def accounted_bytes(self) -> int:
-        """Allocated arena plus reserved private KV payload, including idle pages."""
-        with self._lock:
-            return self.current_pages * self.page_bytes + self.private_workspace_bytes
+        """Arena physical commitment plus every reserved resident consumer."""
 
-    def reserve_private_workspace(self, nbytes: int) -> object:
-        """Charge private KV before allocation; retain the charge until buffers free."""
+        with self._lock:
+            return self._arena_physical_bytes + self.private_workspace_bytes
+
+    def reserve_resident_bytes(self, name: str, nbytes: int) -> object:
+        """Charge a resident device consumer before allocating it.
+
+        The charge is retained until the consumer's buffers are freed, so the
+        budget prices the whole resident footprint rather than only the arena.
+        The charge is refused, naming this consumer, before the caller allocates
+        anything.
+        """
+
         count = int(nbytes)
         if count <= 0:
-            raise ValueError("private workspace bytes must be positive")
+            raise ValueError("resident consumer bytes must be positive")
+        label = str(name).strip()
+        if not label:
+            raise ValueError("resident consumer needs a name")
         with self._lock:
             self._require_open()
-            self._check_byte_budget(count)
+            self._check_byte_budget(count, name=label)
             token = object()
-            self._private_workspace_reservations[token] = count
+            self._private_workspace_reservations[token] = (label, count)
             return token
+
+    def reserve_private_workspace(
+        self, nbytes: int, name: str = "private_workspace"
+    ) -> object:
+        """Charge private KV before allocation; retain the charge until buffers free."""
+
+        return self.reserve_resident_bytes(name, nbytes)
 
     def release_private_workspace(self, token: object) -> None:
         with self._lock:
             del self._private_workspace_reservations[token]
 
-    def _check_byte_budget(self, additional_bytes: int) -> None:
+    def _check_byte_budget(
+        self, additional_bytes: int, name: str = "private_workspace"
+    ) -> None:
+        """Refuse a charge that does not fit, naming the consumer that does not.
+
+        Imported here rather than at module scope: ``hipengine.runtime`` pulls in
+        the KV cache, so a module-scope edge from this package to that one is a
+        cycle. The budget itself is shared, not duplicated.
+        """
+
         budget = self.budget_bytes
-        if budget is not None and self.accounted_bytes + additional_bytes > budget:
-            raise MemoryError(
-                "arena and private workspace KV exceed the pool budget: "
-                f"{self.accounted_bytes} + {additional_bytes} > {budget} bytes"
-            )
+        if budget is None:
+            return
+        from hipengine.runtime.memory_admission import (
+            MemoryAdmissionRefused,
+            MemoryConsumer,
+            price_memory_admission,
+        )
+
+        decision = price_memory_admission(
+            free_bytes=budget,
+            consumers=(
+                MemoryConsumer("kv_arena", self._arena_physical_bytes),
+                *(
+                    MemoryConsumer(charged_name, charged)
+                    for charged_name, charged in self._private_workspace_reservations.values()
+                ),
+                MemoryConsumer(str(name), int(additional_bytes)),
+            ),
+            reserve_bytes=0,
+        )
+        if not decision.admitted:
+            raise MemoryAdmissionRefused(decision)
 
     @property
     def allocations(self) -> dict[int, DeviceKVPoolAllocation]:
@@ -447,10 +575,7 @@ class GlobalDeviceKVPool:
             self._growth_chunk_pages, missing
         )
         if self._max_pages is not None:
-            target = min(
-                target,
-                (self.budget_bytes - self.private_workspace_bytes) // self.page_bytes,
-            )
+            target = min(target, self._max_pages_within_budget(self._max_pages))
         if target <= self.global_pool.page_capacity:
             self._allocation_failures += 1
             raise MemoryError(
@@ -554,7 +679,9 @@ class GlobalDeviceKVPool:
         with self._lock:
             self._require_open()
             try:
-                self._check_byte_budget(count * self.page_bytes)
+                # Price the padded physical delta, not the logical pages, so a
+                # granularity boundary refuses before any mapping is committed.
+                self._check_byte_budget(self._prospective_growth_bytes(count))
                 if callable(self._before_grow):
                     self._before_grow()
                 chunk_start = int(self.global_pool.page_capacity)

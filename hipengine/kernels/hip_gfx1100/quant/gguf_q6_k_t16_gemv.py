@@ -723,6 +723,18 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out(
     library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
 ) -> None:
     """Launch 32-column/384-row planar-Q6 shared-weight prefill."""
+    if rows >= 385:
+        return gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out(
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
     _launch(
         _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4R6_BF16_BF16,
         x_ptr, tiles_ptr, out_ptr, rows, in_features, out_features,

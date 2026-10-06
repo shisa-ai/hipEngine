@@ -22,6 +22,7 @@ from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
+    copy_host_array_to_device,
     copy_host_to_device,
     free,
     host_array_ptr,
@@ -12841,13 +12842,13 @@ class Qwen35ParoResidentSession:
         existing_size = getattr(self, attr_size, 0)
         if existing is not None and existing_size >= nbytes:
             if populate:
-                copy_host_to_device(
-                    existing, host_array_ptr(np.ascontiguousarray(host)), nbytes, runtime=self.runtime,
+                copy_host_array_to_device(
+                    existing, np.ascontiguousarray(host), nbytes, runtime=self.runtime,
                 )
             return existing
         buf = malloc(nbytes, runtime=self.runtime)
-        copy_host_to_device(
-            buf, host_array_ptr(np.ascontiguousarray(host)), nbytes, runtime=self.runtime,
+        copy_host_array_to_device(
+            buf, np.ascontiguousarray(host), nbytes, runtime=self.runtime,
         )
         setattr(self, attr, buf)
         setattr(self, attr_size, nbytes)

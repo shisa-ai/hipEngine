@@ -1,0 +1,185 @@
+{
+ "protocol": "yue2-product-case-timing-v3",
+ "date": "2026-09-17",
+ "host": {
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "gpu": "gfx1151",
+  "platform": "linux"
+ },
+ "revision": "99a115f75dd0ce0930f0001ae4eeb4bfa9a91933",
+ "case": "mandarin-off-s1234",
+ "steps": 32,
+ "work": {
+  "semantic_tokens": 1298,
+  "frames": 1298,
+  "samples": 2492096,
+  "audio_seconds": 51.91866666666667,
+  "reference_frames": 1297,
+  "note": "Both arms run the identical request with the semantic phase capped at the reference recording's token count, so they do the same work: 1 298 frames against the reference's 1 297, 51.92 s against 51.88 s of audio."
+ },
+ "arms": {
+  "hipengine_windowed": {
+   "runs": [
+    {
+     "total_seconds": 119.6500623759348,
+     "audio_seconds": 51.91866666666667,
+     "rtf": 2.3045673176494286,
+     "semantic_seconds": 73.2581120240502,
+     "semantic_tokens": 1298,
+     "semantic_ms_per_token": 56.43922343917581,
+     "nar_seconds": 26.18595323699992,
+     "nar_ms_per_frame": 20.17407799460703,
+     "vae_seconds": 20.18168683408294,
+     "vae_ms_per_frame": 15.54829494151228,
+     "frames": 1298,
+     "samples": 2492096,
+     "random_state_digest": "e0a78034e85a52f0"
+    },
+    {
+     "total_seconds": 124.53978007903788,
+     "audio_seconds": 51.91866666666667,
+     "rtf": 2.3987476581134186,
+     "semantic_seconds": 74.42797539697494,
+     "semantic_tokens": 1298,
+     "semantic_ms_per_token": 57.34050492833201,
+     "nar_seconds": 28.94934590405319,
+     "nar_ms_per_frame": 22.30303998771432,
+     "vae_seconds": 21.12843136000447,
+     "vae_ms_per_frame": 16.27768209553503,
+     "frames": 1298,
+     "samples": 2492096,
+     "random_state_digest": "e0a78034e85a52f0"
+    },
+    {
+     "total_seconds": 129.5038507930003,
+     "audio_seconds": 51.91866666666667,
+     "rtf": 2.494360104130826,
+     "semantic_seconds": 75.38450686493888,
+     "semantic_tokens": 1298,
+     "semantic_ms_per_token": 58.07743209933658,
+     "nar_seconds": 31.84242790809367,
+     "nar_ms_per_frame": 24.531916724263226,
+     "vae_seconds": 22.24264659790788,
+     "vae_ms_per_frame": 17.136091369728717,
+     "frames": 1298,
+     "samples": 2492096,
+     "random_state_digest": "e0a78034e85a52f0"
+    }
+   ]
+  },
+  "hipengine_full_ar_paths": {
+   "runs": [
+    {
+     "total_seconds": 145.1614177459851,
+     "audio_seconds": 51.91866666666667,
+     "rtf": 2.7959388610259333,
+     "semantic_seconds": 98.9325157069834,
+     "semantic_tokens": 1298,
+     "semantic_ms_per_token": 76.21919545992557,
+     "nar_seconds": 26.0465320229996,
+     "nar_ms_per_frame": 20.06666565716456,
+     "vae_seconds": 20.159559897030704,
+     "vae_ms_per_frame": 15.531247994630743,
+     "frames": 1298,
+     "samples": 2492096,
+     "random_state_digest": "e0a78034e85a52f0"
+    },
+    {
+     "total_seconds": 155.22070428100415,
+     "audio_seconds": 51.91866666666667,
+     "rtf": 2.9896897252305688,
+     "semantic_seconds": 102.82370434596669,
+     "semantic_tokens": 1298,
+     "semantic_ms_per_token": 79.21702954234722,
+     "nar_seconds": 30.55065366299823,
+     "nar_ms_per_frame": 23.536713145607262,
+     "vae_seconds": 21.81138462398667,
+     "vae_ms_per_frame": 16.8038402341962,
+     "frames": 1298,
+     "samples": 2492096,
+     "random_state_digest": "e0a78034e85a52f0"
+    },
+    {
+     "total_seconds": 160.03719286504202,
+     "audio_seconds": 51.91866666666667,
+     "rtf": 3.0824596073032566,
+     "semantic_seconds": 104.04237328097224,
+     "semantic_tokens": 1298,
+     "semantic_ms_per_token": 80.15591161862268,
+     "nar_seconds": 33.16059445403516,
+     "nar_ms_per_frame": 25.54745335441846,
+     "vae_seconds": 22.799856030964293,
+     "vae_ms_per_frame": 17.565374446043368,
+     "frames": 1298,
+     "samples": 2492096,
+     "random_state_digest": "e0a78034e85a52f0"
+    }
+   ]
+  }
+ },
+ "summary": {
+  "hipengine_windowed": {
+   "total_seconds_median": 124.53978007903788,
+   "rtf_median": 2.3987476581134186,
+   "semantic_ms_per_token_median": 57.34050492833201,
+   "nar_ms_per_frame_median": 22.30303998771432,
+   "vae_ms_per_frame_median": 16.27768209553503,
+   "rtf_range": [
+    2.3045673176494286,
+    2.494360104130826
+   ]
+  },
+  "hipengine_full_ar_paths": {
+   "total_seconds_median": 155.22070428100415,
+   "rtf_median": 2.9896897252305688,
+   "semantic_ms_per_token_median": 79.21702954234722,
+   "nar_ms_per_frame_median": 23.536713145607262,
+   "vae_ms_per_frame_median": 16.8038402341962,
+   "rtf_range": [
+    2.7959388610259333,
+    3.0824596073032566
+   ]
+  },
+  "paired_elapsed_ratio_median": 1.2357716923865558,
+  "paired_elapsed_ratio_range": [
+   1.2132163984160311,
+   1.2463544112772236
+  ],
+  "paired_ar_ratio_median": 1.3801559180771408,
+  "tokens_and_digest_identical_across_arms": true,
+  "random_state_digest": "e0a78034e85a52f0"
+ },
+ "reference": {
+  "pinned_recording": {
+   "e2e_seconds": 137.79846624704078,
+   "audio_seconds": 51.87866666666667,
+   "rtf": 2.656168230622236,
+   "semantic_seconds": 40.597172370995395,
+   "semantic_output_tokens": 1298,
+   "semantic_ms_per_token": 31.276712150227578,
+   "nar_seconds": 27.317111173062585,
+   "vae_seconds": 69.09195590298623
+  },
+  "fresh_product_run": {
+   "e2e_seconds": 260.1923406079877,
+   "audio_seconds": 51.87866666666667,
+   "rtf": 5.015401461255514,
+   "semantic_seconds": 43.55362063611392,
+   "semantic_output_tokens": 1298,
+   "semantic_ms_per_token": 33.554407269733375,
+   "nar_seconds": 26.764872486004606,
+   "vae_seconds": 186.34709302696865
+  },
+  "note": "The reference product path is not reproducible on this host: its VAE stage is 186.35 s in a fresh run against 69.09 s in its pinned recording, while its AR and NAR stages agree within 7%. Its own warm tiled decode of these same latents is 20.15 s (scripts/yue2_reference_stage_timing.py), so the spread is its per-request decoder handling, not the machine."
+ },
+ "controls": {
+  "nar_and_vae_are_identical_work_in_both_arms": true,
+  "machine_drift_within_session": "NAR and VAE per-frame costs inflate ~20% and ~10% across the three repetitions in both arms alike (the arms track each other), so the paired ratios are the stable quantity and the absolute seconds are not."
+ },
+ "command_lines": [
+  "scripts/yue2_case_timing.py --case mandarin-off-s1234 --steps 32 --json ...",
+  "scripts/yue2_case_timing.py --case mandarin-off-s1234 --steps 32 --full-ar-paths --json ...",
+  "PYTHONPATH=~/yue2-shootout/shared/upstream ~/venvs/vibevoice-tts-oracle/bin/python scripts/yue2_oracle.py --out /tmp/yue2_oracle_recheck --compact /tmp/... cases --only mandarin-off-s1234"
+ ]
+}

@@ -81,6 +81,20 @@ __global__ void dms_int8_append_kernel(const uint16_t* k, const uint16_t* v,
   // row-by-row version preserved, now in parallel.
   __shared__ int s_flag[Threads];
   __shared__ int s_chunk_total;
+  // Row staging for the shift phase.  A dropped row moves every later keeper in
+  // the chunk one slot left, so a thread's destination can be another thread's
+  // source.  Reading a source and writing a destination in one instruction
+  // sequence lets the loser read a value another thread already moved, which
+  // duplicates one position and loses another.  A chunk that drops a row stages
+  // every keeper's row here first, so a barrier separates the whole read phase
+  // from the whole write phase.  A chunk that drops nothing shifts nothing.
+  constexpr int StageTile = 8;
+  __shared__ int8_t s_stage_k[Threads * StageTile];
+  __shared__ int8_t s_stage_v[Threads * StageTile];
+  __shared__ float s_stage_ks[Threads];
+  __shared__ float s_stage_vs[Threads];
+  __shared__ int32_t s_stage_pos[Threads];
+  __shared__ uint8_t s_stage_flag[Threads];
   int keepers = 0;
   for (int chunk0 = 0; chunk0 < n; chunk0 += Threads) {
     const int in_chunk = tid < (n - chunk0);
@@ -121,21 +135,57 @@ __global__ void dms_int8_append_kernel(const uint16_t* k, const uint16_t* v,
       s_flag[tid] += delta;
       __syncthreads();
     }
-    if (in_chunk && s_flag[tid] > (tid > 0 ? s_flag[tid - 1] : 0)) {
-      const int dst = base + chunk_rank + s_flag[tid] - 1;
+    const int chunk_rows = (n - chunk0) < Threads ? (n - chunk0) : Threads;
+    const int chunk_total = s_flag[Threads - 1];
+    // A keeper shifts when a row before it was dropped -- in this chunk or any
+    // earlier one.  Only a chunk that neither dropped a row nor inherits an
+    // earlier drop leaves every keeper in place, and only that chunk can skip
+    // the staging.
+    if (chunk_rank != chunk0 || chunk_total != chunk_rows) {
+      // A drop shifts every later keeper in this chunk one slot left, so a
+      // thread's destination can be another thread's source. Stage the row so
+      // the barrier separates the whole read phase from the whole write phase;
+      // reading and writing in one sequence lets the loser read a value another
+      // thread already moved, duplicating one position and losing another.
+      const int rank = s_flag[tid];
+      const bool keeper = in_chunk && rank > (tid > 0 ? s_flag[tid - 1] : 0);
       const int src = base + chunk0 + tid;
-      if (dst != src) {
+      const int dst = keeper ? (base + chunk_rank + rank - 1) : src;
+      s_stage_ks[tid] = keeper ? ks[src] : 0.0f;
+      s_stage_vs[tid] = keeper ? vs[src] : 0.0f;
+      s_stage_pos[tid] = keeper ? positions[src] : 0;
+      s_stage_flag[tid] = keeper ? flags[src] : uint8_t(0);
+      __syncthreads();
+      for (int c0 = 0; c0 < dim; c0 += StageTile) {
+        for (int j = 0; j < StageTile; ++j) {
+          const int c = c0 + j;
+          if (c < dim) {
+            s_stage_k[tid * StageTile + j] =
+                keeper ? ko[int64_t(src)*dim+c] : int8_t(0);
+            s_stage_v[tid * StageTile + j] =
+                keeper ? vo[int64_t(src)*dim+c] : int8_t(0);
+          }
+        }
+        __syncthreads();
+        if (keeper) {
+          for (int j = 0; j < StageTile; ++j) {
+            const int c = c0 + j;
+            if (c < dim) {
+              ko[int64_t(dst)*dim+c] = s_stage_k[tid * StageTile + j];
+              vo[int64_t(dst)*dim+c] = s_stage_v[tid * StageTile + j];
+            }
+          }
+        }
+        __syncthreads();
+      }
+      if (keeper) {
         // The owning thread moves the whole row (payload bytes and scales
         // without requantization), matching the BF16 family's ownership rule.
-        for (int d = 0; d < dim; ++d) {
-          ko[int64_t(dst)*dim+d] = ko[int64_t(src)*dim+d];
-          vo[int64_t(dst)*dim+d] = vo[int64_t(src)*dim+d];
-        }
-        ks[dst] = ks[src]; vs[dst] = vs[src];
-        positions[dst] = positions[src]; flags[dst] = flags[src];
+        ks[dst] = s_stage_ks[tid]; vs[dst] = s_stage_vs[tid];
+        positions[dst] = s_stage_pos[tid]; flags[dst] = s_stage_flag[tid];
       }
     }
-    s_chunk_total = s_flag[Threads - 1];
+    s_chunk_total = chunk_total;
     __syncthreads();
     chunk_rank += s_chunk_total;
     __syncthreads();

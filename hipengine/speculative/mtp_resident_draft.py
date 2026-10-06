@@ -19,6 +19,7 @@ from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
+    copy_host_array_to_device,
     copy_host_to_device,
     free,
     host_array_ptr,
@@ -1955,10 +1956,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
         sin_strided = np.zeros((n, d), dtype=np.float32)
         cos_strided[:, :rope_w] = np.asarray(rope_cos[positions], dtype=np.float32)
         sin_strided[:, :rope_w] = np.asarray(rope_sin[positions], dtype=np.float32)
-        copy_host_to_device(self.cos_all, host_array_ptr(np.ascontiguousarray(cos_strided)), cos_strided.nbytes, runtime=runtime)
-        copy_host_to_device(self.sin_all, host_array_ptr(np.ascontiguousarray(sin_strided)), sin_strided.nbytes, runtime=runtime)
-        copy_host_to_device(self.pos_all, host_array_ptr(np.ascontiguousarray(positions)), positions.nbytes, runtime=runtime)
-        copy_host_to_device(self.ctx_all, host_array_ptr(np.ascontiguousarray(ctxs)), ctxs.nbytes, runtime=runtime)
+        copy_host_array_to_device(self.cos_all, np.ascontiguousarray(cos_strided), cos_strided.nbytes, runtime=runtime)
+        copy_host_array_to_device(self.sin_all, np.ascontiguousarray(sin_strided), sin_strided.nbytes, runtime=runtime)
+        copy_host_array_to_device(self.pos_all, np.ascontiguousarray(positions), positions.nbytes, runtime=runtime)
+        copy_host_array_to_device(self.ctx_all, np.ascontiguousarray(ctxs), ctxs.nbytes, runtime=runtime)
         if stage_timings is not None:
             _stage_add(stage_timings, "draft_prepare_inputs", (time.perf_counter() - t_prepare0) * 1000)
         current_cache_len = int(dense_cache_len)

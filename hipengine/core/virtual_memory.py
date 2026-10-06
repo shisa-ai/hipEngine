@@ -11,7 +11,8 @@ arena needs so that cached pointers into the arena stay valid across growth.
 
 The reserved virtual address range is *not* physical memory and is deliberately not recorded
 in :mod:`hipengine.core.memory` allocation counters; only the committed (mapped) segments are
-backed by real device memory. Precise physical accounting is the caller's responsibility.
+backed by real device memory, and those granularity-aligned bytes *are* recorded there so a
+whole-card peak attributes the arena to real device memory.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import ctypes
 from dataclasses import dataclass
 
 from hipengine.core.hip import HipError, HipRuntime, get_hip_runtime
+from hipengine.core.memory import record_device_commit
 
 # hipMemAllocationType (hip_runtime_api.h)
 HIP_MEM_ALLOCATION_TYPE_PINNED: int = 0x01
@@ -340,6 +342,29 @@ class VirtualMemoryBuffer:
             )
             raise
 
+    @classmethod
+    def query_granularity(
+        cls,
+        *,
+        runtime: HipRuntime | None = None,
+        device: int | None = None,
+    ) -> int:
+        """Return the device allocation granularity without reserving memory.
+
+        Callers that must price a prospective VMM commitment before allocating
+        need the granularity up front. ``device`` defaults to the runtime's
+        current device; no GPU work beyond the granularity query happens.
+        """
+
+        selected_runtime = runtime or get_hip_runtime()
+        library = selected_runtime.library
+        _configure_vmm(library)
+        selected_device = (
+            selected_runtime.current_device() if device is None else int(device)
+        )
+        prop = _make_allocation_prop(selected_device)
+        return _query_granularity(selected_runtime, library, prop)
+
     @property
     def ptr(self) -> int:
         """Base virtual address of the reservation; stable until :meth:`close`."""
@@ -446,7 +471,39 @@ class VirtualMemoryBuffer:
 
         self._segments.append(segment)
         self._committed_bytes = target
+        self._publish_commit_accounting()
         return self._committed_bytes
+
+    @property
+    def _resident_device_bytes(self) -> int:
+        """Physical device bytes this buffer still owns.
+
+        This is deliberately not :attr:`committed_bytes`. ``committed_bytes`` is
+        the mapped contiguous prefix that growth appends to and that a caller
+        may address; a segment whose mapping was released but whose handle
+        release failed is still real device memory and must stay charged even
+        though it is no longer part of that contiguous extent. A failed-commit
+        cleanup segment is charged the same way even though it never entered the
+        published prefix. Only a fully released segment (mapping gone *and*
+        handle released) drops out.
+        """
+
+        return sum(
+            int(segment.size)
+            for segment in self._segments
+            if not segment.handle_released
+        )
+
+    def _publish_commit_accounting(self) -> None:
+        """Mirror the resident physical bytes into the core memory counters.
+
+        The address reservation is not physical and is never counted; only the
+        physical allocations the buffer still owns are. A close or rollback that
+        cannot release every segment leaves those bytes recorded so the counters
+        do not under-report.
+        """
+
+        record_device_commit(self._ptr, self._resident_device_bytes)
 
     def _cleanup_failed_commit(self, segment: _MappedSegment) -> HipError | None:
         """Undo a partially mapped segment after a failed commit.
@@ -480,6 +537,9 @@ class VirtualMemoryBuffer:
         if not segment.fully_released:
             segment.committed = False
             self._segments.append(segment)
+            # The retained handle is real device memory that never entered the
+            # published prefix, so it must still be charged.
+            self._publish_commit_accounting()
         return error
 
     def rollback_to(self, committed_bytes: int) -> int:
@@ -559,6 +619,7 @@ class VirtualMemoryBuffer:
         remaining.reverse()
         self._segments = remaining
         self._committed_bytes = new_committed
+        self._publish_commit_accounting()
         if error is not None:
             raise error
         return self._committed_bytes
@@ -612,6 +673,7 @@ class VirtualMemoryBuffer:
             ),
             default=0,
         )
+        self._publish_commit_accounting()
         if self._segments:
             # A mapping or handle is still owned; keep the reservation so a
             # later close() can finish it rather than leaking silently.

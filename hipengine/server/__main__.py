@@ -12,6 +12,7 @@ from hipengine.kvcache import (
     PREFIX_CACHE_DEFAULT,
     resolve_prefix_cache_mode,
 )
+from hipengine.kvcache.dms_config import DMSConfig
 from hipengine.server.api import ServerConfig, create_app
 from hipengine.server.log_style import COLOR_MODES, build_log_config
 
@@ -192,6 +193,8 @@ def build_parser() -> argparse.ArgumentParser:
             "(env HIPENGINE_CHAT_DEFAULT_MAX_TOKENS; default: 4096)"
         ),
     )
+    parser.add_argument("--dms-metadata", help="External DMS sidecar metadata for single-request compact BF16 KV")
+    parser.add_argument("--dms-prefill-mode", choices=("dense_pool", "layer_outer"), default="dense_pool")
     parser.add_argument(
         "--kv-storage",
         default=os.environ.get("HIPENGINE_KV_STORAGE", "bf16"),
@@ -326,6 +329,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--vae-model",
+        default=os.environ.get("HIPENGINE_YUE2_VAE_DIR"),
+        help=(
+            "Companion decoder checkpoint for a model that needs one (YuE2 "
+            "decodes with m-a-p/YuE2-Vae; env HIPENGINE_YUE2_VAE_DIR)"
+        ),
+    )
+    parser.add_argument(
         "--vision-max-pixels",
         type=_positive_int,
         default=(
@@ -369,11 +380,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("HIPENGINE_METRICS", "off"),
         help="Metrics endpoint mode (env HIPENGINE_METRICS; default: off)",
     )
-    # The HTTP surface takes the engine loop's default (radix). The gfx1100
-    # numerical gate is still open and tracked in docs/REFACTOR.md; the path
-    # fails closed per request with a recorded reason, so an unqualified row
-    # prefills privately. HIPENGINE_PREFIX_CACHE stays an override of this flag
-    # rather than a second default.
+    # HTTP uses the engine loop's radix default. HIPENGINE_PREFIX_CACHE is an
+    # explicit override; request-level capability decisions remain in the owner.
     parser.add_argument(
         "--prefix-cache",
         choices=PREFIX_CACHE_CHOICES,
@@ -450,6 +458,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         startup_min_free_mib=args.startup_min_free_mib,
         max_context_tokens=args.max_context_tokens,
         chat_default_max_tokens=args.chat_default_max_tokens,
+        dms=(DMSConfig(
+            args.dms_metadata, prefill_mode=args.dms_prefill_mode
+        ) if args.dms_metadata else None),
         kv_storage=args.kv_storage,
         kv_scale_dtype=args.kv_scale_dtype,
         kv_scale_granularity=args.kv_scale_granularity,
@@ -472,6 +483,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         draft_model=args.draft_model,
         speculative_candidate_budget=args.speculative_candidate_budget,
         vision_model=args.vision_model,
+        vae_model=args.vae_model,
         vision_max_pixels=args.vision_max_pixels,
         vision_max_image_bytes=args.vision_max_image_bytes,
     )

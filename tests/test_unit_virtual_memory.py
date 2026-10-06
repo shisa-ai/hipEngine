@@ -399,12 +399,38 @@ def test_virtual_reservation_is_not_counted_as_physical_memory() -> None:
     from hipengine.core.memory import memory_stats
 
     library = FakeVmmLibrary()
-    before = memory_stats()
+    baseline = memory_stats()["current_allocated_bytes"]
     buffer = VirtualMemoryBuffer.reserve(3 * 4096, runtime=_runtime(library))
-    buffer.commit_to(8192)
-    buffer.close()
+    # Reserving address space is not physical memory.
+    assert memory_stats()["current_allocated_bytes"] == baseline
 
-    assert memory_stats() == before
+    # Committing maps real, granularity-aligned physical bytes.
+    buffer.commit_to(8192)
+    assert memory_stats()["current_allocated_bytes"] == baseline + 8192
+
+    # Closing releases the mapping and the recorded commitment.
+    buffer.close()
+    assert memory_stats()["current_allocated_bytes"] == baseline
+
+
+def test_committed_growth_rollback_and_close_track_physical_bytes() -> None:
+    from hipengine.core.memory import memory_stats
+
+    library = FakeVmmLibrary()
+    baseline = memory_stats()["current_allocated_bytes"]
+    buffer = VirtualMemoryBuffer.reserve(3 * 4096, runtime=_runtime(library))
+    buffer.commit_to(4096)
+    assert memory_stats()["current_allocated_bytes"] == baseline + 4096
+
+    # Growth updates the live size in place rather than adding a second entry.
+    buffer.commit_to(3 * 4096)
+    assert memory_stats()["current_allocated_bytes"] == baseline + 3 * 4096
+
+    buffer.rollback_to(4096)
+    assert memory_stats()["current_allocated_bytes"] == baseline + 4096
+
+    buffer.close()
+    assert memory_stats()["current_allocated_bytes"] == baseline
 
 
 def test_reserve_failure_before_address_reservation_leaves_nothing() -> None:
@@ -541,6 +567,78 @@ def test_close_release_failure_is_retryable() -> None:
     assert buffer.closed is True
     assert library.released == [0x9000]
     assert library.freed_addresses == [(base, 2 * 4096)]
+
+
+def test_close_release_failure_keeps_physical_bytes_charged() -> None:
+    """An unmapped handle that cannot be released is still real device memory.
+
+    ``committed_bytes`` is the mapped extent and correctly drops to zero, but
+    the resident physical bytes must stay charged until the handle is released.
+    """
+
+    from hipengine.core.memory import memory_stats
+
+    library = FakeVmmLibrary()
+    baseline = memory_stats()["current_allocated_bytes"]
+    buffer = VirtualMemoryBuffer.reserve(2 * 4096, runtime=_runtime(library))
+    buffer.commit_to(2 * 4096)
+    assert memory_stats()["current_allocated_bytes"] == baseline + 2 * 4096
+
+    library.fail["hipMemRelease"] = 1
+    with pytest.raises(HipError):
+        buffer.close()
+    assert buffer.committed_bytes == 0
+    # Mapping gone, handle retained: still charged.
+    assert memory_stats()["current_allocated_bytes"] == baseline + 2 * 4096
+
+    del library.fail["hipMemRelease"]
+    buffer.close()
+    assert memory_stats()["current_allocated_bytes"] == baseline
+
+
+def test_rollback_release_failure_keeps_physical_bytes_charged() -> None:
+    """A rolled-back segment with a retained handle stays charged."""
+
+    from hipengine.core.memory import memory_stats
+
+    library = FakeVmmLibrary()
+    baseline = memory_stats()["current_allocated_bytes"]
+    buffer = VirtualMemoryBuffer.reserve(2 * 4096, runtime=_runtime(library))
+    buffer.commit_to(4096)
+    assert memory_stats()["current_allocated_bytes"] == baseline + 4096
+
+    library.fail["hipMemRelease"] = 1
+    with pytest.raises(HipError):
+        buffer.rollback_to(0)
+    assert buffer.committed_bytes == 0
+    assert memory_stats()["current_allocated_bytes"] == baseline + 4096
+
+    del library.fail["hipMemRelease"]
+    assert buffer.rollback_to(0) == 0
+    assert memory_stats()["current_allocated_bytes"] == baseline
+    buffer.close()
+
+
+def test_failed_commit_cleanup_keeps_physical_bytes_charged() -> None:
+    """A retained failed-commit mapping is charged despite never publishing."""
+
+    from hipengine.core.memory import memory_stats
+
+    library = FakeVmmLibrary()
+    baseline = memory_stats()["current_allocated_bytes"]
+    buffer = VirtualMemoryBuffer.reserve(2 * 4096, runtime=_runtime(library))
+    library.fail["hipMemSetAccess"] = 1
+    library.fail["hipMemUnmap"] = 1
+
+    with pytest.raises(HipError):
+        buffer.commit_to(4096)
+    assert buffer.committed_bytes == 0
+    assert memory_stats()["current_allocated_bytes"] == baseline + 4096
+
+    del library.fail["hipMemUnmap"]
+    assert buffer.rollback_to(0) == 0
+    assert memory_stats()["current_allocated_bytes"] == baseline
+    buffer.close()
 
 
 def test_rollback_all_rolls_back_every_plane_and_reports_first_error() -> None:

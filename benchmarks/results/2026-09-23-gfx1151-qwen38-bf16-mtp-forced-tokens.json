@@ -1,0 +1,3156 @@
+{
+ "schema": 1,
+ "kind": "engine_correctness",
+ "title": "Qwen3.8-27B Q4_K_M on gfx1151: the sampled MTP route publishes the same tokens as the autoregressive route for forced-token queues, output constraints, and thinking budgets",
+ "purpose": "Forced tokens, force-sequence completion, json_object_close_forcing, tool_call_constraint, and a thinking budget are caller-level overrides: the autoregressive route emits the queued head instead of drawing, masks a row from the decoded text of the tokens before it, queues a closing suffix when the remaining budget is exactly enough to close the structure, and turns a reached thinking cap into a queued close sequence. This records that the speculative route does the same. Both arms run the same requests through hipengine.LLM, so the route is the only difference. No speed claim is made or implied.",
+ "status": "measured_accepted",
+ "performance_claim": false,
+ "date": "2026-09-23",
+ "git_head": "a9ed2675515262335136c5d328be792734d7e473",
+ "backend": "hip_gfx1151",
+ "host": "gfx1151",
+ "kv_storage": "bf16",
+ "max_context_tokens": 4096,
+ "speculative_candidate_budget": 3,
+ "execution_profile": "production",
+ "surface": "hipengine.LLM (generate_speculative_mtp_detailed vs generate_detailed)",
+ "model": {
+  "file": "Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "quant": "gguf_q4_k_m"
+ },
+ "environment": {},
+ "gate_command": "scripts/mtp_forced_token_gate.py --model ~/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --kv-storage bf16 --json /tmp/mtp-forced-bf16.json",
+ "coverage": {
+  "covered": "Eight requests on both arms: a three-token queue, a four-token queue longer than one verified chain, the same queue on the sampled branch (temperature 0.7), a json_object request whose object closes at its budget, a required tool_call_constraint whose envelope closes at its budget, a thinking budget whose hard cap queues its close sequence mid-cycle at temperature 0.7 and again at temperature 0.0, and a force-sequence completion whose first token is the case prompt's own first token (taken from an unforced probe of that prompt). An unforced request runs before and after the forced ones on both arms.",
+  "not_covered": "The thinking cases exercise the hard cap; the soft-close window (its positive logit bias on the first close token) is not exercised. Multi-choice (n>1) requests are task 17. The tool case uses mode=required so the tool branch is forced; an auto-mode request that takes its plain-text branch is not exercised here."
+ },
+ "acceptance": {
+  "queue_isolated": "The unforced request run after every forced case published the same ids as the unforced seed request on the speculative arm, and the same ids as the autoregressive arm.",
+  "force_sequence_completion": "The model's own seed token plus the two queued tokens were published as [16570, 81099, 12102] on both arms, so the remainder was queued and emitted from inside the cycle.",
+  "forced_prefix_published": "Every forced case published its queued tokens at the head of the output, in order, on both arms.",
+  "continuation_parity": "Every greedy case published the autoregressive arm's exact ids (6 cases), so the queue was consumed exactly once and the continuation was not disturbed. The two sampled cases published the forced prefix on both arms; their continuations are different draws from the same law because the accept walk consumes the request's uniform stream per verified row.",
+  "route_ran": "Every speculative case reported gguf_specdec2_mtp2 while every autoregressive case reported a plain decode path.",
+  "tool_call_envelope": "The required tool case published one complete canonical envelope on both arms, byte-identical: <tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"/tmp/notes.txt\"}}</tool_call>. The constraint admits only that envelope in this mode, so the branch, the per-row mask, and the forced closing suffix are all load-bearing.",
+  "thinking_close_at_the_cap": "Both thinking cases queued a 4-token close sequence at a cap of 8 reasoning tokens, and both arms published that sequence starting at index 8 -- the MTP arm through speculative cycles, the autoregressive arm step by step -- so the cap's position is the same on both routes and does not depend on the draw. The close sequence is the budget's own token ids, and the answer phase follows it."
+ },
+ "observation": {
+  "queue_consumed_across_cycles": "The two-token case ran 10 cycles for 23 speculative output tokens, and the three-token case ran 18 cycles for 31: the queue outlives a single cycle and is consumed one published position at a time.",
+  "sampled_branch": "The sampled case ran 15 cycles and published the forced prefix identically on both arms. Its continuation is a different draw from the same law, which is the documented behavior of the sampled route: the accept walk draws one uniform per verified row where the autoregressive route draws one per step.",
+  "force_sequence_trigger": "The force-sequence case queued [16570, 81099, 12102] where the first element is the case prompt's own first token from an unforced probe, so the partial match is guaranteed to trigger on the token the model emits anyway; both arms published exactly that sequence.",
+  "route_confirmed": "Every speculative case reported execution_path=gguf_specdec2_mtp2 and every autoregressive case reported a plain decode path, so no comparison is between two autoregressive runs.",
+  "defect_found_and_fixed": "The first live run of this gate caught an UnboundLocalError in the host sampled-accept path (a function-local import of the row walk shadowing the module import), which the engine contained by falling back to autoregressive decoding for that request. Fixed, and pinned by tests/test_unit_mtp_native_sampling.py test_host_sampled_accept_resolves_forced_overrides_without_consuming_them.",
+  "declared_context_honored": "Both arms constructed their engine with max_sequence_length=4096 and no prepare() call, and both resident sessions were sized to 4096 rather than to automatic selection. That is the default configuration: no HIPENGINE_GGUF_AUTO_CONTEXT override is set.",
+  "json_object_close": "The json_object case published a closed object at exactly its 12-token budget and published the autoregressive arm's ids token for token (5 cycles, 10 speculative tokens). The constraint's closing suffix is what closes the object at the budget, and the autoregressive arm runs the same rule.",
+  "tool_branch_live": "The tool case ran 6 speculative cycles at depth 3 for 18 MTP-published tokens plus one AR step, and both arms published the same 20 ids. It failed the first time it ran, and both defects it exposed were in the route rather than in the constraint: sampled_accept_summary dropped the text observer the adapter handed it, so a cycle's later rows were masked against a DFA that had not seen the earlier tokens, and the route published a newline inside the envelope. A row advanced by such a violating draft token has no admissible law; it is unreachable, because the row before it is masked against the same DFA and excludes that token, so the walk records it as invalid rather than raising and the accept walk refuses to step onto it.",
+  "thinking_budget_live": "The thinking budget needed one wiring fix and one real defect fixed. The walk now prepares each row's selection exactly where the autoregressive route does, which is what turns a reached hard cap into a queued close sequence; before that, the walk reported no override for the row the cap governs. The defect was in the commit: it consumed overrides as a leading prefix of the published chain, which holds for a request's own forced queue (emitted first) but not for a cap reached mid-cycle. A cycle that published the close at position 2 of 3 popped a position that had no override and raised. The commit now consumes exactly the positions the walk reported, so a non-leading override is handled the same way. A second case runs the same cap at temperature 0.0, where there is no draw to hide a difference behind: both arms published all 24 ids identically with the close at index 8, and the MTP arm reached it through 9 cycles.",
+  "greedy_thinking_parity": "The greedy thinking case is the cap's strongest check: with temperature 0.0 the two arms must publish the same ids token for token, so the close position, the close sequence, and the answer that follows it are all compared rather than only the index the close starts at."
+ },
+ "summary": {
+  "cases": 8,
+  "forced_cases": 3,
+  "force_sequence_cases": 1,
+  "greedy_cases_identical_between_arms": 6,
+  "cycles": {
+   "forced_two_tokens": 10,
+   "forced_three_tokens_greedy": 18,
+   "forced_tokens_sampled": 15,
+   "json_object_close": 5,
+   "tool_call_required": 6,
+   "thinking_hard_close": 12,
+   "thinking_hard_close_greedy": 9,
+   "force_sequence_completion": 13
+  },
+  "mtp_output_tokens": {
+   "forced_two_tokens": 23,
+   "forced_three_tokens_greedy": 31,
+   "forced_tokens_sampled": 23,
+   "json_object_close": 10,
+   "tool_call_required": 18,
+   "thinking_hard_close": 23,
+   "thinking_hard_close_greedy": 23,
+   "force_sequence_completion": 23
+  },
+  "ar_output_tokens": {
+   "forced_two_tokens": 24,
+   "forced_three_tokens_greedy": 32,
+   "forced_tokens_sampled": 24,
+   "json_object_close": 12,
+   "tool_call_required": 20,
+   "thinking_hard_close": 24,
+   "thinking_hard_close_greedy": 24,
+   "force_sequence_completion": 24
+  },
+  "declared_context_tokens": 4096,
+  "resident_context_tokens": 4096
+ },
+ "gate_report": {
+  "scope": "forced tokens and force-sequence completion on the sampled MTP route",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "kv_storage": "bf16",
+  "backend": "hip_gfx1151",
+  "mtp_serving": "auto",
+  "ar_serving": "off",
+  "passed": true,
+  "cases": [
+   {
+    "name": "forced_two_tokens",
+    "purpose": "A two-token queue must be emitted in order at the head of the output and consumed exactly once.",
+    "prompt": "Count slowly, one number per word: one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two",
+    "max_tokens": 24,
+    "temperature": 0.0,
+    "seed": 3
+   },
+   {
+    "name": "forced_three_tokens_greedy",
+    "purpose": "A three-token queue is longer than a single verified chain, so the cycle consumes it across its rows and the next cycle continues.",
+    "prompt": "Count slowly, one number per word: one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two",
+    "max_tokens": 32,
+    "temperature": 0.0,
+    "seed": 3
+   },
+   {
+    "name": "forced_tokens_sampled",
+    "purpose": "The sampled branch (temperature > 0) applies the same override: the forced prefix is emitted and the continuation is the AR one.",
+    "prompt": "Count slowly, one number per word: one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two",
+    "max_tokens": 24,
+    "temperature": 0.7,
+    "seed": 11
+   },
+   {
+    "name": "json_object_close",
+    "purpose": "A json_object request masks each row from the decoded text of the tokens before it and forces the closing suffix when the remaining budget is exactly enough to close the object. The greedy case is deterministic, so the two arms must publish identical ids.",
+    "prompt": "Reply with a single flat JSON object that has exactly two keys, \"city\" and \"unit\", for the weather in Kyoto. JSON only.",
+    "max_tokens": 12,
+    "temperature": 0.0,
+    "seed": 3
+   },
+   {
+    "name": "tool_call_required",
+    "purpose": "A required tool_call_constraint admits only the canonical envelope, so the model is forced into the tool branch and the constraint's closing suffix is what completes it at the budget. Greedy, so the two arms must publish identical ids.",
+    "prompt": "Call the read tool to read the file /tmp/notes.txt. Use the tool call format exactly: <tool_call>{\"name\": \"read\", \"arguments\": {\"path\": \"/tmp/notes.txt\"}}</tool_call>",
+    "max_tokens": 20,
+    "temperature": 0.0,
+    "seed": 3
+   },
+   {
+    "name": "thinking_hard_close",
+    "purpose": "A thinking budget is per-row sampler state, so the hard cap queues its close sequence from inside the cycle that reaches it and the commit consumes that override for the position it governs. Sampled, so the two arms' text differs by draw and the acceptance is the index the close starts at, which the cap fixes on both routes.",
+    "prompt": "Reason briefly about how many days are in two weeks, then answer. Keep the reasoning short.",
+    "max_tokens": 24,
+    "temperature": 0.7,
+    "seed": 13
+   },
+   {
+    "name": "thinking_hard_close_greedy",
+    "purpose": "The same hard cap on a greedy request. The budget is per-row state either way, and a greedy request has no draw to hide a difference behind, so the two arms must publish identical ids with the close at the cap index.",
+    "prompt": "Reason briefly about how many days are in two weeks, then answer. Keep the reasoning short.",
+    "max_tokens": 24,
+    "temperature": 0.0,
+    "seed": 3
+   },
+   {
+    "name": "force_sequence_completion",
+    "purpose": "A partially matched force-sequence queues its remainder from inside the cycle that emitted the matching token.",
+    "prompt": "Count slowly, one number per word: one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two",
+    "max_tokens": 24,
+    "temperature": 0.0,
+    "seed": 3
+   }
+  ],
+  "seed_prompt": "Write one short sentence about rivers.",
+  "seed_token_text": "\n\n",
+  "summary": {
+   "cases": 8,
+   "forced_cases": 3,
+   "force_sequence_cases": 1,
+   "mtp_seed_ids": 16
+  },
+  "acceptance": {
+   "queue_isolated": "The unforced request run after every forced case published the same ids as the unforced seed request on the speculative arm, and the same ids as the autoregressive arm.",
+   "force_sequence_completion": "The model's own seed token plus the two queued tokens were published as [16570, 81099, 12102] on both arms, so the remainder was queued and emitted from inside the cycle.",
+   "forced_prefix_published": "Every forced case published its queued tokens at the head of the output, in order, on both arms.",
+   "continuation_parity": "Every greedy case published the autoregressive arm's exact ids (6 cases), so the queue was consumed exactly once and the continuation was not disturbed. The 2 sampled case(s) published the forced prefix on both arms; their continuations are different draws from the same law because the accept walk consumes the request's uniform stream per verified row.",
+   "route_ran": "Every speculative case reported gguf_specdec2_mtp2 while every autoregressive case reported a plain decode path."
+  },
+  "rows": [
+   {
+    "case": "forced_two_tokens",
+    "temperature": 0.0,
+    "forced_tokens": 3,
+    "force_sequence_tokens": 0,
+    "shared_prefix": 24,
+    "identical_output": true,
+    "published": 24,
+    "mtp_execution_path": "gguf_specdec2_mtp2",
+    "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
+   },
+   {
+    "case": "forced_three_tokens_greedy",
+    "temperature": 0.0,
+    "forced_tokens": 4,
+    "force_sequence_tokens": 0,
+    "shared_prefix": 32,
+    "identical_output": true,
+    "published": 32,
+    "mtp_execution_path": "gguf_specdec2_mtp2",
+    "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
+   },
+   {
+    "case": "forced_tokens_sampled",
+    "temperature": 0.7,
+    "forced_tokens": 3,
+    "force_sequence_tokens": 0,
+    "shared_prefix": 3,
+    "identical_output": false,
+    "published": 24,
+    "mtp_execution_path": "gguf_specdec2_mtp2",
+    "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
+   },
+   {
+    "case": "json_object_close",
+    "temperature": 0.0,
+    "forced_tokens": 0,
+    "force_sequence_tokens": 0,
+    "shared_prefix": 12,
+    "identical_output": true,
+    "published": 12,
+    "mtp_execution_path": "gguf_specdec2_mtp2",
+    "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
+   },
+   {
+    "case": "tool_call_required",
+    "temperature": 0.0,
+    "forced_tokens": 0,
+    "force_sequence_tokens": 0,
+    "shared_prefix": 20,
+    "identical_output": true,
+    "published": 20,
+    "mtp_execution_path": "gguf_specdec2_mtp2",
+    "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
+   },
+   {
+    "case": "thinking_hard_close",
+    "temperature": 0.7,
+    "forced_tokens": 0,
+    "force_sequence_tokens": 0,
+    "shared_prefix": 12,
+    "identical_output": false,
+    "published": 24,
+    "mtp_execution_path": "gguf_specdec2_mtp2",
+    "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
+   },
+   {
+    "case": "thinking_hard_close_greedy",
+    "temperature": 0.0,
+    "forced_tokens": 0,
+    "force_sequence_tokens": 0,
+    "shared_prefix": 24,
+    "identical_output": true,
+    "published": 24,
+    "mtp_execution_path": "gguf_specdec2_mtp2",
+    "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
+   },
+   {
+    "case": "force_sequence_completion",
+    "temperature": 0.0,
+    "forced_tokens": 0,
+    "force_sequence_tokens": 3,
+    "shared_prefix": 24,
+    "identical_output": true,
+    "published": 24,
+    "mtp_execution_path": "gguf_specdec2_mtp2",
+    "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
+   }
+  ],
+  "arms": {
+   "mtp": {
+    "seed": {
+     "text": "\n\nRivers carve their paths through the earth, shaping landscapes and sustaining life along",
+     "ids": [
+      271,
+      49,
+      1878,
+      76892,
+      836,
+      12351,
+      1472,
+      279,
+      9114,
+      11,
+      44003,
+      52946,
+      321,
+      76375,
+      2199,
+      3055
+     ],
+     "telemetry": {
+      "execution_path": "gguf_specdec2_mtp2",
+      "sampler_mode": "greedy_fast",
+      "forced_tokens_pending": [],
+      "forced_token_id": null,
+      "forced_tokens_remaining": null,
+      "diagnostics": {
+       "prefix_cache": {
+        "mode": "off",
+        "block_size_tokens": 256,
+        "eligible": false,
+        "lookup": false,
+        "hit": false,
+        "source": null,
+        "matched_tokens": 0,
+        "reused_tokens": 0,
+        "avoided_prefill_tokens": 0,
+        "executed_prefill_tokens": 7,
+        "reused_pages": 0,
+        "reused_page_bytes": 0,
+        "state_clone_bytes": 0,
+        "snapshot_hit": false,
+        "admission_fallback": false,
+        "fallback_reason": "cache_off",
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "cache_resident_bytes": 0
+       },
+       "specdec2_mtp2": {
+        "requested_budget": 3,
+        "candidate_budget": 3,
+        "prompt_streaming": true,
+        "prompt_fallback_reason": null,
+        "activation_reason": null,
+        "provider_readiness": "ready",
+        "provider_decline_reason": null,
+        "provider_state_present": true,
+        "plan_group_rows": 1,
+        "plan_ar_only": false,
+        "plan_reason": "speculative_qualified",
+        "cycles": 8,
+        "generated_draft_tokens": 21,
+        "accepted_draft_tokens": 7,
+        "selected_depth_histogram": {
+         "1": 1,
+         "2": 1,
+         "3": 6
+        },
+        "mtp_output_tokens": 15,
+        "ar_output_tokens_in_cycles": 1,
+        "first_fallback_position": null,
+        "ar_step_reason_counts": {
+         "no_provider": 1
+        },
+        "recoverable_failures": 0,
+        "failure_reason_counts": {},
+        "failure_reasons": [],
+        "k0_catchups": 0,
+        "cycle_timing_ms": {
+         "proposal": 48.95688686519861,
+         "target": 851.331776,
+         "provider_update": 12.945057824254036,
+         "accept": 0.0,
+         "candidate_readback": 0.0,
+         "target_readback": 0.0,
+         "accept_upload": 0.0,
+         "accept_tail": 0.0,
+         "accept_enqueue": 0.0,
+         "selected_commit": 0.0
+        },
+        "output_spans": [
+         {
+          "mode": "ar",
+          "reason": "no_provider",
+          "position": 0,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 1,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 2,
+          "tokens": 2
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 4,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 5,
+          "tokens": 4
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 9,
+          "tokens": 3
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 12,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 13,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 14,
+          "tokens": 2
+         }
+        ]
+       },
+       "kv_layout": {
+        "pool_contract": "global_generation2",
+        "pool_storage_layout": "global-arbitrary-pages:g1",
+        "storage_dtype": "bf16",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp16",
+        "scale_granularity": "per_token_head",
+        "kv_attention_source": "bf16",
+        "request_pages": 1,
+        "request_capacity_tokens": 256,
+        "request_block_ids": [
+         64
+        ],
+        "one_backing_chunk": true,
+        "contiguous_in_backing": true,
+        "persistent_int8_payload_bytes": 0,
+        "persistent_bf16_payload_bytes": 16777216,
+        "persistent_scale_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0,
+        "persistent_total_bytes": 16777216
+       }
+      }
+     }
+    },
+    "cases": {
+     "forced_two_tokens": {
+      "purpose": "A two-token queue must be emitted in order at the head of the output and consumed exactly once.",
+      "fields": {
+       "forced_tokens_pending": [
+        1110,
+        1850,
+        32777
+       ],
+       "forced_token_reason": "gate"
+      },
+      "ids": [
+       1110,
+       1850,
+       32777,
+       271,
+       2427,
+       286,
+       13569,
+       11,
+       799,
+       1324,
+       791,
+       3299,
+       25,
+       271,
+       588,
+       198,
+       19186,
+       198,
+       26952,
+       198,
+       32897,
+       198,
+       50897,
+       198
+      ],
+      "text": " zeta omega\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\nfour\nfive\n",
+      "telemetry": {
+       "execution_path": "gguf_specdec2_mtp2",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": 1110,
+       "forced_tokens_remaining": 2,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 32,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "specdec2_mtp2": {
+         "requested_budget": 3,
+         "candidate_budget": 3,
+         "prompt_streaming": true,
+         "prompt_fallback_reason": null,
+         "activation_reason": null,
+         "provider_readiness": "ready",
+         "provider_decline_reason": null,
+         "provider_state_present": true,
+         "plan_group_rows": 1,
+         "plan_ar_only": false,
+         "plan_reason": "speculative_qualified",
+         "cycles": 10,
+         "generated_draft_tokens": 30,
+         "accepted_draft_tokens": 13,
+         "selected_depth_histogram": {
+          "3": 10
+         },
+         "mtp_output_tokens": 23,
+         "ar_output_tokens_in_cycles": 1,
+         "first_fallback_position": null,
+         "ar_step_reason_counts": {
+          "no_provider": 1
+         },
+         "recoverable_failures": 0,
+         "failure_reason_counts": {},
+         "failure_reasons": [],
+         "k0_catchups": 0,
+         "cycle_timing_ms": {
+          "proposal": 127.87305330857635,
+          "target": 1107.996208,
+          "provider_update": 8.18934477865696,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+         },
+         "output_spans": [
+          {
+           "mode": "ar",
+           "reason": "no_provider",
+           "position": 0,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 1,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 2,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 3,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 4,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 5,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 7,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 11,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 15,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 16,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 20,
+           "tokens": 4
+          }
+         ]
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "forced_three_tokens_greedy": {
+      "purpose": "A three-token queue is longer than a single verified chain, so the cycle consumes it across its rows and the next cycle continues.",
+      "fields": {
+       "forced_tokens_pending": [
+        1110,
+        1850,
+        32777,
+        81099
+       ],
+       "forced_token_reason": "gate"
+      },
+      "ids": [
+       1110,
+       1850,
+       32777,
+       81099,
+       17972,
+       19638,
+       21989,
+       36770,
+       24977,
+       36346,
+       37705,
+       9197,
+       20956,
+       13053,
+       8029,
+       271,
+       2427,
+       286,
+       13569,
+       11,
+       799,
+       1324,
+       791,
+       3299,
+       25,
+       271,
+       588,
+       198,
+       19186,
+       198,
+       26952,
+       198
+      ],
+      "text": " zeta omega kappa theta sigma phi psi chi xi eta delta gamma beta alpha\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\n",
+      "telemetry": {
+       "execution_path": "gguf_specdec2_mtp2",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": 1110,
+       "forced_tokens_remaining": 3,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 32,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "specdec2_mtp2": {
+         "requested_budget": 3,
+         "candidate_budget": 3,
+         "prompt_streaming": true,
+         "prompt_fallback_reason": null,
+         "activation_reason": null,
+         "provider_readiness": "ready",
+         "provider_decline_reason": null,
+         "provider_state_present": true,
+         "plan_group_rows": 1,
+         "plan_ar_only": false,
+         "plan_reason": "speculative_qualified",
+         "cycles": 18,
+         "generated_draft_tokens": 54,
+         "accepted_draft_tokens": 13,
+         "selected_depth_histogram": {
+          "3": 18
+         },
+         "mtp_output_tokens": 31,
+         "ar_output_tokens_in_cycles": 1,
+         "first_fallback_position": null,
+         "ar_step_reason_counts": {
+          "no_provider": 1
+         },
+         "recoverable_failures": 0,
+         "failure_reason_counts": {},
+         "failure_reasons": [],
+         "k0_catchups": 0,
+         "cycle_timing_ms": {
+          "proposal": 233.37926482781768,
+          "target": 2012.18098,
+          "provider_update": 17.400597222149372,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+         },
+         "output_spans": [
+          {
+           "mode": "ar",
+           "reason": "no_provider",
+           "position": 0,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 1,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 2,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 3,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 4,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 5,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 6,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 7,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 8,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 9,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 10,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 11,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 13,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 15,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 17,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 19,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 23,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 27,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 28,
+           "tokens": 4
+          }
+         ]
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "forced_tokens_sampled": {
+      "purpose": "The sampled branch (temperature > 0) applies the same override: the forced prefix is emitted and the continuation is the AR one.",
+      "fields": {
+       "forced_tokens_pending": [
+        1110,
+        1850,
+        32777
+       ],
+       "forced_token_reason": "gate"
+      },
+      "ids": [
+       1110,
+       1850,
+       32777,
+       2250,
+       7840,
+       13616,
+       271,
+       40,
+       599,
+       7888,
+       279,
+       1698,
+       430,
+       10897,
+       11,
+       2614,
+       678,
+       3050,
+       3299,
+       13909,
+       36093,
+       8240,
+       13,
+       353
+      ],
+      "text": " zeta omega three seven oh\n\nI have completed the count as requested, following your specific word-by-word sequence. I",
+      "telemetry": {
+       "execution_path": "gguf_specdec2_mtp2",
+       "sampler_mode": "host_logits_sample",
+       "forced_tokens_pending": [],
+       "forced_token_id": 1110,
+       "forced_tokens_remaining": 2,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 32,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "specdec2_mtp2": {
+         "requested_budget": 3,
+         "candidate_budget": 3,
+         "prompt_streaming": true,
+         "prompt_fallback_reason": null,
+         "activation_reason": null,
+         "provider_readiness": "ready",
+         "provider_decline_reason": null,
+         "provider_state_present": true,
+         "plan_group_rows": 1,
+         "plan_ar_only": false,
+         "plan_reason": "speculative_qualified",
+         "cycles": 15,
+         "generated_draft_tokens": 45,
+         "accepted_draft_tokens": 8,
+         "selected_depth_histogram": {
+          "3": 15
+         },
+         "mtp_output_tokens": 23,
+         "ar_output_tokens_in_cycles": 1,
+         "first_fallback_position": null,
+         "ar_step_reason_counts": {
+          "no_provider": 1
+         },
+         "recoverable_failures": 0,
+         "failure_reason_counts": {},
+         "failure_reasons": [],
+         "k0_catchups": 0,
+         "cycle_timing_ms": {
+          "proposal": 191.78907992318273,
+          "target": 1670.8060559999997,
+          "provider_update": 46.14786384627223,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+         },
+         "output_spans": [
+          {
+           "mode": "ar",
+           "reason": "no_provider",
+           "position": 0,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 1,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 2,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 3,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 4,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 5,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 6,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 7,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 8,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 9,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 13,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 15,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 16,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 17,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 19,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 20,
+           "tokens": 4
+          }
+         ]
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "json_object_close": {
+      "purpose": "A json_object request masks each row from the decoded text of the tokens before it and forces the closing suffix when the remaining budget is exactly enough to close the object. The greedy case is deterministic, so the two arms must publish identical ids.",
+      "fields": {
+       "json_object_close_forcing": true
+      },
+      "ids": [
+       271,
+       4754,
+       8656,
+       3147,
+       74482,
+       2004,
+       2129,
+       3715,
+       3147,
+       34,
+       38915,
+       8934
+      ],
+      "text": "\n\n{\"city\":\"Kyoto\",\"unit\":\"Celsius\"}",
+      "telemetry": {
+       "execution_path": "gguf_specdec2_mtp2",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": 8934,
+       "forced_tokens_remaining": 0,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 29,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "specdec2_mtp2": {
+         "requested_budget": 3,
+         "candidate_budget": 3,
+         "prompt_streaming": true,
+         "prompt_fallback_reason": null,
+         "activation_reason": null,
+         "provider_readiness": "ready",
+         "provider_decline_reason": null,
+         "provider_state_present": true,
+         "plan_group_rows": 1,
+         "plan_ar_only": true,
+         "plan_reason": "target_graph_output_room_miss",
+         "cycles": 5,
+         "generated_draft_tokens": 13,
+         "accepted_draft_tokens": 5,
+         "selected_depth_histogram": {
+          "1": 1,
+          "3": 4
+         },
+         "mtp_output_tokens": 10,
+         "ar_output_tokens_in_cycles": 1,
+         "first_fallback_position": null,
+         "ar_step_reason_counts": {
+          "no_provider": 1
+         },
+         "recoverable_failures": 0,
+         "failure_reason_counts": {},
+         "failure_reasons": [],
+         "k0_catchups": 1,
+         "cycle_timing_ms": {
+          "proposal": 55.353029165416956,
+          "target": 535.996178,
+          "provider_update": 4.784236662089825,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+         },
+         "output_spans": [
+          {
+           "mode": "ar",
+           "reason": "no_provider",
+           "position": 0,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 1,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 2,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 4,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 8,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 10,
+           "tokens": 1
+          }
+         ]
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "tool_call_required": {
+      "purpose": "A required tool_call_constraint admits only the canonical envelope, so the model is forced into the tool branch and the constraint's closing suffix is what completes it at the budget. Greedy, so the two arms must publish identical ids.",
+      "fields": {
+       "tool_call_constraint": {
+        "tool_names": [
+         "read"
+        ],
+        "mode": "required"
+       }
+      },
+      "ids": [
+       271,
+       248058,
+       4754,
+       591,
+       763,
+       1,
+       851,
+       2129,
+       15889,
+       21624,
+       2267,
+       56550,
+       5008,
+       14,
+       17742,
+       3778,
+       29958,
+       248059,
+       198,
+       248046
+      ],
+      "text": "\n\n<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"/tmp/notes.txt\"}}</tool_call>\n<|im_end|>",
+      "telemetry": {
+       "execution_path": "gguf_specdec2_mtp2",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 42,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "specdec2_mtp2": {
+         "requested_budget": 3,
+         "candidate_budget": 3,
+         "prompt_streaming": true,
+         "prompt_fallback_reason": null,
+         "activation_reason": null,
+         "provider_readiness": "ready",
+         "provider_decline_reason": null,
+         "provider_state_present": true,
+         "plan_group_rows": 1,
+         "plan_ar_only": true,
+         "plan_reason": "target_graph_output_room_miss",
+         "cycles": 6,
+         "generated_draft_tokens": 18,
+         "accepted_draft_tokens": 12,
+         "selected_depth_histogram": {
+          "3": 6
+         },
+         "mtp_output_tokens": 18,
+         "ar_output_tokens_in_cycles": 1,
+         "first_fallback_position": null,
+         "ar_step_reason_counts": {
+          "no_provider": 1
+         },
+         "recoverable_failures": 0,
+         "failure_reason_counts": {},
+         "failure_reasons": [],
+         "k0_catchups": 1,
+         "cycle_timing_ms": {
+          "proposal": 76.4734148979187,
+          "target": 664.378209,
+          "provider_update": 7.830408867448568,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+         },
+         "output_spans": [
+          {
+           "mode": "ar",
+           "reason": "no_provider",
+           "position": 0,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 1,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 3,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 6,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 8,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 12,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 16,
+           "tokens": 3
+          }
+         ]
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "thinking_hard_close": {
+      "purpose": "A thinking budget is per-row sampler state, so the hard cap queues its close sequence from inside the cycle that reaches it and the commit consumes that override for the position it governs. Sampled, so the two arms' text differs by draw and the acceptance is the index the close starts at, which the cap fixes on both routes.",
+      "fields": {
+       "thinking_hard_token_cap": 8,
+       "thinking_close_token_ids": [
+        15050,
+        14,
+        26003,
+        4891
+       ]
+      },
+      "ids": [
+       271,
+       11280,
+       5381,
+       16327,
+       220,
+       16,
+       19,
+       2756,
+       15050,
+       14,
+       26003,
+       4891,
+       271,
+       22,
+       2756,
+       791,
+       1936,
+       23985,
+       220,
+       17,
+       283,
+       2972,
+       16,
+       19
+      ],
+      "text": "\n\nTwo weeks equals 14 days[[/think]]\n\n7 days per week \u00d7 2 = **14",
+      "telemetry": {
+       "execution_path": "gguf_specdec2_mtp2",
+       "sampler_mode": "host_logits_sample",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 19,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "specdec2_mtp2": {
+         "requested_budget": 3,
+         "candidate_budget": 3,
+         "prompt_streaming": true,
+         "prompt_fallback_reason": null,
+         "activation_reason": null,
+         "provider_readiness": "ready",
+         "provider_decline_reason": null,
+         "provider_state_present": true,
+         "plan_group_rows": 1,
+         "plan_ar_only": false,
+         "plan_reason": "speculative_qualified",
+         "cycles": 12,
+         "generated_draft_tokens": 33,
+         "accepted_draft_tokens": 11,
+         "selected_depth_histogram": {
+          "1": 1,
+          "2": 1,
+          "3": 10
+         },
+         "mtp_output_tokens": 23,
+         "ar_output_tokens_in_cycles": 1,
+         "first_fallback_position": null,
+         "ar_step_reason_counts": {
+          "no_provider": 1
+         },
+         "recoverable_failures": 0,
+         "failure_reason_counts": {},
+         "failure_reasons": [],
+         "k0_catchups": 0,
+         "cycle_timing_ms": {
+          "proposal": 141.62818435579538,
+          "target": 1305.5611860000004,
+          "provider_update": 39.84792251139879,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+         },
+         "output_spans": [
+          {
+           "mode": "ar",
+           "reason": "no_provider",
+           "position": 0,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 1,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 4,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 6,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 9,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 10,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 11,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 14,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 15,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 16,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 20,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 21,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 22,
+           "tokens": 2
+          }
+         ]
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "thinking_hard_close_greedy": {
+      "purpose": "The same hard cap on a greedy request. The budget is per-row state either way, and a greedy request has no draw to hide a difference behind, so the two arms must publish identical ids with the close at the cap index.",
+      "fields": {
+       "thinking_hard_token_cap": 8,
+       "thinking_close_token_ids": [
+        15050,
+        14,
+        26003,
+        4891
+       ]
+      },
+      "ids": [
+       271,
+       11280,
+       5381,
+       283,
+       220,
+       17,
+       23985,
+       220,
+       15050,
+       14,
+       26003,
+       4891,
+       271,
+       11280,
+       5381,
+       283,
+       220,
+       17,
+       23985,
+       220,
+       22,
+       283,
+       220,
+       16
+      ],
+      "text": "\n\nTwo weeks = 2 \u00d7 [[/think]]\n\nTwo weeks = 2 \u00d7 7 = 1",
+      "telemetry": {
+       "execution_path": "gguf_specdec2_mtp2",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 19,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "specdec2_mtp2": {
+         "requested_budget": 3,
+         "candidate_budget": 3,
+         "prompt_streaming": true,
+         "prompt_fallback_reason": null,
+         "activation_reason": null,
+         "provider_readiness": "ready",
+         "provider_decline_reason": null,
+         "provider_state_present": true,
+         "plan_group_rows": 1,
+         "plan_ar_only": false,
+         "plan_reason": "speculative_qualified",
+         "cycles": 9,
+         "generated_draft_tokens": 26,
+         "accepted_draft_tokens": 14,
+         "selected_depth_histogram": {
+          "2": 1,
+          "3": 8
+         },
+         "mtp_output_tokens": 23,
+         "ar_output_tokens_in_cycles": 1,
+         "first_fallback_position": null,
+         "ar_step_reason_counts": {
+          "no_provider": 1
+         },
+         "recoverable_failures": 0,
+         "failure_reason_counts": {},
+         "failure_reasons": [],
+         "k0_catchups": 0,
+         "cycle_timing_ms": {
+          "proposal": 110.10900558903813,
+          "target": 985.292001,
+          "provider_update": 9.948716964572668,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+         },
+         "output_spans": [
+          {
+           "mode": "ar",
+           "reason": "no_provider",
+           "position": 0,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 1,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 4,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 8,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 9,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 10,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 11,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 14,
+           "tokens": 4
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 18,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 21,
+           "tokens": 3
+          }
+         ]
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "force_sequence_completion": {
+      "purpose": "A partially matched force-sequence queues its remainder from inside the cycle that emitted the matching token.",
+      "fields": {
+       "force_sequence_completion_token_sequences": [
+        [
+         16570,
+         81099,
+         12102
+        ]
+       ],
+       "force_sequence_completion_reason": "gate"
+      },
+      "ids": [
+       16570,
+       81099,
+       12102,
+       11495,
+       10589,
+       36346,
+       7613,
+       291,
+       2176,
+       8668,
+       30349,
+       19638,
+       30779,
+       31649,
+       16422,
+       21989,
+       24977,
+       36770,
+       32777,
+       13,
+       271,
+       2427,
+       286,
+       13569
+      ],
+      "text": " twenty kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega.\n\nCounting slowly",
+      "telemetry": {
+       "execution_path": "gguf_specdec2_mtp2",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 32,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "specdec2_mtp2": {
+         "requested_budget": 3,
+         "candidate_budget": 3,
+         "prompt_streaming": true,
+         "prompt_fallback_reason": null,
+         "activation_reason": null,
+         "provider_readiness": "ready",
+         "provider_decline_reason": null,
+         "provider_state_present": true,
+         "plan_group_rows": 1,
+         "plan_ar_only": false,
+         "plan_reason": "speculative_qualified",
+         "cycles": 13,
+         "generated_draft_tokens": 37,
+         "accepted_draft_tokens": 10,
+         "selected_depth_histogram": {
+          "1": 1,
+          "3": 12
+         },
+         "mtp_output_tokens": 23,
+         "ar_output_tokens_in_cycles": 1,
+         "first_fallback_position": null,
+         "ar_step_reason_counts": {
+          "no_provider": 1
+         },
+         "recoverable_failures": 0,
+         "failure_reason_counts": {},
+         "failure_reasons": [],
+         "k0_catchups": 0,
+         "cycle_timing_ms": {
+          "proposal": 161.2580232322216,
+          "target": 1439.942901,
+          "provider_update": 17.145251855254173,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+         },
+         "output_spans": [
+          {
+           "mode": "ar",
+           "reason": "no_provider",
+           "position": 0,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 1,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 2,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 3,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 4,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 5,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 6,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 8,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 10,
+           "tokens": 1
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 11,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 14,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 17,
+           "tokens": 3
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 20,
+           "tokens": 2
+          },
+          {
+           "mode": "mtp",
+           "reason": "speculative_qualified",
+           "position": 22,
+           "tokens": 2
+          }
+         ]
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": [
+       16570,
+       46780,
+       16570,
+       39663,
+       16570,
+       34129,
+       16570,
+       52616,
+       16570,
+       75351,
+       16570,
+       67354,
+       16570,
+       82647,
+       25292,
+       25292
+      ]
+     }
+    },
+    "declared_context_tokens": 4096,
+    "resident_context_tokens": 4096,
+    "after": {
+     "text": "\n\nRivers carve their paths through the earth, shaping landscapes and sustaining life along",
+     "ids": [
+      271,
+      49,
+      1878,
+      76892,
+      836,
+      12351,
+      1472,
+      279,
+      9114,
+      11,
+      44003,
+      52946,
+      321,
+      76375,
+      2199,
+      3055
+     ],
+     "telemetry": {
+      "execution_path": "gguf_specdec2_mtp2",
+      "sampler_mode": "greedy_fast",
+      "forced_tokens_pending": [],
+      "forced_token_id": null,
+      "forced_tokens_remaining": null,
+      "diagnostics": {
+       "prefix_cache": {
+        "mode": "off",
+        "block_size_tokens": 256,
+        "eligible": false,
+        "lookup": false,
+        "hit": false,
+        "source": null,
+        "matched_tokens": 0,
+        "reused_tokens": 0,
+        "avoided_prefill_tokens": 0,
+        "executed_prefill_tokens": 7,
+        "reused_pages": 0,
+        "reused_page_bytes": 0,
+        "state_clone_bytes": 0,
+        "snapshot_hit": false,
+        "admission_fallback": false,
+        "fallback_reason": "cache_off",
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "cache_resident_bytes": 0
+       },
+       "specdec2_mtp2": {
+        "requested_budget": 3,
+        "candidate_budget": 3,
+        "prompt_streaming": true,
+        "prompt_fallback_reason": null,
+        "activation_reason": null,
+        "provider_readiness": "ready",
+        "provider_decline_reason": null,
+        "provider_state_present": true,
+        "plan_group_rows": 1,
+        "plan_ar_only": false,
+        "plan_reason": "speculative_qualified",
+        "cycles": 8,
+        "generated_draft_tokens": 21,
+        "accepted_draft_tokens": 7,
+        "selected_depth_histogram": {
+         "1": 1,
+         "2": 1,
+         "3": 6
+        },
+        "mtp_output_tokens": 15,
+        "ar_output_tokens_in_cycles": 1,
+        "first_fallback_position": null,
+        "ar_step_reason_counts": {
+         "no_provider": 1
+        },
+        "recoverable_failures": 0,
+        "failure_reason_counts": {},
+        "failure_reasons": [],
+        "k0_catchups": 0,
+        "cycle_timing_ms": {
+         "proposal": 28.882380574941635,
+         "target": 837.4761390000001,
+         "provider_update": 14.349743258208036,
+         "accept": 0.0,
+         "candidate_readback": 0.0,
+         "target_readback": 0.0,
+         "accept_upload": 0.0,
+         "accept_tail": 0.0,
+         "accept_enqueue": 0.0,
+         "selected_commit": 0.0
+        },
+        "output_spans": [
+         {
+          "mode": "ar",
+          "reason": "no_provider",
+          "position": 0,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 1,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 2,
+          "tokens": 2
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 4,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 5,
+          "tokens": 4
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 9,
+          "tokens": 3
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 12,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 13,
+          "tokens": 1
+         },
+         {
+          "mode": "mtp",
+          "reason": "speculative_qualified",
+          "position": 14,
+          "tokens": 2
+         }
+        ]
+       },
+       "kv_layout": {
+        "pool_contract": "global_generation2",
+        "pool_storage_layout": "global-arbitrary-pages:g1",
+        "storage_dtype": "bf16",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp16",
+        "scale_granularity": "per_token_head",
+        "kv_attention_source": "bf16",
+        "request_pages": 1,
+        "request_capacity_tokens": 256,
+        "request_block_ids": [
+         64
+        ],
+        "one_backing_chunk": true,
+        "contiguous_in_backing": true,
+        "persistent_int8_payload_bytes": 0,
+        "persistent_bf16_payload_bytes": 16777216,
+        "persistent_scale_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0,
+        "persistent_total_bytes": 16777216
+       }
+      }
+     }
+    },
+    "tokenizer": {
+     "seed_token_text": "\n\n"
+    }
+   },
+   "ar": {
+    "seed": {
+     "text": "\n\nRivers carve their paths through the earth, shaping landscapes and sustaining life along",
+     "ids": [
+      271,
+      49,
+      1878,
+      76892,
+      836,
+      12351,
+      1472,
+      279,
+      9114,
+      11,
+      44003,
+      52946,
+      321,
+      76375,
+      2199,
+      3055
+     ],
+     "telemetry": {
+      "execution_path": "gguf_packed_ar_server_decode",
+      "sampler_mode": "greedy_fast",
+      "forced_tokens_pending": [],
+      "forced_token_id": null,
+      "forced_tokens_remaining": null,
+      "diagnostics": {
+       "prefix_cache": {
+        "mode": "off",
+        "block_size_tokens": 256,
+        "eligible": false,
+        "lookup": false,
+        "hit": false,
+        "source": null,
+        "matched_tokens": 0,
+        "reused_tokens": 0,
+        "avoided_prefill_tokens": 0,
+        "executed_prefill_tokens": 7,
+        "reused_pages": 0,
+        "reused_page_bytes": 0,
+        "state_clone_bytes": 0,
+        "snapshot_hit": false,
+        "admission_fallback": false,
+        "fallback_reason": "cache_off",
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "cache_resident_bytes": 0
+       },
+       "kv_layout": {
+        "pool_contract": "global_generation2",
+        "pool_storage_layout": "global-arbitrary-pages:g1",
+        "storage_dtype": "bf16",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp16",
+        "scale_granularity": "per_token_head",
+        "kv_attention_source": "bf16",
+        "request_pages": 1,
+        "request_capacity_tokens": 256,
+        "request_block_ids": [
+         64
+        ],
+        "one_backing_chunk": true,
+        "contiguous_in_backing": true,
+        "persistent_int8_payload_bytes": 0,
+        "persistent_bf16_payload_bytes": 16777216,
+        "persistent_scale_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0,
+        "persistent_total_bytes": 16777216
+       }
+      }
+     }
+    },
+    "cases": {
+     "forced_two_tokens": {
+      "purpose": "A two-token queue must be emitted in order at the head of the output and consumed exactly once.",
+      "fields": {
+       "forced_tokens_pending": [
+        1110,
+        1850,
+        32777
+       ],
+       "forced_token_reason": "gate"
+      },
+      "ids": [
+       1110,
+       1850,
+       32777,
+       271,
+       2427,
+       286,
+       13569,
+       11,
+       799,
+       1324,
+       791,
+       3299,
+       25,
+       271,
+       588,
+       198,
+       19186,
+       198,
+       26952,
+       198,
+       32897,
+       198,
+       50897,
+       198
+      ],
+      "text": " zeta omega\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\nfour\nfive\n",
+      "telemetry": {
+       "execution_path": "gguf_packed_ar_host_sampler_decode",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 32,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "forced_three_tokens_greedy": {
+      "purpose": "A three-token queue is longer than a single verified chain, so the cycle consumes it across its rows and the next cycle continues.",
+      "fields": {
+       "forced_tokens_pending": [
+        1110,
+        1850,
+        32777,
+        81099
+       ],
+       "forced_token_reason": "gate"
+      },
+      "ids": [
+       1110,
+       1850,
+       32777,
+       81099,
+       17972,
+       19638,
+       21989,
+       36770,
+       24977,
+       36346,
+       37705,
+       9197,
+       20956,
+       13053,
+       8029,
+       271,
+       2427,
+       286,
+       13569,
+       11,
+       799,
+       1324,
+       791,
+       3299,
+       25,
+       271,
+       588,
+       198,
+       19186,
+       198,
+       26952,
+       198
+      ],
+      "text": " zeta omega kappa theta sigma phi psi chi xi eta delta gamma beta alpha\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\n",
+      "telemetry": {
+       "execution_path": "gguf_packed_ar_host_sampler_decode",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 32,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "forced_tokens_sampled": {
+      "purpose": "The sampled branch (temperature > 0) applies the same override: the forced prefix is emitted and the continuation is the AR one.",
+      "fields": {
+       "forced_tokens_pending": [
+        1110,
+        1850,
+        32777
+       ],
+       "forced_token_reason": "gate"
+      },
+      "ids": [
+       1110,
+       1850,
+       32777,
+       13,
+       271,
+       27775,
+       383,
+       279,
+       1103,
+       488,
+       3766,
+       11,
+       1042,
+       579,
+       1387,
+       1441,
+       279,
+       8240,
+       310,
+       9845,
+       279,
+       1698,
+       321,
+       10229
+      ],
+      "text": " zeta omega.\n\nBased on the list you provided, let's break down the sequence to verify the count and identify",
+      "telemetry": {
+       "execution_path": "gguf_packed_ar_host_sampler_decode",
+       "sampler_mode": "host_logits_sample",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 32,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "json_object_close": {
+      "purpose": "A json_object request masks each row from the decoded text of the tokens before it and forces the closing suffix when the remaining budget is exactly enough to close the object. The greedy case is deterministic, so the two arms must publish identical ids.",
+      "fields": {
+       "json_object_close_forcing": true
+      },
+      "ids": [
+       271,
+       4754,
+       8656,
+       3147,
+       74482,
+       2004,
+       2129,
+       3715,
+       3147,
+       34,
+       38915,
+       8934
+      ],
+      "text": "\n\n{\"city\":\"Kyoto\",\"unit\":\"Celsius\"}",
+      "telemetry": {
+       "execution_path": "gguf_packed_ar_host_sampler_decode",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": 8934,
+       "forced_tokens_remaining": 0,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 29,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "tool_call_required": {
+      "purpose": "A required tool_call_constraint admits only the canonical envelope, so the model is forced into the tool branch and the constraint's closing suffix is what completes it at the budget. Greedy, so the two arms must publish identical ids.",
+      "fields": {
+       "tool_call_constraint": {
+        "tool_names": [
+         "read"
+        ],
+        "mode": "required"
+       }
+      },
+      "ids": [
+       271,
+       248058,
+       4754,
+       591,
+       763,
+       1,
+       851,
+       2129,
+       15889,
+       21624,
+       2267,
+       56550,
+       5008,
+       14,
+       17742,
+       3778,
+       29958,
+       248059,
+       198,
+       248046
+      ],
+      "text": "\n\n<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"/tmp/notes.txt\"}}</tool_call>\n<|im_end|>",
+      "telemetry": {
+       "execution_path": "gguf_packed_ar_host_sampler_decode",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 42,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "thinking_hard_close": {
+      "purpose": "A thinking budget is per-row sampler state, so the hard cap queues its close sequence from inside the cycle that reaches it and the commit consumes that override for the position it governs. Sampled, so the two arms' text differs by draw and the acceptance is the index the close starts at, which the cap fixes on both routes.",
+      "fields": {
+       "thinking_hard_token_cap": 8,
+       "thinking_close_token_ids": [
+        15050,
+        14,
+        26003,
+        4891
+       ]
+      },
+      "ids": [
+       271,
+       11280,
+       5381,
+       16327,
+       220,
+       16,
+       19,
+       2756,
+       15050,
+       14,
+       26003,
+       4891,
+       318,
+       17,
+       23985,
+       220,
+       22,
+       283,
+       220,
+       16,
+       19,
+       553,
+       271,
+       332
+      ],
+      "text": "\n\nTwo weeks equals 14 days[[/think]] (2 \u00d7 7 = 14).\n\n**",
+      "telemetry": {
+       "execution_path": "gguf_packed_ar_host_sampler_decode",
+       "sampler_mode": "host_logits_sample",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 19,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "thinking_hard_close_greedy": {
+      "purpose": "The same hard cap on a greedy request. The budget is per-row state either way, and a greedy request has no draw to hide a difference behind, so the two arms must publish identical ids with the close at the cap index.",
+      "fields": {
+       "thinking_hard_token_cap": 8,
+       "thinking_close_token_ids": [
+        15050,
+        14,
+        26003,
+        4891
+       ]
+      },
+      "ids": [
+       271,
+       11280,
+       5381,
+       283,
+       220,
+       17,
+       23985,
+       220,
+       15050,
+       14,
+       26003,
+       4891,
+       271,
+       11280,
+       5381,
+       283,
+       220,
+       17,
+       23985,
+       220,
+       22,
+       283,
+       220,
+       16
+      ],
+      "text": "\n\nTwo weeks = 2 \u00d7 [[/think]]\n\nTwo weeks = 2 \u00d7 7 = 1",
+      "telemetry": {
+       "execution_path": "gguf_packed_ar_host_sampler_decode",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 19,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": null
+     },
+     "force_sequence_completion": {
+      "purpose": "A partially matched force-sequence queues its remainder from inside the cycle that emitted the matching token.",
+      "fields": {
+       "force_sequence_completion_token_sequences": [
+        [
+         16570,
+         81099,
+         12102
+        ]
+       ],
+       "force_sequence_completion_reason": "gate"
+      },
+      "ids": [
+       16570,
+       81099,
+       12102,
+       11495,
+       10589,
+       36346,
+       7613,
+       291,
+       2176,
+       8668,
+       30349,
+       19638,
+       30779,
+       31649,
+       16422,
+       21989,
+       24977,
+       36770,
+       32777,
+       13,
+       271,
+       2427,
+       286,
+       13569
+      ],
+      "text": " twenty kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega.\n\nCounting slowly",
+      "telemetry": {
+       "execution_path": "gguf_packed_ar_host_sampler_decode",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": null,
+       "forced_tokens_remaining": null,
+       "diagnostics": {
+        "prefix_cache": {
+         "mode": "off",
+         "block_size_tokens": 256,
+         "eligible": false,
+         "lookup": false,
+         "hit": false,
+         "source": null,
+         "matched_tokens": 0,
+         "reused_tokens": 0,
+         "avoided_prefill_tokens": 0,
+         "executed_prefill_tokens": 32,
+         "reused_pages": 0,
+         "reused_page_bytes": 0,
+         "state_clone_bytes": 0,
+         "snapshot_hit": false,
+         "admission_fallback": false,
+         "fallback_reason": "cache_off",
+         "cache_resident_entries": 0,
+         "cache_resident_pages": 0,
+         "cache_resident_bytes": 0
+        },
+        "kv_layout": {
+         "pool_contract": "global_generation2",
+         "pool_storage_layout": "global-arbitrary-pages:g1",
+         "storage_dtype": "bf16",
+         "storage_layout": "uniform",
+         "scale_dtype": "fp16",
+         "scale_granularity": "per_token_head",
+         "kv_attention_source": "bf16",
+         "request_pages": 1,
+         "request_capacity_tokens": 256,
+         "request_block_ids": [
+          64
+         ],
+         "one_backing_chunk": true,
+         "contiguous_in_backing": true,
+         "persistent_int8_payload_bytes": 0,
+         "persistent_bf16_payload_bytes": 16777216,
+         "persistent_scale_bytes": 0,
+         "persistent_bf16_mirror_bytes": 0,
+         "persistent_total_bytes": 16777216
+        }
+       }
+      },
+      "probe_ids": [
+       16570,
+       46780,
+       16570,
+       39663,
+       16570,
+       34129,
+       16570,
+       52616,
+       16570,
+       75351,
+       16570,
+       67354,
+       16570,
+       82647,
+       25292,
+       25292
+      ]
+     }
+    },
+    "declared_context_tokens": 4096,
+    "resident_context_tokens": 4096,
+    "after": {
+     "text": "\n\nRivers carve their paths through the earth, shaping landscapes and sustaining life along",
+     "ids": [
+      271,
+      49,
+      1878,
+      76892,
+      836,
+      12351,
+      1472,
+      279,
+      9114,
+      11,
+      44003,
+      52946,
+      321,
+      76375,
+      2199,
+      3055
+     ],
+     "telemetry": {
+      "execution_path": "gguf_packed_ar_server_decode",
+      "sampler_mode": "greedy_fast",
+      "forced_tokens_pending": [],
+      "forced_token_id": null,
+      "forced_tokens_remaining": null,
+      "diagnostics": {
+       "prefix_cache": {
+        "mode": "off",
+        "block_size_tokens": 256,
+        "eligible": false,
+        "lookup": false,
+        "hit": false,
+        "source": null,
+        "matched_tokens": 0,
+        "reused_tokens": 0,
+        "avoided_prefill_tokens": 0,
+        "executed_prefill_tokens": 7,
+        "reused_pages": 0,
+        "reused_page_bytes": 0,
+        "state_clone_bytes": 0,
+        "snapshot_hit": false,
+        "admission_fallback": false,
+        "fallback_reason": "cache_off",
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "cache_resident_bytes": 0
+       },
+       "kv_layout": {
+        "pool_contract": "global_generation2",
+        "pool_storage_layout": "global-arbitrary-pages:g1",
+        "storage_dtype": "bf16",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp16",
+        "scale_granularity": "per_token_head",
+        "kv_attention_source": "bf16",
+        "request_pages": 1,
+        "request_capacity_tokens": 256,
+        "request_block_ids": [
+         64
+        ],
+        "one_backing_chunk": true,
+        "contiguous_in_backing": true,
+        "persistent_int8_payload_bytes": 0,
+        "persistent_bf16_payload_bytes": 16777216,
+        "persistent_scale_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0,
+        "persistent_total_bytes": 16777216
+       }
+      }
+     }
+    },
+    "tokenizer": {
+     "seed_token_text": "\n\n"
+    }
+   }
+  }
+ }
+}

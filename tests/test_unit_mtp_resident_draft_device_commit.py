@@ -652,6 +652,7 @@ def test_device_chain_stage_timings_split_drain_and_d2h(monkeypatch) -> None:
             out[index] = 3 + index
 
     monkeypatch.setattr(resident_draft_mod, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(resident_draft_mod, "copy_host_array_to_device", lambda *args, **kwargs: None)
     monkeypatch.setattr(resident_draft_mod, "copy_device_to_host", fake_copy_device_to_host)
 
     runtime = Runtime()

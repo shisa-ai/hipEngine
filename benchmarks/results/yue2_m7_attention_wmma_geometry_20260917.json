@@ -1,0 +1,74 @@
+{
+  "date": "2026-09-17",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon 8060S (gfx1151, Ryzen AI MAX+ 395, 40 CU, unified LPDDR5X)",
+    "note": "Every figure is gfx1151. No gfx1100 hardware was available."
+  },
+  "kernel": "yue2_nar_attention_wmma_kernel (kernels/hip_gfx1100/yue2/nar_wmma.hip)",
+  "change": "Block geometry: WAVES 4 -> 12 (128 -> 384 threads), ROWS_PER_BLOCK 32 -> 96, K_BATCH 64 -> 32. The lane-to-column mapping is unchanged (16 columns per wave, so 8 query rows x 2 query heads), which is what made a larger block possible without touching the fragment code. Shared memory is now 60928 B (shared_query 192x136 + shared_tile 32x136) against 34816 B before, so one block per CU either way; the win is 3 waves per SIMD instead of 2 and shorter per-batch dependency chains.",
+  "why": "The kernel was at 7.5 TFLOP/s, 15% of the device's fp16 peak, while the reference's own attention kernel reached 12.4 TFLOP/s. A static ISA count showed 2902 instructions per key batch of which 64 are WMMA, and the wave arithmetic (1312 waves over 40 CUs x 4 SIMD, 11.2M cycles) puts the kernel at ~11 cycles per instruction: latency-bound at 2 waves per SIMD rather than issue- or WMMA-bound. That predicted a geometry change rather than an instruction-count change, and the first three instruction-level attempts (vectorizing the K fragment, launch_bounds occupancy hints) were measured as no-ops -- the K-fragment change produced a byte-identical ISA, so the compiler had already vectorized it.",
+  "kernel_time_at_production_shape": {
+    "shape": "1299 rows, 1396 AR keys (2695 total), 16 query heads, 8 key/value heads, head_dim 128",
+    "command": "python3 scripts/yue2_attention_bench.py --kernel {scalar,wmma} --repeat 15, alternating in one session",
+    "scalar_ms": [18.97, 20.56],
+    "wmma_ms": [2.13, 2.17],
+    "minima_ms": {"scalar": [16.50, 16.45], "wmma": [2.07, 2.07]},
+    "ratio_to_scalar": 9.3,
+    "reference_ms": 2.310,
+    "previous_wmma_ms": [4.20, 3.85],
+    "speedup_vs_previous_geometry": 1.84,
+    "rocprof_smoke": "rocprofv3 --kernel-trace on the same bench: 21 calls, 2.533 ms/call, VGPR 224 (was 248), LDS 60928",
+    "note": "The tensor-core kernel is now faster than the reference's own attn_fwd dispatch (2.31 ms) on the same shape."
+  },
+  "geometry_sweep": {
+    "command": "python3 scripts/yue2_attention_bench.py --kernel wmma --repeat 10-15 per configuration",
+    "medians_ms": {
+      "WAVES=4 K_BATCH=64 blocks=2 (previous)": 3.85,
+      "WAVES=8 K_BATCH=32 blocks=2": 2.46,
+      "WAVES=8 K_BATCH=64 blocks=2": 2.42,
+      "WAVES=10 K_BATCH=32 blocks=2": 2.21,
+      "WAVES=12 K_BATCH=32 blocks=2 (retained)": 2.07,
+      "WAVES=12 K_BATCH=16 blocks=2": 2.15,
+      "WAVES=13 K_BATCH=16 blocks=2": 2.45,
+      "WAVES=4 K_BATCH=64 blocks=4": 3.69,
+      "WAVES=8 K_BATCH=16 blocks=3": 2.93
+    },
+    "launch_bounds_note": "The occupancy hint (min blocks per CU) never helped: with the same geometry, 1, 2, 3 and 4 all measured within noise, because the shared-memory footprint already limits the block count to one per CU.",
+    "lds_limit": "WAVES=12 with K_BATCH=64 exceeds the 65536-byte limit (69632), and WAVES=14 with K_BATCH=8 does too, so WAVES=12/K_BATCH=32 is the corner of the feasible region.",
+    "paired_ab": "K_BATCH=32 and K_BATCH=64 at WAVES=8 are identical within noise (2.59/2.60, 2.70/2.68, 2.82/2.81 over three paired rounds), so K_BATCH was chosen at the value that fits the larger block rather than on a timing difference."
+  },
+  "production_profile_gates": {
+    "thresholds": {"max_relative_l2": 0.05, "min_cosine": 0.999},
+    "command": "python3 scripts/yue2_nar_gate.py --fixture artifacts/yue2/oracle/{nar,nar-condend,nar-multichunk}",
+    "release_chunk0": {"latents_relative_l2": 0.01099, "cosine": 0.999941, "worst_velocity_relative_l2": 0.01689, "previous_geometry": 0.01042},
+    "restricted_visibility": {"latents_relative_l2": 0.00894, "cosine": 0.999961, "worst_velocity_relative_l2": 0.01424, "previous_geometry": 0.00938},
+    "multi_chunk": {"latents_relative_l2": 0.01090, "cosine": 0.999943, "worst_velocity_relative_l2": 0.02081, "previous_geometry": 0.01054},
+    "unit_tests": "23/23 in tests/test_unit_yue2_nar_kernels.py, including seven WMMA shapes against the independent FP64 NumPy reference and the geometry guard; 48/48 in the NAR runtime, operator and fixture modules (multi-chunk and visibility restriction included)",
+    "conclusion": "All three gates pass. The batch size changed from 64 keys to 32, so the online-softmax batching (and therefore the rounding) changed by design; this stays a production-profile variant with nar_attention_f32 as the registered strict fallback."
+  },
+  "end_to_end": {
+    "case": "mandarin-off-s1234",
+    "product_32_step_solve_seconds": {"scalar": 54.76, "previous_wmma": 32.22, "wmma_geometry": 26.07},
+    "product_32_step_replay_seconds": {"previous_wmma": 60.28, "wmma_geometry": 46.16},
+    "vae_seconds": 20.08,
+    "reference_32_step_solve_seconds": 27.32,
+    "solve_ratio_to_reference": 0.95,
+    "determinism": "bit-identical across two solves of the same input",
+    "frames_and_samples": "1297/1297 frames, 2490176/2490176 samples, exact",
+    "twelve_case_replay": {"seconds": 458.7, "previous": 464.6, "passed": "12/12 with exact frame and sample counts"}
+  },
+  "across_the_suite": {
+    "command": "python3 scripts/yue2_reference_comparison.py /tmp/yue2_wmma12_final.json --steps 2",
+    "nar_ratio_per_step": 3.78,
+    "previous_wmma": 3.93,
+    "scalar_attention": 5.79,
+    "start_of_work": 26.29,
+    "vae_speedup": 6.18,
+    "note": "At two steps the attention is a small share of the solve, so the suite-level per-step ratio moves much less than the 32-step product number."
+  },
+  "next_candidates": [
+    "The projections are now the largest item by a wide margin (14.7 s of a 26.07 s solve, 229 ms per evaluation) and run at 16.0 TFLOP/s against 19.4 TFLOP/s for the same shapes launched back to back by hipBLASLt; past ~20 TFLOP/s needs a hand-written GEMM.",
+    "The attention is now at the reference's rate, so further work there has to beat it rather than catch it."
+  ]
+}

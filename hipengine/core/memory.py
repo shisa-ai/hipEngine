@@ -206,13 +206,31 @@ def memory_stats() -> dict[str, int]:
     """Return process-local hipEngine device allocation counters.
 
     The counters cover allocations made through :func:`malloc`, which is the
-    torch-free path used by hipEngine runtime/model buffers.  They do not include
-    allocations made internally by HIP/AOTriton libraries, but they do preserve a
-    real high-water mark for hipEngine-owned buffers even after temporary
+    torch-free path used by hipEngine runtime/model buffers, plus the physical
+    device bytes committed into a stable-address VMM arena (see
+    :func:`record_device_commit`).  They do not include allocations made
+    internally by HIP/AOTriton libraries, and they never count a VMM address
+    reservation, which is not physical memory.  They do preserve a real
+    high-water mark for hipEngine-owned device memory even after temporary
     workspaces are released.
     """
 
     return _MEMORY_STATS.snapshot()
+
+
+def record_device_commit(ptr: int, nbytes: int) -> None:
+    """Record the physical device bytes committed into a stable-address arena.
+
+    :class:`hipengine.core.virtual_memory.VirtualMemoryBuffer` maps physical
+    granules into a reserved address range. Those granules are real device
+    memory but are not allocated through :func:`malloc`, so without this they
+    are invisible to the allocation counters. Calling this with an increasing
+    ``nbytes`` for a stable ``ptr`` updates the live size in place; ``nbytes``
+    of zero releases the record. The address reservation itself is never
+    recorded because it is not physical.
+    """
+
+    _MEMORY_STATS.record_commit(int(ptr), int(nbytes))
 
 
 def live_allocation_histogram(*, min_bytes: int = 0) -> dict[str, int]:
@@ -267,6 +285,50 @@ class _MemoryStatsTracker:
                 self._stats.current_allocated_bytes,
             )
             self._stats.peak_allocations = max(self._stats.peak_allocations, self._stats.active_allocations)
+
+    def record_commit(self, ptr: int, nbytes: int) -> None:
+        """Record or release the physical commitment of a stable-address arena.
+
+        A growing VMM arena calls this repeatedly with the same ``ptr`` and a
+        larger ``nbytes``; the live size is updated in place and only the delta
+        moves the cumulative totals. ``nbytes`` of zero releases the record.
+        """
+
+        base = int(ptr)
+        size = int(nbytes)
+        if base == 0:
+            return
+        with self._lock:
+            old_nbytes = self._live.get(base)
+            if size <= 0:
+                if old_nbytes is None:
+                    return
+                self._live.pop(base, None)
+                self._stats.current_allocated_bytes -= old_nbytes
+                self._stats.total_freed_bytes += old_nbytes
+                self._stats.active_allocations -= 1
+                if self._stats.current_allocated_bytes < 0 or self._stats.active_allocations < 0:
+                    self._stats.current_allocated_bytes = max(0, self._stats.current_allocated_bytes)
+                    self._stats.active_allocations = max(0, self._stats.active_allocations)
+                return
+            if old_nbytes is not None:
+                self._stats.current_allocated_bytes -= old_nbytes
+            else:
+                self._stats.active_allocations += 1
+            delta = size - (0 if old_nbytes is None else old_nbytes)
+            self._live[base] = size
+            self._stats.current_allocated_bytes += size
+            if delta > 0:
+                self._stats.total_allocated_bytes += delta
+            elif delta < 0:
+                self._stats.total_freed_bytes += -delta
+            self._stats.peak_allocated_bytes = max(
+                self._stats.peak_allocated_bytes,
+                self._stats.current_allocated_bytes,
+            )
+            self._stats.peak_allocations = max(
+                self._stats.peak_allocations, self._stats.active_allocations
+            )
 
     def record_free(self, buffer: DeviceBuffer) -> None:
         if buffer.ptr == 0:

@@ -4,13 +4,19 @@ owns: OpenAI-compatible server usage, endpoint support, request/response semanti
 ---
 # OpenAI-Compatible Server API
 
-Last updated: 2026-09-21
+Last updated: 2026-10-03
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
 installed by default. HTTP requests route through the in-process generation
 batcher; compatible queued prompts can coalesce into one engine call, while the
 remaining async lock is limited to short model/session preparation mutations.
+
+The model plugin owns chat formatting, reasoning parsing, tool parsing and
+grammar capabilities. Qwen-style XML is one protocol, not a universal prompt
+format: Qwen4Exp uses its declared protocol. Query
+`/v1/hipengine/capabilities` rather than inferring grammar or tool support from
+a model name.
 
 ## Install
 
@@ -100,6 +106,21 @@ declarations use `fp32` scales, so `--kv-scale-dtype fp16` falls back to BF16.
 The reason and requested/effective storage are recorded in `/ready` and the
 KVCache summary. Passing `--kv-storage bf16` explicitly matches the default.
 
+Resident memory is admitted as one budget. A request's target KV and scales, its
+draft KV, the verifier scratch, the decode graph, and the retained prefix
+entries are priced together, and a request that does not fit is refused before
+anything is allocated, naming the consumer that did not fit. That refusal is
+answered as capacity rather than as an internal fault.
+
+`/ready` also reports `model.kv_capability.max_packed_rows`, the effective
+row width a packed decode batch may use. It can be below the declared
+`max_direct_rows`: the direct INT8 batch leaf reads retained INT8 planes on
+every full-attention layer it covers, and a long-context INT8 session keeps a
+BF16 prefix of those layers for quality, so those layers have no retained
+planes. One packed batch cannot run both leaves, so such a session caps the
+width at one row and serializes the rows instead. The packed leaf then runs at
+full declared width only when the full-attention stack is uniformly INT8.
+
 Set `--max-active-requests` to change the maximum number of requests processed
 in flight. Requests beyond that limit remain queued. The shared KV pool starts
 at its configured floor, grows in page chunks up to the memory budget, and
@@ -174,9 +195,12 @@ history-dependent processors use eager native selection. This sampled policy
 uses the packed target verifier for concurrent groups and does not change
 greedy MTP policy. Each request keeps its own seed, token counter, and history
 through admission, retirement, and cancellation.
-Logprob responses, explicit token stops, forced tokens and dynamic constraints
-retain their ordinary-decoding fallback. `"speculative_mtp": false` always
-disables MTP for a request.
+The sampled route serves logprob responses, explicit token stops, and the
+min-token/EOS floor, and reports the same per-token logprob the autoregressive
+route reports for the request. Forced tokens and dynamic constraints retain
+their ordinary-decoding fallback, and so does every one of these fields on a
+greedy request, whose raw-argmax route still refuses them.
+`"speculative_mtp": false` always disables MTP for a request.
 
 Operators may still select explicit diagnostics with
 `--speculative-mtp-serving opt_in` plus `"speculative_mtp": true`. Explicit
@@ -192,8 +216,14 @@ non-streaming MTP requests can coalesce into one backend call within supported
 physical width/depth cells. Queue coalescing is not proof of physical verifier
 concurrency. Capabilities report the Generation-2 frontier ceiling separately
 from the admitted plan's `resident_capacity` and `realized_group_rows`.
-Dense uniform INT8 KV MTP supports a single-request verifier, including inside
-a wider resident server; packed INT8 and compact-DMS MTP are not implemented.
+Dense uniform INT8 KV MTP supports both single-request and packed multi-request
+verification when the admitted storage layout supplies retained INT8 payload
+and scale planes for every required attention layer. The effective physical
+width is bounded by the resolved capability; a wider resident capacity does not
+by itself prove a wider verifier. Public compact-DMS serving currently uses AR
+and rejects explicit MTP requests. See
+[INT8 MTP serving](reference/INT8-MTP-SERVER-READINESS.md) and
+[DMS serving](reference/DMS-SERVING.md) for their separate contracts.
 Explicit requests for missing implementation capabilities return HTTP 501 with
 the reason; automatic requests can use AR. MTP context is bounded by the
 target's allocated capacity, with no fixed 1,023-token admission cap.
@@ -224,8 +254,13 @@ Responses that realize MTP report `thinking_policy` and
 `thinking_controls="prompt_hint_only"`. Set `--speculative-mtp-thinking hard`
 (or
 `HIPENGINE_SPECULATIVE_MTP_THINKING=hard`) to keep full host-sampler
-enforcement; then the thinking budget is a hard MTP blocker and thinking
-requests fall back to plain AR. A request can override the server policy with
+enforcement. The budget then stays a hard blocker for the raw-argmax MTP route,
+which cannot enforce it, so a greedy thinking request falls back to plain AR. A
+request that actually samples is served by the sampled MTP route, which applies
+the budget per verified row: the phase machine, EOS suppression, and soft-close
+bias run on each row's own state, and a reached hard cap queues its close
+sequence from inside the cycle that reaches it. A request can override the server
+policy with
 `"speculative_mtp": {"enabled": true, "thinking": "hint" | "hard"}`; the
 capabilities manifest reports the active policy as
 `sampling.speculative_mtp.thinking_policy`.
@@ -285,8 +320,9 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes plus `session.context_overflow_policy` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
+| `POST /v1/audio/songs` | Built in for a song model | Lyrics plus a style prompt to one song, on the model's own pipeline (`LLM.generate_song()`). Returns `audio/wav` (48 kHz stereo PCM), or a JSON provenance document with `response_format: "json"`. One request runs at a time; a second concurrent request is refused with a retryable 429. Only a model whose plugin declares the `song` surface serves it; a text model answers 501. |
 | `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts support live SSE for one row and buffered SSE for multiple rows; they do not support `echo`, continuations, or sessions. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
-| `POST /v1/chat/completions` | Built in | Renders text messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. With Qwen4Exp `--vision-model`, one multipart user message may include bounded base64 `image/png` `image_url` parts and uses the model-owned multimodal path (`n=1`, non-streaming, no tools/session/continuation). Text supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
+| `POST /v1/chat/completions` | Built in | Renders text messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. With Qwen4Exp `--vision-model`, one multipart user message may include bounded base64 `image/png` `image_url` parts and uses the model-owned multimodal path (`n=1`, non-streaming, no tools/session/continuation). Text supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style XML function envelopes or legacy `<tool_call>{...}</tool_call>` output. |
 
 ## Examples
 
@@ -378,6 +414,69 @@ curl http://127.0.0.1:8000/v1/chat/completions \
     "temperature": 0.0
   }'
 ```
+
+### Song generation
+
+A model that declares the `song` surface serves `POST /v1/audio/songs` instead of
+the text endpoints. YuE2 is the current example; see
+[model-cards/MODEL-YUE2.md](model-cards/MODEL-YUE2.md).
+
+```bash
+hipengine serve \
+  --model ~/models/YuE2-3B \
+  --vae-model ~/models/YuE2-Vae \
+  --served-model-name yue2
+
+curl -sS http://127.0.0.1:8000/v1/audio/songs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "yue2",
+    "style": "warm acoustic pop, brushed drums, female lead",
+    "lyrics": "[verse]\nStreetlights hum a quiet tune\n[chorus]\nWe are the echo in the room"
+  }' \
+  --output song.wav
+```
+
+`--vae-model` (or `HIPENGINE_YUE2_VAE_DIR`) names the companion decoder
+checkpoint. Without either, hipEngine looks for the `m-a-p/YuE2-Vae` snapshot in
+the local Hugging Face cache and reports a missing decoder by name. The server
+builds the pipeline during startup, so `/ready` returning 200 means the first
+request is served without a load.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `style` | required | Free-text style description. |
+| `lyrics` | required | Song lyrics with optional `[verse]`/`[chorus]` section tags. |
+| `cot` | `full` | Planning mode: `full` (melody plus sections), `melody` (melody only), or `off` (none). |
+| `abc` | — | An external ABC score, used in the `melody` and `full` modes. |
+| `seed` | `831001` | Sampling seed. |
+| `steps` | `32` | Override the product's ODE step count (reported as `ode_steps.default` in the capabilities manifest). Fewer steps trade fidelity for time. |
+| `cfg_scale` | model default | Classifier-free guidance scale. |
+| `request_id` | `song` | Filename-safe id, returned as the `Content-Disposition` filename and echoed in the response. |
+| `response_format` | `wav` | `wav` returns the audio; `json` returns the same audio as base64 plus the plan, the semantic token count, the truncation flags, the checkpoint identities, and the timing. |
+
+A `wav` response carries the audio with these headers:
+
+| Header | Meaning |
+| --- | --- |
+| `X-Hipengine-Request-Id` | The pipeline's request id, unique per generation. |
+| `X-Hipengine-Frames` | Semantic frames generated. |
+| `X-Hipengine-Duration-Seconds` | Audio duration in seconds. |
+| `X-Hipengine-Latent-Identity` | sha256 of the latents. |
+| `X-Hipengine-Audio-Identity` | sha256 of the decoded audio. |
+| `X-Hipengine-Generation-Seconds` | Wall-clock time the request took. |
+
+The two identities make a repeat run comparable, and they are not advisory: the
+same request, seed, and settings on the same hardware return byte-identical audio
+with the same two identities. The truncation flags in the `json` form report
+whether the plan or the semantic decode stopped at its cap rather than at its own
+end.
+
+A song takes minutes rather than seconds, so this endpoint is not part of the
+batched text path: one request runs at a time, a concurrent request is a
+retryable 429, and a client that disconnects stops the pipeline between stages.
+The capabilities manifest reports the endpoint under `song_generation`, with
+`loaded: true` once the resident pipeline is built.
 
 ### Logprobs
 
@@ -1035,8 +1134,17 @@ Qwen-style tool block into the rendered chat prompt and expects the model to
 emit tool calls as:
 
 ```text
-<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>
+<tool_call>
+<function=read>
+<parameter=path>
+README.md
+</parameter>
+</function>
+</tool_call>
 ```
+
+Legacy `<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>`
+blocks are also accepted by the compatibility parser.
 
 The server converts those blocks to OpenAI-compatible `message.tool_calls` in
 non-streaming responses or `delta.tool_calls` chunks in streaming responses, with
@@ -1046,10 +1154,16 @@ remaining assistant text. If that entire remainder consists only of Qwen
 `<|endoftext|>` / `<|im_start|>` / `<|im_end|>` controls, whitespace, and a
 marker-bound chat role label, it is discarded as leaked template residue.
 Ordinary or interior literal text is preserved, and non-tool outputs are
-unchanged. Long streaming `function.arguments` strings are
-split into concatenable fragments after the full tool-call block has been parsed
-and validated; the first chunk carries the function name, and all chunks carry
-the same tool-call id and index. Buffered c>N streams can preserve backend
+unchanged. For single-choice streams using the XML host constraint, content and
+string-typed argument values stream incrementally; non-string values wait until
+the parameter closes so they can be decoded as JSON. The first argument chunk
+carries the function name, and all chunks carry the same tool-call id and index.
+The server validates the completed call and checks it against the streamed
+arguments before emitting `finish_reason: "tool_calls"`. Clients must wait for
+that finish event before executing a call. Truncated or invalid live calls end
+with an SSE error, never a successful empty response. Legacy JSON compatibility
+and other buffered paths split arguments after parsing and validation.
+Buffered c>N streams can preserve backend
 scheduler chunk telemetry on those argument fragments when the validated
 argument string is a contiguous span of the raw tool-call block. Prior assistant
 `tool_calls` and `role: "tool"`
@@ -1077,16 +1191,20 @@ Tokenizer encode/decode-backed tool requests combine prompt/rendering, host
 processed-logits constraints, and post-generation parsing/validation. If either
 capability is unavailable, the strict mask is not installed and the existing
 prompt/parse plus fail-closed result validator remains authoritative. In
-`tool_choice="auto"`, candidate masking admits either normal text or one
-canonical `<tool_call>` envelope and prevents switching from visible content to
-a later tool call. Required and specific choices admit only the envelope. The
-envelope grammar enforces a declared tool name plus strict root-object JSON
-arguments before token selection; full function JSON Schema semantics remain in
-the post-generation validator. Unless thinking is explicitly disabled, the
+`tool_choice="auto"`, the XML host constraint admits normal text, including a
+preamble before a tool call. Required and specific choices admit only tool
+calls. The constraint enforces declared function names and parameter-envelope
+structure; values are opaque text until parsing, and full function JSON Schema
+semantics remain in the post-generation validator. Parallel calls are allowed
+when `parallel_tool_calls` is omitted or `true`; explicit `false` limits output
+to at most one call. The closing XML tag is preserved for parsing rather
+than registered as a stop sequence; generic outer-tag repair is not used for
+XML because it can close an unfinished parameter incorrectly. Unless thinking
+is explicitly disabled, the
 grammar also accepts one optional `<think>...</think>` prefix before applying
 the final text/tool branch, including when no tokenized thinking budget owns the
 phase. Once a tool block parses successfully, the
-server also rejects multiple parsed calls unless `parallel_tool_calls=true` is
+server also rejects multiple parsed calls when `parallel_tool_calls=false` is
 explicitly supplied. It does strict result validation when `tool_choice` is
 `none`, `required`, or a specific function, when any tool function declares
 `"strict": true`, or when `parallel_tool_calls` is explicitly supplied. Strict
@@ -1102,7 +1220,9 @@ ended because the generation budget was exhausted; in that case
 `invalid_tool_call` failures, chat requests may set
 `invalid_tool_call_error_mode="hard_error"` to receive an HTTP error in
 non-streaming responses or an SSE `error` chunk in streaming responses. The
-default remains the normal chat response described above.
+default remains the normal chat response described above on buffered and
+non-streaming paths. Live XML streams always surface final validation failures
+as SSE errors, because argument fragments may already have reached the client.
 For buffered c>N streams that have backend scheduler chunks, final done choices
 also include private `choices[].hipengine.withheld_scheduler_tool_chunks`
 diagnostics when those chunks were withheld because the parsed tool call was
@@ -1154,8 +1274,9 @@ unique deterministic envelope/structural suffix exactly fits the remaining
 budget, that suffix is queued through the same forced-token path. Every forced
 token is revalidated against the grammar; token decode failures, empty token
 text, and an empty constrained candidate set fail closed. Tool constraints block
-native GPU sampling and raw-target MTP, so this is a host processed-logits
-correctness route rather than native-sampler parity. Full JSON Schema argument
+native GPU sampling and raw-target MTP. They use host processed logits, and can
+use MTP when the model plugin implements processed acceptance for the request's
+constraint contract. This is not native-sampler parity. Full JSON Schema argument
 constraints remain post-generation.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
@@ -1548,7 +1669,7 @@ when `invalid_tool_call_error_mode="hard_error"`.
 | --- | ---: | --- | --- |
 | `unsupported_parameter` | 400 | no | Unsupported request field/value. Legacy `error.code` can be `unsupported_content_type` for non-text chat content parts. |
 | `unsupported_feature` | 501 | no | Requested optional runtime feature is unavailable for the served model, for example tokenizer/counting diagnostics without tokenizer hooks. |
-| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output without `parallel_tool_calls=true`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests; opt-in HTTP/SSE hard-error payload when `invalid_tool_call_error_mode="hard_error"`. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
+| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output with `parallel_tool_calls=false`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests; opt-in HTTP/SSE hard-error payload when `invalid_tool_call_error_mode="hard_error"`, or an SSE error by default for live XML streams. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
 | `schema_violation` | 422 | no | Request body or server-side request validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error` or `invalid_request`. |
 | `invalid_continuation` | 400 | no | Unknown, consumed, wrong-endpoint, wrong-model, or otherwise incompatible `continuation_id`. |
 | `continuation_expired` | 410 | no | Known `continuation_id` that expired before resume. |
@@ -1757,6 +1878,17 @@ generated text.
 
 ## Current limitations
 
+- `POST /v1/audio/songs` is outside the batched text path. One request runs at a
+time on the resident pipeline, so a second concurrent request is refused with a
+retryable 429 `engine_busy` rather than queued, and a song holds the pipeline for
+its whole duration (minutes, not seconds). There is no streaming form: the
+response is the finished song. The request carries the product's own sampling
+arithmetic; phase-level overrides (`abc_sampling`, `semantic_sampling`) exist on
+`LLM.generate_song()` and `LLM.song_generator()`, not on the HTTP body. A client
+that disconnects stops the pipeline at the next stage or decode-loop boundary,
+which is the same cooperative cancellation described below and not preemption of
+a running kernel. A model that declares the `song` surface serves this endpoint
+instead of the text endpoints, and a text model refuses it.
 - Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;
   runtime failures after that point are reported as SSE error chunks and
   `REQUEST_FAILED` logs, not a different HTTP status.

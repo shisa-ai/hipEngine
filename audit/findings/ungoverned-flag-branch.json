@@ -1,7 +1,7 @@
 {
   "kind": "ungoverned-flag-branch",
   "meta": {
-    "suspect_flags": 49,
+    "suspect_flags": 50,
     "cross_reference": "inventory/flags.json"
   },
   "rows": [
@@ -270,9 +270,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/generation/qwen35_gguf_mtp2.py:2175:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
+      "key": "hipengine/generation/qwen35_gguf_mtp2.py:2272:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
       "title": "runtime branch on HIPENGINE_DEBUG_SAMPLED_QUALIFY: default-off with no removal condition recorded",
-      "location": "hipengine/generation/qwen35_gguf_mtp2.py:2175",
+      "location": "hipengine/generation/qwen35_gguf_mtp2.py:2272",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_DEBUG_SAMPLED_QUALIFY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_DEBUG_SAMPLED_QUALIFY`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -289,7 +289,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf_mtp2.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf_mtp2.py:2175:HIPENGINE_DEBUG_SAMPLED_QUALIFY"
+          "hipengine/generation/qwen35_gguf_mtp2.py:2272:HIPENGINE_DEBUG_SAMPLED_QUALIFY"
         ],
         "tokens": [
           "branch",
@@ -302,8 +302,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/generation/qwen35_gguf_mtp2.py:2175:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
-      "evidence_hash": "cd02e817bba9"
+      "id": "ungoverned-flag-branch/hipengine/generation/qwen35_gguf_mtp2.py:2272:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
+      "evidence_hash": "a05b36d55c92"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -341,6 +341,43 @@
       },
       "id": "ungoverned-flag-branch/hipengine/generation/qwen4_exp_profiles.py:571:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
       "evidence_hash": "8f05f022b4e1"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/generation/yue2_song.py:26:HIPENGINE_YUE2_VAE_DIR",
+      "title": "runtime branch on HIPENGINE_YUE2_VAE_DIR: default-off with no removal condition recorded",
+      "location": "hipengine/generation/yue2_song.py:26",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_YUE2_VAE_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_YUE2_VAE_DIR`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_YUE2_VAE_DIR",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/generation/yue2_song.py",
+        "refs": [
+          "hipengine/generation/yue2_song.py:26:HIPENGINE_YUE2_VAE_DIR"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_yue2_vae_dir",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/generation/yue2_song.py:26:HIPENGINE_YUE2_VAE_DIR",
+      "evidence_hash": "e29714881b6a"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -1201,9 +1238,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:36191:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:36393:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
       "title": "runtime branch on HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:36191",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:36393",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -1220,7 +1257,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:36191:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
+          "hipengine/runtime/qwen35_gguf_runner.py:36393:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
         ],
         "tokens": [
           "branch",
@@ -1233,14 +1270,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:36191:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
-      "evidence_hash": "cc12ca4636d5"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:36393:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "evidence_hash": "6714514e6d07"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:3772:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:3796:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
       "title": "runtime branch on HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:3772",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:3796",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -1257,7 +1294,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:3772:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
+          "hipengine/runtime/qwen35_gguf_runner.py:3796:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
         ],
         "tokens": [
           "branch",
@@ -1270,8 +1307,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:3772:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
-      "evidence_hash": "53dc4c6d675c"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:3796:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "evidence_hash": "b173a8fc3d8c"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -2498,9 +2535,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:10701:HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:10702:HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP",
       "title": "runtime branch on HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:10701",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:10702",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2517,7 +2554,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:10701:HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP"
+          "hipengine/runtime/qwen35_paro_runner.py:10702:HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP"
         ],
         "tokens": [
           "branch",
@@ -2530,14 +2567,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:10701:HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP",
-      "evidence_hash": "f00b931e5cf8"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:10702:HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP",
+      "evidence_hash": "7b8acc7a728d"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:10707:HIPENGINE_VERIFY_GPU_ACCEPT",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:10708:HIPENGINE_VERIFY_GPU_ACCEPT",
       "title": "runtime branch on HIPENGINE_VERIFY_GPU_ACCEPT: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:10707",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:10708",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VERIFY_GPU_ACCEPT to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VERIFY_GPU_ACCEPT`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2554,7 +2591,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:10707:HIPENGINE_VERIFY_GPU_ACCEPT"
+          "hipengine/runtime/qwen35_paro_runner.py:10708:HIPENGINE_VERIFY_GPU_ACCEPT"
         ],
         "tokens": [
           "branch",
@@ -2567,14 +2604,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:10707:HIPENGINE_VERIFY_GPU_ACCEPT",
-      "evidence_hash": "63295f84788b"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:10708:HIPENGINE_VERIFY_GPU_ACCEPT",
+      "evidence_hash": "9ce1bff98904"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:10710:HIPENGINE_VERIFY_GPU_ACCEPT",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:10711:HIPENGINE_VERIFY_GPU_ACCEPT",
       "title": "runtime branch on HIPENGINE_VERIFY_GPU_ACCEPT: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:10710",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:10711",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VERIFY_GPU_ACCEPT to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VERIFY_GPU_ACCEPT`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2591,7 +2628,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:10710:HIPENGINE_VERIFY_GPU_ACCEPT"
+          "hipengine/runtime/qwen35_paro_runner.py:10711:HIPENGINE_VERIFY_GPU_ACCEPT"
         ],
         "tokens": [
           "branch",
@@ -2604,14 +2641,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:10710:HIPENGINE_VERIFY_GPU_ACCEPT",
-      "evidence_hash": "2db3d1b281f4"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:10711:HIPENGINE_VERIFY_GPU_ACCEPT",
+      "evidence_hash": "6865779e1979"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:11082:HIPENGINE_VERIFY_GPU_ACCEPT",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:11083:HIPENGINE_VERIFY_GPU_ACCEPT",
       "title": "runtime branch on HIPENGINE_VERIFY_GPU_ACCEPT: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:11082",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:11083",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VERIFY_GPU_ACCEPT to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VERIFY_GPU_ACCEPT`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2628,7 +2665,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:11082:HIPENGINE_VERIFY_GPU_ACCEPT"
+          "hipengine/runtime/qwen35_paro_runner.py:11083:HIPENGINE_VERIFY_GPU_ACCEPT"
         ],
         "tokens": [
           "branch",
@@ -2641,14 +2678,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:11082:HIPENGINE_VERIFY_GPU_ACCEPT",
-      "evidence_hash": "5aed296605cf"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:11083:HIPENGINE_VERIFY_GPU_ACCEPT",
+      "evidence_hash": "c40fd64d8124"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:11319:HIPENGINE_VERIFY_GPU_ACCEPT",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:11320:HIPENGINE_VERIFY_GPU_ACCEPT",
       "title": "runtime branch on HIPENGINE_VERIFY_GPU_ACCEPT: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:11319",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:11320",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VERIFY_GPU_ACCEPT to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VERIFY_GPU_ACCEPT`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2665,7 +2702,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:11319:HIPENGINE_VERIFY_GPU_ACCEPT"
+          "hipengine/runtime/qwen35_paro_runner.py:11320:HIPENGINE_VERIFY_GPU_ACCEPT"
         ],
         "tokens": [
           "branch",
@@ -2678,14 +2715,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:11319:HIPENGINE_VERIFY_GPU_ACCEPT",
-      "evidence_hash": "bdd791913750"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:11320:HIPENGINE_VERIFY_GPU_ACCEPT",
+      "evidence_hash": "948a0757cf28"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:13318:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:13319:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW",
       "title": "runtime branch on HIPENGINE_W8A16_LM_HEAD_MULTI_ROW: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:13318",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:13319",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_W8A16_LM_HEAD_MULTI_ROW to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_W8A16_LM_HEAD_MULTI_ROW`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2702,7 +2739,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:13318:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW"
+          "hipengine/runtime/qwen35_paro_runner.py:13319:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW"
         ],
         "tokens": [
           "branch",
@@ -2715,14 +2752,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:13318:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW",
-      "evidence_hash": "96c647f0da30"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:13319:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW",
+      "evidence_hash": "670457f5d710"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:14039:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:14040:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW",
       "title": "runtime branch on HIPENGINE_W8A16_LM_HEAD_MULTI_ROW: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:14039",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:14040",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_W8A16_LM_HEAD_MULTI_ROW to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_W8A16_LM_HEAD_MULTI_ROW`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2739,7 +2776,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:14039:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW"
+          "hipengine/runtime/qwen35_paro_runner.py:14040:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW"
         ],
         "tokens": [
           "branch",
@@ -2752,14 +2789,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:14039:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW",
-      "evidence_hash": "80e38ddf51f8"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:14040:HIPENGINE_W8A16_LM_HEAD_MULTI_ROW",
+      "evidence_hash": "d4d9a8d9c9be"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:9656:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:9657:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE",
       "title": "runtime branch on HIPENGINE_QWEN35_BATCH_SAMPLE_MODE: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:9656",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:9657",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_QWEN35_BATCH_SAMPLE_MODE to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_QWEN35_BATCH_SAMPLE_MODE`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2776,7 +2813,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:9656:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"
+          "hipengine/runtime/qwen35_paro_runner.py:9657:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"
         ],
         "tokens": [
           "branch",
@@ -2789,14 +2826,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:9656:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE",
-      "evidence_hash": "069d049bb256"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:9657:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE",
+      "evidence_hash": "7767a3e9fcaf"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:9680:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:9681:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT",
       "title": "runtime branch on HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:9680",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:9681",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2813,7 +2850,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:9680:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT"
+          "hipengine/runtime/qwen35_paro_runner.py:9681:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT"
         ],
         "tokens": [
           "branch",
@@ -2826,14 +2863,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:9680:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT",
-      "evidence_hash": "f13deb25bf5d"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:9681:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT",
+      "evidence_hash": "32e48d2c324f"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:9682:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:9683:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS",
       "title": "runtime branch on HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:9682",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:9683",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2850,7 +2887,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:9682:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"
+          "hipengine/runtime/qwen35_paro_runner.py:9683:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS"
         ],
         "tokens": [
           "branch",
@@ -2863,14 +2900,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:9682:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS",
-      "evidence_hash": "715845f9b275"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:9683:HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS",
+      "evidence_hash": "1b7f21d968a8"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_paro_runner.py:9686:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE",
+      "key": "hipengine/runtime/qwen35_paro_runner.py:9687:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE",
       "title": "runtime branch on HIPENGINE_QWEN35_BATCH_SAMPLE_MODE: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_paro_runner.py:9686",
+      "location": "hipengine/runtime/qwen35_paro_runner.py:9687",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_QWEN35_BATCH_SAMPLE_MODE to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_QWEN35_BATCH_SAMPLE_MODE`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -2887,7 +2924,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_paro_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_paro_runner.py:9686:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"
+          "hipengine/runtime/qwen35_paro_runner.py:9687:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"
         ],
         "tokens": [
           "branch",
@@ -2900,45 +2937,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:9686:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE",
-      "evidence_hash": "778cead94cb7"
-    },
-    {
-      "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:128:HIPENGINE_API_KEY",
-      "title": "runtime branch on HIPENGINE_API_KEY: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:128",
-      "evidence": {
-        "fix": "Decide the flag's fate: promote HIPENGINE_API_KEY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_API_KEY`.",
-        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
-        "flag": "HIPENGINE_API_KEY",
-        "default": "off",
-        "flag_signals": [
-          "reads as default-off",
-          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
-        ]
-      },
-      "signals": [
-        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
-      ],
-      "hints": {
-        "anchor": "hipengine/server/__main__.py",
-        "refs": [
-          "hipengine/server/__main__.py:128:HIPENGINE_API_KEY"
-        ],
-        "tokens": [
-          "branch",
-          "condition",
-          "default",
-          "hipengine_api_key",
-          "off",
-          "recorded",
-          "removal",
-          "runtime"
-        ]
-      },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:128:HIPENGINE_API_KEY",
-      "evidence_hash": "5f8ad56a2c73"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_paro_runner.py:9687:HIPENGINE_QWEN35_BATCH_SAMPLE_MODE",
+      "evidence_hash": "358e4af638df"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -2979,13 +2979,13 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:306:HIPENGINE_SPECULATIVE_PROVIDER",
-      "title": "runtime branch on HIPENGINE_SPECULATIVE_PROVIDER: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:306",
+      "key": "hipengine/server/__main__.py:130:HIPENGINE_API_KEY",
+      "title": "runtime branch on HIPENGINE_API_KEY: default-off with no removal condition recorded",
+      "location": "hipengine/server/__main__.py:130",
       "evidence": {
-        "fix": "Decide the flag's fate: promote HIPENGINE_SPECULATIVE_PROVIDER to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_SPECULATIVE_PROVIDER`.",
+        "fix": "Decide the flag's fate: promote HIPENGINE_API_KEY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_API_KEY`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
-        "flag": "HIPENGINE_SPECULATIVE_PROVIDER",
+        "flag": "HIPENGINE_API_KEY",
         "default": "off",
         "flag_signals": [
           "reads as default-off",
@@ -2998,21 +2998,21 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:306:HIPENGINE_SPECULATIVE_PROVIDER"
+          "hipengine/server/__main__.py:130:HIPENGINE_API_KEY"
         ],
         "tokens": [
           "branch",
           "condition",
           "default",
-          "hipengine_speculative_provider",
+          "hipengine_api_key",
           "off",
           "recorded",
           "removal",
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:306:HIPENGINE_SPECULATIVE_PROVIDER",
-      "evidence_hash": "c067c7f5bd03"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:130:HIPENGINE_API_KEY",
+      "evidence_hash": "ccd983240985"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -3053,13 +3053,13 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:314:HIPENGINE_DRAFT_MODEL",
-      "title": "runtime branch on HIPENGINE_DRAFT_MODEL: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:314",
+      "key": "hipengine/server/__main__.py:312:HIPENGINE_SPECULATIVE_PROVIDER",
+      "title": "runtime branch on HIPENGINE_SPECULATIVE_PROVIDER: default-off with no removal condition recorded",
+      "location": "hipengine/server/__main__.py:312",
       "evidence": {
-        "fix": "Decide the flag's fate: promote HIPENGINE_DRAFT_MODEL to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_DRAFT_MODEL`.",
+        "fix": "Decide the flag's fate: promote HIPENGINE_SPECULATIVE_PROVIDER to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_SPECULATIVE_PROVIDER`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
-        "flag": "HIPENGINE_DRAFT_MODEL",
+        "flag": "HIPENGINE_SPECULATIVE_PROVIDER",
         "default": "off",
         "flag_signals": [
           "reads as default-off",
@@ -3072,21 +3072,21 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:314:HIPENGINE_DRAFT_MODEL"
+          "hipengine/server/__main__.py:312:HIPENGINE_SPECULATIVE_PROVIDER"
         ],
         "tokens": [
           "branch",
           "condition",
           "default",
-          "hipengine_draft_model",
+          "hipengine_speculative_provider",
           "off",
           "recorded",
           "removal",
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:314:HIPENGINE_DRAFT_MODEL",
-      "evidence_hash": "f1a53329b909"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:312:HIPENGINE_SPECULATIVE_PROVIDER",
+      "evidence_hash": "b1ca74448def"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -3127,13 +3127,13 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:322:HIPENGINE_VISION_MODEL",
-      "title": "runtime branch on HIPENGINE_VISION_MODEL: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:322",
+      "key": "hipengine/server/__main__.py:320:HIPENGINE_DRAFT_MODEL",
+      "title": "runtime branch on HIPENGINE_DRAFT_MODEL: default-off with no removal condition recorded",
+      "location": "hipengine/server/__main__.py:320",
       "evidence": {
-        "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MODEL to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MODEL`.",
+        "fix": "Decide the flag's fate: promote HIPENGINE_DRAFT_MODEL to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_DRAFT_MODEL`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
-        "flag": "HIPENGINE_VISION_MODEL",
+        "flag": "HIPENGINE_DRAFT_MODEL",
         "default": "off",
         "flag_signals": [
           "reads as default-off",
@@ -3146,21 +3146,21 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:322:HIPENGINE_VISION_MODEL"
+          "hipengine/server/__main__.py:320:HIPENGINE_DRAFT_MODEL"
         ],
         "tokens": [
           "branch",
           "condition",
           "default",
-          "hipengine_vision_model",
+          "hipengine_draft_model",
           "off",
           "recorded",
           "removal",
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:322:HIPENGINE_VISION_MODEL",
-      "evidence_hash": "59cb66e79876"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:320:HIPENGINE_DRAFT_MODEL",
+      "evidence_hash": "fd3680e1809c"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -3201,13 +3201,50 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:333:HIPENGINE_VISION_MAX_PIXELS",
-      "title": "runtime branch on HIPENGINE_VISION_MAX_PIXELS: default-off with no removal condition recorded",
+      "key": "hipengine/server/__main__.py:328:HIPENGINE_VISION_MODEL",
+      "title": "runtime branch on HIPENGINE_VISION_MODEL: default-off with no removal condition recorded",
+      "location": "hipengine/server/__main__.py:328",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MODEL to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MODEL`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_VISION_MODEL",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/server/__main__.py",
+        "refs": [
+          "hipengine/server/__main__.py:328:HIPENGINE_VISION_MODEL"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_vision_model",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:328:HIPENGINE_VISION_MODEL",
+      "evidence_hash": "b984e5af302d"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/server/__main__.py:333:HIPENGINE_YUE2_VAE_DIR",
+      "title": "runtime branch on HIPENGINE_YUE2_VAE_DIR: default-off with no removal condition recorded",
       "location": "hipengine/server/__main__.py:333",
       "evidence": {
-        "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_PIXELS to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_PIXELS`.",
+        "fix": "Decide the flag's fate: promote HIPENGINE_YUE2_VAE_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_YUE2_VAE_DIR`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
-        "flag": "HIPENGINE_VISION_MAX_PIXELS",
+        "flag": "HIPENGINE_YUE2_VAE_DIR",
         "default": "off",
         "flag_signals": [
           "reads as default-off",
@@ -3220,27 +3257,64 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:333:HIPENGINE_VISION_MAX_PIXELS"
+          "hipengine/server/__main__.py:333:HIPENGINE_YUE2_VAE_DIR"
         ],
         "tokens": [
           "branch",
           "condition",
           "default",
-          "hipengine_vision_max_pixels",
+          "hipengine_yue2_vae_dir",
           "off",
           "recorded",
           "removal",
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:333:HIPENGINE_VISION_MAX_PIXELS",
-      "evidence_hash": "4b9689841619"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:333:HIPENGINE_YUE2_VAE_DIR",
+      "evidence_hash": "2eea225202c7"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:334:HIPENGINE_VISION_MAX_PIXELS",
+      "key": "hipengine/server/__main__.py:336:HIPENGINE_YUE2_VAE_DIR",
+      "title": "runtime branch on HIPENGINE_YUE2_VAE_DIR: default-off with no removal condition recorded",
+      "location": "hipengine/server/__main__.py:336",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_YUE2_VAE_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_YUE2_VAE_DIR`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_YUE2_VAE_DIR",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/server/__main__.py",
+        "refs": [
+          "hipengine/server/__main__.py:336:HIPENGINE_YUE2_VAE_DIR"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_yue2_vae_dir",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:336:HIPENGINE_YUE2_VAE_DIR",
+      "evidence_hash": "401eaeb5c8eb"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/server/__main__.py:344:HIPENGINE_VISION_MAX_PIXELS",
       "title": "runtime branch on HIPENGINE_VISION_MAX_PIXELS: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:334",
+      "location": "hipengine/server/__main__.py:344",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_PIXELS to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_PIXELS`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3257,7 +3331,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:334:HIPENGINE_VISION_MAX_PIXELS"
+          "hipengine/server/__main__.py:344:HIPENGINE_VISION_MAX_PIXELS"
         ],
         "tokens": [
           "branch",
@@ -3270,14 +3344,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:334:HIPENGINE_VISION_MAX_PIXELS",
-      "evidence_hash": "5a0ad912f3a1"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:344:HIPENGINE_VISION_MAX_PIXELS",
+      "evidence_hash": "48db8122091a"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:339:HIPENGINE_VISION_MAX_PIXELS",
+      "key": "hipengine/server/__main__.py:345:HIPENGINE_VISION_MAX_PIXELS",
       "title": "runtime branch on HIPENGINE_VISION_MAX_PIXELS: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:339",
+      "location": "hipengine/server/__main__.py:345",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_PIXELS to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_PIXELS`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3294,7 +3368,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:339:HIPENGINE_VISION_MAX_PIXELS"
+          "hipengine/server/__main__.py:345:HIPENGINE_VISION_MAX_PIXELS"
         ],
         "tokens": [
           "branch",
@@ -3307,14 +3381,51 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:339:HIPENGINE_VISION_MAX_PIXELS",
-      "evidence_hash": "2c37f1ff94a3"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:345:HIPENGINE_VISION_MAX_PIXELS",
+      "evidence_hash": "d7654c45ed5c"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:347:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "key": "hipengine/server/__main__.py:350:HIPENGINE_VISION_MAX_PIXELS",
+      "title": "runtime branch on HIPENGINE_VISION_MAX_PIXELS: default-off with no removal condition recorded",
+      "location": "hipengine/server/__main__.py:350",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_PIXELS to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_PIXELS`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_VISION_MAX_PIXELS",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/server/__main__.py",
+        "refs": [
+          "hipengine/server/__main__.py:350:HIPENGINE_VISION_MAX_PIXELS"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_vision_max_pixels",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:350:HIPENGINE_VISION_MAX_PIXELS",
+      "evidence_hash": "c201e1064923"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/server/__main__.py:358:HIPENGINE_VISION_MAX_IMAGE_BYTES",
       "title": "runtime branch on HIPENGINE_VISION_MAX_IMAGE_BYTES: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:347",
+      "location": "hipengine/server/__main__.py:358",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_IMAGE_BYTES to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_IMAGE_BYTES`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3331,7 +3442,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:347:HIPENGINE_VISION_MAX_IMAGE_BYTES"
+          "hipengine/server/__main__.py:358:HIPENGINE_VISION_MAX_IMAGE_BYTES"
         ],
         "tokens": [
           "branch",
@@ -3344,14 +3455,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:347:HIPENGINE_VISION_MAX_IMAGE_BYTES",
-      "evidence_hash": "ff63ea5fdb7c"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:358:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "evidence_hash": "2cd404611635"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:348:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "key": "hipengine/server/__main__.py:359:HIPENGINE_VISION_MAX_IMAGE_BYTES",
       "title": "runtime branch on HIPENGINE_VISION_MAX_IMAGE_BYTES: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:348",
+      "location": "hipengine/server/__main__.py:359",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_IMAGE_BYTES to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_IMAGE_BYTES`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3368,7 +3479,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:348:HIPENGINE_VISION_MAX_IMAGE_BYTES"
+          "hipengine/server/__main__.py:359:HIPENGINE_VISION_MAX_IMAGE_BYTES"
         ],
         "tokens": [
           "branch",
@@ -3381,14 +3492,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:348:HIPENGINE_VISION_MAX_IMAGE_BYTES",
-      "evidence_hash": "1f39ec2072f0"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:359:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "evidence_hash": "fd28ba7d8777"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:353:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "key": "hipengine/server/__main__.py:364:HIPENGINE_VISION_MAX_IMAGE_BYTES",
       "title": "runtime branch on HIPENGINE_VISION_MAX_IMAGE_BYTES: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:353",
+      "location": "hipengine/server/__main__.py:364",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_VISION_MAX_IMAGE_BYTES to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_VISION_MAX_IMAGE_BYTES`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3405,7 +3516,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:353:HIPENGINE_VISION_MAX_IMAGE_BYTES"
+          "hipengine/server/__main__.py:364:HIPENGINE_VISION_MAX_IMAGE_BYTES"
         ],
         "tokens": [
           "branch",
@@ -3418,14 +3529,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:353:HIPENGINE_VISION_MAX_IMAGE_BYTES",
-      "evidence_hash": "1d7c05f1dca9"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:364:HIPENGINE_VISION_MAX_IMAGE_BYTES",
+      "evidence_hash": "3a230137f44c"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:404:HIPENGINE_REPLAY_DIR",
+      "key": "hipengine/server/__main__.py:412:HIPENGINE_REPLAY_DIR",
       "title": "runtime branch on HIPENGINE_REPLAY_DIR: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:404",
+      "location": "hipengine/server/__main__.py:412",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_REPLAY_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_REPLAY_DIR`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3442,7 +3553,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:404:HIPENGINE_REPLAY_DIR"
+          "hipengine/server/__main__.py:412:HIPENGINE_REPLAY_DIR"
         ],
         "tokens": [
           "branch",
@@ -3455,14 +3566,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:404:HIPENGINE_REPLAY_DIR",
-      "evidence_hash": "62503c5abbef"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:412:HIPENGINE_REPLAY_DIR",
+      "evidence_hash": "70c1d084316b"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/__main__.py:407:HIPENGINE_REPLAY_DIR",
+      "key": "hipengine/server/__main__.py:415:HIPENGINE_REPLAY_DIR",
       "title": "runtime branch on HIPENGINE_REPLAY_DIR: default-off with no removal condition recorded",
-      "location": "hipengine/server/__main__.py:407",
+      "location": "hipengine/server/__main__.py:415",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_REPLAY_DIR to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_REPLAY_DIR`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3479,7 +3590,7 @@
       "hints": {
         "anchor": "hipengine/server/__main__.py",
         "refs": [
-          "hipengine/server/__main__.py:407:HIPENGINE_REPLAY_DIR"
+          "hipengine/server/__main__.py:415:HIPENGINE_REPLAY_DIR"
         ],
         "tokens": [
           "branch",
@@ -3492,14 +3603,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:407:HIPENGINE_REPLAY_DIR",
-      "evidence_hash": "1bbddc5ea409"
+      "id": "ungoverned-flag-branch/hipengine/server/__main__.py:415:HIPENGINE_REPLAY_DIR",
+      "evidence_hash": "6375b9097edf"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/api.py:2239:HIPENGINE_API_KEY",
+      "key": "hipengine/server/api.py:2528:HIPENGINE_API_KEY",
       "title": "runtime branch on HIPENGINE_API_KEY: default-off with no removal condition recorded",
-      "location": "hipengine/server/api.py:2239",
+      "location": "hipengine/server/api.py:2528",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_API_KEY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_API_KEY`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3516,7 +3627,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:2239:HIPENGINE_API_KEY"
+          "hipengine/server/api.py:2528:HIPENGINE_API_KEY"
         ],
         "tokens": [
           "branch",
@@ -3529,8 +3640,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/api.py:2239:HIPENGINE_API_KEY",
-      "evidence_hash": "fd19c8960055"
+      "id": "ungoverned-flag-branch/hipengine/server/api.py:2528:HIPENGINE_API_KEY",
+      "evidence_hash": "ad93ce4a397f"
     }
   ]
 }

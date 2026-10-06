@@ -1,0 +1,440 @@
+{
+  "kind": "hipengine_mlperf_edge_integration_smoke",
+  "schema_version": 1,
+  "date": "2026-09-25",
+  "status": "completed_with_integration_failures",
+  "integration_pass": false,
+  "performance_claim": false,
+  "official_mlperf_result": false,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-25T00:36:42.626311+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "6e6a5d81da9e3bf1e6c14f68704120d91052745c",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 1,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-Q4_K_M.gguf",
+    "model_revision": "82d411acf4a06cfb8d9b073a5211bf410bfc29bf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "3609fb4ea4bc3f281eedad5c380ff77a5339a469a062c49815ff82a7443f7a25",
+      "size_bytes": 16817244384,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8408097904,
+        16816195808
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "command": [
+      "bash",
+      "/tmp/launch-hipengine-edge-smoke.sh"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "production",
+    "timing_protocol": "mlperf-edge-27-turn-integration-diagnostic",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "harness": {
+    "repo": "https://github.com/mlcommons/endpoints",
+    "revision": "e71b928f8a72fd0c9d850dc5ddd8fd7760356354",
+    "modified_source": false,
+    "command": "cd ~/mlperf-edge-endpoints && .venv/bin/inference-endpoint benchmark from-config --config ~/gate-runs/mlperf-edge-smoke-20260925/smoke.yaml",
+    "bfcl_eval": "2026.3.23",
+    "torch": "2.14.0+cpu",
+    "dependency_check": "uv pip check passed; upstream bfcl_import_smoke.py passed"
+  },
+  "model_download": {
+    "model_repo": "unsloth/Qwen3.6-27B-GGUF",
+    "model_revision": "82d411acf4a06cfb8d9b073a5211bf410bfc29bf",
+    "tokenizer_repo": "Qwen/Qwen3.6-27B",
+    "tokenizer_revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+    "files": {
+      "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-Q4_K_M.gguf": {
+        "bytes": 16817244384,
+        "sha256": "5ed60d0af4650a854b1755bd392f9aef4872643dc25a254bc68043fa638392a0"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/chat_template.jinja": {
+        "bytes": 7764,
+        "sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/config.json": {
+        "bytes": 4308,
+        "sha256": "69db4eb7196bc8190813231b3018ca05d8c2e3abc7b1af19d55c157af44a9d9c"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/configuration.json": {
+        "bytes": 51,
+        "sha256": "2d4464e2ead06bc9bc718c781309ad1e7baded626d66e8dcdc8b469ba185faf0"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/generation_config.json": {
+        "bytes": 202,
+        "sha256": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/merges.txt": {
+        "bytes": 3353259,
+        "sha256": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/model.safetensors.index.json": {
+        "bytes": 112216,
+        "sha256": "a8ad2c26fb707ff8c245806315b03e3b4b74595528492423af5dae0ce39b4d9b"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/preprocessor_config.json": {
+        "bytes": 390,
+        "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/tokenizer.json": {
+        "bytes": 12807982,
+        "sha256": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/tokenizer_config.json": {
+        "bytes": 16718,
+        "sha256": "5186f0defcd7f232382c7f0aebcd2252d073bb921ab240e407b7ae8745d2b29b"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/video_preprocessor_config.json": {
+        "bytes": 385,
+        "sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13"
+      },
+      "/home/lhl/models/mlperf-edge/tokenizer/vocab.json": {
+        "bytes": 6722759,
+        "sha256": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+      }
+    }
+  },
+  "workload": {
+    "conversation": "pallets__flask-5014",
+    "source_rows": 54,
+    "generated_turns": 27,
+    "concurrency": 1,
+    "served_context": 32768,
+    "temperature": 0,
+    "seed": 42,
+    "max_new_tokens": 1024,
+    "reasoning_requested": false,
+    "inject_tool_delay": false,
+    "cache": "radix default",
+    "mtp_policy": "auto default",
+    "actual_route": "AR host sampler, 27/27 request counter delta",
+    "prior_probes": 2,
+    "harness_warmup": false,
+    "subset_manifest": {
+      "source_sha256": "b7da8c4ffbe1cabd79c4d8169e5201541e006364b4bfc016d01d893e20ee6f70",
+      "subset_sha256": "f8b7dcb551a6fc15e829bbeb96465f3f7bce7a4a3da9cb8f95a02c50f1eca85f",
+      "conversation_ids": [
+        "pallets__flask-5014"
+      ],
+      "generated_turns": 27,
+      "rows": 54,
+      "config_sha256": "76c25aa6b803d3d189498093813262d2e2eeaca71e9bd0d83d019d7e78cf29ea",
+      "harness_revision": "e71b928f8a72fd0c9d850dc5ddd8fd7760356354"
+    }
+  },
+  "observed": {
+    "issued": 27,
+    "completed": 27,
+    "http_failed": 0,
+    "dropped": 0,
+    "missing_turns": 0,
+    "measured_duration_s": 551.182127991,
+    "job_start_utc": "2026-09-25T00:38:43Z",
+    "job_end_utc": "2026-09-25T00:48:12Z",
+    "mean_turn_latency_s": 20.413958689925927,
+    "inline_executable_iou": 0.5278,
+    "empty_outputs": 1,
+    "empty_request_turn": 45,
+    "empty_scored_assistant_turn": 46,
+    "finish_reason_counts": {
+      "stop": 7,
+      "length": 2,
+      "tool_calls": 18,
+      "content_filter": 0,
+      "function_call": 0,
+      "other": 0
+    },
+    "harness_output_tokens": 3970,
+    "harness_input_min": 1363,
+    "harness_input_max": 14692,
+    "harness_raw_tpot_average_ns": -903.8606065081475,
+    "negative_event_windows": [
+      {
+        "request_turn": 1,
+        "delta_ns": -109055
+      },
+      {
+        "request_turn": 5,
+        "delta_ns": -90770
+      },
+      {
+        "request_turn": 7,
+        "delta_ns": -125916
+      },
+      {
+        "request_turn": 9,
+        "delta_ns": -77846
+      },
+      {
+        "request_turn": 13,
+        "delta_ns": -95559
+      },
+      {
+        "request_turn": 15,
+        "delta_ns": -95279
+      },
+      {
+        "request_turn": 17,
+        "delta_ns": -114696
+      },
+      {
+        "request_turn": 19,
+        "delta_ns": -95469
+      },
+      {
+        "request_turn": 21,
+        "delta_ns": -85490
+      },
+      {
+        "request_turn": 23,
+        "delta_ns": -100629
+      },
+      {
+        "request_turn": 25,
+        "delta_ns": -106880
+      },
+      {
+        "request_turn": 27,
+        "delta_ns": -88446
+      },
+      {
+        "request_turn": 29,
+        "delta_ns": -82995
+      },
+      {
+        "request_turn": 31,
+        "delta_ns": -92754
+      },
+      {
+        "request_turn": 33,
+        "delta_ns": -119143
+      },
+      {
+        "request_turn": 35,
+        "delta_ns": -122009
+      },
+      {
+        "request_turn": 37,
+        "delta_ns": -90389
+      },
+      {
+        "request_turn": 39,
+        "delta_ns": -94828
+      },
+      {
+        "request_turn": 41,
+        "delta_ns": -89899
+      },
+      {
+        "request_turn": 43,
+        "delta_ns": -89367
+      },
+      {
+        "request_turn": 47,
+        "delta_ns": -78127
+      },
+      {
+        "request_turn": 49,
+        "delta_ns": -98886
+      },
+      {
+        "request_turn": 51,
+        "delta_ns": -117681
+      }
+    ],
+    "route_counters_delta": {
+      "hipengine_requests_total": 27.0,
+      "hipengine_mtp_requests_total": 0.0,
+      "hipengine_mtp_draft_tokens_accepted_total": 0.0,
+      "hipengine_resident_route_total{route=\"host_sampler_requests\"}": 27.0,
+      "hipengine_resident_route_total{route=\"native_c1_decode_steps\"}": 4921.0,
+      "hipengine_resident_route_total{route=\"native_full_prefill_groups\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_full_prefill_rows\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_incremental_prefill_chunks\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_incremental_prefill_unsampled_chunks\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_packed_decode_steps\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_packed_graph_captures\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_packed_graph_replays\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_sampled_prefill_rows\"}": 27.0,
+      "hipengine_resident_route_total{route=\"native_sampler_batch_launches\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_sampler_requests\"}": 0.0,
+      "hipengine_resident_route_total{route=\"native_sampler_row_launches\"}": 0.0,
+      "hipengine_resident_route_total{route=\"resident_fallback_requests\"}": 0.0,
+      "hipengine_resident_route_total{route=\"serial_c1_row_steps\"}": 0.0,
+      "hipengine_resident_route_total{route=\"serial_decode_fallback_steps\"}": 0.0
+    }
+  },
+  "correctness": {
+    "transport_complete": true,
+    "output_nonempty_all_turns": false,
+    "tpot_valid": false,
+    "bfcl_gate": "not_run",
+    "numerical_gate": "not_run; no arithmetic changes",
+    "inline_score_is_bfcl": false
+  },
+  "findings": [
+    "One raw harness completion (request turn 45 / scored assistant turn 46) has neither content nor tool calls. Direct SSE reproduction generated 1024 tokens, forced tool_call_close_forcing, and reported private finish_details.reason=invalid_tool_call but public finish_reason=stop; no visible content or tool call was emitted.",
+    "23/26 nonempty turns have COMPLETE timestamps preceding RECV_FIRST by 0.078-0.126ms. Upstream session.py uses worker resp.completed_at for COMPLETE and coordinator now_ns for RECV_FIRST. TPOT is invalid and must not be inverted into decode tok/s.",
+    "Direct first-turn SSE diagnostic emits role immediately and the whole malformed tool-markup text near completion. This endpoint behavior also prevents token-level TTFT/TPOT interpretation.",
+    "Two harness completions finish length; another empty completion is stop despite the server reporting 1024 generated tokens. Some nonempty responses contain tool-like markup as content rather than structured calls.",
+    "Canonical client tokenizer metrics and engine token counts differ; e.g. first prompt 1363 vs 1383. Do not equate client visible-output TPS to engine decode speed.",
+    "All 27 replay requests increment host_sampler_requests and zero increment MTP requests. The probe identifies stop/repair sequences and tool_call_constraint as sampler blockers."
+  ],
+  "artifacts": [
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/harness/config.yaml",
+      "bytes": 2097,
+      "sha256": "25b1aeb993d8bfaf58c76a88b391b58505b36c226318d8740a9c9754af5ad38c"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/harness/scores.json",
+      "bytes": 6662,
+      "sha256": "74772cbce9569ffbc2631102981212626cf6c25954c4472f2f0b13a86f3e0c91"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/harness/performance/result_summary.json",
+      "bytes": 21777,
+      "sha256": "05e21c062321a9c7595d0c11ff94a3d39190dd0b1e8d4d94a49f312a40ece754"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/harness/events.jsonl",
+      "bytes": 1053119,
+      "sha256": "e6b81dc5f88eddc7793cab9e911b7efb4427e1b3a47475affde39498510d0849"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/harness/accuracy/accuracy_results.json",
+      "bytes": 328,
+      "sha256": "a8776a0ede5b7103f8c58112df84bb07816c3302f0604d2e6278dbfb9cecead4"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/smoke.yaml",
+      "bytes": 965,
+      "sha256": "76c25aa6b803d3d189498093813262d2e2eeaca71e9bd0d83d019d7e78cf29ea"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/subset-manifest.json",
+      "bytes": 424,
+      "sha256": "016b8b58dddf10f12fc3ecf2dc9dc1d10bac0859e55bd048b65b5b751c1b2b36"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/provenance.json",
+      "bytes": 2037,
+      "sha256": "7e9fc507a2065605b52b8b8ea2a1b47ffa67f0e79d496e46ebd7e87f4bc26de7"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/metrics-replay-before.txt",
+      "bytes": 21023,
+      "sha256": "8bb5dbf33288ea9d1a55a41a891ae411a2fd8d53da447e79bef890415ed6a596"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/metrics-replay-after.txt",
+      "bytes": 21049,
+      "sha256": "e02e95b291d90b6c74908d9f0ad935fce895cc6be763075c146858585ae00fef"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/capabilities-before.json",
+      "bytes": 39473,
+      "sha256": "1ea11e8920ec1080af5d8a519539ceda959fa4790812a09d0a4e8a7405fe5ace"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/installed-smoke.txt",
+      "bytes": 2692,
+      "sha256": "fa1b4d5914f4c0f75212d1c18eba572d81aa3dc4fd1078c31f08199fe4f435de"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/probe-request.json",
+      "bytes": 729,
+      "sha256": "e1bb621142e405ae4e90ea6974bafbc3ca6ee253a571b27228b9d8271eb76ce0"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/probe-response.json",
+      "bytes": 1927,
+      "sha256": "d8a7c8e90e8e4eecdfbe5ddf7678df5300d62335ce64e050d35966a75379e232"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/probe-diagnostics.sse",
+      "bytes": 6759,
+      "sha256": "1c944d44b774e2b910690fdd9715c966ff8429cd73ce490678afa97a739172f1"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/prepare-hipengine-edge-smoke.py",
+      "bytes": 2645,
+      "sha256": "e3922af116dad2175770c5399722a4c621fa1043606c5ce7e7525cbb5131270b"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/launch-hipengine-edge-smoke.sh",
+      "bytes": 413,
+      "sha256": "a24de79e3723475ea4f993a634a4730ab1ce74309c1f91a0821c253db593b875"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/diagnostic-turn-1-request.json",
+      "bytes": 5736,
+      "sha256": "02000be9aee9631a40cfd1e10a67d7f966cc4bc7b1dbf810d08708b5436bdfaf"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/diagnostic-turn-1-timed.json",
+      "bytes": 12622,
+      "sha256": "9eeca47fccd12f486c28a1d074cbb29c756c16aaa78b1a27f9e475ea2e611263"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/diagnostic-turn-1.sse",
+      "bytes": 7059,
+      "sha256": "e58714981dc59620a807049183d24fe4cfd59bafc993f2bc689a79b38c1d9042"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/diagnostic-turn-45-request.json",
+      "bytes": 60298,
+      "sha256": "92259d629e19c2dcb85241d64cb0970bbc0ee2826bf8c9706c5ed5977b37c9be"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/diagnostic-turn-45-timed.json",
+      "bytes": 29504,
+      "sha256": "c0a6c23dbe5dfd18e5d126bc9ac204f75e3ad5867ed8ff22c427dc309c92c484"
+    },
+    {
+      "path": "~/gate-runs/mlperf-edge-smoke-20260925/diagnostic-turn-45.sse",
+      "bytes": 9748,
+      "sha256": "ec50ef7202c6af786ae79f490bc0bb442519644cc508aa4ec6c95b80b2d27106"
+    }
+  ],
+  "next": [
+    "Diagnose/fix invalid tool-call output suppression and public stop semantics using the saved turn-45 request and raw SSE.",
+    "Repair/validate token streaming and upstream timestamp-domain alignment without rewriting benchmark denominators.",
+    "Recheck request rendering and tool-call parser compatibility for Qwen3.6.",
+    "Repeat focused failing requests, then 27-turn smoke; do not claim a full BFCL gate or Atlas speed comparison."
+  ]
+}

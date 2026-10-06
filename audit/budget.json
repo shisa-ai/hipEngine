@@ -1,5 +1,5 @@
 {
-  "recorded": "2026-09-22",
+  "recorded": "2026-09-25",
   "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. Lower it by triaging rows; raise it only with a recorded reason. `select` narrows a kind's gate to matching rows; rows outside the gate stay visible in the state table.",
   "open": {
     "axis-branch": 0,

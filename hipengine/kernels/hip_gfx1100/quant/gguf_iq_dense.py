@@ -33,6 +33,8 @@ _LIBRARY = None
 _LOCAL32_HANDLES = {}
 _LOCAL32_DUAL_HANDLES = {}
 _LOCAL32_ROWS_HANDLES = {}
+_LOCAL32_RESIDUAL_HANDLES = {}
+_DENSE_RESIDUAL_HANDLES = {}
 
 
 def _local32_waves(in_features, out_features):
@@ -301,6 +303,89 @@ def launch(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, *,
         raise RuntimeError(f'dense IQ launch failed: {rt.error_string(err)}')
 
 
+def launch_local32_residual(x_ptr, qweight_ptr, residual_ptr, out_ptr, rows,
+                            in_features, out_features, *, quant='gguf_iq4_xs',
+                            output='bf16', stream=0, library=None,
+                            runtime=None):
+    """Rows-1 local32 decode GEMV plus rounded-BF16 residual (E6c-2).
+
+    Bit-exact with ``launch_local32`` followed by ``gguf_bf16_add``: the
+    kernel replays the parent's arithmetic and store rounding, then the two
+    conversions the standalone add performs. Only the IQ4_XS / IQ4_NL
+    owners register this sibling; the split family has no residual variant
+    and fails closed to the unfused chain.
+    """
+
+    if quant not in ('gguf_iq4_xs', 'gguf_iq4_nl'):
+        raise ValueError('local32 residual decode supports IQ4_XS/IQ4_NL only')
+    if output != 'bf16':
+        raise ValueError('local32 residual decode writes bf16 only')
+    if (rows != 1 or in_features <= 0 or in_features % 256
+            or out_features <= 0 or out_features % 8):
+        raise ValueError('local32 residual decode requires rows=1, K divisible '
+                         'by 256 and N divisible by 8')
+    if not all((x_ptr, qweight_ptr, residual_ptr, out_ptr)):
+        raise ValueError('local32 residual decode pointers must be nonzero')
+    library = library or _default_library()
+    key = id(library)
+    fn = _LOCAL32_RESIDUAL_HANDLES.get((key, quant))
+    if fn is None:
+        symbol = ('hipengine_gguf_iq4_xs_local32_gemv_residual'
+                  if quant == 'gguf_iq4_xs'
+                  else 'hipengine_gguf_iq4_nl_local32_gemv_residual')
+        fn = getattr(library, symbol)
+        fn.argtypes = ([ctypes.c_void_p] * 4 + [ctypes.c_int64] * 3
+                       + [ctypes.c_int32] + [ctypes.c_void_p])
+        fn.restype = ctypes.c_int
+        _LOCAL32_RESIDUAL_HANDLES[(key, quant)] = fn
+    waves = _local32_waves(in_features, out_features)
+    err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
+             ctypes.c_void_p(residual_ptr), ctypes.c_void_p(out_ptr), rows,
+             in_features, out_features, waves, ctypes.c_void_p(stream))
+    if err:
+        rt = runtime or get_hip_runtime()
+        raise RuntimeError(f'local32 residual decode failed: {rt.error_string(err)}')
+
+
+def launch_dense_residual(x_ptr, qweight_ptr, residual_ptr, out_ptr, rows,
+                          in_features, out_features, *, quant, output='bf16',
+                          stream=0, library=None, runtime=None, row_batch=None):
+    """Rows-1 strict dense-IQ GEMV plus rounded-BF16 residual (E6c-2).
+
+    Bit-exact with ``launch`` (bf16 out) followed by ``gguf_bf16_add``.
+    The strict owner is the production parent for pinned slots and
+    policy-less quants, and for every raw slot while the dense-IQ session is
+    unbound, so this sibling must exist for all seven dense-IQ quants.
+    """
+
+    if quant not in QUANTS or output != 'bf16':
+        raise ValueError('dense IQ residual decode supports the IQ4/IQ3/IQ2 '
+                         'family with bf16 out only')
+    if rows != 1 or in_features <= 0 or in_features % (32 if quant == 'gguf_iq4_nl' else 256) \
+            or out_features <= 0:
+        raise ValueError('dense IQ residual decode requires rows=1 and '
+                         'block-aligned K')
+    if row_batch not in (None, 1):
+        raise ValueError('dense IQ residual decode is rows-1 only')
+    if not all((x_ptr, qweight_ptr, residual_ptr, out_ptr)):
+        raise ValueError('dense IQ residual decode pointers must be nonzero')
+    library = library or _default_library()
+    key = id(library)
+    fn = _DENSE_RESIDUAL_HANDLES.get(key)
+    if fn is None:
+        fn = library.hipengine_gguf_iq_dense_residual
+        fn.argtypes = ([ctypes.c_void_p] * 4 + [ctypes.c_int64] * 3
+                       + [ctypes.c_int32] + [ctypes.c_void_p])
+        fn.restype = ctypes.c_int
+        _DENSE_RESIDUAL_HANDLES[key] = fn
+    err = fn(ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
+             ctypes.c_void_p(residual_ptr), ctypes.c_void_p(out_ptr), rows,
+             in_features, out_features, QUANTS[quant], ctypes.c_void_p(stream))
+    if err:
+        rt = runtime or get_hip_runtime()
+        raise RuntimeError(f'dense IQ residual launch failed: {rt.error_string(err)}')
+
+
 def embedding(token_ids_ptr, qweight_ptr, out_ptr, rows, hidden_size, vocab_size, *,
               threads=256, stream=0, library=None, runtime=None):
     if not 0 < rows <= 65535 or hidden_size <= 0 or hidden_size % 256 or vocab_size <= 0:
@@ -355,6 +440,18 @@ def register_gguf_iq_dense_kernels(*, backend='hip_gfx1100', replace=True):
     register(KernelKey(backend, 'linear_pair_silu', 'gguf_iq4_xs',
                        'local32_pair_silu_bf16_bf16_out'),
              launch_local32_dual_silu, replace=replace)
+    # E6c-2 residual siblings (rows-1 FFN-down fold). The strict composite
+    # covers all seven quants (pinned slots, policy-less quants and every
+    # session-unbound launch run the strict owner); the local32 composite
+    # covers the two redirected IQ4 owners this artifact's down slots take.
+    for quant in QUANTS:
+        register(KernelKey(backend, 'linear+residual', quant,
+                           'gemv_bf16_residual_bf16_out'),
+                 partial(launch_dense_residual, quant=quant), replace=replace)
+    for quant in ('gguf_iq4_xs', 'gguf_iq4_nl'):
+        register(KernelKey(backend, 'linear+residual', quant,
+                           'local32_gemv_bf16_residual_bf16_out'),
+                 partial(launch_local32_residual, quant=quant), replace=replace)
 
 
 register_gguf_iq_dense_kernels()

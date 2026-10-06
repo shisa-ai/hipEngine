@@ -17,6 +17,7 @@ import pytest
 from hipengine.core.memory import DeviceBuffer, memory_stats
 from hipengine.core.virtual_memory import VirtualMemoryBuffer
 from hipengine.runtime import qwen35_gguf_runner as runner
+from hipengine.runtime.memory_admission import MemoryAdmissionRefused
 from tests.test_unit_gguf_packed_workspace_stability import (
     _allocator_fake_runner,
     _int8_kv_layout,
@@ -42,6 +43,12 @@ class FakeSessionVmmLibrary(FakeVmmLibrary):
         from tests.test_unit_virtual_memory import FakeFunction
 
         return FakeFunction(sync)
+
+
+class CoarseGranularityVmmLibrary(FakeSessionVmmLibrary):
+    """A device whose allocation granularity exceeds one KV plane's payload."""
+
+    GRANULARITY = 2 * 1024**2
 
 
 def _session_runtime(library: FakeSessionVmmLibrary):
@@ -199,12 +206,23 @@ def max_pages_from_budget(session, page_bytes: int) -> int:
 
 def test_virtual_reservation_is_not_counted_as_physical_memory(monkeypatch) -> None:
     session, _allocator = _session(monkeypatch)
-    before = memory_stats()
+    before = memory_stats()["current_allocated_bytes"]
     pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
     try:
-        assert memory_stats() == before
+        # Only the committed, granularity-aligned physical bytes are counted;
+        # the much larger address reservation is not physical memory.
+        committed = sum(
+            int(buffer.owner.committed_bytes) for buffer in pool.backing.buffers
+        )
+        reserved = sum(
+            int(buffer.owner.capacity_bytes) for buffer in pool.backing.buffers
+        )
+        assert committed > 0
+        assert reserved > committed
+        assert memory_stats()["current_allocated_bytes"] == before + committed
     finally:
         pool.close()
+    assert memory_stats()["current_allocated_bytes"] == before
 
 
 def test_runtime_without_vmm_keeps_chunk_local_confinement(monkeypatch) -> None:
@@ -219,6 +237,87 @@ def test_runtime_without_vmm_keeps_chunk_local_confinement(monkeypatch) -> None:
         assert pool.current_pages == 4
     finally:
         pool.close()
+
+
+def test_supported_symbols_with_unsupported_driver_falls_back_to_chunks(
+    monkeypatch,
+) -> None:
+    """Exported VMM symbols do not prove driver support.
+
+    A runtime that exports every entry point but returns ``hipErrorNotSupported``
+    (801) must release whatever it reserved and fall back to chunk-local storage
+    instead of failing the session.
+    """
+
+    library = FakeSessionVmmLibrary()
+    library.fail["hipMemAddressReserve"] = 801
+    session, allocator = _session(monkeypatch, library=library)
+    pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
+    try:
+        assert pool._contiguous_growth is False
+        assert pool.current_pages == 4
+        # The failed VMM attempt left no address reservation behind.
+        assert library.reserved_sizes == []
+    finally:
+        pool.close()
+    assert allocator.live == set()
+
+
+def test_pool_budget_accounts_physical_commitment_not_logical_pages(
+    monkeypatch,
+) -> None:
+    """The pool budget prices granularity-aligned physical bytes, not pages."""
+
+    session, _allocator = _session(monkeypatch, library=CoarseGranularityVmmLibrary())
+    pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
+    try:
+        logical = pool.current_pages * pool.page_bytes
+        physical = sum(
+            int(buffer.owner.committed_bytes) for buffer in pool.backing.buffers
+        )
+        # Alignment rounding makes the physical commitment strictly larger than
+        # the logical page payload at this granularity.
+        assert physical > logical
+        assert pool.accounted_bytes == physical
+        assert pool.resident_consumers[0].name == "kv_arena"
+        assert pool.resident_consumers[0].bytes == physical
+        # Prospective pricing agrees with the committed bytes and is padded.
+        assert pool._physical_bytes_for_pages is not None
+        assert pool._physical_bytes_for_pages(pool.current_pages) == physical
+        assert pool._physical_bytes_for_pages(pool.current_pages) > logical
+    finally:
+        pool.close()
+
+
+def test_initial_admission_refuses_padded_physical_before_allocating(
+    monkeypatch,
+) -> None:
+    """A coarse granularity refuses before any reservation or malloc.
+
+    The configured budget fits the logical page payload but not the
+    per-plane-granularity physical commitment, so the initial admission must
+    refuse rather than map padded memory and discover the overcommit later.
+    """
+
+    library = CoarseGranularityVmmLibrary()
+    session, allocator = _session(monkeypatch, library=library, budget_mib=None)
+    cfg = session.runner.weights.config
+    layout = session._device_kv_layout
+    page_bytes = runner._qwen35_gguf_kv_page_bytes(cfg, layout)
+    plane_nbytes = dict(runner._qwen35_gguf_kv_plane_specs(cfg, layout))
+    logical = 4 * page_bytes
+    padded = runner._qwen35_gguf_vmm_physical_bytes(
+        4, plane_page_nbytes=plane_nbytes, granularity=library.GRANULARITY
+    )
+    assert padded > logical
+    session.kv_pool_memory_budget_mib = logical // 1024**2 + 1
+
+    with pytest.raises(MemoryAdmissionRefused):
+        session.create_global_device_kv_pool(page_capacity=4, generation=1)
+
+    # Nothing was allocated or reserved.
+    assert allocator.live == set()
+    assert library.reserved_sizes == []
 
 
 # ---------------------------------------------------------------------------
@@ -304,6 +403,7 @@ def test_growth_table_upload_failure_rolls_back_commit_and_tables(
         baseline_pages = pool.current_pages
         baseline_committed = _committed_snapshot(pool)
         baseline_tables = dict(pool.global_pool._pointer_table_pointers)
+        baseline_live = set(allocator.live)
 
         def failing_upload(*args, **kwargs):
             raise RuntimeError("pointer table upload failed")
@@ -316,6 +416,8 @@ def test_growth_table_upload_failure_rolls_back_commit_and_tables(
         assert pool.current_pages == baseline_pages
         assert _committed_snapshot(pool) == baseline_committed
         assert dict(pool.global_pool._pointer_table_pointers) == baseline_tables
+        # The table allocated for the failed upload is freed, not leaked.
+        assert allocator.live == baseline_live
     finally:
         pool.close()
 
@@ -331,6 +433,7 @@ def test_growth_descriptor_upload_failure_rolls_back_commit_and_tables(
     try:
         baseline_pages = pool.current_pages
         baseline_committed = _committed_snapshot(pool)
+        baseline_live = set(allocator.live)
 
         def failing_upload(buffer, host, nbytes, **kwargs):
             if int(buffer.ptr) == int(descriptor_pointer):
@@ -344,6 +447,8 @@ def test_growth_descriptor_upload_failure_rolls_back_commit_and_tables(
 
         assert pool.current_pages == baseline_pages
         assert _committed_snapshot(pool) == baseline_committed
+        # The tables uploaded before the descriptor failure are freed too.
+        assert allocator.live == baseline_live
     finally:
         pool.close()
 

@@ -1,0 +1,30 @@
+{
+  "chunk_reports": [
+    {
+      "ar_tokens": 545,
+      "frames": 32,
+      "index": 0,
+      "latent_norm": 74.12044525146484,
+      "replay_step_max_abs": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity_norm_step0": 53.93569564819336
+    }
+  ],
+  "chunks": 1,
+  "context": 24576,
+  "frames": 32,
+  "latent_norm": 74.12044525146484,
+  "nar_cond_end": 128,
+  "prefix_length": 512,
+  "replay_step0_max_abs": 0.0,
+  "replay_step1_max_abs": 0.0,
+  "replay_step2_max_abs": 0.0,
+  "replay_step3_max_abs": 0.0,
+  "seed": 1234,
+  "steps": 4,
+  "velocity_norm_step0": 53.93569564819336
+}
