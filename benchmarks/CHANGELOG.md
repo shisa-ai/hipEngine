@@ -2,7 +2,11 @@
 
 - Clean gfx1151 source `5ed9c3e37`, Qwen3.8-Flash-Next UD-Q4_K_XL production/BF16: complete runner-pair owner timing over eight canonical cases, four categories, p1024/p4096, layers13/24/46, both pairs, one warmup and 12 measured pairs per arm. All 48 captures are exact and leak-free with 2→1 cast engagement. Native owner wall is **+3.245% at p1024** and **−3.986% at p4096**, with both order strata agreeing within each shape. Admission is narrowed to rows4096; p1024 remains parent. No model-wall/default promotion claim. Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/native-owner.json`.
 
-## 2026-10-06 — DP-2 native owner gate identified after engine A/B
+## 2026-10-06 — QA-6 raw-index key ring audit gates implementation
+
+- Audited the current QSA raw-index owner and all in-tree consumers. Raw FP32 keys cost 6,144 B/token across 12 QSA layers, or 1.50 GiB at native 262K; the complete index owner is 1.896 GiB before KV/recurrent/scratch. Complete-block pooling is already incremental and cursor rollback is exact, but a ring would change state/snapshot ownership. No code or default changed; ring wrap, partial blocks, dirty restore, eviction and c2 ownership need a declared variant and full state/lifecycle gate if raw-key memory becomes binding. Artifact: `results/2026-10-06-qwen4exp-qa6-raw-key-ring/audit.json`.
+
+
 
 The complete native owner screen now supplies the missing cost gate: p1024 loses and p4096 wins. The opt-in policy is narrowed to p4096; a separate full-engine A/B is required before any production binding or model-wall claim. Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/native-owner.json`.
 

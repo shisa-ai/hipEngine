@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "status": "qa6_audit_no_implementation",
+  "performance_claim": false,
+  "title": "Qwen4Exp QSA raw-index key ring audit",
+  "date": "2026-10-06",
+  "model": "Qwen3.8-Flash-Next",
+  "quant": "UD-Q4_K_XL",
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "execution_profile": "production",
+  "scope": "source and test audit; no runtime or GPU measurement",
+  "current_owner": {
+    "device_class": "Qwen4ExpQSAIndexDeviceState",
+    "raw_keys": "FP32, one key per QSA layer and token, physically scattered through the paged attention block table",
+    "pooled_keys": "FP32 normalized/RoPE keys, one per complete compression block",
+    "raw_key_bytes_per_token": 6144,
+    "qsa_layers": 12,
+    "index_dim": 128,
+    "compression_ratio": 4,
+    "block_budget": 512,
+    "dense_equivalent_max_tokens": 2051
+  },
+  "memory_formula": {
+    "source": "hipengine/loading/qwen4_exp_materialize.py::_qsa_index_state_bytes",
+    "raw_key_bytes_at_256k": 1610612736,
+    "whole_index_owner_bytes_at_256k": 2035532208,
+    "whole_index_owner_gib_at_256k": 1.896,
+    "raw_key_owner_gib_at_256k": 1.5,
+    "note": "The raw-key ring can save only the raw-key resident portion; pooled bank, member map, block starts, scores, selected buffers and attention KV remain."
+  },
+  "consumer_audit": {
+    "raw_key_writes": [
+      "Qwen4ExpQSAIndexDeviceState.append",
+      "append_device_position",
+      "append_rows"
+    ],
+    "raw_key_reads": [
+      "qwen4_exp_qsa_pool_norm_rope_f32 during complete-block close",
+      "qwen4_exp_qsa_score_f32 through pooled_keys",
+      "restore_count only rewinds cursors; it does not read raw keys"
+    ],
+    "pooled_bank": "incremental: prepare_complete_blocks returns when complete <= pooled_count and otherwise processes only new blocks",
+    "snapshot_restore": "current device transactions snapshot recurrent state and restore attention/index cursors by position; host QSA snapshot copies raw_keys[:count] for the standalone host reference state",
+    "rollback": "device rollback uses index.restore_count(position), which sets pooled_count=position//compression_ratio; MTP draft trim uses the same cursor contract",
+    "dirty_destination": "not covered by a dedicated raw-key-ring test",
+    "partial_block_and_wrap": "not covered by a ring implementation because no ring exists",
+    "capacity_2051_2052": "existing boundary gates cover dense/sparse selection behavior, not a ring representation",
+    "c2": "capacity planning and ownership gates exist, but no pooled-history ring admission exists"
+  },
+  "existing_evidence": [
+    "docs/QWEN4EXP-EXTERNAL-FORKS-REVIEW.md",
+    "docs/QWEN4EXP-CONTEXT-CAPACITY.md",
+    "tests/test_gpu_qwen4_exp_runner_qsa.py: incremental pooled block counts and restore_count cursor",
+    "tests/test_unit_qwen4_exp_qsa_index_state.py: host append/select/snapshot/restore",
+    "tests/test_live_qwen4_exp_mtp_runner.py: target/MTP snapshot and restore paths",
+    "benchmarks/results/2026-10-02-qwen4exp-long-context-ladder/README.md: long-context owner curve"
+  ],
+  "decision": {
+    "implementation": "not retained",
+    "default": "unchanged",
+    "reason": "The ring is a memory-saving representation change, not a redundant-work cleanup. The raw-key owner has exact consumer locations and a bounded potential saving, but current device transactions restore only cursors and current tests do not cover partial-block leftovers, wrap, dirty destinations or pooled-history ownership under ring eviction. Implementing it requires a separate state/snapshot ABI and full exactness/capacity gate; no safe promotion follows from this audit.",
+    "next_gate": "If the 1.5 GiB raw-key saving at native 256K becomes binding, prototype a request-owned open-block-plus-verifier-width ring with pooled history authoritative, then test partial blocks, wrap, dirty destination, 2051/2052, rollback, c2 and full logits/KV/state equality."
+  }
+}

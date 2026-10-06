@@ -5,13 +5,23 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
-## Qwen3.8 Flash Next bounded two-consumer F16 ownership
+## Qwen4Exp QA-6 raw-index key ring audit
 
-Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next UD-Q4_K_XL, production/BF16/chunk1024. The bounded native route remains default-off and now admits only rows4096: immediate `attn_qkv→attn_gate` or `shared_gate→shared_up` consumers at layers13–47. Rows1024 is parent-only because complete native owner timing loses there; p512 remains parent-only.
+The current QSA index owner stores raw FP32 index keys at 6,144 B/token across
+12 QSA layers: 1.50 GiB at native 262K context. The full index owner is 1.896
+GiB before KV, recurrent-state and scratch owners. An audit found that raw keys
+are written by append paths, read only when newly completed blocks are pooled,
+and ordinary scoring reads the already-incremental pooled bank. Cursor rollback
+restores the logical count and pooled count; production transactions snapshot
+recurrent state rather than copying the full raw-key history.
 
-The complete native owner screen covers eight canonical cases across four categories at p1024/p4096, layers13/24/46 and both pairs. It records 48 owner captures, one warmup and 12 alternating measured pairs per arm. All outputs/staging bytes are exact, inputs and weights are immutable, parent/candidate cast engagement is 2→1, and teardown is zero. Native owner wall changes are **+3.245% at p1024** and **−3.986% at p4096**. The p1024 loss is consistent in both order strata; the p4096 gain is consistent in both order strata. This is an owner-level result, not a model-throughput claim.
-
-A separate earlier full-engine A/B covered 12 canonical and 16 category-heldout cases with 168 measured arm runs under the former p1024/p4096 policy. Qualified prefill duration was −0.043%, request wall +0.025%, with request-wall changes of +0.067% for parent-first cases and −0.016% for candidate-first cases. That packet does not qualify the narrowed rows4096-only policy as a model-wall change. [Protocol, samples and artifacts](results/2026-10-06-qwen4exp-dp2-shared-cast/README.md).
+A raw-key ring remains a possible memory-saving representation, but it changes
+state and snapshot ownership. The current tests do not cover ring wrap,
+partial-block leftovers, dirty restore destinations, ring eviction, or pooled
+history lifetime under c2. No code, allocator, snapshot format or default
+changed. Reopen only if raw-key memory becomes binding in the native capacity
+ledger, then qualify a declared ring variant against full logits/KV/recurrent/
+index state, rollback, lifecycle, 2051/2052 and c2 gates. [Audit and artifact](results/2026-10-06-qwen4exp-qa6-raw-key-ring/README.md).
 
 
 ## Qwen3.8 Flash Next host-sized routed-grid diagnostic

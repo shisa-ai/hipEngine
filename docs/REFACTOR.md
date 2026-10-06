@@ -1266,10 +1266,14 @@
   casts at p1024 and p4096, with zero elimination at p512. This is correctness
   and engagement evidence, not a model-wall speed claim. Evidence:
   `benchmarks/results/2026-10-06-qwen4exp-dp2-shared-cast/native-qualification.json`.
-- The complete owner result is operation-level evidence, not a model-wall
-  claim. A separate full-engine A/B is required before production binding;
-  `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` remains default-off. Evidence:
-  `benchmarks/results/2026-10-06-qwen4exp-dp2-shared-cast/native-owner.json`.
+- QA-6 audit completes the memory/consumer census without implementing a
+  ring. Raw FP32 keys are 6,144 B/token across 12 QSA layers (1.50 GiB at native
+  262K); the whole index owner is 1.896 GiB before KV/recurrent/scratch. The
+  pooled bank is already incremental and cursor rollback is exact. A ring would
+  change state/snapshot ownership and still lacks wrap, partial-block, dirty
+  restore, eviction and c2 tests. Reopen only if raw-key memory becomes binding;
+  then qualify a declared ring variant against full state/lifecycle gates.
+  Evidence: `benchmarks/results/2026-10-06-qwen4exp-qa6-raw-key-ring/audit.json`.
 - **Remove or promote when:** a tracked-clean full-engine A/B qualifies the
   narrowed rows4096-only policy against the unchanged parent. Do not promote
   from the owner screen alone, and do not interpolate the p4096 result to
