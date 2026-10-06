@@ -845,7 +845,8 @@ def test_prepare_retries_when_the_kv_pool_allocation_fails(monkeypatch) -> None:
 
     reserved: list[int | None] = []
 
-    def _reserve_sessions() -> None:
+    def _reserve_sessions(*, max_sequence_length: int | None = None) -> None:
+        del max_sequence_length
         context = generator._auto_resolved_max_sequence_length
         reserved.append(context)
         # Fail while the pool would need more than half the original budget.
@@ -880,7 +881,8 @@ def test_prepare_degrades_a_pinned_context_with_a_warning(monkeypatch) -> None:
         lambda message, *args: warnings.append(message % args),
     )
 
-    def _reserve_sessions() -> None:
+    def _reserve_sessions(*, max_sequence_length: int | None = None) -> None:
+        del max_sequence_length
         attempted.append(runner._max_sequence_length)
         if runner._max_sequence_length is None or int(runner._max_sequence_length) > 32_768:
             raise MemoryError("hip out of memory")
@@ -932,7 +934,8 @@ def test_auto_context_flag_disables_the_fallback_on_both_paths(monkeypatch) -> N
     runner = _resident_runner_stub(generator, capacity=4)
     reserved: list[int | None] = []
 
-    def _reserve_sessions() -> None:
+    def _reserve_sessions(*, max_sequence_length: int | None = None) -> None:
+        del max_sequence_length
         reserved.append(runner._max_sequence_length)
         raise MemoryError("hip out of memory")
 
@@ -993,6 +996,156 @@ def test_recalibrated_auto_context_is_strictly_smaller_and_aligned(monkeypatch) 
         assert smaller < failed
         assert smaller % 256 == 0
         assert smaller >= 256
+
+
+def test_recalibrated_auto_context_terminates_at_the_block_floor(monkeypatch) -> None:
+    """At or below one block there is no smaller valid context to retry at.
+
+    The failed context must come back unchanged so the callers' ``next_context
+    >= context`` guard stops the loop. A value below one block is what let a
+    real server walk 256 -> 0 -> -256 -> ... -2560.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    generator = _auto_context_generator()
+    runner = _auto_context_runner(free_gib=8.0)
+    for failed in (256, 255, 128, 1):
+        next_context = generator._recalibrated_auto_context(
+            runner,
+            failed_context=failed,
+            max_batch_size=1,
+            defer_kv_allocation=True,
+        )
+        assert next_context == failed
+        assert next_context > 0
+
+
+def test_construct_shared_session_stops_at_the_minimum_context(monkeypatch) -> None:
+    """Repeated failures must never attempt zero or negative context.
+
+    With the 14-attempt budget the real server configured, a failure at every
+    size drove the retry below one block. The loop must attempt the smallest
+    valid context exactly once and then raise.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS", "14")
+    generator = _auto_context_generator()
+    generator._prepared_session_kv_kwargs = lambda: {}
+    generator._configure_session = lambda session: None
+    attempts: list[int | None] = []
+
+    class _Session:
+        def __init__(self, model_path, **kwargs):
+            attempts.append(kwargs.get("max_sequence_length"))
+            raise MemoryError("hip out of memory")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", _Session)
+    with pytest.raises(MemoryError):
+        generator._construct_shared_session(
+            _auto_context_runner(),
+            max_sequence_length=131_072,
+            max_batch_size=1,
+            defer_kv_allocation=True,
+            use_wmma_prefill=None,
+            use_gemv_decode=None,
+        )
+
+    assert attempts[0] == 131_072
+    assert all(int(context) > 0 for context in attempts if context is not None)
+    assert all(int(context) % 256 == 0 for context in attempts if context is not None)
+    assert attempts == sorted(attempts, reverse=True)
+    assert attempts[-1] == 256
+    assert attempts.count(256) == 1
+
+
+def test_prepare_stops_at_the_minimum_context(monkeypatch) -> None:
+    """The pool retry must terminate at one block instead of going negative."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS", "14")
+    generator = _auto_context_generator(_prepared_max_sequence_length=131_072)
+    runner = _resident_runner_stub(generator, capacity=4)
+    attempted: list[int | None] = []
+
+    def _reserve_sessions(*, max_sequence_length: int | None = None) -> None:
+        del max_sequence_length
+        attempted.append(runner._max_sequence_length)
+        raise MemoryError("hip out of memory")
+
+    runner._reserve_sessions = _reserve_sessions
+    runner._clear_prefix_snapshots = lambda: None
+    runner._release_available_sessions = lambda: None
+
+    with pytest.raises(MemoryError):
+        runner.prepare()
+
+    assert attempted[0] == 131_072
+    assert all(int(context) > 0 for context in attempted if context is not None)
+    assert all(int(context) % 256 == 0 for context in attempted if context is not None)
+    assert attempted == sorted(attempted, reverse=True)
+    assert attempted[-1] == 256
+    assert attempted.count(256) == 1
+
+
+def test_prepare_retry_builds_the_session_at_the_selected_context(monkeypatch) -> None:
+    """The retry context must reach ``_construct_shared_session``, not just the log.
+
+    Production ``_reserve_sessions`` acquires through
+    ``generator._acquire_shared_session``, which used to read only
+    ``_prepared_max_sequence_length``. The retry updated the runner's
+    ``_max_sequence_length`` but not that prepared field, so every construction
+    re-requested the original pinned size while the warning logged a smaller
+    one. This drives the real reserve/acquire plumbing with only construction
+    mocked.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS", "14")
+    generator = _auto_context_generator(_prepared_max_sequence_length=8_192)
+    generator._defer_resident_session_policy_resolution = True
+    runner = _resident_runner_stub(generator, capacity=4)
+    runner._shared_runner = _auto_context_runner(free_gib=8.0)
+    built: list[int | None] = []
+
+    def _construct_shared_session(shared_runner, *, max_sequence_length, **kwargs):
+        del shared_runner, kwargs
+        built.append(max_sequence_length)
+        raise MemoryError("hip out of memory")
+
+    monkeypatch.setattr(generator, "_construct_shared_session", _construct_shared_session)
+
+    with pytest.raises(MemoryError):
+        runner.prepare()
+
+    assert built[0] == 8_192
+    # Every construction uses the context the retry selected, strictly
+    # decreasing to the one-block floor; the original pinned size is never
+    # re-requested after it fails.
+    assert all(int(context) > 0 for context in built if context is not None)
+    assert all(int(context) % 256 == 0 for context in built if context is not None)
+    assert all(
+        int(earlier) > int(later) for earlier, later in zip(built, built[1:])
+    ), built
+    assert built[-1] == 256
+    assert built.count(8_192) == 1
+    # The retry is transient: the prepared policy itself is untouched.
+    assert generator._prepared_max_sequence_length == 8_192
+
+
+def test_recalibrated_auto_context_does_not_raise_a_sub_block_pin(monkeypatch) -> None:
+    """A user's sub-block context must not be silently promoted to a block."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    generator = _auto_context_generator()
+    runner = _auto_context_runner(free_gib=8.0)
+    next_context = generator._recalibrated_auto_context(
+        runner,
+        failed_context=128,
+        max_batch_size=1,
+        defer_kv_allocation=True,
+    )
+    assert next_context == 128
 
 
 def test_resident_slot_default_is_one(monkeypatch) -> None:
