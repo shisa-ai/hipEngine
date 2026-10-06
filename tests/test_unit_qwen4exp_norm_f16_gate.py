@@ -41,3 +41,5 @@ def test_native_smoke_help_has_no_hip_side_effect():
     result=subprocess.run([sys.executable,"scripts/qwen4exp_norm_f16_native_smoke.py","--help"],
                           text=True,capture_output=True,check=True)
     assert "--compiler-version-file" in result.stdout
+    assert "--case-id" in result.stdout
+    assert "--paired-repeats" in result.stdout

@@ -1,13 +1,15 @@
-## 2026-10-06 — HC grouped-norm F16 publication diagnostic
+## 2026-10-06 — Bounded HC grouped-norm F16 publication
 
 - Radeon8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
-  UD-Q4_K_XL production diagnostic: complete norm+cast+same padded HC-down
-  code-p4096 359.037→327.398ms (−8.812%,1.097x), four4K categories1.096–1.104x;
-  p5121.059x, p1024 **slower**93.045→99.133ms (+6.542%). All420calls exact,
-  immutable inputs/leak-free teardown,43focused tests and cached trace pass.
-  Dual F32/F16 publication eliminates a cast launch but changes no runtime
-  handoff/default; exactly4096 proceeds to ownership/model qualification.
-  Artifact: `results/2026-10-06-qwen4exp-norm-f16-publish/`.
+  UD-Q4_K_XL: bounded grouped-norm F16 publication is qualified as a prefill
+  owner transfer at exactly4096 rows, K10240/N320, layers13–47. Fourteen
+  native canonical/heldout state/KV/logit cases are exact with 70 publisher/
+  consumer calls per candidate prefill, zero decode calls and zero teardown
+  allocations. Tracked-clean 12-case A/B gives weighted p4096 prefill
+  322.618→323.115tok/s (+0.154%, 1.0015x); 512/1024 remain parent path.
+  Aggregate request wall is 0.9970x and general-English p4096 is 2.77% slower,
+  so no all-request or decode-speed claim follows. Artifact:
+  `results/2026-10-06-qwen4exp-norm-f16-publish/`.
 
 ## 2026-10-06 — Checked Q4 gate/up index screen closed
 

@@ -458,6 +458,10 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "qwen4exp_gdn_tiled16_multi_prefill",
         ),
         KernelKey(
+            "hip_gfx1151", "gr_grouped_rmsnorm", "bf16_f32",
+            "f32_f16_publish",
+        ),
+        KernelKey(
             "hip_gfx1151", "linear", "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
         ),
@@ -2663,7 +2667,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
     assert GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
-    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
+    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "pair32"
     assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 4096
     assert (
@@ -3129,7 +3133,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
         )
-        == "baseline"
+        == "pair32"
     )
     assert hip_target_arch_for_backend("hip_gfx1151") == "gfx1151"
     assert (

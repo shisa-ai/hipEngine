@@ -17,7 +17,10 @@ from hipengine.execution_profiles import (
     registered_runtime_profile_keys,
 )
 
-from hipengine.runtime.gguf_linear import DENSE_WIDE_TAIL_VARIANT_ENV
+from hipengine.runtime.gguf_linear import (
+    DENSE_WIDE_TAIL_VARIANT_ENV,
+    NORM_F16_PUBLICATION_ENV,
+)
 
 QWEN4_EXP_MODEL = "qwen4_exp_gguf"
 QWEN4_EXP_BACKEND = "hip_gfx1151"
@@ -181,6 +184,22 @@ def _dense_wide_tail_selection(*, production: bool) -> VariantSelection:
         "linear", _DENSE_WIDE_TAIL_SCOPE, selected,
         "coltile8_rowbatch4_f32_f32_out", "gguf_q8_0",
         evidence=_DENSE_WIDE_TAIL_EVIDENCE if production else None,
+    )
+
+
+_NORM_F16_SCOPE = "prefill_rows4096_branches4_h2560_hc_down_layers13_47"
+_NORM_F16_EVIDENCE = "benchmarks/results/2026-10-06-qwen4exp-norm-f16-publish/README.md"
+
+
+def _norm_f16_selection(*, production: bool) -> VariantSelection:
+    enabled = production and os.environ.get(NORM_F16_PUBLICATION_ENV, "1").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    return _selection(
+        "gr_grouped_rmsnorm", _NORM_F16_SCOPE,
+        "f32_f16_publish" if enabled else "strict",
+        "strict", "bf16_f32",
+        evidence=_NORM_F16_EVIDENCE if enabled else None,
     )
 
 
@@ -414,7 +433,7 @@ def _strict_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...
     if recovery:
         return _recovery_gdn_scopes(
             selections, variant="qwen4exp_sigmoid_strict_prefill", evidence=None,
-        ) + (_dense_wide_tail_selection(production=False),)
+        ) + (_dense_wide_tail_selection(production=False), _norm_f16_selection(production=False))
     return selections
 
 
@@ -735,7 +754,7 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
                 else _ARITHMETIC_RECOVERY_EVIDENCE
             ),
         ))
-    return tuple(result) + (_dense_wide_tail_selection(production=True),)
+    return tuple(result) + (_dense_wide_tail_selection(production=True), _norm_f16_selection(production=True))
 
 
 def last_prebinder_conflicts() -> dict[str, tuple[str, str]]:
@@ -962,6 +981,15 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
                  if row["scope"] == _DENSE_WIDE_TAIL_SCOPE)
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
             else _DENSE_WIDE_TAIL_PARENT
+        ),
+        # Publish the manifest's bounded producer selection. Other quants and
+        # strict cannot inherit a preceding UD binder's publisher or opt-out.
+        NORM_F16_PUBLICATION_ENV: (
+            "1" if any(
+                row["scope"] == _NORM_F16_SCOPE
+                and row["selected_variant"] == "f32_f16_publish"
+                for row in resolved.manifest["selections"]
+            ) else "0"
         ),
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
