@@ -13,6 +13,7 @@ from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _alloc, _download, _uploa
 
 PARENT = "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32"
 DPP = "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_f32"
+K320_FULL = "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32"
 
 
 def hip_available():
@@ -29,7 +30,8 @@ def test_registry_preserves_parent_and_resolves_dpp():
 
     register_gfx1151_kernels(replace=True)
     for backend in ("hip_gfx1100", "hip_gfx1151"):
-        for suffix, name in (("wave_scale", PARENT), ("wave_scale_dpp", DPP)):
+        for suffix, name in (("wave_scale", PARENT), ("wave_scale_dpp", DPP),
+                             ("wave_scale_dpp_k320_full_rows", K320_FULL)):
             assert resolve(
                 backend=backend, layer="linear+gr_gated_mean", quant="gguf_q8_0",
                 variant=f"coltile2_branch4_rowbatch4_{suffix}_f32_exact",
@@ -70,7 +72,11 @@ def test_dpp_gate_and_mixed_match_parent_bits(rows, k, h):
             actual = run(candidate, 1)
             for got, want in zip(actual, parent, strict=True):
                 np.testing.assert_array_equal(got.view(np.uint32), want.view(np.uint32))
-        unscaled = run(q8.gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32, 0)
+        if k == 320 and h == 2560 and rows % 4 == 0:
+            full = run(getattr(q8, K320_FULL), 0)
+            for got, want in zip(full, parent, strict=True):
+                np.testing.assert_array_equal(got.view(np.uint32), want.view(np.uint32))
+        unscaled = run(q8.gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32, 0)
         for got, want in zip(actual, unscaled, strict=True):
             np.testing.assert_array_equal(got.view(np.uint32), want.view(np.uint32))
         if h < 32:

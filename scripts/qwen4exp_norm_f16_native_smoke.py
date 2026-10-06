@@ -24,6 +24,8 @@ def main():
     parser.add_argument("--case-id", action="append", default=[],
                         help="Run only these fixture/heldout cases for a bounded binder smoke")
     parser.add_argument("--paired-repeats", type=int, choices=(1, 2, 3), default=3)
+    parser.add_argument("--gr-k320-full-rows", action="store_true",
+                        help="Enable the default-off K320/full-row GR DPP sibling")
     args = parser.parse_args()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
@@ -49,6 +51,7 @@ def main():
     )
 
     os.environ.pop(ENV, None)
+    os.environ.pop("HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS", None)
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     production, strict = [resolve_runtime_profile(model="qwen4_exp_gguf", backend="hip_gfx1151",
@@ -67,6 +70,8 @@ def main():
             model_path=args.model_root, weight_index=index, model_plugin=resolve_model(index.architecture or ""),
             backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=4096))
         assert os.environ[ENV] == "1", "native production binder did not enable publication"
+        if args.gr_k320_full_rows:
+            os.environ["HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS"] = "1"
         report["native_binder_value"] = os.environ[ENV]
         counts = dict(publisher=0, cast=0, consumed=0)
         key = PRODUCER_KEY
@@ -113,6 +118,8 @@ def main():
                     first_native = False
                 else:
                     os.environ[ENV] = report["native_binder_value"] if mode == "candidate" else "0"
+                    if args.gr_k320_full_rows:
+                        os.environ["HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS"] = "1" if mode == "candidate" else "0"
                 before = dict(counts)
                 first = generator.runner.prefill(case["prompt_token_ids"])
                 prefill_state = _state_summary(generator.runner)

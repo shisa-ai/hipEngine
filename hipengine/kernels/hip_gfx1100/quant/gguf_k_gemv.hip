@@ -1189,7 +1189,7 @@ void q8_0_iu8_wmma_prefill_f32_f32_kernel(
 // waves/CU, or with a body change that lowers the accumulator cost.
 // Evidence: benchmarks/results/2026-10-04-qwen4exp-gr-row-batch-width/
 template <bool WAVE_SCALE = false, bool WRITE_GATE = true, int ROW_BATCH = 4,
-          bool DPP_REDUCTION = false>
+          bool DPP_REDUCTION = false, bool K320_FULL_ROWS = false>
 __launch_bounds__(128, 2)
 __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
     const float* __restrict__ x,
@@ -1207,7 +1207,9 @@ __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
   const int hidden_base = static_cast<int>(blockIdx.x) * HIDDEN_TILE;
   const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
   const int tid = threadIdx.x;
-  if (hidden_base >= hidden || row_base >= rows || branches != BRANCHES) return;
+  if constexpr (!K320_FULL_ROWS) {
+    if (hidden_base >= hidden || row_base >= rows || branches != BRANCHES) return;
+  }
   const int row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
   const uint8_t* weight_rows[BRANCHES][HIDDEN_TILE];
 #pragma unroll
@@ -1220,7 +1222,7 @@ __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
     }
   }
   float acc[ROW_BATCH][BRANCHES][HIDDEN_TILE] = {};
-  for (int k = tid; k < in_features; k += blockDim.x) {
+  for (int k = tid; k < (K320_FULL_ROWS ? 320 : in_features); k += blockDim.x) {
     float weights[BRANCHES][HIDDEN_TILE];
 #pragma unroll
     for (int branch = 0; branch < BRANCHES; ++branch) {
@@ -1233,7 +1235,17 @@ __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
 #pragma unroll
     for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
       const int row = row_base + row_idx;
-      if (row < rows) {
+      if constexpr (K320_FULL_ROWS) {
+        const float xv = x[static_cast<int64_t>(row) * in_features + k];
+#pragma unroll
+        for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+          for (int col = 0; col < HIDDEN_TILE; ++col) {
+            acc[row_idx][branch][col] =
+                fmaf(xv, weights[branch][col], acc[row_idx][branch][col]);
+          }
+        }
+      } else if (row < rows) {
         const float xv = x[static_cast<int64_t>(row) * in_features + k];
 #pragma unroll
         for (int branch = 0; branch < BRANCHES; ++branch) {
@@ -1287,8 +1299,8 @@ __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
   if (tid < ROW_BATCH * HIDDEN_TILE) {
     const int row_idx = tid / HIDDEN_TILE;
     const int col = tid - row_idx * HIDDEN_TILE;
-    const int row = row_base + row_idx;
-    if (row < rows && hidden_base + col < hidden) {
+    if constexpr (K320_FULL_ROWS) {
+      const int row = row_base + row_idx;
       float value = 0.0f;
 #pragma unroll
       for (int branch = 0; branch < BRANCHES; ++branch) {
@@ -1307,6 +1319,28 @@ __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
       }
       mixed[static_cast<int64_t>(row) * hidden + hidden_base + col] =
           value / static_cast<float>(BRANCHES);
+    } else {
+      const int row = row_base + row_idx;
+      if (row < rows && hidden_base + col < hidden) {
+      float value = 0.0f;
+#pragma unroll
+      for (int branch = 0; branch < BRANCHES; ++branch) {
+        float total = 0.0f;
+#pragma unroll
+        for (int wave_idx = 0; wave_idx < 4; ++wave_idx) {
+          total += wave_sums[wave_idx][row_idx][branch][col];
+        }
+        const int64_t index = static_cast<int64_t>(row) * BRANCHES * hidden
+            + branch * hidden + hidden_base + col;
+        const float sigmoid_gate = 1.0f / (1.0f + expf(-total));
+        if (WRITE_GATE) {
+          gate[index] = sigmoid_gate;
+        }
+        value += normalized[index] * sigmoid_gate;
+      }
+      mixed[static_cast<int64_t>(row) * hidden + hidden_base + col] =
+          value / static_cast<float>(BRANCHES);
+      }
     }
   }
 }
@@ -5366,7 +5400,7 @@ HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(32)
 #undef HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT
 
 template <bool WAVE_SCALE, bool WRITE_GATE = true, int ROW_BATCH = 4,
-          bool DPP_REDUCTION = false>
+          bool DPP_REDUCTION = false, bool K320_FULL_ROWS = false>
 int launch_q8_gr_up_scale(
     const float* x,
     const uint8_t* qweight,
@@ -5383,12 +5417,14 @@ int launch_q8_gr_up_scale(
       (WRITE_GATE && gate == nullptr) || mixed == nullptr || rows <= 0 ||
       in_features <= 0 ||
       in_features % Q8_0_BLOCK != 0 || branches != 4 || hidden <= 0 ||
-      hidden % 2 != 0 || threads != 128) {
+      hidden % 2 != 0 ||
+      (K320_FULL_ROWS && (in_features != 320 || hidden != 2560 || rows % ROW_BATCH != 0)) ||
+      threads != 128) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
       (q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<WAVE_SCALE, WRITE_GATE,
-                                                                      ROW_BATCH, DPP_REDUCTION>),
+                                                                      ROW_BATCH, DPP_REDUCTION, K320_FULL_ROWS>),
       dim3(
           static_cast<unsigned int>(hidden / 2),
           static_cast<unsigned int>((rows + ROW_BATCH - 1) / ROW_BATCH)),
@@ -5414,9 +5450,16 @@ extern "C" int NAME(const float* x, const uint8_t* qweight, const float* normali
   return launch_q8_gr_up_scale<WAVE, GATE, RB>(x, qweight, normalized, gate, mixed, rows, \
       in_features, branches, hidden, threads, stream); \
 }
-Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32, false, true, 4)
+#define Q8_GR_K320_FULL_ENTRY(NAME) \
+extern "C" int NAME(const float* x, const uint8_t* qweight, const float* normalized, \
+    float* gate, float* mixed, int64_t rows, int64_t in_features, int64_t branches, \
+    int64_t hidden, int64_t threads, hipStream_t stream) { \
+  return launch_q8_gr_up_scale<true, true, 4, true, true>(x, qweight, normalized, gate, mixed, rows, \
+      in_features, branches, hidden, threads, stream); \
+}
 Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32, true, true, 4)
-// Strict no-gate variant: identical arithmetic and identical ``mixed``, with the
+Q8_GR_K320_FULL_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32)
+#undef Q8_GR_K320_FULL_ENTRY
 // dead gate store removed. ``gate`` may be null.
 Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32, false, false, 4)
 // Widened row reuse, kept only as the measured record of a rejected lever: bit-identical

@@ -391,6 +391,14 @@ for K320, full four-row batches, branches4/H2560; the generic DPP parent remains
 fallback. It must preserve ascending FMA order, ordered DPP/four-wave
 publication, `expf`, branch mean and both outputs. No speedup is predicted.
 
+The screen then measured 12 real-weight complete GR operations at rows512/1024/4096
+across four layer-0/22 attention/FFN up banks. The K320/full-row sibling is
+1.084–1.103x faster than the promoted DPP owner (geometric mean1.092x), with
+exact gate/mixed outputs and balanced order strata. It remains default-off;
+this operation screen does not establish a model state/KV/logit gate or default
+promotion. Artifact:
+`../benchmarks/results/2026-10-06-qwen4exp-gr-k320-full-rows-screen.md`.
+
 The [earlier post-router packet](../benchmarks/results/2026-10-06-qwen4exp-current-prefill-owners/README.md)
 uses tracked-clean `4779b7278`, named production/BF16/chunk4096 and the
 canonical `code-p4096` input on the physical host above. Each measured

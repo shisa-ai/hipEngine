@@ -1,4 +1,26 @@
-# hipEngine Refactor / Dead-Path Ledger
+## K320/full-row GR-up DPP screen
+
+- `coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact` is a
+  separately registered, default-off sibling of the promoted ordered-DPP GR-up
+  owner. Its wrapper accepts only K320/H2560/four branches and complete
+  rowbatch-4 groups; runtime selection requires the promoted DPP key first and
+  otherwise retains that key. The generic DPP owner remains the fallback for
+  tails, other K/H shapes and absent registration.
+- The candidate preserves ascending FMA order, DPP reduction, four-wave
+  publication, `expf`, branch mean, output layout and both materialized outputs.
+  It removes only compile-time-provable generic row-validity and variable-K
+  control. No staging, row widening, operand rounding or gate-store removal is
+  included. The production binder explicitly sets
+  `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS=0`; enabling it is an experiment.
+- Unit/profile tests pass33 and the HIP GPU bundle passes10/10 on gfx1151,
+  including exact parent parity at rows512/1024/4096. The balanced complete
+  operation screen covers 12 real-weight cases and20 pairs/case: 1.084–1.103x
+  operation speedup, geometric mean1.092x, exact outputs. This is not a model
+  state/KV/logit gate or promotion. The next required gate is native
+  state/KV/logit plus canonical engine A/B with the override, then numerical,
+  determinism, isolation, teardown and task checks. Evidence:
+  `benchmarks/results/2026-10-06-qwen4exp-gr-k320-full-rows-screen.md`.
+
 
 ## Bounded HC grouped-norm F16 publication and rollback
 

@@ -16,6 +16,7 @@ from scripts.qwen4exp_row4_state_gate import apply_state_gate_mode
 
 PARENT = "coltile2_branch4_rowbatch4_wave_scale_f32_exact"
 DPP = "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact"
+K320_FULL = "coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact"
 
 
 def test_dpp_route_is_opt_in_and_keeps_scope(monkeypatch):
@@ -33,8 +34,45 @@ def test_dpp_route_is_opt_in_and_keeps_scope(monkeypatch):
     assert runner._qwen4_exp_gr_wave_scale_key(base, rows=512, branches=4).variant == PARENT
     monkeypatch.setattr(runner, "is_registered", lambda key: False)
     assert runner._qwen4_exp_gr_wave_scale_key(base, rows=512, branches=4) == base
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE", "0")
-    assert runner._qwen4_exp_gr_wave_scale_key(base, rows=512, branches=4) == base
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS", "0")
+    monkeypatch.setattr(runner, "is_registered", lambda key: True)
+    assert runner._qwen4_exp_gr_k320_full_rows_key(
+        KernelKey(base.backend, base.layer, base.quant, DPP),
+        rows=512, branches=4, low_rank=320,
+    ).variant == DPP
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS", "1")
+    assert runner._qwen4_exp_gr_k320_full_rows_key(
+        KernelKey(base.backend, base.layer, base.quant, DPP),
+        rows=512, branches=4, low_rank=320
+    ).variant == K320_FULL
+    assert runner._qwen4_exp_gr_k320_full_rows_key(
+        KernelKey(base.backend, base.layer, base.quant, DPP),
+        rows=1024, branches=4, low_rank=320
+    ).variant == K320_FULL
+    assert runner._qwen4_exp_gr_k320_full_rows_key(
+        KernelKey(base.backend, base.layer, base.quant, DPP),
+        rows=4096, branches=4, low_rank=320
+    ).variant == K320_FULL
+    for rows, branches, low_rank in ((257, 4, 320), (512, 2, 320), (512, 4, 321)):
+        assert runner._qwen4_exp_gr_k320_full_rows_key(
+            KernelKey(base.backend, base.layer, base.quant, DPP),
+            rows=rows, branches=branches, low_rank=low_rank
+        ) == KernelKey(base.backend, base.layer, base.quant, DPP)
+    monkeypatch.setattr(runner, "is_registered", lambda key: key.variant != K320_FULL)
+    assert runner._qwen4_exp_gr_k320_full_rows_key(
+        KernelKey(base.backend, base.layer, base.quant, DPP),
+        rows=512, branches=4, low_rank=320
+    ).variant == DPP
+
+
+def test_k320_route_is_default_off(monkeypatch):
+    base = KernelKey("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+                     "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS", "0")
+    monkeypatch.setattr(runner, "is_registered", lambda key: True)
+    assert runner._qwen4_exp_gr_k320_full_rows_key(
+        base, rows=512, branches=4, low_rank=320
+    ).variant == base.variant
 
 
 @pytest.mark.parametrize("mode,value", [("before", "0"), ("after", "1")])

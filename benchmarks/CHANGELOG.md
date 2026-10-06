@@ -1,4 +1,13 @@
-## 2026-10-06 — Current owner refresh after bounded DP-5 publication
+## 2026-10-06 — K320/full-row GR-up DPP screen
+
+- Radeon8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8
+  Flash Next UD-Q4_K_XL. A separately registered K320/H2560/four-branch,
+  complete-rowbatch4 GR-up DPP sibling beats the promoted DPP owner by
+  1.084–1.103x across 12 real-weight complete operations at rows512/1024/4096;
+  geometric mean1.092x. Gate and mixed outputs are exact. Default remains off;
+  generic DPP is fallback. No model gate or default promotion yet. Artifact:
+  `results/2026-10-06-qwen4exp-gr-k320-full-rows-screen.md`.
+
 
 - Radeon8060S host `55ea6c509d0b49eea8de7094a1023668`, clean source `3e166ef12`,
   Qwen3.8-Flash-Next UD-Q4_K_XL production `code-p4096`/chunk4096. Two
