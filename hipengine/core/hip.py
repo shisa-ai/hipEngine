@@ -13,6 +13,9 @@ from typing import Final
 from hipengine.core.runtime import MemcpyKind
 
 HIP_SUCCESS: Final[int] = 0
+# hipErrorNotReady: a poll answer ("the event is still in flight"), not a
+# failure. `HipRuntime.event_query` treats it as False instead of raising.
+_HIP_ERROR_NOT_READY: Final[int] = 600
 HIP_HOST_REGISTER_MAPPED: Final[int] = 0x02
 DEFAULT_HIP_LIBRARY: Final[str] = "libamdhip64.so"
 HIP_GRAPH_NODE_TYPE_KERNEL: Final[int] = 0
@@ -431,6 +434,20 @@ class HipRuntime:
     def event_synchronize(self, event: int) -> None:
         self.check(self.library.hipEventSynchronize(ctypes.c_void_p(event)))
 
+    def event_query(self, event: int) -> bool:
+        """True once the event has completed; False while the device is behind it.
+
+        ``hipEventQuery`` answers ``hipErrorNotReady`` for an event the device
+        has not reached, which is a poll result rather than a failure.
+        """
+        result = int(self.library.hipEventQuery(ctypes.c_void_p(event)))
+        if result == 0:
+            return True
+        if result == _HIP_ERROR_NOT_READY:
+            return False
+        self.check(result)
+        return False
+
     def event_elapsed_time_ms(self, start: int, stop: int) -> float:
         elapsed = ctypes.c_float()
         self.check(
@@ -555,6 +572,8 @@ class HipRuntime:
         self.library.hipEventRecord.restype = ctypes.c_int
         self.library.hipEventSynchronize.argtypes = [ctypes.c_void_p]
         self.library.hipEventSynchronize.restype = ctypes.c_int
+        self.library.hipEventQuery.argtypes = [ctypes.c_void_p]
+        self.library.hipEventQuery.restype = ctypes.c_int
         self.library.hipEventElapsedTime.argtypes = [
             ctypes.POINTER(ctypes.c_float),
             ctypes.c_void_p,

@@ -568,8 +568,9 @@ def staged_workspace_buffer(
     Split out from the launcher so the ownership contract is testable without a
     device: ``scratch`` is the strict family's
     :class:`~hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention.Gemma4AttentionScratch`,
-    which keeps one buffer per stream, doubles on growth, and frees only after
-    every used stream is quiescent.
+    which keeps one buffer per stream, doubles on growth, retires the superseded
+    buffer behind a stream event, and frees it once the device passes that
+    event.
     """
 
     return scratch.buffer(plan.workspace_bytes, stream=stream, runtime=runtime)
