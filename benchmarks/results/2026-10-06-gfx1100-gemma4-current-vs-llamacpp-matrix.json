@@ -1,0 +1,29 @@
+{
+  "kind": "gemma4_vs_llamacpp_current_matrix",
+  "schema": 1,
+  "date": "2026-10-06",
+  "status": "measured_not_promoted",
+  "performance_claim": false,
+  "hardware": {"device": "AMD Radeon Pro W7900", "arch": "gfx1100", "pci": "0000:0d:00.0"},
+  "artifact": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "protocol": {"output_tokens": 128, "warmup": 1, "samples": 3, "kv": "BF16", "profile": "production", "public_path_parity": true},
+  "rows": [
+    {"prompt_tokens": 512, "hipengine_prefill_tps": 989.3, "hipengine_decode_tps": 55.07, "llamacpp_prefill_tps": 3171.0, "llamacpp_decode_tps": 72.87, "llamacpp_source": "llamacpp-p512-exact-b0.json"},
+    {"prompt_tokens": 32768, "hipengine_prefill_tps": 862.3, "hipengine_decode_tps": 36.40, "llamacpp_prefill_tps": 2464.7, "llamacpp_decode_tps": 54.20, "llamacpp_source": "llamacpp-p32768-exact-b0.json"},
+    {"prompt_tokens": 65536, "hipengine_prefill_tps": 746.1, "hipengine_decode_tps": 23.27, "llamacpp_prefill_tps": 1790.2, "llamacpp_decode_tps": 45.80, "llamacpp_source": "llamacpp-p65536-exact-b0.json"},
+    {"prompt_tokens": 131072, "hipengine_prefill_tps": 591.4, "hipengine_decode_tps": 13.59, "llamacpp_prefill_tps": 1131.2, "llamacpp_decode_tps": 35.35, "llamacpp_source": "llamacpp-p131072-exact-b0.json"},
+    {"prompt_tokens": 262144, "hipengine_prefill_tps": 420.8, "hipengine_decode_tps": 7.35, "llamacpp_prefill_tps": null, "llamacpp_decode_tps": null, "llamacpp_source": null, "note": "No full-depth llama.cpp reference row exists; allocation-only reference is not comparable."}
+  ],
+  "interpretation": "hipEngine is currently slower than the exact llama.cpp reference at every shared measured length. The 256K hipEngine row is measured with public parity; no full-depth llama.cpp 256K comparison is claimed.",
+  "sources": [
+    "/tmp/gemma-llamacpp-512-256k/gpu0-recovery-smoke.json",
+    "/tmp/gemma-llamacpp-512-256k/gpu0-current-p32768.json",
+    "/tmp/gemma-llamacpp-512-256k/gpu0-current-p65536.json",
+    "/tmp/gemma-llamacpp-512-256k/gpu0-current-p131072.json",
+    "/tmp/gemma-llamacpp-512-256k/gpu0-current-p262144.json",
+    "/tmp/gemma-llamacpp-512-256k/llamacpp-p512-exact-b0.json",
+    "/tmp/gemma-llamacpp-512-256k/llamacpp-p32768-exact-b0.json",
+    "/tmp/gemma-llamacpp-512-256k/llamacpp-p65536-exact-b0.json",
+    "/tmp/gemma-llamacpp-512-256k/llamacpp-p131072-exact-b0.json"
+  ]
+}
