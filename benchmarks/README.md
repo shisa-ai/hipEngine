@@ -1,6 +1,37 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-04**
+Last updated: **2026-10-06**
+
+## Gemma 4 staged sliding prefill — October 6
+
+Gemma 4 26B-A4B `UD-Q4_K_XL`, host **epyc / Radeon Pro W7900**, production
+profile, BF16 KV, 8192 prompt / 128 greedy outputs. Production now prefers the
+staged multi-row attention candidate for one geometry: a sliding prefill block
+the tiled and AOTriton routes refuse (a sliding layer whose presented key count
+exceeds its window), which the native exact kernel serves by walking all
+presented keys from column 0. The candidate keeps the native arithmetic and adds
+the per-row window trim, so the substitution is byte-identical on the exercised
+matrix.
+
+A same-process paired A/B, where the only difference is
+`runner.exact_prefill_attention_variants`, measures:
+
+| Arm | Prefill | Decode | Wall |
+| --- | ---: | ---: | ---: |
+| native (`gemma4_plain`) | 9.4851 s / 863.7 tok/s | 1.9089 s / 66.53 tok/s | 11.3942 s |
+| staged (`gemma4_staged`) | 8.3245 s / 984.1 tok/s | 2.0291 s / 62.59 tok/s | 10.3258 s |
+
+Prefill improves 12.24% and wall 9.38%; **decode is 6.29% slower in the same
+pair**. This is a scoped prefill/wall win, not a universal non-regression. The
+shipping public path resolves to the staged scope natively and measures prefill
+8.2560 s (992.24 tok/s), decode 1.9643 s (64.65 tok/s), wall 10.2359 s and public
+wall 10.2485 s, with `public_path_parity` true. An observer records 25 and 175
+staged calls at 2049 and 8192 prompt tokens through the public surface with no
+launcher replacement. Direct GPU parity (40 BF16/F32 cases, byte-identical
+across native / staged-trimmed / staged-untrimmed) and 4 shared-scratch GPU
+cases pass, plus 65 CPU integration cases. No MTP or whole-profile quality claim
+is made. Full commands, provenance and hashes are in the
+[artifact](results/2026-10-06-gfx1100-gemma4-staged-sliding-prefill.json).
 
 ## gfx1100 merged baseline and transfer screen — October 4
 

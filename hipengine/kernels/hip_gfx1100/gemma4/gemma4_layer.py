@@ -44,6 +44,10 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     DECODE_ATTENTION_PLAIN,
     DECODE_ATTENTION_QUANT,
     DECODE_ATTENTION_STAGED,
+    EXACT_PREFILL_ATTENTION_LAYER,
+    EXACT_PREFILL_ATTENTION_PLAIN,
+    EXACT_PREFILL_ATTENTION_QUANT,
+    EXACT_PREFILL_ATTENTION_STAGED,
     Gemma4AttentionScratch,
     aotriton_prefill_admits,
     gemma4_attention_prefill_aotriton,
@@ -739,6 +743,104 @@ def _select_exact_decode_attention(
     return staged, DECODE_ATTENTION_STAGED
 
 
+def _resolve_exact_prefill_attention_launcher(*, backend: str, variant: str):
+    """Resolve one exact-prefill attention variant from the kernel registry.
+
+    Mirrors :func:`_resolve_decode_attention_launcher`: the layer runs whatever
+    callable the registry holds for this key, so a replaced entry is what runs,
+    and a missing entry is a named :class:`MissingKernelError` rather than a
+    silent fall back to a hard-coded wrapper.
+    """
+
+    from hipengine.kernels.registry import resolve
+
+    return resolve(
+        backend=backend,
+        layer=EXACT_PREFILL_ATTENTION_LAYER,
+        quant=EXACT_PREFILL_ATTENTION_QUANT,
+        variant=variant,
+    )
+
+
+def _select_exact_prefill_attention(
+    *,
+    exact_prefill_attention_variants: tuple[str, ...] | None,
+    backend: str | None = None,
+    tokens: int,
+    keys: int | None,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    sliding_window: int | None,
+):
+    """Resolve the launcher for the native/exact prefill call site.
+
+    Returns ``(launcher, route)`` when the exact-prefill scope applies to this
+    call: ``(registered_plain, "exact")`` when it keeps the native arithmetic and
+    ``(staged, "gemma4_staged")`` when it selects the candidate. It returns
+    ``(None, None)`` when the call is outside the scope, so the caller keeps
+    whatever launcher the decode scope already resolved -- a global block and a
+    one-row block are both outside it, and overriding their resolved callable
+    would route a call the scope never claimed.
+
+    The scope is the native/exact sliding multi-row geometry: the block the
+    tiled and AOTriton routes refused, with ``tokens > 1`` and a sliding layer.
+    Within it the staged candidate is chosen only for a shape
+    :func:`staged_plan` accepts -- its warp-key score tree covers ``head_dim``
+    256/512, the GQA ratio must be integral, and the launch grids and workspace
+    must be representable. A shape it cannot execute keeps the registered strict
+    fallback, so the prefill scope's own registration is the callable that runs
+    for the strict arm too.
+
+    Both launchers come from the registry under ``EXACT_PREFILL_ATTENTION_LAYER``:
+    the registered strict fallback (``gemma4_plain``) for every call that keeps
+    the native arithmetic, and the staged candidate (``gemma4_staged``) for the
+    scoped shape.
+    """
+
+    if not exact_prefill_attention_variants:
+        return None, None
+    if int(tokens) <= 1:
+        return None, None
+    if sliding_window is None:
+        return None, None
+    if keys is None or int(keys) <= 0:
+        return None, None
+
+    resolved_backend = str(backend) if backend is not None else "hip_gfx1100"
+
+    def keep_native():
+        return (
+            _resolve_exact_prefill_attention_launcher(
+                backend=resolved_backend, variant=EXACT_PREFILL_ATTENTION_PLAIN
+            ),
+            "exact",
+        )
+
+    if EXACT_PREFILL_ATTENTION_STAGED not in exact_prefill_attention_variants:
+        return keep_native()
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
+        staged_plan,
+    )
+
+    try:
+        staged_plan(
+            tokens=int(tokens),
+            keys=int(keys),
+            num_heads=int(num_heads),
+            num_kv_heads=int(num_kv_heads),
+            head_dim=int(head_dim),
+        )
+    except (ValueError, NotImplementedError):
+        return keep_native()
+
+    staged = _resolve_exact_prefill_attention_launcher(
+        backend=resolved_backend, variant=EXACT_PREFILL_ATTENTION_STAGED
+    )
+    return staged, EXACT_PREFILL_ATTENTION_STAGED
+
+
 def _layer_backend(layer: Gemma4LayerPointers) -> str | None:
     """The backend of whichever projection carries resident quantized weights.
 
@@ -784,6 +886,11 @@ def gemma4_layer_forward_bf16(
     # -- the tiled and aotriton prefills and the profile-selected prefill
     # variants -- unchanged.
     decode_attention_variants: tuple[str, ...] | None = None,
+    # The exact-prefill attention variants the execution profile requests, or
+    # ``None`` for the strict native kernel. Also consumed only at the
+    # native/exact call site below, and only for a multi-row sliding block the
+    # tiled and aotriton routes refused; every other route is unchanged.
+    exact_prefill_attention_variants: tuple[str, ...] | None = None,
     stream: int = 0,
     # -1 (the default) selects a second stream so the MoE branch overlaps the
     # dense branch. Passing ``stream_moe=stream`` restores the single-stream
@@ -1122,6 +1229,41 @@ def gemma4_layer_forward_bf16(
                 sliding_window=geometry.sliding_window,
                 key_begin=key_begin,
             )
+            # The staged multi-row sliding prefill is a second, disjoint scope
+            # on the same call site. It is consulted only after the decode
+            # selector kept the native route, and it overrides that launcher
+            # only when the scope actually applies to this call (a multi-row
+            # sliding block): an out-of-scope call -- a global block or a
+            # one-row block -- keeps the decode selector's resolved callable,
+            # so a replaced decode fallback still runs.
+            staged_prefill = False
+            if _last_prefill_route == "exact" and exact_prefill_attention_variants:
+                prefill_launcher, prefill_route = _select_exact_prefill_attention(
+                    exact_prefill_attention_variants=exact_prefill_attention_variants,
+                    backend=_layer_backend(layer),
+                    tokens=rows,
+                    keys=key_count,
+                    num_heads=num_heads,
+                    num_kv_heads=num_kv_heads,
+                    head_dim=head_dim,
+                    sliding_window=geometry.sliding_window,
+                )
+                if prefill_route is not None:
+                    launcher = prefill_launcher
+                    _last_prefill_route = prefill_route
+                    staged_prefill = prefill_route == EXACT_PREFILL_ATTENTION_STAGED
+            # ``window``/``row_offset`` are forwarded only to the staged
+            # multi-row prefill, the one launcher whose per-row trim the layer's
+            # window licenses. The strict native entry and the registered decode
+            # fallback keep the exact keyword set they have always been called
+            # with, so their call is byte-for-byte unchanged.
+            if staged_prefill:
+                trim_kwargs = {
+                    "window": window,
+                    "row_offset": (kv.write_offset if kv is not None else 0) - key_begin,
+                }
+            else:
+                trim_kwargs = {}
             launcher(
                 buf("q_rot"),
                 (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
@@ -1134,6 +1276,7 @@ def gemma4_layer_forward_bf16(
                 buf("context"),
                 tokens=rows,
                 keys=key_count,
+                **trim_kwargs,
                 scratch=scratch.attention,
                 num_heads=num_heads,
                 num_kv_heads=num_kv_heads,

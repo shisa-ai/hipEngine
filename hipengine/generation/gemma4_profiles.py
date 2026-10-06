@@ -17,13 +17,18 @@ down path, and explicit MMQ controls remain available for diagnostics. The
 binder pins ``HIPENGINE_GEMMA4_MOE_PREFILL=auto``; the manifest names the wide
 Q4 owner, its strict selected-row fallback, and the staged down owner.
 
-One scope is not a projection: ``decode_attention`` / ``global_head_dim_512``.
-``production`` prefers the staged singleton attention candidate for the
-one-token global decode step, where the strict native/exact kernel's resident
-logit row overflows LDS and it keeps the same arithmetic on owned global
-scratch; ``strict`` keeps that native kernel. The layer consumes the preference
-only at its native/exact attention call site, so the tiled and aotriton prefills
-and the profile-selected prefill variants are unchanged.
+Two scopes are not projections. ``decode_attention`` /
+``global_head_dim_512``: ``production`` prefers the staged singleton attention
+candidate for the one-token global decode step, where the strict native/exact
+kernel's resident logit row overflows LDS and it keeps the same arithmetic on
+owned global scratch; ``strict`` keeps that native kernel.
+``exact_prefill_attention`` / ``sliding_multi_row``: ``production`` prefers the
+staged multi-row candidate for a sliding prefill block the tiled and AOTriton
+routes refuse (a sliding layer whose presented key count exceeds its window),
+which the native exact kernel serves by walking all presented keys from column
+0; ``strict`` keeps the native kernel. The layer consumes each preference only
+at its native/exact attention call site, so the tiled and aotriton prefills and
+the profile-selected prefill variants are unchanged.
 
 ``strict`` pins ``HIPENGINE_GEMMA4_MOE_PREFILL=grouped``, the exact arm
 ``gemma4_experts.py::_prefill_route_flags`` documents as the rollback lever,
@@ -77,6 +82,10 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     DECODE_ATTENTION_PLAIN as _DECODE_ATTENTION_PLAIN,
     DECODE_ATTENTION_QUANT as _DECODE_ATTENTION_QUANT,
     DECODE_ATTENTION_STAGED as _DECODE_ATTENTION_STAGED,
+    EXACT_PREFILL_ATTENTION_LAYER as _EXACT_PREFILL_ATTENTION_LAYER,
+    EXACT_PREFILL_ATTENTION_PLAIN as _EXACT_PREFILL_ATTENTION_PLAIN,
+    EXACT_PREFILL_ATTENTION_QUANT as _EXACT_PREFILL_ATTENTION_QUANT,
+    EXACT_PREFILL_ATTENTION_STAGED as _EXACT_PREFILL_ATTENTION_STAGED,
 )
 
 # Model plugin identity (``hipengine/models/gemma4.py``: name = "gemma4_gguf",
@@ -107,6 +116,19 @@ DECODE_ATTENTION_SCOPE = "global_head_dim_512"
 DECODE_ATTENTION_PLAIN = _DECODE_ATTENTION_PLAIN
 DECODE_ATTENTION_STAGED = _DECODE_ATTENTION_STAGED
 DECODE_ATTENTION_QUANT = _DECODE_ATTENTION_QUANT
+
+# The multi-row sliding prefill block: the native/exact route's own geometry once
+# the tiled and AOTriton prefills refuse it (a sliding layer whose presented key
+# count exceeds its window). ``production`` prefers the staged multi-row
+# candidate, which keeps the same arithmetic in a bounded shared footprint;
+# ``strict`` keeps the native kernel. Registered under its own layer key and
+# consumed only at the layer's native/exact call site, so the tiled, AOTriton,
+# and profile-selected prefill variants are untouched.
+EXACT_PREFILL_ATTENTION_LAYER = _EXACT_PREFILL_ATTENTION_LAYER
+EXACT_PREFILL_ATTENTION_SCOPE = "sliding_multi_row"
+EXACT_PREFILL_ATTENTION_PLAIN = _EXACT_PREFILL_ATTENTION_PLAIN
+EXACT_PREFILL_ATTENTION_STAGED = _EXACT_PREFILL_ATTENTION_STAGED
+EXACT_PREFILL_ATTENTION_QUANT = _EXACT_PREFILL_ATTENTION_QUANT
 
 _KV_POLICY = "paged_bf16"
 _GRAPH_POLICY = "serial_eager"
@@ -217,6 +239,12 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             registry_quant=DECODE_ATTENTION_QUANT,
         ),
         _selection(
+            layer=EXACT_PREFILL_ATTENTION_LAYER, scope=EXACT_PREFILL_ATTENTION_SCOPE,
+            selected_variant=EXACT_PREFILL_ATTENTION_STAGED,
+            strict_fallback_variant=EXACT_PREFILL_ATTENTION_PLAIN,
+            registry_quant=EXACT_PREFILL_ATTENTION_QUANT,
+        ),
+        _selection(
             layer="moe_linear", scope="gate_up_q4_k",
             selected_variant=_T16_FUSED_WMMA, strict_fallback_variant=_T16_DECODE,
             registry_quant=_Q4_K_T16,
@@ -290,6 +318,11 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             selected_variant=DECODE_ATTENTION_PLAIN,
             registry_quant=DECODE_ATTENTION_QUANT,
         ),
+        _selection(
+            layer=EXACT_PREFILL_ATTENTION_LAYER, scope=EXACT_PREFILL_ATTENTION_SCOPE,
+            selected_variant=EXACT_PREFILL_ATTENTION_PLAIN,
+            registry_quant=EXACT_PREFILL_ATTENTION_QUANT,
+        ),
         # The T16-converted gate_up scope: grouped has no T16 owner, so the
         # strict arm resolves this scope through the exact selected owner
         # (also production's declared fallback; the raw grouped arm still
@@ -334,6 +367,24 @@ def _binder(route: str):
             except AttributeError:
                 # A construction stub that only carries environment bindings.
                 pass
+        # The exact-prefill preference rides the same manifest contract: the
+        # production plan selects the staged multi-row candidate, strict keeps
+        # the registered native kernel.
+        exact_prefill_variants = tuple(
+            sorted(
+                {
+                    str(selection["selected_variant"])
+                    for selection in resolved.manifest["selections"]
+                    if selection["layer"] == EXACT_PREFILL_ATTENTION_LAYER
+                }
+            )
+        )
+        if exact_prefill_variants:
+            try:
+                generator.exact_prefill_attention_variants = exact_prefill_variants
+            except AttributeError:
+                # A construction stub that only carries environment bindings.
+                pass
 
     return bind
 
@@ -368,6 +419,39 @@ def _register_decode_attention_variants() -> None:
             register(key, fn)
 
 
+def _register_exact_prefill_attention_variants() -> None:
+    """Register plain and staged attention under the exact-prefill layer key.
+
+    The same two launchers as the decode scope, under a distinct structural
+    layer key so a production plan can prefer the staged multi-row sliding
+    candidate at the layer's native/exact prefill call site without touching the
+    decode scope, the tiled route, or the AOTriton route. The layer resolves
+    this key for both choices -- the staged candidate and the registered strict
+    fallback -- so the registration is executable rather than decorative.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_bf16,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
+        gemma4_attention_staged_bf16,
+    )
+    from hipengine.kernels.registry import KernelKey, is_registered, register
+
+    for variant, fn in (
+        (EXACT_PREFILL_ATTENTION_PLAIN, gemma4_attention_prefill_bf16),
+        (EXACT_PREFILL_ATTENTION_STAGED, gemma4_attention_staged_bf16),
+    ):
+        key = KernelKey(
+            GEMMA4_GGUF_BACKEND,
+            EXACT_PREFILL_ATTENTION_LAYER,
+            EXACT_PREFILL_ATTENTION_QUANT,
+            variant,
+        )
+        if not is_registered(key):
+            register(key, fn)
+
+
 def _registered_key() -> tuple[str, str, str]:
     return (GEMMA4_GGUF_MODEL, GEMMA4_GGUF_BACKEND, GEMMA4_GGUF_QUANT)
 
@@ -391,6 +475,7 @@ def register_gemma4_gguf_profiles() -> bool:
     """
 
     _register_decode_attention_variants()
+    _register_exact_prefill_attention_variants()
     if _already_registered():
         return False
     register_runtime_profile_plan(
@@ -438,13 +523,15 @@ def gemma4_gguf_profiles_registered() -> bool:
     return wanted <= set(registered_runtime_profile_keys())
 
 
-# Register the decode-attention variants when this module is imported, the same
-# way ``gemma4_gguf_profiles`` registers its prefill variants. The profile plan
-# names them, and ``resolve_runtime_profile`` refuses a plan whose variants are
-# not registered; registering at import also keeps them in the collection-time
-# kernel baseline so the profile-dependency guard is order-independent. It
-# registers Python launch wrappers only: no build, no device.
+# Register the decode- and exact-prefill attention variants when this module is
+# imported, the same way ``gemma4_gguf_profiles`` registers its prefill variants.
+# The profile plan names them, and ``resolve_runtime_profile`` refuses a plan
+# whose variants are not registered; registering at import also keeps them in the
+# collection-time kernel baseline so the profile-dependency guard is
+# order-independent. It registers Python launch wrappers only: no build, no
+# device.
 _register_decode_attention_variants()
+_register_exact_prefill_attention_variants()
 
 
 __all__ = [
@@ -453,6 +540,11 @@ __all__ = [
     "DECODE_ATTENTION_QUANT",
     "DECODE_ATTENTION_SCOPE",
     "DECODE_ATTENTION_STAGED",
+    "EXACT_PREFILL_ATTENTION_LAYER",
+    "EXACT_PREFILL_ATTENTION_PLAIN",
+    "EXACT_PREFILL_ATTENTION_QUANT",
+    "EXACT_PREFILL_ATTENTION_SCOPE",
+    "EXACT_PREFILL_ATTENTION_STAGED",
     "GEMMA4_GGUF_BACKEND",
     "GEMMA4_GGUF_MODEL",
     "GEMMA4_GGUF_QUANT",

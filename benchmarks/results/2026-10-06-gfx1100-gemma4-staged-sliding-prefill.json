@@ -1,0 +1,208 @@
+{
+  "kind": "gemma4_scoped_prefill_substitution",
+  "date": "2026-10-06",
+  "status": "retained_scoped",
+  "performance_claim": true,
+  "default_promotion": true,
+  "whole_profile_quality_claim": false,
+  "mtp_claim": false,
+  "arithmetic_class": "exact substitution (byte-identical on the exercised matrix)",
+  "execution_profile": "production",
+  "strict_fallback": "gemma4_plain (native gemma4_attention_prefill_bf16)",
+  "base_commit": "9f80c0e9d1c00a77618b950d2ec0ccea716a08a1",
+  "summary": "The gfx1100 production profile prefers the staged multi-row attention candidate for one geometry: a sliding prefill block the tiled and AOTriton routes refuse (a sliding layer whose presented key count exceeds its window), which the native exact kernel serves by walking all presented keys from column 0. The candidate keeps the native arithmetic and adds the per-row window trim. On a same-process paired A/B at 8192 prompt / 128 output the substitution lowers prefill 9.4851 -> 8.3245 s (-12.24%) and wall 11.3942 -> 10.3258 s (-9.38%), and raises decode 1.9089 -> 2.0291 s (+6.29%). This is a scoped prefill/wall win, not a universal non-regression and not full-goal completion.",
+  "workload": {
+    "prompt_tokens": 8192,
+    "output_tokens": 128,
+    "context": 8448,
+    "runner_capacity": 8448,
+    "max_block": 1024,
+    "sampler_mode": "greedy",
+    "eos": "ignored (fixed-length row)"
+  },
+  "provenance": {
+    "host": "epyc",
+    "gpu_name_device0": "AMD Radeon Pro W7900",
+    "gpu_arch": "gfx1100",
+    "python": "3.11.11",
+    "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+    "hipcc": [
+      "HIP version: 7.2.53211-3d9ef42",
+      "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+    ],
+    "env": {
+      "HIPENGINE_EXECUTION_PROFILE": "production",
+      "HIPENGINE_GEMMA4_MOE_PREFILL": "auto",
+      "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+      "ROCR_VISIBLE_DEVICES": "0",
+      "HIP_PATH": "/opt/rocm",
+      "HIP_INCLUDE_PATH": "/opt/rocm/include",
+      "HIP_LIB_PATH": "/opt/rocm/lib"
+    },
+    "resolution": {
+      "resolved_backend": "hip_gfx1100",
+      "resolved_quant": "gguf_q4_k_m",
+      "resolved_execution_profile": "production",
+      "execution_profile_manifest_sha256": "e4c4dc051f4c47143a26a22673433dd9ecf5f638d41b006bbf40097674ad80ba",
+      "fell_back_to_strict": false,
+      "generator_type": "SubmitPollTextGenerator"
+    },
+    "artifact": {
+      "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "bytes": 17010980576,
+      "mtime": "2026-09-22T10:30:20.793299+00:00",
+      "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+    },
+    "git_dirty_at_measurement": true,
+    "git_dirty_note": "the integration edits under review; base commit is 9f80c0e9d"
+  },
+  "scope": {
+    "layer_key": "exact_prefill_attention",
+    "scope_name": "sliding_multi_row",
+    "selected_variant": "gemma4_staged",
+    "strict_fallback_variant": "gemma4_plain",
+    "in_scope": "a sliding multi-row prefill block (tokens > 1, sliding_window set) that the tiled and AOTriton routes refused and whose shape staged_plan accepts",
+    "out_of_scope_keeps_native": [
+      "a global (non-sliding) block",
+      "a one-row prefill tail",
+      "a head width or GQA ratio staged_plan does not implement",
+      "no exact-prefill scope requested",
+      "a genuine decode step or a verify block (the runtime disables the scope)"
+    ],
+    "kernel_body_changed": false,
+    "other_paths_preserved": "the tiled/AOTriton split, the prefill_attention scope, and the decode scope are unchanged"
+  },
+  "commands": {
+    "paired_ab": "/home/lhl/hipEngine-gemma4/.venv/bin/python /tmp/gemma-llamacpp-512-256k/sliding_paired_8k.py",
+    "shipping_public": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 8192 --output 128 --context 8448 --warmup 1 --samples 3 --expect-gpu W7900 --out /tmp/gemma-llamacpp-512-256k/registered-sliding-p8192.json",
+    "shipping_observation": "/home/lhl/hipEngine-gemma4/.venv/bin/python /tmp/gemma-llamacpp-512-256k/registered_sliding_public.py",
+    "cpu_focused": "/home/lhl/hipEngine-gemma4/.venv/bin/python -m pytest tests/test_unit_gemma4_staged_prefill_integration.py -q",
+    "gpu_parity": "/home/lhl/hipEngine-gemma4/.venv/bin/python -m pytest tests/test_gpu_gemma4_staged_sliding_prefill_parity.py -q",
+    "gpu_scratch": "/home/lhl/hipEngine-gemma4/.venv/bin/python -m pytest tests/test_gpu_gemma4_staged_prefill_scratch_reuse.py -q"
+  },
+  "paired_ab": {
+    "design": "one process, 8192 prompt / 128 output, three samples per arm, warmup in the first phase, arms alternate plain/staged per phase. The only difference is runner.exact_prefill_attention_variants; no launcher or kernel is monkeypatched.",
+    "output_parity": "both arms finite logits and byte-equal generated token ids",
+    "rows": [
+      {
+        "arm": "plain",
+        "variant": "gemma4_plain",
+        "prefill_s": 9.48508769646287,
+        "prefill_tok_s": 863.6715085992214,
+        "decode_s": 1.9089244520291686,
+        "decode_tok_s": 66.52961035990722,
+        "wall_s": 11.394189983606339
+      },
+      {
+        "arm": "staged",
+        "variant": "gemma4_staged",
+        "prefill_s": 8.324464370496571,
+        "prefill_tok_s": 984.0873400856818,
+        "decode_s": 2.029062625952065,
+        "decode_tok_s": 62.59047817235793,
+        "wall_s": 10.325834039598703
+      }
+    ],
+    "delta": {
+      "prefill_pct": -12.24,
+      "prefill_speedup": 1.1394,
+      "prefill_tok_s_pct": 13.94,
+      "decode_pct": 6.29,
+      "decode_tok_s_pct": -5.92,
+      "wall_pct": -9.38,
+      "wall_speedup": 1.1035
+    },
+    "note": "decode is slower in this pair; the win is prefill and wall"
+  },
+  "shipping_public_path": {
+    "resolves_to_staged_natively": true,
+    "prefill_s": 8.256037523970008,
+    "prefill_tok_s": 992.243552214475,
+    "decode_s": 1.9642988061532378,
+    "decode_tok_s": 64.65411453805697,
+    "wall_s": 10.235897072590888,
+    "public_wall_s": 10.248476170003414,
+    "public_tps": 12.489661670351268,
+    "generated_tokens": 128,
+    "public_path_parity": true,
+    "public_generated_equals_expected": true,
+    "instrumented_finite_logits": true,
+    "all_replays_and_public_ids_equal": true,
+    "prompt_ids_sha256": "ea1766ee5530c7028e61cc93c4162cee2e0f54738e9b3a097306013efe8daaba",
+    "peak_device_bytes": 28776349696
+  },
+  "route_observation": {
+    "method": "sys.setprofile call events on gemma4_attention_staged_bf16 through the public LLM.generate_detailed surface; no launcher replacement",
+    "performance_claim": false,
+    "quality_qualified": false,
+    "prompt_2049": {
+      "staged_calls": 25,
+      "geometry": {"tokens": 1024, "keys": 2047, "window": 1024, "row_offset": 1023},
+      "position": 2056,
+      "exact_prefill_attention_variants": ["gemma4_staged"]
+    },
+    "prompt_8192": {
+      "staged_calls": 175,
+      "geometry": {"tokens": 1024, "keys": 2047, "window": 1024, "row_offset": 1023},
+      "position": 8199,
+      "exact_prefill_attention_variants": ["gemma4_staged"]
+    }
+  },
+  "correctness": {
+    "gate": "Direct native/staged arithmetic parity, scratch ownership and public-route repeatability passed; no kernel arithmetic changed. Whole-profile quality certification is not claimed",
+    "direct_gpu_parity": {
+      "file": "tests/test_gpu_gemma4_staged_sliding_prefill_parity.py",
+      "cases_passed": 40,
+      "matrix": "19 curated cases x {bf16,f32} = 38, plus the dense-first-chunk no-op x 2 = 40",
+      "assertion": "three arms (native untrimmed, staged trimmed, staged untrimmed) from identical device buffers with NaN-poisoned outputs are byte-identical: native == staged_untrimmed == staged_trimmed",
+      "coverage": "measured 1024x2047 chunk; rows 2/3/127/257; window boundary both sides; window narrower and wider than the block; head_dim 256 and 512; holed masks; broad and peaked softmax; first_kept 255/256/257 partition boundary; paired-cancellation and last-kept-impulse constructions"
+    },
+    "shared_scratch_gpu": {
+      "file": "tests/test_gpu_gemma4_staged_prefill_scratch_reuse.py",
+      "cases_passed": 4,
+      "matrix": "2 tests x {bf16,f32} = 4",
+      "assertion": "the shared owner reuses its peak allocation across increasing/decreasing shapes and is byte-identical to a fresh per-call workspace in both trim arms; close lifecycle pinned"
+    },
+    "cpu_focused": {
+      "file": "tests/test_unit_gemma4_staged_prefill_integration.py",
+      "cases_collected_and_passed": 65,
+      "parent_log": "/tmp/gemma-llamacpp-512-256k/sliding-focused-final.log",
+      "parent_log_result": "99 passed in the combined integration and decode-selection files; explicit parent rerun with --override-ini addopts='' -q",
+      "note": "host-only; the integration file alone collects 65. GPU parity/scratch logs are not retained in the repo; the test files above are the matrix."
+    },
+    "generation_parity": "public generation generated ids equal the instrumented expectation (public_generated_equals_expected true)"
+  },
+  "gates": {
+    "independent_review": {
+      "production_defects": 0,
+      "test_gaps_closed": 2,
+      "artifact_retained": false,
+      "note": "the review is the parent's record; no separate review artifact is retained in the repo"
+    },
+    "docs": {
+      "log": "/tmp/gemma-llamacpp-512-256k/sliding-docs-final.log",
+      "result": "docs gates: all 4 passed",
+      "run_before_final_test_additions": false,
+      "parent_reruns": true
+    },
+    "audit": {
+      "log": "/tmp/gemma-llamacpp-512-256k/sliding-audit-final.log",
+      "result": "audit: ok",
+      "run_before_final_test_additions": false,
+      "parent_reruns": true
+    }
+  },
+  "limits": {
+    "not_universal_nonregression": "decode is 6.29% slower in the paired A/B; only prefill and wall improve",
+    "not_full_goal": "scoped prefill/wall win only",
+    "no_mtp_claim": true,
+    "no_whole_profile_quality_claim": true,
+    "measurement_host": "epyc / W7900; two machines with the same backend/GPU architecture are independent lanes"
+  },
+  "source_measurements": {
+    "registered_sliding_p8192": "/tmp/gemma-llamacpp-512-256k/registered-sliding-p8192.json",
+    "registered_sliding_public": "/tmp/gemma-llamacpp-512-256k/registered-sliding-public.json",
+    "sliding_paired_8k": "/tmp/gemma-llamacpp-512-256k/sliding-paired-8k.json",
+    "note": "the numbers in this artifact are copied here so it is self-contained; the /tmp paths are the raw captures"
+  }
+}

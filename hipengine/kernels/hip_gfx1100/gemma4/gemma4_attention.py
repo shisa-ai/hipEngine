@@ -1146,6 +1146,25 @@ DECODE_ATTENTION_QUANT = "gemma4_decode_attention"
 DECODE_ATTENTION_PLAIN = PREFILL_ATTENTION_PLAIN
 DECODE_ATTENTION_STAGED = PREFILL_ATTENTION_STAGED
 
+# --- the multi-row sliding prefill scope -------------------------------------
+#
+# A third registration of the same two launchers, under its own layer key, so a
+# production profile can prefer the staged multi-row candidate for a sliding
+# prefill block the tiled and AOTriton routes refuse. That block is exactly what
+# the layer's native/exact attention call site serves, so the preference is
+# consumed only there and never touches the tiled, AOTriton, or
+# profile-selected prefill variants -- the existing ``prefill_attention`` scope
+# runs before the route split and would bypass it, which is why this is a
+# separate key rather than a reuse of that one.
+#
+# The quant axis is structural, not the artifact's weight quant, exactly as the
+# decode scope's is: the kernels are quant-independent BF16 attention. One key
+# names the scope for every artifact the backend serves.
+EXACT_PREFILL_ATTENTION_LAYER = "exact_prefill_attention"
+EXACT_PREFILL_ATTENTION_QUANT = "gemma4_exact_prefill_attention"
+EXACT_PREFILL_ATTENTION_PLAIN = PREFILL_ATTENTION_PLAIN
+EXACT_PREFILL_ATTENTION_STAGED = PREFILL_ATTENTION_STAGED
+
 
 def _requested_variants(requested: str | Sequence[str] | None) -> tuple[str, ...]:
     """Normalise a profile request into an ordered tuple of variant names."""

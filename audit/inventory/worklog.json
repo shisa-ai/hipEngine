@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11487,
-    "current": 4255,
+    "entries": 11488,
+    "current": 4256,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1389,
+    "rows": 1390,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1228
+      "status": 1229
     }
   },
   "rows": [
@@ -52710,6 +52710,42 @@
       },
       "id": "worklog/20261005T195136.296757Z-lhl-gemma4-graph-range-geometry-b2a071",
       "evidence_hash": "f9e132b8f604"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261006T030217.146176Z-lhl-gemma4-staged-sliding-prefill-da9dae",
+      "title": "Register scoped staged sliding prefill attention",
+      "location": "worklog/entries/20261006T030217.146176Z-lhl-gemma4-staged-sliding-prefill-da9dae.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-staged-sliding-prefill",
+        "written": "2026-10-06",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Parent owns staging, the final docs/audit rerun, and the commit.\n- Retain as a scoped prefill/wall win. Do not report the paired A/B as a\n  universal non-regression: decode is 6.29% slower in that pair. Do not claim\n  MTP or whole-profile quality.\n- Continue prefill/decode/MTP work across the full 512\u2013256K matrix; this unit\n  does not close that objective.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261006T030217.146176Z-lhl-gemma4-staged-sliding-prefill-da9dae.md",
+        "refs": [],
+        "tokens": [
+          "attention",
+          "prefill",
+          "register",
+          "scoped",
+          "sliding",
+          "staged"
+        ]
+      },
+      "id": "worklog/20261006T030217.146176Z-lhl-gemma4-staged-sliding-prefill-da9dae",
+      "evidence_hash": "8c12c0f3dd8f"
     }
   ]
 }
