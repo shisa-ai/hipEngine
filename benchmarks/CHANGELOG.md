@@ -1,3 +1,14 @@
+## 2026-10-06 — First-scratch Q4/Q8 decode diagnostic
+
+- Radeon8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8
+  Flash Next UD-Q4_K_XL, real layer4 weights/synthetic top-k10 decode: sixteen
+  corrected fresh-process runs cover original36B GDN/92B dense-wide triggers
+  before Q4 gate/up and Q8 down. Scratch after/before0.97557–1.02339
+  (−2.443% to+2.339%); no multi-fold penalty, small Q8/GDN effect unresolved.
+  All outputs exact; four cached traces verify first allocations and queue order.
+  Initial in-window-sync/missing-launch attempt isINVALID. No default/speed claim.
+  Artifact: `results/2026-10-06-qwen4exp-x5-decode-victims/`.
+
 ## 2026-10-06 — K320/full-row GR-up DPP screen
 
 - Radeon8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8
