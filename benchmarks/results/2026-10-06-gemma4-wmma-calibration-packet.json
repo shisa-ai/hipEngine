@@ -984,13 +984,125 @@
       38
      ],
      "max_kl_of_non_flip_plausible": 0.004648913159716371
+    },
+    "heldout_mixed_summary": {
+     "rows": 63,
+     "flip_plausible_rows": 26,
+     "spiked_rows_kl_over_0.01": 12,
+     "spike_with_flip_plausible": 4,
+     "spike_without_flip_plausible": 8,
+     "clean_flip_plausible": 22,
+     "min_margin_percentiles": {
+      "p50": 0.0008986604344727311,
+      "p90": 0.00373985315909522,
+      "min": 4.977347998647019e-06
+     },
+     "flip_plausible_rows_list": [
+      1,
+      2,
+      3,
+      5,
+      9,
+      10,
+      12,
+      14,
+      16,
+      17,
+      23,
+      24,
+      25,
+      28,
+      30,
+      31,
+      38,
+      39,
+      46,
+      48,
+      49,
+      55,
+      58,
+      60,
+      61,
+      62
+     ],
+     "spiked_rows_list": [
+      16,
+      19,
+      25,
+      29,
+      33,
+      34,
+      39,
+      41,
+      47,
+      48,
+      53,
+      54
+     ],
+     "max_kl_of_non_flip_plausible": 0.12475464120673835
+    },
+    "general_ja_explain": {
+     "rows": 63,
+     "flip_plausible_rows": 33,
+     "spiked_rows_kl_over_0.01": 4,
+     "spike_with_flip_plausible": 2,
+     "spike_without_flip_plausible": 2,
+     "clean_flip_plausible": 31,
+     "min_margin_percentiles": {
+      "p50": 0.0011030287605535705,
+      "p90": 0.005135225303627068,
+      "min": 6.009048092892044e-06
+     },
+     "flip_plausible_rows_list": [
+      0,
+      2,
+      3,
+      5,
+      7,
+      9,
+      12,
+      14,
+      15,
+      17,
+      18,
+      19,
+      23,
+      24,
+      29,
+      31,
+      33,
+      35,
+      36,
+      41,
+      42,
+      43,
+      44,
+      45,
+      47,
+      49,
+      50,
+      53,
+      56,
+      58,
+      60,
+      61,
+      62
+     ],
+     "spiked_rows_list": [
+      2,
+      39,
+      44,
+      57
+     ],
+     "max_kl_of_non_flip_plausible": 0.03299409566339568
     }
    }
   },
   "refuted_row_rules": [
    "output top-2 gap < 0.25 or pmax < 2^-8: only 34/1152 rows unstable, misses the spikes",
    "plus/minus one bf16 ulp router-set flip: 33-46% of rows flip-plausible at some layer, yet 11/12 spiked rows on heldout_mixed_review are NOT in the set"
-  ]
+  ],
+  "router_ulp_flip_additional_note": "The task's two remaining named chains (heldout_mixed_summary, general_ja_explain) confirm the refutation: flip-plausible sets of 26/63 and 33/63 contain only 4/12 and 2/4 spiked rows. Across all five measured chains the plus/minus-one-ulp set captures a minority of spikes while including 33-52% of clean rows, so no strict-side margin or ulp rule isolates the damage set."
  },
  "cross_engine_reference": {
   "source": "benchmarks/results/2026-10-04-gemma4-gfx1151-depth-ladder-paired.json and its raw /tmp rows",
