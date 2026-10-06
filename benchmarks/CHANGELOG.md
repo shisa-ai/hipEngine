@@ -1,5 +1,18 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-06 — Ordered router DPP production prefill route
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL, BF16 KV/chunk4096, tracked-clean twelve-case same-residency
+  three-pair A/B: weighted prefill 287.913→289.505 / 312.834→314.353 /
+  319.356→321.238 tok/s (+0.553%/+0.486%/+0.589%). One publication barrier
+  and ordered DPP preserve the parent tree; all 72 trajectories and the D128
+  full-state/KV/natural-router gate pass, plus four isolation/ownership tests.
+  UD production selects DPP; strict and Q4_K_M remain tile4. Original p4096
+  request wall is 0.364% worse with one abrupt decode slowdown; no decode-speed
+  or all-case request non-regression claim. Source:
+  `results/2026-10-05-qwen4exp-router-dpp/engine-ab.json`.
+
 ## 2026-10-05 — Ordered router DPP operation screen
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,

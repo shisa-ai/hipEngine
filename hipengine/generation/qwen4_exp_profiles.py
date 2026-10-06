@@ -112,15 +112,15 @@ _ROUTER_WARP_REDUCE_EVIDENCE = (
 _ROUTER_DPP_EVIDENCE = (
     "benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md"
 )
-# Screening switch for the router producer. The tile4 parent is exact and
-# remains the strict fallback; named siblings are selected only for gates.
+# Named router producer and temporary rollback switch. Strict/Q4_K_M keep
+# tile4; the measured UD production profile selects ordered DPP by default.
 _ROUTER_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
 _ROUTER_TILE4_VARIANT = "f32_hidden_token_tile4_dense_exact"
 _ROUTER_WARP_REDUCE_VARIANT = "f32_hidden_warp_reduce_dense_exact"
 _ROUTER_DPP_VARIANT = "f32_hidden_token_tile4_dpp_exact"
-# Exact operation screen and route plumbing are not promotion evidence. The
-# production profile keeps the tile4 parent until the full model gate qualifies
-# the DPP sibling.
+# One-barrier ordered DPP passed the natural-input/full-state canonical gate
+# and improves prefill in the same-residency twelve-case model-wall campaign.
+# Keep the exact tile4 parent as the strict fallback and temporary rollback.
 _ROUTER_VARIANTS = (
     _ROUTER_TILE4_VARIANT,
     _ROUTER_WARP_REDUCE_VARIANT,
@@ -128,25 +128,29 @@ _ROUTER_VARIANTS = (
 )
 
 
-def _selected_router_producer_variant() -> str:
-    """Return the router logits producer the manifest declares.
+def _selected_router_producer_variant(*, recovery: bool = False) -> str:
+    """Return the router producer for the named quant/profile plan.
 
-    The default is the shipped four-token tile. The runner reads the same
-    variable at launch, and the binder publishes this resolved value, so the
-    manifest and the launched kernel cannot disagree.
+    UD production defaults to ordered DPP; Q4_K_M remains on tile4. The
+    binder publishes the manifest selection for the runner's launch-time
+    reader, including the strict tile4 fallback and explicit rollback.
     """
 
-    requested = os.environ.get(_ROUTER_VARIANT_ENV, "").strip() or _ROUTER_TILE4_VARIANT
+    default = _ROUTER_DPP_VARIANT if recovery else _ROUTER_TILE4_VARIANT
+    requested = os.environ.get(_ROUTER_VARIANT_ENV, "").strip() or default
     if requested not in _ROUTER_VARIANTS:
         raise ValueError(f"{_ROUTER_VARIANT_ENV} must be one of {_ROUTER_VARIANTS}; got {requested!r}")
     return requested
 
 
 _ROUTER_LOGITS_SELECTED_VARIANT = _selected_router_producer_variant()
-_ROUTER_LOGITS_EVIDENCE = {
+_ROUTER_UD_LOGITS_SELECTED_VARIANT = _selected_router_producer_variant(recovery=True)
+_ROUTER_VARIANT_EVIDENCE = {
+    _ROUTER_TILE4_VARIANT: _ROUTER_F32_TILE4_EVIDENCE,
     _ROUTER_WARP_REDUCE_VARIANT: _ROUTER_WARP_REDUCE_EVIDENCE,
     _ROUTER_DPP_VARIANT: _ROUTER_DPP_EVIDENCE,
-}.get(_ROUTER_LOGITS_SELECTED_VARIANT, _ROUTER_F32_TILE4_EVIDENCE)
+}
+_ROUTER_LOGITS_EVIDENCE = _ROUTER_VARIANT_EVIDENCE[_ROUTER_LOGITS_SELECTED_VARIANT]
 _GR_UP_SIGMOID_MEAN_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json"
@@ -508,10 +512,13 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
         _selection(
             "router_logits",
             "qwen4exp_multirow_f32_router",
-            _ROUTER_LOGITS_SELECTED_VARIANT,
+            _ROUTER_UD_LOGITS_SELECTED_VARIANT if recovery else _ROUTER_LOGITS_SELECTED_VARIANT,
             "f32_hidden_token_tile4_dense_exact",
             "f32",
-            evidence=_ROUTER_LOGITS_EVIDENCE,
+            evidence=(
+                _ROUTER_VARIANT_EVIDENCE[_ROUTER_UD_LOGITS_SELECTED_VARIANT]
+                if recovery else _ROUTER_LOGITS_EVIDENCE
+            ),
         ),
         _selection(
             "gr_gated_mean_sigmoid",
@@ -644,8 +651,8 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
                     selection.layer == "linear+gr_gated_mean"
                     and selection.scope == "qwen4exp_rows_gt256_gr_up"
                 )
-                else _ROUTER_DPP_EVIDENCE
-                if selection.layer == "router_logits" and variant == _ROUTER_DPP_VARIANT
+                else selection.evidence_artifact
+                if selection.layer == "router_logits"
                 else _Q8_QSA_RESTORATION_EVIDENCE
                 if restored
                 else _ARITHMETIC_RECOVERY_EVIDENCE
