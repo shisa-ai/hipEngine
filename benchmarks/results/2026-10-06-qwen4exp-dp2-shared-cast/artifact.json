@@ -821,9 +821,30 @@
       }
     }
   },
+  "order_review": {
+    "source": "engine-ab.json unchanged samples; group by case_sequence[0], exclude p512",
+    "method": "sum candidate durations / sum parent durations within each case group",
+    "not_within_case_randomized_order": true,
+    "parent_first_cases": {
+      "case_count": 12,
+      "sample_count": 72,
+      "candidate_over_parent_prefill": 0.9996348639258693,
+      "candidate_over_parent_decode": 1.0015664789611902,
+      "candidate_over_parent_client_wall": 1.0006698882447473
+    },
+    "candidate_first_cases": {
+      "case_count": 12,
+      "sample_count": 72,
+      "candidate_over_parent_prefill": 0.9995149087288234,
+      "candidate_over_parent_decode": 1.0001158333379714,
+      "candidate_over_parent_client_wall": 0.9998367046375849
+    },
+    "interpretation": "Both case groups have faster prefill; request wall changes sign. Different cases and within-arm variation prevent attribution of the aggregate +0.025% wall delta to the candidate. No model-throughput claim follows.",
+    "remaining_gate": "Complete native runner pair operation including admission, normal dispatch, scope exit and final synchronization; the primitive replay excluded native ownership cost."
+  },
   "decision": {
     "default": "parent",
-    "candidate": "default-off",
-    "reason": "Tracked-clean full-suite A/B is exact and bounded, but qualified p1024/p4096 complete client wall is 1.0002538036084758x candidate over parent and all-row wall is 1.0002448793824532x; no complete-engine improvement claim follows."
+    "candidate": "default-off pending native owner cost gate",
+    "reason": "The tracked-clean full-suite A/B is exact and bounded but does not establish a causal request regression or model-throughput win. Measure the native ownership-operation cost excluded by the primitive replay; a qualified sub-window or launch-count saving is retainable without a minimum headline gain."
   }
 }
