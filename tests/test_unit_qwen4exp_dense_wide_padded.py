@@ -1,4 +1,4 @@
-"""Surface contract for the measurement-only padded-fragment wide sibling."""
+"""Surface contract for independently registered padded-fragment siblings."""
 from types import SimpleNamespace
 
 import pytest

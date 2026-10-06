@@ -403,9 +403,20 @@ K10240/N320 synthetic operation is1.313–1.353x at512/1024/4096rows;
 420natural calls across six cases are exact/input-preserving and1.312–1.361x,
 with about50ms saved at4K. First reversed-GGUF-shape timings areINVALID and
 excluded; the loader is regression-tested. Cached trace confirms scratch0
-and plausible candidate duration. This reopens DP-7/X-5 structurally, not
-failed precision/retiles. No profile binding: full-model canonical/heldout
-state/KV/repeats and tracked-clean engineAB remain the selection blockers.
+and plausible candidate duration. The20-case canonical/heldout full-state/KV
+qualification passes with4200 candidate prefill calls,0 decode calls, three
+candidate repeats and clean teardown. Tracked-clean `1d9601d1b` same-host
+canonical12-case three-pair engine A/B improves weighted prefill
+291.581→294.602 /317.528→319.415 /324.275→325.719 tok/s
+(+1.036%/+0.594%/+0.445%); all72 trajectories exact and deterministic.
+Total client wall493.851329→493.049429s (−0.162%), with two slower request
+cases (Japanese4K+0.214%, mixed512+0.279%) and no decode-speed claim.
+Promote only the F16-input K10240/N320 leaf at512–4096rows under UD
+production's existing layers13–47 wide scope, using backend registry-axis
+capability metadata. Parent rollback, unsupported-shape parent and raw-F32
+strict fallback remain. This closes the bounded DP-7/X-5 tail experiment,
+not all dense-wide shapes or scratch causality.
+[Full evidence](../benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md).
 
 ## 2. Arithmetic policy and kernel mechanisms
 

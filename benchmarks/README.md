@@ -5,12 +5,40 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next padded dense-wide tail production route
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+BF16 KV and chunk4096, the gfx1151 production profile selects a padded
+F16-input Q8_0 HC-down leaf only at K10240/N320 and 512–4096 rows.
+The same-host comparison uses all 12 canonical cases, one model residency
+and three counterbalanced measurements per arm, with 128 decode transitions.
+
+| Prompt tokens | Parent prefill tok/s | Padded prefill tok/s | Change |
+| ---: | ---: | ---: | ---: |
+| 512 | 291.581 | 294.602 | +1.036% |
+| 1024 | 317.528 | 319.415 | +0.594% |
+| 4096 | 324.275 | 325.719 | +0.445% |
+
+All 12 cases improve prefill; all 72 measured trajectories are exact and
+deterministic. Total client wall falls 493.851329→493.049429 s (−0.162%);
+ten request cases improve, but Japanese 4K is 0.214% slower and mixed 512
+is 0.279% slower. Decode by shape changes +0.018%/−0.089%/−0.200%; no
+decode-speed or all-case request-wall claim follows.
+
+The natural complete-GEMM owner improves 1.312–1.361x over six cases/420
+exact input-preserving calls, with private scratch 92→0 B/lane and
+spills 58→0. All 20 canonical/heldout full-logit/state/KV cases pass three
+candidate repeats and clean teardown. Strict, Q4_K_M and peer backends
+keep their preceding routes.
+[Protocol, correctness and artifacts](results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md).
+
 ## Qwen3.8 Flash Next padded dense-wide tail operation screen
 
 Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
 measures a diagnostic F16-input Q8_0 HC-down GEMM sibling at K10240/N320.
 It computes zero-padded row fragments without K-loop branches while keeping
-load/store bounds and valid-row arithmetic. No production selection changes.
+load/store bounds and valid-row arithmetic. Production admission is
+reported separately above.
 
 | Natural input | Parent owner ms | Padded owner ms | Speedup |
 | --- | ---: | ---: | ---: |
@@ -21,8 +49,8 @@ load/store bounds and valid-row arithmetic. No production selection changes.
 All 420 natural calls across six cases are exact, repeatable and preserve
 input/weight bytes; teardown is leak-free. Private scratch 92→0 bytes/lane,
 spills 58→0. CPU-reference/guard tests and cached trace pass. These are
-complete-GEMM sub-window timings, not a model-wall result; full-model gates
-and engine A/B are required before selection.
+complete-GEMM sub-window timings, not model-wall rates. The full-model
+qualification and engine A/B are reported separately above.
 [Protocol and artifacts](results/2026-10-06-qwen4exp-dense-wide-padded-screen/README.md).
 
 ## Qwen3.8 Flash Next checked-index GDN production route

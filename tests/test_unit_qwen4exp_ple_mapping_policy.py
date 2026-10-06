@@ -75,7 +75,9 @@ def test_missing_mapping_capability_is_a_safe_fallback():
 
 
 def test_production_binder_selects_random_with_strict_and_explicit_rollback(monkeypatch):
-    from hipengine.generation.qwen4_exp_profiles import _bind
+    from hipengine.generation.qwen4_exp_profiles import (
+        _bind, _production_selections, _strict_selections,
+    )
     import os
 
     monkeypatch.setattr(os, "environ", dict(os.environ))
@@ -83,7 +85,12 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
     calls = []
     table = SimpleNamespace(configure_mapping_access=lambda mode: calls.append(mode))
     generator = SimpleNamespace(_resident=SimpleNamespace(ple_table=table))
-    profile = SimpleNamespace(manifest_sha256="test", manifest={"quant": "gguf_ud_q4_k_xl"})
+    profile = SimpleNamespace(manifest_sha256="test", manifest={
+        "quant": "gguf_ud_q4_k_xl", "selections": [
+            {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
+            for r in _production_selections(recovery=True)
+        ],
+    })
     _bind(generator, profile, production=True)
     # The UD quant is the arithmetic-recovery profile, which closes the runner's
     # colwarps gate (GDN_COLWARPS_PREFILL is a recovery flag). The tile16 variant is
@@ -92,13 +99,25 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
     # the gate open instead - see the q4_k_m case below.
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == ""
+    profile.manifest["selections"] = [
+        {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
+        for r in _strict_selections(recovery=True)
+    ]
     _bind(generator, profile, production=False)
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == ""
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS", "normal")
+    profile.manifest["selections"] = [
+        {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
+        for r in _production_selections(recovery=True)
+    ]
     _bind(generator, profile, production=True)
     assert calls == ["random", "normal", "normal"]
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS")
     profile.manifest["quant"] = "gguf_q4_k_m"
+    profile.manifest["selections"] = [
+        {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
+        for r in _production_selections()
+    ]
     _bind(generator, profile, production=True)
     # The multi-column route supersedes the DPP route (measured 1.34x-1.68x at
     # Hk16/Hv48/Dk=Dv=128 on gfx1151, NMSE ~1.8e-14). This is the profile whose

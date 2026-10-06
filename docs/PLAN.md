@@ -882,6 +882,17 @@ trajectories and improves every prefill/request wall;PP512/1024/4096 gains
 arithmetic and decode unchanged. Dynamic LDS increase and tiny TG losses are
 recorded in `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-production.json`.
 
+Qwen4Exp UD-Q4_K_XL production additionally admits the padded F16-input
+HC-down dense-wide leaf only for K10240/N320 at 512–4096 rows within the
+existing layers 13–47 scope. Backend registry-axis capability metadata bounds
+launch-time selection after the caller-owned F16 staging fit check. The
+named manifest records the selection and registered raw-F32 strict fallback;
+missing registration keeps the F16 parent. Exact 20-case state/KV qualification
+and native-binder integration pass. Same-host canonical three-pair prefill
+improves 1.036%/0.594%/0.445%, aggregate request wall −0.162%; two request
+cases are slower, so no all-case request or decode-speed claim follows.
+[Evidence and rollback](../benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md).
+
 #### Fusion Planner
 
 Qwen4Exp K640 Q5_1 grouped down at rows>=512 now publishes folded

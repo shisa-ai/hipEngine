@@ -532,6 +532,32 @@ def _launch_prefill_f16_staged(
 WIDE_F16_ACTIVATION_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"
 _WIDE_F16_ACTIVATION_SOURCE_SUFFIX = "_f32_f32_out"
 _WIDE_F16_ACTIVATION_TARGET_SUFFIX = "_f16in_f32_f32_out"
+DENSE_WIDE_TAIL_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT"
+
+
+def _dense_wide_f16_tail_key(
+    key: KernelKey, *, rows: int, in_features: int, out_features: int,
+) -> KernelKey:
+    """Select only a bound, backend-qualified F16 tail; otherwise keep parent."""
+
+    requested = os.environ.get(DENSE_WIDE_TAIL_VARIANT_ENV, "")
+    if not requested or requested == key.variant:
+        return key
+    policies = backend_package_capability(
+        key.backend, "GGUF_DENSE_WIDE_F16_TAIL_POLICIES", {},
+    )
+    policy = policies.get((key.layer, key.quant, key.variant))
+    if (
+        policy is None
+        or requested != policy["variant"]
+        or not policy["rows"][0] <= int(rows) <= policy["rows"][1]
+        or (int(in_features), int(out_features)) != policy["shape"]
+    ):
+        return key
+    candidate = KernelKey(key.backend, key.layer, key.quant, requested)
+    if not is_registered(candidate):
+        _ensure_linear_kernel_registered(candidate)
+    return candidate if is_registered(candidate) else key
 
 
 def _wide_f16_activation_target_variant(variant: str) -> str | None:
@@ -679,6 +705,9 @@ def _launch_dense_wide_f16_staged(
     stage_ptr = _wide_f16_activation_stage_ptr(count)
     if stage_ptr <= 0:
         return False
+    key = _dense_wide_f16_tail_key(
+        key, rows=rows, in_features=in_features, out_features=out_features,
+    )
     sibling = resolve(
         backend=key.backend,
         layer=key.layer,

@@ -1,5 +1,17 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-06 — Bounded padded HC-down production route
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL/BF16/chunk4096, tracked-clean twelve-case/three-pair A/B:
+  weighted prefill291.581→294.602 /317.528→319.415 /324.275→325.719 tok/s
+  (+1.036%/+0.594%/+0.445%), all72 trajectories exact; total request
+  wall493.851329→493.049429s (−0.162%). Promote only K10240/N320,
+  rows512–4096, for the qualified1.312–1.361x natural HC owner saving
+  and scratch92→0B/spills58→0. Two request cases lose0.214%/0.279%; no
+  all-case request or decode-speed claim. Source/artifact:
+  `results/2026-10-06-qwen4exp-dense-wide-padded-gate/engine-ab.json`.
+
 ## 2026-10-06 — Padded dense-wide tail operation screen
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL

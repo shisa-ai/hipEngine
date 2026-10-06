@@ -56,6 +56,9 @@ def main():
         model_path=args.model_root, weight_index=index,
         model_plugin=gate.resolve_model(index.architecture or ""),
         backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=4096))
+    # Keep both diagnostic launches inside the parent hook after promotion.
+    from hipengine.runtime.gguf_linear import DENSE_WIDE_TAIL_VARIANT_ENV
+    os.environ[DENSE_WIDE_TAIL_VARIANT_ENV] = PARENT
     runtime = generator.runner.runtime
     key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", PARENT)
     parent = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=PARENT)

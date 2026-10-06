@@ -2367,6 +2367,15 @@ GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = False
 # this does not admit the W7900 Q5/Q6 policies above.
 GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED = True
 GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED = True
+# Exact padded HC-down tail, qualified on natural inputs and full-model state.
+# Runtime consumes registry-axis keys; peer backends expose no admission.
+GGUF_DENSE_WIDE_F16_TAIL_POLICIES = {
+    ("linear", "gguf_q8_0", "dense_wide256_f16in_f32_f32_out"): {
+        "rows": (512, 4096),
+        "shape": (10240, 320),
+        "variant": "dense_wide256_padded_f16in_f32_f32_out",
+    },
+}
 # Qwen4Exp MoE is stateless between layer boundaries. Per-layer graph replay
 # self-validates BF16 output before admission and leaves GDN/QSA eager.
 QWEN4_EXP_MOE_GRAPH = True
