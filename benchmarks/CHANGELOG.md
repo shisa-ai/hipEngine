@@ -1,3 +1,12 @@
+## 2026-10-06 — Host-sized routed-grid screen rejected
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8 Flash Next
+  UD-Q4_K_XL production/BF16/chunk4096:30 natural Q4/Q5_1 owner cases give
+  static→host-sized summed medians557.760→559.006ms (+0.223%) despite
+  grid−8.03–34.75%;28/30 slower, neither positive median wins both order strata.
+  All420 replay calls exact/leak-free. Serialized readback rejected, no default
+  change or model-wall claim. Artifact: `results/2026-10-06-qwen4exp-rt2-host-grid/`.
+
 ## 2026-10-06 — First-scratch Q4/Q8 decode diagnostic
 
 - Radeon8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8

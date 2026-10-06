@@ -5,6 +5,26 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next host-sized routed-grid diagnostic
+
+Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+production/BF16/chunk4096. Six natural cases across four categories and
+p512/p1024/p4096 supply 30 Q4/Q5_1 owner cases with six counterbalanced
+pairs each. Downloading the exact tile total reduces grids by 8.03–34.75%
+but does not improve the charged operation.
+
+| Boundary | Static sum of owner medians ms | Host-sized ms | Change |
+| --- | ---: | ---: | ---: |
+| Tile-map, risk, repair and Q4 SiLU | 557.760 | 559.006 | +0.223% |
+
+All 420 replay calls preserve repaired outputs, risk membership, maps and
+input bytes; teardown is clean. Twenty-eight medians are slower and neither
+positive median wins both order strata. Q8 already uses the exact host-sized
+total. The serialized readback candidate is rejected; defaults are unchanged.
+This aggregate is not model wall, and overlapping readback behind independent
+work is untested.
+[Protocol and artifact](results/2026-10-06-qwen4exp-rt2-host-grid/README.md).
+
 ## Qwen3.8 Flash Next first-scratch decode diagnostic
 
 Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
