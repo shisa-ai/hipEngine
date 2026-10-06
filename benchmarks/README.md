@@ -5,6 +5,28 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next shared-cast operation diagnostic
+
+Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+production/BF16/chunk4096. Adjacent QKV+gate and shared gate+up consumers
+replay natural inputs at layers13/24/46 across six cases, four categories
+and p512/p1024/p4096. The comparison runs the same two GEMMs with either
+two F16 casts or one shared cast; each run has 504 replay operations.
+
+| Diagnostic run | Two-cast sum of owner wall medians ms | One-cast ms | Change |
+| --- | ---: | ---: | ---: |
+| Initial | 159.161 | 151.947 | −4.533% |
+| Final byte/provenance checks | 138.414 | 130.648 | −5.611% |
+
+Final p1024/p4096 medians and both order strata improve, but p512 has a
+pooled shared-expert loss and a QKV order-stratum loss. Outputs, final F16
+bytes, input/weight immutability and teardown pass. Shared-expert timings
+vary substantially between runs; both are preserved. This is sampled
+operation wall, not model throughput. No runtime default changes; native
+ordered-consumer ownership, state/KV/engagement and clean engine qualification
+are pending for exactly1024/4096 rows.
+[Protocol and samples](results/2026-10-06-qwen4exp-dp2-shared-cast/README.md).
+
 ## Qwen3.8 Flash Next host-sized routed-grid diagnostic
 
 Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,

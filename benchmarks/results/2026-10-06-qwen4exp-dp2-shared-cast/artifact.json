@@ -1,0 +1,422 @@
+{
+  "schema": 1,
+  "status": "positive_diagnostic_native_qualification_pending",
+  "performance_claim": false,
+  "model": "Qwen3.8-Flash-Next",
+  "quant": "UD-Q4_K_XL",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "execution_profile": "production",
+  "kv_dtype": "bf16",
+  "source_commit": "7d0c26d0ccdd2328960e0a0c06ff7f3ca00a5ef2",
+  "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "runs": {
+    "initial": {
+      "path": "initial.json",
+      "sha256": "2c5689aaccc31f10a8fedc53d45c427185d9f413baca6756ab3a29564badd10d",
+      "original_path": "/tmp/qwen4exp-dp2-six-case.json",
+      "original_sha256": "c2312f8f33a0476cb16621de7263d8a62c7ac102604add306f8dbfc4d8367953",
+      "script_sha256": "f6c4dced94c7e5fe87f0ffe6a594695b0ee11fc47daacc18448b55aef1cfa703",
+      "status": "passed",
+      "groups": {
+        "all:all": {
+          "owner_cases": 36,
+          "two_casts_sum_wall_medians_ms": 159.16138794273138,
+          "one_cast_sum_wall_medians_ms": 151.94718074053526,
+          "ratio": 1.0474783879966492,
+          "duration_change_pct": -4.532636524124745,
+          "minimum_order_stratum_wall_ratio": 0.9880323751046609
+        },
+        "all:attn_qkv+attn_gate": {
+          "owner_cases": 18,
+          "two_casts_sum_wall_medians_ms": 121.88441632315516,
+          "one_cast_sum_wall_medians_ms": 117.92059428989887,
+          "ratio": 1.0336143322303104,
+          "duration_change_pct": -3.252115531116717,
+          "minimum_order_stratum_wall_ratio": 1.0118564965763528
+        },
+        "all:shared_gate+shared_up": {
+          "owner_cases": 18,
+          "two_casts_sum_wall_medians_ms": 37.276971619576216,
+          "one_cast_sum_wall_medians_ms": 34.02658645063639,
+          "ratio": 1.0955248676988296,
+          "duration_change_pct": -8.719552656023355,
+          "minimum_order_stratum_wall_ratio": 0.9880323751046609
+        },
+        "512:all": {
+          "owner_cases": 6,
+          "two_casts_sum_wall_medians_ms": 5.446689669042826,
+          "one_cast_sum_wall_medians_ms": 5.280687008053064,
+          "ratio": 1.0314358076395376,
+          "duration_change_pct": -3.0477716021396484,
+          "minimum_order_stratum_wall_ratio": 1.0199685998446948
+        },
+        "512:attn_qkv+attn_gate": {
+          "owner_cases": 3,
+          "two_casts_sum_wall_medians_ms": 4.227640572935343,
+          "one_cast_sum_wall_medians_ms": 4.101948346942663,
+          "ratio": 1.0306420791686377,
+          "duration_change_pct": -2.973105774349416,
+          "minimum_order_stratum_wall_ratio": 1.0199685998446948
+        },
+        "512:shared_gate+shared_up": {
+          "owner_cases": 3,
+          "two_casts_sum_wall_medians_ms": 1.219049096107483,
+          "one_cast_sum_wall_medians_ms": 1.1787386611104012,
+          "ratio": 1.0341979408388187,
+          "duration_change_pct": -3.3067113642753276,
+          "minimum_order_stratum_wall_ratio": 1.029968201247417
+        },
+        "1024:all": {
+          "owner_cases": 6,
+          "two_casts_sum_wall_medians_ms": 9.000962134450674,
+          "one_cast_sum_wall_medians_ms": 8.648606017231941,
+          "ratio": 1.040741376878156,
+          "duration_change_pct": -3.914649478083121,
+          "minimum_order_stratum_wall_ratio": 0.9880323751046609
+        },
+        "1024:attn_qkv+attn_gate": {
+          "owner_cases": 3,
+          "two_casts_sum_wall_medians_ms": 7.406672928482294,
+          "one_cast_sum_wall_medians_ms": 7.158597931265831,
+          "ratio": 1.034654131940135,
+          "duration_change_pct": -3.3493445655267573,
+          "minimum_order_stratum_wall_ratio": 1.025424519427371
+        },
+        "1024:shared_gate+shared_up": {
+          "owner_cases": 3,
+          "two_casts_sum_wall_medians_ms": 1.59428920596838,
+          "one_cast_sum_wall_medians_ms": 1.4900080859661102,
+          "ratio": 1.0699869490538063,
+          "duration_change_pct": -6.540916140677799,
+          "minimum_order_stratum_wall_ratio": 0.9880323751046609
+        },
+        "4096:all": {
+          "owner_cases": 24,
+          "two_casts_sum_wall_medians_ms": 144.71373613923788,
+          "one_cast_sum_wall_medians_ms": 138.01788771525025,
+          "ratio": 1.0485143522686138,
+          "duration_change_pct": -4.626961201212543,
+          "minimum_order_stratum_wall_ratio": 1.0113886040975202
+        },
+        "4096:attn_qkv+attn_gate": {
+          "owner_cases": 12,
+          "two_casts_sum_wall_medians_ms": 110.25010282173753,
+          "one_cast_sum_wall_medians_ms": 106.66004801169038,
+          "ratio": 1.0336588523722927,
+          "duration_change_pct": -3.2562825051073885,
+          "minimum_order_stratum_wall_ratio": 1.0118564965763528
+        },
+        "4096:shared_gate+shared_up": {
+          "owner_cases": 12,
+          "two_casts_sum_wall_medians_ms": 34.46363331750035,
+          "one_cast_sum_wall_medians_ms": 31.357839703559875,
+          "ratio": 1.0990436089762872,
+          "duration_change_pct": -9.011799729088288,
+          "minimum_order_stratum_wall_ratio": 1.0113886040975202
+        }
+      },
+      "order_stratum_losses": [
+        {
+          "case": "code-p1024",
+          "layer": 24,
+          "role": "shared_gate+shared_up",
+          "first_arm": "two_casts",
+          "metric": "wall_ms",
+          "ratio": 0.9880323751046609
+        },
+        {
+          "case": "code-p1024",
+          "layer": 24,
+          "role": "shared_gate+shared_up",
+          "first_arm": "two_casts",
+          "metric": "event_ms",
+          "ratio": 0.9894445405310083
+        }
+      ],
+      "pooled_wall_positive_count": 36,
+      "replay_operations": 504,
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 89695756040,
+        "total_allocated_bytes": 94541750056,
+        "total_freed_bytes": 94541750056,
+        "active_allocations": 0,
+        "peak_allocations": 1625
+      }
+    },
+    "focused_p1024": {
+      "path": "focused_p1024.json",
+      "sha256": "570473ae8025c76f9587c8111cdaf54cb5cb6aea30bc03dbff8b477f17b5438e",
+      "original_path": "/tmp/qwen4exp-dp2-p1024-recheck.json",
+      "original_sha256": "f26d9cbcf4e255b93ddce837c29b66ada20f1d7a7267584688884163c3d52efa",
+      "script_sha256": "f6c4dced94c7e5fe87f0ffe6a594695b0ee11fc47daacc18448b55aef1cfa703",
+      "status": "passed",
+      "groups": {
+        "all:all": {
+          "owner_cases": 2,
+          "two_casts_sum_wall_medians_ms": 3.0166530050337315,
+          "one_cast_sum_wall_medians_ms": 2.93585192412138,
+          "ratio": 1.027522192195212,
+          "duration_change_pct": -2.678501000198663,
+          "minimum_order_stratum_wall_ratio": 1.015192371923455
+        },
+        "all:attn_qkv+attn_gate": {
+          "owner_cases": 1,
+          "two_casts_sum_wall_medians_ms": 2.5082286447286606,
+          "one_cast_sum_wall_medians_ms": 2.4431422352790833,
+          "ratio": 1.0266404503633586,
+          "duration_change_pct": -2.5949153234639977,
+          "minimum_order_stratum_wall_ratio": 1.02584174105431
+        },
+        "all:shared_gate+shared_up": {
+          "owner_cases": 1,
+          "two_casts_sum_wall_medians_ms": 0.5084243603050709,
+          "one_cast_sum_wall_medians_ms": 0.4927096888422966,
+          "ratio": 1.0318943828762501,
+          "duration_change_pct": -3.090857301437122,
+          "minimum_order_stratum_wall_ratio": 1.015192371923455
+        },
+        "1024:all": {
+          "owner_cases": 2,
+          "two_casts_sum_wall_medians_ms": 3.0166530050337315,
+          "one_cast_sum_wall_medians_ms": 2.93585192412138,
+          "ratio": 1.027522192195212,
+          "duration_change_pct": -2.678501000198663,
+          "minimum_order_stratum_wall_ratio": 1.015192371923455
+        },
+        "1024:attn_qkv+attn_gate": {
+          "owner_cases": 1,
+          "two_casts_sum_wall_medians_ms": 2.5082286447286606,
+          "one_cast_sum_wall_medians_ms": 2.4431422352790833,
+          "ratio": 1.0266404503633586,
+          "duration_change_pct": -2.5949153234639977,
+          "minimum_order_stratum_wall_ratio": 1.02584174105431
+        },
+        "1024:shared_gate+shared_up": {
+          "owner_cases": 1,
+          "two_casts_sum_wall_medians_ms": 0.5084243603050709,
+          "one_cast_sum_wall_medians_ms": 0.4927096888422966,
+          "ratio": 1.0318943828762501,
+          "duration_change_pct": -3.090857301437122,
+          "minimum_order_stratum_wall_ratio": 1.015192371923455
+        }
+      },
+      "order_stratum_losses": [],
+      "pooled_wall_positive_count": 2,
+      "replay_operations": 84,
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 88849555208,
+        "total_allocated_bytes": 88964898576,
+        "total_freed_bytes": 88964898576,
+        "active_allocations": 0,
+        "peak_allocations": 1625
+      }
+    },
+    "final": {
+      "path": "final.json",
+      "sha256": "d872596df42e0056203e7684dabaa83da6e07cb85f7bdbed496bfaf4d0897971",
+      "original_path": "/tmp/qwen4exp-dp2-final-six-case.json",
+      "original_sha256": "d49eabbefbe84a1b7fb741a20d9ed81fd0c7713b4fcd098c1bd34d462e623a63",
+      "script_sha256": "27df3ebfa29e9ee36a914384e2c723fc48412ae62b0ea1256f094b34de5e82fb",
+      "status": "passed",
+      "groups": {
+        "all:all": {
+          "owner_cases": 36,
+          "two_casts_sum_wall_medians_ms": 138.41409608721733,
+          "one_cast_sum_wall_medians_ms": 130.64786419272423,
+          "ratio": 1.0594440019550324,
+          "duration_change_pct": -5.610867761329352,
+          "minimum_order_stratum_wall_ratio": 0.9430531278599218
+        },
+        "all:attn_qkv+attn_gate": {
+          "owner_cases": 18,
+          "two_casts_sum_wall_medians_ms": 118.71239729225636,
+          "one_cast_sum_wall_medians_ms": 115.10418448597193,
+          "ratio": 1.0313473643238762,
+          "duration_change_pct": -3.0394574522839557,
+          "minimum_order_stratum_wall_ratio": 0.991558160367847
+        },
+        "all:shared_gate+shared_up": {
+          "owner_cases": 18,
+          "two_casts_sum_wall_medians_ms": 19.701698794960976,
+          "one_cast_sum_wall_medians_ms": 15.5436797067523,
+          "ratio": 1.2675054534482204,
+          "duration_change_pct": -21.10487593725753,
+          "minimum_order_stratum_wall_ratio": 0.9430531278599218
+        },
+        "512:all": {
+          "owner_cases": 6,
+          "two_casts_sum_wall_medians_ms": 5.507283378392458,
+          "one_cast_sum_wall_medians_ms": 5.401944741606712,
+          "ratio": 1.0195001322346764,
+          "duration_change_pct": -1.9127150275040528,
+          "minimum_order_stratum_wall_ratio": 0.9430531278599218
+        },
+        "512:attn_qkv+attn_gate": {
+          "owner_cases": 3,
+          "two_casts_sum_wall_medians_ms": 4.2776851914823055,
+          "one_cast_sum_wall_medians_ms": 4.203139804303646,
+          "ratio": 1.017735643031034,
+          "duration_change_pct": -1.7426571578267103,
+          "minimum_order_stratum_wall_ratio": 0.991558160367847
+        },
+        "512:shared_gate+shared_up": {
+          "owner_cases": 3,
+          "two_casts_sum_wall_medians_ms": 1.2295981869101524,
+          "one_cast_sum_wall_medians_ms": 1.1988049373030663,
+          "ratio": 1.025686622275982,
+          "duration_change_pct": -2.504334337420122,
+          "minimum_order_stratum_wall_ratio": 0.9430531278599218
+        },
+        "1024:all": {
+          "owner_cases": 6,
+          "two_casts_sum_wall_medians_ms": 8.86028865352273,
+          "one_cast_sum_wall_medians_ms": 8.534998167306185,
+          "ratio": 1.0381125431827964,
+          "duration_change_pct": -3.6713305732676504,
+          "minimum_order_stratum_wall_ratio": 1.0243530866209987
+        },
+        "1024:attn_qkv+attn_gate": {
+          "owner_cases": 3,
+          "two_casts_sum_wall_medians_ms": 7.510288618505001,
+          "one_cast_sum_wall_medians_ms": 7.286068517714739,
+          "ratio": 1.0307738117264629,
+          "duration_change_pct": -2.985505779868358,
+          "minimum_order_stratum_wall_ratio": 1.0243530866209987
+        },
+        "1024:shared_gate+shared_up": {
+          "owner_cases": 3,
+          "two_casts_sum_wall_medians_ms": 1.3500000350177288,
+          "one_cast_sum_wall_medians_ms": 1.248929649591446,
+          "ratio": 1.080925603343107,
+          "duration_change_pct": -7.486695022563872,
+          "minimum_order_stratum_wall_ratio": 1.049137235394904
+        },
+        "4096:all": {
+          "owner_cases": 24,
+          "two_casts_sum_wall_medians_ms": 124.04652405530214,
+          "one_cast_sum_wall_medians_ms": 116.71092128381133,
+          "ratio": 1.062852753545253,
+          "duration_change_pct": -5.91358994325425,
+          "minimum_order_stratum_wall_ratio": 1.0079224155177398
+        },
+        "4096:attn_qkv+attn_gate": {
+          "owner_cases": 12,
+          "two_casts_sum_wall_medians_ms": 106.92442348226905,
+          "one_cast_sum_wall_medians_ms": 103.61497616395354,
+          "ratio": 1.0319398550367744,
+          "duration_change_pct": -3.0951275775307763,
+          "minimum_order_stratum_wall_ratio": 1.0079224155177398
+        },
+        "4096:shared_gate+shared_up": {
+          "owner_cases": 12,
+          "two_casts_sum_wall_medians_ms": 17.122100573033094,
+          "one_cast_sum_wall_medians_ms": 13.095945119857788,
+          "ratio": 1.3074352722408955,
+          "duration_change_pct": -23.514378016891257,
+          "minimum_order_stratum_wall_ratio": 1.1822160132111237
+        }
+      },
+      "order_stratum_losses": [
+        {
+          "case": "code-p512",
+          "layer": 13,
+          "role": "shared_gate+shared_up",
+          "first_arm": "two_casts",
+          "metric": "wall_ms",
+          "ratio": 0.9430531278599218
+        },
+        {
+          "case": "code-p512",
+          "layer": 46,
+          "role": "attn_qkv+attn_gate",
+          "first_arm": "two_casts",
+          "metric": "wall_ms",
+          "ratio": 0.991558160367847
+        },
+        {
+          "case": "code-p512",
+          "layer": 46,
+          "role": "attn_qkv+attn_gate",
+          "first_arm": "two_casts",
+          "metric": "event_ms",
+          "ratio": 0.9908033764136416
+        }
+      ],
+      "pooled_wall_positive_count": 35,
+      "replay_operations": 504,
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 89695756040,
+        "total_allocated_bytes": 94541750056,
+        "total_freed_bytes": 94541750056,
+        "active_allocations": 0,
+        "peak_allocations": 1625
+      }
+    }
+  },
+  "disposition": {
+    "native_initial_scope": {
+      "rows": [
+        1024,
+        4096
+      ],
+      "layers": "13..47 production dense-wide scope; not certified by the three-layer diagnostic",
+      "roles": [
+        [
+          "attn_qkv",
+          "attn_gate"
+        ],
+        [
+          "shared_gate",
+          "shared_up"
+        ]
+      ]
+    },
+    "rows512": "not qualified: final pooled shared-expert loss and negative order strata; no interpolation",
+    "remaining": [
+      "scoped ordered two-consumer ownership RED/GREEN; preserve DP-5 single-use semantics",
+      "native exact output/logits/Conv/GDN/fullKV/determinism/isolation/fallback/teardown and engagement",
+      "tracked-clean same-host canonical and heldout qualification; counterbalanced clean engine A/B",
+      "strict/Q4_K_M/unmeasured shapes/competing routes remain parent"
+    ]
+  },
+  "limits": [
+    "Both six-case runs are preserved; different shared-expert absolute times and benefit magnitudes are unresolved run variation, not old-to-new improvement.",
+    "Initial/focused artifacts use legacy source metadata and value-equality staging checks; final has canonical v3 dirty-axis provenance and byte staging checks.",
+    "Diagnostic replay checks native arithmetic only. It is not a registered production ownership contract or calibrated full-model gate.",
+    "Sum of operation medians is not model wall, prefill throughput or scaling to all layers.",
+    "Allocation, validation transfers, dispatch selection and model work are excluded; casts/GEMMs/event records/end sync are charged.",
+    "No new kernel or runtime default is introduced; no new-kernel profiler gate applies.",
+    "Fresh independent review failed to launch due to ambiguous configured provider/model; parent review performed."
+  ]
+}

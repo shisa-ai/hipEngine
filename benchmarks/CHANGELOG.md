@@ -1,3 +1,14 @@
+## 2026-10-06 — Shared-cast paired-operation diagnostic
+
+- Radeon8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8 Flash
+  Next UD-Q4_K_XL production/BF16: two natural six-case screens compare
+  two casts→one cast plus unchanged adjacent Q8 GEMMs. Summed owner wall
+  medians159.161→151.947ms (−4.533%) and138.414→130.648ms (−5.611%);
+  final p1024/p4096 order strata positive, p512 not qualified. Native outputs,
+  final staging bytes, immutability/teardown pass;104 focused tests. Both
+  run magnitudes preserved, no model-wall/default claim; native scoped
+  ownership qualification is next. Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/`.
+
 ## 2026-10-06 — Host-sized routed-grid screen rejected
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8 Flash Next
