@@ -5,6 +5,25 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next grouped-norm F16 publication diagnostic
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+this diagnostic publishes existing F32 grouped norm and identical staging F16
+bytes in one kernel, then runs the same padded HC-down GEMM as the parent.
+Complete norm+cast+GEMM event timing over six natural cases/420 exact calls:
+
+| Natural input | Parent owner ms | Publisher owner ms | Speedup |
+| --- | ---: | ---: | ---: |
+| code p512 | 57.277 | 54.074 | 1.059x |
+| code p1024 | 93.045 | 99.133 | 0.939x |
+| four categories p4096 | 358.844–360.867 | 326.934–328.139 | 1.096–1.104x |
+
+The 1024-row route is slower and is not a candidate for integration. All
+outputs/input bytes and teardown pass; kernel scratch is zero. Exactly4096
+rows proceed to an immediate-use ownership handoff and native model gate.
+No default, full-prefill or request-wall claim follows from this screen.
+[Protocol, samples and ownership contract](results/2026-10-06-qwen4exp-norm-f16-publish/README.md).
+
 ## Qwen3.8 Flash Next padded dense-wide tail production route
 
 On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
