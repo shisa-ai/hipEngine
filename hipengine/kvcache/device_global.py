@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 from hipengine.kvcache.global_pool import GlobalKVPoolSet
@@ -49,6 +50,7 @@ class GlobalDeviceKVPool:
         max_pages: int | None = None,
         growth_chunk_pages: int | None = None,
         on_pressure: Callable[[int], None] | None = None,
+        contiguous_growth: bool = False,
     ) -> None:
         if int(page_bytes) <= 0:
             raise ValueError("page_bytes must be positive")
@@ -90,6 +92,8 @@ class GlobalDeviceKVPool:
         ]
         self._close_storage = close_storage
         self._grow_storage = grow_storage
+        # Only stable-address providers may merge growth into one binding.
+        self._contiguous_growth = bool(contiguous_growth)
         self._before_grow = before_grow
         self._max_pages = None if max_pages is None else int(max_pages)
         if self._max_pages is not None and self._max_pages < self.global_pool.page_capacity:
@@ -222,6 +226,18 @@ class GlobalDeviceKVPool:
         record = self.global_pool.page(int(block_id))
         return len(record.active_lease_ids) + int(record.cache_references)
 
+    def actively_leased(self, block_id: int) -> bool:
+        """True while a live lease still holds this page active.
+
+        A cache-owned prefix page can carry cache references and no active
+        lease, in which case releasing those references frees it. While any
+        lease is active on it -- including the transient guard a shared-prefix
+        admission holds -- releasing the cache references frees nothing and
+        only discards a reusable prefix entry.
+        """
+
+        return bool(self.global_pool.page(int(block_id)).active_lease_ids)
+
     def pin_count(self, block_id: int) -> int:
         return int(self.global_pool.page(int(block_id)).session_pins)
 
@@ -339,13 +355,17 @@ class GlobalDeviceKVPool:
                     # Request KV must fit within one backing chunk. Growing
                     # only the aggregate free-page deficit can leave every
                     # chunk too small and retry forever once total free >= count.
-                    growth = max(self._growth_chunk_pages, count)
+                    needed = (
+                        max(1, count - self.global_pool.free_pages)
+                        if self._contiguous_growth else count
+                    )
+                    growth = max(self._growth_chunk_pages, needed)
                     if self.budget_bytes is not None:
                         remaining = (
                             self.budget_bytes - self.accounted_bytes
                         ) // self.page_bytes
                         growth = min(growth, remaining)
-                    if growth < count:
+                    if growth < needed:
                         self._allocation_failures += 1
                         raise MemoryError(
                             f"cannot allocate {count} KV pages in one backing "
@@ -378,13 +398,20 @@ class GlobalDeviceKVPool:
             self._require_open()
             if rid in self._request_allocations:
                 raise ValueError(f"request_id {rid} already has a device KV allocation")
-            # Growth appends a NEW chunk, and a shared admission has to place its
-            # suffix in the chunk that already holds the prefix, so growing can
-            # never satisfy this path - it would only enlarge the pool for good.
-            # Eviction can, because it frees pages inside existing chunks.
-            if self.global_pool.free_pages < private and callable(self._on_pressure):
-                self._on_pressure(private - self.global_pool.free_pages)
+            # Hold the chosen prefix before pressure callbacks can evict its
+            # cache entry. The temporary lease transfers protection to the
+            # request lease on success and releases it on every failure.
+            guard = f"admission:{rid}"
+            if shared:
+                self.global_pool.allocate(
+                    guard, private_pages=0, growth_credit_pages=0,
+                    shared_page_ids=shared,
+                )
             try:
+                if self._contiguous_growth:
+                    self._ensure_free_pages(private, now_seconds=now_seconds)
+                elif self.global_pool.free_pages < private and callable(self._on_pressure):
+                    self._on_pressure(private - self.global_pool.free_pages)
                 lease = self._allocate_within_one_chunk(
                     self._lease_id(rid),
                     private_pages=private,
@@ -394,6 +421,9 @@ class GlobalDeviceKVPool:
             except MemoryError:
                 self._allocation_failures += 1
                 raise
+            finally:
+                if shared:
+                    self.global_pool.release(guard)
             allocation = self._allocation(rid, lease)
             self._request_allocations[rid] = allocation
             self._last_active_seconds = float(now_seconds)
@@ -450,16 +480,7 @@ class GlobalDeviceKVPool:
             now_seconds=now_seconds,
             require_contiguous=bool(require_contiguous),
         )
-        fork = DeviceKVPoolAllocation(
-            request_id=allocation.request_id,
-            block_ids=allocation.block_ids,
-            pointers=allocation.pointers,
-            chunk_start_block_id=0,
-            backing=allocation.backing,
-            reused_block_ids=allocation.reused_block_ids,
-            allocated_block_ids=allocation.allocated_block_ids,
-            first_divergent_token=divergent,
-        )
+        fork = replace(allocation, first_divergent_token=divergent)
         with self._lock:
             self._request_allocations[int(request_id)] = fork
             self._cow_fork_events += 1
@@ -550,13 +571,20 @@ class GlobalDeviceKVPool:
                 self.global_pool.append_pages(plane_pointers, pointer_tables)
                 added = int(self.global_pool.page_capacity) - chunk_start
                 if added > 0:
-                    self._chunks.append(
-                        (
-                            chunk_start,
-                            added,
-                            self._backing if chunk_backing is None else chunk_backing,
+                    if self._contiguous_growth:
+                        if chunk_backing is not None:
+                            self._backing = chunk_backing
+                        self._chunks[:] = [
+                            (0, int(self.global_pool.page_capacity), self._backing)
+                        ]
+                    else:
+                        self._chunks.append(
+                            (
+                                chunk_start,
+                                added,
+                                self._backing if chunk_backing is None else chunk_backing,
+                            )
                         )
-                    )
             except MemoryError:
                 self._allocation_failures += 1
                 raise

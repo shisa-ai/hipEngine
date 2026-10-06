@@ -2198,8 +2198,18 @@ class Qwen35GGUFBringupGenerator:
             reduced = candidate * _GGUF_AUTO_CONTEXT_FALLBACK_NUMERATOR // _GGUF_AUTO_CONTEXT_FALLBACK_DENOMINATOR
         else:
             reduced = candidate // 2
+        # The largest block-aligned context strictly below the one that just
+        # failed. A failed context at or below one block has no smaller valid
+        # context, so return it unchanged: the callers' ``next_context >=
+        # context`` guard then terminates the retry. Flooring to a fixed block
+        # here drove a real server through 256 -> 0 -> -2560; promoting a
+        # sub-block pin to a full block would instead silently raise the user's
+        # requested context.
+        ceiling = ((int(failed_context) - 1) // block) * block
+        if ceiling < block:
+            return int(failed_context)
         reduced = max(block, (reduced // block) * block)
-        return min(reduced, int(failed_context) - block)
+        return min(reduced, ceiling)
 
     def _construct_shared_session(
         self,
@@ -2317,9 +2327,14 @@ class Qwen35GGUFBringupGenerator:
         use_gemv_decode: bool | None = None,
         defer_kv_allocation: bool = False,
         max_batch_size: int = 1,
+        max_sequence_length: int | None = None,
     ) -> tuple[Qwen35GGUFResidentSession, _GGUFSessionPoolKey, bool]:
         self._ensure_shared_pools()
-        max_sequence_length = getattr(self, "_prepared_max_sequence_length", None)
+        # An explicit context wins so a retry can acquire at the size it just
+        # selected. Falling back to the prepared policy keeps the pinned value
+        # authoritative for callers that do not override it.
+        if max_sequence_length is None:
+            max_sequence_length = getattr(self, "_prepared_max_sequence_length", None)
         if getattr(self, "_prepared_kv_signature", None) is None:
             self._prepare_kv_policy(None)
         assert self._prepared_kv_signature is not None
@@ -6752,9 +6767,12 @@ class Qwen35GGUFResidentModelRunner:
             # batch owner. Physical verifier slots may exceed serving capacity;
             # private fallback KV is charged against the same pool budget in
             # addition to this arena reservation.
+            # Eagerly reserve only the short-context workspace floor.
+            # Longer execution uses the budgeted private fallback instead of
+            # pinning full-context planes for every idle resident slot.
             workspace_pages = packed_verify_workspace_lease_pages(
                 int(self.capacity),
-                int(scratch.max_positions),
+                1024,
             )
             # P4 (roadmap F2): the packed KV plane lease exists only for
             # plane consumers - non-slot-local packed prefill (prefix-cache
@@ -7336,6 +7354,135 @@ class Qwen35GGUFResidentModelRunner:
             return 0
         return (len(row.prompt_ids) // 256) * 256
 
+    def _int8_boundary_split_boundary(self, row: _GGUFResidentLoopRow) -> int:
+        """Deepest reusable boundary for a prefix-eligible compact-INT8 miss.
+
+        Returns 0 unless the row is a direct-INT8 request whose radix lookup
+        missed and whose prompt has an interior 256-token boundary. Such a row
+        is prefilled as aligned prefix plus tail (see
+        :meth:`_prefill_int8_boundary_split`) so the boundary becomes a real
+        session cursor position and its Conv/GDN state is captured.
+        """
+
+        if row.prefix_reused_tokens:
+            return 0
+        if self._prefix_cache is None or not row.prefix_eligible:
+            return 0
+        lease = row.lease
+        if lease is None or row.kv_allocation is None:
+            return 0
+        if getattr(lease.session, "kv_attention_source", None) != "int8_direct":
+            return 0
+        boundary = self._prefix_prompt_boundary(row)
+        if boundary <= 0 or boundary >= len(row.prompt_ids):
+            return 0
+        return boundary
+
+    def _prefill_int8_boundary_split(self, row: _GGUFResidentLoopRow) -> None:
+        """Prefill a prefix-eligible compact-INT8 miss as aligned prefix + tail.
+
+        The compact-INT8 executors commit the session cursor only at the
+        (usually unaligned) prompt end -- the fallback full-prompt route in one
+        call, the resumable layer-outer route when the last layer completes --
+        so ``_refresh_prefix_cache`` never observes a 256-token boundary and
+        the radix cache stays empty. Prefilling the aligned prefix and the tail
+        as two block-table-aware calls, the same shape the reused-suffix path
+        uses, makes the deepest boundary a real cursor position; the state
+        captured there is the true Conv/GDN state at that boundary, not the
+        prompt-end state relabelled.
+        """
+
+        lease = row.lease
+        if lease is None:
+            raise RuntimeError("GGUF INT8 boundary split requires a session lease")
+        session = lease.session
+        prompt = tuple(int(token) for token in row.prompt_ids)
+        boundary = self._int8_boundary_split_boundary(row)
+        if boundary <= 0:
+            raise RuntimeError("GGUF INT8 boundary split requires an interior boundary")
+        prefill_batch = getattr(
+            self._packed_execution_owner(session),
+            "prefill_batch_native",
+            None,
+        )
+        if not callable(prefill_batch):
+            raise RuntimeError(
+                "GGUF INT8 boundary split requires block-table-aware prefill"
+            )
+        prefix = prompt[:boundary]
+        tail = prompt[boundary:]
+        start = time.perf_counter()
+        sink = None
+        if int(getattr(row, "mtp2_candidate_budget", 0)) > 0:
+            streaming_sinks = self._begin_mtp2_prompt_streaming((row,))
+            sink = streaming_sinks[0] if streaming_sinks else None
+
+        def _stream_kwargs(chunk_start: int, finish: bool) -> dict[str, Any]:
+            if sink is None:
+                return {}
+            return {
+                "target_hidden_chunk_sinks": (sink,),
+                "target_hidden_request_ids": (row.request_id,),
+                "target_hidden_chunk_starts": (int(chunk_start),),
+                "finish_target_hidden_sinks": bool(finish),
+            }
+
+        try:
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                prefill_batch(
+                    [prefix],
+                    sessions=[session],
+                    full_prompt_lengths=[len(prompt)],
+                    return_logits=False,
+                    return_hidden_seeds=False,
+                    sample_output=False,
+                    **_stream_kwargs(0, False),
+                )
+            # The prefix call ends exactly on the deepest 256-aligned boundary,
+            # so this captures that boundary's real Conv/GDN state.
+            position = int(getattr(session, "position", -1))
+            if position != boundary:
+                raise RuntimeError(
+                    "GGUF INT8 boundary split prefix prefill ended at position "
+                    f"{position}, expected {boundary}"
+                )
+            self._refresh_prefix_cache(row)
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    [tail],
+                    sessions=[session],
+                    full_prompt_lengths=[len(prompt)],
+                    return_logits=False,
+                    return_hidden_seeds=False,
+                    sample_output=True,
+                    **_stream_kwargs(boundary, True),
+                )
+        except Exception:
+            if sink is not None:
+                self._finish_mtp2_prompt_streaming((row,), (sink,), success=False)
+            raise
+        if sink is not None:
+            self._finish_mtp2_prompt_streaming((row,), (sink,), success=True)
+        result_list = [] if results is None else list(results)
+        if len(result_list) != 1 or result_list[0] is None:
+            raise RuntimeError(
+                "GGUF INT8 boundary split prefill returned no result"
+            )
+        row.prefill_ms += _timing_ms_since(start)
+        row.prefill_chunk_count += 2
+        self._route_counts["int8_boundary_split_rows"] += 1
+        self._route_counts["int8_boundary_split_prefill_calls"] += 2
+        self._prefix_phase_add("int8_boundary_split", start)
+        self._finish_native_prefill(
+            row,
+            result_list[0],
+            native_compact_prefill=True,
+        )
+        # The whole prompt is done. The scheduler may still hold chunks for it,
+        # so mark the prefill complete to short-circuit them the way the
+        # resumable path does.
+        row.resumable_prefill = _RESUMABLE_PREFILL_DONE
+
     def _refresh_prefix_cache(self, row: _GGUFResidentLoopRow) -> bool:
         cache = getattr(self, "_prefix_cache", None)
         if cache is None:
@@ -7767,12 +7914,29 @@ class Qwen35GGUFResidentModelRunner:
             self._evict_prefix_snapshot(tokens, reason="clear")
 
     def evict_prefix_cache_for_pressure(self, required_pages: int) -> int:
-        """Release reclaimable prefix pages before device-pool growth."""
+        """Release reclaimable prefix pages before device-pool growth.
+
+        A retained entry whose pages are still actively leased cannot be
+        reclaimed: dropping its cache references frees no page until the live
+        lease releases, and it destroys a boundary the admission may be about
+        to reuse. That includes the transient guard a shared-prefix admission
+        holds, which is exactly the prefix being admitted. Evicting it there
+        freed the prefix pages between the contiguous and gapped placement
+        attempts, so the fallback then refused to share them and surfaced a
+        400 instead of a clean private allocation. Skip those entries and let
+        the caller decline the hit or grow.
+        """
 
         needed = max(1, int(required_pages))
         released = 0
+        pool = self._kv_pool
+        actively_leased = getattr(pool, "actively_leased", None)
         for tokens, entry in tuple(self._prefix_state_snapshots.items()):
             if not entry.retained:
+                continue
+            if callable(actively_leased) and any(
+                actively_leased(int(block_id)) for block_id in entry.block_ids
+            ):
                 continue
             pages = len(tuple(entry.block_ids))
             if self._evict_prefix_snapshot(tokens, reason="pool_pressure"):
@@ -8389,7 +8553,7 @@ class Qwen35GGUFResidentModelRunner:
                 self._release_available_sessions()
                 self._max_sequence_length = requested
                 try:
-                    self._reserve_sessions()
+                    self._reserve_sessions(max_sequence_length=requested)
                     if config is not None:
                         self.configure_engine_loop(config)
                 except (HipError, MemoryError) as exc:
@@ -9148,11 +9312,11 @@ class Qwen35GGUFResidentModelRunner:
         if error is not None:
             raise error
 
-    def _reserve_sessions(self) -> None:
+    def _reserve_sessions(self, *, max_sequence_length: int | None = None) -> None:
         if not bool(
             getattr(self.generator, "_defer_resident_session_policy_resolution", False)
         ):
-            self._reserve_legacy_test_sessions()
+            self._reserve_legacy_test_sessions(max_sequence_length=max_sequence_length)
             return
         acquired: list[_GGUFResidentSessionLease] = []
         batch_owner: Qwen35GGUFResidentSession | None = None
@@ -9164,6 +9328,7 @@ class Qwen35GGUFResidentModelRunner:
                 use_gemv_decode=True,
                 defer_kv_allocation=True,
                 max_batch_size=self.capacity,
+                max_sequence_length=max_sequence_length,
             )
             batch_owner._reset_current_slot_only = True
             acquired.append(_GGUFResidentSessionLease(batch_owner, pool_key))
@@ -9191,7 +9356,7 @@ class Qwen35GGUFResidentModelRunner:
         self._resident_batch_owner_pool_key = pool_key
         self._available.extend(acquired)
 
-    def _reserve_legacy_test_sessions(self) -> None:
+    def _reserve_legacy_test_sessions(self, *, max_sequence_length: int | None = None) -> None:
         acquired: list[_GGUFResidentSessionLease] = []
         try:
             for _ in range(self.capacity):
@@ -9201,6 +9366,7 @@ class Qwen35GGUFResidentModelRunner:
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=True,
                     defer_kv_allocation=True,
+                    max_sequence_length=max_sequence_length,
                 )
                 acquired.append(_GGUFResidentSessionLease(session, pool_key))
         except Exception:
@@ -9502,6 +9668,12 @@ class Qwen35GGUFResidentModelRunner:
             return
         lease = row.lease or self._acquire_lease()
         row.lease = lease
+        if self._int8_boundary_split_boundary(row) > 0:
+            # A prefix-eligible compact-INT8 miss is prefilled as aligned prefix
+            # plus tail so its deepest boundary is captured as real state; the
+            # plain full-prompt call below would advance straight past it.
+            self._prefill_int8_boundary_split(row)
+            return
         start = time.perf_counter()
         native_compact_prefill = False
         # Direct no-mirror INT8 uses one block-table-aware single-row prefill
@@ -10286,12 +10458,23 @@ class Qwen35GGUFResidentModelRunner:
         GPU work done. Returns True when the resumable executor owned this
         chunk (including the segment that completes the prompt); False when the
         caller must use the fail-closed full-prompt path.
+
+        A prefix-eligible miss short-circuits to
+        :meth:`_prefill_int8_boundary_split` before the layer-outer machinery:
+        that executor commits the cursor only at the unaligned prompt end, so it
+        would never expose the boundary a following turn reuses.
         """
 
         if row.prefix_reused_tokens:
             # Shared-prefix admission requires incremental prefill support that
             # the layer-outer executor does not provide.
             return False
+        if self._int8_boundary_split_boundary(row) > 0:
+            # A prefix-eligible miss must expose its deepest aligned boundary;
+            # the layer-outer executor commits the cursor only at the unaligned
+            # prompt end, so prefill the prefix and tail as two calls instead.
+            self._prefill_int8_boundary_split(row)
+            return True
         if not _gguf_packed_layer_outer_enabled():
             return False
         lease = row.lease
