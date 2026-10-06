@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "positive_diagnostic_native_qualification_pending",
+  "status": "completed_default_off",
   "performance_claim": false,
   "model": "Qwen3.8-Flash-Next",
   "quant": "UD-Q4_K_XL",
@@ -418,5 +418,412 @@
     "Allocation, validation transfers, dispatch selection and model work are excluded; casts/GEMMs/event records/end sync are charged.",
     "No new kernel or runtime default is introduced; no new-kernel profiler gate applies.",
     "Fresh independent review failed to launch due to ambiguous configured provider/model; parent review performed."
-  ]
+  ],
+  "engine_ab": {
+    "artifact": "engine-ab.json",
+    "source": {
+      "path": "/tmp/hipengine-dp2-clean",
+      "head": "940f3b5520e45e88b86fc7c155802496af18a05a",
+      "tracked_clean": true
+    },
+    "provenance": {
+      "kind": "hipengine_artifact_provenance",
+      "schema_version": 3,
+      "collected_at": "2026-10-06T21:44:56.041426+00:00",
+      "host_name": "gfx1151",
+      "repo_root": "/tmp/hipengine-dp2-clean",
+      "hipengine_commit": "940f3b5520e45e88b86fc7c155802496af18a05a",
+      "git_branch": null,
+      "staged_dirty": false,
+      "unstaged_dirty": false,
+      "untracked_dirty": false,
+      "untracked_count": 0,
+      "dirty": false,
+      "dirty_paths": [],
+      "dirty_path_count": 0,
+      "untracked_paths": [],
+      "execution_affecting_dirty": false,
+      "execution_affecting_paths": [],
+      "configured_backend": "hip_gfx1151",
+      "resolved_backend": "hip_gfx1151",
+      "target_arch": "gfx1151",
+      "device_name": "AMD Radeon 8060S Graphics",
+      "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "model_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+      "model_fingerprint": {
+        "algorithm": "sha256-directory-manifest-v1",
+        "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+        "size_bytes": 111334654784,
+        "sampled_bytes": 12582912,
+        "file_count": 4,
+        "exists": true,
+        "path_type": "directory"
+      },
+      "quant": "UD-Q4_K_XL",
+      "kv_dtype": "bf16",
+      "command": [
+        "/home/lhl/miniforge3/envs/therock10-staging-20260828/bin/python",
+        "/tmp/hipengine-dp2-clean/scripts/qwen4exp_f16_pair_engine_ab.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--output",
+        "/tmp/qwen4exp-dp2-engine-ab-20261006-clean.json"
+      ],
+      "environment": {
+        "HIPENGINE_BACKEND": null,
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "GPU_MAX_HW_QUEUES": "2",
+        "HIPENGINE_BUILD_CACHE_ROOT": null,
+        "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+        "HIP_VISIBLE_DEVICES": null,
+        "ROCR_VISIBLE_DEVICES": null,
+        "CUDA_VISIBLE_DEVICES": null,
+        "GPU_DEVICE_ORDINAL": null
+      },
+      "rocm_version": null,
+      "hipcc_version": null,
+      "build_profile": "cached production",
+      "timing_protocol": "one-residency counterbalanced parent/candidate engine A/B; 128 decode transitions",
+      "warmups": 1,
+      "repetitions": 3,
+      "profiler": null
+    },
+    "profile": {
+      "requested": "production",
+      "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+      "strict_manifest_sha256": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+      "fell_back_to_strict": false
+    },
+    "protocol": {
+      "one_python_process": true,
+      "one_model_residency": true,
+      "canonical_cases": 12,
+      "heldout_cases": 16,
+      "case_count": 28,
+      "case_order": "sorted by rows/category/id; adjacent full-suite cases reverse the six-slot arm order",
+      "requested_prompt_tokens": [],
+      "warmups_per_arm_per_case": 1,
+      "measured_repetitions_per_arm_per_case": 3,
+      "arm_sequence_even_case": [
+        "candidate",
+        "parent",
+        "parent",
+        "candidate",
+        "candidate",
+        "parent"
+      ],
+      "arm_sequence_odd_case": [
+        "parent",
+        "candidate",
+        "candidate",
+        "parent",
+        "parent",
+        "candidate"
+      ],
+      "prefill_chunk_size": 1024,
+      "decode_transitions": 128,
+      "timing_boundary": "synchronized runner.prefill plus exactly 128 synchronized runner.step transitions",
+      "candidate_scope": "gfx1151 production Q8_0 dense-wide layers13-47, rows1024/4096, immediate ordered pairs",
+      "case_ids": [
+        "code-p512",
+        "general_en-p512",
+        "general_ja-p512",
+        "mixed_ja_en-p512",
+        "code-p1024",
+        "heldout_code_interval_schedule-p1024",
+        "heldout_code_rate_limiter-p1024",
+        "general_en-p1024",
+        "heldout_general_en_incident-p1024",
+        "heldout_general_en_quant-p1024",
+        "general_ja-p1024",
+        "heldout_general_ja_migration-p1024",
+        "heldout_general_ja_speculative-p1024",
+        "heldout_mixed_review-p1024",
+        "heldout_mixed_summary-p1024",
+        "mixed_ja_en-p1024",
+        "code-p4096",
+        "heldout_code_interval_schedule-p4096",
+        "heldout_code_rate_limiter-p4096",
+        "general_en-p4096",
+        "heldout_general_en_incident-p4096",
+        "heldout_general_en_quant-p4096",
+        "general_ja-p4096",
+        "heldout_general_ja_migration-p4096",
+        "heldout_general_ja_speculative-p4096",
+        "heldout_mixed_review-p4096",
+        "heldout_mixed_summary-p4096",
+        "mixed_ja_en-p4096"
+      ],
+      "canonical_case_ids": [
+        "code-p512",
+        "general_en-p512",
+        "general_ja-p512",
+        "mixed_ja_en-p512",
+        "code-p1024",
+        "general_en-p1024",
+        "general_ja-p1024",
+        "mixed_ja_en-p1024",
+        "code-p4096",
+        "general_en-p4096",
+        "general_ja-p4096",
+        "mixed_ja_en-p4096"
+      ],
+      "heldout_case_ids": [
+        "heldout_code_interval_schedule-p1024",
+        "heldout_code_rate_limiter-p1024",
+        "heldout_general_en_incident-p1024",
+        "heldout_general_en_quant-p1024",
+        "heldout_general_ja_migration-p1024",
+        "heldout_general_ja_speculative-p1024",
+        "heldout_mixed_review-p1024",
+        "heldout_mixed_summary-p1024",
+        "heldout_code_interval_schedule-p4096",
+        "heldout_code_rate_limiter-p4096",
+        "heldout_general_en_incident-p4096",
+        "heldout_general_en_quant-p4096",
+        "heldout_general_ja_migration-p4096",
+        "heldout_general_ja_speculative-p4096",
+        "heldout_mixed_review-p4096",
+        "heldout_mixed_summary-p4096"
+      ],
+      "full_suite_counterbalance_indices": {
+        "code-p512": 0,
+        "general_en-p512": 1,
+        "general_ja-p512": 2,
+        "mixed_ja_en-p512": 3,
+        "code-p1024": 4,
+        "heldout_code_interval_schedule-p1024": 5,
+        "heldout_code_rate_limiter-p1024": 6,
+        "general_en-p1024": 7,
+        "heldout_general_en_incident-p1024": 8,
+        "heldout_general_en_quant-p1024": 9,
+        "general_ja-p1024": 10,
+        "heldout_general_ja_migration-p1024": 11,
+        "heldout_general_ja_speculative-p1024": 12,
+        "heldout_mixed_review-p1024": 13,
+        "heldout_mixed_summary-p1024": 14,
+        "mixed_ja_en-p1024": 15,
+        "code-p4096": 16,
+        "heldout_code_interval_schedule-p4096": 17,
+        "heldout_code_rate_limiter-p4096": 18,
+        "general_en-p4096": 19,
+        "heldout_general_en_incident-p4096": 20,
+        "heldout_general_en_quant-p4096": 21,
+        "general_ja-p4096": 22,
+        "heldout_general_ja_migration-p4096": 23,
+        "heldout_general_ja_speculative-p4096": 24,
+        "heldout_mixed_review-p4096": 25,
+        "heldout_mixed_summary-p4096": 26,
+        "mixed_ja_en-p4096": 27
+      }
+    },
+    "arms": {
+      "parent": {
+        "env": "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR",
+        "value": "0",
+        "description": "ordinary two-cast parent route"
+      },
+      "candidate": {
+        "env": "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR",
+        "value": "1",
+        "description": "bounded two-consumer F16 ownership route"
+      }
+    },
+    "case_count": 28,
+    "measured_samples": 168,
+    "warmups": 56,
+    "candidate_engagement": {
+      "pairs": 10980,
+      "accepted": 21960,
+      "casts": 28440
+    },
+    "parent_engagement": {
+      "pairs": 0,
+      "accepted": 0,
+      "casts": 39420
+    },
+    "correctness": {
+      "all_within_arm_deterministic": true,
+      "all_cross_arm_output_exact": true
+    },
+    "teardown": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 84440887208,
+      "total_allocated_bytes": 84598173624,
+      "total_freed_bytes": 84598173624,
+      "active_allocations": 0,
+      "peak_allocations": 1622
+    },
+    "comparison": {
+      "all": {
+        "prefill_ms": {
+          "parent": 614904.806957,
+          "candidate": 614654.193335,
+          "candidate_over_parent": 0.9995924350904974,
+          "change_pct": -0.040756490950255575
+        },
+        "decode_ms": {
+          "parent": 758700.151656,
+          "candidate": 759287.132812,
+          "candidate_over_parent": 1.0007736668494382,
+          "change_pct": 0.07736668494382481
+        },
+        "client_wall_s": {
+          "parent": 1373.604958613,
+          "candidate": 1373.941326147,
+          "candidate_over_parent": 1.0002448793824532,
+          "change_pct": 0.02448793824532114
+        }
+      },
+      "qualified_rows_1024_4096": {
+        "prefill_ms": {
+          "parent": 594223.690446,
+          "candidate": 593971.108465,
+          "candidate_over_parent": 0.9995749378810355,
+          "change_pct": -0.04250621189645365
+        },
+        "decode_ms": {
+          "parent": 685514.237437,
+          "candidate": 686091.6215220001,
+          "candidate_over_parent": 1.0008422641769756,
+          "change_pct": 0.08422641769756378
+        },
+        "client_wall_s": {
+          "parent": 1279.7379278829999,
+          "candidate": 1280.062729987,
+          "candidate_over_parent": 1.0002538036084758,
+          "change_pct": 0.025380360847582217
+        }
+      },
+      "by_shape": {
+        "512": {
+          "prefill_ms": {
+            "parent": 20681.116511,
+            "candidate": 20683.08487,
+            "candidate_over_parent": 1.0000951766312496,
+            "change_pct": 0.009517663124958275
+          },
+          "decode_ms": {
+            "parent": 73185.914219,
+            "candidate": 73195.51129,
+            "candidate_over_parent": 1.0001311327610294,
+            "change_pct": 0.013113276102938443
+          },
+          "client_wall_s": {
+            "parent": 93.86703073,
+            "candidate": 93.87859616,
+            "candidate_over_parent": 1.0001232107792273,
+            "change_pct": 0.012321077922727852
+          }
+        },
+        "1024": {
+          "prefill_ms": {
+            "parent": 113702.999191,
+            "candidate": 113636.796422,
+            "candidate_over_parent": 0.9994177570559173,
+            "change_pct": -0.05822429440827115
+          },
+          "decode_ms": {
+            "parent": 240219.452497,
+            "candidate": 240367.156711,
+            "candidate_over_parent": 1.0006148719950223,
+            "change_pct": 0.06148719950223036
+          },
+          "client_wall_s": {
+            "parent": 353.92245168799997,
+            "candidate": 354.003953133,
+            "candidate_over_parent": 1.0002302805165688,
+            "change_pct": 0.023028051656881487
+          }
+        },
+        "4096": {
+          "prefill_ms": {
+            "parent": 480520.691255,
+            "candidate": 480334.312043,
+            "candidate_over_parent": 0.9996121307252904,
+            "change_pct": -0.038786927470957355
+          },
+          "decode_ms": {
+            "parent": 445294.78494,
+            "candidate": 445724.464811,
+            "candidate_over_parent": 1.000964933535114,
+            "change_pct": 0.09649335351140653
+          },
+          "client_wall_s": {
+            "parent": 925.815476195,
+            "candidate": 926.058776854,
+            "candidate_over_parent": 1.0002627960595345,
+            "change_pct": 0.026279605953449803
+          }
+        }
+      }
+    },
+    "summary_by_shape": {
+      "1024": {
+        "case_count": 12,
+        "parent_prefill_tok_s_weighted": 324.2130837558234,
+        "candidate_prefill_tok_s_weighted": 324.4019645107063,
+        "candidate_over_parent_prefill": 1.000582582148428,
+        "parent_decode_tok_s_weighted": 19.182459838707473,
+        "candidate_decode_tok_s_weighted": 19.17067232916652
+      },
+      "4096": {
+        "case_count": 12,
+        "parent_prefill_tok_s_weighted": 306.86711869759813,
+        "candidate_prefill_tok_s_weighted": 306.98618920815215,
+        "candidate_over_parent_prefill": 1.0003880197756585,
+        "parent_decode_tok_s_weighted": 10.348201137412584,
+        "candidate_decode_tok_s_weighted": 10.33822543699486
+      },
+      "512": {
+        "case_count": 4,
+        "parent_prefill_tok_s_weighted": 297.0826065764917,
+        "candidate_prefill_tok_s_weighted": 297.05433394568865,
+        "candidate_over_parent_prefill": 0.9999048324264794,
+        "parent_decode_tok_s_weighted": 20.987645182701492,
+        "candidate_decode_tok_s_weighted": 20.984893375693233
+      }
+    },
+    "summary_by_category": {
+      "code": {
+        "case_count": 7,
+        "parent_prefill_tok_s_weighted": 308.1893197860975,
+        "candidate_prefill_tok_s_weighted": 308.27867325722275,
+        "candidate_over_parent_prefill": 1.0002899304595867,
+        "parent_decode_tok_s_weighted": 14.322676672700034,
+        "candidate_decode_tok_s_weighted": 14.3303324382798
+      },
+      "general_en": {
+        "case_count": 7,
+        "parent_prefill_tok_s_weighted": 310.65898603954525,
+        "candidate_prefill_tok_s_weighted": 310.79729223742197,
+        "candidate_over_parent_prefill": 1.000445202630833,
+        "parent_decode_tok_s_weighted": 14.23778107080078,
+        "candidate_decode_tok_s_weighted": 14.22087479260504
+      },
+      "general_ja": {
+        "case_count": 7,
+        "parent_prefill_tok_s_weighted": 311.52788278164536,
+        "candidate_prefill_tok_s_weighted": 311.64150500409283,
+        "candidate_over_parent_prefill": 1.0003647256914308,
+        "parent_decode_tok_s_weighted": 14.084111890549996,
+        "candidate_decode_tok_s_weighted": 14.069030038155331
+      },
+      "mixed_ja_en": {
+        "case_count": 7,
+        "parent_prefill_tok_s_weighted": 308.6306008100365,
+        "candidate_prefill_tok_s_weighted": 308.79451800119955,
+        "candidate_over_parent_prefill": 1.0005311112726114,
+        "parent_decode_tok_s_weighted": 14.04543432508881,
+        "candidate_decode_tok_s_weighted": 14.026509916063736
+      }
+    }
+  },
+  "decision": {
+    "default": "parent",
+    "candidate": "default-off",
+    "reason": "Tracked-clean full-suite A/B is exact and bounded, but qualified p1024/p4096 complete client wall is 1.0002538036084758x candidate over parent and all-row wall is 1.0002448793824532x; no complete-engine improvement claim follows."
+  }
 }

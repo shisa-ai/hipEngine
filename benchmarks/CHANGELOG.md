@@ -1,15 +1,6 @@
-## 2026-10-06 — DP-2 native scoped ownership qualified
+## 2026-10-06 — DP-2 bounded two-consumer engine A/B closed default-off
 
-- Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8
-  Flash Next UD-Q4_K_XL production/BF16. The default-off native two-consumer
-  F16 workspace loan passes 28 canonical/heldout cases, 168 arm runs and 128
-  decode steps per run with exact logits, Conv/GDN state, full KV, repeat
-  bytes, parent isolation and zero teardown allocations. It engages only
-  attn_qkv→attn_gate and shared_gate→shared_up at rows1024/4096 in layers13–47,
-  eliminating61 casts per p1024/p4096 prefill and zero at p512. This is
-  correctness/engagement evidence, not a model-wall or throughput claim; a
-  tracked-clean same-host engine A/B is still required before promotion.
-  Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/native-qualification.json`.
+- Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next UD-Q4_K_XL production/BF16/chunk1024. A tracked-clean one-process/one-residency A/B covers 12 canonical and 16 category-heldout cases with 168 measured arm runs, three repetitions per arm, exact deterministic outputs and zero teardown allocations. Qualified p1024/p4096 prefill is 0.999575x parent (−0.043%), decode 1.000842x (+0.084%) and complete client wall 1.000254x (+0.025%); all rows are 1.000245x wall (+0.024%). Native engagement is exact and bounded at 10,980 candidate pairs with 10,980 casts eliminated, but no complete-engine improvement is measured, so the route remains default-off. Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/`.
 
 
 - Radeon8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8 Flash
