@@ -330,6 +330,10 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
+    if route_package == "dense-wide-padded":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        return
     if route_package == "gdn-narrow":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -463,7 +467,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="One full-suite pair, then stop for multiple clear losses or finish remaining pairs in-residency")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-mmq-planes2", "gr-dpp-reduction", "router-dpp", "gdn-narrow"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-mmq-planes2", "gr-dpp-reduction", "router-dpp", "gdn-narrow", "dense-wide-padded"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -663,6 +667,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         artifact["diagnostic_registry_substitution"] = True
         artifact["profile"]["scope"] = "named profile; diagnostic arms override its GDN selection"
+    if args.route_package == "dense-wide-padded":
+        from hipengine.kernels.registry import KernelKey, register, resolve
+        from scripts.qwen4exp_dense_wide_padded_gate_support import (
+            PARENT, CANDIDATE, call_in_scope, expected_calls as tail_expected_calls,
+        )
+        row4_key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", PARENT)
+        original_row4 = resolve(backend=row4_key.backend, layer=row4_key.layer,
+                                quant=row4_key.quant, variant=PARENT)
+        tail_candidate = resolve(backend=row4_key.backend, layer=row4_key.layer,
+                                 quant=row4_key.quant, variant=CANDIDATE)
+        def counted_tail(*call_args, **call_kwargs):
+            if narrow_enabled[0] and call_in_scope(call_args):
+                row4_calls[0] += 1
+                return tail_candidate(*call_args, **call_kwargs)
+            return original_row4(*call_args, **call_kwargs)
+        register(row4_key, counted_tail, replace=True)
+        artifact["arms"] = {"before": {"dense_tail": PARENT},
+                            "after": {"dense_tail": CANDIDATE}}
+        artifact["diagnostic_registry_substitution"] = True
+        artifact["profile"]["scope"] = "named profile; diagnostic arms override only scoped HC tail leaf"
     if args.route_package == "router-dpp":
         from hipengine.kernels.registry import KernelKey, register, resolve
         router_key = KernelKey("hip_gfx1151", "router_logits", "f32",
@@ -984,7 +1008,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             row["candidate_calls"] = calls
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
-            if args.route_package == "gdn-narrow":
+            if args.route_package == "dense-wide-padded":
+                expected = (tail_expected_calls(int(case["prompt_tokens"]),
+                                                args.prefill_chunk_size)
+                            if mode == "after" else 0)
+                assert calls == expected, (calls, expected)
+            elif args.route_package == "gdn-narrow":
                 expected = (gdn_narrow_expected_calls(int(case["prompt_tokens"]),
                                                      args.prefill_chunk_size)
                             if mode == "after" else 0)

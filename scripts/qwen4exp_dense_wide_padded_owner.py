@@ -27,14 +27,7 @@ from hipengine.kernels.registry import KernelKey, register, resolve
 from scripts import qwen4exp_row4_state_gate as gate
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
-PARENT = "dense_wide256_f16in_f32_f32_out"
-CANDIDATE = "dense_wide256_padded_f16in_f32_f32_out"
-
-
-def admitted_shape(rows, k, n):
-    # The measured live tail population is HC down at these dimensions.
-    # Keep this qualification scope predeclared and independent of prompts.
-    return 512 <= rows <= 4096 and k == 10240 and n == 320
+from scripts.qwen4exp_dense_wide_padded_gate_support import PARENT, CANDIDATE, admitted_shape
 
 
 def main():

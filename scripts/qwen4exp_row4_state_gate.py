@@ -40,6 +40,9 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # route selection. Pin the #19 q8-wmma-down T1 route off in BOTH arms
         # so this gate keeps isolating the q5k gate/up arithmetic alone.
         environment["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] = "0"
+    if package == "dense-wide-padded":
+        # A diagnostic registry hook selects the sibling; no arithmetic flags.
+        return
     if package == "gdn-narrow":
         # Both arms retain the wave-norm admission; the diagnostic registry hook
         # chooses narrow vs wide indexing without mutating profile arithmetic.
@@ -66,7 +69,7 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-dpp-reduction", "gr-dpp-reduction", "router-dpp", "gdn-narrow"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-dpp-reduction", "gr-dpp-reduction", "router-dpp", "gdn-narrow", "dense-wide-padded"), default="q5k-row4")
     p.add_argument("--prefill-chunk-size", type=int, choices=(512, 1024, 2048, 4096))
     p.add_argument("--case-id", action="append")
     p.add_argument("--all-cases", action="store_true")
@@ -75,8 +78,8 @@ def main():
     p.add_argument("--include-heldouts", action="store_true",
                    help="Append all category-heldout prompts to the exact state gate")
     args = p.parse_args()
-    if args.include_heldouts and args.route_package != "gdn-narrow":
-        p.error("--include-heldouts is scoped to gdn-narrow")
+    if args.include_heldouts and args.route_package not in {"gdn-narrow", "dense-wide-padded"}:
+        p.error("--include-heldouts is scoped to gdn-narrow/dense-wide-padded")
     if not 1 <= args.decode_steps <= 128:
         p.error("--decode-steps must be in 1..128")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
@@ -105,6 +108,9 @@ def main():
         heldouts = _load_suites([heldout_path])
         for row in heldouts:
             tokens = list(build_chat_prompt(generator.tokenizer, str(row["prompt"])))
+            if args.route_package == "dense-wide-padded":
+                from scripts.qwen4exp_dense_wide_padded_gate_support import heldout_tokens
+                tokens = heldout_tokens(tokens)
             if len(tokens) + args.decode_steps > 4352:
                 raise ValueError("heldout exceeds runner capacity")
             gate_cases.append({"id": row["id"], "category": row["category"],
@@ -263,6 +269,9 @@ def main():
     if args.route_package=="qsa-head-quad":
         key=KernelKey("hip_gfx1151","qsa_sparse_attention","bf16_kv",
                       "strict_h256_head_quad_rows_spans")
+    if args.route_package == "dense-wide-padded":
+        from scripts.qwen4exp_dense_wide_padded_gate_support import PARENT
+        key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", PARENT)
     original = (None if args.route_package=="chunk1024" else
                 resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant))
     calls = [0]
@@ -273,6 +282,12 @@ def main():
         from scripts.qwen4exp_gdn_narrow_gate_support import expected_calls, validate_call
         narrow_candidate = resolve(backend=key.backend, layer=key.layer, quant=key.quant,
                                    variant="qwen4exp_sigmoid_wave_norm_narrow_prefill")
+    if args.route_package == "dense-wide-padded":
+        from scripts.qwen4exp_dense_wide_padded_gate_support import (
+            CANDIDATE, call_in_scope, expected_calls as tail_expected_calls,
+        )
+        narrow_candidate = resolve(backend=key.backend, layer=key.layer, quant=key.quant,
+                                   variant=CANDIDATE)
 
     natural_router = None
     if args.route_package == "router-dpp":
@@ -280,6 +295,11 @@ def main():
         natural_router = NaturalRouterCheck()
 
     def counted(*a, **kw):
+        if args.route_package == "dense-wide-padded":
+            if narrow_enabled[0] and call_in_scope(a):
+                calls[0] += 1
+                return narrow_candidate(*a, **kw)
+            return original(*a, **kw)
         if narrow_candidate is not None:
             validate_call(a, max_rows=generator.runner.prefill_chunk_size)
             if narrow_enabled[0]:
@@ -339,8 +359,10 @@ def main():
     }
     if narrow_candidate is not None:
         report["diagnostic_registry_substitution"] = {
-            "parent": key.variant, "candidate": "qwen4exp_sigmoid_wave_norm_narrow_prefill",
-            "manifest_scope": "named profile; diagnostic arms override its GDN selection",
+            "parent": key.variant, "candidate": (
+                CANDIDATE if args.route_package == "dense-wide-padded"
+                else "qwen4exp_sigmoid_wave_norm_narrow_prefill"),
+            "manifest_scope": "named profile; diagnostic arms override only the named leaf",
             "runtime_default_changed": False,
         }
     if args.route_package=="chunk1024":
@@ -372,6 +394,9 @@ def main():
                 "path": str(heldout_path),
                 "sha256": hashlib.sha256(heldout_path.read_bytes()).hexdigest(),
                 "case_ids": [row["id"] for row in heldouts],
+                "token_policy": ("short prompts repeated/truncated to512 to exercise HC tail"
+                                 if args.route_package == "dense-wide-padded"
+                                 else "original tokenized prompts"),
             }
         if args.case_id and not set(args.case_id) <= {c["id"] for c in gate_cases}:
             raise ValueError("unknown case id")
@@ -438,6 +463,12 @@ def main():
                         case["prompt_tokens"],1024) if enabled=="1" else 0
                     assert prefill_invoked==expected_token64,(prefill_invoked,expected_token64)
                     assert invoked==prefill_invoked,"token64 ran in decode"
+                if args.route_package == "dense-wide-padded":
+                    expected_tail = (tail_expected_calls(case["prompt_tokens"],
+                                                        generator.runner.prefill_chunk_size)
+                                     if enabled == "1" else 0)
+                    assert prefill_invoked == expected_tail, (prefill_invoked, expected_tail)
+                    assert invoked == prefill_invoked, "padded tail ran during decode"
                 if args.route_package == "gdn-narrow":
                     expected_gdn = (expected_calls(case["prompt_tokens"],
                                                    generator.runner.prefill_chunk_size)
@@ -509,6 +540,8 @@ def main():
                     expected = expected_mapped_calls > 0
                 if args.route_package=="q8-down-register":
                     expected=expected_register>0
+                if args.route_package == "dense-wide-padded":
+                    expected = expected_tail > 0
                 if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
                     expected=expected_gdn>0
                 if args.route_package=="mmq-token64":
@@ -556,7 +589,8 @@ def main():
                 if args.route_package=="q8-down-register":
                     summaries[-1].update(mapped_candidate_calls=mapped_calls[0]-start_mapped,
                                          compact_candidate_calls=invoked-(mapped_calls[0]-start_mapped))
-            report["cases"].append({"id": case["id"], "exact": True, "captures": summaries})
+            report["cases"].append({"id": case["id"], "prompt_tokens": case["prompt_tokens"],
+                                    "exact": True, "captures": summaries})
             print(case["id"], "full logits/state exact", flush=True)
         report["status"] = "passed"
     except Exception as error:
@@ -568,8 +602,9 @@ def main():
             generator.runner._prefill_chunk = original_chunk
             generator.runner.prefill_chunk_size = 1024
         else:
-            os.environ[flag] = ("f32_hidden_token_tile4_dense_exact"
-                                if args.route_package == "router-dpp" else "1")
+            if args.route_package != "dense-wide-padded":
+                os.environ[flag] = ("f32_hidden_token_tile4_dense_exact"
+                                    if args.route_package == "router-dpp" else "1")
             register(key, original, replace=True)
         if qsa_original is not None:
             register(qsa_key, qsa_original, replace=True)
