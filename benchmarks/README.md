@@ -1978,6 +1978,31 @@ numeric 128K row is carried forward. Evidence:
 
 ### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
 
+#### Full-depth 256Ki endpoint (2026-10-06)
+
+On **zbook / Radeon 8060S (gfx1151)**, both engines ran the same
+`UD-Q4_K_XL` artifact with BF16 K/V, one uncached prompt, greedy decoding and
+128 output tokens. The valid endpoint uses **262,015 prompt tokens + 128 outputs
+= 262,143 of the 262,144-token context**, because llama.cpp marks a request
+truncated when the final generated token exactly reaches the context boundary.
+Both engines received the same prompt IDs (`ca711237…f276144`); each had one
+full-shape warmup and two measured requests.
+
+| Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 262,015 | 57.15 tok/s | **227.86 tok/s** | 0.251x | 5.51 tok/s | **7.21 tok/s** | 0.764x |
+
+At this depth, llama.cpp is **3.99x faster in prefill** and **1.31x faster in
+decode**. hipEngine's production route completed the full prompt with finite
+logits, repeated instrumented IDs, and public-path parity; llama.cpp completed
+full uncached prefill with repeatable output IDs and graph reuse. The 262,016 +
+128 exact-boundary attempt is excluded because llama.cpp reported `truncated`.
+The capacity rehearsal measured a 113.05 GiB tracked peak, while this endpoint
+is the full-depth execution result. This is a two-sample endpoint, not a full
+variance study or an HTTP serving-throughput claim.
+
+[Commands, prompt identity, source revisions and correctness checks](results/2026-10-06-gemma4-gfx1151-256ki-paired.json).
+
 #### Paired-head score reuse (2026-10-05)
 
 On **zbook / Radeon 8060S (gfx1151)**, the production staged-attention path
