@@ -97,6 +97,7 @@ ROUTED_GRID_Y = {1704, 1708}
 #   dense_wide_kernel                     the wide-row tile family, promoted
 #                                         2026-09-17 to the Q8_0 dense prefill
 #                                         default at layers 16-47
+#   q8_0_dense_wide_bf16_kernel          diagnostic BF16-operand wide tiles
 #   q8_0_dense_split64x128_kernel         scoped precision-recovering dense WMMA
 #   gguf_q8_0_prefill_wmma                the f16 WMMA dense prefill scope that
 #   gguf_q8_0_prefill_dual_wmma           route replaced, retained for
@@ -114,6 +115,7 @@ DENSE_PROJECTION_STEMS: tuple[str, ...] = (
     "gguf_q8_0_pack8",
     "gguf_q8_0_rowvec8_dual_split_gemv",
     "dense_wide_kernel",
+    "q8_0_dense_wide_bf16_kernel",
     "q8_0_dense_split64x128_kernel",
     "gguf_q8_0_prefill_wmma",
     "gguf_q8_0_prefill_dual_wmma",

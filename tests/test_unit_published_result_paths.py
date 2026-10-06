@@ -16,6 +16,16 @@ def test_nested_and_flat_result_paths_do_not_collide():
     assert cited_result_paths(text) == ["flat.json", "one/artifact.json", "two/artifact.json"]
 
 
+def test_non_result_document_paths_are_not_benchmark_citations():
+    text = """
+    gufo's docs/models/qwen3.8-flash-next/artifacts/model-identities.json
+    [protocol](../docs/protocol.json)
+    [evidence](results/nested/artifact.json)
+    see flat.json
+    """
+    assert cited_result_paths(text) == ["flat.json", "nested/artifact.json"]
+
+
 def test_result_citations_cannot_escape_root():
     with pytest.raises(ValueError):
         cited_result_paths("[bad](results/../../secret.json)")

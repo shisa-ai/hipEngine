@@ -5,7 +5,8 @@
   "kind": "accepted",
   "verdict": "KEEP. Faster at every shape on both the weighted mean and the median, on the canonical protocol, with clean provenance on both arms.",
   "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL (unsloth GGUF)",
-  "quant": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
+  "quant": "UD-Q4_K_XL",
+  "tensor_quantization": "mixed GGUF: Q4_K gate/up experts, Q5_1 down experts, Q5_K 2 tensors, Q8_0 5 tensors",
   "host": {
     "arch": "gfx1151",
     "backend": "hip_gfx1150_family",
