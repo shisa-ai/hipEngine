@@ -201,12 +201,12 @@ def test_shared_footprint_does_not_grow_with_the_context():
     The strict family's resident requirement is a function of ``keys`` and, once
     it passes the 64 KiB budget at 15,616 keys for head_dim 512, stops growing
     and moves its logits to request-owned global scratch. The staged candidate's
-    requirement is a constant 8 KB.
+    requirement is constant in ``keys``: the score stage's eight-row query tile
+    is the largest term, 16.6 KB at head_dim 512.
     """
 
-    assert staged.staged_lds_bytes(256) == 8 * 256 * 4
-    assert staged.staged_lds_bytes(512) == 8 * 256 * 4
-    assert staged.staged_lds_bytes(256) == staged.staged_lds_bytes(512)
+    assert staged.staged_lds_bytes(256) == 8 * (256 + 8) * 4
+    assert staged.staged_lds_bytes(512) == 8 * (512 + 8) * 4
     assert staged.staged_lds_bytes(512) <= staged.LDS_BUDGET_BYTES
     # The plan's own figure is the same constant at 31 keys and at 262,144,
     # and it is the reservation of the decomposition that plan selected.
@@ -331,7 +331,9 @@ def test_the_grid_boundaries_are_plans_not_refusals():
     for tokens, heads in ((65536, 1), (17000, 16)):
         plan = staged.staged_plan(tokens=tokens, keys=1, num_heads=heads,
                                   num_kv_heads=1, head_dim=256)
-        assert plan.score_grid == (tokens * -(-heads // 2), 1)
+        assert plan.score_grid == (
+            tokens * -(-heads // staged.SCORE_ROWS_PER_BLOCK), 1
+        )
     x_edge = staged.staged_plan(tokens=2**31-1, keys=1, num_heads=1,
                                num_kv_heads=1, head_dim=256)
     assert x_edge.rows == 2**31-1
@@ -359,11 +361,12 @@ def test_workspace_products_past_representability_are_named():
 
 def test_plan_reports_the_grid_and_the_row_grouping():
     # The artifact's full-layer geometry: 8 query heads per KV head, so one PV
-    # CTA covers the whole GQA group and the grid is (tokens, 2, 1).
+    # CTA covers the whole GQA group and the grid is (tokens, 2, 1); the score
+    # CTA likewise covers all eight query rows of one KV head.
     full = staged.staged_plan(tokens=3, keys=4096, num_heads=16, num_kv_heads=2, head_dim=512)
     assert (full.rows, full.rows_per_head, full.row_groups) == (48, 8, 1)
     assert full.pv_grid == (3, 2, 1)
-    assert full.score_grid == (24, 4)
+    assert full.score_grid == (6, 4)
     assert full.softmax_grid == (48, 1)
     # Sliding geometry: 2 query heads per KV head.
     sliding = staged.staged_plan(tokens=3, keys=1024, num_heads=16, num_kv_heads=8, head_dim=256)
@@ -378,7 +381,7 @@ def test_plan_reports_the_grid_and_the_row_grouping():
     assert (plain.rows_per_head, plain.row_groups, plain.pv_grid) == (1, 1, (3, 4, 1))
 
 
-# --- paired-head score reuse ------------------------------------------------
+# --- grouped-head score reuse ------------------------------------------------
 
 
 @pytest.mark.parametrize("ratio", [1, 2, 3, 4, 5, 8, 12, 17])
@@ -388,10 +391,12 @@ def test_score_grid_pairs_heads_without_crossing_kv_ownership(ratio):
             tokens=tokens, keys=1025, num_heads=2 * ratio,
             num_kv_heads=2, head_dim=512,
         )
-        assert plan.score_grid == (tokens * 2 * -(-ratio // 2), 2)
+        assert plan.score_grid == (
+            tokens * 2 * -(-ratio // staged.SCORE_ROWS_PER_BLOCK), 2
+        )
         assert plan.rows == tokens * 2 * ratio  # workspace stays per query row
         assert plan.softmax_grid == (plan.rows, 1)
-        assert plan.score_lds_bytes == (2 * 512 + 2 * 8) * 4
+        assert plan.score_lds_bytes == staged.SCORE_ROWS_PER_BLOCK * (512 + 8) * 4
 
 
 # --- the T0 singleton PV decomposition ---------------------------------------
@@ -424,7 +429,7 @@ def test_single_token_selects_the_32_thread_pv_decomposition():
         assert plan.pv_singleton
         # The score and softmax stages keep the strict 256-lane shapes.
         assert plan.threads == staged.THREADS == 256
-        assert plan.score_grid == (8, 4)
+        assert plan.score_grid == (2, 4)
         assert plan.softmax_grid == (16, 1)
         assert plan.pv_lds_bytes == 2 * staged.PV_TILE_KEYS * 4
         assert plan.lds_bytes == max(
@@ -595,7 +600,7 @@ def test_no_shape_the_eight_row_grid_serves_is_refused():
 def test_plan_describe_names_the_decomposition():
     plan = staged.staged_plan(tokens=3, keys=2048, num_heads=16, num_kv_heads=2, head_dim=512)
     described = plan.describe()
-    assert "score_grid=24x2" in described
+    assert "score_grid=6x2" in described
     assert "pv_grid=3x2x1" in described
     assert "pv=multi(256t,8r,1s)" in described
     assert f"lds={plan.lds_bytes}B" in described
