@@ -189,9 +189,10 @@ _DECODE_LDS_FLOATS = 256 * 2 + 16
 class Gemma4AttentionScratch:
     """Split workspace owned by one caller on one runtime/device.
 
-    Streams have separate buffers. Growth doubles capacity and retains old
-    allocations until close synchronizes every used stream, so queued kernels
-    keep valid pointers. Construction is host-only.
+    Streams have separate buffers. Growth doubles capacity and retires the
+    superseded buffer behind a stream event: queued kernels keep valid
+    pointers until the device passes the event, and the old allocation is
+    freed then instead of living until close. Construction is host-only.
     """
 
     def __init__(self) -> None:
@@ -201,6 +202,9 @@ class Gemma4AttentionScratch:
         self._named: dict[tuple[int, str], DeviceBuffer] = {}
         self._u32: dict[tuple[int, str], tuple[int, int]] = {}
         self._owned: list[DeviceBuffer] = []
+        # Superseded buffers waiting for their stream to pass the event that
+        # was recorded after their last queued user: (event, stream, buffer).
+        self._pending: list[tuple[int, int, DeviceBuffer]] = []
         self._closed = False
 
     def buffer(self, nbytes: int, *, stream: int, runtime: HipRuntime) -> DeviceBuffer:
@@ -213,15 +217,44 @@ class Gemma4AttentionScratch:
         device = runtime.current_device()
         if self._device is not None and device != self._device:
             raise ValueError("attention scratch cannot change device")
+        self._reap_pending(runtime)
         previous = self._current.get(stream)
         if previous is not None and previous.nbytes >= nbytes:
             return previous
         capacity = max(nbytes, 2 * previous.nbytes) if previous else nbytes
         buffer = malloc(capacity, runtime=runtime)
+        if previous is not None:
+            self._retire(previous, stream=stream, runtime=runtime)
         self._runtime, self._device = runtime, device
         self._owned.append(buffer)
         self._current[stream] = buffer
         return buffer
+
+    def _retire(self, buffer: DeviceBuffer, *, stream: int, runtime: HipRuntime) -> None:
+        """Park a superseded buffer behind a stream event.
+
+        Its last users are the launches already queued on its stream. An event
+        recorded after those completes exactly when they do, so the buffer can
+        be freed as soon as the device passes the event instead of living until
+        close -- the chain a deep prefill used to hold for its whole run.
+        """
+        event = runtime.event_create()
+        runtime.event_record(event, stream)
+        self._owned.remove(buffer)
+        self._pending.append((event, stream, buffer))
+
+    def _reap_pending(self, runtime: HipRuntime) -> None:
+        """Free retired buffers whose streams have passed their event."""
+        if not self._pending:
+            return
+        still: list[tuple[int, int, DeviceBuffer]] = []
+        for event, stream, buffer in self._pending:
+            if runtime.event_query(event):
+                free(buffer, runtime=runtime)
+                runtime.event_destroy(event)
+            else:
+                still.append((event, stream, buffer))
+        self._pending = still
 
     def named_buffer(
         self, name: str, nbytes: int, *, stream: int, runtime: HipRuntime
@@ -244,11 +277,14 @@ class Gemma4AttentionScratch:
         if self._device is not None and device != self._device:
             raise ValueError("attention scratch cannot change device")
         key = (stream, name)
+        self._reap_pending(runtime)
         previous = self._named.get(key)
         if previous is not None and previous.nbytes >= nbytes:
             return previous
         capacity = max(nbytes, 2 * previous.nbytes) if previous else nbytes
         buffer = malloc(capacity, runtime=runtime)
+        if previous is not None:
+            self._retire(previous, stream=stream, runtime=runtime)
         self._runtime, self._device = runtime, device
         self._owned.append(buffer)
         self._named[key] = buffer
@@ -288,6 +324,12 @@ class Gemma4AttentionScratch:
                 self._runtime.stream_synchronize(stream)
             for stream, _ in self._named:
                 self._runtime.stream_synchronize(stream)
+            for _, stream, _ in self._pending:
+                self._runtime.stream_synchronize(stream)
+            while self._pending:
+                event, _, buffer = self._pending.pop()
+                free(buffer, runtime=self._runtime)
+                self._runtime.event_destroy(event)
             while self._owned:
                 free(self._owned[-1], runtime=self._runtime)
                 self._owned.pop()

@@ -648,10 +648,11 @@ class _FakeAttentionRuntime:
     """Stand-in for the HIP runtime that :class:`Gemma4AttentionScratch` asks for.
 
     The scratch is handed a runtime on every ``buffer`` call and asks it for
-    three things: the current device, an allocation, and a stream
-    synchronization. The buffers are keyed by stream, so the events recorded
-    here are what show whether two layers shared one allocation and whether
-    cleanup synchronized before freeing.
+    its current device, an allocation, a stream synchronization, and the
+    event trio that gates a superseded buffer's retirement. The buffers are
+    keyed by stream, so the events recorded here are what show whether two
+    layers shared one allocation and whether cleanup synchronized before
+    freeing.
     """
 
     def __init__(self, device: int = 0) -> None:
@@ -659,6 +660,10 @@ class _FakeAttentionRuntime:
         self.next_ptr = 0x90000
         self.live: dict[int, int] = {}
         self.events: list[tuple[str, int]] = []
+        self.synced: set[int] = set()
+        self.event_stream: dict[int, int] = {}
+        self.last_event: dict[int, int] = {}
+        self.next_event = 100
 
     def current_device(self) -> int:
         return self.device
@@ -675,6 +680,27 @@ class _FakeAttentionRuntime:
 
     def stream_synchronize(self, stream: int) -> None:
         self.events.append(("sync", stream))
+        self.synced.add(stream)
+
+    def event_create(self) -> int:
+        self.next_event += 1
+        return self.next_event
+
+    def event_record(self, event: int, stream: int = 0) -> None:
+        self.events.append(("record", event))
+        self.event_stream[event] = stream
+        self.last_event[stream] = event
+
+    def event_query(self, event: int) -> bool:
+        if self.event_stream[event] in self.synced:
+            return True
+        # The device is modeled as at most one retirement behind the host on a
+        # stream: an event completes once a later one is recorded behind it.
+        return self.last_event.get(self.event_stream[event]) != event
+
+    def event_destroy(self, event: int) -> None:
+        self.events.append(("destroy", event))
+        del self.event_stream[event]
 
 
 def test_runner_layers_share_one_attention_workspace_owner(

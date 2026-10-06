@@ -35,7 +35,9 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
         return 100
 
     runtime = SimpleNamespace(current_device=lambda: 0, stream_begin_capture=begin,
-                              stream_end_capture=end, graph_instantiate=lambda _: 200)
+                              stream_end_capture=end, graph_instantiate=lambda _: 200,
+                              event_create=lambda: 1, event_record=lambda *a: None,
+                              event_query=lambda *a: False, event_destroy=lambda *a: None)
     monkeypatch.setattr(attention, "malloc", allocate)
     monkeypatch.setattr(attention, "build_gemma4_attention", lambda **kwargs: object())
     monkeypatch.setattr(attention, "split_workspace_bytes", lambda t, h, d, k, s, **kw: t * h * k * 4)
