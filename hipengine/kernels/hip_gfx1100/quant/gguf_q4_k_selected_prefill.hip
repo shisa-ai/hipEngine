@@ -19,6 +19,7 @@
 #include <hip/hip_runtime.h>
 #include <cfloat>
 #include <stdint.h>
+#include <type_traits>
 
 #ifndef HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS
 #define HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS 2
@@ -1839,7 +1840,11 @@ constexpr int q4_k_iu8_warps() {
   return (TILE_ROWS / Q4_K_IU8_WARP_ROWS) * 4;
 }
 
-template <typename scalar_t, int ACT_PLANES = 3, int TILE_ROWS = 16>
+template <bool NARROW_INDEX>
+using q4_iu8_index_t = typename std::conditional<NARROW_INDEX, int, int64_t>::type;
+
+template <typename scalar_t, int ACT_PLANES = 3, int TILE_ROWS = 16,
+          bool NARROW_INDEX = false>
 __launch_bounds__(q4_k_iu8_warps<TILE_ROWS>() * 32,
                   TILE_ROWS == Q4_K_IU8_WARP_ROWS ? 2 : 1)
 __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
@@ -1852,14 +1857,15 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     scalar_t* __restrict__ out,
     int* __restrict__ risk_count,
     int* __restrict__ risk_indices,
-    int64_t max_risks,
+    q4_iu8_index_t<NARROW_INDEX> max_risks,
     float risk_multiplier,
-    int64_t compact_rows,
-    int64_t in_features,
-    int64_t out_features_a,
-    int64_t out_features_b,
-    int64_t num_experts,
-    int64_t wmma_total_rows) {
+    q4_iu8_index_t<NARROW_INDEX> compact_rows,
+    q4_iu8_index_t<NARROW_INDEX> in_features,
+    q4_iu8_index_t<NARROW_INDEX> out_features_a,
+    q4_iu8_index_t<NARROW_INDEX> out_features_b,
+    q4_iu8_index_t<NARROW_INDEX> num_experts,
+    q4_iu8_index_t<NARROW_INDEX> wmma_total_rows) {
+  using index_t = q4_iu8_index_t<NARROW_INDEX>;
   constexpr int IU8_ACT_PLANES = ACT_PLANES;  // residual quantization planes (ds4 class)
   // Rows whose raw 32-element activation subblock amax falls below this
   // floor are always queued: at tiny activation scales the fp32
@@ -1873,7 +1879,7 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
   __shared__ int8_t lds_q8a[IU8_ACT_PLANES * TILE_ROWS * IU8_LDS_ROW_STRIDE];
   __shared__ float lds_da[IU8_ACT_PLANES * TILE_ROWS * Q4_K_SUBBLOCKS];
   __shared__ int lds_sumq8a[IU8_ACT_PLANES * TILE_ROWS * Q4_K_SUBBLOCKS];
-  __shared__ int64_t meta[4];
+  __shared__ index_t meta[4];
 
   const int tid = static_cast<int>(threadIdx.x);
   const int warp = tid >> 5;
@@ -1882,36 +1888,47 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
   // for the tile's first Q4_K_IU8_WARP_ROWS rows, warps 4-7 the next ones.
   const int warp_col = warp & 3;
   const int row_group = warp >> 2;
-  const int64_t out_features_total = out_features_a + out_features_b;
-  const int64_t col_base = static_cast<int64_t>(blockIdx.x) * 128;
-  const int64_t row_tile = blockIdx.y;
+  const index_t out_features_total = out_features_a + out_features_b;
+  const index_t col_base = static_cast<index_t>(blockIdx.x) * 128;
+  const index_t row_tile = blockIdx.y;
 
   if (tid == 0) {
     const int64_t expert = tile_expert[row_tile];
-    const bool valid = expert >= 0 && expert < num_experts;
-    meta[0] = valid ? expert : -1;
-    meta[1] = valid ? expert_start_compact[expert] : 0;
-    meta[2] = valid ? (expert_start_compact[expert + 1] - meta[1]) : 0;
-    meta[3] = valid ? (row_tile * TILE_ROWS - expert_start_wmma[expert]) : 0;
+    bool valid = expert >= 0 && expert < num_experts;
+    if constexpr (NARROW_INDEX) {
+      // Maps retain their int64 ABI. Check device values before narrowing;
+      // an unsafe tile publishes no outputs rather than wrapping an address.
+      if (valid) {
+        const int64_t start = expert_start_compact[expert];
+        const int64_t end = expert_start_compact[expert + 1];
+        const int64_t padded_start = expert_start_wmma[expert];
+        valid = start >= 0 && end >= start && end <= compact_rows &&
+                padded_start >= 0 && padded_start <= row_tile * TILE_ROWS;
+      }
+    }
+    meta[0] = valid ? static_cast<index_t>(expert) : -1;
+    meta[1] = valid ? static_cast<index_t>(expert_start_compact[expert]) : 0;
+    meta[2] = valid ? static_cast<index_t>(expert_start_compact[expert + 1] - meta[1]) : 0;
+    meta[3] = valid ? static_cast<index_t>(row_tile * TILE_ROWS - expert_start_wmma[expert]) : 0;
   }
   if (tid < TILE_ROWS) {
     lds_row_atrisk[tid] = 0;
   }
   __syncthreads();
-  const int64_t expert_id = meta[0];
+  const index_t expert_id = meta[0];
   if (expert_id < 0) return;
-  const int64_t compact_base = meta[1];
-  const int64_t expert_count = meta[2];
-  const int64_t tile_row_in_expert = meta[3];
+  const index_t compact_base = meta[1];
+  const index_t expert_count = meta[2];
+  const index_t tile_row_in_expert = meta[3];
 
-  const int64_t global_col = col_base + warp_col * 32 + lane;
+  const index_t global_col = col_base + warp_col * 32 + lane;
   const bool col_valid = global_col < out_features_total;
   const bool use_b = col_valid && global_col >= out_features_a;
-  const int64_t local_col = use_b ? (global_col - out_features_a) : global_col;
-  const int64_t local_out_features = use_b ? out_features_b : out_features_a;
+  const index_t local_col = use_b ? (global_col - out_features_a) : global_col;
+  const index_t local_out_features = use_b ? out_features_b : out_features_a;
   const uint8_t* qweight = use_b ? qweight_b : qweight_a;
-  const int64_t blocks_per_row = in_features / QK_K;
-  const int64_t row_bytes = blocks_per_row * Q4_K_BLOCK_BYTES;
+  const index_t blocks_per_row = in_features / QK_K;
+  const index_t row_bytes = blocks_per_row * Q4_K_BLOCK_BYTES;
   const bool wcol_valid = col_valid && local_col < local_out_features;
   const uint8_t* block_base = wcol_valid
       ? (qweight + expert_id * (local_out_features * row_bytes) +
@@ -1936,7 +1953,7 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     a_row = (lane - 17) >> 1;
   }
 
-  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+  for (index_t blk = 0; blk < blocks_per_row; ++blk) {
     // Cooperative activation staging: thread -> (actrow = tid/8, sub = tid%8).
     // 128 threads cover 16 rows per pass, so a wider M tile stages in passes;
     // every pass writes before the single sync below.
@@ -1944,9 +1961,9 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     for (int rp = 0; rp < TILE_ROWS / (q4_k_iu8_warps<TILE_ROWS>() * 4); ++rp) {
       const int actrow = rp * (q4_k_iu8_warps<TILE_ROWS>() * 4) + (tid >> 3);
       const int sub = tid & 7;
-      const int64_t local_row = tile_row_in_expert + actrow;
+      const index_t local_row = tile_row_in_expert + actrow;
       const bool row_valid = local_row < expert_count;
-      const int64_t compact_row = row_valid ? (compact_base + local_row) : 0;
+      const index_t compact_row = row_valid ? (compact_base + local_row) : 0;
       const scalar_t* row_ptr =
           x + compact_row * in_features + blk * QK_K + sub * Q4_K_SUBBLOCK;
       float vals[32];
@@ -2116,9 +2133,9 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel(
     // both carry the row group's offset.
     const int r = g * 8 + i;
     const int tile_row = row_group * Q4_K_IU8_WARP_ROWS + r;
-    const int64_t local_row = tile_row_in_expert + tile_row;
+    const index_t local_row = tile_row_in_expert + tile_row;
     if (local_row < expert_count) {
-      const int64_t compact_row = compact_base + local_row;
+      const index_t compact_row = compact_base + local_row;
       if (compact_row < compact_rows) {
         const float value = sum[r];
         out[compact_row * out_features_total + global_col] =
@@ -2428,7 +2445,30 @@ __global__ void gguf_q4_k_selected_dual_row_bitmap_repair_bf16_kernel(
   }
 }
 
-template <typename scalar_t, int ACT_PLANES = 3, int TILE_ROWS = 16>
+// Bounds apply to complete byte ranges, not just element offsets. Inputs and
+// maps retain their public int64 dimensions/entries; only checked device
+// address/control intermediates use int32. Division checks avoid overflow.
+static bool q4_iu8_narrow_index_admissible(
+    int64_t rows, int64_t k, int64_t a, int64_t b,
+    int64_t experts, int64_t padded) {
+  if (rows <= 0 || k <= 0 || a <= 0 || b <= 0 || experts <= 0 ||
+      padded <= 0 || rows > INT32_MAX || k > INT32_MAX ||
+      a > INT32_MAX || b > INT32_MAX || experts > INT32_MAX ||
+      padded > INT32_MAX || k % 256 || a % 128 || b % 128 ||
+      padded % 16 || padded < rows || padded > rows + 15 * experts ||
+      a > INT32_MAX - b) return false;
+  const int64_t row_bytes = (k / 256) * Q4_K_BLOCK_BYTES;
+  const int64_t out_cols = a + b;
+  return rows <= INT32_MAX / 2 / k &&
+         rows <= INT32_MAX / 2 / out_cols &&
+         experts <= INT32_MAX / row_bytes / a &&
+         experts <= INT32_MAX / row_bytes / b &&
+         experts + 1 <= INT32_MAX / 8 &&
+         padded / 16 <= INT32_MAX / 8;
+}
+
+template <typename scalar_t, int ACT_PLANES = 3, int TILE_ROWS = 16,
+          bool NARROW_INDEX = false>
 static int launch_selected_dual_wmma_iu8_risk(
     const scalar_t* x,
     const int64_t* expert_start_compact,
@@ -2448,6 +2488,15 @@ static int launch_selected_dual_wmma_iu8_risk(
     int64_t num_experts,
     int64_t wmma_total_rows,
     hipStream_t stream) {
+  if constexpr (NARROW_INDEX) {
+    static_assert(ACT_PLANES == 3 && TILE_ROWS == 16,
+                  "narrow sibling is only qualified for the 3-plane16-row body");
+    if (!q4_iu8_narrow_index_admissible(
+            compact_rows, in_features, out_features_a, out_features_b,
+            num_experts, wmma_total_rows) || max_risks > INT32_MAX / 4) {
+      return static_cast<int>(hipErrorInvalidValue);
+    }
+  }
   if (!valid_selected_dual_common(
           x, expert_start_compact, expert_start_wmma, tile_expert, qweight_a,
           qweight_b, out, compact_rows, in_features, out_features_a,
@@ -2473,13 +2522,16 @@ static int launch_selected_dual_wmma_iu8_risk(
   const dim3 grid(
       static_cast<unsigned int>((out_features_total + 127) / 128),
       static_cast<unsigned int>(row_tiles));
+  using index_t = q4_iu8_index_t<NARROW_INDEX>;
   hipLaunchKernelGGL(
-      (gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<scalar_t, ACT_PLANES, TILE_ROWS>),
+      (gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<scalar_t, ACT_PLANES, TILE_ROWS, NARROW_INDEX>),
       grid, block, 0, stream,
       x, expert_start_compact, expert_start_wmma, tile_expert, qweight_a,
-      qweight_b, out, risk_count, risk_indices, max_risks, risk_multiplier,
-      compact_rows, in_features, out_features_a, out_features_b, num_experts,
-      wmma_total_rows);
+      qweight_b, out, risk_count, risk_indices,
+      static_cast<index_t>(max_risks), risk_multiplier,
+      static_cast<index_t>(compact_rows), static_cast<index_t>(in_features),
+      static_cast<index_t>(out_features_a), static_cast<index_t>(out_features_b),
+      static_cast<index_t>(num_experts), static_cast<index_t>(wmma_total_rows));
   return static_cast<int>(hipGetLastError());
 }
 
@@ -2959,6 +3011,33 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16
     int64_t wmma_total_rows,
     hipStream_t stream) {
   return launch_selected_dual_wmma_iu8_risk<uint16_t>(
+      x, expert_start_compact, expert_start_wmma, tile_expert, qweight_a,
+      qweight_b, out, risk_count, risk_indices, max_risks, risk_multiplier,
+      compact_rows, in_features, out_features_a, out_features_b, num_experts,
+      wmma_total_rows, stream);
+}
+
+// Diagnostic checked-index sibling. No production selector points here.
+extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_narrow_prefill_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int* risk_count,
+    int* risk_indices,
+    int64_t max_risks,
+    float risk_multiplier,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_wmma_iu8_risk<uint16_t, 3, 16, true>(
       x, expert_start_compact, expert_start_wmma, tile_expert, qweight_a,
       qweight_b, out, risk_count, risk_indices, max_risks, risk_multiplier,
       compact_rows, in_features, out_features_a, out_features_b, num_experts,
