@@ -4,18 +4,23 @@
 
 - `f32_f16_publish` and `f32_f16_publish_unfused` are separately registered
   grouped-norm leaves. The first publishes existing F32 norm and identical
-  staging F16 bytes; the second is parent norm plus the existing cast. Neither
-  changes the runtime/default. `scripts/qwen4exp_norm_f16_publish_owner.py`
-  replays both operations in private scratch; it is not a native ownership gate.
+  staging F16 bytes; the second is parent norm plus the existing cast.
+  `scripts/qwen4exp_norm_f16_publish_owner.py` replays both operations in
+  private scratch; it is not a native ownership gate.
+- `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` is a default-off integration
+  flag. Backend registry-axis policy admits only the immediate enabled Q8_0
+  dense-wide HC-down consumer at exactly 4096 rows, K10240/N320 and layers
+  13–47. It borrows the existing session-owned workspace, adds no device
+  allocation, and preserves parent norm plus ordinary cast on admission misses.
+  The single-use loan binds source/count/stream/runtime/workspace and consumer
+  key; nested scopes, mismatches and intervening staging invalidate it.
 - Natural complete norm+cast+HC-down wins at512/4096 but loses at1024 by6.542%.
-  The next runtime scope is exactly4096, not a continuous512–4096 selector.
-  A scoped single-use loan from the session-owned staging buffer must first
-  cover stream/source/count/runtime/capacity identity, overwrite invalidation,
-  nested contexts, exceptions and isolation, then pass native model engagement,
-  state/KV/logits and engine A/B. No persistent activation cache is planned.
-- Remove diagnostic substitution plumbing only after a native route gate covers
-  these exact bounds and engagement. Keep the parent and strict unfused chain;
-  no env flag is added in this screen. Evidence:
+  The runtime scope is exactly4096, not a continuous512–4096 selector. Native
+  model engagement, state/KV/logits and counterbalanced engine A/B are required
+  before a named-plan default. No persistent activation cache is planned.
+- Remove the integration flag after promotion and one qualified release window,
+  or remove the runtime handoff if native full-operation pricing rejects it.
+  Keep the registered parent and strict unfused chain. Evidence:
   `benchmarks/results/2026-10-06-qwen4exp-norm-f16-publish/`.
 
 ## Checked Q4 gate/up index diagnostic
