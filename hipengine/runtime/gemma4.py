@@ -1381,11 +1381,16 @@ class Gemma4Runner:
         the cached prefix without the prefill that produced it.
 
         The saved capacity, the per-layer plane sizes and -- when ``identity``
-        is given -- the saved identity must match this runner. A file whose
-        identity is null while the caller passes one is also a mismatch: the
-        caller knows something the file does not. Every mismatch raises
-        ``ValueError`` naming it; nothing is partially restored, because the
-        validation runs before the first byte lands in a cache.
+        is given -- the identity fields the caller names must match this runner.
+        ``identity`` is a requirement, not a full-record comparison: each key
+        the caller passes must be present with the same value in the file's
+        identity, so a caller can bind a state to the fields that actually
+        determine its bytes (prompt ids, artifact, geometry) while keeping
+        build provenance out of the binding. A file whose identity is null
+        while the caller passes one is also a mismatch: the caller knows
+        something the file does not. Every mismatch raises ``ValueError``
+        naming it; nothing is partially restored, because the validation runs
+        before the first byte lands in a cache.
         """
         if self._closed:
             raise RuntimeError("runner is closed")
@@ -1419,11 +1424,15 @@ class Gemma4Runner:
                     f"this runner's {planes}"
                 )
             saved_identity = header.get("identity")
-            if identity is not None and saved_identity != dict(identity):
-                raise ValueError(
-                    f"kv state identity mismatch: file has {saved_identity!r}, "
-                    f"caller asked for {dict(identity)!r}"
-                )
+            if identity is not None:
+                wanted = dict(identity)
+                if saved_identity is None or any(
+                    saved_identity.get(key) != value for key, value in wanted.items()
+                ):
+                    raise ValueError(
+                        f"kv state identity mismatch: file has {saved_identity!r}, "
+                        f"caller requires {wanted!r}"
+                    )
             position = int(header["position"])
             if not 0 <= position <= self.capacity:
                 raise ValueError(
