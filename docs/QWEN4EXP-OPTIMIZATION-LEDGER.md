@@ -396,8 +396,16 @@ across four layer-0/22 attention/FFN up banks. The K320/full-row sibling is
 1.084–1.103x faster than the promoted DPP owner (geometric mean1.092x), with
 exact gate/mixed outputs and balanced order strata. It remains default-off;
 this operation screen does not establish a model state/KV/logit gate or default
-promotion. Artifact:
-`../benchmarks/results/2026-10-06-qwen4exp-gr-k320-full-rows-screen.md`.
+promotion. The subsequent qualified canonical A/B measured **0.9958x prefill
+wall, 1.1766x decode wall and 1.0940x complete client wall** for the candidate
+across 36 paired samples (12 cases × 3 repeats); p4096 complete wall regressed
+13.56% and decode 35.38%. Both runs were exact, deterministic and leak-free.
+The candidate stays default-off and the generic DPP owner remains fallback.
+Artifacts:
+`../benchmarks/results/2026-10-06-qwen4exp-gr-k320-full-rows-screen.md` and
+`../benchmarks/results/2026-10-06-qwen4exp-gr-k320-full-rows-native.json`;
+qualified A/B packets are `/tmp/qwen4exp-gr-k320-baseline-qualified.json` and
+`/tmp/qwen4exp-gr-k320-candidate-qualified.json`.
 
 The [earlier post-router packet](../benchmarks/results/2026-10-06-qwen4exp-current-prefill-owners/README.md)
 uses tracked-clean `4779b7278`, named production/BF16/chunk4096 and the
