@@ -35,10 +35,21 @@ def test_pipelined_upgrade_is_registry_checked_and_leaf_only(monkeypatch):
         "raw",
     )
     upgrade = linear._raw_k_coltile_pipelined_dispatch
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", raising=False)
     monkeypatch.setattr(linear, "is_registered", lambda key: True)
+    assert upgrade(wave).key.variant == (
+        "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
+    )
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", "0")
     assert upgrade(wave).key.variant == (
         "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
     )
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", raising=False)
+    monkeypatch.setattr(linear, "is_registered", lambda key: "_dpp_" not in key.variant)
+    assert upgrade(wave).key.variant == (
+        "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
+    )
+    monkeypatch.setattr(linear, "is_registered", lambda key: True)
     # The unscaled exact parent and every other route keep their variant, so the
     # registered strict fallback chain and the dense-wide parents are untouched.
     for variant in (

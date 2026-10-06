@@ -17,10 +17,11 @@ def test_sensor_sample_and_phase_boundary(tmp_path):
     assert read_sensors(tmp_path / "missing") == {}
 
 
-def test_sample_reuses_four_timestamps(monkeypatch):
+def test_sample_reuses_phase_endpoints_and_records_enqueue_split(monkeypatch):
     from scripts import qwen4exp_canonical_ar_bench as bench
 
-    clock = iter((100_000_000, 120_000_000, 121_000_000, 130_000_000))
+    clock = iter((100_000_000, 118_000_000, 120_000_000,
+                  121_000_000, 128_000_000, 130_000_000))
     monkeypatch.setattr(bench.time, "perf_counter_ns", lambda: next(clock))
     monkeypatch.setattr(bench, "_process_memory_snapshot", lambda: {
         "process_read_bytes": 0, "minor_faults": 0, "major_faults": 0})
@@ -34,5 +35,9 @@ def test_sample_reuses_four_timestamps(monkeypatch):
     row = bench._hipengine_case_sample(runner, case=case, repetition=0, transitions=1)
     assert row["prefill_ms"] == 20
     assert row["decode_ms"] == 9
+    assert row["prefill_host_enqueue_ms"] == 18
+    assert row["prefill_device_drain_ms"] == 2
+    assert row["decode_host_enqueue_ms"] == 7
+    assert row["decode_device_drain_ms"] == 2
     assert row["phase_windows_ns"] == {
         "prefill": [100_000_000, 120_000_000], "decode": [121_000_000, 130_000_000]}
