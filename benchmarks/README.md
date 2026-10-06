@@ -5,36 +5,13 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
-## Qwen3.8 Flash Next shared-cast operation diagnostic
+## Qwen3.8 Flash Next bounded two-consumer F16 ownership
 
-Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
-production/BF16/chunk4096. Adjacent QKV+gate and shared gate+up consumers
-replay natural inputs at layers13/24/46 across six cases, four categories
-and p512/p1024/p4096. The comparison runs the same two GEMMs with either
-two F16 casts or one shared cast; each run has 504 replay operations.
+Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next UD-Q4_K_XL, production/BF16/chunk1024. The bounded native route shares one F16 staging cast between immediate `attn_qkv→attn_gate` or `shared_gate→shared_up` consumers at layers13–47 for p1024/p4096 rows; p512 remains on the parent.
 
-| Diagnostic run | Two-cast sum of owner wall medians ms | One-cast ms | Change |
-| --- | ---: | ---: | ---: |
-| Initial | 159.161 | 151.947 | −4.533% |
-| Final byte/provenance checks | 138.414 | 130.648 | −5.611% |
+A tracked-clean one-process/one-residency A/B covers 12 canonical and 16 category-heldout cases, with 168 measured arm runs and three repetitions per arm. Outputs are exact and deterministic, native engagement is bounded, and teardown is zero. Prefill is 0.999575x parent (−0.043%) on qualified p1024/p4096 rows; decode is 1.000842x (+0.084%) and complete client wall is 1.000254x (+0.025%). Across all rows, complete client wall is 1.000245x (+0.024%). The differences do not support a model-throughput improvement claim, so DP-2 remains default-off.
 
-Final p1024/p4096 medians and both order strata improve, but p512 has a
-pooled shared-expert loss and a QKV order-stratum loss. Outputs, final F16
-bytes, input/weight immutability and teardown pass. Shared-expert timings
-vary substantially between runs; both are preserved. This is sampled
-operation wall, not model throughput. The native ordered-consumer ownership
-check now passes exact state/KV/engagement validation; a tracked-clean engine
-A/B is still pending for any model-wall or production claim.
-[Operation protocol and samples](results/2026-10-06-qwen4exp-dp2-shared-cast/README.md).
-
-Native qualification now passes 28 canonical/heldout cases with 168 arm runs
-and 128 decode steps per run. Logits, Conv/GDN state, full KV, repeat bytes,
-parent isolation and teardown are exact. The route engages only the four
-qualified pair shapes at p1024/p4096, eliminating 61 casts per prefill; p512
-remains on the parent. This is correctness/engagement evidence, not a model
-throughput claim. The route remains default-off pending a tracked-clean
-same-host canonical/heldout engine A/B.
-[Native qualification artifact](results/2026-10-06-qwen4exp-dp2-shared-cast/native-qualification.json).
+The route records 10,980 candidate pairs and eliminates 10,980 casts across measured samples; p4096 executes 244 pairs per sample over four 1024-token chunks. This engagement/correctness result is separate from the earlier operation-level screen, whose cast savings were not visible as a complete-engine win. [Protocol, samples and artifacts](results/2026-10-06-qwen4exp-dp2-shared-cast/README.md).
 
 
 ## Qwen3.8 Flash Next host-sized routed-grid diagnostic
