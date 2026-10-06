@@ -741,8 +741,9 @@ both Python and the int64 host ABI. Named profiles still select the parent.
 On gfx1151 host55ea6c509d0b49eea8de7094a1023668, synthetic complete-operation
 512/1024/4096 timing improves1.0443x/1.0419x/1.0424x; private scratch36→28B,
 spills8→6, VGPR256 unchanged. Exact replay/guards, state-head isolation,
-CPU-reference floor and cached trace pass. Natural-model qualification is
-required before runtime admission. Evidence:
+CPU-reference floor and cached trace pass. Natural-model216-call owner and
+all20 canonical/heldout full-state/KV gates pass; tracked-clean engine A/B is
+the remaining runtime-admission gate. Evidence:
 `benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md`.
 
 GDN exposes kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: exact128

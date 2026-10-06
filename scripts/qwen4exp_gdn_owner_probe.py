@@ -35,6 +35,8 @@ def main():
     p.add_argument("--compiler-version-file",type=Path,required=True)
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--case-id",action="append")
+    p.add_argument("--narrow-index", action="store_true")
+    p.add_argument("--prefill-chunk-size", type=int, choices=(512,1024,4096), default=1024)
     args=p.parse_args()
     check_host()
     identity=model_identity(args.model_root)
@@ -50,23 +52,35 @@ def main():
     index=gate.load_gguf_index(gate.discover_gguf_files(args.model_root)[0])
     generator=profile.construct_generator(lambda:gate.Qwen4ExpGGUFTextGenerator(
         model_path=args.model_root,weight_index=index,model_plugin=gate.resolve_model(index.architecture or ""),
-        backend="hip_gfx1151",max_sequence_length=4352,prefill_chunk_size=1024))
+        backend="hip_gfx1151",max_sequence_length=4352,prefill_chunk_size=args.prefill_chunk_size))
     runtime=generator.runner.runtime
-    # This diagnostic intercepts the parent even after the candidate is promoted.
-    os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"]="0"
-    key=KernelKey("hip_gfx1151","gdn_recurrence_norm_gate","f32_state","qwen4exp_sigmoid_register_prefill")
+    # Intercept only the selected leaf; the current UD arithmetic recovery uses
+    # wave-norm on all 36 GDN layers, unlike the historical 21-layer prefix.
+    if args.narrow_index:
+        from scripts.qwen4exp_gdn_narrow_gate_support import validate_call, expected_calls
+        key=KernelKey("hip_gfx1151","gdn_recurrence_norm_gate","f32_state","qwen4exp_sigmoid_wave_norm_prefill")
+        candidate_variant="qwen4exp_sigmoid_wave_norm_narrow_prefill"
+    else:
+        os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"]="0"
+        key=KernelKey("hip_gfx1151","gdn_recurrence_norm_gate","f32_state","qwen4exp_sigmoid_register_prefill")
+        candidate_variant="qwen4exp_sigmoid_wave_norm_prefill"
     parent=resolve(backend=key.backend,layer=key.layer,quant=key.quant,variant=key.variant)
-    candidate=resolve(backend=key.backend,layer=key.layer,quant=key.quant,variant="qwen4exp_sigmoid_wave_norm_prefill")
+    candidate=resolve(backend=key.backend,layer=key.layer,quant=key.quant,variant=candidate_variant)
     saved=malloc(48*128*128*4,runtime=runtime)
     start,stop=runtime.event_create(),runtime.event_create()
     report=dict(source=gate._git_metadata(ROOT),host=gate._host_metadata(),model_identity=identity,
-        command=sys.argv,fixture_sha256=digest,chunk_size=1024,cases=[],status="running",
+        command=sys.argv,fixture_sha256=digest,chunk_size=args.prefill_chunk_size,cases=[],status="running",
+        parent_variant=key.variant,candidate_variant=candidate_variant,
+        manifest_sha256=profile.manifest_sha256,
         protocol="Every serial call: restore starting state outside timing,1 warmup pair+2 measured counterbalanced pairs; compare complete output/state hashes after every pair. Only HIP-event kernel intervals timed.",
         performance_claim=False)
     captures=[]
 
     def hooked(*a,**kw):
-        validate_geometry(a)
+        if args.narrow_index:
+            validate_call(a, max_rows=args.prefill_chunk_size)
+        else:
+            validate_geometry(a)
         if int(kw.get("stream",0))!=0:
             raise ValueError("owner probe only supports default stream")
         runtime.device_synchronize()
@@ -100,7 +114,9 @@ def main():
         for case in cases:
             captures.clear()
             token=generator.runner.prefill(case["prompt_token_ids"])
-            expected=gate.gdn_wave_norm_expected_calls(case["prompt_tokens"],1024)
+            expected=(expected_calls(case["prompt_tokens"],args.prefill_chunk_size)
+                      if args.narrow_index else
+                      gate.gdn_wave_norm_expected_calls(case["prompt_tokens"],args.prefill_chunk_size))
             if len(captures)!=expected:
                 raise AssertionError((case["id"],len(captures),expected))
             totals=[sum(statistics.mean(c["samples_ms"][i]) for c in captures) for i in (0,1)]

@@ -20,8 +20,11 @@ nonzero FP32 state and 21 counterbalanced pairs per case.
 
 Exact output/state replay, guarded ownership, cross-head isolation,
 CPU-reference floor and cached trace pass. Private scratch drops36→28B;
-static VGPR remains256. This is operation-only evidence, not model
-throughput. The production route is unchanged pending natural-model gates.
+static VGPR remains256. Natural-model owner timing is1.027–1.044x across six
+cases/216 exact calls. All20 canonical/heldout full-logit/state/KV cases pass
+three candidate repeats and leak-free teardown. This is owner/operation
+measurement, not model throughput; engine A/B is pending and production
+selection is unchanged.
 [Protocol and artifact](results/2026-10-06-qwen4exp-gdn-narrow-index/README.md).
 
 ## Qwen3.8 Flash Next ordered router DPP production route

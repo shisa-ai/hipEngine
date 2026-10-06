@@ -1,5 +1,14 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-06 — Checked-index GDN natural-input qualification
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL/BF16/chunk4096: six-case216-call natural owner timing improves
+  1.0267–1.0441x, complete output/state exact. Code4K817.974→796.693ms
+  (-2.60%); all20 canonical/heldout full-logit/state/KV cases pass three
+  candidate repeats and teardown. No engine-wall claim or default change.
+  Source: `results/2026-10-06-qwen4exp-gdn-narrow-index/README.md`.
+
 ## 2026-10-06 — GDN checked-index complete-operation screen
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
