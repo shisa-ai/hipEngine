@@ -1,3 +1,14 @@
+## 2026-10-06 — HC grouped-norm F16 publication diagnostic
+
+- Radeon8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL production diagnostic: complete norm+cast+same padded HC-down
+  code-p4096 359.037→327.398ms (−8.812%,1.097x), four4K categories1.096–1.104x;
+  p5121.059x, p1024 **slower**93.045→99.133ms (+6.542%). All420calls exact,
+  immutable inputs/leak-free teardown,43focused tests and cached trace pass.
+  Dual F32/F16 publication eliminates a cast launch but changes no runtime
+  handoff/default; exactly4096 proceeds to ownership/model qualification.
+  Artifact: `results/2026-10-06-qwen4exp-norm-f16-publish/`.
+
 ## 2026-10-06 — Checked Q4 gate/up index screen closed
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next

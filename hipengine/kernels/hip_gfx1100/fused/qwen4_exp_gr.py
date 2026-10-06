@@ -31,6 +31,7 @@ _ARGS_GROUPED_NORM = (
     ctypes.c_float,
     ctypes.c_void_p,
 )
+_ARGS_GROUPED_NORM_PUBLISH = _ARGS_GROUPED_NORM[:3] + (ctypes.c_void_p,) + _ARGS_GROUPED_NORM[3:]
 _ARGS_MEAN = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -181,6 +182,64 @@ def qwen4_exp_grouped_rmsnorm_bf16_f32(
             stream,
         ),
     )
+
+
+def _check_norm_publication(residual_ptr, weight_ptr, output_ptr, output_f16_ptr,
+                            rows, branches, hidden) -> None:
+    _check_shape(rows, branches, hidden)
+    count = int(rows) * int(branches) * int(hidden)
+    if int(rows) * int(branches) > (1 << 32) - 1 or count > ((1 << 63) - 1) // 4:
+        raise ValueError("norm publication dimensions exceed launch/address bounds")
+    ranges = [(int(p), int(p) + n) for p, n in (
+        (residual_ptr, count * 2), (weight_ptr, int(branches) * int(hidden) * 4),
+        (output_ptr, count * 4), (output_f16_ptr, count * 2),
+    )]
+    if any(p <= 0 or end > (1 << 64) - 1 for p, end in ranges):
+        raise ValueError("norm publication requires valid bounded pointers")
+    for i, (begin, end) in enumerate(ranges):
+        if any(begin < other_end and other_begin < end
+               for other_begin, other_end in ranges[i + 1:]):
+            raise ValueError("norm publication buffers must not overlap")
+
+
+def qwen4_exp_grouped_rmsnorm_bf16_f32_f16(
+    residual_ptr: int, weight_ptr: int, output_ptr: int, output_f16_ptr: int,
+    rows: int, branches: int, hidden: int, eps: float = 1e-6, *,
+    stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Publish parent F32 norm and its staging-equivalent IEEE F16 copy.
+
+    All buffers are caller owned, disjoint, contiguous and dimension-bounded.
+    The caller supplies capacity and keeps both publications alive until their
+    same-stream consumers finish. No pointer cache or hidden allocation exists.
+    """
+    _check_norm_publication(residual_ptr, weight_ptr, output_ptr, output_f16_ptr,
+                            rows, branches, hidden)
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_qwen4_exp_grouped_rmsnorm_bf16_f32_f16",
+                          _ARGS_GROUPED_NORM_PUBLISH, ctypes.c_int)
+    _check_launch(runtime, fn(residual_ptr, weight_ptr, output_ptr, output_f16_ptr,
+                              rows, branches, hidden, float(eps), stream))
+
+
+def qwen4_exp_grouped_rmsnorm_bf16_f32_f16_unfused(
+    residual_ptr: int, weight_ptr: int, output_ptr: int, output_f16_ptr: int,
+    rows: int, branches: int, hidden: int, eps: float = 1e-6, *,
+    stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Registered strict parent norm followed by the existing staging cast."""
+    _check_norm_publication(residual_ptr, weight_ptr, output_ptr, output_f16_ptr,
+                            rows, branches, hidden)
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import f32_to_f16
+    qwen4_exp_grouped_rmsnorm_bf16_f32(
+        residual_ptr, weight_ptr, output_ptr, rows, branches, hidden, eps,
+        stream=stream, library=library, runtime=runtime)
+    # The cast has its own source-scoped library, not the norm library.
+    f32_to_f16(output_ptr, output_f16_ptr, rows * branches * hidden,
+               stream=stream, runtime=runtime)
 
 
 def qwen4_exp_grouped_rmsnorm_f32(
@@ -477,6 +536,12 @@ def register_qwen4_exp_gr_kernels(*, replace: bool = True) -> None:
             "strict",
         ): qwen4_exp_grouped_rmsnorm_bf16_f32,
         KernelKey(
+            "hip_gfx1100", "gr_grouped_rmsnorm", "bf16_f32", "f32_f16_publish",
+        ): qwen4_exp_grouped_rmsnorm_bf16_f32_f16,
+        KernelKey(
+            "hip_gfx1100", "gr_grouped_rmsnorm", "bf16_f32", "f32_f16_publish_unfused",
+        ): qwen4_exp_grouped_rmsnorm_bf16_f32_f16_unfused,
+        KernelKey(
             "hip_gfx1100",
             "gr_grouped_rmsnorm",
             "f32",
@@ -557,6 +622,8 @@ __all__ = [
     "qwen4_exp_repeat_bf16_branches",
     "qwen4_exp_gr_write_bf16_f32",
     "qwen4_exp_grouped_rmsnorm_bf16_f32",
+    "qwen4_exp_grouped_rmsnorm_bf16_f32_f16",
+    "qwen4_exp_grouped_rmsnorm_bf16_f32_f16_unfused",
     "qwen4_exp_grouped_rmsnorm_f32",
     "qwen4_exp_scaled_silu_f32",
     "qwen4_exp_silu_mul_f32",

@@ -1,5 +1,23 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## HC grouped-norm F16 publication diagnostic
+
+- `f32_f16_publish` and `f32_f16_publish_unfused` are separately registered
+  grouped-norm leaves. The first publishes existing F32 norm and identical
+  staging F16 bytes; the second is parent norm plus the existing cast. Neither
+  changes the runtime/default. `scripts/qwen4exp_norm_f16_publish_owner.py`
+  replays both operations in private scratch; it is not a native ownership gate.
+- Natural complete norm+cast+HC-down wins at512/4096 but loses at1024 by6.542%.
+  The next runtime scope is exactly4096, not a continuous512–4096 selector.
+  A scoped single-use loan from the session-owned staging buffer must first
+  cover stream/source/count/runtime/capacity identity, overwrite invalidation,
+  nested contexts, exceptions and isolation, then pass native model engagement,
+  state/KV/logits and engine A/B. No persistent activation cache is planned.
+- Remove diagnostic substitution plumbing only after a native route gate covers
+  these exact bounds and engagement. Keep the parent and strict unfused chain;
+  no env flag is added in this screen. Evidence:
+  `benchmarks/results/2026-10-06-qwen4exp-norm-f16-publish/`.
+
 ## Checked Q4 gate/up index diagnostic
 
 - `selected_dual_wmma_iu8_risk_narrow_prefill_bf16_bf16_out` is a
