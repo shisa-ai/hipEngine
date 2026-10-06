@@ -223,8 +223,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.rows < 1 or (args.limit is not None and args.limit < 1):
         parser.error("rows and limit must be positive")
+    # "auto" selects no explicit variants, so the runner's own route resolution
+    # picks the path the KV storage requires (the INT8 route's consumers).
     candidate_variants = (tuple(args.candidate_variants.split(","))
-                          if args.candidate_variants else None)
+                          if args.candidate_variants not in (None, "auto") else None)
     args.directory.mkdir(parents=True, exist_ok=True)
     cases = []
     for split, filename in (("canonical", "mtpbench-code-general-ja.jsonl"),
@@ -236,22 +238,23 @@ def main(argv=None):
     context = max(DEPTHS) + max(args.rows, 64)
     llm, production, loading = _resolve_generator(args.artifact, context)
     generator = llm._get_text_generator()
-    if candidate_variants is None:
+    if candidate_variants is None and args.candidate_kv_storage == "bf16":
         candidate = production
         expected_routes = tuple(PREFILL_ATTENTION_PRODUCTION_VARIANTS)
         if tuple(production.prefill_attention_variants) != PREFILL_ATTENTION_PRODUCTION_VARIANTS:
             llm.close()
             raise RuntimeError("shipping production variants are not selected; refusing self-comparison")
     else:
-        # An explicit-variant candidate arm: an evaluation, not the shipping
+        # An explicit candidate arm: an evaluation, not the shipping
         # self-comparison. The requested variants and KV storage select the
         # candidate's arithmetic; the shipping default never moves.
         candidate = Gemma4Runner(
             weights=production.weights, capacity=context,
-            prefill_attention_variants=candidate_variants,
+            prefill_attention_variants=(candidate_variants
+                                        if candidate_variants is not None else None),
             kv_storage=args.candidate_kv_storage,
         )
-        expected_routes = candidate_variants
+        expected_routes = candidate_variants or tuple(PREFILL_ATTENTION_PRODUCTION_VARIANTS)
     strict = Gemma4Runner(weights=production.weights, capacity=context,
                           prefill_attention_variants=("gemma4_plain",))
     manifests = {profile: resolve_runtime_profile(model=GEMMA4_GGUF_MODEL,
