@@ -1,5 +1,15 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-06 — Promoted-default prefill owners (diagnostic)
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL/BF16 code-p4096/chunk4096 at clean `ea818e2c6`: two cached-only
+  windows fully attribute2761 launches each, kernel union12.586/12.582s;
+  logits/lifecycle pass, native padded-tail/GDN scratch0/28B. No old→new
+  metric or speed claim. Q4 gate/up2218.753ms/current211VGPR and64-bit
+  address/control instructions motivate a checked-index screen, not forecast
+  savings. Source: `results/2026-10-06-qwen4exp-post-tail-prefill-owners/`.
+
 ## 2026-10-06 — Bounded padded HC-down production route
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next

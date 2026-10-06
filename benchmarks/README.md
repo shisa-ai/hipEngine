@@ -122,22 +122,25 @@ The full-model correctness and prefill results are reported separately above.
 
 ## Qwen3.8 Flash Next current prefill owner diagnostic
 
-On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, clean-source
-production UD-Q4_K_XL `code-p4096` at chunk4096 attributes all 2,761
-launches per pass. Two separately marked cached-only profiler windows have
-kernel unions 12.562/12.562 s. Warm/profile final logits match and teardown
-is leak-free. This is diagnostic attribution, not a throughput comparison.
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, clean source
+`ea818e2c6`, production UD-Q4_K_XL/BF16 `code-p4096` at chunk4096
+attributes all 2,761 launches per pass. Two separately marked cached-only
+profiler windows have kernel unions 12.586/12.582 s. Warm/profile final
+logits match and teardown is leak-free. Native padded-tail and checked-index
+GDN defaults run with scratch0/28 B per lane. This is diagnostic attribution,
+not a throughput comparison.
 
 | Kernel owner | Mean ms/pass | Kernel-union share |
 | --- | ---: | ---: |
-| Dense F32 coltile | 2249.802 | 17.91% |
-| MoE Q4_K gate/up | 2217.705 | 17.65% |
-| GR-up DPP | 1592.421 | 12.68% |
-| MoE Q5_1 down | 1206.285 | 9.60% |
-| GDN recurrence | 805.945 | 6.42% |
-| Router F32 ordered DPP | 546.167 | 4.35% |
+| Dense F32 coltile | 2255.260 | 17.92% |
+| MoE Q4_K gate/up | 2218.753 | 17.63% |
+| GR-up DPP | 1598.935 | 12.71% |
+| MoE Q5_1 down | 1207.148 | 9.59% |
+| Checked-index GDN recurrence | 781.876 | 6.21% |
+| Router F32 ordered DPP | 546.797 | 4.35% |
+| Padded dense-wide HC-down tails | 167.362 | 1.33% |
 
-[Protocol and artifacts](results/2026-10-06-qwen4exp-current-prefill-owners/README.md).
+[Protocol and artifacts](results/2026-10-06-qwen4exp-post-tail-prefill-owners/README.md).
 
 ## Qwen3.8 Flash Next split-operand dense operation screen
 
