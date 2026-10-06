@@ -17,6 +17,14 @@ down path, and explicit MMQ controls remain available for diagnostics. The
 binder pins ``HIPENGINE_GEMMA4_MOE_PREFILL=auto``; the manifest names the wide
 Q4 owner, its strict selected-row fallback, and the staged down owner.
 
+One scope is not a projection: ``decode_attention`` / ``global_head_dim_512``.
+``production`` prefers the staged singleton attention candidate for the
+one-token global decode step, where the strict native/exact kernel's resident
+logit row overflows LDS and it keeps the same arithmetic on owned global
+scratch; ``strict`` keeps that native kernel. The layer consumes the preference
+only at its native/exact attention call site, so the tiled and aotriton prefills
+and the profile-selected prefill variants are unchanged.
+
 ``strict`` pins ``HIPENGINE_GEMMA4_MOE_PREFILL=grouped``, the exact arm
 ``gemma4_experts.py::_prefill_route_flags`` documents as the rollback lever,
 measured with the same probe: the MMQ owner disappears and the grouped exact
@@ -64,6 +72,12 @@ from hipengine.execution_profiles import (
     register_runtime_profile_plan,
     registered_runtime_profile_keys,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    DECODE_ATTENTION_LAYER as _DECODE_ATTENTION_LAYER,
+    DECODE_ATTENTION_PLAIN as _DECODE_ATTENTION_PLAIN,
+    DECODE_ATTENTION_QUANT as _DECODE_ATTENTION_QUANT,
+    DECODE_ATTENTION_STAGED as _DECODE_ATTENTION_STAGED,
+)
 
 # Model plugin identity (``hipengine/models/gemma4.py``: name = "gemma4_gguf",
 # default_quant = "gguf_q4_k_m"); backend is the resolved gfx1100 tree.
@@ -75,6 +89,24 @@ GEMMA4_GGUF_QUANT = "gguf_q4_k_m"
 MOE_PREFILL_ENV = "HIPENGINE_GEMMA4_MOE_PREFILL"
 _PRODUCTION_ROUTE = "auto"
 _STRICT_ROUTE = "grouped"
+
+# The one-token global decode step: the strict native/exact attention entry holds
+# one FP32 logit per live key in LDS and, past 15,616 keys at head_dim 512, keeps
+# the same arithmetic on owned global scratch (its ``global_class`` variant).
+# ``production`` prefers the staged singleton candidate for exactly that shape;
+# ``strict`` keeps the native kernel. Registered under its own layer key so the
+# preference is a decode scope, not a prefill one, and consumed only at the
+# layer's native/exact attention call site -- the tiled and aotriton prefills and
+# the profile-selected prefill variants are untouched.
+#
+# The layer resolves this scope through the kernel registry, so the names and the
+# structural quant key are the kernel module's own: one source of truth for what
+# is registered and what is resolved.
+DECODE_ATTENTION_LAYER = _DECODE_ATTENTION_LAYER
+DECODE_ATTENTION_SCOPE = "global_head_dim_512"
+DECODE_ATTENTION_PLAIN = _DECODE_ATTENTION_PLAIN
+DECODE_ATTENTION_STAGED = _DECODE_ATTENTION_STAGED
+DECODE_ATTENTION_QUANT = _DECODE_ATTENTION_QUANT
 
 _KV_POLICY = "paged_bf16"
 _GRAPH_POLICY = "serial_eager"
@@ -179,6 +211,12 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             selected_variant=_SELECTED_GEMV, registry_quant=_Q8_0,
         ),
         _selection(
+            layer=DECODE_ATTENTION_LAYER, scope=DECODE_ATTENTION_SCOPE,
+            selected_variant=DECODE_ATTENTION_STAGED,
+            strict_fallback_variant=DECODE_ATTENTION_PLAIN,
+            registry_quant=DECODE_ATTENTION_QUANT,
+        ),
+        _selection(
             layer="moe_linear", scope="gate_up_q4_k",
             selected_variant=_T16_FUSED_WMMA, strict_fallback_variant=_T16_DECODE,
             registry_quant=_Q4_K_T16,
@@ -247,6 +285,11 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             layer="linear", scope="moe_selected_q8_0",
             selected_variant=_SELECTED_GEMV, registry_quant=_Q8_0,
         ),
+        _selection(
+            layer=DECODE_ATTENTION_LAYER, scope=DECODE_ATTENTION_SCOPE,
+            selected_variant=DECODE_ATTENTION_PLAIN,
+            registry_quant=DECODE_ATTENTION_QUANT,
+        ),
         # The T16-converted gate_up scope: grouped has no T16 owner, so the
         # strict arm resolves this scope through the exact selected owner
         # (also production's declared fallback; the raw grouped arm still
@@ -267,14 +310,62 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 
 def _binder(route: str):
-    def bind(_generator: Any, _resolved: ResolvedRuntimeProfile) -> None:
+    def bind(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
         # The route pin is read per prefill call, so a construction-time write
         # holds for the whole run. Pinning (rather than only filling a default)
         # keeps the manifest true: the profile declares which route executes
         # even if the process environment already carried a diagnostic pin.
         os.environ[MOE_PREFILL_ENV] = route
+        # The decode-attention preference is read from the resolved manifest, so
+        # the generator carries exactly what the plan declares: production
+        # selects the staged candidate, strict keeps the native kernel.
+        variants = tuple(
+            sorted(
+                {
+                    str(selection["selected_variant"])
+                    for selection in resolved.manifest["selections"]
+                    if selection["layer"] == DECODE_ATTENTION_LAYER
+                }
+            )
+        )
+        if variants:
+            try:
+                generator.decode_attention_variants = variants
+            except AttributeError:
+                # A construction stub that only carries environment bindings.
+                pass
 
     return bind
+
+
+def _register_decode_attention_variants() -> None:
+    """Register plain and staged decode attention under the decode layer key.
+
+    ``resolve_runtime_profile`` refuses a plan that names a variant the registry
+    does not hold, and the layer resolves the same key at its native/exact call
+    site, so this is the single registration both read. The functions are the
+    same launchers the prefill-attention scope registers; the decode scope's own
+    structural quant key (``gemma4_decode_attention``) is what distinguishes it,
+    not the artifact's weight quant.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_bf16,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
+        gemma4_attention_staged_bf16,
+    )
+    from hipengine.kernels.registry import KernelKey, is_registered, register
+
+    for variant, fn in (
+        (DECODE_ATTENTION_PLAIN, gemma4_attention_prefill_bf16),
+        (DECODE_ATTENTION_STAGED, gemma4_attention_staged_bf16),
+    ):
+        key = KernelKey(
+            GEMMA4_GGUF_BACKEND, DECODE_ATTENTION_LAYER, DECODE_ATTENTION_QUANT, variant
+        )
+        if not is_registered(key):
+            register(key, fn)
 
 
 def _registered_key() -> tuple[str, str, str]:
@@ -299,6 +390,7 @@ def register_gemma4_gguf_profiles() -> bool:
     cold-path provenance plus a construction-time route policy.
     """
 
+    _register_decode_attention_variants()
     if _already_registered():
         return False
     register_runtime_profile_plan(
@@ -346,7 +438,21 @@ def gemma4_gguf_profiles_registered() -> bool:
     return wanted <= set(registered_runtime_profile_keys())
 
 
+# Register the decode-attention variants when this module is imported, the same
+# way ``gemma4_gguf_profiles`` registers its prefill variants. The profile plan
+# names them, and ``resolve_runtime_profile`` refuses a plan whose variants are
+# not registered; registering at import also keeps them in the collection-time
+# kernel baseline so the profile-dependency guard is order-independent. It
+# registers Python launch wrappers only: no build, no device.
+_register_decode_attention_variants()
+
+
 __all__ = [
+    "DECODE_ATTENTION_LAYER",
+    "DECODE_ATTENTION_PLAIN",
+    "DECODE_ATTENTION_QUANT",
+    "DECODE_ATTENTION_SCOPE",
+    "DECODE_ATTENTION_STAGED",
     "GEMMA4_GGUF_BACKEND",
     "GEMMA4_GGUF_MODEL",
     "GEMMA4_GGUF_QUANT",

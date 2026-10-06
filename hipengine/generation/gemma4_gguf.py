@@ -86,6 +86,11 @@ class Gemma4GGUFGenerator:
     # built; the layer still matches each against its own layer's head geometry
     # and keeps the strict kernel on a capability miss.
     prefill_attention_variants: tuple[str, ...] | None = None
+    # The decode-attention variants this run requests, or ``None`` for the strict
+    # native kernel. The execution profile's binder supplies them before the
+    # runner is built; the layer applies them only at its native/exact attention
+    # call site and keeps every other route unchanged.
+    decode_attention_variants: tuple[str, ...] | None = None
     last_generation_outputs: tuple[GenerationOutput, ...] = field(
         default=(), init=False, repr=False
     )
@@ -360,6 +365,7 @@ class Gemma4GGUFGenerator:
                 capacity=self.context_length,
                 max_logits_rows=max(1, int(self._speculative_max_logits_rows)),
                 prefill_attention_variants=self._resolve_prefill_attention_variants(),
+                decode_attention_variants=self.decode_attention_variants,
                 kv_storage=storage,
                 kv_scale_dtype=scale_dtype,
                 kv_scale_granularity=granularity,
@@ -625,8 +631,12 @@ for _backend, _factory in (
 from hipengine.generation.gemma4_gguf_profiles import (  # noqa: E402
     register_gemma4_gguf_profiles as _register_gemma4_gguf_profiles,
 )
+from hipengine.generation.gemma4_profiles import (  # noqa: E402
+    register_gemma4_gguf_profiles as _register_gemma4_gfx1100_profiles,
+)
 
 _register_gemma4_gguf_profiles()
+_register_gemma4_gfx1100_profiles()
 
 
 __all__ = [

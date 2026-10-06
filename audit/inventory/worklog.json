@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11483,
-    "current": 4251,
+    "entries": 11487,
+    "current": 4255,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1387,
+    "rows": 1389,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1226
+      "status": 1228
     }
   },
   "rows": [
@@ -52635,6 +52635,81 @@
       },
       "id": "worklog/20261005T173050.254768Z-lhl-gemma4-bounded-sliding-kv-608e7a",
       "evidence_hash": "7bff6d112838"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261005T190640.173963Z-lhl-gemma4-grouped-prefill-fold128-preference-fbe09f",
+      "title": "Prefer fold128 grouped prefill owner in Gemma expert route",
+      "location": "worklog/entries/20261005T190640.173963Z-lhl-gemma4-grouped-prefill-fold128-preference-fbe09f.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-grouped-prefill-fold128-preference",
+        "written": "2026-10-05",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Parent: run GPU validation (the `_needs_hip` grouped bit-exact/reference\n  nodes now exercise the fold owner as the route's preferred variant) and the\n  public benchmark harness before commit.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261005T190640.173963Z-lhl-gemma4-grouped-prefill-fold128-preference-fbe09f.md",
+        "refs": [],
+        "tokens": [
+          "expert",
+          "fold128",
+          "gemma",
+          "grouped",
+          "owner",
+          "prefer",
+          "prefill",
+          "route"
+        ]
+      },
+      "id": "worklog/20261005T190640.173963Z-lhl-gemma4-grouped-prefill-fold128-preference-fbe09f",
+      "evidence_hash": "75e9786afa21"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261005T195136.296757Z-lhl-gemma4-graph-range-geometry-b2a071",
+      "title": "Pin graph key-range coverage and partition geometry",
+      "location": "worklog/entries/20261005T195136.296757Z-lhl-gemma4-graph-range-geometry-b2a071.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-graph-range-geometry",
+        "written": "2026-10-05",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Investigate staged live origins and slice counts for graph replay; attribute the growing 8K prefill gap using the actual campaign prompt. Complete the remaining context ladder and speculative controls.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261005T195136.296757Z-lhl-gemma4-graph-range-geometry-b2a071.md",
+        "refs": [],
+        "tokens": [
+          "coverage",
+          "geometry",
+          "graph",
+          "key",
+          "partition",
+          "pin",
+          "range"
+        ]
+      },
+      "id": "worklog/20261005T195136.296757Z-lhl-gemma4-graph-range-geometry-b2a071",
+      "evidence_hash": "f9e132b8f604"
     }
   ]
 }
