@@ -21,6 +21,9 @@ def main():
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--case-id", action="append", default=[],
+                        help="Run only these fixture/heldout cases for a bounded binder smoke")
+    parser.add_argument("--paired-repeats", type=int, choices=(1, 2, 3), default=3)
     args = parser.parse_args()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
@@ -45,6 +48,7 @@ def main():
         ENV, PRODUCER_KEY, expected_calls, heldout_tokens, validate_producer_call,
     )
 
+    os.environ.pop(ENV, None)
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     production, strict = [resolve_runtime_profile(model="qwen4_exp_gguf", backend="hip_gfx1151",
@@ -62,6 +66,8 @@ def main():
         generator = production.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
             model_path=args.model_root, weight_index=index, model_plugin=resolve_model(index.architecture or ""),
             backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=4096))
+        assert os.environ[ENV] == "1", "native production binder did not enable publication"
+        report["native_binder_value"] = os.environ[ENV]
         counts = dict(publisher=0, cast=0, consumed=0)
         key = PRODUCER_KEY
         original_producer = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
@@ -90,10 +96,23 @@ def main():
             cases.append(dict(id=row["id"], category=row["category"], prompt_tokens=len(tokens), prompt_token_ids=tokens))
         report["heldout_suite"] = dict(path=str(heldout_path), sha256=hashlib.sha256(heldout_path.read_bytes()).hexdigest(),
             token_policy="uniform repeat/truncate to4096 for state/ownership; not task quality")
+        if args.case_id:
+            known = {case["id"] for case in cases}
+            if set(args.case_id) - known:
+                raise ValueError(f"unknown case IDs: {sorted(set(args.case_id) - known)}")
+            cases = [case for case in cases if case["id"] in args.case_id]
+        report["paired_repeats"] = args.paired_repeats
+        modes = ("candidate", "parent", "parent", "candidate", "candidate", "parent")[:2 * args.paired_repeats]
+        first_native = True
         for case in cases:
             captures = []
-            for mode in ("parent", "candidate", "candidate", "parent", "parent", "candidate"):
-                os.environ[ENV] = "1" if mode == "candidate" else "0"
+            for mode in modes:
+                if first_native:
+                    # The first request observes the binder, without an arm override.
+                    assert mode == "candidate" and os.environ[ENV] == "1"
+                    first_native = False
+                else:
+                    os.environ[ENV] = report["native_binder_value"] if mode == "candidate" else "0"
                 before = dict(counts)
                 first = generator.runner.prefill(case["prompt_token_ids"])
                 prefill_state = _state_summary(generator.runner)
@@ -131,7 +150,7 @@ def main():
             report["cases"].append(dict(case_id=case["id"], category=case["category"], prompt_tokens=case["prompt_tokens"], runs=captures, exact=True))
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(report, indent=2) + "\n")
-            print(case["id"], "3 paired repeats exact; expected", expected, flush=True)
+            print(case["id"], args.paired_repeats, "paired repeats exact; expected", expected, flush=True)
         report["status"] = "passed"
     finally:
         if original_producer is not None:

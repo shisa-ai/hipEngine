@@ -27,6 +27,7 @@ from hipengine.generation.qwen4_exp_profiles import (
     QWEN4_EXP_BACKEND,
     QWEN4_EXP_MODEL,
     QWEN4_EXP_QUANTS,
+    NORM_F16_PUBLICATION_ENV,
     last_prebinder_conflicts,
     qwen4_exp_gfx1151_profiles_registered,
     register_qwen4_exp_gfx1151_profiles,
@@ -83,6 +84,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64",
         "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
+        NORM_F16_PUBLICATION_ENV,
     )
     for name in environment_names:
         monkeypatch.delenv(name, raising=False)
@@ -554,10 +556,60 @@ def test_production_binds_the_certified_q8_dense_wide_prefill_scope() -> None:
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(
         str(n) for n in range(13, 48)
     )
+    assert os.environ[NORM_F16_PUBLICATION_ENV] == "1"
     # The f16 WMMA dense route is retired at this scope for this quant; the
     # selector and its env var stay available for explicit opt-in and gating.
     assert PRODUCTION_Q8_WMMA_PREFILL_LAYERS == tuple(range(16, 48))
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
+
+
+@pytest.mark.parametrize("profile,quant,selected,fallback,enabled", [
+    (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "f32_f16_publish", "strict", "1"),
+    (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", "strict", "strict", "0"),
+    (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", None, None, "0"),
+])
+def test_norm_publication_manifest_and_binding(profile, quant, selected, fallback, enabled):
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(profile, quant=quant)
+    rows = [row for row in resolved.manifest["selections"]
+            if row["layer"] == "gr_grouped_rmsnorm"]
+    if selected is None:
+        assert rows == []
+    else:
+        assert len(rows) == 1
+        assert rows[0]["scope"] == "prefill_rows4096_branches4_h2560_hc_down_layers13_47"
+        assert rows[0]["selected_variant"] == selected
+        assert rows[0]["strict_fallback_variant"] == fallback
+        assert rows[0]["registry_quant"] == "bf16_f32"
+    resolved.binder(SimpleNamespace(runner=None), resolved)
+    assert os.environ[NORM_F16_PUBLICATION_ENV] == enabled
+
+
+def test_norm_publication_explicit_rollback_is_manifested(monkeypatch):
+    monkeypatch.setenv(NORM_F16_PUBLICATION_ENV, "0")
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    row = next(row for row in resolved.manifest["selections"]
+               if row["layer"] == "gr_grouped_rmsnorm")
+    assert row["selected_variant"] == row["strict_fallback_variant"] == "strict"
+    resolved.binder(SimpleNamespace(runner=None), resolved)
+    assert os.environ[NORM_F16_PUBLICATION_ENV] == "0"
+
+
+def test_norm_publication_rebinding_cannot_leak_into_q4_or_strict():
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    for profile, quant, enabled in (
+        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
+        (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", "0"),
+        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
+        (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", "0"),
+    ):
+        resolved = _resolve(profile, quant=quant)
+        resolved.binder(SimpleNamespace(runner=None), resolved)
+        assert os.environ[NORM_F16_PUBLICATION_ENV] == enabled
 
 
 def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
@@ -573,6 +625,7 @@ def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ""
+    assert os.environ[NORM_F16_PUBLICATION_ENV] == "0"
 
 
 def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() -> None:

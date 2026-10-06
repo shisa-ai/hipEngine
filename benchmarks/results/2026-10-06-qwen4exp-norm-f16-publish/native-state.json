@@ -1,0 +1,527 @@
+{
+  "schema": 1,
+  "kind": "native_norm_f16_publication_smoke",
+  "status": "passed",
+  "performance_claim": false,
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "a42aa0dd83be57761516d8943df52ffa6ef8d66f",
+    "tracked_clean": true
+  },
+  "commands": {
+    "argv": [
+      "scripts/qwen4exp_norm_f16_native_smoke.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+      "--output",
+      "/tmp/qwen4exp-dp5-loan-native-20261006/model-smoke-clean.json"
+    ]
+  },
+  "script_sha256": "75edfea6733dd8a05903826ae44115731b9bee8b0f328339e2548f03b985e234",
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "profile": {
+    "manifest_sha256": "a3baefbeb6237a4a24b4751c8f46f5c0cfa4c5ef166a289eb7a5fbe124dfdcb0",
+    "strict_manifest_sha256": "13a2117a83e113b2a9afc18ba1f8c762b40b802c74b6b2ab00f7a4b6a2253d27",
+    "manifest": {
+      "kind": "hipengine_execution_profile_manifest",
+      "schema_version": 1,
+      "execution_profile": "production",
+      "backend": "hip_gfx1151",
+      "model": "qwen4_exp_gguf",
+      "quant": "gguf_ud_q4_k_xl",
+      "kv_policy": "paged_bf16_qsa_index_f32",
+      "graph_policy": "request_owned_exact_moe_graph_c1",
+      "selections": [
+        {
+          "layer": "argmax",
+          "scope": "qwen4exp_normal_greedy_output",
+          "selected_variant": "top1_i64",
+          "strict_fallback_variant": "top1_i64",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "f32"
+        },
+        {
+          "layer": "gdn_recurrence_norm_gate",
+          "scope": "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128",
+          "selected_variant": "qwen4exp_sigmoid_wave_norm_narrow_prefill",
+          "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill",
+          "evidence_artifact": "benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md",
+          "registry_quant": "f32_state"
+        },
+        {
+          "layer": "gdn_recurrence_norm_gate",
+          "scope": "prefill_rows_gt4096_serial_gdn_hk16_hv48_d128",
+          "selected_variant": "qwen4exp_sigmoid_wave_norm_prefill",
+          "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill",
+          "evidence_artifact": "benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm-owner.json",
+          "registry_quant": "f32_state"
+        },
+        {
+          "layer": "gr_gated_mean_sigmoid",
+          "scope": "all_gr_reads_rows_le256",
+          "selected_variant": "strict",
+          "strict_fallback_variant": "strict",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "f32"
+        },
+        {
+          "layer": "linear",
+          "scope": "decode_c1_calibrated_q4_dp4a_43_layers",
+          "selected_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "linear",
+          "scope": "grouped_prefill_rows_ge512_q8_0_expert_down",
+          "selected_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "grouped_prefill_rows_lt512_q8_0_expert_down",
+          "selected_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_exact_q8_f32_coltile",
+          "selected_variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_gdn_qkv_ssm_prepacked_mmq",
+          "selected_variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_policy_qwen4exp_raw_q8_shapes",
+          "selected_variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_512_4096_k10240_n320_dense_wide_layers13_47",
+          "selected_variant": "dense_wide256_padded_f16in_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_ge512_k2560_n12288_raw_q",
+          "selected_variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_ge512_token_major_mapped_q8_down",
+          "selected_variant": "selected_grouped_row4_register_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "ungrouped_prefill_rows_ge64_q5k_gate_up",
+          "selected_variant": "selected_grouped_row4_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_k"
+        },
+        {
+          "layer": "linear+gr_gated_mean",
+          "scope": "qwen4exp_rows_gt256_gr_up",
+          "selected_variant": "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact",
+          "strict_fallback_variant": "coltile2_branch4_rowbatch4_f32_exact",
+          "evidence_artifact": "benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/README.md",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_layers27_47_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_layers27_47_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_lt64_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge512_k640_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge64_exact_grouped_q4_gate_up",
+          "selected_variant": "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge64_lt512_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_pair2_fold128_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "paged_attn_decode",
+          "scope": "qwen4exp_multirow_dense_qsa",
+          "selected_variant": "bf16_context_batch_paged_c1_exact_spans",
+          "strict_fallback_variant": "bf16_context_batch_paged_c1_exact_spans",
+          "evidence_artifact": "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json",
+          "registry_quant": "w4_paro"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "prefill_h256_page256_sparse_rows_ge16",
+          "selected_variant": "strict_h256_head_quad_rows_spans",
+          "strict_fallback_variant": "strict_rows_spans",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "qwen4exp_c1_h256_indexed_sparse_decode",
+          "selected_variant": "strict_ordered_three_pass_spans",
+          "strict_fallback_variant": "strict_spans",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "qwen4exp_c1_h256_indexed_sparse_decode_v2",
+          "selected_variant": "strict_ordered_three_pass_v2_spans",
+          "strict_fallback_variant": "strict_spans",
+          "evidence_artifact": "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json",
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "router_logits",
+          "scope": "qwen4exp_multirow_f32_router",
+          "selected_variant": "f32_hidden_token_tile4_dpp_exact",
+          "strict_fallback_variant": "f32_hidden_token_tile4_dense_exact",
+          "evidence_artifact": "benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md",
+          "registry_quant": "f32"
+        }
+      ]
+    },
+    "strict_manifest": {
+      "kind": "hipengine_execution_profile_manifest",
+      "schema_version": 1,
+      "execution_profile": "strict",
+      "backend": "hip_gfx1151",
+      "model": "qwen4_exp_gguf",
+      "quant": "gguf_ud_q4_k_xl",
+      "kv_policy": "paged_bf16_qsa_index_f32",
+      "graph_policy": "request_owned_exact_moe_graph_c1",
+      "selections": [
+        {
+          "layer": "argmax",
+          "scope": "qwen4exp_normal_greedy_output",
+          "selected_variant": "top1_i64",
+          "strict_fallback_variant": "top1_i64",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json",
+          "registry_quant": "f32"
+        },
+        {
+          "layer": "gdn_recurrence_norm_gate",
+          "scope": "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128",
+          "selected_variant": "qwen4exp_sigmoid_strict_prefill",
+          "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill",
+          "evidence_artifact": null,
+          "registry_quant": "f32_state"
+        },
+        {
+          "layer": "gdn_recurrence_norm_gate",
+          "scope": "prefill_rows_gt4096_serial_gdn_hk16_hv48_d128",
+          "selected_variant": "qwen4exp_sigmoid_strict_prefill",
+          "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill",
+          "evidence_artifact": null,
+          "registry_quant": "f32_state"
+        },
+        {
+          "layer": "gr_gated_mean_sigmoid",
+          "scope": "all_gr_reads_rows_le256",
+          "selected_variant": "strict",
+          "strict_fallback_variant": "strict_unfused",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json",
+          "registry_quant": "f32"
+        },
+        {
+          "layer": "linear",
+          "scope": "decode_c1_calibrated_q4_dp4a_43_layers",
+          "selected_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "linear",
+          "scope": "grouped_prefill_rows_ge512_q8_0_expert_down",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "grouped_prefill_rows_lt512_q8_0_expert_down",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_exact_q8_f32_coltile",
+          "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_gdn_qkv_ssm_prepacked_mmq",
+          "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_policy_qwen4exp_raw_q8_shapes",
+          "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_512_4096_k10240_n320_dense_wide_layers13_47",
+          "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_ge512_k2560_n12288_raw_q",
+          "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "prefill_rows_ge512_token_major_mapped_q8_down",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "linear",
+          "scope": "ungrouped_prefill_rows_ge64_q5k_gate_up",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_k"
+        },
+        {
+          "layer": "linear+gr_gated_mean",
+          "scope": "qwen4exp_rows_gt256_gr_up",
+          "selected_variant": "coltile2_branch4_rowbatch4_f32_exact",
+          "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json",
+          "registry_quant": "gguf_q8_0"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_layers27_47_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_layers27_47_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge2_lt64_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge512_k640_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge64_exact_grouped_q4_gate_up",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q4_k"
+        },
+        {
+          "layer": "moe_linear",
+          "scope": "prefill_rows_ge64_lt512_exact_grouped_q5_1_down",
+          "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_q5_1"
+        },
+        {
+          "layer": "paged_attn_decode",
+          "scope": "qwen4exp_multirow_dense_qsa",
+          "selected_variant": "bf16_context_batch_paged_c1_exact_spans",
+          "strict_fallback_variant": "bf16_context_batch_spans",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json",
+          "registry_quant": "w4_paro"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "prefill_h256_page256_sparse_rows_ge16",
+          "selected_variant": "strict_rows_spans",
+          "strict_fallback_variant": "strict_rows_spans",
+          "evidence_artifact": null,
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "qwen4exp_c1_h256_indexed_sparse_decode",
+          "selected_variant": "strict_spans",
+          "strict_fallback_variant": "strict_spans",
+          "evidence_artifact": null,
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "qsa_sparse_attention",
+          "scope": "qwen4exp_c1_h256_indexed_sparse_decode_v2",
+          "selected_variant": "strict_spans",
+          "strict_fallback_variant": "strict_spans",
+          "evidence_artifact": null,
+          "registry_quant": "bf16_kv"
+        },
+        {
+          "layer": "router_logits",
+          "scope": "qwen4exp_multirow_f32_router",
+          "selected_variant": "f32_hidden_token_tile4_dense_exact",
+          "strict_fallback_variant": "f32_hidden",
+          "evidence_artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json",
+          "registry_quant": "f32"
+        }
+      ]
+    }
+  },
+  "kv_dtype": "BF16",
+  "prefill_chunk_size": 4096,
+  "max_sequence_length": 4352,
+  "decode_steps": 16,
+  "heldout_suite": {
+    "path": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+    "token_policy": "uniform repeat/truncate to4096 for state/ownership; not task quality"
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 89406349064,
+    "total_allocated_bytes": 90192781096,
+    "total_freed_bytes": 90192781096,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  },
+  "cases": 14,
+  "candidate_calls": 2520,
+  "candidate_decode_calls": 0,
+  "exact_full_logits": true,
+  "exact_state": true,
+  "exact_full_kv": true,
+  "exact_output_token_ids": true,
+  "teardown_clean": true,
+  "raw_path": "/tmp/qwen4exp-dp5-loan-native-20261006/model-smoke-clean.json",
+  "raw_sha256": "f67561b3ccba44304eb9d691d8eb49c1888d8eb5bf8735c3f86b4f973ed271b8",
+  "limits": "Heldout prompts are uniformly repeated/truncated to 4096 tokens for ownership/state coverage and are not task-quality scores."
+}

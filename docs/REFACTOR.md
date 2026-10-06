@@ -1,26 +1,32 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## HC grouped-norm F16 publication diagnostic
+## Bounded HC grouped-norm F16 publication and rollback
 
 - `f32_f16_publish` and `f32_f16_publish_unfused` are separately registered
   grouped-norm leaves. The first publishes existing F32 norm and identical
   staging F16 bytes; the second is parent norm plus the existing cast.
   `scripts/qwen4exp_norm_f16_publish_owner.py` replays both operations in
   private scratch; it is not a native ownership gate.
-- `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` is a default-off integration
-  flag. Backend registry-axis policy admits only the immediate enabled Q8_0
+- `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` is enabled by the named gfx1151
+  UD-Q4_K_XL production binder and disabled by strict and Q4_K_M. Explicit
+  pre-registration `=0` rollback is recorded in the manifest. Backend
+  registry-axis policy admits only the immediate enabled Q8_0
   dense-wide HC-down consumer at exactly 4096 rows, K10240/N320 and layers
   13–47. It borrows the existing session-owned workspace, adds no device
   allocation, and preserves parent norm plus ordinary cast on admission misses.
   The single-use loan binds source/count/stream/runtime/workspace and consumer
   key; nested scopes, mismatches and intervening staging invalidate it.
-- Natural complete norm+cast+HC-down wins at512/4096 but loses at1024 by6.542%.
-  The runtime scope is exactly4096, not a continuous512–4096 selector. Native
-  model engagement, state/KV/logits and counterbalanced engine A/B are required
-  before a named-plan default. No persistent activation cache is planned.
-- Remove the integration flag after promotion and one qualified release window,
-  or remove the runtime handoff if native full-operation pricing rejects it.
-  Keep the registered parent and strict unfused chain. Evidence:
+- Native model engagement, state/KV/logits and counterbalanced engine A/B are
+  complete: 14 native canonical/heldout cases are exact with 70 publisher/
+  consumer calls per candidate 4096 prefill, zero decode calls and zero
+  teardown allocations. The tracked-clean 12-case A/B records a 1.0015x
+  weighted 4096 prefill ratio, while aggregate request wall is 0.9970x and
+  general-English p4096 is 2.77% slower. This is therefore a bounded prefill
+  owner transfer, not an all-request or decode-speed claim. Shapes 512/1024
+  remain on parent norm+cast. No persistent activation cache is planned.
+- Remove the integration flag after one qualified release window, or remove
+  the runtime handoff if later native pricing rejects it. Keep the registered
+  parent and strict unfused chain. Evidence:
   `benchmarks/results/2026-10-06-qwen4exp-norm-f16-publish/`.
 
 ## Checked Q4 gate/up index diagnostic

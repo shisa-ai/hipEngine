@@ -5,11 +5,14 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
-## Qwen3.8 Flash Next grouped-norm F16 publication diagnostic
+## Qwen3.8 Flash Next bounded grouped-norm F16 publication
 
-On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
-this diagnostic publishes existing F32 grouped norm and identical staging F16
-bytes in one kernel, then runs the same padded HC-down GEMM as the parent.
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, the gfx1151
+UD-Q4_K_XL production profile publishes existing F32 grouped norm and identical
+staging F16 bytes in one kernel, then runs the padded HC-down GEMM. Admission
+is exactly 4096 rows, K10240/N320, branches4/H2560, layers13–47 HC-down roles.
+The immediate-use handoff borrows the session workspace and eliminates 70
+staging casts per qualified prefill without adding device allocations.
 Complete norm+cast+GEMM event timing over six natural cases/420 exact calls:
 
 | Natural input | Parent owner ms | Publisher owner ms | Speedup |
@@ -18,11 +21,17 @@ Complete norm+cast+GEMM event timing over six natural cases/420 exact calls:
 | code p1024 | 93.045 | 99.133 | 0.939x |
 | four categories p4096 | 358.844–360.867 | 326.934–328.139 | 1.096–1.104x |
 
-The 1024-row route is slower and is not a candidate for integration. All
-outputs/input bytes and teardown pass; kernel scratch is zero. Exactly4096
-rows proceed to an immediate-use ownership handoff and native model gate.
-No default, full-prefill or request-wall claim follows from this screen.
-[Protocol, samples and ownership contract](results/2026-10-06-qwen4exp-norm-f16-publish/README.md).
+The 1024-row screen is slower and is not integrated; 512/1024 and unmeasured
+rows keep parent norm+cast. All outputs/input bytes and teardown pass; kernel
+scratch is zero. Fourteen native canonical/heldout state cases are exact with
+full KV, 2,520 candidate publisher/consumer calls, zero decode calls and zero
+teardown allocations. The tracked-clean 12-case A/B gives a 1.0015x weighted
+4096 prefill ratio (322.618→323.115 tok/s, +0.154%). Aggregate request wall
+is 0.9970x, with a 2.77% general-English p4096 request regression. The measured
+benefit is the bounded prefill operation, not an all-request or decode speedup.
+The small engine prefill effect is within run variation (maximum within-arm
+prefill CV 0.608%; one paired stratum 0.9999x).
+[Protocol, samples and qualification artifact](results/2026-10-06-qwen4exp-norm-f16-publish/README.md).
 
 ## Qwen3.8 Flash Next padded dense-wide tail production route
 

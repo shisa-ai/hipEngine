@@ -121,9 +121,15 @@ def test_production_selects_the_multi_column_gdn_prefill_owner(monkeypatch):
     # happened while this row was conditional on the quant.
     assert _tile16_declaration(other) == os.environ[
         "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"]
-    # The recovery quant closes the gate, so it declares the exact owner instead and
-    # names no tile16 route at all.
-    assert _tile16_declaration(profile) == "qwen4exp_sigmoid_wave_norm_prefill"
+    # UD declares only its reachable serial scopes, not the disabled tile16
+    # scope. The checked owner covers 2-4096 rows; wide remains above4096.
+    recovery_scopes = {row["scope"]: row["selected_variant"]
+                       for row in profile.manifest["selections"]
+                       if row["layer"] == "gdn_recurrence_norm_gate"}
+    assert recovery_scopes == {
+        "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128": "qwen4exp_sigmoid_wave_norm_narrow_prefill",
+        "prefill_rows_gt4096_serial_gdn_hk16_hv48_d128": "qwen4exp_sigmoid_wave_norm_prefill",
+    }
 
     # The superseded route stays registered as the strict fallback, so rollback is
     # a one-line revert rather than a rebuild.
