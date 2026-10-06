@@ -330,6 +330,11 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
+    if route_package == "gdn-narrow":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        environment["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] = "1"
+        return
     if route_package == "router-dpp":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -456,7 +461,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="One full-suite pair, then stop for multiple clear losses or finish remaining pairs in-residency")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-mmq-planes2", "gr-dpp-reduction", "router-dpp"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-mmq-planes2", "gr-dpp-reduction", "router-dpp", "gdn-narrow"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -632,6 +637,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     row4_calls = [0]
     register_mapped_calls = [0]
     original_row4 = None
+    narrow_enabled = [False]
+    if args.route_package == "gdn-narrow":
+        from hipengine.kernels.registry import KernelKey, register, resolve
+        from scripts.qwen4exp_gdn_narrow_gate_support import expected_calls as gdn_narrow_expected_calls, validate_call
+        row4_key = KernelKey("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                             "qwen4exp_sigmoid_wave_norm_prefill")
+        original_row4 = resolve(backend=row4_key.backend, layer=row4_key.layer,
+                                quant=row4_key.quant, variant=row4_key.variant)
+        narrow_candidate = resolve(backend=row4_key.backend, layer=row4_key.layer,
+                                   quant=row4_key.quant,
+                                   variant="qwen4exp_sigmoid_wave_norm_narrow_prefill")
+        def counted_narrow(*call_args, **call_kwargs):
+            validate_call(call_args, max_rows=args.prefill_chunk_size)
+            if narrow_enabled[0]:
+                row4_calls[0] += 1
+                return narrow_candidate(*call_args, **call_kwargs)
+            return original_row4(*call_args, **call_kwargs)
+        register(row4_key, counted_narrow, replace=True)
+        artifact["arms"] = {
+            "before": {"gdn": row4_key.variant},
+            "after": {"gdn": "qwen4exp_sigmoid_wave_norm_narrow_prefill"},
+        }
+        artifact["diagnostic_registry_substitution"] = True
+        artifact["profile"]["scope"] = "named parent profile; candidate installed by diagnostic hook"
     if args.route_package == "router-dpp":
         from hipengine.kernels.registry import KernelKey, register, resolve
         router_key = KernelKey("hip_gfx1151", "router_logits", "f32",
@@ -929,6 +958,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "after": {"q51_down": "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"}}
 
     def sample(mode, case, repetition):
+        narrow_enabled[0] = mode == "after"
         _apply_mode(mode, route_package=args.route_package)
         if args.route_package == "chunk1024":
             apply_chunk_mode(generator.runner,mode,allocated_chunk_size=args.prefill_chunk_size)
@@ -952,7 +982,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             row["candidate_calls"] = calls
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
-            if args.route_package=="mmq-token64":
+            if args.route_package == "gdn-narrow":
+                expected = (gdn_narrow_expected_calls(int(case["prompt_tokens"]),
+                                                     args.prefill_chunk_size)
+                            if mode == "after" else 0)
+                assert calls == expected, (calls, expected)
+            elif args.route_package=="mmq-token64":
                 expected=mmq_token64_expected_calls(
                     int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
                 assert calls==expected,(calls,expected)

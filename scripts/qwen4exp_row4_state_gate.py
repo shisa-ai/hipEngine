@@ -40,6 +40,11 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # route selection. Pin the #19 q8-wmma-down T1 route off in BOTH arms
         # so this gate keeps isolating the q5k gate/up arithmetic alone.
         environment["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] = "0"
+    if package == "gdn-narrow":
+        # Both arms retain the wave-norm admission; the diagnostic registry hook
+        # chooses narrow vs wide indexing without mutating profile arithmetic.
+        environment[flag] = "1"
+        return
     if package == "router-dpp":
         environment[flag] = (
             "f32_hidden_token_tile4_dpp_exact" if enabled == "1"
@@ -60,13 +65,17 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-dpp-reduction", "gr-dpp-reduction", "router-dpp"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-dpp-reduction", "gr-dpp-reduction", "router-dpp", "gdn-narrow"), default="q5k-row4")
     p.add_argument("--prefill-chunk-size", type=int, choices=(512, 1024, 2048, 4096))
     p.add_argument("--case-id", action="append")
     p.add_argument("--all-cases", action="store_true")
     p.add_argument("--decode-steps", type=int, default=1)
     p.add_argument("--full-kv", action="store_true")
+    p.add_argument("--include-heldouts", action="store_true",
+                   help="Append all category-heldout prompts to the exact state gate")
     args = p.parse_args()
+    if args.include_heldouts and args.route_package != "gdn-narrow":
+        p.error("--include-heldouts is scoped to gdn-narrow")
     if not 1 <= args.decode_steps <= 128:
         p.error("--decode-steps must be in 1..128")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
@@ -87,6 +96,18 @@ def main():
         model_plugin=resolve_model(index.architecture or ""),
         backend="hip_gfx1151", max_sequence_length=4352,
         prefill_chunk_size=args.prefill_chunk_size or (1024 if args.route_package in {"chunk1024","q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down"} else 512)))
+    gate_cases = list(fixture["cases"])
+    if args.include_heldouts:
+        from scripts.gguf_gdn_semantic_gate import _load_suites
+        from scripts.gguf_mtp_bench import build_chat_prompt
+        heldout_path = ROOT / "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+        heldouts = _load_suites([heldout_path])
+        for row in heldouts:
+            tokens = list(build_chat_prompt(generator.tokenizer, str(row["prompt"])))
+            if len(tokens) + args.decode_steps > 4352:
+                raise ValueError("heldout exceeds runner capacity")
+            gate_cases.append({"id": row["id"], "category": row["category"],
+                               "prompt_tokens": len(tokens), "prompt_token_ids": tokens})
     flag = ("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
             if args.route_package == "q5k-row4"
             else "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL")
@@ -96,7 +117,7 @@ def main():
         flag = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
     if args.route_package == "gdn-register":
         flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
-    if args.route_package == "gdn-wave-norm":
+    if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
         flag = "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"
     if args.route_package == "mmq-token64":
         flag = "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64"
@@ -229,7 +250,7 @@ def main():
     if args.route_package=="q8-down-register":
         key=KernelKey("hip_gfx1151","linear","gguf_q8_0",
                       "selected_grouped_row4_register_gemv_bf16_bf16_out")
-    if args.route_package == "gdn-wave-norm":
+    if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
         key=KernelKey("hip_gfx1151","gdn_recurrence_norm_gate",
                       "f32_state","qwen4exp_sigmoid_wave_norm_prefill")
     if args.route_package=="mmq-token64":
@@ -245,6 +266,12 @@ def main():
                 resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant))
     calls = [0]
     mapped_calls=[0]
+    narrow_enabled = [False]
+    narrow_candidate = None
+    if args.route_package == "gdn-narrow":
+        from scripts.qwen4exp_gdn_narrow_gate_support import expected_calls, validate_call
+        narrow_candidate = resolve(backend=key.backend, layer=key.layer, quant=key.quant,
+                                   variant="qwen4exp_sigmoid_wave_norm_narrow_prefill")
 
     natural_router = None
     if args.route_package == "router-dpp":
@@ -252,6 +279,12 @@ def main():
         natural_router = NaturalRouterCheck()
 
     def counted(*a, **kw):
+        if narrow_candidate is not None:
+            validate_call(a, max_rows=generator.runner.prefill_chunk_size)
+            if narrow_enabled[0]:
+                calls[0] += 1
+                return narrow_candidate(*a, **kw)
+            return original(*a, **kw)
         if args.route_package=="q8-down-register" and a[2]:
             mapped_calls[0]+=1
         if q8_bundle_call_in_scope(args.route_package,a):
@@ -303,6 +336,12 @@ def main():
         ),
         "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
     }
+    if narrow_candidate is not None:
+        report["diagnostic_registry_substitution"] = {
+            "parent": key.variant, "candidate": "qwen4exp_sigmoid_wave_norm_narrow_prefill",
+            "manifest_scope": "named parent profile; candidate installed by diagnostic hook",
+            "runtime_default_changed": False,
+        }
     if args.route_package=="chunk1024":
         report["chunk_protocol"] = {
             "allocated_chunk_size":1024,"active_sequence":[512,1024,512],
@@ -327,17 +366,26 @@ def main():
         if args.route_package == "prefill-bundle":
             assert os.environ[flag] == "1"
             assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
-        if args.case_id and not set(args.case_id) <= {c["id"] for c in fixture["cases"]}:
+        if args.include_heldouts:
+            report["heldout_suite"] = {
+                "path": str(heldout_path),
+                "sha256": hashlib.sha256(heldout_path.read_bytes()).hexdigest(),
+                "case_ids": [row["id"] for row in heldouts],
+            }
+        if args.case_id and not set(args.case_id) <= {c["id"] for c in gate_cases}:
             raise ValueError("unknown case id")
-        for case in fixture["cases"]:
+        for case in gate_cases:
             if args.case_id:
                 if case["id"] not in args.case_id:
                     continue
-            elif not args.all_cases and case["prompt_tokens"] != 512 and case["id"] != "code-p4096":
+            elif (not args.all_cases and not str(case["id"]).startswith("heldout_")
+                  and case["prompt_tokens"] != 512 and case["id"] != "code-p4096"):
                 continue
             baseline = None
             summaries = []
-            for enabled in ("0", "1", "0"):
+            enabled_sequence = ("0", "1", "1", "1", "0") if narrow_candidate is not None else ("0", "1", "0")
+            for enabled in enabled_sequence:
+                narrow_enabled[0] = enabled == "1"
                 apply_state_gate_mode(generator.runner,args.route_package,enabled,flag)
                 observed_chunks.clear()
                 if args.route_package == "prefill-bundle":
@@ -351,6 +399,8 @@ def main():
                 prefill_invoked = calls[0] - start_calls
                 logits = first.logits.copy()
                 token = int(first.token_id)
+                prefill_state = (_state_summary(generator.runner)
+                                 if narrow_candidate is not None else None)
                 step_logits = []
                 step_seconds = []
                 for _ in range(args.decode_steps):
@@ -387,6 +437,12 @@ def main():
                         case["prompt_tokens"],1024) if enabled=="1" else 0
                     assert prefill_invoked==expected_token64,(prefill_invoked,expected_token64)
                     assert invoked==prefill_invoked,"token64 ran in decode"
+                if args.route_package == "gdn-narrow":
+                    expected_gdn = (expected_calls(case["prompt_tokens"],
+                                                   generator.runner.prefill_chunk_size)
+                                    if enabled == "1" else 0)
+                    assert prefill_invoked == expected_gdn, (prefill_invoked, expected_gdn)
+                    assert invoked == prefill_invoked, "narrow GDN ran in decode"
                 if args.route_package == "gdn-wave-norm":
                     expected_gdn=gdn_wave_norm_expected_calls(
                         case["prompt_tokens"],1024) if enabled=="1" else 0
@@ -452,7 +508,7 @@ def main():
                     expected = expected_mapped_calls > 0
                 if args.route_package=="q8-down-register":
                     expected=expected_register>0
-                if args.route_package == "gdn-wave-norm":
+                if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
                     expected=expected_gdn>0
                 if args.route_package=="mmq-token64":
                     expected=expected_token64>0
@@ -465,13 +521,14 @@ def main():
                 invoked_qsa = qsa_calls[0] - start_qsa_calls
                 if args.route_package == "prefill-bundle":
                     assert (invoked_qsa > 0) == (enabled == "1" and case["prompt_tokens"] > 2051)
-                actual = (logits, next_logits, state)
+                actual = (logits, next_logits, state, prefill_state)
                 if baseline is None:
                     baseline = actual
                 else:
                     np.testing.assert_array_equal(actual[0], baseline[0])
                     np.testing.assert_array_equal(actual[1], baseline[1])
                     assert state == baseline[2], case["id"]
+                    assert prefill_state == baseline[3], case["id"]
                 assert state["finite"]
                 summaries.append({
                     "enabled": enabled, "state_sha256": state["state_sha256"],
@@ -484,6 +541,8 @@ def main():
                     "qsa_candidate_calls": invoked_qsa,
                     "step_seconds": step_seconds,
                     "full_kv_sha256": state.get("full_kv_sha256"),
+                    "prefill_state_sha256": (prefill_state["state_sha256"]
+                                             if prefill_state is not None else None),
                 })
                 if natural_router is not None:
                     captures = natural_router.captures[natural_start:]
@@ -516,6 +575,12 @@ def main():
             os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] = "page256"
         generator.close()
         report["memory_after_close"] = memory_stats()
+        if narrow_candidate is not None:
+            stats = report["memory_after_close"]
+            report["lifecycle_passed"] = stats["active_allocations"] == 0 and stats["current_allocated_bytes"] == 0
+            if not report["lifecycle_passed"]:
+                report["status"] = "failed"
+                report["error"] = "allocation leak after generator close"
         args.output.write_text(json.dumps(report, indent=2) + "\n")
 
 

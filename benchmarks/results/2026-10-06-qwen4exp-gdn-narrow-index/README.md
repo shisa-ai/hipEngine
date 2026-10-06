@@ -56,9 +56,67 @@ that also bounds output/gate/alpha/beta offsets. The raw-pointer ABI retains
 int64 host dimensions and rejects unsafe shapes before launch.
 
 The candidate is registered for diagnostics only. The named production
-profile still selects the wide-index parent. Natural-input/model-state
-qualification is the next gate; the operation result alone does not justify
-a binder change. Strict/unfused primitives and the parent remain registered.
+profile still selects the wide-index parent. Natural-input and full-model
+state qualification pass below; tracked-clean engine A/B remains the next
+gate before a binder change. Strict primitives and the parent remain registered.
+
+## Natural-model owner result
+
+The same host's production UD-Q4_K_XL model generated inputs for 216 GDN
+calls across six canonical cases at chunk4096. Each call restores the same
+starting state outside timing, runs one warmup pair and two counterbalanced
+measured pairs, then hashes complete output and recurrent state after each
+arm. All pairs are exact; both measured pair totals improve in every case.
+The current UD arithmetic recovery uses this serial leaf on all36 GDN layers,
+not the historical21-layer prefix. No allocation remains after close.
+
+| Case | Parent owner ms | Candidate owner ms | Speedup |
+| --- | ---: | ---: | ---: |
+| code-p512 | 99.625 | 95.758 | 1.0404x |
+| code-p1024 | 199.528 | 191.747 | 1.0406x |
+| code-p4096 | 817.974 | 796.693 | 1.0267x |
+| general_en-p4096 | 815.047 | 787.595 | 1.0349x |
+| general_ja-p4096 | 819.483 | 788.585 | 1.0392x |
+| mixed_ja_en-p4096 | 820.201 | 785.555 | 1.0441x |
+
+These are sums of per-call paired mean HIP-event intervals, not request walls.
+`code-p4096` has pair ratios1.0087x/1.0452x; both are positive, but the spread
+is explicit. [natural-owner.json](natural-owner.json) records all call timings,
+model fingerprint, parent manifest and teardown. The named parent profile
+is intercepted by a diagnostic registry hook; its manifest does not certify
+the candidate. Full model-state/KV qualification also passes below.
+
+```bash
+uv run --no-sync python scripts/qwen4exp_gdn_owner_probe.py \
+  --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
+  --compiler-version-file "$HIPENGINE_COMPILER_VERSION_FILE" \
+  --narrow-index --prefill-chunk-size 4096 \
+  --output /tmp/qwen4exp-gdn-narrow-20261006/natural-owner.json
+```
+
+## Full-model state qualification
+
+All12 canonical cases and8 category-heldouts pass at BF16 KV/chunk4096,
+maximum sequence4352 and16 decode steps. Each case runs parent, three
+candidate repeats, then parent. All five runs share full-vocabulary prefill/
+step-logit hashes, prefill state, post-decode state/layout/metadata and full
+KV hashes. This is100 runs/1700 full-vocabulary rows including repeats.
+Candidate engagement is36 calls/run on all60 candidate runs:2160 prefill
+calls total and zero decode calls. Finite state and leak-free close pass.
+
+[model-state.json](model-state.json) contains the compact audit and original
+artifact hash. This is candidate-vs-admitted-production parity for unchanged
+arithmetic, not a new strict-teacher numerical calibration or task-quality
+score. The runtime parent is unchanged pending the engine A/B.
+
+```bash
+uv run --no-sync python scripts/qwen4exp_row4_state_gate.py \
+  --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
+  --compiler-version-file "$HIPENGINE_COMPILER_VERSION_FILE" \
+  --route-package gdn-narrow --prefill-chunk-size 4096 --all-cases \
+  --include-heldouts --decode-steps 16 --full-kv \
+  --output /tmp/qwen4exp-gdn-narrow-20261006/model-state.json
+```
 
 ## Reproduction
 

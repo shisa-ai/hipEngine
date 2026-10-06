@@ -1199,8 +1199,9 @@
   primitives remain fallbacks. Element bounds are checked before build/launch.
 - The gfx1151 synthetic complete-operation gate passes with1.042–1.044x at
   512/1024/4096 tokens and reduced scratch. No model-speed claim follows.
-- Next: natural-input output/state parity and operation timing, full-model
-  state/KV/lifecycle gates, then default admission if non-regressive. Remove
+- Natural-input216-call output/state parity and operation timing pass, as do
+  all20 canonical/heldout full-logit/state/KV/lifecycle cases. Next: engine A/B
+  and default admission if non-regressive. Remove
   the diagnostic key if those gates reject it, or collapse diagnostic
   selection after production qualification; do not leave an unexplained
   default-off perf path. Evidence:

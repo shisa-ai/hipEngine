@@ -682,8 +682,10 @@ association. On this host, 21 counterbalanced synthetic-input pairs give
 1.0443x/1.0419x/1.0424x complete-operation speedups at512/1024/4096 rows;
 private scratch36→28B and VGPR spills8→6, static VGPR256 unchanged. Exact
 replay, guarded ownership, head isolation, CPU floor and cached trace pass.
-Production still selects the parent: natural-model/full-state qualification
-is the concrete next gate, not another unchanged arithmetic screen.
+Production still selects the parent. Natural-model216-call owner timing
+improves1.0267–1.0441x; all20 canonical/heldout full-logit/state/KV cases pass
+three repeats and lifecycle. Tracked-clean full12-case engine A/B is the next
+gate before admission, not another unchanged arithmetic screen.
 [Evidence](../benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md).
 
 | ID | Mechanism / measured cost | Opportunity and limit | First bounded experiment | Track | State |
