@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_q4_narrow_index_screen",
+  "status": "closed_negative",
+  "host": "gfx1151/Radeon8060S/55ea6c509d0b49eea8de7094a1023668",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "quant": "gguf_q4_k",
+  "profile": "production diagnostic replay; no default change",
+  "source_head": "c108ea11ddcd66b24a66678198a98b9f3ff416d2",
+  "source_hash_measured_code_object": "9dd4c8c98dcde8ac2fa642808492e663eccffdde5f2458b16d9c4cda96c8d5fd",
+  "parent_variant": "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+  "candidate_variant": "selected_dual_wmma_iu8_risk_narrow_prefill_bf16_bf16_out",
+  "boundary": "count/prefix/scatter-gather/tile-map/risk/repair/SiLU; router/down/combine excluded",
+  "natural_cases": 6,
+  "natural_layers": [
+    0,
+    24,
+    47
+  ],
+  "natural_operation_cases": 18,
+  "operation_event_median_delta_percent_range": [
+    0.089,
+    0.474
+  ],
+  "operation_event_median_delta_percent_aggregate": 0.276,
+  "operation_individual_sample_wins": 31,
+  "operation_individual_samples": 180,
+  "trace_case": {
+    "case": "code-p1024",
+    "layer": 0,
+    "parent_operation_ms": 15.793951511383057,
+    "candidate_operation_ms": 15.81913423538208,
+    "candidate_delta_percent": 0.159,
+    "candidate_kernel_median_us": 14309.878,
+    "parent_symbol_trace_median_us": 14814.986,
+    "trace_comparison": "symbol plausibility only; full parent symbol includes native production calls"
+  },
+  "resources": {
+    "parent_vgpr": 211,
+    "candidate_vgpr": 207,
+    "parent_sgpr": 42,
+    "candidate_sgpr": 38,
+    "parent_private_bytes": 0,
+    "candidate_private_bytes": 0,
+    "parent_static_instructions": 4388,
+    "candidate_static_instructions": 4336,
+    "parent_vector_carry_pairs": 69,
+    "candidate_vector_carry_pairs": 39,
+    "same_vgpr_allocation_bucket": true,
+    "scratch": 0
+  },
+  "correctness": {
+    "cpu_contract_tests": 26,
+    "focused_gpu_tests": 21,
+    "natural_outputs_exact": true,
+    "risk_membership_exact": true,
+    "silu_exact": true,
+    "inputs_immutable": true,
+    "leak_free": true,
+    "cpu_reference_floor": true
+  },
+  "commands": {
+    "unit": "uv run --no-sync pytest -q tests/test_unit_qwen4exp_q4_narrow_index.py tests/test_unit_qwen4exp_q4_narrow_owner.py tests/test_unit_qwen4exp_prefill_attribution.py tests/test_unit_qwen4exp_role_map_dense_routes.py",
+    "gpu": "uv run --no-sync pytest -q tests/test_gpu_qwen4exp_q4_narrow_index.py",
+    "natural": "uv run --no-sync python scripts/qwen4exp_q4_narrow_owner.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-gr-dpp-20261005/hipcc-version.txt --require-cached-build --pairs 10 --output /tmp/qwen4exp-q4-narrow-20261006/natural-operation.json",
+    "trace": "rocprofv3 --kernel-trace ... scripts/qwen4exp_q4_narrow_owner.py --case-id code-p1024 --layer 0 --pairs 2"
+  },
+  "artifacts": {
+    "natural_operation": "/tmp/qwen4exp-q4-narrow-20261006/natural-operation.json",
+    "resource_screen": "/tmp/qwen4exp-q4-narrow-20261006/resource-screen.json",
+    "trace": "/tmp/qwen4exp-q4-narrow-20261006/trace/eg5_kernel_trace.csv"
+  },
+  "note": "Diagnostic sibling and tests remain for checked-domain and resource evidence. Wide parent remains default and production fallback; no model gate or benchmark promotion."
+}

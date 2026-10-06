@@ -1,4 +1,15 @@
-# hipEngine Benchmark Changelog
+## 2026-10-06 — Checked Q4 gate/up index screen closed
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL, gfx1151 production diagnostic replay. A checked-int32
+  three-plane/16-row Q4_K gate/up sibling preserved the int64 host/map ABI,
+  exact repair and output/risk membership. It passed 26 CPU contracts, 21
+  focused GPU cases and 18 natural complete-operation cases with clean
+  teardown, but lost the wide parent in every natural case median by
+  +0.089% to +0.474% (aggregate +0.276%). The code object reduced VGPR
+  211→207 and static instructions 4388→4336, but both stayed in the same
+  allocation bucket. No model gate, default change or promotion. Artifact:
+  `results/2026-10-06-qwen4exp-q4-narrow-index/`.
 
 ## 2026-10-06 — Promoted-default prefill owners (diagnostic)
 

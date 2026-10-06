@@ -32,7 +32,18 @@ candidate repeats and clean teardown. Strict, Q4_K_M and peer backends
 keep their preceding routes.
 [Protocol, correctness and artifacts](results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md).
 
-## Qwen3.8 Flash Next padded dense-wide tail operation screen
+## Qwen3.8 Flash Next checked Q4 gate/up index diagnostic
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, the diagnostic
+checked-int32 Q4_K gate/up sibling preserves the int64 host/map ABI and the
+wide parent's three-plane arithmetic, risk criterion and exact repair. It
+passes the focused bounds, correctness and lifecycle checks, but loses the
+wide parent in all 18 natural complete-operation medians by +0.089% to
++0.474%. The sibling is not selected in production; the wide parent remains
+the default.
+
+[Protocol and artifact](results/2026-10-06-qwen4exp-q4-narrow-index/README.md).
+
 
 Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
 measures a diagnostic F16-input Q8_0 HC-down GEMM sibling at K10240/N320.

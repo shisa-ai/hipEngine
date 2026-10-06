@@ -468,6 +468,75 @@ def gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out(
     )
 
 
+def q4_iu8_narrow_index_admissible(
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+) -> bool:
+    """Admit complete signed-int32 byte ranges without touching HIP.
+
+    Maps retain int64 entries; the leaf checks each tile's metadata before
+    narrowing. Risk-buffer byte capacity is additionally checked at launch.
+    """
+    rows, k, a, b, experts, padded = (
+        compact_rows, in_features, out_features_a, out_features_b,
+        num_experts, wmma_total_rows,
+    )
+    limit = 2**31 - 1
+    if any(v <= 0 or v > limit for v in (rows, k, a, b, experts, padded)):
+        return False
+    if k % 256 or a % 128 or b % 128 or padded % 16:
+        return False
+    if not rows <= padded <= rows + 15 * experts:
+        return False
+    row_bytes = (k // 256) * 144
+    return all(v <= limit for v in (
+        rows * k * 2,
+        rows * (a + b) * 2,
+        experts * a * row_bytes,
+        experts * b * row_bytes,
+        (experts + 1) * 8,
+        (padded // 16) * 8,
+    ))
+
+
+def gguf_q4_k_selected_dual_wmma_iu8_risk_narrow_prefill_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_multiplier: float,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Diagnostic checked-index 3-plane16-row sibling; int64 host ABI."""
+    _launch_wmma_iu8_risk(
+        3, x_ptr, expert_start_compact_ptr, expert_start_wmma_ptr,
+        tile_expert_ptr, qweight_a_ptr, qweight_b_ptr, out_ptr,
+        risk_count_ptr, risk_indices_ptr, max_risks, risk_multiplier,
+        compact_rows, in_features, out_features_a, out_features_b,
+        num_experts, wmma_total_rows,
+        stream=stream, library=library, runtime=runtime, narrow_index=True,
+    )
+
+
 def gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -1067,7 +1136,17 @@ def _launch_wmma_iu8_risk(
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
     tile_rows: int = 16,
+    narrow_index: bool = False,
 ) -> None:
+    if narrow_index and (
+        planes != 3 or tile_rows != 16
+        or not q4_iu8_narrow_index_admissible(
+            compact_rows, in_features, out_features_a, out_features_b,
+            num_experts, wmma_total_rows,
+        )
+        or max_risks > (2**31 - 1) // 4
+    ):
+        raise ValueError("narrow iu8 risk prefill requires complete int32 byte ranges")
     _check_common(
         compact_rows,
         in_features,
@@ -1093,7 +1172,9 @@ def _launch_wmma_iu8_risk(
     library = library or build_gguf_q4_k_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = _SYMBOL_IU8_RISK_BF16
-    if planes == 2:
+    if narrow_index:
+        symbol = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_narrow_prefill_bf16_bf16_out"
+    elif planes == 2:
         symbol = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out"
     elif int(tile_rows) == 32:
         symbol = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out"
@@ -1619,6 +1700,16 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
             "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
         ),
         gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_wmma_iu8_risk_narrow_prefill_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_iu8_risk_narrow_prefill_bf16_bf16_out,
         replace=replace,
     )
     register(

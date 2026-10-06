@@ -1,5 +1,20 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Checked Q4 gate/up index diagnostic
+
+- `selected_dual_wmma_iu8_risk_narrow_prefill_bf16_bf16_out` is a
+  registered diagnostic sibling, not a production binding. It preserves the
+  three-plane16-row arithmetic and int64 host/map ABI while checking complete
+  activation/output/weight/map/risk byte ranges before narrowing device
+  address/control intermediates. The wide parent and strict grouped chain
+  remain registered.
+- `scripts/qwen4exp_q4_narrow_owner.py` uses temporary registry substitution
+  and private replay scratch to compare the complete natural packing,
+  tile-map, risk, repair and SiLU operation. It does not add a runtime flag.
+  The sibling remains a diagnostic bounds/resource leaf after this screen;
+  remove it when a replacement bounds/reference path makes that coverage
+  independently unnecessary. No production selector points to it.
+
 ## Padded-fragment dense-wide production tail and rollback
 
 - The F16-input `dense_wide256_padded_f16in_f32_f32_out` leaf is selected
