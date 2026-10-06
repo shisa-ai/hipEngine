@@ -1,0 +1,2331 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "performance_claim": false,
+  "command": [
+    "scripts/qwen4exp_rt2_host_grid.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipcc-version-qwen4exp.txt",
+    "--layer",
+    "0",
+    "--layer",
+    "24",
+    "--layer",
+    "47",
+    "--pairs",
+    "6",
+    "--output",
+    "/tmp/qwen4exp-rt2-six-case.json"
+  ],
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "7c97170fc4ebf291ee126d691dd37b35d56f6767",
+    "tracked_clean": true,
+    "diagnostic_script_untracked_during_run": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "strict_manifest_sha256": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+  "execution_profile": "production",
+  "chunk_size": 4096,
+  "boundary": "Screen host-sized Q4/Q5_1 routed grids on natural production inputs.\n\nBoth arms rebuild the same device-owned tile map, reset the risk counter, run\none unchanged iu8 owner plus exact repair, and (for Q4) publish SiLU. The host\narm downloads the map's 8-byte total inside the wall/event interval. Count,\nprefix and scatter/gather are shared immutable inputs outside this boundary;\nrouter/down/combine/model wall are not priced by this diagnostic screen.\nQ8 guarded down is observed only: its runtime already reads the exact total.\n",
+  "script_sha256": "fc79be70ebf6bb8701644af34f2f3303dac9111ba111dc3b324a80e473f5cdb7",
+  "layers": [
+    0,
+    24,
+    47
+  ],
+  "pairs": 6,
+  "cases": [
+    {
+      "id": "code-p512",
+      "category": "code",
+      "prompt_tokens": 512,
+      "captures": [
+        {
+          "layer": 0,
+          "route": "q4",
+          "tokens": 512,
+          "compact_rows": 5120,
+          "static_rows": 12800,
+          "host_rows": 8352,
+          "active_experts": 360,
+          "max_expert_rows": 99,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                9.685428813099861,
+                9.680509567260742,
+                9.729722514748573,
+                9.6608130261302,
+                9.718180634081364,
+                9.695958346128464
+              ],
+              "event_ms": [
+                9.623653411865234,
+                9.618062973022461,
+                9.65980052947998,
+                9.598015785217285,
+                9.658940315246582,
+                9.625515937805176
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                9.702942334115505,
+                9.715216234326363,
+                9.717359207570553,
+                9.733159095048904,
+                9.750219993293285,
+                9.795505553483963
+              ],
+              "event_ms": [
+                9.641486167907715,
+                9.655052185058594,
+                9.655141830444336,
+                9.67358684539795,
+                9.687453269958496,
+                9.632780075073242
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 9.690693579614162,
+              "event_ms": 9.624584674835205
+            },
+            "host": {
+              "wall_ms": 9.725259151309729,
+              "event_ms": 9.655097007751465
+            }
+          },
+          "wall_speedup": 0.9964457942808741,
+          "exact": {
+            "out": "a1006c78cfb245577debf120d7725960637c97ca1704a3ae3aae4ed2c4d0c1c4",
+            "risk_count": 14267,
+            "membership": "37def53d1c57ed038dd2173117a20bfcd775d7b738108a10fecb4921d2e0c799",
+            "maps": [
+              "4497eca74ad400ff549a7d891f7b987a6b9753c91518626c4a3d029235fe4bb3",
+              "90d4c7de8fdb73a743a33b23c99cd073685a1ad6a34c2348a69da8e934ac3327"
+            ],
+            "silu": "de11fbe607767c69de8d9b75b560d1db8d50c5aa6b42d3402827123eb9917796"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 0,
+          "route": "q51",
+          "tokens": 512,
+          "compact_rows": 5120,
+          "static_rows": 12800,
+          "host_rows": 8352,
+          "active_experts": 360,
+          "max_expert_rows": 99,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                6.953041069209576,
+                6.966716609895229,
+                6.971466355025768,
+                6.942480802536011,
+                6.950645707547665,
+                6.965954788029194
+              ],
+              "event_ms": [
+                6.925309181213379,
+                6.940927982330322,
+                6.939826011657715,
+                6.912144184112549,
+                6.899580001831055,
+                6.936169147491455
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                7.003415375947952,
+                7.037239149212837,
+                7.03128706663847,
+                7.061763666570187,
+                6.999347358942032,
+                7.000870071351528
+              ],
+              "event_ms": [
+                6.974070072174072,
+                7.009497165679932,
+                6.974350929260254,
+                7.028011798858643,
+                6.971545219421387,
+                6.975152015686035
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 6.959497928619385,
+              "event_ms": 6.930739164352417
+            },
+            "host": {
+              "wall_ms": 7.017351221293211,
+              "event_ms": 6.9747514724731445
+            }
+          },
+          "wall_speedup": 0.9917556794794198,
+          "exact": {
+            "out": "c0ad36b8b91d222ab9698d3a3ee536e3e332f48a9ccdc679b5ff48893169f24d",
+            "risk_count": 160199,
+            "membership": "cb2e3e14290bbd2666d99e7e13b76c0598be6ee31a7f1fa05d4cd9d6882449b8",
+            "maps": [
+              "4497eca74ad400ff549a7d891f7b987a6b9753c91518626c4a3d029235fe4bb3",
+              "90d4c7de8fdb73a743a33b23c99cd073685a1ad6a34c2348a69da8e934ac3327"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q4",
+          "tokens": 512,
+          "compact_rows": 5120,
+          "static_rows": 12800,
+          "host_rows": 8416,
+          "active_experts": 325,
+          "max_expert_rows": 350,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                9.723450988531113,
+                9.70972515642643,
+                9.771881625056267,
+                9.763785637915134,
+                9.777972474694252,
+                9.784365072846413
+              ],
+              "event_ms": [
+                9.64416217803955,
+                9.638941764831543,
+                9.71054744720459,
+                9.70210075378418,
+                9.71713924407959,
+                9.72323989868164
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                9.78950411081314,
+                9.775768965482712,
+                9.803169406950474,
+                9.807338006794453,
+                9.82250738888979,
+                9.805453941226006
+              ],
+              "event_ms": [
+                9.727328300476074,
+                9.71540641784668,
+                9.740842819213867,
+                9.746204376220703,
+                9.760821342468262,
+                9.745132446289062
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 9.7678336314857,
+              "event_ms": 9.706324100494385
+            },
+            "host": {
+              "wall_ms": 9.80431167408824,
+              "event_ms": 9.742987632751465
+            }
+          },
+          "wall_speedup": 0.9962793877005209,
+          "exact": {
+            "out": "46553a2f2dea2ade08a5dfb0d1ac8c5a73fb0ec6a5ab7652a6b05565617fc0ef",
+            "risk_count": 13022,
+            "membership": "41d9a7845fe68b25ca876fe41396ee4a0a164dbd3d6076416a1661834f02db69",
+            "maps": [
+              "7d99fce2a7990195022fd9c171d44dad95fce43f3d8cec8d09544173be231271",
+              "05d97f7d426c2b70e6ee948bd6133b68009787b528af8727745bb9dc6b3e5cba"
+            ],
+            "silu": "2fda0b8b554c4c4164951d0ee3952f0f0828c9dc5498ed9905ea0305a4ea7f31"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q51",
+          "tokens": 512,
+          "compact_rows": 5120,
+          "static_rows": 12800,
+          "host_rows": 8416,
+          "active_experts": 325,
+          "max_expert_rows": 350,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                7.175236940383911,
+                7.2127580642700195,
+                7.242703810334206,
+                7.233778014779091,
+                7.244797423481941,
+                7.232194766402245
+              ],
+              "event_ms": [
+                7.147144794464111,
+                7.185576915740967,
+                7.215192794799805,
+                7.206636905670166,
+                7.218538761138916,
+                7.179625988006592
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                7.298599928617477,
+                7.249588146805763,
+                7.252302020788193,
+                7.301303558051586,
+                7.280255667865276,
+                7.271738722920418
+              ],
+              "event_ms": [
+                7.27083683013916,
+                7.222786903381348,
+                7.223719120025635,
+                7.274533748626709,
+                7.253894805908203,
+                7.2459797859191895
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 7.232986390590668,
+              "event_ms": 7.196106910705566
+            },
+            "host": {
+              "wall_ms": 7.275997195392847,
+              "event_ms": 7.249937295913696
+            }
+          },
+          "wall_speedup": 0.9940886721576234,
+          "exact": {
+            "out": "f10ea677b340df6c8f084220004ba65262a5862e95ee5cb2acc55ade1234f4b5",
+            "risk_count": 186007,
+            "membership": "c8d21c67ee68bd5327eec5d21979d3e40754d5392da47e93c5d067c78cda690b",
+            "maps": [
+              "7d99fce2a7990195022fd9c171d44dad95fce43f3d8cec8d09544173be231271",
+              "05d97f7d426c2b70e6ee948bd6133b68009787b528af8727745bb9dc6b3e5cba"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 47,
+          "route": "q4",
+          "tokens": 512,
+          "compact_rows": 5120,
+          "static_rows": 12800,
+          "host_rows": 8384,
+          "active_experts": 307,
+          "max_expert_rows": 444,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                9.595750831067562,
+                9.602803736925125,
+                9.58603248000145,
+                9.59028024226427,
+                9.641407057642937,
+                9.667204692959785
+              ],
+              "event_ms": [
+                9.532281875610352,
+                9.534465789794922,
+                9.516172409057617,
+                9.527772903442383,
+                9.579570770263672,
+                9.606951713562012
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                9.706028737127781,
+                9.625156410038471,
+                9.622902609407902,
+                9.656734764575958,
+                9.653008542954922,
+                9.686452336609364
+              ],
+              "event_ms": [
+                9.637900352478027,
+                9.53808307647705,
+                9.56037425994873,
+                9.594609260559082,
+                9.593006134033203,
+                9.626459121704102
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 9.599277283996344,
+              "event_ms": 9.533373832702637
+            },
+            "host": {
+              "wall_ms": 9.65487165376544,
+              "event_ms": 9.593807697296143
+            }
+          },
+          "wall_speedup": 0.9942418323347246,
+          "exact": {
+            "out": "aee2a1e4c81d7cfab0b75a7ac58af437eb492fe4e819b012fe0db2624621e53b",
+            "risk_count": 11416,
+            "membership": "78a936b07e70051c451a0cb799464221fe233cb091645315cd97ea3f60b72034",
+            "maps": [
+              "67eadd729274a0b8a852afc4221d6b0d7ffe85594d1f6d96bbc62bd91ea00cf4",
+              "12f5cd7416f561bcf2f237122c50495749478a29e9e1f64ecbaf4de31266cf4f"
+            ],
+            "silu": "445d375a13138dacf2ed44d693f0da182765bfb1aff4e5234c38dca31b092b45"
+          },
+          "inputs_immutable": true
+        }
+      ],
+      "q8_observations": [
+        {
+          "layer": 47,
+          "rows": 5120,
+          "launch_rows": 8384,
+          "actual_rows": 8384,
+          "already_host_sized": true
+        }
+      ],
+      "first_token": 248068
+    },
+    {
+      "id": "code-p1024",
+      "category": "code",
+      "prompt_tokens": 1024,
+      "captures": [
+        {
+          "layer": 0,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13296,
+          "active_experts": 364,
+          "max_expert_rows": 185,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                15.384877100586891,
+                15.407959930598736,
+                15.402228571474552,
+                15.489914454519749,
+                15.548855066299438,
+                15.516714192926884
+              ],
+              "event_ms": [
+                15.322620391845703,
+                15.343480110168457,
+                15.294507026672363,
+                15.426525115966797,
+                15.48586654663086,
+                15.463555335998535
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                15.443546697497368,
+                15.45157190412283,
+                15.488510951399803,
+                15.541150234639645,
+                15.530279837548733,
+                15.537654049694538
+              ],
+              "event_ms": [
+                15.379145622253418,
+                15.387262344360352,
+                15.406718254089355,
+                15.47659969329834,
+                15.468254089355469,
+                15.474735260009766
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 15.448937192559242,
+              "event_ms": 15.385002613067627
+            },
+            "host": {
+              "wall_ms": 15.509395394474268,
+              "event_ms": 15.437486171722412
+            }
+          },
+          "wall_speedup": 0.9961018337351457,
+          "exact": {
+            "out": "edbc623c7472be78fe981c6f88ca3e2df2bb80a782262bc4ac3570f97f3a1fb7",
+            "risk_count": 28473,
+            "membership": "6fde31534e1878eb5f254874495cc35c4f5dea1276ef1f0ca1c1ac1fe1a06372",
+            "maps": [
+              "0890507f181aa7684f39b0a4a241c66df7960a49fa9d2600befa3923d6d8df59",
+              "7bfc3441d95c8107fcc6f977cf4f4d53ccf53151b30658f17210553bbc4e9eec"
+            ],
+            "silu": "3790bce37518413fc887973d75f2b50a304fa8f78b70628149630210cf017caf"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 0,
+          "route": "q51",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13296,
+          "active_experts": 364,
+          "max_expert_rows": 185,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                11.26111764460802,
+                11.26047596335411,
+                11.299028061330318,
+                11.193469166755676,
+                11.265244334936142,
+                11.29463966935873
+              ],
+              "event_ms": [
+                11.23404598236084,
+                11.231911659240723,
+                11.27076530456543,
+                11.16736125946045,
+                11.238824844360352,
+                11.267839431762695
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                11.35683711618185,
+                11.328954249620438,
+                11.318834498524666,
+                11.31917629390955,
+                11.35903038084507,
+                11.332451365888119
+              ],
+              "event_ms": [
+                11.32398509979248,
+                11.303616523742676,
+                11.291765213012695,
+                11.293957710266113,
+                11.296823501586914,
+                11.300029754638672
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 11.263180989772081,
+              "event_ms": 11.236435413360596
+            },
+            "host": {
+              "wall_ms": 11.330702807754278,
+              "event_ms": 11.298426628112793
+            }
+          },
+          "wall_speedup": 0.994040809371861,
+          "exact": {
+            "out": "60c5b0b8c3c1a998796e381e9da0c77d355e8225c8bda131361dcb3cedd29821",
+            "risk_count": 322178,
+            "membership": "2b5934ed62f2c2af1d8d23cb5da5426ece15f6f3a2ef234514873755d4c26bbc",
+            "maps": [
+              "0890507f181aa7684f39b0a4a241c66df7960a49fa9d2600befa3923d6d8df59",
+              "7bfc3441d95c8107fcc6f977cf4f4d53ccf53151b30658f17210553bbc4e9eec"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13952,
+          "active_experts": 398,
+          "max_expert_rows": 543,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                16.170921735465527,
+                16.199996694922447,
+                16.16533100605011,
+                16.21229015290737,
+                16.19360502809286,
+                16.20430499315262
+              ],
+              "event_ms": [
+                16.107322692871094,
+                16.136558532714844,
+                16.10277557373047,
+                16.149873733520508,
+                16.13453483581543,
+                16.14259910583496
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                16.191311180591583,
+                16.22154749929905,
+                16.212801449000835,
+                16.263054683804512,
+                16.23456086963415,
+                16.254469752311707
+              ],
+              "event_ms": [
+                16.127750396728516,
+                16.157066345214844,
+                16.148420333862305,
+                16.201148986816406,
+                16.17177391052246,
+                16.191892623901367
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 16.196800861507654,
+              "event_ms": 16.135546684265137
+            },
+            "host": {
+              "wall_ms": 16.2280541844666,
+              "event_ms": 16.164420127868652
+            }
+          },
+          "wall_speedup": 0.998074117660461,
+          "exact": {
+            "out": "b3b13e6a9e87926396ca51d7eff6c4978776a51ab6869a0a78f622591b01c9b1",
+            "risk_count": 26378,
+            "membership": "f6ddf28ecee34ae4348bc95633a609978b1639cf953dfd9b8938e617e9381922",
+            "maps": [
+              "eccea52de881cd3a0da00b8e165e1264f4c6623e4ecc6b33ee507b02022f9b61",
+              "2c019c6c1c5bf30add5b6cc9fa51e8f149da076ddeca9b4da87e934c8d26db8d"
+            ],
+            "silu": "64bd6dacb59e829a0d4d126022bf8124ac59bc57a2c311abad10cc650a979ac7"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q51",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13952,
+          "active_experts": 398,
+          "max_expert_rows": 543,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                12.218964286148548,
+                12.217242270708084,
+                12.180733494460583,
+                12.208704836666584,
+                12.239041738212109,
+                12.209187261760235
+              ],
+              "event_ms": [
+                12.187775611877441,
+                12.161026000976562,
+                12.152541160583496,
+                12.181936264038086,
+                12.210598945617676,
+                12.183358192443848
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                12.29923591017723,
+                12.265251018106937,
+                12.273957952857018,
+                12.263277545571327,
+                12.266354635357857,
+                12.27683387696743
+              ],
+              "event_ms": [
+                12.26884937286377,
+                12.238049507141113,
+                12.245884895324707,
+                12.236988067626953,
+                12.240124702453613,
+                12.251165390014648
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 12.21321476623416,
+              "event_ms": 12.182647228240967
+            },
+            "host": {
+              "wall_ms": 12.270156294107437,
+              "event_ms": 12.24300479888916
+            }
+          },
+          "wall_speedup": 0.9953593477940763,
+          "exact": {
+            "out": "381fd01d71224854d79255977ffa7c8884a70a7e539fc0b535e1d94b9c61496d",
+            "risk_count": 371076,
+            "membership": "5ebcf155f558c214220c8492f4aa0343d53cf72d1c43227422d497d6f131960f",
+            "maps": [
+              "eccea52de881cd3a0da00b8e165e1264f4c6623e4ecc6b33ee507b02022f9b61",
+              "2c019c6c1c5bf30add5b6cc9fa51e8f149da076ddeca9b4da87e934c8d26db8d"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 47,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13648,
+          "active_experts": 338,
+          "max_expert_rows": 929,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                15.680691227316856,
+                15.693486668169498,
+                15.690409578382969,
+                15.676244162023067,
+                15.705970115959644,
+                15.75035322457552
+              ],
+              "event_ms": [
+                15.617935180664062,
+                15.6434326171875,
+                15.62952709197998,
+                15.613917350769043,
+                15.643331527709961,
+                15.68826675415039
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                15.723523683845997,
+                15.786129981279373,
+                15.7892145216465,
+                15.782083384692669,
+                15.767324715852737,
+                15.772765502333641
+              ],
+              "event_ms": [
+                15.65931224822998,
+                15.68366813659668,
+                15.725617408752441,
+                15.718473434448242,
+                15.704366683959961,
+                15.708523750305176
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 15.691948123276234,
+              "event_ms": 15.63642930984497
+            },
+            "host": {
+              "wall_ms": 15.777424443513155,
+              "event_ms": 15.706445217132568
+            }
+          },
+          "wall_speedup": 0.9945823654207347,
+          "exact": {
+            "out": "e53614e7cac1e7119ce47bb8a4c78b1cbd4e62693955a62b4e395d893ff6e170",
+            "risk_count": 23462,
+            "membership": "8a704ff5b6a7c535c40e48e6f73413f7caa00607afc666a3f131cc9495f04c6d",
+            "maps": [
+              "51487f445c8f71ac2663b5e07029773cac91f5c6edc58e064aeabd5423d75ef3",
+              "a89eb6251a20fdaf7b1d2fa0009156c3fc5f6b5198cc5be3d4ca04f16cdd9675"
+            ],
+            "silu": "538780c46f77074091b974543cc93970680b68d6e0665eed967d82390173ddba"
+          },
+          "inputs_immutable": true
+        }
+      ],
+      "q8_observations": [
+        {
+          "layer": 47,
+          "rows": 10240,
+          "launch_rows": 13648,
+          "actual_rows": 13648,
+          "already_host_sized": true
+        }
+      ],
+      "first_token": 248068
+    },
+    {
+      "id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "captures": [
+        {
+          "layer": 0,
+          "route": "q4",
+          "tokens": 4096,
+          "compact_rows": 40960,
+          "static_rows": 48640,
+          "host_rows": 43840,
+          "active_experts": 370,
+          "max_expert_rows": 601,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                50.91912392526865,
+                51.02464184165001,
+                50.98353512585163,
+                50.96092168241739,
+                50.99525675177574,
+                50.99872313439846
+              ],
+              "event_ms": [
+                50.837440490722656,
+                50.93415832519531,
+                50.89884948730469,
+                50.87062454223633,
+                50.91017532348633,
+                50.89170455932617
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                51.08189955353737,
+                50.92327110469341,
+                51.03030242025852,
+                51.06678977608681,
+                51.025113090872765,
+                51.059958525002
+              ],
+              "event_ms": [
+                50.991119384765625,
+                50.839351654052734,
+                50.92102813720703,
+                50.980831146240234,
+                50.935943603515625,
+                50.97665023803711
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 50.989395938813686,
+              "event_ms": 50.89527702331543
+            },
+            "host": {
+              "wall_ms": 51.04513047263026,
+              "event_ms": 50.95629692077637
+            }
+          },
+          "wall_speedup": 0.9989081322096638,
+          "exact": {
+            "out": "6b71817d4f3cd71c931a50290f3ece1695b799c82b6533a927eb011f717ad23d",
+            "risk_count": 114223,
+            "membership": "72a1f44172a67c305b62db7b0d51652ede01418011de8fd2ecee4c0fd8902995",
+            "maps": [
+              "f547a8b8a1182fa6412077fa5b2220d3863486badb5a15bc544544e99aecaadd",
+              "5d60154118a3337bfb7ac3788abb63008a20d3dc0c4e04a4436102c8842ca551"
+            ],
+            "silu": "62d406e4dff5ac9c69f71c005b35e6dbff476544a3010053e634ec717cc7a59c"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 0,
+          "route": "q51",
+          "tokens": 4096,
+          "compact_rows": 40960,
+          "static_rows": 48640,
+          "host_rows": 43840,
+          "active_experts": 370,
+          "max_expert_rows": 601,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                39.54648692160845,
+                40.11466447263956,
+                39.5246772095561,
+                39.88297935575247,
+                39.61715009063482,
+                39.818648248910904
+              ],
+              "event_ms": [
+                38.591094970703125,
+                38.70877456665039,
+                38.575294494628906,
+                38.8016471862793,
+                38.658905029296875,
+                38.777122497558594
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                39.643097668886185,
+                39.58978783339262,
+                39.65231589972973,
+                39.47280906140804,
+                39.4810950383544,
+                39.53000623732805
+              ],
+              "event_ms": [
+                38.66878128051758,
+                38.63612747192383,
+                38.68694305419922,
+                38.51678466796875,
+                38.525150299072266,
+                38.57329177856445
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 39.71789916977286,
+              "event_ms": 38.68383979797363
+            },
+            "host": {
+              "wall_ms": 39.559897035360336,
+              "event_ms": 38.60470962524414
+            }
+          },
+          "wall_speedup": 1.0039939976150922,
+          "exact": {
+            "out": "e098f09e3201716c78f1c7b25def95ca60ac5c51ac4053f6a65a047f33e235cf",
+            "risk_count": 1294941,
+            "membership": "a1ca0b8fd4066895f300f31f70dae45b9ddef64f2ab723c6e3703c6fbf676884",
+            "maps": [
+              "f547a8b8a1182fa6412077fa5b2220d3863486badb5a15bc544544e99aecaadd",
+              "5d60154118a3337bfb7ac3788abb63008a20d3dc0c4e04a4436102c8842ca551"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q4",
+          "tokens": 4096,
+          "compact_rows": 40960,
+          "static_rows": 48640,
+          "host_rows": 44736,
+          "active_experts": 457,
+          "max_expert_rows": 1721,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                52.10982821881771,
+                52.07677558064461,
+                52.06029489636421,
+                52.182153798639774,
+                51.95001792162657,
+                52.091363817453384
+              ],
+              "event_ms": [
+                52.00172805786133,
+                51.99382400512695,
+                51.976318359375,
+                51.96914291381836,
+                51.86595153808594,
+                52.007286071777344
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                52.03154217451811,
+                52.60306317359209,
+                52.039154805243015,
+                52.1394032984972,
+                52.157157100737095,
+                52.10990738123655
+              ],
+              "event_ms": [
+                51.924720764160156,
+                52.496002197265625,
+                51.956703186035156,
+                52.05643844604492,
+                52.07276153564453,
+                52.02818298339844
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 52.084069699048996,
+              "event_ms": 51.98507118225098
+            },
+            "host": {
+              "wall_ms": 52.12465533986688,
+              "event_ms": 52.04231071472168
+            }
+          },
+          "wall_speedup": 0.9992213734449993,
+          "exact": {
+            "out": "92195db2e19a4cad68ee3b692d4904541613b3fe7eda512d87951c176d85ee0b",
+            "risk_count": 110010,
+            "membership": "df4a4a7c2533c7e826a6abd280e181cbe4e7c4162bbdfd720a7b5f8d0c38429c",
+            "maps": [
+              "ed4fa502decf346178d16f289a97453d8854ea554637888a99e24496b7e327e2",
+              "5aacd18a5986ea81c2b4332339fa2e472f19e5b225c55682bdfd2716a56402d9"
+            ],
+            "silu": "8cd893fcfde617d4126297b3828958ef6284224eaab9f02ec0b01af1deb0151d"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q51",
+          "tokens": 4096,
+          "compact_rows": 40960,
+          "static_rows": 48640,
+          "host_rows": 44736,
+          "active_experts": 457,
+          "max_expert_rows": 1721,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                42.32296906411648,
+                42.57321823388338,
+                42.22017526626587,
+                42.31643583625555,
+                42.46863070875406,
+                42.07159765064716
+              ],
+              "event_ms": [
+                41.36714553833008,
+                41.61881637573242,
+                41.25862503051758,
+                41.336055755615234,
+                41.40427780151367,
+                41.120670318603516
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                42.31913108378649,
+                42.652386240661144,
+                42.5378018990159,
+                42.34341625124216,
+                42.35770367085934,
+                42.131898924708366
+              ],
+              "event_ms": [
+                41.35746765136719,
+                41.537193298339844,
+                41.579864501953125,
+                41.38683319091797,
+                41.381492614746094,
+                41.166507720947266
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 42.319702450186014,
+              "event_ms": 41.351600646972656
+            },
+            "host": {
+              "wall_ms": 42.35055996105075,
+              "event_ms": 41.38416290283203
+            }
+          },
+          "wall_speedup": 0.9992713789169939,
+          "exact": {
+            "out": "13ec6e513d8a0e9d662baf869bf0e0ebee3768ff658598d529c22e24dbd6fdbe",
+            "risk_count": 1493650,
+            "membership": "b479b5f4db18f8bb30f908e67fdc7baee4d9c5fc29a53a3dae3d63cfd712be19",
+            "maps": [
+              "ed4fa502decf346178d16f289a97453d8854ea554637888a99e24496b7e327e2",
+              "5aacd18a5986ea81c2b4332339fa2e472f19e5b225c55682bdfd2716a56402d9"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 47,
+          "route": "q4",
+          "tokens": 4096,
+          "compact_rows": 40960,
+          "static_rows": 48640,
+          "host_rows": 44384,
+          "active_experts": 366,
+          "max_expert_rows": 3999,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                50.981901586055756,
+                51.00234877318144,
+                51.018268801271915,
+                51.00160650908947,
+                50.98567809909582,
+                50.94720423221588
+              ],
+              "event_ms": [
+                50.898597717285156,
+                50.89141082763672,
+                50.90799331665039,
+                50.91632843017578,
+                50.90423583984375,
+                50.8615837097168
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                50.93236826360226,
+                50.97325425595045,
+                50.929431803524494,
+                51.00404191762209,
+                51.06006655842066,
+                51.0178878903389
+              ],
+              "event_ms": [
+                50.77065658569336,
+                50.90392303466797,
+                50.83983612060547,
+                50.921207427978516,
+                50.97776412963867,
+                50.93362045288086
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 50.993642304092646,
+              "event_ms": 50.90141677856445
+            },
+            "host": {
+              "wall_ms": 50.98864808678627,
+              "event_ms": 50.91256523132324
+            }
+          },
+          "wall_speedup": 1.0000979476313605,
+          "exact": {
+            "out": "e45410398dc6f42f735a79e23cd4b1bb4335cbf381f45af0150236aad74219dd",
+            "risk_count": 94303,
+            "membership": "88c89c0039bcaf9cf90e961769867ebf048fe403fa5650825bb39ca74ad83dbc",
+            "maps": [
+              "6d89d79d13abf28e10586828bc67f8c0d3eb950c95e9dd9441fec18070569fcd",
+              "31a9a36d58d973421a28f4c3e30a73bed1f87919b3421849fede6fa1071235a2"
+            ],
+            "silu": "3e3dd82614aa224a0182c99d718b62d0f0790db16125adb512316da69d17c3e7"
+          },
+          "inputs_immutable": true
+        }
+      ],
+      "q8_observations": [
+        {
+          "layer": 47,
+          "rows": 40960,
+          "launch_rows": 44384,
+          "actual_rows": 44384,
+          "already_host_sized": true
+        }
+      ],
+      "first_token": 248068
+    },
+    {
+      "id": "general_en-p1024",
+      "category": "general_en",
+      "prompt_tokens": 1024,
+      "captures": [
+        {
+          "layer": 0,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 12656,
+          "active_experts": 330,
+          "max_expert_rows": 199,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                14.75958339869976,
+                14.776784926652908,
+                14.781803824007511,
+                14.80151154100895,
+                14.845403842628002,
+                14.79350682348013
+              ],
+              "event_ms": [
+                14.694291114807129,
+                14.712604522705078,
+                14.719246864318848,
+                14.738933563232422,
+                14.783588409423828,
+                14.729887008666992
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                14.823311939835548,
+                14.849090948700905,
+                14.863036572933197,
+                14.871122315526009,
+                14.890218153595924,
+                14.88842535763979
+              ],
+              "event_ms": [
+                14.748651504516602,
+                14.784150123596191,
+                14.800148963928223,
+                14.807913780212402,
+                14.8274507522583,
+                14.825186729431152
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 14.78765532374382,
+              "event_ms": 14.72456693649292
+            },
+            "host": {
+              "wall_ms": 14.867079444229603,
+              "event_ms": 14.804031372070312
+            }
+          },
+          "wall_speedup": 0.9946577187009914,
+          "exact": {
+            "out": "cd1558f0ff84e7f6fdb0b4b2729d7d6a4f442163ca45c466ceece1a8aa60127e",
+            "risk_count": 28650,
+            "membership": "fec5bc65d3e75b677f75f9077fd7f8bcb207b3d7f20c0f8f80ccf94b01422e0b",
+            "maps": [
+              "5eac016eac5d1331fcd7fe37292ae3949bcb216866fee7566d6441f74ebfa109",
+              "9acc6700e7c313960bf39d3b0675738b97e07c97b20e21f3dc71169ac7b86ffe"
+            ],
+            "silu": "9e2b2312eaf378272f9f921c67cf0105866145bb0c854d34983323d376531a94"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 0,
+          "route": "q51",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 12656,
+          "active_experts": 330,
+          "max_expert_rows": 199,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                10.821822099387646,
+                10.842000134289265,
+                10.887094773352146,
+                10.821541771292686,
+                10.826551355421543,
+                10.793639346957207
+              ],
+              "event_ms": [
+                10.795211791992188,
+                10.813236236572266,
+                10.859223365783691,
+                10.794450759887695,
+                10.801433563232422,
+                10.767279624938965
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                10.904978029429913,
+                10.905718430876732,
+                10.888948105275631,
+                10.89474931359291,
+                10.886142030358315,
+                10.874721221625805
+              ],
+              "event_ms": [
+                10.87868881225586,
+                10.877798080444336,
+                10.863059997558594,
+                10.855806350708008,
+                10.861166000366211,
+                10.849173545837402
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 10.824186727404594,
+              "event_ms": 10.798322677612305
+            },
+            "host": {
+              "wall_ms": 10.89184870943427,
+              "event_ms": 10.862112998962402
+            }
+          },
+          "wall_speedup": 0.9937878331002643,
+          "exact": {
+            "out": "6a1b8c0968827fbdbed3bfb65437a26f15e381afdba42250c85be0a1ab31ea80",
+            "risk_count": 321165,
+            "membership": "f4b3f7553bc6d1de86177a919d03354b38372fe32db64fd2b99e3f67ee083ff3",
+            "maps": [
+              "5eac016eac5d1331fcd7fe37292ae3949bcb216866fee7566d6441f74ebfa109",
+              "9acc6700e7c313960bf39d3b0675738b97e07c97b20e21f3dc71169ac7b86ffe"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13744,
+          "active_experts": 385,
+          "max_expert_rows": 326,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                15.943744219839573,
+                15.913449227809906,
+                15.95543697476387,
+                15.969454310834408,
+                15.86249377578497,
+                15.875437296926975
+              ],
+              "event_ms": [
+                15.878302574157715,
+                15.855400085449219,
+                15.891688346862793,
+                15.905895233154297,
+                15.819313049316406,
+                15.804224967956543
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                15.957801602780819,
+                16.013246029615402,
+                15.991335734724998,
+                16.016491688787937,
+                16.044585034251213,
+                15.943445265293121
+              ],
+              "event_ms": [
+                15.894453048706055,
+                15.949167251586914,
+                15.928757667541504,
+                15.954476356506348,
+                15.976366996765137,
+                15.878713607788086
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 15.92859672382474,
+              "event_ms": 15.866851329803467
+            },
+            "host": {
+              "wall_ms": 16.0022908821702,
+              "event_ms": 15.938962459564209
+            }
+          },
+          "wall_speedup": 0.9953947744802233,
+          "exact": {
+            "out": "7116276d57bed36a0a57fb25aa35a5e2131bb43054371041475735331151e530",
+            "risk_count": 26064,
+            "membership": "a365d3c6259e170489734babb9fa6c03e02342a3018b65160ead591f53a41115",
+            "maps": [
+              "45f869cbb6e990d2260da5fdbcc281ab2eea32004342d65e11e1b496d69f4cb1",
+              "cf333fbcfe0ff6b22604ae231b9e1fdba21db46872c549cdca0676052212bdbf"
+            ],
+            "silu": "3d8872f1fe1bbb76ef14fcdc75be4e852f44f7f90dde3273daaf2d3573774f03"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q51",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13744,
+          "active_experts": 385,
+          "max_expert_rows": 326,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                12.120159342885017,
+                12.057801708579063,
+                12.073521502315998,
+                12.063082307577133,
+                12.116611935198307,
+                11.97311282157898
+              ],
+              "event_ms": [
+                12.092597961425781,
+                12.03071117401123,
+                12.04561996459961,
+                12.033818244934082,
+                12.090712547302246,
+                11.942105293273926
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                12.141608633100986,
+                12.132513336837292,
+                12.142781168222427,
+                12.129106558859348,
+                12.105331756174564,
+                12.079793959856033
+              ],
+              "event_ms": [
+                12.084423065185547,
+                12.104519844055176,
+                12.113036155700684,
+                12.102506637573242,
+                12.079172134399414,
+                12.054726600646973
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 12.068301904946566,
+              "event_ms": 12.039719104766846
+            },
+            "host": {
+              "wall_ms": 12.13080994784832,
+              "event_ms": 12.093464851379395
+            }
+          },
+          "wall_speedup": 0.9948471665807573,
+          "exact": {
+            "out": "627b198358673177b1c9252d536f3901a351e976003fc71834042950e0ab702c",
+            "risk_count": 371123,
+            "membership": "312366a9a75c8e7bf82ad629e9c503a4be2f38da3bb477a70f009af3405cb41b",
+            "maps": [
+              "45f869cbb6e990d2260da5fdbcc281ab2eea32004342d65e11e1b496d69f4cb1",
+              "cf333fbcfe0ff6b22604ae231b9e1fdba21db46872c549cdca0676052212bdbf"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 47,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13616,
+          "active_experts": 331,
+          "max_expert_rows": 897,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                15.617613680660725,
+                15.619087032973766,
+                15.681995078921318,
+                15.666254796087742,
+                15.689999796450138,
+                15.667175874114037
+              ],
+              "event_ms": [
+                15.554876327514648,
+                15.555176734924316,
+                15.620018005371094,
+                15.599709510803223,
+                15.625739097595215,
+                15.602445602416992
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                15.649132430553436,
+                15.70161059498787,
+                15.687004663050175,
+                15.702813863754272,
+                15.733720734715462,
+                15.607194043695927
+              ],
+              "event_ms": [
+                15.586475372314453,
+                15.638843536376953,
+                15.623754501342773,
+                15.634395599365234,
+                15.667948722839355,
+                15.544676780700684
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 15.66671533510089,
+              "event_ms": 15.601077556610107
+            },
+            "host": {
+              "wall_ms": 15.694307629019022,
+              "event_ms": 15.629075050354004
+            }
+          },
+          "wall_speedup": 0.99824189160998,
+          "exact": {
+            "out": "4b1e1ee1d30925628b12feb1f70875be1449e90df606e6bef81fbc1699f60bc8",
+            "risk_count": 23578,
+            "membership": "822e8c340bc07acce022b0b6485d1ad26d1592a99150b1781c4f02befcad8155",
+            "maps": [
+              "c2d806173443352e59a2f46c6417d673e6490e307b24987b94700447b6695e61",
+              "8a8120839e583a663bee876a56eae73915d0b6901bcfb3871e47f2c29cd3600d"
+            ],
+            "silu": "0ea721d5e64dfc59bb0f54217d1cfd781179b2a0962840fc8af3a48ca31d1450"
+          },
+          "inputs_immutable": true
+        }
+      ],
+      "q8_observations": [
+        {
+          "layer": 47,
+          "rows": 10240,
+          "launch_rows": 13616,
+          "actual_rows": 13616,
+          "already_host_sized": true
+        }
+      ],
+      "first_token": 248068
+    },
+    {
+      "id": "general_ja-p1024",
+      "category": "general_ja",
+      "prompt_tokens": 1024,
+      "captures": [
+        {
+          "layer": 0,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 12864,
+          "active_experts": 314,
+          "max_expert_rows": 469,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                14.892823062837124,
+                14.901909977197647,
+                14.950691722333431,
+                14.979285188019276,
+                15.100152231752872,
+                14.980537816882133
+              ],
+              "event_ms": [
+                14.827530860900879,
+                14.851375579833984,
+                14.887212753295898,
+                14.916487693786621,
+                15.036382675170898,
+                14.916207313537598
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                14.96309507638216,
+                14.972152188420296,
+                15.06572775542736,
+                15.040800906717777,
+                15.065877698361874,
+                14.945982955396175
+              ],
+              "event_ms": [
+                14.896749496459961,
+                14.909825325012207,
+                15.001397132873535,
+                14.977182388305664,
+                15.002208709716797,
+                14.883655548095703
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 14.964988455176353,
+              "event_ms": 14.901710033416748
+            },
+            "host": {
+              "wall_ms": 15.006476547569036,
+              "event_ms": 14.943503856658936
+            }
+          },
+          "wall_speedup": 0.9972353208788772,
+          "exact": {
+            "out": "ce5b307d407f69b3c60a74772d39fc52a14f5306986a0eda0af764faa03c0d68",
+            "risk_count": 29148,
+            "membership": "7869d949400bdedc4a439708154bb312dfd040b87e8c26c43b56c799b11d1333",
+            "maps": [
+              "58821e7ab0e7b7debada1c6684ee2c72110f830fdb25db77c69b84fa2903dec1",
+              "ec69cd11aef7b672ec50ff21d058a14ed8ecbb5564465ec7caa7ba1d06d997d9"
+            ],
+            "silu": "8f70fc405d3bff966cefcffbfe938ea327ceeecc33010fa4c814612b84820269"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 0,
+          "route": "q51",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 12864,
+          "active_experts": 314,
+          "max_expert_rows": 469,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                10.99707093089819,
+                11.03125512599945,
+                11.027839034795761,
+                10.981752537190914,
+                11.028098873794079,
+                10.970471426844597
+              ],
+              "event_ms": [
+                10.969599723815918,
+                11.003023147583008,
+                11.000988006591797,
+                10.954952239990234,
+                11.002711296081543,
+                10.943901062011719
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                11.044920422136784,
+                11.087880469858646,
+                11.088772676885128,
+                11.112227104604244,
+                11.050530709326267,
+                11.036105453968048
+              ],
+              "event_ms": [
+                11.01658821105957,
+                11.060359954833984,
+                11.05899715423584,
+                11.059107780456543,
+                11.023321151733398,
+                11.00925350189209
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 11.012454982846975,
+              "event_ms": 10.985293865203857
+            },
+            "host": {
+              "wall_ms": 11.069205589592457,
+              "event_ms": 11.04115915298462
+            }
+          },
+          "wall_speedup": 0.9948731093404897,
+          "exact": {
+            "out": "5426dfae0eb22bd796ca8665540c157f80b6dbc7840ef8655207694b491f4aec",
+            "risk_count": 330206,
+            "membership": "ffcc7279377fb965fb18c0c94fb96f65d289601c1318457f8b2cdbf328426e03",
+            "maps": [
+              "58821e7ab0e7b7debada1c6684ee2c72110f830fdb25db77c69b84fa2903dec1",
+              "ec69cd11aef7b672ec50ff21d058a14ed8ecbb5564465ec7caa7ba1d06d997d9"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13680,
+          "active_experts": 380,
+          "max_expert_rows": 316,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                15.805565752089024,
+                15.919740311801434,
+                15.927906148135662,
+                15.919169411063194,
+                15.922214835882187,
+                15.921133570373058
+              ],
+              "event_ms": [
+                15.741326332092285,
+                15.856822967529297,
+                15.856602668762207,
+                15.848958969116211,
+                15.859207153320312,
+                15.857824325561523
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                15.919079072773457,
+                15.912958420813084,
+                15.942312777042389,
+                15.9780103713274,
+                15.971086919307709,
+                15.965727157890797
+              ],
+              "event_ms": [
+                15.856622695922852,
+                15.850420951843262,
+                15.879023551940918,
+                15.912747383117676,
+                15.907426834106445,
+                15.865029335021973
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 15.920436941087246,
+              "event_ms": 15.856712818145752
+            },
+            "host": {
+              "wall_ms": 15.954019967466593,
+              "event_ms": 15.872026443481445
+            }
+          },
+          "wall_speedup": 0.9978950116367017,
+          "exact": {
+            "out": "dc9b7ab58f6072c8d1e77d24a0fe3a3dd306675e2c6e596bde38afdcfe6c497c",
+            "risk_count": 26427,
+            "membership": "9dd8c9660c6a7d2beec834a104bc004c7e1875519712a3c22daf182c00d5bc6f",
+            "maps": [
+              "61dca978c9a75f5a682bf10ed6a1c6ac41355b8861f8b534c01b0a8e603f7be2",
+              "d3b63c94a090c0dbe820a52266661dfc0dde91fc433827d4b67152870a1dedf5"
+            ],
+            "silu": "136ee927d48c1a4db1894572d94e0d257faa8b335cdb6ae9d218ca979a172f80"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q51",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13680,
+          "active_experts": 380,
+          "max_expert_rows": 316,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                11.935191228985786,
+                12.085284106433392,
+                12.045037932693958,
+                12.015593238174915,
+                12.037374079227448,
+                12.092486023902893
+              ],
+              "event_ms": [
+                11.908441543579102,
+                12.056859970092773,
+                12.002178192138672,
+                11.98941421508789,
+                12.011575698852539,
+                12.062420845031738
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                12.1100302785635,
+                12.09308858960867,
+                12.095572426915169,
+                12.094910256564617,
+                12.087146751582623,
+                12.094310484826565
+              ],
+              "event_ms": [
+                12.077829360961914,
+                12.062582015991211,
+                12.06273078918457,
+                12.068462371826172,
+                12.056839942932129,
+                12.06804084777832
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 12.041206005960703,
+              "event_ms": 12.006876945495605
+            },
+            "host": {
+              "wall_ms": 12.094610370695591,
+              "event_ms": 12.065385818481445
+            }
+          },
+          "wall_speedup": 0.9955844493457777,
+          "exact": {
+            "out": "06c075bf8d6ed4f3fd8deb9c7eca8ef2ca062a6cadbff989104fcf73093e959b",
+            "risk_count": 370116,
+            "membership": "8b03adaddecfcfd19cdb2cf8460ce96e28ae01adce365c522c1ede55ce8269ff",
+            "maps": [
+              "61dca978c9a75f5a682bf10ed6a1c6ac41355b8861f8b534c01b0a8e603f7be2",
+              "d3b63c94a090c0dbe820a52266661dfc0dde91fc433827d4b67152870a1dedf5"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 47,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 12512,
+          "active_experts": 210,
+          "max_expert_rows": 824,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                14.376272447407246,
+                14.26692958921194,
+                14.313796535134315,
+                14.423041604459286,
+                14.400018379092216,
+                14.428761787712574
+              ],
+              "event_ms": [
+                14.316902160644531,
+                14.203639030456543,
+                14.197407722473145,
+                14.357950210571289,
+                14.338592529296875,
+                14.35942268371582
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                14.45053331553936,
+                14.435415156185627,
+                14.44467157125473,
+                14.418723061680794,
+                14.45448026061058,
+                14.43491317331791
+              ],
+              "event_ms": [
+                14.3865327835083,
+                14.370912551879883,
+                14.380691528320312,
+                14.356045722961426,
+                14.391282081604004,
+                14.371654510498047
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 14.388145413249731,
+              "event_ms": 14.327747344970703
+            },
+            "host": {
+              "wall_ms": 14.440043363720179,
+              "event_ms": 14.37617301940918
+            }
+          },
+          "wall_speedup": 0.9964059699016667,
+          "exact": {
+            "out": "d9e3d7befaaef85c807201740a23ca57f1ead17ad326ba938e4c7e44c3ac86b6",
+            "risk_count": 22016,
+            "membership": "73f8ff2aa1eeb6eb723c646b211a0831f0014328321ba17a1fefba236e686651",
+            "maps": [
+              "7ea300b6e430ff108de424ae2009a5d9cb188d1c7b49a145bea5058d9bf0b40b",
+              "c5ea4bf8e6ad280a02f20f416c04198edf1077cd6f34f4d3ad608aece67e1e18"
+            ],
+            "silu": "7539d10bd4977c3c85fda0542c78c110967e7776806258ae49758d860e7f685f"
+          },
+          "inputs_immutable": true
+        }
+      ],
+      "q8_observations": [
+        {
+          "layer": 47,
+          "rows": 10240,
+          "launch_rows": 12512,
+          "actual_rows": 12512,
+          "already_host_sized": true
+        }
+      ],
+      "first_token": 248068
+    },
+    {
+      "id": "mixed_ja_en-p1024",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 1024,
+      "captures": [
+        {
+          "layer": 0,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13040,
+          "active_experts": 364,
+          "max_expert_rows": 318,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                15.160856768488884,
+                15.165544115006924,
+                15.233311802148819,
+                15.248730778694153,
+                15.260192565619946,
+                15.247678384184837
+              ],
+              "event_ms": [
+                15.097917556762695,
+                15.076518058776855,
+                15.16647720336914,
+                15.185842514038086,
+                15.196542739868164,
+                15.184049606323242
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                15.300196595489979,
+                15.301719307899475,
+                15.263749286532402,
+                15.262297354638577,
+                15.31246118247509,
+                15.303644351661205
+              ],
+              "event_ms": [
+                15.105583190917969,
+                15.1414794921875,
+                15.185041427612305,
+                15.197375297546387,
+                15.24874210357666,
+                15.241207122802734
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 15.240495093166828,
+              "event_ms": 15.175263404846191
+            },
+            "host": {
+              "wall_ms": 15.300957951694727,
+              "event_ms": 15.191208362579346
+            }
+          },
+          "wall_speedup": 0.9960484265940224,
+          "exact": {
+            "out": "d74decbdb15eec5c244acb4570e1744b3d886fb73ebcb1786b424eb1b43f45c9",
+            "risk_count": 28715,
+            "membership": "ba227f2fb4caaa4f752fd97d3d6add0d85a166fc8486094370a59e1796b609df",
+            "maps": [
+              "a2a674c74eebe28b3c023bc2ad8241ebd0d72c31d0e628c13a7fb404613fbe98",
+              "751f101d9586de84b54ddf98cdbe53fd4bf43240300b7ee2e37c50936fa31c89"
+            ],
+            "silu": "87b884f164bc4f6b3ee2bd84226812f28ab1d44dfd0b673ecefa4a3c90c81f61"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 0,
+          "route": "q51",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13040,
+          "active_experts": 364,
+          "max_expert_rows": 318,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                11.150327511131763,
+                11.056562885642052,
+                11.137393303215504,
+                11.127726174890995,
+                11.139938607811928,
+                11.099322699010372
+              ],
+              "event_ms": [
+                11.11755657196045,
+                11.028961181640625,
+                11.111035346984863,
+                11.059288024902344,
+                11.113780975341797,
+                10.995137214660645
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                11.263870634138584,
+                11.179824359714985,
+                11.214318685233593,
+                11.189091019332409,
+                11.181697249412537,
+                11.193199083209038
+              ],
+              "event_ms": [
+                11.209078788757324,
+                11.146833419799805,
+                11.186165809631348,
+                11.161940574645996,
+                11.15534782409668,
+                11.168502807617188
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 11.13255973905325,
+              "event_ms": 11.085161685943604
+            },
+            "host": {
+              "wall_ms": 11.191145051270723,
+              "event_ms": 11.165221691131592
+            }
+          },
+          "wall_speedup": 0.9947650296775644,
+          "exact": {
+            "out": "3994c1faee7d225d51545564a720c5b57a8dd64148df411978dedd36d572c94d",
+            "risk_count": 324127,
+            "membership": "ee75b5362f3282b41ed8fe900c621274a8916b83a60e1f814c145633c5ee7a38",
+            "maps": [
+              "a2a674c74eebe28b3c023bc2ad8241ebd0d72c31d0e628c13a7fb404613fbe98",
+              "751f101d9586de84b54ddf98cdbe53fd4bf43240300b7ee2e37c50936fa31c89"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13952,
+          "active_experts": 414,
+          "max_expert_rows": 311,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                16.20739046484232,
+                16.23491197824478,
+                16.24034158885479,
+                16.245802864432335,
+                16.218571923673153,
+                16.10445696860552
+              ],
+              "event_ms": [
+                16.1317081451416,
+                16.169448852539062,
+                16.177034378051758,
+                16.18297576904297,
+                16.155513763427734,
+                16.03972625732422
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                16.21637772768736,
+                16.242275945842266,
+                16.254648566246033,
+                16.29072707146406,
+                16.29875134676695,
+                16.258115880191326
+              ],
+              "event_ms": [
+                16.153860092163086,
+                16.176513671875,
+                16.191259384155273,
+                16.227649688720703,
+                16.221607208251953,
+                16.19536781311035
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 16.226741950958967,
+              "event_ms": 16.1624813079834
+            },
+            "host": {
+              "wall_ms": 16.25638222321868,
+              "event_ms": 16.193313598632812
+            }
+          },
+          "wall_speedup": 0.9981766993508938,
+          "exact": {
+            "out": "1d3f7db5e8df40b3b38b62d9026a1d8fd60f29baa5663839a4dfabf1e7f1b95a",
+            "risk_count": 25998,
+            "membership": "185b67b3ab24ccde6c953481eff882d3b1f05c0f8c4e8d10c3b7b8a9eb5039c2",
+            "maps": [
+              "96893c04ecad988cd11b845c06040dfadd795969b7fc3407ffc958448e5226cd",
+              "0b7d37deafbf8fb4b3cd26d54a4d321ebeea2137a63157cf28c9dbf67269bd8b"
+            ],
+            "silu": "02069399d3fa1fe848957368c97098d64f441a417da50a161b9021d3bb58e131"
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 24,
+          "route": "q51",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13952,
+          "active_experts": 414,
+          "max_expert_rows": 311,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                12.335322797298431,
+                12.297182343900204,
+                12.277713976800442,
+                12.21718080341816,
+                12.298674322664738,
+                12.275699526071548
+              ],
+              "event_ms": [
+                12.30698013305664,
+                12.268848419189453,
+                12.247177124023438,
+                12.178850173950195,
+                12.270390510559082,
+                12.248960494995117
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                12.332618236541748,
+                12.29805126786232,
+                12.305746786296368,
+                12.215438298881054,
+                12.324322015047073,
+                12.332066893577576
+              ],
+              "event_ms": [
+                12.305296897888184,
+                12.271883964538574,
+                12.248720169067383,
+                12.1666259765625,
+                12.299325942993164,
+                12.30468463897705
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 12.287448160350323,
+              "event_ms": 12.258904457092285
+            },
+            "host": {
+              "wall_ms": 12.31503440067172,
+              "event_ms": 12.28560495376587
+            }
+          },
+          "wall_speedup": 0.9977599542620934,
+          "exact": {
+            "out": "f268fe726b7bc228ffcdd131f054a56fcb8190008c732f85a2b385d1782ee44b",
+            "risk_count": 372456,
+            "membership": "f8cd7a94c9589b68d47204e4f19fc7330c8748213999344a6113d0e400e99b32",
+            "maps": [
+              "96893c04ecad988cd11b845c06040dfadd795969b7fc3407ffc958448e5226cd",
+              "0b7d37deafbf8fb4b3cd26d54a4d321ebeea2137a63157cf28c9dbf67269bd8b"
+            ]
+          },
+          "inputs_immutable": true
+        },
+        {
+          "layer": 47,
+          "route": "q4",
+          "tokens": 1024,
+          "compact_rows": 10240,
+          "static_rows": 17920,
+          "host_rows": 13104,
+          "active_experts": 279,
+          "max_expert_rows": 994,
+          "samples": {
+            "static": {
+              "wall_ms": [
+                15.026403591036797,
+                15.111524611711502,
+                15.106895007193089,
+                15.094822272658348,
+                15.126911923289299,
+                15.072980895638466
+              ],
+              "event_ms": [
+                14.962444305419922,
+                15.048735618591309,
+                15.04361629486084,
+                15.031804084777832,
+                15.005383491516113,
+                15.009561538696289
+              ]
+            },
+            "host": {
+              "wall_ms": [
+                15.065787360072136,
+                15.143354423344135,
+                15.135307796299458,
+                15.132592990994453,
+                15.126432292163372,
+                15.039398334920406
+              ],
+              "event_ms": [
+                15.001717567443848,
+                15.07967472076416,
+                15.070306777954102,
+                15.069655418395996,
+                15.063182830810547,
+                14.968165397644043
+              ]
+            }
+          },
+          "medians": {
+            "static": {
+              "wall_ms": 15.100858639925718,
+              "event_ms": 15.02068281173706
+            },
+            "host": {
+              "wall_ms": 15.129512641578913,
+              "event_ms": 15.066419124603271
+            }
+          },
+          "wall_speedup": 0.998106085613462,
+          "exact": {
+            "out": "00bb8518e2edb802dc3e187df51bf56f6dfff54354f2af7d76fd0c6927115d6f",
+            "risk_count": 22866,
+            "membership": "3178edc20d6d7d6df1fde867298b2b3a699d9bdb458f8aefcaa876e0ce1c5d3d",
+            "maps": [
+              "3908fd4fa10e104f970abbe8770bc431f46d5c0df98ae52041d11cd35e9252b0",
+              "12375f5e23ad83a61c5f4a09c375bbdd2c102e610db2e6ad12afea27d47f3a6c"
+            ],
+            "silu": "0a2f98a8f8dced74ce62f02676c7afeea90167cb1d77beca6cb768bff173eafa"
+          },
+          "inputs_immutable": true
+        }
+      ],
+      "q8_observations": [
+        {
+          "layer": 47,
+          "rows": 10240,
+          "launch_rows": 13104,
+          "actual_rows": 13104,
+          "already_host_sized": true
+        }
+      ],
+      "first_token": 248068
+    }
+  ],
+  "libraries": {
+    "group": {
+      "path": "/home/lhl/.cache/hipengine/build/qwen35_moe_group_scatter-203366d4c085ea29/qwen35_moe_group_scatter.so",
+      "sha256": "b2dd79afae99216b2bbb14cb4e48d02c9d7a0f1799fc2a5762742995e99c90f2"
+    },
+    "q4": {
+      "path": "/home/lhl/.cache/hipengine/build/gguf_q4_k_selected_prefill-72f2608fa7ffa3da/gguf_q4_k_selected_prefill.so",
+      "sha256": "2d1db0f36b240254f36c574f4d6f5505f04e2be502984af44d417c8dba66ebbb"
+    },
+    "q51": {
+      "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_q5_1-cfb1aee6a67ad685/qwen4_exp_q5_1.so",
+      "sha256": "a184e605ddb2ee9da8540fae4da541f1f647268ecd5e0e6a319c9849022ed70d"
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 90035523100,
+    "total_allocated_bytes": 95206741376,
+    "total_freed_bytes": 95206741376,
+    "active_allocations": 0,
+    "peak_allocations": 1629
+  },
+  "summary": {
+    "owner_cases": 30,
+    "static_sum_of_medians_ms": 557.7598717063665,
+    "host_sum_of_medians_ms": 559.0061396360397,
+    "pooled_wall_speedup": 0.9977705648626961,
+    "wall_delta_pct": 0.22344166242374008,
+    "slower_medians": 28,
+    "faster_medians": 2,
+    "positive_median_order_checks": [
+      {
+        "case_id": "code-p4096",
+        "layer": 0,
+        "route": "q51",
+        "speedup": 1.0039939976150922,
+        "order_strata": {
+          "static_first": 0.9975629869268878,
+          "host_first": 1.0089292451993368
+        }
+      },
+      {
+        "case_id": "code-p4096",
+        "layer": 47,
+        "route": "q4",
+        "speedup": 1.0000979476313605,
+        "order_strata": {
+          "static_first": 0.9999522506758082,
+          "host_first": 1.0010466789059889
+        }
+      }
+    ],
+    "grid_reduction_pct": [
+      8.026315789473681,
+      34.75
+    ],
+    "charged_operation_calls": 420,
+    "q8_already_sized_observations": 6
+  },
+  "decision": {
+    "action": "reject",
+    "reason": "No repeatable charged operation win:28/30 medians slower, both positive medians lose the static-first stratum.",
+    "runtime_default_changed": false,
+    "full_model_qualification": false,
+    "limits": "Six natural cases,18 Q4 and12 Q5_1 replay owner cases; tile-map/reset/iu8-risk/repair/Q4 SiLU only. Count/prefix/scatter/router/down/combine/model wall excluded. Does not test overlapping readback behind independent shared-expert work.",
+    "reopen": "A distinct overlapped-readback or device-sized dispatch mechanism with exact ownership and charged complete-operation evidence."
+  },
+  "environment": {
+    "rocm_runtime": "therock10 staging HIP7.15.26333",
+    "shell": "P=/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages; export LD_LIBRARY_PATH=$P/_rocm_sdk_devel/lib:$P/_rocm_sdk_core/lib:$P/_rocm_sdk_libraries/lib; export PATH=$P/_rocm_sdk_devel/bin:$P/_rocm_sdk_core/bin:$PATH; export HIPENGINE_HIP_ARCH=gfx1151; uv run python scripts/qwen4exp_rt2_host_grid.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipcc-version-qwen4exp.txt --layer 0 --layer 24 --layer 47 --pairs 6 --output /tmp/qwen4exp-rt2-six-case.json"
+  }
+}
