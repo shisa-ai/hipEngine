@@ -1,5 +1,17 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-06 — Checked-index GDN UD production route
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL/BF16/chunk4096, clean `7a1dc7b22` twelve-case/three-pair A/B:
+  prefill 291.658→292.093 / 317.351→318.314 / 324.199→324.936 tok/s
+  (+0.149%/+0.303%/+0.227%); 72 trajectories exact. Promote 2–4096-row
+  Hk16/Hv48/D128 UD production scope for the exact 1.027–1.044x natural GDN
+  owner saving. One prefill case -0.008% and three request cases slower (worst
+  -0.546%); no all-case request/decode-speed claim. Native binder smoke and
+  bounds/rollback tests verify selection. Source:
+  `results/2026-10-06-qwen4exp-gdn-narrow-index/engine-ab.json`.
+
 ## 2026-10-06 — Checked-index GDN natural-input qualification
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next

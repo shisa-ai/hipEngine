@@ -334,6 +334,8 @@ def _apply_mode(
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         environment["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] = "1"
+        # The diagnostic hook owns the two arms even after native promotion.
+        environment["HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT"] = "qwen4exp_sigmoid_wave_norm_prefill"
         return
     if route_package == "router-dpp":
         if mode not in {"before", "after"}:
@@ -660,7 +662,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "after": {"gdn": "qwen4exp_sigmoid_wave_norm_narrow_prefill"},
         }
         artifact["diagnostic_registry_substitution"] = True
-        artifact["profile"]["scope"] = "named parent profile; candidate installed by diagnostic hook"
+        artifact["profile"]["scope"] = "named profile; diagnostic arms override its GDN selection"
     if args.route_package == "router-dpp":
         from hipengine.kernels.registry import KernelKey, register, resolve
         router_key = KernelKey("hip_gfx1151", "router_logits", "f32",

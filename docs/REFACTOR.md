@@ -1192,20 +1192,24 @@
 - Candidate removed; no model admission. Keep row8 production and do not
   repeat unchanged row16 on the assumption that spill removal makes it faster.
 
-## Qwen4Exp GDN checked-index diagnostic sibling
+## Qwen4Exp GDN checked-index production leaf
 
-- `qwen4exp_sigmoid_wave_norm_narrow_prefill` is registered separately; no
-  env selector or named profile uses it. Wide-index wave-norm and strict
-  primitives remain fallbacks. Element bounds are checked before build/launch.
-- The gfx1151 synthetic complete-operation gate passes with1.042–1.044x at
-  512/1024/4096 tokens and reduced scratch. No model-speed claim follows.
-- Natural-input216-call output/state parity and operation timing pass, as do
-  all20 canonical/heldout full-logit/state/KV/lifecycle cases. Next: engine A/B
-  and default admission if non-regressive. Remove
-  the diagnostic key if those gates reject it, or collapse diagnostic
-  selection after production qualification; do not leave an unexplained
-  default-off perf path. Evidence:
-  `benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md`.
+- `qwen4exp_sigmoid_wave_norm_narrow_prefill` is the gfx1151 UD production
+  serial owner only at Hk16/Hv48/D128, 2–4096 rows. Raw Python/int64 ABI
+  element bounds remain mandatory. Other quant/strict/shape scopes unchanged.
+- `HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT` is a temporary parent rollback:
+  set `qwen4exp_sigmoid_wave_norm_prefill` before plan registration/generator
+  construction. The resolved manifest and binder publish the same variant.
+  Retain the wide key for outside-bound fallback and bisection; remove the
+  rollback env after the next qualified GDN change or release window.
+- Exact natural owner saving is 1.027–1.044x, with all 20 full-state/KV cases
+  and 72 engine trajectories exact. Engine weighted prefill improves
+  +0.149%/+0.303%/+0.227%; one prefill case -0.008%, three request cases
+  slower. Retain the owner saving, not an all-case request/decode claim.
+- Diagnostic owner/state/A/B interception pins the wide parent after binding
+  so it cannot become a null comparison after promotion. Remove those hooks
+  when the qualification harness uses native named plans per arm.
+  Evidence: `benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md`.
 
 ## Qwen4Exp GDN wave-tail normalization production
 

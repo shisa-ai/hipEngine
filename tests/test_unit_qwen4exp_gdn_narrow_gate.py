@@ -10,7 +10,10 @@ def test_narrow_state_gate_keeps_parent_wave_norm_admission(enabled):
     environment = {"unrelated": "kept"}
     apply_state_gate_mode(None, "gdn-narrow", enabled,
                           "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM", environment=environment)
-    assert environment == {"unrelated": "kept", "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1"}
+    assert environment == {
+        "unrelated": "kept", "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1",
+        "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT": "qwen4exp_sigmoid_wave_norm_prefill",
+    }
     other = {"unrelated": "kept"}
     _apply_mode("after" if enabled == "1" else "before", route_package="gdn-narrow",
                 environment=other)

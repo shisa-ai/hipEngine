@@ -57,6 +57,8 @@ def main():
     # Intercept only the selected leaf; the current UD arithmetic recovery uses
     # wave-norm on all 36 GDN layers, unlike the historical 21-layer prefix.
     if args.narrow_index:
+        # Pin the intercepted parent after binding, including on promoted trees.
+        os.environ["HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT"]="qwen4exp_sigmoid_wave_norm_prefill"
         from scripts.qwen4exp_gdn_narrow_gate_support import validate_call, expected_calls
         key=KernelKey("hip_gfx1151","gdn_recurrence_norm_gate","f32_state","qwen4exp_sigmoid_wave_norm_prefill")
         candidate_variant="qwen4exp_sigmoid_wave_norm_narrow_prefill"
@@ -72,6 +74,7 @@ def main():
         command=sys.argv,fixture_sha256=digest,chunk_size=args.prefill_chunk_size,cases=[],status="running",
         parent_variant=key.variant,candidate_variant=candidate_variant,
         manifest_sha256=profile.manifest_sha256,
+        manifest_scope="named profile; diagnostic parent/candidate hook overrides GDN selection",
         protocol="Every serial call: restore starting state outside timing,1 warmup pair+2 measured counterbalanced pairs; compare complete output/state hashes after every pair. Only HIP-event kernel intervals timed.",
         performance_claim=False)
     captures=[]

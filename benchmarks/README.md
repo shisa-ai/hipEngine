@@ -5,27 +5,33 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
-## Qwen3.8 Flash Next checked-index GDN operation screen
+## Qwen3.8 Flash Next checked-index GDN production route
 
-On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, a checked
-int32-index sibling improves complete GDN recurrence+norm+gate timing at
-UD-Q4_K_XL Hk16/Hv48/D128 geometry. The screen uses synthetic F32 inputs,
-nonzero FP32 state and 21 counterbalanced pairs per case.
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+BF16 KV and chunk4096, the gfx1151 production profile selects checked
+int32 indexing for the serial D128 GDN leaf at 2–4096 rows. A same-source,
+same-residency A/B uses all 12 canonical cases and three counterbalanced
+measurements per arm, with 128 decode transitions.
 
-| Tokens | Parent ms | Candidate ms | Speedup |
+| Prompt tokens | Wide-index prefill tok/s | Checked-index prefill tok/s | Change |
 | ---: | ---: | ---: | ---: |
-| 512 | 2.709651 | 2.594705 | 1.0443x |
-| 1024 | 5.371735 | 5.155940 | 1.0419x |
-| 4096 | 21.318647 | 20.451752 | 1.0424x |
+| 512 | 291.658 | 292.093 | +0.149% |
+| 1024 | 317.351 | 318.314 | +0.303% |
+| 4096 | 324.199 | 324.936 | +0.227% |
 
-Exact output/state replay, guarded ownership, cross-head isolation,
-CPU-reference floor and cached trace pass. Private scratch drops36→28B;
-static VGPR remains256. Natural-model owner timing is1.027–1.044x across six
-cases/216 exact calls. All20 canonical/heldout full-logit/state/KV cases pass
-three candidate repeats and leak-free teardown. This is owner/operation
-measurement, not model throughput; engine A/B is pending and production
-selection is unchanged.
-[Protocol and artifact](results/2026-10-06-qwen4exp-gdn-narrow-index/README.md).
+All 72 measured trajectories are exact and deterministic. Natural-model GDN
+owner timing improves 1.027–1.044x over six cases/216 exact calls; all 20
+canonical/heldout full-logit/state/KV cases pass three candidate repeats and
+leak-free teardown. Private scratch drops 36→28 bytes/lane; static VGPR
+remains 256. Strict, Q4_K_M production and shapes outside the bound do not
+select the checked-index leaf.
+
+This is a qualified owner-time improvement with a small aggregate prefill
+gain, not an all-case request-wall win. Japanese p512 prefill is 0.008% slower
+(max within-arm prefill CV 0.629%); three request cases are slower, worst
+mixed p512 at 0.546%. Both prefill order strata improve; decode is unchanged
+and no decode-speed claim follows.
+[Protocol and artifacts](results/2026-10-06-qwen4exp-gdn-narrow-index/README.md).
 
 ## Qwen3.8 Flash Next ordered router DPP production route
 
