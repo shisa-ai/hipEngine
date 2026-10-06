@@ -521,6 +521,7 @@ def qwen4_exp_gdn_prefill_f32(
     runtime: HipRuntime | None = None,
     _register_state: bool = False,
     _wave_norm: bool = False,
+    _narrow_index: bool = False,
 ) -> None:
     """Run exact serial-order FP32-state Qwen4Exp recurrence for token rows."""
 
@@ -532,11 +533,17 @@ def qwen4_exp_gdn_prefill_f32(
         raise ValueError("head dimensions must be positive")
     if _register_state and (head_k_dim != 128 or head_v_dim != 128):
         raise ValueError("register-state GDN requires Dk=Dv=128")
+    if _narrow_index:
+        limit = 2**31 - 1
+        qkv_width = (2 * num_k_heads + num_v_heads) * 128
+        if num_v_heads > limit // (128 * 128) or tokens > limit // qkv_width:
+            raise ValueError("narrow-index GDN element offsets exceed int32")
     library = library or build_qwen4_exp_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
-        ("hipengine_qwen4_exp_gdn_wave_norm_prefill_f32" if _wave_norm else
+        ("hipengine_qwen4_exp_gdn_wave_norm_narrow_prefill_f32" if _narrow_index else
+         "hipengine_qwen4_exp_gdn_wave_norm_prefill_f32" if _wave_norm else
          "hipengine_qwen4_exp_gdn_register_prefill_f32" if _register_state
          else "hipengine_qwen4_exp_gdn_prefill_f32"),
         _PREFILL_ARGS,
@@ -628,12 +635,21 @@ def qwen4_exp_gdn_wave_norm_prefill_f32(*args, **kwargs):
     qwen4_exp_gdn_prefill_f32(*args, **kwargs, _register_state=True, _wave_norm=True)
 
 
+def qwen4_exp_gdn_wave_norm_narrow_prefill_f32(*args, **kwargs):
+    """Run the diagnostic D128 wave-norm route with 32-bit indexing."""
+
+    qwen4_exp_gdn_prefill_f32(
+        *args, **kwargs, _register_state=True, _wave_norm=True, _narrow_index=True
+    )
+
+
 def register_qwen4_exp_gdn_kernels(*, replace: bool = True) -> None:
     registrations = {
         "qwen4exp_sigmoid_strict": qwen4_exp_gdn_decode_f32,
         "qwen4exp_sigmoid_strict_prefill": qwen4_exp_gdn_prefill_f32,
         "qwen4exp_sigmoid_register_prefill": qwen4_exp_gdn_register_prefill_f32,
         "qwen4exp_sigmoid_wave_norm_prefill": qwen4_exp_gdn_wave_norm_prefill_f32,
+        "qwen4exp_sigmoid_wave_norm_narrow_prefill": qwen4_exp_gdn_wave_norm_narrow_prefill_f32,
         "qwen4exp_sigmoid_peer_prefill": qwen4_exp_gdn_peer_prefill_f32,
         "qwen4exp_gdn_columnwarps_prefill": qwen4_exp_gdn_prefill_columnwarps_f32,
         "qwen4exp_gdn_tiled16_prefill": qwen4_exp_gdn_prefill_tiled16_f32,
@@ -690,6 +706,7 @@ __all__ = [
     "qwen4_exp_gdn_prefill_f32",
     "qwen4_exp_gdn_register_prefill_f32",
     "qwen4_exp_gdn_wave_norm_prefill_f32",
+    "qwen4_exp_gdn_wave_norm_narrow_prefill_f32",
     "qwen4_exp_gdn_prefill_prepare_f32",
     "qwen4_exp_gdn_prefill_sigmoid_gate_f32",
     "register_qwen4_exp_gdn_kernels",

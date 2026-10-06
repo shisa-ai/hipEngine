@@ -1,0 +1,519 @@
+{
+  "shape": "Hk16/Hv48/Dk128/Dv128",
+  "rows": [
+    {
+      "tokens": 1,
+      "parent_ms": 0.020958999171853065,
+      "candidate_ms": 0.019957000389695168,
+      "speedup": 1.0502078850825338,
+      "exact": true,
+      "samples_ms": [
+        [
+          0.024366000667214394,
+          0.019917000085115433,
+          0.022041000425815582,
+          0.019957000389695168,
+          0.01971600018441677,
+          0.02107900008559227,
+          0.02228200063109398,
+          0.01879500038921833,
+          0.021761000156402588,
+          0.018835000693798065,
+          0.02364400029182434,
+          0.018835000693798065,
+          0.03590700030326843,
+          0.01979699917137623,
+          0.019957000389695168,
+          0.020076999440789223,
+          0.02143999934196472,
+          0.045844998210668564,
+          0.020958999171853065,
+          0.02023799903690815,
+          0.021359000355005264
+        ],
+        [
+          0.019595999270677567,
+          0.020277999341487885,
+          0.018755000084638596,
+          0.019917000085115433,
+          0.025047000497579575,
+          0.021399999037384987,
+          0.01955699920654297,
+          0.01871499978005886,
+          0.01879500038921833,
+          0.020116999745368958,
+          0.018835000693798065,
+          0.020438000559806824,
+          0.04752900078892708,
+          0.023533999919891357,
+          0.019957000389695168,
+          0.020517999306321144,
+          0.018996000289916992,
+          0.09205199778079987,
+          0.01887499913573265,
+          0.02015800029039383,
+          0.019075999036431313
+        ]
+      ],
+      "speedup_by_order": [
+        1.1407528441809764,
+        0.9793201830109708
+      ]
+    },
+    {
+      "tokens": 17,
+      "parent_ms": 0.10247199982404709,
+      "candidate_ms": 0.1002269983291626,
+      "speedup": 1.0223991692089942,
+      "exact": true,
+      "samples_ms": [
+        [
+          0.10415499657392502,
+          0.103192999958992,
+          0.10166999697685242,
+          0.10227099806070328,
+          0.10247199982404709,
+          0.10235200077295303,
+          0.10315299779176712,
+          0.10235200077295303,
+          0.10419400036334991,
+          0.10227099806070328,
+          0.10082799941301346,
+          0.1024710014462471,
+          0.10323300212621689,
+          0.10263200104236603,
+          0.10315299779176712,
+          0.10247199982404709,
+          0.10351400077342987,
+          0.1024319976568222,
+          0.10315299779176712,
+          0.10207100212574005,
+          0.10335399955511093
+        ],
+        [
+          0.10885400325059891,
+          0.10295199602842331,
+          0.09810400009155273,
+          0.10102900117635727,
+          0.10026700049638748,
+          0.10054799914360046,
+          0.09934599697589874,
+          0.10074900090694427,
+          0.09922599792480469,
+          0.10022799670696259,
+          0.0967009961605072,
+          0.09950599819421768,
+          0.09902499616146088,
+          0.09710100293159485,
+          0.10074800252914429,
+          0.1002269983291626,
+          0.09942600131034851,
+          0.10026700049638748,
+          0.09910599887371063,
+          0.10038699954748154,
+          0.09613999724388123
+        ]
+      ],
+      "speedup_by_order": [
+        1.0395763202093304,
+        1.0205826865400305
+      ]
+    },
+    {
+      "tokens": 64,
+      "parent_ms": 0.3338249921798706,
+      "candidate_ms": 0.3242869973182678,
+      "speedup": 1.0294122025874564,
+      "exact": true,
+      "samples_ms": [
+        [
+          0.3317809998989105,
+          0.3326619863510132,
+          0.3355889916419983,
+          0.33346399664878845,
+          0.334867000579834,
+          0.33346399664878845,
+          0.33590900897979736,
+          0.33318400382995605,
+          0.3340660035610199,
+          0.33077898621559143,
+          0.3353880047798157,
+          0.3338249921798706,
+          0.33767199516296387,
+          0.33550798892974854,
+          0.33142000436782837,
+          0.3333440124988556,
+          0.33346399664878845,
+          0.33194199204444885,
+          0.33390501141548157,
+          0.334104984998703,
+          0.3345069885253906
+        ],
+        [
+          0.32464799284935,
+          0.32773399353027344,
+          0.3242869973182678,
+          0.3256089985370636,
+          0.3241260051727295,
+          0.3248879909515381,
+          0.31979900598526,
+          0.3245680034160614,
+          0.32324498891830444,
+          0.32416701316833496,
+          0.3232850134372711,
+          0.32641100883483887,
+          0.3242869973182678,
+          0.3258099853992462,
+          0.31867700815200806,
+          0.3262909948825836,
+          0.3238460123538971,
+          0.32693299651145935,
+          0.32248398661613464,
+          0.3266119956970215,
+          0.3230859935283661
+        ]
+      ],
+      "speedup_by_order": [
+        1.0347123269612897,
+        1.0225532997350473
+      ]
+    },
+    {
+      "tokens": 512,
+      "parent_ms": 2.709650993347168,
+      "candidate_ms": 2.594705104827881,
+      "speedup": 1.0443001743455975,
+      "exact": true,
+      "samples_ms": [
+        [
+          2.724740982055664,
+          2.7002649307250977,
+          2.725111961364746,
+          2.6994829177856445,
+          2.720160961151123,
+          2.6969170570373535,
+          2.717365026473999,
+          2.68094801902771,
+          2.7145309448242188,
+          2.6965460777282715,
+          2.728785991668701,
+          2.697908878326416,
+          2.724349021911621,
+          2.6928789615631104,
+          2.7294280529022217,
+          2.696866989135742,
+          2.709650993347168,
+          2.6978280544281006,
+          2.7207510471343994,
+          2.696415901184082,
+          2.7126359939575195
+        ],
+        [
+          2.5930049419403076,
+          2.6167080402374268,
+          2.586190938949585,
+          2.616326093673706,
+          2.5864109992980957,
+          2.6135010719299316,
+          2.5896658897399902,
+          2.605436086654663,
+          2.591629981994629,
+          2.6169168949127197,
+          2.5936930179595947,
+          2.6127588748931885,
+          2.593592882156372,
+          2.612006902694702,
+          2.5912489891052246,
+          2.6217260360717773,
+          2.594705104827881,
+          2.6104040145874023,
+          2.5900070667266846,
+          2.612389087677002,
+          2.59073805809021
+        ]
+      ],
+      "speedup_by_order": [
+        1.0499766940860025,
+        1.0320542990694155
+      ]
+    },
+    {
+      "tokens": 1024,
+      "parent_ms": 5.371735095977783,
+      "candidate_ms": 5.155940055847168,
+      "speedup": 1.041853675138424,
+      "exact": true,
+      "samples_ms": [
+        [
+          5.371735095977783,
+          5.366745948791504,
+          5.3935160636901855,
+          5.3635687828063965,
+          5.389547824859619,
+          5.3438720703125,
+          5.397984027862549,
+          5.365923881530762,
+          5.383487224578857,
+          5.367486953735352,
+          5.391292095184326,
+          5.348771095275879,
+          5.392425060272217,
+          5.364602088928223,
+          5.394067764282227,
+          5.321029186248779,
+          5.377676010131836,
+          5.3294358253479,
+          5.386704921722412,
+          5.356527805328369,
+          5.388357162475586
+        ],
+        [
+          5.151360988616943,
+          5.177580833435059,
+          5.141091823577881,
+          5.1746649742126465,
+          5.148615837097168,
+          5.160738945007324,
+          5.152513027191162,
+          5.1741838455200195,
+          5.155940055847168,
+          5.171949863433838,
+          5.14074182510376,
+          5.157543182373047,
+          5.1531758308410645,
+          5.196136951446533,
+          5.154428958892822,
+          5.167953014373779,
+          5.1549787521362305,
+          5.1322760581970215,
+          5.1562018394470215,
+          5.1782331466674805,
+          5.1491379737854
+        ]
+      ],
+      "speedup_by_order": [
+        1.0460037260299124,
+        1.0361451813499443
+      ]
+    },
+    {
+      "tokens": 4096,
+      "parent_ms": 21.318647384643555,
+      "candidate_ms": 20.451751708984375,
+      "speedup": 1.0423873557627026,
+      "exact": true,
+      "samples_ms": [
+        [
+          21.49449920654297,
+          21.309091567993164,
+          21.347843170166016,
+          21.286075592041016,
+          21.35188102722168,
+          21.29645538330078,
+          21.29581642150879,
+          21.32612419128418,
+          21.318647384643555,
+          21.29627799987793,
+          21.336463928222656,
+          21.27709197998047,
+          21.331804275512695,
+          21.283845901489258,
+          21.319580078125,
+          21.247295379638672,
+          21.444555282592773,
+          21.284135818481445,
+          21.324581146240234,
+          21.305295944213867,
+          21.334880828857422
+        ],
+        [
+          20.478012084960938,
+          20.5035400390625,
+          20.493059158325195,
+          20.471689224243164,
+          20.451751708984375,
+          20.423709869384766,
+          20.492107391357422,
+          20.84073257446289,
+          20.476139068603516,
+          20.460859298706055,
+          20.47089958190918,
+          20.450742721557617,
+          20.445741653442383,
+          20.470651626586914,
+          20.364952087402344,
+          20.438547134399414,
+          20.42376136779785,
+          20.4489803314209,
+          20.441484451293945,
+          20.440092086791992,
+          20.44268798828125
+        ]
+      ],
+      "speedup_by_order": [
+        1.0431810992251138,
+        1.0408380872210221
+      ]
+    }
+  ],
+  "parent": "qwen4_exp_gdn_wave_norm_prefill_f32",
+  "candidate": "qwen4_exp_gdn_wave_norm_narrow_prefill_f32",
+  "command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "python",
+    "scripts/qwen4exp_gdn_register_micro.py",
+    "--narrow-index",
+    "--tokens",
+    "1",
+    "17",
+    "64",
+    "512",
+    "1024",
+    "4096",
+    "--repeats",
+    "21",
+    "--output",
+    "/tmp/qwen4exp-gdn-narrow-20261006/screen.json"
+  ],
+  "schema": 1,
+  "date": "2026-10-06",
+  "source": {
+    "base_commit": "c4619579b601527417fe1c6a323545e83b8c64a9",
+    "tracked_clean": false,
+    "candidate_source_sha256": "2e443bfb6e53d9cf849898914046f3c9b2a529a36087c8565139545b41e6d537"
+  },
+  "host": {
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Qwen3.8-Flash-Next",
+    "quant": "UD-Q4_K_XL",
+    "scope": "model geometry; synthetic F32 inputs, nonzero FP32 recurrent state; no model weights loaded"
+  },
+  "protocol": {
+    "pairs": 21,
+    "warmup_pairs": 3,
+    "order": "alternating parent/candidate each pair",
+    "timing": "HIP events cover one complete recurrence+norm+gate kernel; state reset/synchronize and downloads outside timer",
+    "association": "unchanged FP32 recurrence and reduction tree",
+    "default_changed": false
+  },
+  "resources": [
+    {
+      "mangled": "_ZN12_GLOBAL__N_132qwen4_exp_gdn_prefill_f32_kernelILb1ELb1ELb0EEEvPKfS2_S2_S2_S2_S2_S2_PfS3_NSt11conditionalIXT1_EilE4typeES6_S6_S6_S6_",
+      "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true, false>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, std::conditional<false, int, long>::type, std::conditional<false, int, long>::type, std::conditional<false, int, long>::type, std::conditional<false, int, long>::type, std::conditional<false, int, long>::type)",
+      "private_bytes": 36,
+      "vgpr": 256,
+      "sgpr": 51,
+      "vgpr_spills": 8,
+      "static_scratch_instructions": 11
+    },
+    {
+      "mangled": "_ZN12_GLOBAL__N_132qwen4_exp_gdn_prefill_f32_kernelILb1ELb1ELb1EEEvPKfS2_S2_S2_S2_S2_S2_PfS3_NSt11conditionalIXT1_EilE4typeES6_S6_S6_S6_",
+      "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type)",
+      "private_bytes": 28,
+      "vgpr": 256,
+      "sgpr": 44,
+      "vgpr_spills": 6,
+      "static_scratch_instructions": 6
+    }
+  ],
+  "build": {
+    "cache_key": "aabdf2cf9597d0915e39ca5ac3be383724af6e54d0be6bafc7845eaf36fd31d7",
+    "command": [
+      "hipcc",
+      "-shared",
+      "-fPIC",
+      "-O3",
+      "-mllvm",
+      "-amdgpu-unroll-threshold-local=600",
+      "-mcumode",
+      "--offload-arch=gfx1151",
+      "hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip",
+      "-o",
+      "<jit-cache>/qwen4_exp_gdn.so"
+    ],
+    "compiler_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "library_sha256": "ecd684f157a681bdc04cfcb9548bf2ea1a971e3e3260b5bf07d4ad69d457516e",
+    "code_object_sha256": "a2e45bd7db28730f8426fb11a874b33f54752abba0f359a14608f6bb013b8260",
+    "notes_sha256": "b704393dd493eef629ede80b822fcec6af2fe3db5700ba1d31798fbad35f9747",
+    "disassembly_sha256": "4d55e81fb54e8be223d89c809989220f03514f5e4179fb8f7986e8e1a26da175"
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-file narrow --output-directory /tmp/qwen4exp-gdn-narrow-20261006/trace -- uv run --no-sync python scripts/qwen4exp_gdn_register_micro.py --narrow-index --tokens 512 4096 --repeats 3 --output /tmp/qwen4exp-gdn-narrow-20261006/trace.json",
+    "sha256": "8b146db025fdc6d90439ebfb559afd3ae4b012f55ac4fda51aba437eb98670fa",
+    "rows": [
+      {
+        "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true, false>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, std::conditional<false, int, long>::type, std::conditional<false, int, long>::type, std::conditional<false, int, long>::type, std::conditional<false, int, long>::type, std::conditional<false, int, long>::type)",
+        "launches": 14,
+        "durations_ms": [
+          2.636012,
+          2.660399,
+          2.678514,
+          2.659721,
+          2.678403,
+          2.657204,
+          2.663263,
+          21.223644,
+          21.333487,
+          21.355409,
+          21.223241,
+          21.460446,
+          21.320705,
+          21.321189
+        ],
+        "scratch_bytes": 36
+      },
+      {
+        "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type, std::conditional<true, int, long>::type)",
+        "launches": 14,
+        "durations_ms": [
+          2.553499,
+          2.546547,
+          2.553884,
+          2.572639,
+          2.557498,
+          2.556937,
+          2.562915,
+          20.449553,
+          20.487219,
+          20.484135,
+          20.359782,
+          20.379139,
+          20.571741,
+          20.468549
+        ],
+        "scratch_bytes": 28
+      }
+    ],
+    "require_cached_build": true
+  },
+  "validation": {
+    "gpu_and_admission_command": "uv run --no-sync pytest -q tests/test_gpu_qwen4exp_gdn_narrow.py tests/test_unit_qwen4exp_gdn_narrow.py tests/test_gpu_qwen4exp_gdn_register.py tests/test_gpu_qwen4exp_gdn_wave_norm.py",
+    "gpu_and_admission_passed": 32,
+    "focused_cpu_command": "uv run --no-sync pytest -q tests/test_unit_qwen4exp_gdn_narrow.py tests/test_unit_qwen4exp_gdn_register_route.py tests/test_unit_qwen4exp_gdn_wave_norm_route.py tests/test_unit_qwen4exp_gdn_owner_probe.py tests/test_unit_kernel_registry.py tests/test_unit_build.py tests/test_unit_qwen4_exp_profiles.py",
+    "focused_cpu_passed": 60,
+    "outer_floor": {
+      "CPU_reference_rows": [
+        1,
+        17,
+        64
+      ],
+      "KL_max_limit": 0.05,
+      "top1_minimum": 0.9,
+      "passed": true,
+      "state_output_tolerance": {
+        "rtol": 5e-05,
+        "atol": 5e-05
+      }
+    },
+    "fixtures_registry_cpu_smoke_add_plan": "passed",
+    "gfx1151_diagnostic_registry": "resolved",
+    "runtime_default_changed": false,
+    "natural_model_gate": "not run; required next"
+  }
+}

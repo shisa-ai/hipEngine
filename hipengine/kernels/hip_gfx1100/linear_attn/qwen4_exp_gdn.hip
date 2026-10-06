@@ -3,6 +3,7 @@
 #include <hip/hip_runtime.h>
 #include <cstdio>
 #include <stdint.h>
+#include <type_traits>
 
 namespace {
 
@@ -219,7 +220,8 @@ __device__ inline void exact_norm128_wave_tail(float* values) {
   __syncthreads();
 }
 
-template <bool REGISTER_STATE = false, bool WAVE_NORM = false>
+template <bool REGISTER_STATE = false, bool WAVE_NORM = false,
+          bool NARROW_INDEX = false>
 __global__ void __launch_bounds__(REGISTER_STATE ? 128 : 1024)
 qwen4_exp_gdn_prefill_f32_kernel(
     const float* __restrict__ conv,
@@ -231,11 +233,12 @@ qwen4_exp_gdn_prefill_f32_kernel(
     const float* __restrict__ norm_weight,
     float* __restrict__ recurrent_state,
     float* __restrict__ output,
-    int64_t tokens,
-    int64_t num_k_heads,
-    int64_t num_v_heads,
-    int64_t head_k_dim,
-    int64_t head_v_dim) {
+    std::conditional_t<NARROW_INDEX, int32_t, int64_t> tokens,
+    std::conditional_t<NARROW_INDEX, int32_t, int64_t> num_k_heads,
+    std::conditional_t<NARROW_INDEX, int32_t, int64_t> num_v_heads,
+    std::conditional_t<NARROW_INDEX, int32_t, int64_t> head_k_dim,
+    std::conditional_t<NARROW_INDEX, int32_t, int64_t> head_v_dim) {
+  using index_t = std::conditional_t<NARROW_INDEX, int32_t, int64_t>;
   if constexpr (REGISTER_STATE) {
     head_k_dim = 128;
     head_v_dim = 128;
@@ -247,19 +250,19 @@ qwen4_exp_gdn_prefill_f32_kernel(
   float* core = reductions + blockDim.x;
   float* norm_reductions = core + head_v_dim;
 
-  const int64_t v_head = blockIdx.x;
+  const index_t v_head = blockIdx.x;
   if (v_head >= num_v_heads) {
     return;
   }
-  const int64_t k_head = v_head % num_k_heads;
-  const int64_t key_width = num_k_heads * head_k_dim;
-  const int64_t qkv_width = 2 * key_width + num_v_heads * head_v_dim;
-  const int64_t q_offset = k_head * head_k_dim;
-  const int64_t k_offset = key_width + q_offset;
-  const int64_t v_offset = 2 * key_width + v_head * head_v_dim;
-  const int64_t core_width = num_v_heads * head_v_dim;
-  const int64_t value_index = threadIdx.x;
-  const int64_t state_col = v_head * head_k_dim * head_v_dim + value_index;
+  const index_t k_head = v_head % num_k_heads;
+  const index_t key_width = num_k_heads * head_k_dim;
+  const index_t qkv_width = 2 * key_width + num_v_heads * head_v_dim;
+  const index_t q_offset = k_head * head_k_dim;
+  const index_t k_offset = key_width + q_offset;
+  const index_t v_offset = 2 * key_width + v_head * head_v_dim;
+  const index_t core_width = num_v_heads * head_v_dim;
+  const index_t value_index = threadIdx.x;
+  const index_t state_col = v_head * head_k_dim * head_v_dim + value_index;
 
   float saved_state[REGISTER_STATE ? 128 : 1];
   if constexpr (REGISTER_STATE) {
@@ -267,11 +270,11 @@ qwen4_exp_gdn_prefill_f32_kernel(
     for (int column = 0; column < 128; ++column)
       saved_state[column] = recurrent_state[state_col + column * 128];
   }
-  for (int64_t token = 0; token < tokens; ++token) {
+  for (index_t token = 0; token < tokens; ++token) {
     const float* conv_row = conv + token * qkv_width;
     float q_sumsq = 0.0f;
     float k_sumsq = 0.0f;
-    for (int64_t column = threadIdx.x; column < head_k_dim; column += blockDim.x) {
+    for (index_t column = threadIdx.x; column < head_k_dim; column += blockDim.x) {
       const float q_value = conv_row[q_offset + column];
       const float k_value = conv_row[k_offset + column];
       query[column] = q_value;
@@ -317,13 +320,13 @@ qwen4_exp_gdn_prefill_f32_kernel(
           core_value += query[column] * q_scale * next;
         }
       } else {
-        for (int64_t column = 0; column < head_k_dim; ++column) {
+        for (index_t column = 0; column < head_k_dim; ++column) {
           memory += key[column] * k_scale
               * recurrent_state[state_col + column * head_v_dim] * decay;
         }
         const float delta = (conv_row[v_offset + value_index] - memory) * beta;
-        for (int64_t column = 0; column < head_k_dim; ++column) {
-          const int64_t state_index = state_col + column * head_v_dim;
+        for (index_t column = 0; column < head_k_dim; ++column) {
+          const index_t state_index = state_col + column * head_v_dim;
           const float next = recurrent_state[state_index] * decay
               + key[column] * k_scale * delta;
           recurrent_state[state_index] = next;
@@ -347,7 +350,7 @@ qwen4_exp_gdn_prefill_f32_kernel(
     }
     }
     if (value_index < head_v_dim) {
-      const int64_t index = v_head * head_v_dim + value_index;
+      const index_t index = v_head * head_v_dim + value_index;
       const float inv_rms = rsqrtf(
           norm_reductions[0] / static_cast<float>(head_v_dim) + 1.0e-6f);
       output[token * core_width + index] = core[value_index] * inv_rms
@@ -899,7 +902,7 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_f32(
 }
 
 
-template <bool WAVE_NORM>
+template <bool WAVE_NORM, bool NARROW_INDEX = false>
 int launch_register_gdn(
     const void* conv, const void* output_gate, const void* alpha,
     const void* beta_logits, const void* dt_bias, const void* a,
@@ -911,7 +914,16 @@ int launch_register_gdn(
       num_k_heads <= 0 || num_v_heads <= 0 || num_v_heads % num_k_heads ||
       head_k_dim != 128 || head_v_dim != 128)
     return static_cast<int>(hipErrorInvalidValue);
-  hipLaunchKernelGGL((qwen4_exp_gdn_prefill_f32_kernel<true, WAVE_NORM>),
+  if constexpr (NARROW_INDEX) {
+    // Division-based admission avoids overflowing even adversarial int64 ABI
+    // dimensions. Every element count (not just each dimension) must fit.
+    if (num_v_heads > INT32_MAX / (128 * 128))
+      return static_cast<int>(hipErrorInvalidValue);
+    const int64_t qkv_width = (2 * num_k_heads + num_v_heads) * 128;
+    if (tokens > INT32_MAX / qkv_width)
+      return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL((qwen4_exp_gdn_prefill_f32_kernel<true, WAVE_NORM, NARROW_INDEX>),
       dim3(static_cast<uint32_t>(num_v_heads)), dim3(128), 640 * sizeof(float), stream,
       static_cast<const float*>(conv), static_cast<const float*>(output_gate),
       static_cast<const float*>(alpha), static_cast<const float*>(beta_logits),
@@ -929,6 +941,14 @@ extern "C" int NAME(const void* c, const void* gate, const void* alpha, \
 }
 REGISTER_GDN_ENTRY(hipengine_qwen4_exp_gdn_register_prefill_f32, false)
 REGISTER_GDN_ENTRY(hipengine_qwen4_exp_gdn_wave_norm_prefill_f32, true)
+
+extern "C" int hipengine_qwen4_exp_gdn_wave_norm_narrow_prefill_f32(
+    const void* c, const void* gate, const void* alpha, const void* beta,
+    const void* dt, const void* a, const void* norm, void* state, void* out,
+    int64_t t, int64_t hk, int64_t hv, int64_t dk, int64_t dv, hipStream_t s) {
+  return launch_register_gdn<true, true>(c, gate, alpha, beta, dt, a, norm,
+                                         state, out, t, hk, hv, dk, dv, s);
+}
 #undef REGISTER_GDN_ENTRY
 
 

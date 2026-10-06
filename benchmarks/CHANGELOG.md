@@ -1,5 +1,16 @@
 # hipEngine Benchmark Changelog
 
+## 2026-10-06 — GDN checked-index complete-operation screen
+
+- Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next
+  UD-Q4_K_XL geometry Hk16/Hv48/D128, synthetic inputs, 21 counterbalanced
+  pairs: recurrence+norm+gate 2.70965→2.59471 / 5.37174→5.15594 /
+  21.31865→20.45175 ms at 512/1024/4096 tokens (-4.24%/-4.02%/-4.07%).
+  Checked int32 element indexing reduces private scratch36→28B and spills8→6;
+  exact replay/ownership, CPU-reference floor and cached trace pass. No model
+  throughput claim or default change. Source:
+  `results/2026-10-06-qwen4exp-gdn-narrow-index/README.md`.
+
 ## 2026-10-06 — Post-router production prefill owners (diagnostic)
 
 - Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next

@@ -734,6 +734,17 @@ actual two-bank512/1024 synthetic-routing screen0.429x/0.412x,
 scratch0 both. Production row8 unchanged; no runtime candidate remains.
 Evidence: `2026-09-07-framework-qwen4exp-q51-row16-rejected.json`.
 
+GDN also registers diagnostic `qwen4exp_sigmoid_wave_norm_narrow_prefill`.
+It keeps the D128 wave-norm parent's FP32 recurrence and reduction tree but
+uses int32 element indexing after QKV/state element counts are checked in
+both Python and the int64 host ABI. Named profiles still select the parent.
+On gfx1151 host55ea6c509d0b49eea8de7094a1023668, synthetic complete-operation
+512/1024/4096 timing improves1.0443x/1.0419x/1.0424x; private scratch36→28B,
+spills8→6, VGPR256 unchanged. Exact replay/guards, state-head isolation,
+CPU-reference floor and cached trace pass. Natural-model qualification is
+required before runtime admission. Evidence:
+`benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md`.
+
 GDN exposes kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: exact128
 normalization reduction, stride64/32 grouped as parent then wave shuffle
 16/8/4/2/1; serial recurrence unchanged. Dk=Dv128 only. Synthetic

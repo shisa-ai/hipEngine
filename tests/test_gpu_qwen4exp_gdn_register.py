@@ -51,10 +51,10 @@ class Fixture:
         ]
         self.library = gdn.build_qwen4_exp_gdn(load=True)
 
-    def run(self, candidate, split=None):
+    def run(self, candidate, split=None, fn=None):
         idx = int(candidate)
         copy_host_to_device(self.states[idx], host_array_ptr(self.state), runtime=self.runtime)
-        fn = gdn.qwen4_exp_gdn_register_prefill_f32 if candidate else gdn.qwen4_exp_gdn_prefill_f32
+        fn = fn or (gdn.qwen4_exp_gdn_register_prefill_f32 if candidate else gdn.qwen4_exp_gdn_prefill_f32)
         for lo, hi in [(0, self.tokens)] if split is None else [(0, split), (split, self.tokens)]:
             ptrs = [x.ptr for x in self.inputs]
             for i, width in enumerate((10240, 6144, 48, 48)):
