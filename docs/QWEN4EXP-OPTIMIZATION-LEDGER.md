@@ -373,28 +373,23 @@ throttle-clearance or speedup claim follows.
 
 ### 1.3.1 Production owner refresh — 2026-10-06 UTC
 
-The [promoted-default packet](../benchmarks/results/2026-10-06-qwen4exp-post-tail-prefill-owners/README.md)
-uses tracked-clean `ea818e2c6`, named production UD/BF16/chunk4096 and
-canonical `code-p4096` on the physical host above. Both windows fully
-attribute2761 launches; final warm/profile logits and lifecycle pass.
-Mean owners are dense F32 coltile2255.260ms, Q4 gate/up2218.753ms,
-GR-up DPP1598.935ms, Q5 down1207.148ms, checked GDN781.876ms and
-router DPP546.797ms. Native padded tails run70 times at167.362ms,
-scratch0; checked GDN runs36 times with28B private segments. Kernel
-unions12585.508/12582.179ms, windows12873.049/13050.192ms. These are
-diagnostic current prices, not an old→new speed comparison.
+### 1.3.2 Production owner refresh after bounded DP-5 — 2026-10-06 UTC
 
-EG-5 next screens checked-int32 indexing in the scratch-free Q4 gate/up
-body without changing quantization, accumulation, risk criterion or repair.
-Its current cached object has211 staticVGPR and4388 static instructions,
-including69 vector add-carry pairs,33 vector64-bit shifts and22 vector64-bit
-multiply-adds. The source uses64-bit metadata/row/column/address intermediates
-for a model domain whose complete activation/output/weight ranges can be
-checked. These counts motivate a separate registered sibling, not predicted
-savings. Preserve int64 host ABI and wide parent; RED bounds, risk-membership/
-repaired-output parity, guards/CPU reference and natural complete-operation
-packing+risk+repair+SiLU timing precede any model gate or promotion. This does
-not reopen failed staging, operand-class or repair-removal candidates unchanged.
+The [current-owner packet](../benchmarks/results/2026-10-06-qwen4exp-post-dp5-prefill-owners/README.md)
+uses tracked-clean `3e166ef12`, named production UD/BF16/chunk4096 and
+canonical `code-p4096`. Both windows attribute all2,691 launches; warm/profile
+logits and lifecycle pass. Mean owners are dense F32 pipelined DPP coltile
+2241.114ms, Q4 gate/up2218.615ms, GR-up DPP1571.855ms, Q5 down1206.535ms,
+checked GDN743.301ms and router DPP544.003ms. The named grouped-norm publisher
+runs70 times and HC-down casts run0 times. Kernel unions12443.236/12438.157ms;
+windows12761.947/12966.555ms. These are diagnostic current prices, not an
+old→new speed comparison.
+
+The next bounded screen is a separately registered K320/full-row GR-up DPP
+specialization. It may remove generic row-validity and variable-K control only
+for K320, full four-row batches, branches4/H2560; the generic DPP parent remains
+fallback. It must preserve ascending FMA order, ordered DPP/four-wave
+publication, `expf`, branch mean and both outputs. No speedup is predicted.
 
 The [earlier post-router packet](../benchmarks/results/2026-10-06-qwen4exp-current-prefill-owners/README.md)
 uses tracked-clean `4779b7278`, named production/BF16/chunk4096 and the

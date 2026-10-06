@@ -159,27 +159,31 @@ Thirty-two GPU operation tests pass and cached trace confirms the leaf.
 The full-model correctness and prefill results are reported separately above.
 [Protocol and artifacts](results/2026-10-05-qwen4exp-router-dpp/README.md).
 
-## Qwen3.8 Flash Next current prefill owner diagnostic
+## Qwen3.8 Flash Next current prefill owner diagnostic after DP-5
 
 On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, clean source
-`ea818e2c6`, production UD-Q4_K_XL/BF16 `code-p4096` at chunk4096
-attributes all 2,761 launches per pass. Two separately marked cached-only
-profiler windows have kernel unions 12.586/12.582 s. Warm/profile final
-logits match and teardown is leak-free. Native padded-tail and checked-index
-GDN defaults run with scratch0/28 B per lane. This is diagnostic attribution,
-not a throughput comparison.
+`3e166ef12`, production UD-Q4_K_XL/BF16 `code-p4096` at chunk4096
+attributes all 2,691 launches per pass. Two separately marked cached-only
+profiler windows have kernel unions 12.443/12.438 s. Warm/profile final
+logits match and teardown is leak-free; the named publisher runs 70 times and
+zero HC-down staging casts remain. This is diagnostic attribution, not a
+throughput comparison.
 
 | Kernel owner | Mean ms/pass | Kernel-union share |
 | --- | ---: | ---: |
-| Dense F32 coltile | 2255.260 | 17.92% |
-| MoE Q4_K gate/up | 2218.753 | 17.63% |
-| GR-up DPP | 1598.935 | 12.71% |
-| MoE Q5_1 down | 1207.148 | 9.59% |
-| Checked-index GDN recurrence | 781.876 | 6.21% |
-| Router F32 ordered DPP | 546.797 | 4.35% |
-| Padded dense-wide HC-down tails | 167.362 | 1.33% |
+| Dense F32 pipelined DPP coltile | 2241.114 | 18.01% |
+| MoE Q4_K gate/up iu8 risk | 2218.615 | 17.83% |
+| Q8_0 GR-up ordered DPP | 1571.855 | 12.63% |
+| MoE Q5_1 down iu8 risk | 1206.535 | 9.70% |
+| Checked-index GDN recurrence | 743.301 | 5.97% |
+| Router F32 ordered DPP | 544.003 | 4.37% |
+| Q5_1 sparse exact down repair | 535.045 | 4.30% |
+| Full-attention context | 454.615 | 3.65% |
+| Sparse attention rows | 448.076 | 3.60% |
+| Padded dense-wide HC-down tails | 187.558 | 1.51% |
+| Grouped-norm F32/F16 publisher | 119.042 | 0.96% |
 
-[Protocol and artifacts](results/2026-10-06-qwen4exp-post-tail-prefill-owners/README.md).
+[Protocol and artifacts](results/2026-10-06-qwen4exp-post-dp5-prefill-owners/README.md).
 
 ## Qwen3.8 Flash Next split-operand dense operation screen
 
