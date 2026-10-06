@@ -101,3 +101,16 @@ def test_missing_registration_and_no_workspace_keep_parent(setup, monkeypatch):
         run()
     run()
     assert [v[0] for v in setup] == ["parent", "down", "parent", "down"]
+
+
+@pytest.mark.parametrize("ptr", [X, GAMMA, NORM, OUT, W])
+def test_alias_refusal_cannot_reenter_ordinary_staging(setup, monkeypatch, ptr):
+    """The fallback cast cannot overwrite a refused producer/output alias."""
+    def launch(*args, **kwargs):
+        assert linear.wide_f16_activation_workspace() is None
+        setup.append(("down", args, kwargs))
+    monkeypatch.setattr(runner, "launch_gguf_linear", launch)
+    with linear.wide_f16_activation_session(workspace_ptr=ptr, workspace_nbytes=COUNT * 2):
+        run()
+        assert linear.wide_f16_activation_workspace().ptr == ptr
+    assert [v[0] for v in setup] == ["parent", "down"]

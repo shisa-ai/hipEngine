@@ -8,6 +8,7 @@ architecture branches to the engine or dispatch layer.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field, replace
 import os
 import time
@@ -3039,6 +3040,7 @@ def _run_qwen4_exp_gr_norm_down(
     )
     workspace = wide_f16_activation_workspace()
     keys = None
+    unsafe_workspace = False
     if (workspace is not None and workspace.nbytes >= count * 2
             and (rows, branches, hidden, low_rank) == (4096, 4, 2560, 320)
             and not iu8_down):
@@ -3057,8 +3059,10 @@ def _run_qwen4_exp_gr_norm_down(
             if any(workspace.ptr < ptr + size and ptr < workspace.ptr + count * 2
                    for ptr, size in ranges):
                 keys = None
+                unsafe_workspace = True
         except ValueError:
             keys = None
+            unsafe_workspace = True
     if keys is not None:
         producer, consumer = keys
         # Enter before publication so nesting invalidates an earlier loan
@@ -3087,9 +3091,12 @@ def _run_qwen4_exp_gr_norm_down(
             scratch.low_rank.ptr, rows, width, low_rank, stream=stream, runtime=runtime,
         )
     else:
-        launch_gguf_linear(down_weight, scratch.normalized.ptr, scratch.low_rank.ptr,
-            rows, width, low_rank, activation_dtype=GGUF_ACTIVATION_F32,
-            output_dtype=GGUF_OUTPUT_F32, stream=stream, runtime=runtime)
+        # Publication refusal must not let ordinary staging write the same
+        # unsafe alias. Shadow only this launch; the session owner is restored.
+        with (wide_f16_activation_session(False) if unsafe_workspace else contextlib.nullcontext()):
+            launch_gguf_linear(down_weight, scratch.normalized.ptr, scratch.low_rank.ptr,
+                rows, width, low_rank, activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32, stream=stream, runtime=runtime)
 
 
 def run_qwen4_exp_gr_read(
