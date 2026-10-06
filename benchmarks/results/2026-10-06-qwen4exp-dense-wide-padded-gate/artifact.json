@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_dense_wide_padded_full_model_state_gate",
+  "performance_claim": false,
+  "source_capture_head": "9c668e702ca27ffaba55ae900b9814545702d8f2",
+  "harness_commit": "035338ed6f46c7c3037c7c890d933a8a24411412",
+  "cases": 20,
+  "arms_per_case": 5,
+  "candidate_enabled_arms_per_case": 3,
+  "candidate_calls": 4200,
+  "candidate_decode_calls": 0,
+  "exact_full_logits": true,
+  "exact_prefill_state": true,
+  "exact_postdecode_state": true,
+  "exact_full_kv": true,
+  "exact_output_token_ids": true,
+  "decode_steps": 16,
+  "teardown_clean": true,
+  "memory_after_close": {
+    "active_allocations": 0,
+    "current_allocated_bytes": 0
+  },
+  "scope": {
+    "backend": "hip_gfx1151",
+    "quant": "gguf_ud_q4_k_xl",
+    "parent": "dense_wide256_f16in_f32_f32_out",
+    "candidate": "dense_wide256_padded_f16in_f32_f32_out",
+    "in_features": 10240,
+    "out_features": 320,
+    "rows": [512, 4096]
+  },
+  "full_artifact": "full-state.json"
+}
