@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "status": "native_correctness_qualified_default_off",
+  "performance_claim": false,
+  "title": "Qwen4Exp DP-2 native scoped two-consumer F16 ownership qualification",
+  "date": "2026-10-06",
+  "model": "Qwen3.8-Flash-Next",
+  "quant": "UD-Q4_K_XL",
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "accelerator-performance",
+    "gpu_clock_policy": "high"
+  },
+  "execution_profile": "production",
+  "kv_dtype": "bf16",
+  "model_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+  "model_fingerprint": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+  "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "script_sha256": "8ff168f67135dc1314679277f56765707374b35a569957a4f6a888f308ee9429",
+  "source": {
+    "head": "2306a6be72d3f97140f3f190b9620f24c64b34cc",
+    "tracked_clean": false,
+    "note": "The candidate runtime implementation was tested from the working tree; no production binding was changed."
+  },
+  "protocol": {
+    "command": "scripts/qwen4exp_f16_pair_native_gate.py --paired-repeats 3 --decode-steps 128",
+    "canonical_cases": 12,
+    "heldout_cases": 16,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "rows": [512, 1024, 4096],
+    "heldout_policy": "uniform repeat/truncate to 1024/4096; ownership/state only, not task scores",
+    "arm_runs": 168
+  },
+  "correctness": {
+    "cases": 28,
+    "all_cases_exact": true,
+    "all_logits_repeated_bytes_equal": true,
+    "all_conv_gdn_state_repeated_bytes_equal": true,
+    "all_full_kv_repeated_bytes_equal": true,
+    "isolation_and_parent_fallback": true,
+    "teardown_active_allocations": 0,
+    "teardown_current_allocated_bytes": 0
+  },
+  "engagement": {
+    "pair_policy": "gfx1151 Q8_0 dense-wide, layers 13-47, immediate ordered attn_qkv+attn_gate or shared_gate+shared_up",
+    "shapes": {
+      "attn_qkv+attn_gate@1024": 936,
+      "shared_gate+shared_up@1024": 1260,
+      "attn_qkv+attn_gate@4096": 936,
+      "shared_gate+shared_up@4096": 1260
+    },
+    "cast_elimination_per_prefill": {
+      "p512": 0,
+      "p1024": 61,
+      "p4096": 61
+    },
+    "unmeasured_rows_keep_parent": [1, 512, 1023, 1025, 2048, 4095, 4097]
+  },
+  "decision": {
+    "default_changed": false,
+    "env": "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR",
+    "default_env_value": "0",
+    "production_profile_enabled": false,
+    "model_wall_ab_required": true,
+    "next": "Run a tracked-clean same-host canonical/heldout engine A/B before any production binding or speed claim."
+  },
+  "source_artifact": "/tmp/qwen4exp-dp2-native-full.json"
+}

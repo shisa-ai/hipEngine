@@ -1,4 +1,16 @@
-## 2026-10-06 — Shared-cast paired-operation diagnostic
+## 2026-10-06 — DP-2 native scoped ownership qualified
+
+- Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8
+  Flash Next UD-Q4_K_XL production/BF16. The default-off native two-consumer
+  F16 workspace loan passes 28 canonical/heldout cases, 168 arm runs and 128
+  decode steps per run with exact logits, Conv/GDN state, full KV, repeat
+  bytes, parent isolation and zero teardown allocations. It engages only
+  attn_qkv→attn_gate and shared_gate→shared_up at rows1024/4096 in layers13–47,
+  eliminating61 casts per p1024/p4096 prefill and zero at p512. This is
+  correctness/engagement evidence, not a model-wall or throughput claim; a
+  tracked-clean same-host engine A/B is still required before promotion.
+  Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/native-qualification.json`.
+
 
 - Radeon8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8 Flash
   Next UD-Q4_K_XL production/BF16: two natural six-case screens compare

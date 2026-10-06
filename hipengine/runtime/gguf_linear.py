@@ -530,6 +530,7 @@ def _launch_prefill_f16_staged(
 # the f32-input owner instead, which costs the saving and never correctness.
 # Set ``HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=0`` for bisection.
 WIDE_F16_ACTIVATION_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"
+WIDE_F16_PAIR_ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR"
 NORM_F16_PUBLICATION_ENV = "HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH"
 _WIDE_F16_ACTIVATION_SOURCE_SUFFIX = "_f32_f32_out"
 _WIDE_F16_ACTIVATION_TARGET_SUFFIX = "_f16in_f32_f32_out"
@@ -641,7 +642,57 @@ def _owns_wide_f16_publication(publication) -> bool:
     return True
 
 
+@dataclass(frozen=True)
+class WideF16PairConsumer:
+    weight: object
+    raw_ptr: int
+    key: KernelKey
+    out_ptr: int
+    rows: int
+    in_features: int
+    out_features: int
+
+
+@dataclass
+class WideF16ActivationPair:
+    """Metadata for two ordered launches; bytes live in the session workspace."""
+
+    source_ptr: int
+    count: int
+    stream: int
+    runtime: object
+    workspace: WideF16ActivationWorkspace
+    consumers: tuple[WideF16PairConsumer, WideF16PairConsumer]
+    accepted: int = 0
+    valid: bool = True
+    context_token: Token | None = None
+
+
+_wide_f16_activation_pair: ContextVar[WideF16ActivationPair | None] = ContextVar(
+    "gguf_wide_f16_activation_pair", default=None,
+)
+_wide_f16_pair_context = ContextVar("gguf_wide_f16_pair_context", default=None)
+
+
+def _owns_wide_f16_pair(pair) -> bool:
+    if pair.context_token is None:
+        return False
+    try:
+        _wide_f16_pair_context.reset(pair.context_token)
+    except ValueError:
+        return False
+    pair.context_token = _wide_f16_pair_context.set(pair)
+    return True
+
+
+def _invalidate_wide_f16_pair() -> None:
+    pair = _wide_f16_activation_pair.get()
+    if pair is not None and _owns_wide_f16_pair(pair):
+        pair.valid = False
+
+
 def _invalidate_wide_f16_publication() -> None:
+    _invalidate_wide_f16_pair()
     publication = _wide_f16_activation_publication.get()
     if publication is not None and _owns_wide_f16_publication(publication):
         publication.consumed = True
@@ -662,6 +713,9 @@ def wide_f16_activation_publication(
     synchronization or persistent source cache is introduced by this scope.
     """
 
+    pair = _wide_f16_activation_pair.get()
+    if pair is not None and not _owns_wide_f16_pair(pair):
+        raise ValueError("publication requires the workspace's owning context")
     prior = _wide_f16_activation_publication.get()
     if prior is not None and not _owns_wide_f16_publication(prior):
         raise ValueError("publication requires the workspace's owning context")
@@ -703,6 +757,111 @@ def _consume_wide_f16_publication(
     return int(publication.workspace.ptr)
 
 
+def _match_wide_f16_pair(
+    weight, source_ptr, out_ptr, rows, in_features, out_features, *, key, stream, runtime,
+) -> WideF16ActivationPair | None:
+    pair = _wide_f16_activation_pair.get()
+    if pair is None or not pair.valid or not _owns_wide_f16_pair(pair):
+        return None
+    if pair.accepted >= 2:
+        pair.valid = False
+        return None
+    expected = pair.consumers[pair.accepted]
+    if (
+        int(source_ptr) != pair.source_ptr
+        or int(rows) * int(in_features) != pair.count
+        or int(stream) != pair.stream or runtime is not pair.runtime
+        or wide_f16_activation_workspace() is not pair.workspace
+        or weight is not expected.weight
+        or int(weight.allocation("raw").tensor.ptr) != expected.raw_ptr
+        or key != expected.key or int(out_ptr) != expected.out_ptr
+        or (int(rows), int(in_features), int(out_features)) != (
+            expected.rows, expected.in_features, expected.out_features,
+        )
+    ):
+        pair.valid = False
+        return None
+    return pair
+
+
+@contextlib.contextmanager
+def wide_f16_activation_pair(
+    weight_a, weight_b, source_ptr, out_a_ptr, out_b_ptr, *, rows, in_features,
+    out_features_a, out_features_b, stream=0, runtime=None,
+) -> Iterator[WideF16ActivationPair | None]:
+    """Loan staging to one immediate ordered pair, with parent on scope misses.
+
+    No conversion happens at entry. The first exact launch casts and commits
+    ownership only on success; the second consumes those bytes once. Outputs,
+    weights and source may not overlap staging. Callers must enqueue no writes
+    between these launches. This scope introduces no device allocation or wait.
+    """
+    prior = _wide_f16_activation_pair.get()
+    publication = _wide_f16_activation_publication.get()
+    if ((prior is not None and not _owns_wide_f16_pair(prior))
+            or (publication is not None and not _owns_wide_f16_publication(publication))):
+        raise ValueError("pair requires the workspace's owning context")
+    _invalidate_wide_f16_publication()
+    workspace = wide_f16_activation_workspace()
+    if (os.environ.get(WIDE_F16_PAIR_ENV, "0").strip().lower() not in {"1", "true", "yes", "on"}
+            or workspace is None or not wide_f16_activation_enabled()
+            or workspace.nbytes < int(rows) * int(in_features) * 2):
+        yield None
+        return
+    consumers = []
+    for weight, output, n in ((weight_a, out_a_ptr, out_features_a),
+                              (weight_b, out_b_ptr, out_features_b)):
+        key = _wide_f16_consumer_key(weight, rows=rows, in_features=in_features, out_features=n)
+        if key is None:
+            yield None
+            return
+        consumers.append(WideF16PairConsumer(weight, int(weight.allocation("raw").tensor.ptr),
+            key, int(output), int(rows), int(in_features), int(n)))
+    source_key = (consumers[0].key.layer, consumers[0].key.quant,
+                  consumers[0].key.variant.replace(_WIDE_F16_ACTIVATION_TARGET_SUFFIX,
+                                                   _WIDE_F16_ACTIVATION_SOURCE_SUFFIX))
+    policies = backend_package_capability(consumers[0].key.backend,
+                                         "GGUF_DENSE_WIDE_F16_PAIR_POLICIES", {})
+    policy = policies.get(source_key)
+    slots = [str(weight.spec.slot_path).split(".") for weight in (weight_a, weight_b)]
+    if (policy is None or int(rows) not in policy["rows"]
+            or any(len(slot) != 3 or slot[0] != "layers" or not slot[1].isdigit() for slot in slots)
+            or slots[0][1] != slots[1][1] or int(slots[0][1]) not in policy["layers"]
+            or policy["pairs"].get((slots[0][-1], slots[1][-1])) != (
+                int(in_features), int(out_features_a), int(out_features_b))
+            or consumers[0].key != consumers[1].key):
+        yield None
+        return
+    count = int(rows) * int(in_features)
+    ranges = [(int(source_ptr), count * 4), (int(out_a_ptr), int(rows) * int(out_features_a) * 4),
+              (int(out_b_ptr), int(rows) * int(out_features_b) * 4)]
+    for weight in (weight_a, weight_b):
+        raw = weight.allocation("raw")
+        ranges.append((int(raw.tensor.ptr), int(raw.buffer.nbytes)))
+    end = int(workspace.ptr) + count * 2
+    unsafe = (count <= 0 or end > (1 << 64) - 1
+        or any(ptr <= 0 or size <= 0 or ptr + size > (1 << 64) - 1
+               or workspace.ptr < ptr + size and ptr < end for ptr, size in ranges)
+        or any(ptr < other + size2 and other < ptr + size
+               for i, (ptr, size) in enumerate(ranges[:3]) for other, size2 in ranges[i + 1:3]))
+    if unsafe:
+        # Normal staging must not overwrite an operand rejected by admission.
+        with wide_f16_activation_session(False):
+            yield None
+        return
+    pair = WideF16ActivationPair(int(source_ptr), count, int(stream), runtime, workspace,
+                                 tuple(consumers))
+    pair.context_token = _wide_f16_pair_context.set(pair)
+    token = _wide_f16_activation_pair.set(pair)
+    try:
+        yield pair
+    finally:
+        pair.valid = False
+        _wide_f16_pair_context.reset(pair.context_token)
+        pair.context_token = None
+        _wide_f16_activation_pair.reset(token)
+
+
 @contextlib.contextmanager
 def wide_f16_activation_session(
     enabled: bool = True,
@@ -712,6 +871,11 @@ def wide_f16_activation_session(
 ) -> Iterator[None]:
     """Bind a bounded device workspace for the wide route's activation hoist."""
 
+    pair = _wide_f16_activation_pair.get()
+    publication = _wide_f16_activation_publication.get()
+    if ((pair is not None and not _owns_wide_f16_pair(pair))
+            or (publication is not None and not _owns_wide_f16_publication(publication))):
+        raise ValueError("session requires the workspace's owning context")
     workspace = None
     if enabled and (int(workspace_ptr) or int(workspace_nbytes)):
         workspace = WideF16ActivationWorkspace(
@@ -800,6 +964,9 @@ def _launch_dense_wide_f16_staged(
 ) -> bool:
     """Stage x as IEEE half and dispatch the fp16-in sibling; False = skip."""
 
+    pair = _wide_f16_activation_pair.get()
+    if pair is not None and not _owns_wide_f16_pair(pair):
+        return False  # copied Contexts cannot overwrite the pair's workspace
     publication = _wide_f16_activation_publication.get()
     if publication is not None and not _owns_wide_f16_publication(publication):
         return False  # a copied Context cannot overwrite the borrowed workspace
@@ -845,29 +1012,28 @@ def _launch_dense_wide_f16_staged(
         f32_to_f16,
     )
 
+    pair = _match_wide_f16_pair(weight, x_ptr, out_ptr, rows, in_features, out_features,
+        key=key, stream=stage_kwargs.get("stream", 0), runtime=runtime)
     published_ptr = _consume_wide_f16_publication(
         x_ptr, count, stream=stage_kwargs.get("stream", 0), runtime=runtime,
         consumer_key=key,
     )
-    if published_ptr == 0:
-        f32_to_f16(
-            x_ptr,
-            stage_ptr,
-            count,
-            stream=stage_kwargs.get("stream", 0),
-            library=library,
-            runtime=runtime,
+    try:
+        if published_ptr == 0 and not (pair is not None and pair.accepted == 1):
+            f32_to_f16(
+                x_ptr, stage_ptr, count, stream=stage_kwargs.get("stream", 0),
+                library=library, runtime=runtime,
+            )
+        _LAUNCH_ABI["raw"](
+            sibling, weight, stage_ptr, out_ptr, rows, in_features, out_features, stage_kwargs,
         )
-    _LAUNCH_ABI["raw"](
-        sibling,
-        weight,
-        stage_ptr,
-        out_ptr,
-        rows,
-        in_features,
-        out_features,
-        stage_kwargs,
-    )
+    except BaseException:
+        _invalidate_wide_f16_publication()
+        raise
+    if pair is not None:
+        pair.accepted += 1
+        if pair.accepted == 2:
+            pair.valid = False
     return True
 
 
@@ -876,6 +1042,31 @@ def wide_f16_activation_publication_enabled() -> bool:
 
     value = os.environ.get(NORM_F16_PUBLICATION_ENV, "").strip().lower()
     return value in {"1", "true", "yes", "on"}
+
+
+def _wide_f16_consumer_key(
+    weight: GGUFDeviceWeight, *, rows: int, in_features: int, out_features: int,
+) -> KernelKey | None:
+    """Cold pair-admission probe; the live launcher rechecks the resolved key."""
+    dispatch = resolve_gguf_linear_dispatch(weight, activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32, rows=rows)
+    dispatch = _q8_mmq_prefill_dispatch(dispatch, rows=rows, in_features=in_features,
+                                         out_features=out_features)
+    dispatch = _raw_k_prefill_rowbatch_dispatch(dispatch, rows=rows, in_features=in_features,
+        out_features=out_features, row_batch=raw_k_prefill_rowbatch(),
+        variant="coltile8" if raw_k_prefill_variant() == "coltile8_wave_scale" else raw_k_prefill_variant())
+    dispatch = _q8_dense_wide_dispatch(dispatch, rows=rows, in_features=in_features,
+                                        out_features=out_features, weight=weight)
+    dispatch = _raw_k_staged_f32_dispatch(dispatch, weight=weight)
+    target = _wide_f16_activation_target_variant(dispatch.key.variant)
+    if dispatch.abi != "raw" or target is None:
+        return None
+    key = KernelKey(dispatch.key.backend, dispatch.key.layer, dispatch.key.quant, target)
+    if not is_registered(key):
+        _ensure_linear_kernel_registered(key)
+    if not is_registered(key):
+        return None
+    return _dense_wide_f16_tail_key(key, rows=rows, in_features=in_features, out_features=out_features)
 
 
 def wide_f16_publication_keys(
@@ -4095,6 +4286,14 @@ def launch_gguf_linear(
     """
 
     resolved_backend = _weight_backend(weight, backend=backend)
+    pair = _wide_f16_activation_pair.get()
+    if pair is not None and pair.valid and _owns_wide_f16_pair(pair):
+        if activation_dtype != GGUF_ACTIVATION_F32 or output_dtype != GGUF_OUTPUT_F32:
+            _invalidate_wide_f16_pair()
+        else:
+            expected = pair.consumers[min(pair.accepted, 1)]
+            _match_wide_f16_pair(weight, x_ptr, out_ptr, rows, in_features, out_features,
+                key=expected.key, stream=stream, runtime=runtime)
     publication = _wide_f16_activation_publication.get()
     if publication is not None:
         expected = publication.consumer_key
