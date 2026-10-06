@@ -1,0 +1,136 @@
+{
+ "schema": 1,
+ "kind": "http_correctness",
+ "title": "Qwen3.8-27B Q4_K_M on gfx1151: speculative MTP reports the autoregressive route's per-token logprobs",
+ "purpose": "Task 7 acceptance. The speculative MTP route serves logprobs and top_logprobs, and the value it reports for each published token is the value the autoregressive route reports for the same request -- in the blocking and the streaming response, on the greedy and the sampled branch, and through both the completions and the chat surface. This records that live comparison. No speed claim is made or implied.",
+ "status": "measured_accepted",
+ "performance_claim": false,
+ "date": "2026-09-23",
+ "git_head": "8cdd41b4d",
+ "backend": "hip_gfx1151",
+ "host": "gfx1151",
+ "kv_storage": "int8_per_token_head",
+ "max_context_tokens": 9216,
+ "speculative_candidate_budget": 3,
+ "execution_profile": "production",
+ "model": {
+  "file": "Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "quant": "gguf_q4_k_m"
+ },
+ "server": {
+  "port": 18198,
+  "served_model_name": "int8-logprobs-20260922",
+  "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+  "capability_status": "rejected",
+  "runtime_action": "diagnostic_override",
+  "diagnostic_override": true,
+  "persistent_bf16_mirror": false,
+  "prefix_cache": "off"
+ },
+ "environment": {
+  "HIPENGINE_MTP2_OUTPUT_SPANS": "1",
+  "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED": "1",
+  "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+  "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS": "0"
+ },
+ "gate_command": ".venv/bin/python scripts/mtp_logprobs_gate.py --base-url http://127.0.0.1:18198 --model int8-logprobs-20260922 --expect-storage int8_per_token_head --allow-kv-diagnostic-override --json /tmp/mtp-logprobs-int8.json",
+ "coverage": {
+  "covered": "One seeded 48-token greedy trajectory over 24 real draft cycles, a seeded 48-position sampled trajectory at temperature 0.35, the same request streamed, and the chat surface streamed against its own blocking response, all through the HTTP surface on this KV cell. Every check compares the speculative arm against the autoregressive arm for the same request and requires token identity and a logprob delta of zero.",
+  "not_covered": "Multi-choice (n>1) requests and the hook family (forced tokens, dynamic constraints), which are task 8 and later; the storage-agnostic property of the reported value is pinned by tests/test_unit_mtp_logprobs.py rather than by this gate."
+ },
+ "acceptance": {
+  "greedy_metadata": "48 published tokens over 24 cycles, identical token ids to the autoregressive arm, worst logprob delta 0.000e+00, and identical top-logprob sets.",
+  "sampled_metadata": "48 of 48 positions shared with the autoregressive arm at temperature 0.35 (the full trajectory, not a prefix), worst logprob delta 0.000e+00.",
+  "stream_metadata": "48 streamed tokens carry per-token logprobs and match the blocking response for the same request, worst delta 0.000e+00. The gate fails on a mid-stream refusal rather than collecting a truncated prefix.",
+  "chat_stream_metadata": "The chat surface applies its own reasoning splitter and logprob validator; 4 streamed content tokens match its blocking response, worst delta 0.000e+00, and the blocking arm is required to report used=true."
+ },
+ "observation": {
+  "route_confirmed": "execution_path=gguf_specdec2_mtp2 with used=true, draft_cycles=9 and mtp_output_tokens=11 on the metadata request, so the tokens compared came from the speculative route rather than from a fallback.",
+  "repeatability": "Three full runs of this gate on this server produced the same counts and the same zero deltas: 48 greedy tokens over 24 cycles, 48 of 48 sampled positions, 48 streamed tokens, 4 chat streamed tokens.",
+  "sampled_arm_speculates": "The sampled arm ran real draft cycles on every row (draft_cycles>0) while the autoregressive arm reported used=false, so the sampled comparison is not two autoregressive runs.",
+  "graph_accept_declines_logprobs": "The captured-graph sampled accept declines a logprobs request because it returns no host logits row, so these rows run the eager host accept. Recorded in docs/REFACTOR.md with its removal condition; the fallback is exact, which is what the zero deltas measure."
+ },
+ "summary": {
+  "storage": "int8_per_token_head",
+  "greedy_tokens": 48,
+  "greedy_cycles": 24,
+  "greedy_worst_delta": 0.0,
+  "sampled_shared_prefix": 48,
+  "sampled_worst_delta": 0.0,
+  "stream_tokens": 48,
+  "stream_worst_delta": 0.0,
+  "chat_stream_tokens": 4,
+  "chat_stream_worst_delta": 0.0
+ },
+ "gate_report": {
+  "scope": "MTP logprob metadata against the autoregressive route",
+  "base_url": "http://127.0.0.1:18198",
+  "prompt": "Count slowly, one number per word: one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty",
+  "seed": 3,
+  "logprob_tolerance": 0.001,
+  "passed": true,
+  "server": {
+   "status": "ready",
+   "served_model": "int8-logprobs-20260922",
+   "effective_kv_storage": "int8_per_token_head",
+   "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+   "capability_status": "rejected",
+   "runtime_action": "diagnostic_override",
+   "diagnostic_override": true,
+   "persistent_bf16_mirror": false
+  },
+  "greedy_metadata": {
+   "check": "greedy_metadata",
+   "temperature": 0.0,
+   "published_tokens": 48,
+   "autoregressive_tokens": 48,
+   "shared_prefix": 48,
+   "tokens_match": true,
+   "worst_logprob_delta": 0.0,
+   "worst_position": null,
+   "speculative_cycles": 24,
+   "speculative_output_tokens": 46
+  },
+  "sampled_metadata": {
+   "check": "sampled_metadata",
+   "temperature": 0.35,
+   "published_tokens": 48,
+   "autoregressive_tokens": 48,
+   "shared_prefix": 48,
+   "tokens_match": true,
+   "worst_logprob_delta": 0.0,
+   "worst_position": null,
+   "speculative_cycles": 24,
+   "speculative_output_tokens": 46
+  },
+  "stream_metadata": {
+   "check": "stream_metadata",
+   "temperature": 0.0,
+   "published_tokens": 48,
+   "blocking_tokens": 48,
+   "worst_logprob_delta": 0.0,
+   "worst_position": null
+  },
+  "chat_stream_metadata": {
+   "check": "chat_stream_metadata",
+   "temperature": 0.0,
+   "published_tokens": 4,
+   "blocking_tokens": 5,
+   "worst_logprob_delta": 0.0,
+   "worst_position": null
+  },
+  "summary": {
+   "storage": "int8_per_token_head",
+   "greedy_tokens": 48,
+   "greedy_cycles": 24,
+   "greedy_worst_delta": 0.0,
+   "sampled_shared_prefix": 48,
+   "sampled_worst_delta": 0.0,
+   "stream_tokens": 48,
+   "stream_worst_delta": 0.0,
+   "chat_stream_tokens": 4,
+   "chat_stream_worst_delta": 0.0
+  }
+ }
+}

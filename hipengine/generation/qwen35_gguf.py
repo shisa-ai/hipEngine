@@ -1297,6 +1297,17 @@ def _new_mtp_draft_runner(
     )
 
 
+def _mtp_dense_kv_nbytes(*, capacity: int, qk_head_dim: int, kv_heads: int = 2) -> int:
+    """Bytes ``_allocate_mtp_dense_kv`` will allocate for this geometry.
+
+    Exposed so an admission budget can price the draft KV slab before the
+    allocation happens, instead of the limit being discovered as a HIP OOM.
+    """
+
+    rows = int(capacity)
+    return 2 * rows * int(kv_heads) * int(qk_head_dim) * 4
+
+
 def _allocate_mtp_dense_kv(
     *,
     runtime: Any,
@@ -1307,7 +1318,9 @@ def _allocate_mtp_dense_kv(
     from hipengine.core.memory import malloc
 
     rows = int(capacity)
-    key_nbytes = rows * int(kv_heads) * int(qk_head_dim) * 4
+    key_nbytes = _mtp_dense_kv_nbytes(
+        capacity=rows, qk_head_dim=qk_head_dim, kv_heads=kv_heads
+    ) // 2
     value_nbytes = key_nbytes
     key_cache = malloc(key_nbytes, runtime=runtime)
     value_cache = malloc(value_nbytes, runtime=runtime)
@@ -1327,6 +1340,56 @@ class _GGUFNativeBatchRun:
     native_decode_steps: int
     execution_paths: dict[str, str]
     scheduling: dict[str, Any]
+
+
+def declared_int8_scale_dtype(
+    declarations: Sequence[Any],
+    *,
+    backend: str,
+    target_arch: str,
+    weight_quant: str | None,
+    kv_storage: str,
+    storage_layout: str,
+    scale_granularity: str,
+    requested_scale_dtype: str,
+) -> str | None:
+    """The scale dtype the kernels declare for this INT8 KV contract.
+
+    Every INT8 KV declaration names the scale dtype its decode leaf reads, and
+    the request default (fp16) is not it. A key carrying an undeclared dtype
+    matches no declaration at all, so the capability resolves as a contract miss
+    instead of admitting -- or refusing -- the contract that exists, and
+    ``max_direct_rows`` comes back zero even where a declaration covers the
+    artifact. Binding the declared dtype keeps the capability, the prepared
+    policy and the allocation on one contract.
+
+    Returns ``None`` when the request already carries a declared dtype, when no
+    declaration covers the other axes, or when none names a dtype.
+    """
+
+    declared: list[str] = []
+    for row in declarations:
+        if getattr(row, "backend", None) != backend:
+            continue
+        if getattr(row, "target_arch", None) != target_arch:
+            continue
+        row_quant = getattr(row, "weight_quant", None)
+        if row_quant is not None and weight_quant is not None:
+            if row_quant != weight_quant:
+                continue
+        if getattr(row, "kv_storage", None) != kv_storage:
+            continue
+        if getattr(row, "storage_layout", None) != storage_layout:
+            continue
+        if getattr(row, "scale_granularity", None) != scale_granularity:
+            continue
+        dtype = str(getattr(row, "scale_dtype", "") or "")
+        if dtype and dtype not in declared:
+            declared.append(dtype)
+    requested = str(requested_scale_dtype)
+    if requested in declared or not declared:
+        return None
+    return declared[0]
 
 
 @dataclass
@@ -1480,7 +1543,9 @@ class Qwen35GGUFBringupGenerator:
     def kv_capability_provenance(self) -> dict[str, object]:
         resolution = getattr(self, "_kv_capability_resolution", None)
         if resolution is not None:
-            return resolution.as_dict()
+            payload = resolution.as_dict()
+            payload["max_packed_rows"] = self._effective_packed_decode_rows()
+            return payload
         return {
             "schema_version": 1,
             "status": "not_applicable",
@@ -1489,6 +1554,7 @@ class Qwen35GGUFBringupGenerator:
             "diagnostic_override": False,
             "requested": None,
             "effective_kv_storage": "bf16",
+            "max_packed_rows": self._effective_packed_decode_rows(),
             "artifact": {
                 "path": str(getattr(self.weight_index, "path", self.model_path)),
                 "size_bytes": None,
@@ -1500,6 +1566,34 @@ class Qwen35GGUFBringupGenerator:
             "reason": "BF16/default KV does not require approximate-KV capability evidence",
         }
 
+    def _effective_packed_decode_rows(self) -> int | None:
+        """Return the resident session's effective packed decode width.
+
+        The declared ``max_direct_rows`` states what the direct INT8 batch leaf
+        implements. The effective width can be lower, and on a long-context INT8
+        session it usually is: the layout keeps a BF16 prefix of full-attention
+        layers, a BF16 layer has no retained INT8 planes, and one packed batch
+        cannot run the retained leaf and the standard leaf together. The session
+        therefore caps the width at one row and serializes.
+
+        Reporting this keeps the effective width distinguishable from the
+        declared one; they differ silently otherwise. Returns ``None`` when no
+        resident session is available to report.
+        """
+
+        widths: list[int] = []
+        for holder in (self, getattr(self, "_resident_model_runner", None)):
+            accessor = getattr(holder, "_resident_sessions", None)
+            if not callable(accessor):
+                continue
+            widths.extend(
+                int(getattr(session, "packed_decode_max_rows", 0) or 0)
+                for session in accessor()
+                if getattr(session, "packed_decode_max_rows", None) is not None
+            )
+        if not widths:
+            return None
+        return min(widths)
     def _resolve_request_kv_policy(
         self,
         params: Any | None,
@@ -1514,7 +1608,34 @@ class Qwen35GGUFBringupGenerator:
         )
         resolved = requested
         if requested.storage_dtype.value == "int8_per_token_head":
+            requested_dtype = str(requested.scale_dtype.value)
+            declared_dtype = declared_int8_scale_dtype(
+                getattr(self.model_plugin, "kv_capability_declarations", ()),
+                backend=str(self.backend),
+                target_arch=str(self.target_arch),
+                weight_quant=self._kv_weight_quant_key(),
+                kv_storage=requested.storage_dtype.value,
+                storage_layout=str(requested.storage_layout),
+                scale_granularity=str(requested.scale_granularity),
+                requested_scale_dtype=requested_dtype,
+            )
+            if declared_dtype is not None:
+                requested = replace(
+                    requested,
+                    scale_dtype=DType.parse(declared_dtype),
+                )
+                resolved = requested
             capability = self._resolve_int8_kv_capability(requested)
+            if declared_dtype is not None:
+                capability = capability.with_runtime_outcome(
+                    effective_kv_storage=capability.effective_kv_storage,
+                    runtime_action=capability.runtime_action,
+                    reason=(
+                        f"{capability.reason}; bound the declared "
+                        f"{declared_dtype} scale dtype, not the requested "
+                        f"{requested_dtype}"
+                    ),
+                )
             if capability.runtime_action != "admit":
                 if self._int8_kv_diagnostic_override_enabled():
                     capability = capability.with_runtime_outcome(
@@ -1586,6 +1707,49 @@ class Qwen35GGUFBringupGenerator:
             "kv_capability": copy.deepcopy(self.kv_capability_provenance),
         }
 
+    @property
+    def resident_context_tokens(self) -> int | None:
+        """The context resident sizing will use, or ``None`` if nothing decided yet.
+
+        A caller's declaration wins over automatic selection, so this reports the
+        declaration when there is one and the auto-selected context otherwise.
+        ``None`` means no session has been sized yet and no context was declared.
+        """
+
+        pinned = getattr(self, "_prepared_max_sequence_length", None)
+        if pinned is not None:
+            return int(pinned)
+        resolved = getattr(self, "_auto_resolved_max_sequence_length", None)
+        return None if resolved is None else int(resolved)
+
+    @_target_arch_scoped
+    def declare_max_sequence_length(self, max_sequence_length: int) -> int:
+        """Record a serving context the caller declared, before any allocation.
+
+        Resident sizing reads ``_prepared_max_sequence_length`` and only
+        ``prepare`` used to set it, so a caller that declared its context at
+        construction time (``LLM(model, max_sequence_length=N)``) and never
+        called ``prepare`` had that declaration ignored: the session was sized by
+        automatic selection instead, which picks the largest context that fits
+        and can be far larger than the caller asked for. On this APU the KV pool
+        is host memory, so that substitution is a machine-level allocation, not a
+        local one.
+
+        Unlike ``prepare`` this allocates nothing: it records the pin that the
+        next session acquisition reads. The pin never shrinks, matching
+        ``prepare``.
+        """
+
+        requested = int(max_sequence_length)
+        if requested <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        current = getattr(self, "_prepared_max_sequence_length", None)
+        self._prepared_max_sequence_length = max(
+            requested,
+            0 if current is None else int(current),
+        )
+        return self._prepared_max_sequence_length
+
     @_target_arch_scoped
     def prepare(
         self,
@@ -1598,12 +1762,7 @@ class Qwen35GGUFBringupGenerator:
         if max_sequence_length is not None and int(max_sequence_length) <= 0:
             raise ValueError("max_sequence_length must be positive")
         if max_sequence_length is not None:
-            requested = int(max_sequence_length)
-            current = getattr(self, "_prepared_max_sequence_length", None)
-            self._prepared_max_sequence_length = max(
-                requested,
-                0 if current is None else int(current),
-            )
+            self.declare_max_sequence_length(max_sequence_length)
         self._prepare_kv_policy(sampling_params)
         self._get_shared_runner()
         return None if max_sequence_length is None else int(max_sequence_length)
@@ -1842,6 +2001,9 @@ class Qwen35GGUFBringupGenerator:
         result["packed_mtp_verify_prompt_lengths"] = sorted(set(result["packed_mtp_verify_prompt_lengths"]))
         return result
 
+    def configure_dms(self, config) -> None:
+        self.dms_config = config
+
     @_target_arch_scoped
     def create_resident_model_runner(
         self,
@@ -1850,6 +2012,13 @@ class Qwen35GGUFBringupGenerator:
     ) -> "Qwen35GGUFResidentModelRunner":
         """Create the single scheduler-facing GGUF model owner for this generator."""
 
+        if getattr(self, "dms_config", None) is not None:
+            if capacity not in (None, 1):
+                raise ValueError("DMS compact serving requires max_active_requests=1")
+            from hipengine.generation.qwen35_gguf_dms import Qwen35GGUFDMSModelRunner
+            runner = Qwen35GGUFDMSModelRunner(self, capacity=1)
+            self._resident_model_runner = runner
+            return runner
         runner = Qwen35GGUFResidentModelRunner(
             self,
             capacity=(
@@ -2034,10 +2203,10 @@ class Qwen35GGUFBringupGenerator:
                 kv_width=kv_width,
                 linear_qkv_width=linear_qkv_width,
                 fp16_recurrent_state=bool(getattr(shared_runner, "fp16_recurrent_state", False)),
-                # Context admission is per request.  The shared device pool
-                # grows against its memory budget, so scheduler concurrency
-                # must not multiply the resident KV footprint estimate.
+                # Elastic request KV is priced per request; the eager workspace
+                # is pinned for the entire serving capacity independently.
                 max_batch_size=1,
+                workspace_lease_slots=int(max_batch_size),
                 kv_storage_dtype=storage,
                 kv_storage_layout=storage_layout,
                 kv_scale_dtype=scale_dtype,
@@ -2059,8 +2228,7 @@ class Qwen35GGUFBringupGenerator:
     def _auto_context_cache_key(
         self, *, max_batch_size: int, defer_kv_allocation: bool
     ) -> tuple[int, bool]:
-        del max_batch_size
-        return (1, bool(defer_kv_allocation))
+        return (max(1, int(max_batch_size)), bool(defer_kv_allocation))
 
     def _record_auto_context_selection(
         self,
@@ -2072,9 +2240,8 @@ class Qwen35GGUFBringupGenerator:
     ) -> None:
         """Remember a resolved context and keep the reported value conservative.
 
-        The cache is keyed only by allocation mode. Scheduler concurrency does
-        not change the per-request context ceiling when KV pages come from the
-        shared elastic pool.
+        The cache includes serving capacity because its eager workspace lease
+        is pinned even when request KV pages come from the elastic pool.
         """
 
         key = self._auto_context_cache_key(
@@ -2100,9 +2267,8 @@ class Qwen35GGUFBringupGenerator:
     ) -> int | None:
         """Choose the resident context when the caller did not pin one.
 
-        The selection is cached per allocation mode. Every request shares the
-        same context ceiling; concurrency is enforced by the scheduler and does
-        not cause a second context calculation.
+        The selection is cached per serving capacity and allocation mode.
+        Requests within one serving configuration share the same ceiling.
         """
 
         cached = self._auto_resolved_max_sequence_lengths.get(
@@ -2648,6 +2814,8 @@ class Qwen35GGUFBringupGenerator:
     def supports_speculative_mtp(self) -> bool:
         """Whether this GGUF inventory has the NextN tensors required for MTP."""
 
+        if getattr(self, "dms_config", None) is not None:
+            return False
         return _gguf_info_has_mtp_tensors(self.weight_index)
 
     def _speculative_mtp_serving_key(
@@ -6229,6 +6397,13 @@ class Qwen35GGUFResidentModelRunner:
         self._resident_batch_owner_pool_key: _GGUFSessionPoolKey | None = None
         self._rows: dict[int, _GGUFResidentLoopRow] = {}
         self._outputs: dict[int, GenerationOutput] = {}
+        # Per-published-token metadata from committed speculative cycles, keyed
+        # by request. A cycle publishes several tokens at once and its stream
+        # events are decorated after the commit, by which point a cycle that
+        # finishes the request has already reclaimed the row. The blocking
+        # output reads the row's own sample list during reclaim; these events
+        # need a record that outlives the row.
+        self._cycle_token_samples: dict[int, list[Any]] = {}
         self._completed_metadata: dict[int, dict[str, Any]] = {}
         self._next_batch_id = 0
         self._kv_pool: Any | None = None
@@ -9200,11 +9375,19 @@ class Qwen35GGUFResidentModelRunner:
         return [int(request_id) for request_id in request_ids if int(request_id) not in self._outputs]
 
     def take_outputs(self, request_ids: Sequence[int]) -> list[GenerationOutput]:
-        return [self._outputs.pop(int(request_id)) for request_id in request_ids]
+        outputs: list[GenerationOutput] = []
+        for request_id in request_ids:
+            rid = int(request_id)
+            # The blocking output is the last reader of a cycle's recorded
+            # metadata; stream events were decorated while the cycle published.
+            self._cycle_token_samples.pop(rid, None)
+            outputs.append(self._outputs.pop(rid))
+        return outputs
 
     def discard(self, request_ids: Sequence[int]) -> None:
         for request_id in request_ids:
             rid = int(request_id)
+            self._cycle_token_samples.pop(rid, None)
             row = self._rows.pop(rid, None)
             if row is not None:
                 adapter = self._mtp2_adapter
@@ -9298,7 +9481,12 @@ class Qwen35GGUFResidentModelRunner:
                 self._completed_metadata.clear()
                 self._clear_prefix_snapshots()
                 if self._kv_pool is not None:
-                    self._teardown_kv_pool(release_workspace_state=False)
+                    # The owner's packed workspace holds a private-workspace
+                    # reservation in the pool, and `close()` rejects one that
+                    # is still held. Releasing the idle workspace first is what
+                    # frees it, so this path matches reconfigure/resize rather
+                    # than skipping the release and failing the pool close.
+                    self._teardown_kv_pool(release_workspace_state=True)
                 self._release_available_sessions()
             except BaseException as exc:  # pragma: no cover - defensive cleanup
                 error = exc
@@ -10052,6 +10240,63 @@ class Qwen35GGUFResidentModelRunner:
         result = None
         native_compact_prefill = False
         final_prefix_boundary = (len(row.prompt_ids) // 256) * 256
+
+        # Processed argmax needs host logits, but its draft provider still
+        # needs every newly computed prompt hidden row. Stream both cache
+        # misses and restored suffixes through the packed prefill sink, just
+        # as the native route does, without dropping the request's processors.
+        sinks = (
+            self._begin_mtp2_prompt_streaming((row,))
+            if row.mtp2_candidate_budget > 0 else (None,)
+        )
+        if sinks[0] is not None:
+            prefill_batch = getattr(
+                self._packed_execution_owner(session), "prefill_batch_native", None
+            )
+            start = time.perf_counter()
+            chunk_start = int(session.position) - int(row.prefix_reused_tokens)
+            segments = _gguf_prefix_suffix_segments(
+                int(session.position), len(row.prompt_ids), chunk
+            )
+            try:
+                if not callable(prefill_batch):
+                    raise RuntimeError("MTP processed prefill requires packed hidden sinks")
+                for index, segment in enumerate(segments):
+                    want_output = bool(final_chunk and index == len(segments) - 1)
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [segment], sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=want_output, return_hidden_seeds=False,
+                            sample_output=want_output,
+                            target_hidden_chunk_sinks=sinks,
+                            target_hidden_request_ids=(row.request_id,),
+                            target_hidden_chunk_starts=(chunk_start,),
+                            finish_target_hidden_sinks=False,
+                        )
+                    chunk_start += len(segment)
+                    self._refresh_prefix_cache(row)
+                    if want_output:
+                        result_list = [] if results is None else list(results)
+                        if len(result_list) != 1 or getattr(result_list[0], "logits", None) is None:
+                            raise RuntimeError("MTP processed prefill returned no logits")
+                        result = result_list[0]
+                if final_chunk:
+                    self._finish_mtp2_prompt_streaming((row,), sinks, success=True)
+            except BaseException:
+                self._finish_mtp2_prompt_streaming((row,), sinks, success=False)
+                raise
+            row.prefill_ms += _timing_ms_since(start)
+            row.prefill_chunk_count += len(segments)
+            self._route_counts["processed_argmax_mtp_streamed_prefill_chunks"] += len(segments)
+            if row.prefix_reused_tokens:
+                self._prefix_phase_add("suffix_prefill", start)
+            self._refresh_prefix_cache_at_prompt_boundary(row, lease)
+            if final_chunk:
+                self._finish_sampled_prefill(row, result, native_compact_prefill=True)
+            return
 
         if row.prefix_reused_tokens:
             # A reused prefix is never prefilled, so this row's prompt activation
@@ -11455,13 +11700,48 @@ class Qwen35GGUFResidentModelRunner:
             text = "" if suppress_after_special else visible_text
             if raw_text and not visible_text:
                 suppress_after_special = True
+            token_logprob = self._take_cycle_token_logprob(
+                int(event.request_id),
+                int(event.token_id),
+            )
             decorated.append(
                 replace(
                     event,
-                    stream_chunk=replace(chunk, text=text),
+                    stream_chunk=replace(
+                        chunk,
+                        text=text,
+                        token_logprobs=(
+                            chunk.token_logprobs
+                            if token_logprob is None
+                            else (token_logprob,)
+                        ),
+                    ),
                 )
             )
         return tuple(decorated)
+
+    def _take_cycle_token_logprob(
+        self,
+        request_id: int,
+        token_id: int,
+    ) -> TokenLogprob | None:
+        """Consume the recorded metadata for one published token, if any.
+
+        Returns ``None`` when the route recorded nothing for that token, so the
+        caller keeps whatever metadata the scheduler already put on the chunk.
+        """
+
+        pending = self._cycle_token_samples.get(int(request_id))
+        if not pending:
+            return None
+        for index, sample in enumerate(pending):
+            if int(sample.token_id) != int(token_id):
+                continue
+            del pending[index]
+            if not pending:
+                self._cycle_token_samples.pop(int(request_id), None)
+            return _gguf_token_logprob(self.generator.tokenizer, sample)
+        return None
 
     def _native_stream_chunk(self, row: _GGUFResidentLoopRow) -> GenerationStreamChunk:
         slot = row.slot

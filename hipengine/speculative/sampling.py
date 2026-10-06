@@ -201,7 +201,7 @@ def _sample(distribution: SparseDistribution, draw: float) -> int:
 
 def sampled_accept_from_distributions(
     batch: TargetVerifyBatch,
-    target_distributions: Sequence[SparseDistribution],
+    target_distributions: Sequence[SparseDistribution | None],
     draft_distributions: Sequence[SparseDistribution],
     *,
     draws: Callable[[], float],
@@ -216,6 +216,13 @@ def sampled_accept_from_distributions(
     the draft's distribution for the same decision, which is the distribution the
     token on ``row``'s child edge was drawn from. Both are indexed by the parent
     row, exactly like ``TargetVerifyBatch.accept_from_top1`` indexes ``top1``.
+
+    A ``None`` target marks a row the walk must never step onto: its own masked
+    law has no admissible support, which happens when the draft token that
+    advanced the row violates a text-keyed constraint. That row is unreachable by
+    construction -- the law of the row before it excludes the same token, so the
+    walk rejects there and corrects -- and stepping onto it anyway raises rather
+    than sampling from a law that does not exist.
 
     ``draws`` supplies independent uniforms from the request's own sampling
     stream. It is called once per acceptance test and once per residual or bonus
@@ -273,8 +280,14 @@ def sampled_accept_from_distributions(
             if batch.row_to_request[child] != request_id:
                 raise ValueError("sampled acceptance walked a foreign request row")
             token_id = int(batch.tokens[child])
+            target = target_distributions[row]
+            if target is None:
+                raise ValueError(
+                    f"row {row} has no target distribution: the walk stepped onto "
+                    "a row its own masked law cannot reach"
+                )
             accepted_probability = acceptance_probability(
-                target_distributions[row],
+                target,
                 draft_distributions[row],
                 token_id,
             )
@@ -291,7 +304,7 @@ def sampled_accept_from_distributions(
                 continue
             emitted = _sample(
                 residual_distribution(
-                    target_distributions[row],
+                    target,
                     draft_distributions[row],
                 ),
                 float(draws()),
@@ -303,9 +316,13 @@ def sampled_accept_from_distributions(
             else:
                 # Every draft was accepted (or the chain ended): the bonus token
                 # comes from the target distribution at the last verified prefix.
-                next_tokens.append(
-                    _sample(target_distributions[row], float(draws()))
-                )
+                final = target_distributions[row]
+                if final is None:
+                    raise ValueError(
+                        f"row {row} has no target distribution: the walk ended on "
+                        "a row its own masked law cannot reach"
+                    )
+                next_tokens.append(_sample(final, float(draws())))
         else:
             next_tokens.append(emitted)
         accepted_counts.append(len(request_tokens))

@@ -15,6 +15,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
+    copy_host_array_to_device,
     copy_host_to_device,
     host_array_ptr,
     memory_stats,
@@ -521,14 +522,14 @@ class MoonshineResidentRuntime:
             raise ValueError("encoder hidden must contain only finite values")
         if not bool(np.isin(mask, (0, 1)).all()) or not bool(mask.any()):
             raise ValueError("encoder attention mask must contain visible 0/1 entries")
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("encoder_hidden").buffer,
-            host_array_ptr(np.ascontiguousarray(hidden)),
+            np.ascontiguousarray(hidden),
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("encoder_attention_mask").buffer,
-            host_array_ptr(np.ascontiguousarray(mask)),
+            np.ascontiguousarray(mask),
             runtime=self.runtime,
         )
         self.encoder_state_valid = True

@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_qwen38_ud_vs_plain_q4km_head_recheck",
+  "created_at": "2026-09-23T07:25:54+09:00",
+  "status": "measured_diagnostic",
+  "performance_claim": false,
+  "claim_limitation": "Confirmation re-run of the 2026-09-21 paired diagnostic at a later commit. Neither arm carries the profile quality and serving gates required for a published row; no rollup row and no promotion follow from this artifact.",
+  "question": "Does the 2026-09-21 finding that UD-Q4_K_M decodes about 32% slower and prefills 37-43% slower than plain Q4_K_M still hold at current HEAD?",
+  "answer": "Yes. At 91f56a7c8 the paired same-thermal-window re-run measures decode deltas of -32.48/-31.85/-32.53 pct and prefill deltas of -36.65/-40.71/-40.46 pct at 512/1024/4096, reproducing the 2026-09-21 deltas within spread. Both root causes recorded on 2026-09-21 remain present at this commit: hip_gfx1151 declares no GGUF_IQ_DENSE_DECODE_POLICY, and the production route audit still plans the UD file with repack=OFF.",
+  "host": {
+    "host_name": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "system": "Framework Desktop / laptop chassis, AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "gpu_max_hw_queues": 2,
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_installed_dir": [
+      "/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+    ],
+    "power_dpm_force_performance_level": "auto",
+    "cpu_scaling_governor": "performance",
+    "tuned_profile": "accelerator-performance",
+    "gpu_processes_during_run": 0,
+    "lane_note": "This is the zbook lane, not the desktop gfx1151 lane. The two are separate physical machines with the same GPU architecture (see host_lane below); docs/OPTIMIZATION.md section 2 makes them independent lanes and forbids reporting their absolute rates as an old-to-new comparison."
+  },
+  "protocol": {
+    "harness": "scripts/qwen38_gfx1151_readme_sweep.py",
+    "prompt_lengths": [
+      512,
+      1024,
+      4096
+    ],
+    "decode_tokens": 128,
+    "max_sequence_length": 8192,
+    "warmups": 1,
+    "repetitions": 3,
+    "session": "one resident production/BF16 C1 session per shape, capacity 8192",
+    "prefill": "use_bulk_prefill=True, bulk_attention_mode=bulk, use_wmma_prefill=True, prefill_chunk_size=0",
+    "decode": "graph replay, one step per replay, graph_steps_per_replay=1",
+    "workload": "repeated token 9707",
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2"
+    },
+    "environment_note": "Both arms ran back to back under one /tmp/ud-recheck/run_pair.sh invocation on an idle GPU, one thermal window, same protocol as the 2026-09-21 pair."
+  },
+  "provenance": {
+    "hipengine_commit": "91f56a7c8401473367cc6fbfdabce8cde5b9f0ac",
+    "dirty_files": 0,
+    "python": "/home/lhl/miniforge3/bin/python3",
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "prior_artifact": "benchmarks/results/2026-09-21-gfx1151-qwen38-ud-vs-plain-q4km-baseline.json",
+    "prior_artifact_commit": "d3a5ccf0254af397abb172311d10394127b94273"
+  },
+  "arms": {
+    "plain": {
+      "name": "plain_q4_k_m",
+      "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "artifact": "/tmp/ud-recheck/plain_q4_k_m.json",
+      "artifact_sha256": "31c454ba59314a858ae42b10f77de351c75428623e2fdfcc01dc7193afb45c40",
+      "provenance": {
+        "kind": "hipengine_artifact_provenance",
+        "schema_version": 2,
+        "collected_at": "2026-09-22T21:53:21.228909+00:00",
+        "host_name": "zbook",
+        "repo_root": "/home/lhl/hipEngine-main",
+        "hipengine_commit": "91f56a7c8401473367cc6fbfdabce8cde5b9f0ac",
+        "git_branch": "main",
+        "staged_dirty": false,
+        "unstaged_dirty": true,
+        "untracked_dirty": false,
+        "untracked_count": 0,
+        "dirty": true,
+        "configured_backend": "hip_gfx1151",
+        "resolved_backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "device_name": "AMD Radeon 8060S Graphics",
+        "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "model_revision": null,
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+          "size_bytes": 17106775008,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8552863216,
+            17105726432
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": "gguf_q4_k_m",
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/miniforge3/bin/python3",
+          "scripts/qwen38_gfx1151_readme_sweep.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--output",
+          "/tmp/ud-recheck/plain_q4_k_m.json"
+        ],
+        "environment": {
+          "GPU_MAX_HW_QUEUES": "2",
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+          "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+          "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+          "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+        },
+        "rocm_version": "HIP version: 7.15.26333-0000000",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "build_profile": "public_profile_readme_sweep",
+        "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+        "warmups": 1,
+        "repetitions": 3,
+        "profiler": {
+          "enabled": false
+        }
+      },
+      "graph_eager_gate": {
+        "prompts": 18,
+        "all_passed": true,
+        "all_ids_exact": true,
+        "all_final_logits_exact": true,
+        "all_state_exact": true
+      },
+      "summaries": {
+        "512": {
+          "prefill_median": 296.43283672527116,
+          "prefill_cv_pct": 0.476958236965408,
+          "decode_median": 11.583284693754129,
+          "decode_cv_pct": 0.015478877839347401
+        },
+        "1024": {
+          "prefill_median": 296.9396223449312,
+          "prefill_cv_pct": 0.4772364693399377,
+          "decode_median": 11.308060235237253,
+          "decode_cv_pct": 0.01682798263684174
+        },
+        "4096": {
+          "prefill_median": 283.3759186907972,
+          "prefill_cv_pct": 0.12770342328557407,
+          "decode_median": 11.502008950025802,
+          "decode_cv_pct": 0.002452763979237232
+        }
+      }
+    },
+    "ud": {
+      "name": "ud_q4_k_m",
+      "model_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "artifact": "/tmp/ud-recheck/ud_q4_k_m.json",
+      "artifact_sha256": "134b8d37ae43cf5231143511888e040c19a40fec2bed562a0ac71c37da1343cd",
+      "provenance": {
+        "kind": "hipengine_artifact_provenance",
+        "schema_version": 2,
+        "collected_at": "2026-09-22T22:02:30.033940+00:00",
+        "host_name": "zbook",
+        "repo_root": "/home/lhl/hipEngine-main",
+        "hipengine_commit": "91f56a7c8401473367cc6fbfdabce8cde5b9f0ac",
+        "git_branch": "main",
+        "staged_dirty": false,
+        "unstaged_dirty": true,
+        "untracked_dirty": false,
+        "untracked_count": 0,
+        "dirty": true,
+        "configured_backend": "hip_gfx1151",
+        "resolved_backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "device_name": "AMD Radeon 8060S Graphics",
+        "model_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "model_revision": null,
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+          "size_bytes": 16464440224,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8231695824,
+            16463391648
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": "gguf_q4_k_m",
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/miniforge3/bin/python3",
+          "scripts/qwen38_gfx1151_readme_sweep.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+          "--output",
+          "/tmp/ud-recheck/ud_q4_k_m.json"
+        ],
+        "environment": {
+          "GPU_MAX_HW_QUEUES": "2",
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+          "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+          "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE": "1",
+          "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+        },
+        "rocm_version": "HIP version: 7.15.26333-0000000",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "build_profile": "public_profile_readme_sweep",
+        "timing_protocol": "one_resident_session_per_shape_warmup_then_median_three",
+        "warmups": 1,
+        "repetitions": 3,
+        "profiler": {
+          "enabled": false
+        }
+      },
+      "graph_eager_gate": {
+        "prompts": 18,
+        "all_passed": true,
+        "all_ids_exact": true,
+        "all_final_logits_exact": true,
+        "all_state_exact": true
+      },
+      "summaries": {
+        "512": {
+          "prefill_median": 187.77966168102358,
+          "prefill_cv_pct": 0.2458587402539761,
+          "decode_median": 7.820943460295666,
+          "decode_cv_pct": 0.03484454145910051
+        },
+        "1024": {
+          "prefill_median": 176.0503593047717,
+          "prefill_cv_pct": 0.6213058322329837,
+          "decode_median": 7.706002593576916,
+          "decode_cv_pct": 0.0323263747772094
+        },
+        "4096": {
+          "prefill_median": 168.7146417762361,
+          "prefill_cv_pct": 0.25374125106048584,
+          "decode_median": 7.760869703504478,
+          "decode_cv_pct": 0.13471066501540419
+        }
+      }
+    }
+  },
+  "deltas": {
+    "512": {
+      "prefill_delta_pct": -36.653555741176355,
+      "decode_delta_pct": -32.480780132143096,
+      "vs_2026_09_21": {
+        "prefill_delta_pct": -37.59224166749494,
+        "decode_delta_pct": -32.30241915387859,
+        "plain_prefill_median": 311.9547820962634,
+        "plain_decode_median": 11.634770707218141,
+        "ud_prefill_median": 194.6839865173288,
+        "ud_decode_median": 7.8764583057798525
+      }
+    },
+    "1024": {
+      "prefill_delta_pct": -40.71173192903574,
+      "decode_delta_pct": -31.85389506889872,
+      "vs_2026_09_21": {
+        "prefill_delta_pct": -42.077053397958665,
+        "decode_delta_pct": -32.15437539340328,
+        "plain_prefill_median": 310.72789467347036,
+        "plain_decode_median": 11.376475647612667,
+        "ud_prefill_median": 179.9827525093615,
+        "ud_decode_median": 7.718440961340183
+      }
+    },
+    "4096": {
+      "prefill_delta_pct": -40.46260438935625,
+      "decode_delta_pct": -32.525963618841836,
+      "vs_2026_09_21": {
+        "prefill_delta_pct": -43.458796815143955,
+        "decode_delta_pct": -33.14687040115152,
+        "plain_prefill_median": 297.0766427328784,
+        "plain_decode_median": 11.560478112622521,
+        "ud_prefill_median": 167.97070818234565,
+        "ud_decode_median": 7.728541414878047
+      }
+    }
+  },
+  "route_audit_at_head": {
+    "command": "python3 scripts/gguf_quant_route_audit.py /models/gguf/Qwen3.8-27B-Q4_K_M.gguf /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "plain_gfx1151": "repack=on; Q4_K 288x gguf_q4_k_t16_v1 (1 raw), Q5_K 48x gguf_q5_k_t16_v1, Q6_K 41x qmicro_planar + 24x gguf_q6_k_t16_v1",
+    "ud_gfx1151": "repack=OFF; everything but 103 Q4_K on raw-gguf-kernel: Q5_K x131, IQ4_XS x117, Q8_0 x104, Q6_K x24, Q3_K x7, IQ4_NL x7, IQ3_S x4",
+    "note": "The UD nextn map reports validation=FAILED without the artifact's draft-block dtype pin; that is audit-tool draft validation, not a runtime refusal (recorded and corrected in the 2026-09-21 baseline entry)."
+  },
+  "decode_policy_check_at_head": "hipengine/kernels/hip_gfx1100/__init__.py declares GGUF_IQ_DENSE_DECODE_POLICY, GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS and GGUF_IQ_DENSE_DECODE_STRICT_SLOTS; hipengine/kernels/hip_gfx1151/__init__.py declares none of them. No commit between d3a5ccf0 and this HEAD touched qwen35_gguf_materialize.py, qwen35_gguf_policy.py, gguf_linear.py or hip_gfx1151/.",
+  "not_measured": [
+    "No kernel-level attribution was repeated at this commit; the 2026-09-21 rocprofv3 census is cited as-is.",
+    "No routing policy, kernel, or production code changed in this unit.",
+    "No UD MTP arm, no serving gates, no quality gates were run.",
+    "Absolute rates are zbook-lane rates and are not comparable to the desktop gfx1151 published rows."
+  ]
+}

@@ -1,0 +1,313 @@
+{
+ "date": "2026-09-25",
+ "git": "73e5e4300a9614e219ee97f992e17a3c46c5f9b2",
+ "host": {
+  "compiler_pin": "HIP version: 7.15.26333-0000000",
+  "gpu": "zbook Radeon 8060S (gfx1151)"
+ },
+ "limitations": [
+  "census is attribution, not the paired adjudicator (campaign 5.1 windows own A/B decisions)",
+  "one 32-step window per arm; per-kernel deltas under 0.5% are inside run-to-run noise",
+  "us/launch ratios across different kernels bound owner efficiency but do not by themselves prove an owner rewrite wins"
+ ],
+ "performance_claim": false,
+ "protocol": {
+  "driver": "scripts/gguf_decode_graph_rocprof_driver.py mode=graph steps=32 prefill=512 msl=1024, 0.5s idle gap, trailing-window slice",
+  "note": "Campaign E4 requirement: re-census after E3 before writing any Q4_K owner change. E3 changed report surfaces only, so deltas vs E2d indicate drift, not layout change.",
+  "script": "~/ud-e1-census/run_e4_recensus.sh (log alongside)",
+  "trace": "rocprofv3 --kernel-trace CSV per arm; summarized by scripts/gguf_decode_census_summary.py --steps 32"
+ },
+ "reproducibility_vs_e2d": {
+  "launches_per_token": {
+   "e2d": 807.97,
+   "e4": 807.97
+  },
+  "pure_us_per_token": {
+   "delta_pct": -0.136,
+   "e2d": 85527.5,
+   "e4": 85410.8
+  },
+  "top6_drift": [
+   {
+    "delta_pct": -0.14,
+    "e2d_us_per_token": 20501.23,
+    "e4_us_per_token": 20472.73,
+    "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true"
+   },
+   {
+    "delta_pct": -0.09,
+    "e2d_us_per_token": 14081.81,
+    "e4_us_per_token": 14069.39,
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short"
+   },
+   {
+    "delta_pct": 0.18,
+    "e2d_us_per_token": 9740.36,
+    "e4_us_per_token": 9758.0,
+    "kernel": "void gguf_iq4_xs_local32_dual_silu_kernel<2>(unsigned short const*, unsigned char const*, unsigned c"
+   },
+   {
+    "delta_pct": 0.0,
+    "e2d_us_per_token": 7474.76,
+    "e4_us_per_token": 7474.85,
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 1>(unsigned short const*, unsigned ch"
+   },
+   {
+    "delta_pct": -0.17,
+    "e2d_us_per_token": 6927.33,
+    "e4_us_per_token": 6915.3,
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 1>(unsigned short const*, unsigned ch"
+   },
+   {
+    "delta_pct": -0.1,
+    "e2d_us_per_token": 4755.24,
+    "e4_us_per_token": 4750.43,
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_tile8_gemv_kernel<unsigned short>(unsigned short const*, "
+   }
+  ],
+  "verdict": "top-6 kernels within 0.2%, launches/token identical, pure kernel time -0.14%: census reproducible; E3 runtime-neutral confirmed empirically"
+ },
+ "reranked_candidates": [
+  {
+   "composition_note": "UD carries 131 Q5_K tensors vs plain's 48 (artifact quant composition); owner efficiency gap: selected-direct 242.9 us/launch vs tile8 111 us/launch at the same T16 layout",
+   "gate": "own route-table test + paired same-window A/B + E4a row-shape matrix (1,2,3,4,8,16 + boundaries + one non-boundary) + strict fallback + symbol verified in a real LLM.generate() request",
+   "kernel": "qk_t16_selected_direct_gemv<ushort,5,false,false,true> (Q5_K selected-down T16 decode GEMV)",
+   "plain_counterpart": "none in plain top10; plain's Q5 work runs in q5_k_t16_dense_tile8_gemv at 111.2 us/launch (UD tile8: 111.5 us/launch - identical)",
+   "rank": 1,
+   "ud_us_per_launch": 242.91,
+   "ud_us_per_token": 20472.73
+  },
+  {
+   "gate": "same E4a protocol; campaign premise correction committed at 73e5e4300",
+   "kernel": "q4_k_t16_dense_single_local32_gemv<ushort>",
+   "note": "same T16 layout both arms (E3 postfix audit); UD single owner +32% per launch vs plain single; composition differs (plain runs 289 Q4_K mostly via dual at 32.34 ms/tok, UD 104 Q4_K mostly single)",
+   "plain_us_per_launch_single": 119.53,
+   "plain_us_per_token": 16469.55,
+   "rank": 2,
+   "ud_us_per_launch": 157.87,
+   "ud_us_per_token": 14069.39
+  },
+  {
+   "kernel": "gguf_iq4_xs local32 family (dual 9.758 + <2,1> 7.475 + <4,1> 6.915 ms/tok)",
+   "note": "carries the requantized IQ4_XS tensors post-E2 declaration; E2's strict collapse (61.64->5.36) moved cost here; belongs to E9/E2-adjacent lever space, ranked for completeness",
+   "rank": 3
+  }
+ ],
+ "schema_version": 1,
+ "title": "E4 post-E3 decode re-census (campaign UD-GFX1151-OPTIMIZE2 iteration 7): reproducibility, trace split, re-rank",
+ "top10": {
+  "plain": [
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned",
+    "launches_per_token": 62.0,
+    "lds": "0",
+    "us_per_launch": 521.63,
+    "us_per_token": 32341.3,
+    "vgpr": "176",
+    "workgroup": "32"
+   },
+   {
+    "kernel": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(unsigned short const*, unsigned char const*, uns",
+    "launches_per_token": 31.0,
+    "lds": "512",
+    "us_per_launch": 334.99,
+    "us_per_token": 10384.73,
+    "vgpr": "88",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned ch",
+    "launches_per_token": 77.5,
+    "lds": "0",
+    "us_per_launch": 119.53,
+    "us_per_token": 9263.63,
+    "vgpr": "96",
+    "workgroup": "32"
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, un",
+    "launches_per_token": 31.0,
+    "lds": "0",
+    "us_per_launch": 232.45,
+    "us_per_token": 7205.92,
+    "vgpr": "96",
+    "workgroup": "32"
+   },
+   {
+    "kernel": "(anonymous namespace)::q6_q4_t16_mixed_grid_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char ",
+    "launches_per_token": 23.25,
+    "lds": "512",
+    "us_per_launch": 288.31,
+    "us_per_token": 6703.1,
+    "vgpr": "96",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_tile8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*",
+    "launches_per_token": 46.5,
+    "lds": "512",
+    "us_per_launch": 111.15,
+    "us_per_token": 5168.6,
+    "vgpr": "56",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, ",
+    "launches_per_token": 0.97,
+    "lds": "512",
+    "us_per_launch": 4661.41,
+    "us_per_token": 4521.57,
+    "vgpr": "80",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>(float const*, unsi",
+    "launches_per_token": 15.5,
+    "lds": "0",
+    "us_per_launch": 79.99,
+    "us_per_token": 1239.83,
+    "vgpr": "32",
+    "workgroup": "1024"
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, uns",
+    "launches_per_token": 46.5,
+    "lds": "0",
+    "us_per_launch": 25.5,
+    "us_per_token": 1185.67,
+    "vgpr": "56",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1, false>(unsigned short ",
+    "launches_per_token": 46.5,
+    "lds": "1024",
+    "us_per_launch": 14.15,
+    "us_per_token": 657.98,
+    "vgpr": "32",
+    "workgroup": "256"
+   }
+  ],
+  "ud": [
+   {
+    "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short con",
+    "launches_per_token": 84.28,
+    "lds": "512",
+    "us_per_launch": 242.91,
+    "us_per_token": 20472.73,
+    "vgpr": "128",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned ch",
+    "launches_per_token": 89.12,
+    "lds": "0",
+    "us_per_launch": 157.87,
+    "us_per_token": 14069.39,
+    "vgpr": "96",
+    "workgroup": "32"
+   },
+   {
+    "kernel": "void gguf_iq4_xs_local32_dual_silu_kernel<2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned",
+    "launches_per_token": 19.38,
+    "lds": "2560",
+    "us_per_launch": 503.51,
+    "us_per_token": 9758.0,
+    "vgpr": "72",
+    "workgroup": "64"
+   },
+   {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 1>(unsigned short const*, unsigned char const*, unsigned ",
+    "launches_per_token": 33.91,
+    "lds": "2560",
+    "us_per_launch": 220.43,
+    "us_per_token": 7474.85,
+    "vgpr": "48",
+    "workgroup": "64"
+   },
+   {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 1>(unsigned short const*, unsigned char const*, unsigned ",
+    "launches_per_token": 40.69,
+    "lds": "2560",
+    "us_per_launch": 169.95,
+    "us_per_token": 6915.3,
+    "vgpr": "48",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_tile8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*",
+    "launches_per_token": 42.62,
+    "lds": "512",
+    "us_per_launch": 111.46,
+    "us_per_token": 4750.43,
+    "vgpr": "56",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, ",
+    "launches_per_token": 0.97,
+    "lds": "512",
+    "us_per_launch": 4661.94,
+    "us_per_token": 4522.08,
+    "vgpr": "80",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 1>(unsigned short const*, unsigned char const*, void",
+    "launches_per_token": 6.78,
+    "lds": "2560",
+    "us_per_launch": 511.2,
+    "us_per_token": 3465.95,
+    "vgpr": "40",
+    "workgroup": "128"
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned",
+    "launches_per_token": 4.84,
+    "lds": "0",
+    "us_per_launch": 521.6,
+    "us_per_token": 2524.52,
+    "vgpr": "176",
+    "workgroup": "32"
+   },
+   {
+    "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char",
+    "launches_per_token": 22.28,
+    "lds": "512",
+    "us_per_launch": 94.16,
+    "us_per_token": 2097.86,
+    "vgpr": "80",
+    "workgroup": "128"
+   }
+  ]
+ },
+ "trace_split": {
+  "plain": {
+   "host_sync_launch_pct": 7.5,
+   "kernel_pct": 92.5,
+   "non_kernel_us_per_launch": 11.35,
+   "pure_kernel_s": 2.552,
+   "wall_s": 2.7596
+  },
+  "ud": {
+   "host_sync_launch_pct": 8.9,
+   "kernel_pct": 91.1,
+   "non_kernel_us_per_launch": 10.3,
+   "pure_kernel_s": 2.7331,
+   "wall_s": 2.9995
+  },
+  "verdict": "kernel time dominates (91-93%); UD carries +236 launches/token (807.97 vs 571.59) for +1.4pp non-kernel share; host submission/sync is material but not dominant, so kernel-side pots rank first"
+ },
+ "windows": {
+  "plain": {
+   "ms_per_token": 86.23622918753426,
+   "tok_s": 11.596054343068996,
+   "wall_s": 2.7595593340010964
+  },
+  "ud": {
+   "ms_per_token": 93.73359309370244,
+   "tok_s": 10.668533734755398,
+   "wall_s": 2.999474978998478
+  }
+ }
+}

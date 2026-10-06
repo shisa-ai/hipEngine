@@ -29,6 +29,8 @@ from hipengine.loading.qwen35_gguf import (
     build_qwen35_gguf_tensor_map,
 )
 from hipengine.loading.qwen35_gguf_policy import (
+    HIPENGINE_GGUF_DECODE_REPACK_ENV,
+    resolve_gguf_decode_repack,
     resolve_gguf_dense_flags,
     gguf_ar_f32_linear_contraction,
     gguf_ar_decode_repack_veto,
@@ -92,7 +94,6 @@ LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR = "gguf_q6_k_t16_qmicro_planar_v1"
 LAYOUT_GGUF_Q8_0_T16 = "gguf_q8_0_t16_v1"
 LAYOUT_GGUF_Q5_K_X8 = "gguf_q5_k_x8_v1"
 LAYOUT_GGUF_Q6_K_X8 = "gguf_q6_k_x8_v1"
-HIPENGINE_GGUF_DECODE_REPACK_ENV = "HIPENGINE_GGUF_DECODE_REPACK"
 HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV = "HIPENGINE_GGUF_SELECTED_X8_REPACK"
 Q4_T16_DECODE_TILES = "decode_tiles"
 Q4_T16_DECODE_TILES_R3PLUS = "decode_tiles_r3plus"
@@ -1107,10 +1108,7 @@ def _plan_layer(
 
 
 def gguf_decode_repack_enabled(value: bool | None = None) -> bool:
-    if value is not None:
-        return bool(value)
-    raw = os.environ.get(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return resolve_gguf_decode_repack(value)
 
 
 def gguf_selected_x8_repack_mode(value: bool | str | None = None) -> str:

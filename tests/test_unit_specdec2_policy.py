@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+import importlib.util
+from collections.abc import Mapping, Sequence
+from typing import Any
+
 import pytest
+
+from hipengine.kernels.backends import (
+    CUDA_BACKEND_TARGET_ARCH,
+    HIP_BACKEND_TARGET_ARCH,
+    backend_package_capability,
+)
 
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
@@ -389,3 +399,110 @@ def test_every_row_reports_a_reason_matching_its_execution_mode(
         else:
             assert reason is not SpecPlanReason.SPECULATIVE_QUALIFIED
             assert str(reason).strip() != ""
+
+
+def _streaming_width_drift(
+    width_depths: Mapping[Any, Sequence[tuple[int, int]]],
+    streaming_policies: Mapping[Any, Sequence[int]],
+) -> dict[Any, set[int]]:
+    """Profiles whose admitted cell widths are not streamable in any row.
+
+    ``GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS`` is keyed by execution profile
+    alone, while ``GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES`` rows are
+    keyed by ``(geometry, file type, profile)``. A width is covered when any
+    row of that profile admits it; widths no row admits are the C8/K3 drift
+    class of the 2026-09-19 gfx1151 withdrawal, where admission offered a cell
+    whose prompt sink the streaming policy refused. Profiles with no streaming
+    row are skipped: those packages declare no prompt-streaming path at all.
+    """
+
+    drift: dict[Any, set[int]] = {}
+    for profile, cells in width_depths.items():
+        rows = [
+            {int(width) for width in widths}
+            for key, widths in streaming_policies.items()
+            if isinstance(key, tuple) and key[-1] == profile
+        ]
+        if not rows:
+            continue
+        admitted = {int(width) for width, _depth in cells}
+        missing = admitted - set().union(*rows)
+        if missing:
+            drift[profile] = missing
+    return drift
+
+
+def test_backend_width_depths_are_covered_by_prompt_streaming_policies() -> None:
+    """Every admitted cell width must be streamable in at least one row.
+
+    The union runs across the streaming rows of a profile, not per row: a
+    backend may own several geometries, and a narrower row (gfx1100's MOE
+    ``MOSTLY_Q4_K_M`` row at ``(1, 2)`` beside its H5120 row at ``(1, 2, 8)``)
+    only degrades wide prompt batches on that geometry to autoregressive
+    priming, which the priming-source gate routes safely. What must never
+    happen is a width that no row of the profile can stream while the profile
+    still admits it -- that is the withdrawn gfx1151 ``(8, 3)`` cell shape
+    (benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json).
+    """
+
+    checked: set[tuple[str, Any]] = set()
+    for backend in sorted(
+        set(HIP_BACKEND_TARGET_ARCH) | set(CUDA_BACKEND_TARGET_ARCH)
+    ):
+        if importlib.util.find_spec(f"hipengine.kernels.{backend}") is None:
+            continue
+        depths = backend_package_capability(
+            backend, "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", None
+        )
+        policies = backend_package_capability(
+            backend, "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES", None
+        )
+        if not isinstance(depths, Mapping) or not isinstance(policies, Mapping):
+            continue
+        for profile in depths:
+            if any(
+                isinstance(key, tuple) and key[-1] == profile for key in policies
+            ):
+                checked.add((backend, profile))
+        for profile, missing in _streaming_width_drift(depths, policies).items():
+            assert not missing, (
+                f"{backend} profile {profile!r} admits cell widths "
+                f"{sorted(missing)} that no (geometry, file type) "
+                "prompt-streaming row of that profile admits"
+            )
+
+    # Guard against a vacuous pass: both HIP backends' production profiles
+    # must have been checked, or a removed policy row would hide drift.
+    assert ("hip_gfx1151", "production") in checked
+    assert ("hip_gfx1100", "production") in checked
+
+
+def test_streaming_drift_detector_flags_the_withdrawn_c8_class() -> None:
+    """Pin the detector itself against the pre-withdrawal and multi-row shapes.
+
+    The real-config guard above passes on today's clean configuration, so this
+    mutation-style case is what proves the detector would fail loudly on the
+    drift that actually shipped: width-depths offering width 8 while the only
+    streaming row admits (1, 2, 3, 4).
+    """
+
+    wide_depths = {"production": ((1, 1), (4, 3), (8, 3))}
+    geometry_a = object()
+    geometry_b = object()
+    narrow_row = {(geometry_a, "MOSTLY_Q4_K_M", "production"): (1, 2, 3, 4)}
+    assert _streaming_width_drift(wide_depths, narrow_row) == {
+        "production": {8}
+    }
+
+    # Two rows whose union covers width 8 (the gfx1100 H5120 + MOE shape) must
+    # not flag, even though the MOE row alone is narrower. gfx1100's production
+    # table admits widths {1, 2, 8}; width 4 belongs to gfx1151's table only.
+    gfx1100_depths = {"production": ((1, 2), (2, 3), (8, 3))}
+    two_rows = {
+        (geometry_a, "MOSTLY_Q4_K_M", "production"): (1, 2, 8),
+        (geometry_b, "MOSTLY_Q4_K_M", "production"): (1, 2),
+    }
+    assert _streaming_width_drift(gfx1100_depths, two_rows) == {}
+
+    # A profile with no streaming row at all is skipped, not flagged.
+    assert _streaming_width_drift({"strict": ((2, 2),)}, narrow_row) == {}

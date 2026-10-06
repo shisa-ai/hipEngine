@@ -15,6 +15,9 @@ import numpy as np
 import pytest
 
 from hipengine.generation.mtp_sampled_accept import (
+    observe_published_tokens,
+    published_forced_positions,
+    row_forced_token_ids,
     row_prefix_states,
     sampled_accept_summary,
 )
@@ -324,3 +327,397 @@ def test_sampled_accept_summary_emits_the_target_law_under_monte_carlo() -> None
     # The walk must not have advanced the live state; the scheduler observes the
     # committed tokens itself.
     assert tuple(state.generated_tokens) == ()
+
+
+def test_row_forced_token_ids_drain_in_row_order() -> None:
+    """Each row's override is the queue head after its ancestors consumed theirs."""
+
+    batch = _chain_batch((3, 4))
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(10,),
+        forced_tokens_pending=(7, 6),
+    )
+    assert row_forced_token_ids(batch, {5: state}) == (7, 6, None)
+    # Resolving the walk must not consume the live request's queue: only the
+    # tokens a cycle actually publishes may be popped.
+    assert state.forced_tokens == (7, 6)
+
+
+def test_sampled_accept_summary_accepts_a_forced_chain() -> None:
+    """The override replaces the row's law, so a matching draft is accepted."""
+
+    batch = _chain_batch((5, 6))
+    # The target's own law wants 2 then 3; the request forces 5 then 6, so the
+    # distribution the accept couples against is not the row's argmax.
+    logits = np.stack((_point_row(2), _point_row(3), _point_row(3)))
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5, 6),
+    )
+    summary = sampled_accept_summary(
+        batch,
+        logits,
+        {5: state},
+        params_for=lambda request_id: _params(),
+        draws=lambda: 0.0,
+        remaining_decode=(4,),
+    )
+    assert summary.accepted_counts == (2,)
+    assert summary.accepted_tokens == ((5, 6),)
+    # The queue held two tokens, so the third row is an ordinary row: its bonus
+    # token is the target's own argmax (3), not a forced token.
+    assert summary.next_tokens == (3,)
+    assert state.forced_tokens == (5, 6)
+
+
+def test_sampled_accept_summary_corrects_to_a_forced_token() -> None:
+    """A draft the forced token disagrees with is corrected to the forced token."""
+
+    batch = _chain_batch((2,))
+    logits = np.stack((_point_row(2), _point_row(2)))
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5,),
+    )
+    summary = sampled_accept_summary(
+        batch,
+        logits,
+        {5: state},
+        params_for=lambda request_id: _params(),
+        draws=lambda: 0.0,
+        remaining_decode=(4,),
+    )
+    assert summary.accepted_counts == (0,)
+    assert summary.accepted_tokens == ((),)
+    assert summary.next_tokens == (5,)
+    assert summary.commit_rows == (0,)
+
+
+def test_observe_published_tokens_consumes_the_published_forced_prefix() -> None:
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5, 6),
+    )
+    observe_published_tokens(state, (5, 6), forced_positions=(True, True))
+    assert tuple(state.generated_tokens) == (5, 6)
+    assert state.forced_tokens == ()
+
+
+def test_observe_published_tokens_leaves_the_unpublished_queue_pending() -> None:
+    """A cycle that published one forced token must not consume the next."""
+
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5, 6),
+    )
+    observe_published_tokens(state, (5,), forced_positions=(True,))
+    assert state.forced_tokens == (6,)
+
+
+def test_observe_published_tokens_refuses_a_forced_mismatch() -> None:
+    """The published token and the consumed override must be the same token."""
+
+    state = RowSamplingState(seed=1, prompt_tokens=(1,), forced_tokens_pending=(5,))
+    with pytest.raises(RuntimeError, match="pending forced token is 5"):
+        observe_published_tokens(state, (9,), forced_positions=(True,))
+
+
+def test_published_forced_positions_mark_only_the_published_prefix() -> None:
+    """A stop inside the chain must not consume the overrides behind it."""
+
+    batch = _chain_batch((5, 6))
+    forced_ids = (5, 6, None)
+    # The full chain published both forced tokens and then the bonus row, which
+    # no override governs.
+    assert published_forced_positions(batch, (2,), (5, 6, 3), forced_ids) == (
+        True,
+        True,
+        False,
+    )
+    # The finish rule stopped after the first token: only that one was published.
+    assert published_forced_positions(batch, (2,), (5,), forced_ids) == (True,)
+
+
+def test_published_forced_positions_mark_a_non_leading_override() -> None:
+    """An override is not necessarily leading: a thinking cap queues a later one.
+
+    The request's own forced queue is emitted at the head of the output, but a
+    thinking budget's hard cap queues its close sequence at the position the cap
+    is reached. Counting the overrides on the path instead of reading their rows
+    made the commit consume a leading position that had none.
+    """
+
+    batch = _chain_batch((5, 6))
+    # Only the second row's edge carries an override.
+    forced_ids = (None, 7, None)
+    assert published_forced_positions(batch, (2,), (5, 6, 3), forced_ids) == (
+        False,
+        True,
+        False,
+    )
+
+
+def test_published_forced_count_ignores_rows_the_accept_walk_never_reached() -> None:
+    """A rejected chain publishes the correction row only."""
+
+    batch = _chain_batch((5, 6))
+    forced_ids = (5, 6, None)
+    # The accept walk stopped at the root: the published token is the root row's.
+    assert published_forced_positions(batch, (0,), (5,), forced_ids) == (True,)
+
+
+def test_cycle_commit_round_trip_consumes_exactly_what_it_published() -> None:
+    """The count the commit computes is the count the live state pops."""
+
+    batch = _chain_batch((5, 6))
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5, 6),
+    )
+    forced_ids = row_forced_token_ids(batch, {5: state})
+    published = (5, 6, 3)
+    observe_published_tokens(
+        state,
+        published,
+        forced_positions=published_forced_positions(batch, (2,), published, forced_ids),
+    )
+    assert tuple(state.generated_tokens) == published
+    assert state.forced_tokens == ()
+
+
+def _text_observer(params, texts, *, remaining_decode=8, drafted=False):
+    """The adapter's own observer shape, so the wiring is what is under test."""
+
+    from hipengine.generation.qwen35_gguf_mtp2 import _constraint_text_observer
+
+    return _constraint_text_observer(
+        params,
+        token_text_for_id=lambda token_id: texts[int(token_id)],
+        encode_text=lambda text: (7,),
+        remaining_decode=remaining_decode,
+        drafted=drafted,
+    )
+
+
+def test_a_row_text_is_observed_so_the_next_row_is_masked_by_it():
+    """A cycle's later rows must see the DFA state the earlier tokens produced.
+
+    ``json_object_close_forcing`` masks a row from the text of the tokens before
+    it. Before the walk observed text, the second row of a cycle was masked
+    against a DFA that had not seen the first row's token -- so the route could
+    publish a token the request's own constraint rejects. The first half of this
+    test is that defect; the second half is the fix.
+    """
+
+    from hipengine.generation.sampling import processed_distribution
+
+    batch = _chain_batch((2,))
+    params = _params(json_object_close_forcing=True)
+    state = RowSamplingState(
+        seed=7, generated_tokens=(1,), json_object_close_forcing=True
+    )
+    # The parent row's decoded text is an object opened but not yet closed, so
+    # the child row's outgoing token is the one that closes it.
+    texts = {2: '{"a": 1', 3: "}", 5: "{", 6: " "}
+    logits = np.full((8,), -6.0, dtype=np.float32)
+    kwargs = {"token_text_for_id": lambda token_id: texts[int(token_id)]}
+
+    unobserved = row_prefix_states(batch, {5: state})[1]
+    ids_without, _probs = processed_distribution(logits, params, unobserved, **kwargs)
+    # The defect, in both directions: the child cannot close the object it is
+    # inside, and it may open a second one.
+    assert 3 not in ids_without, "the fixture must show the unobserved-row defect"
+    assert 5 in ids_without
+
+    observed = row_prefix_states(batch, {5: state}, observe_text=_text_observer(params, texts))[1]
+    ids_with, _probs = processed_distribution(logits, params, observed, **kwargs)
+    assert 3 in ids_with
+    assert 5 not in ids_with
+    assert 6 in ids_with
+
+    # The live request's own state is untouched: only the commit advances it.
+    assert state.generated_tokens == [1]
+
+
+def test_a_draft_that_violates_the_constraint_is_marked_invalid_not_fatal():
+    """The walk advances rows by drafted tokens, and a draft may be invalid.
+
+    A speculative cycle verifies a draft chain: the row's own token is the one
+    the draft proposed, and the constraint may reject it. That is not a defect --
+    the row's masked law excludes the token, so the accept walk corrects there
+    and never publishes a later row. Raising instead aborted the whole cycle,
+    which is what a live required-tool-constraint request did.
+    """
+
+    from hipengine.generation.constraints import ToolCallConstraintSpec
+
+    params = _params(
+        tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    )
+    # The root's drafted token is plain text, which a required constraint rejects.
+    batch = _chain_batch((4, 5))
+    state = RowSamplingState(
+        seed=7,
+        generated_tokens=(1,),
+        tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="required"),
+    )
+    texts = {4: "Sure, ", 5: "<", 6: "{"}
+
+    walked = row_prefix_states(
+        batch, {5: state}, observe_text=_text_observer(params, texts, drafted=True)
+    )
+    # The walk completes, and the row past the violating draft is masked empty:
+    # it is unreachable, so its law may not admit anything.
+    violating = walked[1]
+    assert violating._tool_call_constraint.invalid
+    assert violating._tool_call_constraint.error_reason == "invalid_tool_call_prefix"
+    assert not violating._tool_call_constraint.accepts_text("<tool_call>")
+
+    # The same token on the commit path is a defect: a published token that
+    # violates the constraint means the mask and the DFA disagreed.
+    with pytest.raises(ValueError, match="violates tool_call_constraint"):
+        _text_observer(params, texts)(state, 4, 1)
+
+
+def test_the_summary_wires_the_text_observer_into_both_walks():
+    """The observer must reach the walk, not merely be accepted by the summary.
+
+    ``sampled_accept_summary`` took ``observe_text`` and dropped it, so the
+    adapter's walk-time observer never ran: a cycle's later rows were masked
+    against a DFA that had not seen the earlier tokens, and the live route
+    published a token a required tool constraint rejects. Driving the real
+    function -- not ``row_prefix_states`` directly -- is what pins the wiring.
+    """
+
+    from hipengine.generation import mtp_sampled_accept as module
+    from hipengine.generation.constraints import ToolCallConstraintSpec
+
+    params = _params(
+        tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    )
+    batch = _chain_batch((4,))
+    logits = np.stack((_logits_row({4: 4.0, 5: 3.0, 6: 2.0}),) * batch.rows)
+    state = RowSamplingState(
+        seed=7,
+        generated_tokens=(1,),
+        tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="required"),
+    )
+    # The drafted token is plain text, which a required constraint rejects.
+    texts = {4: "Sure, ", 5: "<", 6: "{"}
+
+    seen: dict[str, object] = {}
+    real_walk = module._row_prefix_walk
+
+    def spy(batch, states, *, observe_text=None):
+        seen["observe_text"] = observe_text
+        return real_walk(batch, states, observe_text=observe_text)
+
+    original = module._row_prefix_walk
+    module._row_prefix_walk = spy
+    try:
+        summary = sampled_accept_summary(
+            batch,
+            logits,
+            {5: state},
+            params_for=lambda request_id: params,
+            draws=lambda: 0.0,
+            token_text_for_id=lambda token_id: texts[int(token_id)],
+            remaining_decode=(4,),
+            observe_text=_text_observer(params, texts, drafted=True),
+        )
+    finally:
+        module._row_prefix_walk = original
+
+    # Both walks went through the observer, and the violating draft was not
+    # published: the target law of the row that predicts it excludes it.
+    assert seen["observe_text"] is not None
+    assert 4 not in summary.accepted_tokens[0]
+    assert 4 not in summary.next_tokens
+
+
+def test_the_walk_queues_the_thinking_budgets_hard_close_override():
+    """A thinking budget is per-row state, so the walk must prepare each row.
+
+    ``prepare_for_selection`` is what turns a reached hard cap into the queued
+    close sequence, and the autoregressive route calls it before every selection.
+    A walk that peeks the queue without preparing it reports no override for the
+    row the cap governs, so the cycle publishes the close without the commit
+    consuming it: the live budget keeps the sequence queued and the next cycle
+    forces it a second time.
+    """
+
+    from hipengine.generation.sampling import thinking_budget_state_from_params
+
+    params = _params(thinking_close_token_ids=(9,), thinking_hard_token_cap=2)
+    batch = _chain_batch((2, 3, 4))
+    state = RowSamplingState(
+        seed=7,
+        generated_tokens=(1,),
+        thinking_budget=thinking_budget_state_from_params(params),
+    )
+
+    forced = row_forced_token_ids(batch, {5: state})
+    # Row 2 is the first row whose own prefix reached the cap, so its edge is
+    # the one the close sequence governs. Row 3 is its child: the override is
+    # spent by the position it governs.
+    assert forced[2] == 9, forced
+    assert forced[3] is None, forced
+
+    # The commit consumes exactly the overrides the walk reported, so the live
+    # budget has nothing left to force.
+    published = (9,)
+    observe_published_tokens(
+        state,
+        published,
+        forced_positions=published_forced_positions(
+            batch,
+            (2,),
+            published,
+            forced,
+        ),
+        observe_text=None,
+    )
+    assert not state.thinking_budget.forced_tokens
+    assert state.thinking_budget.phase == "answer"
+
+
+def test_the_walk_observes_the_parent_token_at_the_childs_own_depth():
+    """Depth is the count of tokens published before the row's own token."""
+
+    batch = _chain_batch((2, 3))
+    state = RowSamplingState(seed=7, generated_tokens=(1,))
+    seen: list[tuple[int, int, tuple[int, ...]]] = []
+
+    def observe_text(row_state, token_id, depth):
+        seen.append((int(token_id), int(depth), tuple(row_state.generated_tokens)))
+
+    row_prefix_states(batch, {5: state}, observe_text=observe_text)
+    # Row 1 is the first candidate (the root's own token is the live state's),
+    # and row 2 extends row 1, so it sees both drafted tokens.
+    assert seen == [(2, 1, (1, 2)), (3, 2, (1, 2, 3))]
+
+
+def test_the_commit_observes_only_the_published_tokens_text():
+    """A row the accept walk never reached published nothing, so it advances nothing."""
+
+    params = _params(json_object_close_forcing=True)
+    state = RowSamplingState(
+        seed=7, generated_tokens=(1,), json_object_close_forcing=True
+    )
+    texts = {2: "{", 3: "}", 4: "x"}
+    observe_published_tokens(
+        state,
+        (2, 3),
+        forced_positions=(False, False),
+        observe_text=_text_observer(params, texts),
+    )
+    # Both published tokens advanced the live DFA, and the unused row's text
+    # never did.
+    assert state.generated_tokens == [1, 2, 3]
+    assert "x" not in state._json_object_constraint.observed_text

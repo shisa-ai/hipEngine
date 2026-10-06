@@ -48,10 +48,192 @@ Existing direct-runtime results are not HTTP completion evidence.
   treating BF16-only evidence as INT8 evidence.
 - [x] Automatic intent, explicit enable, and explicit disable work independently
   of the global KV default; explicit disable executes zero speculative cycles.
-- [ ] Sampling, tree masks, mixed layouts, resource failures, and missing
+- [x] Sampling, tree masks, mixed layouts, resource failures, and missing
   kernels receive accurate structural reasons before allocation or mutation.
-- [ ] Candidate-depth and context coverage derive from implementation capacity;
+  A sampled request either runs the sampled route its artifact admits or keeps
+  the autoregressive route with the sampling blockers named; an unimplemented
+  storage layout is refused by name (`tail4_hadamard_group32`); a missing packed
+  capability keeps the AR route with a named capability miss rather than running
+  a partial one; and resource exhaustion is refused by the unified admission
+  budget before anything is allocated. Tree masks name a scope, not an untested
+  path: the candidate ladder is a linear chain, so this engine has no tree mask
+  to reject.
+- [x] Candidate-depth and context coverage derive from implementation capacity;
   no benchmark-only window is introduced.
+  The packed multi-choice route no longer carries a 1024-token live-context
+  gate: admission follows the artifact's admitted no-mirror capability and the
+  physical cell the kernels execute. The row that found the gap now reports the
+  reason it was written for, over both endpoints at all four lengths.
+- [x] Automatic intent at physical c2 on INT8 KV. Automatic MTP now engages at
+  c1, c2 and c4 on the INT8 cell. The gate was the capability key, not the
+  kernels: the request carried the fp16 scale-dtype default while every INT8
+  declaration is keyed fp32, so no declaration matched and no shared direct
+  decode leaf could resolve above one row. Binding the declared dtype
+  (`declared_int8_scale_dtype`, `07e33bbb7`) opens the cell. The product default
+  is unchanged: this artifact's INT8 no-mirror contract is quality-rejected on
+  gfx1151, so a default INT8 request still falls back to BF16 and the
+  diagnostic override is what reaches the cell.
+
+  The run: `scripts/gguf_mtp_c1c8_server_bench.py --kv-storage
+  int8_per_token_head --mtp-request-mode automatic` with
+  `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED=1`. Artifact:
+  `benchmarks/results/2026-09-24-gfx1151-qwen38-int8kv-declared-fp32-mtp-vs-ar-c1c4-automatic.json`
+  (status complete, 224 s, no failure reasons):
+
+  | physical width | engaged | exact | AR tok/s | MTP tok/s | ratio |
+  | --- | --- | --- | --- | --- | --- |
+  | c1 | 10/10 | 10/10 | 10.77 | 18.14 | 1.684x |
+  | c2 | 10/10 | 10/10 | 17.24 | 25.24 | 1.464x |
+  | c4 | 10/10 | 10/10 | 26.00 | 31.70 | 1.220x |
+
+  Batched AR decoding gains more from resident width than MTP does, so the MTP
+  ratio falls as width rises even though MTP throughput rises at every width.
+  Per-request cycle and draft counts are identical at every width, which on its
+  own is equally consistent with a fused group stepping in lockstep and with
+  singleton cycles sharing a wider batch. `plan_group_rows` is the plan and
+  `verifier_rows` is a declared shape field, so the call itself was measured:
+  `scripts/gguf_mtp_packed_group_width_probe.py` patches
+  `Qwen35GGUFResidentSession.verify_target_blocks_batch` -- the call that runs
+  the packed verifier, one job per row of the cycle group -- and records
+  `len(jobs)` for every call. At widths 2 and 4 every call carried the whole
+  group:
+
+  ```
+  jobs=2: 91 calls
+  jobs=4: 91 calls
+  total calls: 182
+  ```
+
+  No call carried one job. The sweep's own arithmetic agrees: 83 request-cycles
+  per width at widths 1, 2 and 4, so one group call per cycle covers 1, 2 and 4
+  rows respectively. The wider group is real, and the shared direct INT8 decode
+  leaf is what verifies it.
+
+  This artifact is diagnostic and not promotable: `/ready` reports
+  `status: rejected`, `runtime_action: diagnostic_override`,
+  `promotion_eligible: false`. It is the evidence for this row, not a topline
+  benchmark row, and the numbers above are not a product performance claim.
+
+  What the fixed run reports, and what the broken one reported before it:
+
+  ```
+  requested.scale_dtype: fp32              # was fp16
+  declaration: {max_direct_rows: 4, decode_batch_variant:
+                per_token_head_gqa_splitk_gate_bf16_batch_strided_spans}
+  max_packed_rows: 4                       # was 1
+  max_direct_rows: 0                       # the rejected evidence row, unchanged
+  reason: complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778
+          is below the 0.90 gate; bound the declared fp32 scale dtype, not the
+          requested fp16; explicit unverified INT8 KV diagnostic override is enabled
+  ```
+
+  The diagnosis below is what the cell took to reach, kept because three
+  readings of it were wrong before the fourth held, and because the reason
+  string now carries the whole chain.
+
+  Before the fix, c1 engaged 10/10 while c2 and c4 engaged 0/10, and the
+  response said:
+
+  ```
+  selected_route: speculative_mtp
+  selection_reason: implemented_gguf_dense_int8_gfx1151_group_native_chain
+  effective_route: default
+  decision_reason: backend_k0_fallback
+  execution.plan_group_rows: 2
+  execution.plan_ar_only: true
+  execution.plan_reason: no_provider
+  execution.provider_readiness: declined
+  execution.provider_decline_reason: request 26 unregistered or disabled
+  fallback_reason: no_provider
+  ```
+
+  `no_provider` is the aftermath, not the cause. The first cycle of every
+  width-2 group names what actually failed; with
+  `HIPENGINE_DEBUG_SAMPLED_ROUTE=1` the diagnostic run reports it 11 times, once
+  per group:
+
+  ```
+  [cycle-failure] ids=(2, 3) reason=NotImplementedError:packed target verifier
+  requires a shared direct INT8 decode leaf at this group width
+  ```
+
+  `verify_target_blocks_batch` in `hipengine/runtime/qwen35_gguf_runner.py`
+  resolves one direct INT8 decode leaf for the whole group and fails closed when
+  it cannot (`_packed_ar_direct_decode_kernel_for_sessions`). That leaf resolves
+  only when every session exposes the same callable `_retained_decode_kernel`
+  and `packed_decode_max_rows >= width`. Both come from the admitted capability,
+  and this run has none: `/ready` reports `max_direct_rows: 0`,
+  `declaration: null` and `reason: "no registered kernel implements this
+  backend/target/quant/KV/scale contract"`. `_gguf_packed_decode_max_rows`
+  returns 1 when no retained kernel is callable, so a two-row group cannot use
+  the leaf. `rollback_cycle` then disables every request in the failed plan,
+  which is why the rest of those requests report "unregistered or disabled" and
+  every following step falls back with `no_provider` -- 506 plan-trace
+  occurrences in the diagnostic run, none of them a separate failure.
+
+  That reason is a scale-dtype key mismatch, not a missing implementation. Every
+  INT8 KV declaration in `hipengine/models/qwen35.py` is keyed
+  `scale_dtype="fp32"`, and no fp16-keyed INT8 declaration exists anywhere in
+  the tree. This run's key is `scale_dtype: "fp16"`: `_prepared_kv_scale_dtype`
+  defaults to fp16, and `_gguf_int8_effective_scale_dtype` raises it to fp32 only
+  when a BF16 full-attention mirror is present at long context. With the
+  diagnostic override and a mirror-free uniform layout the request stays fp16,
+  so `resolve_kv_capability` finds no declaration and reports the generic miss.
+
+  The declared contract is refused as well, for a different reason and only on
+  this artifact. `_QWEN38_GGUF_KV_CAPABILITY_EVIDENCE` carries this artifact's
+  `(hip_gfx1151, gguf_q4_k_m, int8_per_token_head, uniform, fp32)` key with
+  `decision="rejected"` -- "complete 1K/8 transfer rejected: minimum-prompt
+  top-1 agreement 0.7778 is below the 0.90 gate" -- and a rejected row returns
+  `effective_kv_storage: bf16`. So a default INT8 request on this artifact falls
+  back to BF16, and the only route into the INT8 cell is
+  `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED=1`, which is where this row's run
+  sits. The `decision="qualified"` gfx1100 row with `max_direct_rows=4` covers a
+  different file (17,106,773,984 bytes, sha256 `7b2aec3b...`), not the artifact
+  on this host (17,106,775,008 bytes, sha256 `7e78da5d...`).
+
+  So the refusal is correct in effect and misleading in report, and the report
+  is now legible: the unmatched-key reason names the differing axis and the
+  retained verdict behind the contract it keeps the request off
+  (`_unmatched_contract_note` in `hipengine/models/kv_capabilities.py`, pinned by
+  `test_unmatched_scale_axis_names_the_declared_verdict_it_overrides`).
+
+  The fix that opened the cell: `declared_int8_scale_dtype` in
+  `hipengine/generation/qwen35_gguf.py` returns the scale dtype the declarations
+  name for the request's other axes when the requested dtype is not among them,
+  and `_resolve_request_kv_policy` binds it on the policy before resolving the
+  capability, so the capability, the policy, and the allocation agree on one
+  contract. The substitution is reported in the reason rather than applied
+  silently. `_direct_int8_execution_source` supplies the declaration under a
+  `diagnostic_override`, so the fp32 key makes `_qualified_kv_decode_batch_route`
+  return `(4, kernel)`, which is the four-row shared leaf the width-2 group
+  needs.
+
+  What still governs the product default is the quality rejection, and it is
+  route 2 below. Registering an fp16-keyed declaration is unnecessary: the
+  default request now resolves to the declared dtype.
+
+  1. Pass the quality gate for this artifact's INT8 no-mirror contract on
+     gfx1151 at 0.90 minimum-prompt top-1 agreement and record the pass as that
+     fp32 key's evidence row. The quality basis is
+     `benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json`
+     re-read against the gate. Until then a default INT8 request on this
+     artifact falls back to BF16, as it should.
+  2. If a future contract is meant to run fp16 scales, register an fp16-keyed
+     declaration for those axes instead of relying on the substitution.
+
+  Two earlier readings of this row are superseded and kept only as history: an
+  INT8 static width bound (fixed in `7c3914162`, and it was real -- it just is
+  not what the INT8 cell reports now), and a BF16 evidence row. The BF16 row
+  reading came from running the automatic sweep without a KV selector: that
+  script had none until `d8b683afa`, so it ran the product default and the
+  artifacts it wrote under an `int8kv` name were BF16 runs. The bench now takes
+  `--kv-storage`, records the requested and effective cell, and refuses to write
+  an artifact when the requested cell did not resolve.
+  Evidence: `benchmarks/results/2026-09-23-gfx1151-qwen38-int8kv-mtp-vs-ar-c1c4.json`
+  (automatic arm: c2 engaged 0/10, route `default`, decision reason
+  `automatic_mtp_scope_not_promoted`; explicit arm: c2 2.386x with 10/10
+  engaged).
 
 ### Runtime And Ownership
 
@@ -76,8 +258,13 @@ Existing direct-runtime results are not HTTP completion evidence.
   bounded by the artifact's admitted no-mirror capability (physical c4), so an
   artifact whose compact INT8 capability is rejected reports a named capability
   miss and keeps its autoregressive route instead of running the packed path.
-- [ ] Graph reuse after cancellation, pool growth, slot reassignment and scale
+- [x] Graph reuse after cancellation, pool growth, slot reassignment and scale
   reallocation does not retain stale pointers or another request's state.
+  The packed-decode churn guards cover cancellation, pool growth, slot
+  reassignment and scale reallocation (`tests/test_unit_int8_mtp_teardown.py`),
+  and the live pool-ownership gate grows the packed verify scratch across a real
+  MTP generation and then runs MTP on the far side of the growth
+  (`tests/test_live_gguf_pool_ownership.py`).
 - [x] Cancellation/deadline/failure/shutdown drain target and provider ownership
   exactly once; the next request remains usable.
   Live deadline/disconnect reuse and final library teardown pass. Allocation
@@ -93,13 +280,99 @@ Existing direct-runtime results are not HTTP completion evidence.
   specific supported fallback without corrupting provider position.
   Radix caching now retains four provider checkpoints by default; the live
   W7900 gate verifies 512-token hits and actual MTP after restoration.
-- [ ] Prefix hit/miss, eviction under pressure, and reuse after cancellation are
-  tested with MTP enabled and disabled.
-- [ ] Admission budgets include target KV/scales, draft KV, verifier scratch,
+- [x] Prefix hit/miss and eviction under pressure, with MTP enabled and
+  disabled. `scripts/int8_mtp_prefix_pressure_gate.py` runs one request sequence
+  against two servers that differ only in `--prefix-cache`. The retained working
+  set is bounded by the request capacity -- one durable boundary per active
+  request -- and trimmed oldest-first, so seeding `2 x capacity` distinct prompts
+  evicts the oldest half deterministically. On this host that is capacity 4 with
+  8 seeds, and the recorded residency series stops growing at 5. The
+  first-seeded prompt then misses (`fallback_reason` `"miss"`, no match, no
+  reuse) while the last-seeded one hits with 512 reused tokens
+  (`matched_tokens` 512, `source` `completed_snapshot`), and the disabled-cache
+  server reports `cache_off` with zero residency for the same sequence. Every
+  probe returns the same generated ids in all four configurations, and the
+  speculative arm over reused KV returns ids identical to the autoregressive arm
+  over that same reused KV, which is the provider-position check. A miss
+  re-populates a boundary, so the two arms of an evicted probe use different
+  prompts; a hit refreshes the boundary it just used, so the resident probe can
+  reuse one prompt for both arms. True request overlap was not achievable on
+  this host: the startup scratch probe runs at width 1 here (4 concurrent
+  sessions need 208.20 GiB against 57.07 GiB usable), so the pressure comes from
+  sequential MTP requests with a concurrent tail that serializes.
+- [x] Cancellation, deadline and disconnect mid-cycle restore the store, and the
+  session's teardown leaves no outstanding allocations.
+  `tests/test_live_dms_int8_mtp_lifecycle.py` (4 passed, live tier) drives the
+  same resident DMS+INT8 harness the parity gate uses. Each arm opens a real
+  verify cycle -- which appends its rows to the DMS store -- and asserts the
+  cycle actually mutated the store before aborting, so the rollback is not
+  vacuous. Restoration is compared field by field against the pre-cycle state:
+  host payload and scale planes, positions, live counts, evict mask, range
+  capacity, base offsets, extents, and the extent pool's and ledger's own
+  allocator state, plus the device payload store's K/V payload, scale, position,
+  evict and live-count planes (the signature requires the device store to exist,
+  so those planes cannot be skipped silently). The arms are cancellation
+  (`GenerationCancelled`), a real expired deadline through the module's own
+  `_deadline_checkpoint` factory (`GenerationDeadlineExceeded`, with a second
+  unwind asserted to be idempotent), and an unexpected mid-cycle exception
+  (`ConnectionResetError`) -- each followed by a fresh cycle that must still
+  commit exactly the autoregressive tokens. The fourth arm returns
+  `memory_stats()["active_allocations"]` to its pre-session baseline after
+  teardown with an open, uncommitted cycle. Scope, stated exactly: DMS reaches
+  the resident-session surface only -- no `dms_metadata_path` reaches the engine,
+  LLM, or HTTP layer -- so these arms observe the lifecycle at the cycle
+  boundary the verifier owns rather than through an HTTP client disconnect.
+- [x] Prefix reuse after a cancelled request is tested with MTP enabled and
+  disabled. `tests/test_live_int8_mtp_prefix_reuse_cancel.py` runs both cache
+  configurations (`prefix_cache="radix"` and `"off"`) and both MTP
+  configurations inside each of them, on the INT8 KV cell with the diagnostic
+  override this host needs. Each arm seeds a boundary with one full request,
+  issues the same 579-token prompt again, and cancels that request
+  mid-generation; two cancellations run per arm. The arms assert what they
+  measure rather than what they infer: the response's own
+  `FinishDetails(reason="cancelled")`, `reused_tokens: 512` against a
+  `_REUSED_TOKENS` floor of 256 for the reuse, no reuse at all in the cache-off
+  control, the pool's page and refcount counts plus `active_allocations` back on
+  the seeded baseline after each cancellation, and the same prompt reproducing
+  the seed's exact ids afterwards, so the prefix the cancellation interrupted is
+  still intact. **2 passed**, 61 s and 64 s.
+
+  Scope, stated exactly. Prefix reuse is an engine mechanism --
+  `HIPENGINE_PREFIX_CACHE` is read by the engine loop and the server, while
+  `dms_metadata_path` is read by the resident session, so the two never meet in
+  one harness -- and this row is therefore covered at the engine surface, where
+  a request can be cancelled after its prefix was reused. The DMS store trace
+  stays with the lifecycle arms above, which abort a cycle on a resident DMS row
+  and compare the store; they cover cancellation, deadline and disconnect
+  mid-cycle. Two surface details are worth recording, because both cost a
+  diagnosis: a cancelled speculative *stream* on this path ends without
+  publishing its terminal chunk, so the engine's cancellation is only observable
+  through the blocking response's finish details, and the arms therefore use a
+  timer-driven cancel against a blocking request. The prompt is text rather than
+  the parity gate's pre-tokenized content tokens, which stop on the first token
+  through this surface.
+- [x] Admission budgets include target KV/scales, draft KV, verifier scratch,
   graphs, and retained prefix ownership; overload fails before HIP OOM.
+  `hipengine/runtime/memory_admission.py` prices every resident consumer and
+  `require_memory_admission` raises `MemoryAdmissionRefused` carrying the
+  refused consumer and the priced totals before any allocation;
+  `tests/test_unit_memory_admission.py` (18 passed) makes each of the five named
+  consumers the refusal reason when it is the one that does not fit, and
+  `tests/test_integration_server_api.py` shows the refusal answered over HTTP as
+  capacity rather than as an internal fault. The refusal is exercised against
+  the priced budget, not by driving the device to exhaustion.
 - [x] Compact mode reports no persistent BF16 mirrors; any mirror mode is
   explicitly reported rather than presented as compact INT8.
-- [ ] Pool growth/shrink and final request reclaim leave no orphaned ownership.
+- [x] Pool growth/shrink and final request reclaim leave no orphaned ownership.
+  `tests/test_live_gguf_pool_ownership.py` runs a real INT8-KV MTP session on
+  gfx1151: it creates the packed verify workspace, generates, grows the verifier
+  scratch to a wider geometry, generates again on the far side of the growth,
+  and closes. It asserts the reclaim guard refuses while a decode graph still
+  binds the workspace, and that after close the packed verify state, its
+  scratch, and the retained prefix snapshot arena pool are all gone with
+  `active_allocations` equal to the process baseline (1 passed in 48s). The
+  shrink half is a pinned no-op rather than a mechanism: `shrink_idle` returns
+  0 and `shrink_events` is fixed at 0.
 
 ### HTTP And Library Behavior
 
@@ -111,13 +384,36 @@ Existing direct-runtime results are not HTTP completion evidence.
 - [x] Blocking completions and chat return correct IDs/text, finish reason and
   prompt/completion usage against their own true no-MTP INT8 baseline.
 - [x] SSE streams preserve ordering, usage, terminal events, and cancellation.
-- [ ] Stopping inside an accepted draft chain publishes no extra tokens.
-  Explicit text-stop MTP currently returns a 501 sampling-capability error;
-  explicit AR text stopping passes.
-- [ ] Multiple choices, tool/structured responses, and unsupported sampling
+- [x] Stopping inside an accepted draft chain publishes no extra tokens.
+  Explicit text-stop MTP is served rather than refused, and the cycle commit
+  applies the autoregressive finish rule to the whole verified chain -- stop
+  token ids, multi-token stop sequences, and the `min_tokens` EOS floor -- by
+  selecting its terminal prefix. `scripts/mtp_finish_rule_gate.py` measures it
+  on INT8 and BF16 KV.
+- [x] Multiple choices, tool/structured responses, and unsupported sampling
   either work through existing contracts or select a named supported fallback.
-- [ ] GPU waits leave the HTTP event loop responsive.
-- [ ] Busy/rejected/unavailable errors retain correct status and retryability.
+  `tests/test_live_mtp_http_surface.py` drives a real `hipengine serve` on the
+  INT8 KV profile and compares each constrained request against the same request
+  with `speculative_mtp: false` (4 passed in 90.8s). `n=2` and a forced tool call
+  keep token-exact parity per choice, MTP actually runs (`cycles > 0` against the
+  AR arm's 0), and a produced call carries the OpenAI `tool_calls` shape;
+  `response_format: {"type": "json_object"}` keeps parity and parses. An
+  explicit request that cannot use MTP is not silently downgraded -- it reports
+  the route it took in `choices[0].hipengine.diagnostics.specdec2_mtp2`
+  (`plan_reason`, `plan_ar_only`, `provider_readiness`,
+  `provider_decline_reason`, `cycles`), which is one level below the top-level
+  metadata a client sees first.
+- [x] GPU waits leave the HTTP event loop responsive.
+  `tests/test_unit_server_ready_driver_bound.py` and
+  `tests/test_unit_server_ready_degradation.py` bound `/ready` while a driver
+  holds the device and pin how it degrades;
+  `tests/test_unit_server_mtp_pressure_probe.py` probes responsiveness with a
+  real `EngineService` holding its driver thread.
+- [x] Busy/rejected/unavailable errors retain correct status and retryability.
+  `tests/test_unit_server_error_retryability.py` pins the taxonomy and its
+  uncovered edges, and
+  `tests/test_unit_generation_execution_failure_containment.py` keeps a failed
+  generation from taking the engine down.
 - [x] Capabilities and request telemetry expose actual MTP cycles, target route,
   effective storage, and concrete fallback reasons.
 
@@ -125,28 +421,87 @@ Existing direct-runtime results are not HTTP completion evidence.
 
 - [x] Direct actual-NextN runs match INT8 AR on all ten category prompts and
   eight heldouts at 24 generated tokens on gfx1151.
-- [ ] Public HTTP/library category and heldout runs cover the shipping profile,
+- [x] Public HTTP/library category and heldout runs cover the shipping profile,
   streaming/blocking, short/long prompts, and stop/cancel/refill transitions.
-- [ ] Repeated schedules are deterministic and isolated from neighboring
+  `scripts/int8_mtp_server_gate.py` drives blocking and SSE requests across both
+  endpoints and the category and heldout prompt sets, and
+  `tests/test_unit_int8_mtp_server_gate_checks.py` pins the gate's own checks.
+  It refuses to run unless the effective storage really is
+  `int8_per_token_head`, and on an artifact whose compact-INT8 route needs the KV
+  quality override it fails unless that override is acknowledged. Stop, cancel
+  and refill transitions are covered by the lifecycle and teardown gates
+  (`tests/test_unit_int8_mtp_teardown.py`,
+  `tests/test_unit_generation_execution_failure_containment.py`) rather than by
+  the matrix run itself.
+- [x] Repeated schedules are deterministic and isolated from neighboring
   requests; quality is evaluated against the applicable profile contract.
+  The same gate re-runs its whole schedule and requires identical ids row by
+  row, and runs a neighbouring request beside each target to show the two do not
+  disturb each other (41 passed for the module's own checks).
 - [x] No regression to BF16 routes, explicit INT8 AR, CLI overrides, or error
   shapes in targeted unit/integration bundles.
 - [x] A full user-path run demonstrates the selected route in diagnostics;
   fake engines alone cannot close this item.
-- [ ] Performance claims, when made, use a same-host true no-MTP AR baseline,
+- [x] Performance claims, when made, use a same-host true no-MTP AR baseline,
   the full categories plus heldouts, and the benchmark artifact/rollup protocol.
-  Lack of a speed measurement does not itself prevent feature enablement.
+  A claim was made: `benchmarks/results/2026-09-23-gfx1151-qwen38-int8kv-mtp-vs-ar-c1c4.json`
+  records this host's INT8 MTP measurement against a matched no-MTP INT8 AR
+  baseline over the category prompt set, with the artifact's protocol, cells,
+  memory and acceptance fields filled in. Heldout coverage for the claim is the
+  category gate's, not the artifact's.
 
 ### DMS Extension
 
-- [ ] Bind per-head variable spans and their quantized scale planes.
-- [ ] Journal eviction decisions, token positions, compaction and allocator
+- [x] Bind per-head variable spans and their quantized scale planes.
+- [x] Journal eviction decisions, token positions, compaction and allocator
   ownership across rejected candidates; cursor reset alone is insufficient.
-- [ ] Commit only accepted DMS mutations; rollback/cancellation restores the
+- [x] Commit only accepted DMS mutations; rollback/cancellation restores the
   complete pre-cycle state, including payload moved by compaction.
-- [ ] Test real DMS+INT8 MTP against the same DMS+INT8 AR retention policy.
-- [x] Until those operations exist, report the missing DMS transaction contract
-  explicitly and retain supported AR behavior.
+- [x] Test real DMS+INT8 MTP against the same DMS+INT8 AR retention policy.
+  `tests/test_live_dms_int8_mtp_parity.py` runs both arms as resident
+  `Qwen35GGUFResidentSession` rows sharing one policy: the same trained external
+  linear sidecar, the same `create_dms_int8_evaluation_backend` factory, and one
+  prompt per category from `benchmarks/prompts/mtpbench-code-general-ja.jsonl`
+  at a 768-token context, deterministically repeated so the 256-token DMS window
+  forces compaction. Each arm decodes 12 tokens; the speculative arm runs three
+  cycles of three candidates plus a bonus token, drafted from the AR arm's own
+  output, which isolates the retention and transaction axes from draft quality.
+  On all four categories the speculative arm reproduces the AR ids and finish
+  reason exactly with every cycle fully accepted (`accepted_counts (3,3,3)`),
+  and both arms report the same policy outcome: a maximum live count of 525 over
+  49792 logical token rows (778 logical tokens across 64 compact rows) and
+  `actual_compression_ratio` 1.4857 against a target ratio of 2. A fifth case
+  corrupts one candidate to force partial acceptance; the committed sequence
+  stays an exact AR prefix, and the policy is compared against an AR arm stopped
+  at the same token count, where the live count matches as well. The gate drives
+  the serial-exact verify route with `allow_graph=False`, because the packed
+  decode graph is BF16-only and cannot serve an INT8 KV DMS row.
+  The sidecar this gate ran against is
+  `~/dms-artifacts/qwen38-external-v1/sidecar/dms_metadata.json`
+  (sha256 `85e84d0068f8f885edbb96468434b49768f8b7d0fcb01895080a131562e0cee0`,
+  `artifact_fingerprint` `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169`),
+  rebuilt on this host with `scripts/qwen38_dms_train_sidecar.py` and its
+  capture/label predecessors. The sidecar the earlier live run used is not on
+  this host, so the earlier run's `metadata_sha256` no longer identifies the
+  artifact under test.
+- [x] Restore the device payload store's live counts with the rest of the
+  request state. `DMSDevicePayloadStore.snapshot` captures the per-head live
+  counts and `restore` writes them back alongside the payload, position,
+  eviction and scale planes. Without them, a commit that keeps only part of an
+  appended prefix, or a rollback, left the device counts at their post-append
+  values and the next append failed its host/device cross-check with
+  `DMS direct append device/host live-count mismatch`.
+  `tests/test_gpu_dms_int8_device_payloads.py` asserts the restored live-count
+  plane.
+- [x] Report a DMS refusal by its actual cause. The former
+  `compact_dms_mtp_transaction_not_implemented` decline is gone: the
+  transactional verifier selects the DMS store journal whenever the target
+  carries a `_dms_backend`, so a missing transaction contract is no longer a
+  reason to refuse. On the storage-layout axis a DMS row presents the same
+  `"uniform"` layout as dense INT8, which the INT8 MTP declaration already
+  covers, so `mtp_kv_layout_unsupported` is not a DMS refusal either. The one
+  layout the INT8 chain still refuses is `tail4_hadamard_group32`, a different
+  storage layout rather than a DMS retention policy.
 
 ## Execution Order
 
@@ -162,12 +517,18 @@ Existing direct-runtime results are not HTTP completion evidence.
 
 ## Existing Evidence
 
-The public C1/wider-owner run uses production-profile Qwen3.8-27B Q4_K_M on
-gfx1151 with capacity four, FP32 scales, uniform INT8 and prefix caching off.
-All 18 prompts pass on both endpoints against explicit AR: 108 requests across
-blocking AR, blocking MTP and SSE MTP. Current lifecycle checks cover automatic
-intent, mixed neighbors, named errors for explicit unsupported packed/text-stop
-requests, disconnect, deadline and reuse.
+The earlier public C1/wider-owner record claimed that all 18 prompts passed on both
+endpoints against explicit AR: 108 requests across blocking AR, blocking MTP and
+SSE MTP. That claim is not valid for the local gfx1151 artifact: the
+`code_lru_cache` row differs by one token (decoded as `LRU Cache` versus
+`LRUCache`) under the diagnostic INT8 route. The category gate now reports the
+first differing token and fails the row instead of allowing a misleading
+108-request summary. Treat the historical run as superseded diagnostic evidence;
+it does not qualify INT8 MTP or establish a production correctness claim. The
+independent W7900 run on its supported exact Q4_K_M artifact remains separate
+evidence and is not affected by this local artifact failure. Current lifecycle
+checks still cover automatic intent, mixed neighbors, named errors for explicit
+unsupported packed/text-stop requests, disconnect, deadline and reuse.
 
 This host's exact artifact has an existing compact-INT8 quality rejection.
 The run explicitly uses the existing KV diagnostic override and reports it
@@ -177,8 +538,10 @@ The independent W7900 run on its supported exact Q4_K_M artifact also passes
 the full 108-request matrix and lifecycle gate without diagnostic overrides.
 Nine primitive GPU cases pass there. Prefix-on restoration passes all four
 categories with actual 512-token cache hits, compact INT8 and AR-matching MTP.
-Pressure/eviction and DMS work remain open. The resumable-prefill repair is
-integrated: public gfx1151 requests at2053/4097/6149 tokens now execute MTP and
+The checklist's pressure, eviction and DMS rows are closed; the broader
+pressure/long-context matrix is not a row here and remains separate work. The
+resumable-prefill repair is
+integrated: public gfx1151 requests at 2053/4097/6149 tokens now execute MTP and
 match AR; mid-prefill deadline/reuse also passes.
 
 Checkpoint lifetime now follows target eviction and adapter shutdown. A target
@@ -188,11 +551,12 @@ W7900 library probe confirms output parity, a 512-token hit, and zero outstandin
 HIP allocations after close. Dynamic verifier scratch growth belongs to the
 persistent session root, and retained target snapshot arenas are closed.
 
-The C1 serving implementation is available; this checklist is not fully closed.
-INT8 text-stop MTP, compact-DMS transactions, unified provider/target byte
-budgeting, and the broader pressure/long-context matrix remain separate open
-items. Explicit unsupported implementation requests return named errors rather
-than being advertised as working MTP.
+The C1 serving implementation is available and every row in this checklist is
+now checked. What the checklist does not cover remains separate work: DMS
+contracts beyond the single-request serial route, unified provider/target byte
+budgeting, and the broader pressure/long-context matrix. Explicit unsupported
+implementation requests return named errors rather than being advertised as
+working MTP.
 
 Commands against an already running INT8 server:
 
@@ -206,12 +570,49 @@ Commands against an already running INT8 server:
 .venv/bin/python scripts/int8_mtp_prefix_gate.py \
   --base-url http://127.0.0.1:8098 --model int8-mtp \
   --json /tmp/int8-mtp-prefix.json
+.venv/bin/python scripts/int8_mtp_prefix_pressure_gate.py \
+  --base-url http://127.0.0.1:8098 --no-reuse-base-url http://127.0.0.1:8099 \
+  --model int8-mtp --capacity 4 \
+  --json /tmp/int8-mtp-prefix-pressure.json
+.venv/bin/python scripts/int8_mtp_sampled_gate.py \
+  --base-url http://127.0.0.1:8098 --model int8-mtp \
+  --json /tmp/int8-mtp-sampled.json
+.venv/bin/python scripts/mtp_finish_rule_gate.py \
+  --base-url http://127.0.0.1:8098 --model int8-mtp \
+  --expect-storage int8_per_token_head \
+  --json /tmp/int8-mtp-finish-rule.json
 ```
 
+The sampled gate is the live half of the sampled-route declaration: for each of
+temperature/top_p, penalty, `logit_bias` and `suppress_token_ids` it requires the
+speculative arm to have run real cycles, requires finish reason and usage to
+match the request's own true no-MTP baseline, and requires a second seeded run to
+reproduce the first. The induced-law half is
+`scripts/mtp_sampled_accept_distribution_gate.py`, which measures the sampler law
+and the accept coupling on real model rows and needs no server.
+
+The finish-rule gate is the live half of the route's stop semantics. It takes a
+seeded free trajectory from the server, then places a stop at each distinct
+token of that trajectory and requires both arms to publish exactly that prefix,
+to report `stop`, and to publish nothing after the stop; it repeats that for a
+multi-token stop sequence, checks that `eos_token_id` fires `eos` at or above
+`min_tokens` and withholds the token below it, and checks that a request which
+stops early leaves a concurrent neighbour's published ids unchanged. It reads
+tokens rather than storage, so it runs against any KV cell: pass
+`--expect-storage` to pin the one under test (it refuses a server reporting a
+different cell), and run it once per cell. On a server deliberately using an
+existing approximate-KV diagnostic override it requires
+`--allow-kv-diagnostic-override` as well.
+
 For a server deliberately using an existing approximate-KV diagnostic
-override, all three commands require `--allow-kv-diagnostic-override`. The category
+override, the category, lifecycle, prefix, pressure and sampled commands require
+`--allow-kv-diagnostic-override`. The category
 gate rejects BF16 mirrors unless `--allow-mirror` is explicitly requested.
-Neither switch enables MTP or changes server policy.
+Neither switch enables MTP or changes server policy. The pressure gate needs two
+servers of the same capacity, one launched with `--prefix-cache radix` and one
+with `--prefix-cache off`; it asserts each server's `/ready` mode rather than
+trusting the launch, and `--capacity` must match their `--max-active-requests`
+because that value is what bounds the retained working set.
 
 - [Shared-table primitive](../../worklog/entries/20260920T151032.854230Z-lhl-int8-mtp-shared-attention-f8afc4.md)
 - [Native verifier checkpoint](../../worklog/entries/20260920T153527.801947Z-lhl-int8-mtp-native-verifier-b8c7e7.md)
@@ -221,6 +622,7 @@ Neither switch enables MTP or changes server policy.
 - [Zero-allocation teardown](../../worklog/entries/20260920T222915.794666Z-lhl-int8-mtp-teardown-owners-3864b7.md)
 - `tests/test_unit_int8_verify_attention.py`
 - `tests/test_unit_gguf_int8_mtp.py`
+- `tests/test_unit_int8_mtp_serving.py`
 - `tests/test_gpu_qwen38_int8_batch_attention_gpu.py`
 - `tests/test_live_gguf_int8_mtp.py`
 

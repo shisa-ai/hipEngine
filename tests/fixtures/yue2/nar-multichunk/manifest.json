@@ -1,0 +1,69 @@
+{
+  "chunk_reports": [
+    {
+      "ar_tokens": 35,
+      "frames": 26,
+      "index": 0,
+      "latent_norm": 68.20690155029297,
+      "replay_step_max_abs": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity_norm_step0": 44.37096405029297
+    },
+    {
+      "ar_tokens": 35,
+      "frames": 26,
+      "index": 1,
+      "latent_norm": 64.03215789794922,
+      "replay_step_max_abs": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity_norm_step0": 36.462100982666016
+    },
+    {
+      "ar_tokens": 35,
+      "frames": 26,
+      "index": 2,
+      "latent_norm": 73.07019805908203,
+      "replay_step_max_abs": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity_norm_step0": 44.898826599121094
+    },
+    {
+      "ar_tokens": 27,
+      "frames": 18,
+      "index": 3,
+      "latent_norm": 58.935699462890625,
+      "replay_step_max_abs": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity_norm_step0": 34.10319137573242
+    }
+  ],
+  "chunks": 4,
+  "context": 64,
+  "frames": 96,
+  "latent_norm": 68.20690155029297,
+  "nar_cond_end": 0,
+  "prefix_length": 8,
+  "replay_step0_max_abs": 0.0,
+  "replay_step1_max_abs": 0.0,
+  "replay_step2_max_abs": 0.0,
+  "replay_step3_max_abs": 0.0,
+  "seed": 1234,
+  "steps": 4,
+  "velocity_norm_step0": 44.37096405029297
+}

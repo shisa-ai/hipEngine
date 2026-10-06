@@ -124,6 +124,48 @@ class ResourceLedger:
         with self._lock:
             return self._fit_locked(claims)
 
+    def state_snapshot(self) -> dict[str, Any]:
+        """Return a restorable copy of ownership and provisional reservations.
+
+        The ownership records are frozen dataclasses, so the containers are
+        copied and the mutable counters are rebuilt. A transaction that evicts
+        and compacts releases provisional slots; restoring this snapshot puts
+        that ownership back exactly as it was.
+        """
+
+        with self._lock:
+            return {
+                "used": dict(self._used),
+                "high_water": dict(self._high_water),
+                "used_by_lifetime": {
+                    pool_id: Counter(counts)
+                    for pool_id, counts in self._used_by_lifetime.items()
+                },
+                "owners": dict(self._owners),
+                "reservations": dict(self._reservations),
+                "reservation_by_owner": dict(self._reservation_by_owner),
+                "next_reservation_id": int(self._next_reservation_id),
+                "stats": Counter(self._stats),
+                "blocking_counts": Counter(self._blocking_counts),
+            }
+
+    def restore_state(self, snapshot: dict[str, Any]) -> None:
+        """Restore ownership captured by ``state_snapshot``."""
+
+        with self._lock:
+            self._used = dict(snapshot["used"])
+            self._high_water = dict(snapshot["high_water"])
+            self._used_by_lifetime = {
+                pool_id: Counter(counts)
+                for pool_id, counts in snapshot["used_by_lifetime"].items()
+            }
+            self._owners = dict(snapshot["owners"])
+            self._reservations = dict(snapshot["reservations"])
+            self._reservation_by_owner = dict(snapshot["reservation_by_owner"])
+            self._next_reservation_id = int(snapshot["next_reservation_id"])
+            self._stats = Counter(snapshot["stats"])
+            self._blocking_counts = Counter(snapshot["blocking_counts"])
+
     def reserve_provisional(
         self,
         claims: ResourceClaimSet,

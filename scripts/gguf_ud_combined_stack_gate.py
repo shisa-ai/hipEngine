@@ -21,6 +21,11 @@ and a zero-KL prefill-only sanity arm (decode policy must not perturb
 prefill). The per-scope 97% top-1 requirement is a multi-category heldout
 property of the full gate suite; this single-prompt diagnostic binds the
 overall screen.
+
+``--backend hip_gfx1151`` gates that backend's shipped decode policy against
+its own all-strict decode incumbent (empty decode table) with the shipped
+prefill route held constant in both arms - the decode-only lever pair of
+UD-GFX1151-OPTIMIZE2 E2. The default keeps the original gfx1100 arm pair.
 """
 from __future__ import annotations
 
@@ -50,10 +55,8 @@ SHIPPED_PREFILL: dict = {}
 SHIPPED_DECODE: dict = {}
 
 
-def _capture_shipped_policies() -> tuple[dict, dict]:
+def _capture_shipped_policies(backend) -> tuple[dict, dict]:
     import copy
-
-    import hipengine.kernels.hip_gfx1100 as backend
 
     prefill = copy.deepcopy(backend.GGUF_IQ_DENSE_PREFILL_POLICY)
     decode = copy.deepcopy(backend.GGUF_IQ_DENSE_DECODE_POLICY)
@@ -75,34 +78,56 @@ def main() -> None:
         help="Run the 18-prompt category/heldout fixture instead of the "
              "single natural prompt, binding the per-scope top-1 >= 0.97 "
              "half of the section-6.1 screen.")
+    ap.add_argument(
+        "--backend", type=str, default="hip_gfx1100",
+        help="backend package whose combined stack is gated. The default "
+             "keeps the original gfx1100 arm pair (frozen prefill "
+             "reference vs the live shipped stack); pass hip_gfx1151 to "
+             "gate that backend's shipped decode policy against its own "
+             "all-strict decode incumbent with the shipped prefill route "
+             "held constant in both arms.")
     args = ap.parse_args()
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
 
     from hipengine.benchmark.correctness import evaluate_logits
+    from hipengine.runtime import gguf_linear as gl
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
-    import hipengine.kernels.hip_gfx1100 as be
+
+    backend = args.backend
+    be = __import__(f"hipengine.kernels.{backend}", fromlist=["_"])
 
     compiler_version = (Path(args.compiler_version_file).read_text()
                          if args.compiler_version_file else None)
 
-    global SHIPPED_PREFILL, SHIPPED_DECODE
-    SHIPPED_PREFILL, SHIPPED_DECODE = _capture_shipped_policies()
+    global SHIPPED_PREFILL, SHIPPED_DECODE, INCUMBENT_PREFILL
+    SHIPPED_PREFILL, SHIPPED_DECODE = _capture_shipped_policies(be)
 
-    # Arm assertions: the incumbent is the frozen four-quant reference; the
-    # shipped arm must be the live default policy covering the seven-quant
-    # route set (a stale pin here would test a stack that no longer ships).
-    assert set(INCUMBENT_PREFILL) < set(SHIPPED_PREFILL), (
-        "prefill arms route the same quant set; the incumbent pin is stale")
-    assert set(SHIPPED_PREFILL) == {
-        "gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
-        "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs"}, (
-        "the shipped prefill policy no longer routes the seven-quant set; "
-        "update this gate's expectation")
-    assert SHIPPED_PREFILL["gguf_iq4_xs"]["variant"].endswith(
-        "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out"), (
-        "the shipped IQ4_XS prefill owner is not the cooperative 64-column "
-        "owner; update this gate's expectation")
+    if backend == "hip_gfx1100":
+        # Arm assertions: the incumbent is the frozen four-quant reference;
+        # the shipped arm must be the live default policy covering the
+        # seven-quant route set (a stale pin here would test a stack that no
+        # longer ships).
+        assert set(INCUMBENT_PREFILL) < set(SHIPPED_PREFILL), (
+            "prefill arms route the same quant set; the incumbent pin is "
+            "stale")
+        assert set(SHIPPED_PREFILL) == {
+            "gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
+            "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs"}, (
+            "the shipped prefill policy no longer routes the seven-quant "
+            "set; update this gate's expectation")
+        assert SHIPPED_PREFILL["gguf_iq4_xs"]["variant"].endswith(
+            "dense_wmma_w4a16_prefill_coop64_bf16_bf16_out"), (
+            "the shipped IQ4_XS prefill owner is not the cooperative "
+            "64-column owner; update this gate's expectation")
+    else:
+        # Decode-only lever (UD-GFX1151-OPTIMIZE2 E2): both arms run the
+        # backend's shipped prefill route, so the paired difference is
+        # exactly the decode policy under test; the incumbent decode is the
+        # session-start all-strict state (empty decode table).
+        import copy
+
+        INCUMBENT_PREFILL = copy.deepcopy(SHIPPED_PREFILL)
     assert INCUMBENT_DECODE != SHIPPED_DECODE, (
         "decode arms route the same policy; the incumbent pin is stale")
 
@@ -120,8 +145,13 @@ def main() -> None:
         return prompt[:args.prompt_tokens]
 
     def run(prefill_policy, decode_policy, forced_tokens=None):
+        # Reassigning either policy table changes a dispatch-resolution input
+        # that the launch memo does not key on (it is an import-time constant
+        # in production), so the memo must be dropped or the second arm reuses
+        # the first arm's owners and the two arms measure the same kernels.
         be.GGUF_IQ_DENSE_PREFILL_POLICY = prefill_policy
         be.GGUF_IQ_DENSE_DECODE_POLICY = decode_policy
+        gl.clear_gguf_linear_dispatch_cache()
         logits_rows = []
         tokens = []
         first = session.prefill(prompt, use_bulk=True, bulk_attention_mode="bulk",
@@ -149,6 +179,7 @@ def main() -> None:
             max_sequence_length=args.prompt_tokens + n + 64,
             use_wmma_prefill=True,
             use_gemv_decode=True,
+            backend=backend,
         ) as session:
             prompt = natural_prompt(session)
             session.reset()
@@ -161,6 +192,7 @@ def main() -> None:
     finally:
         be.GGUF_IQ_DENSE_PREFILL_POLICY = SHIPPED_PREFILL
         be.GGUF_IQ_DENSE_DECODE_POLICY = SHIPPED_DECODE
+        gl.clear_gguf_linear_dispatch_cache()
 
     metrics = evaluate_logits(ref_logits, cand_logits)
     top1 = float(np.mean(np.argmax(ref_logits, -1) == np.argmax(cand_logits, -1)))
@@ -227,11 +259,13 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
     """
 
     from hipengine.benchmark.correctness import evaluate_logits
+    from hipengine.runtime import gguf_linear as gl
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
     from hipengine.loading.gguf import scan_gguf
     from scripts.gguf_mtp_bench import build_chat_prompt
-    import hipengine.kernels.hip_gfx1100 as be
+
+    be = __import__(f"hipengine.kernels.{args.backend}", fromlist=["_"])
 
     prompt_rows = []
     for path in (
@@ -263,10 +297,12 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
             max_sequence_length=args.prompt_tokens + n + 64,
             use_wmma_prefill=True,
             use_gemv_decode=True,
+            backend=args.backend,
         ) as session:
             def _arm(prefill_policy, decode_policy, prompt_ids, forced=None):
                 be.GGUF_IQ_DENSE_PREFILL_POLICY = prefill_policy
                 be.GGUF_IQ_DENSE_DECODE_POLICY = decode_policy
+                gl.clear_gguf_linear_dispatch_cache()
                 logits_rows = []
                 cur = session.prefill(
                     prompt_ids, use_bulk=True, bulk_attention_mode="bulk",
@@ -297,6 +333,7 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
                     # owner boundary.
                     be.GGUF_IQ_DENSE_PREFILL_POLICY = INCUMBENT_PREFILL
                     be.GGUF_IQ_DENSE_DECODE_POLICY = INCUMBENT_DECODE
+                    gl.clear_gguf_linear_dispatch_cache()
                     ids = list(seed_ids)
                     cur = session.prefill(
                         ids, use_bulk=True, bulk_attention_mode="bulk",
@@ -375,6 +412,7 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
     finally:
         be.GGUF_IQ_DENSE_PREFILL_POLICY = SHIPPED_PREFILL
         be.GGUF_IQ_DENSE_DECODE_POLICY = SHIPPED_DECODE
+        gl.clear_gguf_linear_dispatch_cache()
 
     kl_all = np.concatenate(pooled_kl)
     top1_all = np.concatenate(pooled_top1)

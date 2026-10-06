@@ -95,8 +95,13 @@ def test_gfx1100_routes_local32_for_iq4_xs_and_gfx1151_keeps_none():
     }
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_IQ_DENSE_DECODE_POLICY", None) == expected_policy
+    # gfx1151 declared the mirrored decode policy on 2026-09-21 (the routing
+    # comment in hip_gfx1151/__init__.py records why); the declaration is
+    # held by tests/test_unit_gfx1151_iq_dense_policy_parity.py. This
+    # assertion predates that declaration and was stale (the default pytest
+    # tier does not collect GPU files, so it never failed there).
     assert backend_package_capability(
-        "hip_gfx1151", "GGUF_IQ_DENSE_DECODE_POLICY", None) is None
+        "hip_gfx1151", "GGUF_IQ_DENSE_DECODE_POLICY", None) == expected_policy
 
 
 # ------------------------------------------------------------------- dispatch

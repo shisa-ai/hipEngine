@@ -2734,6 +2734,103 @@ def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) ->
     assert len(allocated) == 2
 
 
+def test_gguf_packed_target_state_charges_its_scratch_by_name(monkeypatch) -> None:
+    """The state's own scratch buffers are priced through the pool budget.
+
+    The conv/recurrent state buffers are device mallocs this state owns, so they
+    belong in the same admission budget as the KV payload: an overload has to be
+    refused by name before they are allocated rather than surfacing as a HIP OOM
+    part-way through the loop. The charge is sized from exactly the bytes the
+    state then holds, and the state carries the token that releases it.
+    """
+
+    allocated: list[int] = []
+
+    def fake_malloc(nbytes, *, runtime):
+        allocated.append(int(nbytes))
+        return DeviceBuffer(ptr=0x500000 + len(allocated) * 0x10000, nbytes=int(nbytes))
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    runner = _lease_test_runner()
+    runner.weights.config.layer_types = (LINEAR_ATTENTION, FULL_ATTENTION)
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.BF16,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(None, DType.BF16),
+    )
+    charges: list[tuple[str, int]] = []
+    pool = SimpleNamespace(
+        workspace_pages=lambda key: None,
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
+        reserve_resident_bytes=lambda name, nbytes: (
+            charges.append((str(name), int(nbytes))) or object()
+        ),
+    )
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=2,
+        max_sequence_length=512,
+        runtime=SimpleNamespace(),
+        kv_layout=layout,
+        kv_pool=pool,
+    )
+
+    assert [name for name, _ in charges] == ["packed_verify_scratch"]
+    held = sum(
+        int(buffer.nbytes)
+        for buffer in (*state.layer_conv_states, *state.layer_recurrent_states)
+        if buffer is not None
+    )
+    assert held > 0
+    assert charges[0][1] == held
+    assert state.resident_charge_pool is pool
+    assert state.resident_charge_token is not None
+
+
+def test_gguf_packed_target_state_skips_the_charge_when_the_pool_cannot_take_one(
+    monkeypatch,
+) -> None:
+    """A pool that does not implement the ledger is charged nothing."""
+
+    monkeypatch.setattr(
+        gguf_runner,
+        "malloc",
+        lambda nbytes, *, runtime: DeviceBuffer(ptr=0x500000, nbytes=int(nbytes)),
+    )
+    runner = _lease_test_runner()
+    runner.weights.config.layer_types = (LINEAR_ATTENTION, FULL_ATTENTION)
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.BF16,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(None, DType.BF16),
+    )
+    pool = SimpleNamespace(
+        workspace_pages=lambda key: None,
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
+    )
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=2,
+        max_sequence_length=512,
+        runtime=SimpleNamespace(),
+        kv_layout=layout,
+        kv_pool=pool,
+    )
+
+    assert state.resident_charge_token is None
+    assert state.resident_charge_pool is None
+
+
 def test_gguf_packed_target_state_allocate_rejects_bad_lease(monkeypatch) -> None:
     monkeypatch.setattr(
         gguf_runner,

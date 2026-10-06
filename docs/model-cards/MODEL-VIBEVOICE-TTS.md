@@ -102,26 +102,34 @@ initial noise produces a different trajectory: the final latent moves by 3.3
 relative and one eps step by 1.5 of its peak. The single-speaker call does not
 amplify that change (0.044 on eps, 0.019 on the final latent). Both the CPU
 reference and the device head behave this way, so the spread is a property of
-the frozen trajectory and not of either implementation: on that call the CPU
-reference lands 0.27 relative from the oracle and the device head 0.036, and
-moving either one by a single ULP moves both to about 3.4.
+the frozen trajectory and not of either implementation: under the numpy versions
+installed here (2.4.4, and 2.5.3 in the pytest context) the CPU reference
+lands 0.011 relative from the oracle on that call, while numpy 2.5.2 selects
+the divergent basin instead (0.27 relative), and moving either one by a single
+ULP moves both to about 3.4.
 
 Amplification starts at step 6. Through step 5 the two-speaker replay tracks the
 oracle to 0.007 of peak on eps and 0.008 on speech, and the single-speaker call
 to 0.013 and 0.014; past step 6 the two-speaker eps spread reaches 0.37 of peak
-and its final latent 0.27 relative.
+and its final latent 0.27 relative under numpy 2.5.2, and 0.044 / 0.011 under
+the installed numpy versions -- the replay's late basin is selected by the
+numpy version.
 
-The acceptance gates are therefore frozen constants split at that onset. Both
-requests are gated over steps 0-5 against the oracle; the single-speaker request
-is gated over all 20 steps and on its final and scaled latents; the two-speaker
-request carries no late-step threshold, because no value there separates a
-defect from the fixture's conditioning. A measured one-percent error injected
-into the head weights moves the pre-onset spread to 0.061 and 0.156, so the
-step 0-5 gate still fails on a real defect.
-`test_trajectory_conditioning_is_diagnostic` reports the band and asserts that
-the reason for the missing late gate still holds; nothing it measures feeds a
-threshold. What covers the two-speaker request instead is generated-audio
-quality.
+The acceptance gates are frozen constants split at that onset. Both requests
+are gated over steps 0-5 against the oracle; since 2026-09-23 the two-speaker
+request is also gated over all 20 steps on eps and speech at the same
+thresholds as single (0.08 / 0.05 of peak) -- the "restore it" condition its
+diagnostic had asserted, measured at 0.044 and 0.017 under the installed
+numpy versions. The single-speaker request additionally keeps its pooled,
+final-latent, and scaled-latent gates; those stay single-only. A measured
+one-percent error injected into the head weights moves the pre-onset spread to
+0.061 and 0.156, so the step 0-5 gate still fails on a real defect.
+`test_trajectory_conditioning_is_diagnostic` reports the perturbation band and
+pins the restored late agreement; a return to numpy 2.5.2's divergent basin
+(0.3655 late eps) fails that assertion and the gate. The environment matrix is
+recorded in worklog entry
+20260923T065521.980836Z-lhl-vibevoice-tts-restore-late-gate-88ec6c.md.
+Generated-audio quality still covers the request's un-gated latent forms.
 
 The thresholds are constants rather than a function of the run under test. An
 earlier revision raised each limit to the band measured from the running

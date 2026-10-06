@@ -85,6 +85,7 @@ def test_speculative_stream_event_decorator_attaches_tokenizer_text() -> None:
         qwen35_gguf.Qwen35GGUFResidentModelRunner
     )
     runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
+    runner._cycle_token_samples = {}
     events = (
         GeneratedTokenEvent(
             request_id=0,

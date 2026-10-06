@@ -27,5 +27,11 @@ def test_temporary_upload_and_source_reuse():
         output = np.empty_like(expected)
         copy_device_to_host(host_array_ptr(output), buffer, output.nbytes)
         np.testing.assert_array_equal(output, expected)
+        # This conversion allocates: retaining only its address would lose the
+        # source before entering memcpy, unlike the contiguous no-copy case.
+        copy_host_array_to_device(buffer, np.ascontiguousarray(expected[::2]))
+        strided_output = np.empty(expected.size // 2, dtype=expected.dtype)
+        copy_device_to_host(host_array_ptr(strided_output), buffer, strided_output.nbytes)
+        np.testing.assert_array_equal(strided_output, expected[::2])
     finally:
         free(buffer)

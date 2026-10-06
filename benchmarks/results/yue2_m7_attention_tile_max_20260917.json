@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-17",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon 8060S (gfx1151, Ryzen AI MAX+ 395, 40 CU, unified LPDDR5X)",
+    "note": "Every figure is gfx1151. No gfx1100 hardware was available."
+  },
+  "kernel": "yue2_nar_attention_kernel (kernels/hip_gfx1100/yue2/nar.hip)",
+  "change": "The per-tile maximum walked the tile's shared-memory scores one float at a time -- 128 requests per row, in a single dependent fmax chain. It now reads four entries per instruction into four independent accumulators and combines them, with the scalar walk kept for a head_dim that is not a multiple of four. A max over a set is exact and order-independent for finite scores, which the projections and BF16 K/V guarantee, so this is bit-exact.",
+  "why": "With the loads packed and eight rows per block, the kernel is instruction-issue-bound at roughly 75% of the issue limit rather than traffic-bound: rocprofv3 --pmc measures a 94% L2 hit rate and negligible DRAM traffic, so only fewer instructions or shorter chains can move it.",
+  "paired_kernel_ab": {
+    "command": "python3 scripts/yue2_attention_bench.py --repeat 8, alternating the two sources in one session",
+    "pairs": [
+      {"serial_ms": 32.04, "vectorized_ms": 31.21},
+      {"serial_ms": 32.82, "vectorized_ms": 31.34},
+      {"serial_ms": 33.37, "vectorized_ms": 31.46}
+    ],
+    "median_ratio": 1.047,
+    "note": "Absolute per-call times drift about 10% between batches on this host (the same sources measure 27.4-28.5 ms in a later batch), so only the paired ratio is claimed."
+  },
+  "paired_replay_ab": {
+    "command": "python3 scripts/yue2_e2e_gate.py --only mandarin-off-s1234 --steps 2 --skip-live, alternating the two sources",
+    "serial_seconds": [28.2, 28.0],
+    "vectorized_seconds": [27.9, 27.9],
+    "solve_seconds": {"serial": 7.95, "vectorized": 7.79}
+  },
+  "rows_per_block_recheck": {
+    "rows_8_vectorized_ms": [27.38, 28.50, 28.06],
+    "rows_16_vectorized_ms": [41.62, 42.18, 42.85],
+    "conclusion": "Eight rows stays the optimum; the shorter maximum chain does not make sixteen rows viable, because the accumulation and weights work still scales with the row count."
+  },
+  "bit_parity": {
+    "fixture": "tests/fixtures/yue2/operators/nar_attention_parent.npz",
+    "result": "bit-identical to the parent kernel (max abs diff 0.0)"
+  },
+  "unit_tests": {
+    "command": "python3 -m pytest tests/test_unit_yue2_nar_kernels.py",
+    "result": "15 passed"
+  },
+  "next_candidates": [
+    "The accumulation loop still reads eight shared-memory weights per key, which four-key groups would turn into two; the kernel is issue-bound, so that is the next measurable instruction cut.",
+    "Beyond that, the remaining gap to the pinned upstream at the product's 32 steps needs the register-blocked layout (a lane holding several keys' dot products) rather than more loop surgery, and that changes arithmetic so it needs the profile gates rather than bit parity."
+  ]
+}
