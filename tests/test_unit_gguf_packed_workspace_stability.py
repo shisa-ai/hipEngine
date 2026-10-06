@@ -996,6 +996,118 @@ def test_union_geometry_never_exceeds_the_lease_slot_ceiling() -> None:
     assert union_slots > 1
 
 
+def test_long_context_union_sizes_kv_slots_to_live_demand() -> None:
+    """Past the short-context floor the KV slot axis follows the live request.
+
+    A C4 runner serving one long-context request must not open the four-slot
+    resident capacity: the per-slot KV planes dominate the workspace, so idle
+    scheduler capacity only multiplies the allocation.
+    """
+
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.max_batch_size = 4
+    owner._packed_verify_state = None
+    owner._packed_verify_scratch = None
+    owner._packed_verify_prefill_row_cap = lambda: 8
+
+    union_slots, _rows, union_max_seq, union_segments = (
+        owner._packed_verify_union_geometry(
+            slot_count=1,
+            rows=8,
+            max_sequence_length=12544,
+        )
+    )
+    assert union_slots == 1
+    assert union_max_seq == 12544
+    # The GDN scratch keeps the capacity floor; it is cheap and must stay
+    # wide enough for any concurrent slot.
+    assert union_segments == 4
+
+
+def test_wide_short_state_does_not_bloat_a_narrow_long_request(monkeypatch) -> None:
+    """A wide short-context shape must not carry into a narrow long request."""
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+    runtime = SimpleNamespace()
+
+    # A short-context round opens the full C4 capacity floor.
+    owner._ensure_packed_verify_workspace(
+        slot_count=4, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    assert int(recorder.state_allocations[0].slot_count) == 4
+
+    # The long-context round that forces a resize must size to one live slot,
+    # not retain the four-slot short-context width (a 4x KV bloat).
+    state, _scratch = owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=8, max_sequence_length=12544, runtime=runtime
+    )
+    assert len(recorder.state_allocations) == 2
+    assert int(state.slot_count) == 1
+    assert int(state.max_sequence_length) == 12544
+
+
+def test_long_narrow_state_is_reused_by_smaller_shapes(monkeypatch) -> None:
+    """A later smaller request reuses the long narrow workspace."""
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+    runtime = SimpleNamespace()
+
+    long_state, long_scratch = owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=8, max_sequence_length=12544, runtime=runtime
+    )
+    reused_state, reused_scratch = owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    assert reused_state is long_state
+    assert reused_scratch is long_scratch
+    assert len(recorder.state_allocations) == 1
+    assert len(recorder.scratch_allocations) == 1
+
+
+def test_wide_to_narrow_long_resize_is_lifecycle_safe(monkeypatch) -> None:
+    """Shrinking to demand still invalidates graphs and scatters state first."""
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+    runtime = SimpleNamespace()
+    events: list[str] = []
+
+    owner._ensure_packed_verify_workspace(
+        slot_count=4, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    graph = SimpleNamespace(closed=False)
+    graph.close = lambda: (events.append("graph-close"), setattr(graph, "closed", True))
+    owner._decode_graphs.append(graph)
+    owner._packed_decode_state_dirty = True
+
+    def fake_flush(self, *, stream=0):
+        events.append("flush")
+        self._packed_decode_state_dirty = False
+        return True
+
+    owner.flush_packed_decode_state = MethodType(fake_flush, owner)
+    real_free = owner._free_packed_verify_workspace
+
+    def recording_free(self, *, runtime):
+        events.append("free")
+        real_free(runtime=runtime)
+
+    owner._free_packed_verify_workspace = MethodType(recording_free, owner)
+
+    state, _scratch = owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=8, max_sequence_length=12544, runtime=runtime
+    )
+
+    assert events == ["graph-close", "flush", "free"]
+    assert graph.closed is True
+    assert int(state.slot_count) == 1
+
+
 def test_lease_pages_helper_covers_every_capacity_bounded_geometry() -> None:
     """The lease helper must never under-size what the union geometry demands.
 
