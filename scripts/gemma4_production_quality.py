@@ -32,6 +32,68 @@ from scripts.gemma4_teacher_forced_gate import evaluate, row_kl_divergence
 
 DEPTHS = (513, 1031, 2053, 4093, 8191)
 
+# Frozen 2026-10-07 in docs/campaigns/GEMMA4-WMMA-CALIBRATION.md: a row is
+# unstable when the STRICT arm's own logits have a top-2 gap under 0.25 (just
+# over two bf16 ulp at the 30.0 logit softcap) or a maximum post-softmax
+# probability under 2^-8 (a near-uniform screen). Computed from strict logits
+# only; candidate behavior never enters the classification.
+STABILITY_GAP = 0.25
+STABILITY_MIN_MAX_PROB = 2.0 ** -8
+
+
+def row_stability(baseline_row: np.ndarray) -> bool:
+    """Is this teacher-forced row resolvable at bf16 rounding scale?"""
+
+    row = np.asarray(baseline_row, dtype=np.float64)
+    ordered = np.partition(row, -2)[-2:]
+    if ordered[1] - ordered[0] < STABILITY_GAP:
+        return False
+    shifted = row - row.max()
+    shifted -= np.log(np.exp(shifted).sum())
+    return float(np.exp(shifted).max()) >= STABILITY_MIN_MAX_PROB
+
+
+def stable_subset(baseline: np.ndarray) -> np.ndarray:
+    """Boolean stability mask over a baseline capture's rows."""
+
+    return np.array([row_stability(row) for row in baseline], dtype=bool)
+
+
+def stable_paired_summary(baseline: np.ndarray, candidate: np.ndarray, *, scope=False):
+    """The frozen bars over stable rows, plus unstable-row diagnostics.
+
+    The numeric thresholds are `evaluate`'s own, unchanged; only the row set
+    differs. Unstable rows are reported -- count, worst KL, top-1 flips -- but
+    barred by nothing, per the calibration protocol.
+    """
+
+    mask = stable_subset(baseline)
+    stable_strict = baseline[mask]
+    stable_candidate = candidate[mask]
+    verdict = evaluate(stable_strict, stable_candidate)
+    if scope:
+        verdict["thresholds"]["top1_rate"] = 0.97
+        verdict["failed"] = [key for key in verdict["failed"]
+                              if key not in ("top1_rate", "screen_top1_flips")]
+        if verdict["top1_rate"] < 0.97:
+            verdict["failed"].append("top1_rate")
+        verdict["passed"] = not verdict["failed"]
+    verdict["requires_review"] = verdict["kl_max"] > 0.02
+    unstable = ~mask
+    diagnostics = {
+        "rows_total": int(mask.size),
+        "rows_stable": int(mask.sum()),
+        "rows_unstable": int(unstable.sum()),
+        "unstable_kl_max": (
+            float(max(row_kl_divergence(baseline[i], candidate[i])
+                      for i in np.flatnonzero(unstable))) if unstable.any() else 0.0
+        ),
+        "unstable_top1_flips": int(sum(
+            int(np.argmax(baseline[i])) != int(np.argmax(candidate[i]))
+            for i in np.flatnonzero(unstable))) if unstable.any() else 0,
+    }
+    return verdict, diagnostics
+
 
 def paired_summary(strict, candidate, *, scope=False):
     result = evaluate(strict, candidate)
@@ -153,9 +215,16 @@ def main(argv=None):
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--rows", type=int, default=64)
     parser.add_argument("--limit", type=int, default=None, help="screen only; never certifies full suite")
+    parser.add_argument("--candidate-variants", default=None,
+                        help="comma-separated prefill attention variants for the candidate "
+                             "arm (evaluation only; the shipping default is untouched)")
+    parser.add_argument("--candidate-kv-storage", default="bf16",
+                        help="KV storage for the candidate arm (bf16 or int8_per_token_head)")
     args = parser.parse_args(argv)
     if args.rows < 1 or (args.limit is not None and args.limit < 1):
         parser.error("rows and limit must be positive")
+    candidate_variants = (tuple(args.candidate_variants.split(","))
+                          if args.candidate_variants else None)
     args.directory.mkdir(parents=True, exist_ok=True)
     cases = []
     for split, filename in (("canonical", "mtpbench-code-general-ja.jsonl"),
@@ -167,9 +236,22 @@ def main(argv=None):
     context = max(DEPTHS) + max(args.rows, 64)
     llm, production, loading = _resolve_generator(args.artifact, context)
     generator = llm._get_text_generator()
-    if tuple(production.prefill_attention_variants) != PREFILL_ATTENTION_PRODUCTION_VARIANTS:
-        llm.close()
-        raise RuntimeError("shipping production variants are not selected; refusing self-comparison")
+    if candidate_variants is None:
+        candidate = production
+        expected_routes = tuple(PREFILL_ATTENTION_PRODUCTION_VARIANTS)
+        if tuple(production.prefill_attention_variants) != PREFILL_ATTENTION_PRODUCTION_VARIANTS:
+            llm.close()
+            raise RuntimeError("shipping production variants are not selected; refusing self-comparison")
+    else:
+        # An explicit-variant candidate arm: an evaluation, not the shipping
+        # self-comparison. The requested variants and KV storage select the
+        # candidate's arithmetic; the shipping default never moves.
+        candidate = Gemma4Runner(
+            weights=production.weights, capacity=context,
+            prefill_attention_variants=candidate_variants,
+            kv_storage=args.candidate_kv_storage,
+        )
+        expected_routes = candidate_variants
     strict = Gemma4Runner(weights=production.weights, capacity=context,
                           prefill_attention_variants=("gemma4_plain",))
     manifests = {profile: resolve_runtime_profile(model=GEMMA4_GGUF_MODEL,
@@ -179,7 +261,9 @@ def main(argv=None):
               "performance_claim": False, "arithmetic_class": "T0",
               # The staged production path preserves strict arithmetic. The
               # same numerical bars still apply; class is not a tolerance lever.
-              "scope": "single-slot eager; attention strict fallback vs shipping production",
+              "scope": "single-slot eager; attention strict fallback vs candidate arm",
+              "candidate_variants": candidate_variants or tuple(PREFILL_ATTENTION_PRODUCTION_VARIANTS),
+              "candidate_kv_storage": args.candidate_kv_storage,
               "manifests": manifests, "sources": source_hashes(), "loading": loading,
               "evaluator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "fixture_sha256": {name: hashlib.sha256((_ROOT / "benchmarks/prompts" / name).read_bytes()).hexdigest()
@@ -201,24 +285,26 @@ def main(argv=None):
             baseline, chain = teacher_capture(strict, ids, args.rows)
             np.save(args.directory / f"{name}-strict.npy", baseline)
             with observe_attention_launches() as launches:
-                candidate = replay_capture(production, ids, chain)
-            replay_position = production.position
-            selected_route_ran = any(r['variant'] in PREFILL_ATTENTION_PRODUCTION_VARIANTS
+                candidate_logits = replay_capture(candidate, ids, chain)
+            replay_position = candidate.position
+            selected_route_ran = any(r['variant'] in expected_routes
                                      for r in launches)
-            np.save(args.directory / f"{name}-production.npy", candidate)
-            verdict = paired_summary(baseline, candidate, scope=args.limit is None)
+            np.save(args.directory / f"{name}-candidate.npy", candidate_logits)
+            verdict = paired_summary(baseline, candidate_logits, scope=args.limit is None)
+            stable_verdict, stability = stable_paired_summary(
+                baseline, candidate_logits, scope=args.limit is None)
             repeats = []
             for repeat in (1, 2):
-                other = replay_capture(production, ids, chain)
+                other = replay_capture(candidate, ids, chain)
                 np.save(args.directory / f"{name}-repeat{repeat}.npy", other)
-                repeats.append(bool(np.array_equal(candidate, other)))
+                repeats.append(bool(np.array_equal(candidate_logits, other)))
             # A distinct request overwrites the same slot before reset/replay.
             poison = padded_chat(generator, "Reply with the word unrelated.", 777, 900001 + index)
-            greedy_output(production, poison, 4)
-            isolated = replay_capture(production, ids, chain)
+            greedy_output(candidate, poison, 4)
+            isolated = replay_capture(candidate, ids, chain)
             np.save(args.directory / f"{name}-isolated.npy", isolated)
-            isolation = bool(np.array_equal(candidate, isolated))
-            candidate_free = greedy_output(production, ids, args.rows)
+            isolation = bool(np.array_equal(candidate_logits, isolated))
+            candidate_free = greedy_output(candidate, ids, args.rows)
             unchanged = candidate_free == chain
             # Explicit short-answer task; the entire long background is still consumed.
             answer = f"maple-{481 + index * 37}"
@@ -237,12 +323,14 @@ def main(argv=None):
             strict_text = generator.tokenizer.decode(greedy_output(
                 strict, task_ids, 32, stop_ids=generator.tokenizer.stop_token_ids))
             candidate_text = generator.tokenizer.decode(greedy_output(
-                production, task_ids, 32, stop_ids=generator.tokenizer.stop_token_ids))
+                candidate, task_ids, 32, stop_ids=generator.tokenizer.stop_token_ids))
             task_b = check_task_answer(strict_text, answer)
             task_c = check_task_answer(candidate_text, answer)
             record = {"id": name, "category": case["category"], "split": case["split"],
                       "prompt_tokens": len(ids), "prompt_ids_sha256": hashlib.sha256(np.array(ids, dtype=np.int32).tobytes()).hexdigest(),
                       "teacher_tokens": chain, "numerical": verdict,
+                      "stable_numerical": stable_verdict,
+                      "stability": stability,
                       "three_run_repeat_equal": all(repeats), "after_unrelated_request_equal": isolation,
                       "canonical_free_running_equal_diagnostic": unchanged,
                       "strict_output": generator.tokenizer.decode(chain),
@@ -255,22 +343,31 @@ def main(argv=None):
                       "controls": {"position_after_replay": replay_position,
                                    "expected_position_after_replay": depth + len(chain) - 1,
                                    "all_forward_position_checks_passed": True},
-                      "passed": selected_route_ran and verdict["passed"] and not verdict["requires_review"] and all(repeats)
+                      "passed": selected_route_ran and stable_verdict["passed"]
+                                and not stable_verdict["requires_review"] and all(repeats)
                                 and isolation and int(task_c) >= int(task_b)}
             report["cases"].append(record)
             overall_b.append(baseline)
-            overall_c.append(candidate)
+            overall_c.append(candidate_logits)
             (args.directory / "progress.json").write_text(json.dumps(report, indent=2, default=dict) + "\n")
-            print(f"case={name} maxKL={verdict['kl_max']:.6g} top1={verdict['top1_rate']:.6f} repeats={all(repeats)} isolation={isolation} task={task_b}/{task_c}", flush=True)
+            print(f"case={name} maxKL={verdict['kl_max']:.6g} stable_maxKL={stable_verdict['kl_max']:.6g} "
+                  f"stable_rows={stability['rows_stable']}/{stability['rows_total']} "
+                  f"top1={stable_verdict['top1_rate']:.6f} repeats={all(repeats)} isolation={isolation} task={task_b}/{task_c}", flush=True)
         report["global"] = paired_summary(np.concatenate(overall_b), np.concatenate(overall_c))
+        report["global_stable"], report["global_stability"] = stable_paired_summary(
+            np.concatenate(overall_b), np.concatenate(overall_c))
         report["category"] = {}
+        report["category_stable"] = {}
         for category in sorted({r["category"] for r in report["cases"]}):
             indices = [i for i,r in enumerate(report["cases"]) if r["category"] == category]
             report["category"][category] = paired_summary(np.concatenate([overall_b[i] for i in indices]),
                                                         np.concatenate([overall_c[i] for i in indices]), scope=args.limit is None)
+            report["category_stable"][category], _ = stable_paired_summary(
+                np.concatenate([overall_b[i] for i in indices]),
+                np.concatenate([overall_c[i] for i in indices]), scope=args.limit is None)
         report["elapsed_s"] = time.monotonic() - started
-        report["passed"] = all(r["passed"] for r in report["cases"]) and report["global"]["passed"]
-        report["full_suite"] = args.limit is None and report["global"]["rows"] >= 500
+        report["passed"] = all(r["passed"] for r in report["cases"]) and report["global_stable"]["passed"]
+        report["full_suite"] = args.limit is None and report["global_stable"]["rows"] >= 500
         report["requires_canonical_task_review"] = any(not r["canonical_free_running_equal_diagnostic"] for r in report["cases"])
         report["production_certified"] = False  # Raw controls/model-layer finiteness and task review remain separate.
         (args.directory / "report.json").write_text(json.dumps(report, indent=2, default=dict) + "\n")
@@ -278,6 +375,8 @@ def main(argv=None):
         return 0 if report["passed"] else 1
     finally:
         strict.close()
+        if candidate is not None and candidate is not production:
+            candidate.close()
         llm.close()
 
 

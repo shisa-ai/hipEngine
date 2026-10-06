@@ -79,3 +79,53 @@ def test_small_scope_one_flip_cannot_hide_in_global_pass():
 ])
 def test_task_checks_actual_json_and_exact_retrieval(output, expected, valid):
     assert check_task_answer(output, expected) is valid
+
+
+# --- frozen 2026-10-07 stability classification ---------------------------
+
+def test_row_stability_marks_resolvable_and_unresolvable_rows():
+    from scripts.gemma4_production_quality import row_stability
+
+    # A peaked, well-separated row: stable.
+    peaked = np.zeros(64, dtype=np.float32)
+    peaked[3] = 5.0
+    peaked[9] = 3.0
+    assert row_stability(peaked)
+    # A near-tie at the top: two valid bf16 roundings can swap these.
+    tied = np.zeros(64, dtype=np.float32)
+    tied[3] = 5.0
+    tied[9] = 4.999
+    assert not row_stability(tied)
+    # Near-uniform: KL is unbounded under any perturbation.
+    flat = np.zeros(256, dtype=np.float32)
+    assert not row_stability(flat)
+
+
+def test_stable_paired_summary_excludes_unstable_rows_and_reports_them():
+    from scripts.gemma4_production_quality import stable_paired_summary
+
+    rng = np.random.default_rng(7)
+    vocab = 128
+    rows = 24
+    baseline = (rng.normal(size=(rows, vocab)).astype(np.float32) * 0.5)
+    # A strong single peak on every row keeps the top-2 gap wide so only the
+    # two rows below are unstable.
+    baseline[np.arange(rows), rng.integers(0, vocab, rows)] += 6.0
+    # One row a near-tie at the top, one row near-uniform.
+    baseline[5, :2] = 5.0
+    baseline[5, 2:] = 0.0
+    baseline[11, :] = 0.0
+    # A candidate identical on stable rows, distributionally different on the
+    # unstable ones: a third peak on the tied row, a lone peak on the flat one.
+    candidate = baseline.copy()
+    candidate[5, 2] += 8.0
+    candidate[11, 3] += 12.0
+    verdict, diagnostics = stable_paired_summary(baseline, candidate)
+    assert diagnostics["rows_total"] == rows
+    assert diagnostics["rows_stable"] == rows - 2
+    assert diagnostics["rows_unstable"] == 2
+    # The stable rows are bitwise equal, so every stable bar passes with zero KL.
+    assert verdict["kl_mean"] == 0.0 and verdict["kl_max"] == 0.0
+    assert verdict["passed"]
+    # The unstable rows are reported, not hidden.
+    assert diagnostics["unstable_kl_max"] > 0.0
