@@ -3,6 +3,9 @@
 import pytest
 
 from hipengine.runtime.gguf_linear import (
+    WideF16ActivationPublication,
+    _consume_wide_f16_publication,
+    wide_f16_activation_publication,
     wide_f16_activation_session,
     wide_f16_activation_workspace,
 )
@@ -106,7 +109,6 @@ def test_real_prefill_call_site_binds_and_restores_on_failure(enabled, monkeypat
             assert wide_f16_activation_workspace() == outer
         assert len(calls) == 1
 
-
 def test_selected_smaller_workspace_keeps_original_staging_capacity(enabled, monkeypatch):
     with simulated_runner(config(), context=256, chunk=32) as (runner, runtime):
         small = runner._allocate_extra_prefill_workspace(16)
@@ -123,3 +125,54 @@ def test_selected_smaller_workspace_keeps_original_staging_capacity(enabled, mon
             runner.prefill_chunked([1])
         assert runner.prefill_chunk_size == 32
         assert wide_f16_activation_workspace() is None
+
+
+def test_f16_publication_requires_workspace_and_disjoint_f32_source():
+    with pytest.raises(ValueError, match="workspace"):
+        with wide_f16_activation_publication(0x1000, 128, runtime=object()):
+            pass
+    with wide_f16_activation_session(workspace_ptr=0x1000, workspace_nbytes=256):
+        with pytest.raises(ValueError, match="overlap"):
+            with wide_f16_activation_publication(0x1000, 64, runtime=object()):
+                pass
+        with pytest.raises(ValueError, match="capacity"):
+            with wide_f16_activation_publication(0x2000, 257, runtime=object()):
+                pass
+
+
+def test_f16_publication_is_single_use_and_identity_bound():
+    runtime = object()
+    with wide_f16_activation_session(workspace_ptr=0x4000, workspace_nbytes=512):
+        owner = wide_f16_activation_workspace()
+        with wide_f16_activation_publication(0x1000, 128, stream=7, runtime=runtime):
+            assert _consume_wide_f16_publication(
+                0x1000, 128, stream=7, runtime=runtime) == owner.ptr
+            assert _consume_wide_f16_publication(
+                0x1000, 128, stream=7, runtime=runtime) == 0
+    with wide_f16_activation_session(workspace_ptr=0x4000, workspace_nbytes=512):
+        with wide_f16_activation_publication(0x1000, 128, stream=7, runtime=runtime):
+            # A mismatched immediate consumer invalidates the loan; pointer reuse
+            # cannot recover bytes from an earlier operation.
+            assert _consume_wide_f16_publication(
+                0x1000, 128, stream=8, runtime=runtime) == 0
+            assert _consume_wide_f16_publication(
+                0x1000, 128, stream=7, runtime=runtime) == 0
+
+
+def test_f16_publication_nested_and_exception_cleanup():
+    runtime = object()
+    with wide_f16_activation_session(workspace_ptr=0x4000, workspace_nbytes=512):
+        with wide_f16_activation_publication(0x1000, 128, runtime=runtime):
+            with wide_f16_activation_publication(0x2000, 128, runtime=runtime):
+                assert _consume_wide_f16_publication(0x2000, 128, runtime=runtime) == 0x4000
+            # The outer loan was invalidated when the nested publication began.
+            assert _consume_wide_f16_publication(0x1000, 128, runtime=runtime) == 0
+        with pytest.raises(RuntimeError):
+            with wide_f16_activation_publication(0x1000, 128, runtime=runtime):
+                raise RuntimeError("abort producer")
+        assert _consume_wide_f16_publication(0x1000, 128, runtime=runtime) == 0
+
+
+def test_f16_publication_dataclass_rejects_invalid_identity():
+    with pytest.raises(ValueError, match="positive"):
+        WideF16ActivationPublication(0, 1, 0, object(), object())
