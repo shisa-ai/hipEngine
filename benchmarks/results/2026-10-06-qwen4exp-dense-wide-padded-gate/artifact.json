@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "kind": "qwen4exp_dense_wide_padded_full_model_state_gate",
-  "performance_claim": false,
+  "kind": "qwen4exp_dense_wide_padded_production",
+  "performance_claim": true,
   "source_capture_head": "9c668e702ca27ffaba55ae900b9814545702d8f2",
   "harness_commit": "035338ed6f46c7c3037c7c890d933a8a24411412",
   "cases": 20,
@@ -27,7 +27,125 @@
     "candidate": "dense_wide256_padded_f16in_f32_f32_out",
     "in_features": 10240,
     "out_features": 320,
-    "rows": [512, 4096]
+    "rows": [
+      512,
+      4096
+    ],
+    "layers": [
+      13,
+      47
+    ],
+    "strict_fallback": "coltile8_rowbatch4_f32_f32_out"
   },
-  "full_artifact": "full-state.json"
+  "full_artifact": "full-state.json",
+  "status": "accepted_bounded",
+  "model": "Qwen3.8-Flash-Next",
+  "model_quant": "UD-Q4_K_XL",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_identity": {
+    "architecture": "qwen4exp",
+    "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "first_part": "Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "first_part_sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082",
+    "tokenizer_backend": "huggingface_tokenizers"
+  },
+  "engine_ab": {
+    "source": {
+      "path": "/home/lhl/hipEngine",
+      "head": "1d9601d1b9d56f02215adc5bb7ea7d09ebded8d0",
+      "tracked_clean": true
+    },
+    "command": "/home/lhl/hipEngine/.venv/bin/python3 /home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --prefill-chunk-size 4096 --warmups-per-mode 1 --repetitions-per-mode 3 --route-package dense-wide-padded --compiler-version-file /tmp/hipengine-gr-dpp-20261005/hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-dense-tail-20261006/engine-ab.json",
+    "cases": 12,
+    "samples": 72,
+    "decode_transitions": 128,
+    "prefill_chunk_size": 4096,
+    "by_shape": {
+      "512": {
+        "case_count": 4,
+        "samples_per_mode": 12,
+        "before_prefill_tok_s_weighted": 291.5814081510017,
+        "after_prefill_tok_s_weighted": 294.60196385340123,
+        "after_over_before_prefill": 1.010359219133873,
+        "before_decode_tok_s_weighted": 20.547571189216477,
+        "after_decode_tok_s_weighted": 20.55124632529995,
+        "after_over_before_decode": 1.0001788598783588
+      },
+      "1024": {
+        "case_count": 4,
+        "samples_per_mode": 12,
+        "before_prefill_tok_s_weighted": 317.5283472885515,
+        "after_prefill_tok_s_weighted": 319.4149285072629,
+        "after_over_before_prefill": 1.0059414576204655,
+        "before_decode_tok_s_weighted": 19.528102021245164,
+        "after_decode_tok_s_weighted": 19.510811520386056,
+        "after_over_before_decode": 0.9991145836476941
+      },
+      "4096": {
+        "case_count": 4,
+        "samples_per_mode": 12,
+        "before_prefill_tok_s_weighted": 324.27500066355594,
+        "after_prefill_tok_s_weighted": 325.71878603018155,
+        "after_over_before_prefill": 1.0044523486660126,
+        "before_decode_tok_s_weighted": 11.898045873574905,
+        "after_decode_tok_s_weighted": 11.874291994871134,
+        "after_over_before_decode": 0.998003547897178
+      }
+    },
+    "correctness": {
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "mismatched_case_ids": []
+    },
+    "candidate_calls": 2520,
+    "client_wall_before_s": 493.85132879,
+    "client_wall_after_s": 493.049429314,
+    "client_wall_delta_pct": -0.1623535034117103,
+    "slower_request_cases": {
+      "general_ja-p4096": 0.21386264122809084,
+      "mixed_ja_en-p512": 0.27939822631457556
+    },
+    "no_all_case_request_or_decode_speed_claim": true,
+    "artifact": "engine-ab.json"
+  },
+  "native_binder": {
+    "status": "passed",
+    "cases": 5,
+    "candidate_calls": 700,
+    "parent_calls": 700,
+    "decode_calls": 0,
+    "teardown_clean": true,
+    "manifest_sha256": "a3baefbeb6237a4a24b4751c8f46f5c0cfa4c5ef166a289eb7a5fbe124dfdcb0",
+    "strict_manifest_sha256": "13a2117a83e113b2a9afc18ba1f8c762b40b802c74b6b2ab00f7a4b6a2253d27",
+    "artifact": "native-smoke.json"
+  },
+  "validation": {
+    "focused_cpu_passed": 113,
+    "broad_unit": {
+      "passed": 8080,
+      "skipped": 18,
+      "failed": 7,
+      "baseline_all_seven_reproduced": true,
+      "scoped_ple_fixture_repaired": true,
+      "remaining_unrelated_baseline_failures": 6
+    },
+    "diagnostic_parent_hook_smoke": "diagnostic-hook-smoke.json",
+    "benchmark_export_check": true,
+    "compileall": true,
+    "cpu_fixture_registry_smokes": true,
+    "independent_review": "not_run_configured_model_ambiguous_provider"
+  }
 }

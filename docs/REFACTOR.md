@@ -1,19 +1,27 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Padded-fragment dense-wide tail qualification
+## Padded-fragment dense-wide production tail and rollback
 
-- `dense_wide256_padded_{f32,f16in}_f32_f32_out` leaves in
-  `quant/gguf_q8_0_dense_wide.{hip,py}` are measurement-only: no selector or
-  generator binding. They remove K-loop inactive-row-fragment branches, not
-  load/store bounds or the valid-row arithmetic. Full tiles use the parent.
-- The 2026-10-06 complete-GEMM screen is exact and positive at the live HC-down
-  K10240/N320 owner; F16 tail scratch/spills drop 92/58→0/0. Natural scope is
-  512–4096 rows. Full-model state/KV/repeats and clean engine A/B are still
-  required before bounded selection; operation timing alone is not admission.
-- Remove duplicate experimental launch plumbing after qualified bounded
-  selection replaces it, or remove the sibling if model qualification fails.
-  Preserve the independent guard/CPU fixtures and immutable failure evidence.
-  Evidence: `benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-screen/`.
+- The F16-input `dense_wide256_padded_f16in_f32_f32_out` leaf is selected
+  only by gfx1151 UD-Q4_K_XL production for K10240/N320, rows512–4096,
+  within the existing dense-wide layers13–47 scope. Backend registry-axis
+  metadata bounds the launch-time rewrite after successful F16 staging;
+  missing registration retains the F16 parent. Strict retains raw-F32 coltile.
+  F32-input padded siblings and other shapes remain diagnostic.
+- `HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT` is a temporary named-plan
+  rollback: select `dense_wide256_f16in_f32_f32_out` before plan registration
+  to create a distinct parent manifest. Binder output always agrees with the
+  manifest; a diagnostic override must be post-binder. Remove this env reader
+  after the release/bisection window and encode the qualified choice directly,
+  keeping parent/strict registry leaves and shape/ownership tests.
+- The full20-case state/KV/repeat gate and tracked-clean12-case three-pair
+  engine A/B pass. Natural complete-GEMM gain1.312–1.361x, scratch92→0B,
+  spills58→0; prefill+1.036%/+0.594%/+0.445%, total request wall−0.162%.
+  Two request cases lose0.214%/0.279%, so no all-case request/decode-speed
+  claim. Diagnostic substitution plumbing remains useful for explicit
+  parent/candidate gates; remove it only after a generic named-route gate
+  covers the same bounds and engagement assertions.
+  Evidence: `benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/`.
 
 ## Dense split-operand WMMA runtime cleanup — complete
 

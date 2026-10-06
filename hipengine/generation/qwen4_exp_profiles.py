@@ -17,6 +17,8 @@ from hipengine.execution_profiles import (
     registered_runtime_profile_keys,
 )
 
+from hipengine.runtime.gguf_linear import DENSE_WIDE_TAIL_VARIANT_ENV
+
 QWEN4_EXP_MODEL = "qwen4_exp_gguf"
 QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
@@ -159,6 +161,27 @@ def _selected_gdn_prefill_variant() -> str:
     if requested not in (_GDN_WIDE_VARIANT, _GDN_NARROW_VARIANT):
         raise ValueError(f"{_GDN_PREFILL_VARIANT_ENV} must name the wide or narrow wave-norm variant")
     return requested
+
+
+_DENSE_WIDE_TAIL_PARENT = "dense_wide256_f16in_f32_f32_out"
+_DENSE_WIDE_TAIL_PADDED = "dense_wide256_padded_f16in_f32_f32_out"
+_DENSE_WIDE_TAIL_SCOPE = "prefill_rows_512_4096_k10240_n320_dense_wide_layers13_47"
+_DENSE_WIDE_TAIL_EVIDENCE = (
+    "benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md"
+)
+
+
+def _dense_wide_tail_selection(*, production: bool) -> VariantSelection:
+    selected = "coltile8_rowbatch4_f32_f32_out"
+    if production:
+        selected = os.environ.get(DENSE_WIDE_TAIL_VARIANT_ENV, "").strip() or _DENSE_WIDE_TAIL_PADDED
+        if selected not in (_DENSE_WIDE_TAIL_PARENT, _DENSE_WIDE_TAIL_PADDED):
+            raise ValueError(f"{DENSE_WIDE_TAIL_VARIANT_ENV} must name the parent or padded F16 variant")
+    return _selection(
+        "linear", _DENSE_WIDE_TAIL_SCOPE, selected,
+        "coltile8_rowbatch4_f32_f32_out", "gguf_q8_0",
+        evidence=_DENSE_WIDE_TAIL_EVIDENCE if production else None,
+    )
 
 
 _ROUTER_LOGITS_SELECTED_VARIANT = _selected_router_producer_variant()
@@ -391,7 +414,7 @@ def _strict_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...
     if recovery:
         return _recovery_gdn_scopes(
             selections, variant="qwen4exp_sigmoid_strict_prefill", evidence=None,
-        )
+        ) + (_dense_wide_tail_selection(production=False),)
     return selections
 
 
@@ -712,7 +735,7 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
                 else _ARITHMETIC_RECOVERY_EVIDENCE
             ),
         ))
-    return tuple(result)
+    return tuple(result) + (_dense_wide_tail_selection(production=True),)
 
 
 def last_prebinder_conflicts() -> dict[str, tuple[str, str]]:
@@ -931,6 +954,14 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             ",".join(map(str, PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS))
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
             else ""
+        ),
+        # Publish the same bounded tail leaf declared in the UD manifest.
+        # Strict and Q4_K_M cannot inherit a preceding UD binder's selection.
+        DENSE_WIDE_TAIL_VARIANT_ENV: (
+            next(row["selected_variant"] for row in resolved.manifest["selections"]
+                 if row["scope"] == _DENSE_WIDE_TAIL_SCOPE)
+            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+            else _DENSE_WIDE_TAIL_PARENT
         ),
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",

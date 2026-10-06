@@ -333,6 +333,11 @@ def _apply_mode(
     if route_package == "dense-wide-padded":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        # Both diagnostic arms enter through the parent registry hook, even
+        # after the named production plan starts selecting the padded leaf.
+        from hipengine.runtime.gguf_linear import DENSE_WIDE_TAIL_VARIANT_ENV
+        from scripts.qwen4exp_dense_wide_padded_gate_support import PARENT
+        environment[DENSE_WIDE_TAIL_VARIANT_ENV] = PARENT
         return
     if route_package == "gdn-narrow":
         if mode not in {"before", "after"}:

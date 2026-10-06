@@ -1,0 +1,153 @@
+{
+  "status": "passed",
+  "allocated_chunk_size": 4096,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1d9601d1b9d56f02215adc5bb7ea7d09ebded8d0",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_row4_state_gate.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+    "--output",
+    "/tmp/qwen4exp-dense-tail-20261006/post-promotion-diagnostic-state.json",
+    "--route-package",
+    "dense-wide-padded",
+    "--prefill-chunk-size",
+    "4096",
+    "--case-id",
+    "code-p512",
+    "--decode-steps",
+    "1",
+    "--full-kv"
+  ],
+  "manifest_sha256": "a3baefbeb6237a4a24b4751c8f46f5c0cfa4c5ef166a289eb7a5fbe124dfdcb0",
+  "strict_manifest_sha256": "13a2117a83e113b2a9afc18ba1f8c762b40b802c74b6b2ab00f7a4b6a2253d27",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "cases": [
+    {
+      "id": "code-p512",
+      "prompt_tokens": 512,
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "0d43f510914dee56919ee3e1bd15c15054835e5dd89a81dbe98a8ae515422479",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "1f964cb2a570af80a71aec6a215d171aa9bcc9a4dda66733ce96208ad8316e8e",
+          "step_logits_sha256": "388f3d89f42ad3221589b88b3ee84b6fd7f974bf5bf4bda4bfb544eadd175fa1",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.09256252180784941
+          ],
+          "full_kv_sha256": "268b227ff9a206a3a9f68c5c0380dd48f3a1969f590959968956a5b4335a1915",
+          "prefill_state_sha256": "7bd139870a14e76d177397bb8058b1d5bb908c3a6086f7cf9ff84de89cb6a863"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "0d43f510914dee56919ee3e1bd15c15054835e5dd89a81dbe98a8ae515422479",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "1f964cb2a570af80a71aec6a215d171aa9bcc9a4dda66733ce96208ad8316e8e",
+          "step_logits_sha256": "388f3d89f42ad3221589b88b3ee84b6fd7f974bf5bf4bda4bfb544eadd175fa1",
+          "candidate_calls": 70,
+          "candidate_prefill_calls": 70,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.0478829275816679
+          ],
+          "full_kv_sha256": "268b227ff9a206a3a9f68c5c0380dd48f3a1969f590959968956a5b4335a1915",
+          "prefill_state_sha256": "7bd139870a14e76d177397bb8058b1d5bb908c3a6086f7cf9ff84de89cb6a863"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "0d43f510914dee56919ee3e1bd15c15054835e5dd89a81dbe98a8ae515422479",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "1f964cb2a570af80a71aec6a215d171aa9bcc9a4dda66733ce96208ad8316e8e",
+          "step_logits_sha256": "388f3d89f42ad3221589b88b3ee84b6fd7f974bf5bf4bda4bfb544eadd175fa1",
+          "candidate_calls": 70,
+          "candidate_prefill_calls": 70,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.048180364072322845
+          ],
+          "full_kv_sha256": "268b227ff9a206a3a9f68c5c0380dd48f3a1969f590959968956a5b4335a1915",
+          "prefill_state_sha256": "7bd139870a14e76d177397bb8058b1d5bb908c3a6086f7cf9ff84de89cb6a863"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "0d43f510914dee56919ee3e1bd15c15054835e5dd89a81dbe98a8ae515422479",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "1f964cb2a570af80a71aec6a215d171aa9bcc9a4dda66733ce96208ad8316e8e",
+          "step_logits_sha256": "388f3d89f42ad3221589b88b3ee84b6fd7f974bf5bf4bda4bfb544eadd175fa1",
+          "candidate_calls": 70,
+          "candidate_prefill_calls": 70,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.048206472769379616
+          ],
+          "full_kv_sha256": "268b227ff9a206a3a9f68c5c0380dd48f3a1969f590959968956a5b4335a1915",
+          "prefill_state_sha256": "7bd139870a14e76d177397bb8058b1d5bb908c3a6086f7cf9ff84de89cb6a863"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "0d43f510914dee56919ee3e1bd15c15054835e5dd89a81dbe98a8ae515422479",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "1f964cb2a570af80a71aec6a215d171aa9bcc9a4dda66733ce96208ad8316e8e",
+          "step_logits_sha256": "388f3d89f42ad3221589b88b3ee84b6fd7f974bf5bf4bda4bfb544eadd175fa1",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.04830861557275057
+          ],
+          "full_kv_sha256": "268b227ff9a206a3a9f68c5c0380dd48f3a1969f590959968956a5b4335a1915",
+          "prefill_state_sha256": "7bd139870a14e76d177397bb8058b1d5bb908c3a6086f7cf9ff84de89cb6a863"
+        }
+      ]
+    }
+  ],
+  "route_package": "dense-wide-padded",
+  "decode_steps": 1,
+  "full_kv": true,
+  "scope": "full logits and snapshot decode buffers/PLE/attention positions/index counts; full KV payload included",
+  "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
+  "diagnostic_registry_substitution": {
+    "parent": "dense_wide256_f16in_f32_f32_out",
+    "candidate": "dense_wide256_padded_f16in_f32_f32_out",
+    "manifest_scope": "named profile; diagnostic arms override only the named leaf",
+    "runtime_default_changed": false
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 88672345864,
+    "total_allocated_bytes": 88724774672,
+    "total_freed_bytes": 88724774672,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  },
+  "lifecycle_passed": true
+}

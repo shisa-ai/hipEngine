@@ -1,0 +1,5528 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_halo_box_campaign_same_residency_ab",
+  "status": "completed",
+  "performance_claim": false,
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1d9601d1b9d56f02215adc5bb7ea7d09ebded8d0",
+    "tracked_clean": true
+  },
+  "commands": {
+    "argv": [
+      "/home/lhl/hipEngine/.venv/bin/python3",
+      "/home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--prefill-chunk-size",
+      "4096",
+      "--warmups-per-mode",
+      "1",
+      "--repetitions-per-mode",
+      "3",
+      "--route-package",
+      "dense-wide-padded",
+      "--compiler-version-file",
+      "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-dense-tail-20261006/engine-ab.json"
+    ],
+    "shell": "/home/lhl/hipEngine/.venv/bin/python3 /home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --prefill-chunk-size 4096 --warmups-per-mode 1 --repetitions-per-mode 3 --route-package dense-wide-padded --compiler-version-file /tmp/hipengine-gr-dpp-20261005/hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-dense-tail-20261006/engine-ab.json"
+  },
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "model_identity": {
+    "architecture": "qwen4exp",
+    "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "first_part": "Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "first_part_sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082",
+    "tokenizer_backend": "huggingface_tokenizers"
+  },
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "77fad810048c7fc4d4ecce0ba3ae7858aaec081f9777b19726e2252b41cc2cfc",
+    "strict_manifest_sha256": "f58c7110da72e8176d109085608939d128ba7f79fed5065ce2e71b424680639b",
+    "fell_back_to_strict": false,
+    "scope": "named profile; diagnostic arms override only scoped HC tail leaf"
+  },
+  "arms": {
+    "before": {
+      "dense_tail": "dense_wide256_f16in_f32_f32_out"
+    },
+    "after": {
+      "dense_tail": "dense_wide256_padded_f16in_f32_f32_out"
+    }
+  },
+  "protocol": {
+    "one_model_residency": true,
+    "one_python_process": true,
+    "case_ids": [
+      "code-p512",
+      "code-p1024",
+      "code-p4096",
+      "general_en-p512",
+      "general_en-p1024",
+      "general_en-p4096",
+      "general_ja-p512",
+      "general_ja-p1024",
+      "general_ja-p4096",
+      "mixed_ja_en-p512",
+      "mixed_ja_en-p1024",
+      "mixed_ja_en-p4096"
+    ],
+    "case_order": "fixture order",
+    "case_counterbalance_indices": {
+      "code-p512": 0,
+      "code-p1024": 1,
+      "code-p4096": 2,
+      "general_en-p512": 3,
+      "general_en-p1024": 4,
+      "general_en-p4096": 5,
+      "general_ja-p512": 6,
+      "general_ja-p1024": 7,
+      "general_ja-p4096": 8,
+      "mixed_ja_en-p512": 9,
+      "mixed_ja_en-p1024": 10,
+      "mixed_ja_en-p4096": 11
+    },
+    "arm_order_even_case": [
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after"
+    ],
+    "arm_order_odd_case": [
+      "after",
+      "before",
+      "before",
+      "after",
+      "after",
+      "before"
+    ],
+    "qualification": "canonical-three-pair",
+    "promotion_eligible_protocol": true,
+    "warmups_per_mode_per_case": 1,
+    "measured_repetitions_per_mode_per_case": 3,
+    "decode_transitions": 128,
+    "visible_output_tokens": 129,
+    "prefill_chunk_size": 4096,
+    "timing_boundary": "synchronized runner.prefill including first greedy output, then exactly 128 runner.step transitions and a final device synchronize"
+  },
+  "samples": [
+    {
+      "case_id": "code-p512",
+      "category": "code",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7",
+      "repetition": 0,
+      "prefill_ms": 1754.071975,
+      "prefill_tok_s": 291.89224119494867,
+      "decode_ms": 6098.777831,
+      "prefill_host_enqueue_ms": 1754.067006,
+      "prefill_device_drain_ms": 0.004969,
+      "decode_host_enqueue_ms": 6098.776429,
+      "decode_device_drain_ms": 0.001402,
+      "decode_host_enqueue_ms_per_step": 47.6466908515625,
+      "decode_device_drain_ms_per_step": 1.0953125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.987811582408828,
+      "client_wall_s": 7.852849806,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898",
+      "memory_before": {
+        "rss_bytes": 622968832,
+        "rss_anon_bytes": 467804160,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41265115136,
+        "host_mem_free_bytes": 4496506880,
+        "host_swap_free_bytes": 85609558016,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248679,
+        "major_faults": 4870
+      },
+      "memory_after": {
+        "rss_bytes": 622968832,
+        "rss_anon_bytes": 467804160,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41251311616,
+        "host_mem_free_bytes": 4482658304,
+        "host_swap_free_bytes": 85611208704,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248679,
+        "major_faults": 4870
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527506985343025,
+          4527508739415000
+        ],
+        "decode": [
+          4527508739417004,
+          4527514838194835
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p512",
+      "category": "code",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7",
+      "repetition": 0,
+      "prefill_ms": 1737.528861,
+      "prefill_tok_s": 294.6713643106501,
+      "decode_ms": 6098.855108,
+      "prefill_host_enqueue_ms": 1737.523892,
+      "prefill_device_drain_ms": 0.004969,
+      "decode_host_enqueue_ms": 6098.853785,
+      "decode_device_drain_ms": 0.001323,
+      "decode_host_enqueue_ms_per_step": 47.6472951953125,
+      "decode_device_drain_ms_per_step": 1.03359375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.987545651330468,
+      "client_wall_s": 7.836383969,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898",
+      "memory_before": {
+        "rss_bytes": 622968832,
+        "rss_anon_bytes": 467804160,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41251311616,
+        "host_mem_free_bytes": 4482658304,
+        "host_swap_free_bytes": 85611208704,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248679,
+        "major_faults": 4870
+      },
+      "memory_after": {
+        "rss_bytes": 622968832,
+        "rss_anon_bytes": 467804160,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41239920640,
+        "host_mem_free_bytes": 4467879936,
+        "host_swap_free_bytes": 85612888064,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248679,
+        "major_faults": 4870
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527514838881564,
+          4527516576410425
+        ],
+        "decode": [
+          4527516576412679,
+          4527522675267787
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p512",
+      "category": "code",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7",
+      "repetition": 1,
+      "prefill_ms": 1738.768059,
+      "prefill_tok_s": 294.46135575693825,
+      "decode_ms": 6100.289662,
+      "prefill_host_enqueue_ms": 1738.76353,
+      "prefill_device_drain_ms": 0.004529,
+      "decode_host_enqueue_ms": 6100.28837,
+      "decode_device_drain_ms": 0.001292,
+      "decode_host_enqueue_ms_per_step": 47.658502890625,
+      "decode_device_drain_ms_per_step": 1.009375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.982610186093158,
+      "client_wall_s": 7.8390577210000005,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898",
+      "memory_before": {
+        "rss_bytes": 622968832,
+        "rss_anon_bytes": 467804160,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41239920640,
+        "host_mem_free_bytes": 4467879936,
+        "host_swap_free_bytes": 85612888064,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248679,
+        "major_faults": 4870
+      },
+      "memory_after": {
+        "rss_bytes": 622968832,
+        "rss_anon_bytes": 467804160,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41243385856,
+        "host_mem_free_bytes": 4469633024,
+        "host_swap_free_bytes": 85612920832,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248679,
+        "major_faults": 4870
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527522675954866,
+          4527524414722925
+        ],
+        "decode": [
+          4527524414725289,
+          4527530515014951
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p512",
+      "category": "code",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7",
+      "repetition": 1,
+      "prefill_ms": 1754.901688,
+      "prefill_tok_s": 291.7542352948036,
+      "decode_ms": 6098.822461,
+      "prefill_host_enqueue_ms": 1754.895857,
+      "prefill_device_drain_ms": 0.005831,
+      "decode_host_enqueue_ms": 6098.821069,
+      "decode_device_drain_ms": 0.001392,
+      "decode_host_enqueue_ms_per_step": 47.6470396015625,
+      "decode_device_drain_ms_per_step": 1.0875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.987657997673924,
+      "client_wall_s": 7.853724149,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898",
+      "memory_before": {
+        "rss_bytes": 622968832,
+        "rss_anon_bytes": 467804160,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41243385856,
+        "host_mem_free_bytes": 4469633024,
+        "host_swap_free_bytes": 85612920832,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248679,
+        "major_faults": 4870
+      },
+      "memory_after": {
+        "rss_bytes": 622968832,
+        "rss_anon_bytes": 467804160,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41242968064,
+        "host_mem_free_bytes": 4468645888,
+        "host_swap_free_bytes": 85612945408,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248679,
+        "major_faults": 4870
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527530515716878,
+          4527532270618566
+        ],
+        "decode": [
+          4527532270620680,
+          4527538369443141
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p512",
+      "category": "code",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7",
+      "repetition": 2,
+      "prefill_ms": 1757.642434,
+      "prefill_tok_s": 291.29929392681015,
+      "decode_ms": 6100.706459,
+      "prefill_host_enqueue_ms": 1757.636012,
+      "prefill_device_drain_ms": 0.006422,
+      "decode_host_enqueue_ms": 6100.705017,
+      "decode_device_drain_ms": 0.001442,
+      "decode_host_enqueue_ms_per_step": 47.6617579453125,
+      "decode_device_drain_ms_per_step": 1.1265625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.98117666539576,
+      "client_wall_s": 7.8583488930000005,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898",
+      "memory_before": {
+        "rss_bytes": 622972928,
+        "rss_anon_bytes": 467808256,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41242968064,
+        "host_mem_free_bytes": 4468645888,
+        "host_swap_free_bytes": 85612945408,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248680,
+        "major_faults": 4870
+      },
+      "memory_after": {
+        "rss_bytes": 622972928,
+        "rss_anon_bytes": 467808256,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41238224896,
+        "host_mem_free_bytes": 4462391296,
+        "host_swap_free_bytes": 85612965888,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248680,
+        "major_faults": 4870
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527538370189732,
+          4527540127832166
+        ],
+        "decode": [
+          4527540127834891,
+          4527546228541350
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p512",
+      "category": "code",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7",
+      "repetition": 2,
+      "prefill_ms": 1738.498549,
+      "prefill_tok_s": 294.50700450368913,
+      "decode_ms": 6100.176979,
+      "prefill_host_enqueue_ms": 1738.495443,
+      "prefill_device_drain_ms": 0.003106,
+      "decode_host_enqueue_ms": 6100.175506,
+      "decode_device_drain_ms": 0.001473,
+      "decode_host_enqueue_ms_per_step": 47.657621140625,
+      "decode_device_drain_ms_per_step": 1.15078125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.982997778694447,
+      "client_wall_s": 7.838675528,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898",
+      "memory_before": {
+        "rss_bytes": 622972928,
+        "rss_anon_bytes": 467808256,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41238224896,
+        "host_mem_free_bytes": 4462391296,
+        "host_swap_free_bytes": 85612965888,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248680,
+        "major_faults": 4870
+      },
+      "memory_after": {
+        "rss_bytes": 622972928,
+        "rss_anon_bytes": 467808256,
+        "rss_file_bytes": 118329344,
+        "host_mem_available_bytes": 41235939328,
+        "host_mem_free_bytes": 4460077056,
+        "host_swap_free_bytes": 85613043712,
+        "process_read_bytes": 81848418304,
+        "minor_faults": 20248680,
+        "major_faults": 4870
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527546229352052,
+          4527547967850601
+        ],
+        "decode": [
+          4527547967852855,
+          4527554068029834
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p1024",
+      "category": "code",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "0c1cebb57ff5cbf29f04c0a41ab05b547ec65fddc7606d639c9b2fafb16e831d",
+      "repetition": 0,
+      "prefill_ms": 3212.699573,
+      "prefill_tok_s": 318.7350627509172,
+      "decode_ms": 6407.267833,
+      "prefill_host_enqueue_ms": 3212.657083,
+      "prefill_device_drain_ms": 0.04249,
+      "decode_host_enqueue_ms": 6407.2664,
+      "decode_device_drain_ms": 0.001433,
+      "decode_host_enqueue_ms_per_step": 50.05676875,
+      "decode_device_drain_ms_per_step": 1.11953125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.977313784316717,
+      "client_wall_s": 9.619967405999999,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b",
+      "memory_before": {
+        "rss_bytes": 641601536,
+        "rss_anon_bytes": 481947648,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41109880832,
+        "host_mem_free_bytes": 5004500992,
+        "host_swap_free_bytes": 85613166592,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249577,
+        "major_faults": 5966
+      },
+      "memory_after": {
+        "rss_bytes": 641601536,
+        "rss_anon_bytes": 481947648,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41103683584,
+        "host_mem_free_bytes": 4998287360,
+        "host_swap_free_bytes": 85613178880,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249577,
+        "major_faults": 5966
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527573508259198,
+          4527576720958771
+        ],
+        "decode": [
+          4527576720965734,
+          4527583128233567
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p1024",
+      "category": "code",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "0c1cebb57ff5cbf29f04c0a41ab05b547ec65fddc7606d639c9b2fafb16e831d",
+      "repetition": 0,
+      "prefill_ms": 3229.015836,
+      "prefill_tok_s": 317.1244899400983,
+      "decode_ms": 6390.36986,
+      "prefill_host_enqueue_ms": 3228.993214,
+      "prefill_device_drain_ms": 0.022622,
+      "decode_host_enqueue_ms": 6390.367526,
+      "decode_device_drain_ms": 0.002334,
+      "decode_host_enqueue_ms_per_step": 49.924746296875,
+      "decode_device_drain_ms_per_step": 1.8234375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.03013953874651,
+      "client_wall_s": 9.619385696,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b",
+      "memory_before": {
+        "rss_bytes": 641601536,
+        "rss_anon_bytes": 481947648,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41103683584,
+        "host_mem_free_bytes": 4998287360,
+        "host_swap_free_bytes": 85613178880,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249577,
+        "major_faults": 5966
+      },
+      "memory_after": {
+        "rss_bytes": 641601536,
+        "rss_anon_bytes": 481947648,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41099759616,
+        "host_mem_free_bytes": 4994338816,
+        "host_swap_free_bytes": 85613191168,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249577,
+        "major_faults": 5966
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527583129195312,
+          4527586358211148
+        ],
+        "decode": [
+          4527586358219654,
+          4527592748589514
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p1024",
+      "category": "code",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "0c1cebb57ff5cbf29f04c0a41ab05b547ec65fddc7606d639c9b2fafb16e831d",
+      "repetition": 1,
+      "prefill_ms": 3228.507647,
+      "prefill_tok_s": 317.1744074856144,
+      "decode_ms": 6388.758635,
+      "prefill_host_enqueue_ms": 3228.465578,
+      "prefill_device_drain_ms": 0.042069,
+      "decode_host_enqueue_ms": 6388.757292,
+      "decode_device_drain_ms": 0.001343,
+      "decode_host_enqueue_ms_per_step": 49.91216634375,
+      "decode_device_drain_ms_per_step": 1.04921875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.035191077460386,
+      "client_wall_s": 9.617266282000001,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b",
+      "memory_before": {
+        "rss_bytes": 641601536,
+        "rss_anon_bytes": 481947648,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41099759616,
+        "host_mem_free_bytes": 4994338816,
+        "host_swap_free_bytes": 85613191168,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249577,
+        "major_faults": 5966
+      },
+      "memory_after": {
+        "rss_bytes": 641601536,
+        "rss_anon_bytes": 481947648,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41095872512,
+        "host_mem_free_bytes": 4990435328,
+        "host_swap_free_bytes": 85613256704,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249577,
+        "major_faults": 5966
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527592749473683,
+          4527595977981330
+        ],
+        "decode": [
+          4527595977989195,
+          4527602366747830
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p1024",
+      "category": "code",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "0c1cebb57ff5cbf29f04c0a41ab05b547ec65fddc7606d639c9b2fafb16e831d",
+      "repetition": 1,
+      "prefill_ms": 3209.527683,
+      "prefill_tok_s": 319.0500600520915,
+      "decode_ms": 6391.698351,
+      "prefill_host_enqueue_ms": 3209.487698,
+      "prefill_device_drain_ms": 0.039985,
+      "decode_host_enqueue_ms": 6391.696878,
+      "decode_device_drain_ms": 0.001473,
+      "decode_host_enqueue_ms_per_step": 49.935131859375,
+      "decode_device_drain_ms_per_step": 1.15078125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.025976347894144,
+      "client_wall_s": 9.601226034,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b",
+      "memory_before": {
+        "rss_bytes": 641601536,
+        "rss_anon_bytes": 481947648,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41095872512,
+        "host_mem_free_bytes": 4990435328,
+        "host_swap_free_bytes": 85613256704,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249577,
+        "major_faults": 5966
+      },
+      "memory_after": {
+        "rss_bytes": 641671168,
+        "rss_anon_bytes": 482017280,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41103241216,
+        "host_mem_free_bytes": 4995092480,
+        "host_swap_free_bytes": 85613264896,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249577,
+        "major_faults": 5966
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527602367657517,
+          4527605577185200
+        ],
+        "decode": [
+          4527605577192583,
+          4527611968890934
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p1024",
+      "category": "code",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "0c1cebb57ff5cbf29f04c0a41ab05b547ec65fddc7606d639c9b2fafb16e831d",
+      "repetition": 2,
+      "prefill_ms": 3207.123797,
+      "prefill_tok_s": 319.2892026674703,
+      "decode_ms": 6398.840423,
+      "prefill_host_enqueue_ms": 3207.08827,
+      "prefill_device_drain_ms": 0.035527,
+      "decode_host_enqueue_ms": 6398.837748,
+      "decode_device_drain_ms": 0.002675,
+      "decode_host_enqueue_ms_per_step": 49.99091990625,
+      "decode_device_drain_ms_per_step": 2.08984375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.003624334796136,
+      "client_wall_s": 9.60596422,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b",
+      "memory_before": {
+        "rss_bytes": 641671168,
+        "rss_anon_bytes": 482017280,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41103241216,
+        "host_mem_free_bytes": 4995092480,
+        "host_swap_free_bytes": 85613264896,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249577,
+        "major_faults": 5966
+      },
+      "memory_after": {
+        "rss_bytes": 641740800,
+        "rss_anon_bytes": 482086912,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41097633792,
+        "host_mem_free_bytes": 4989411328,
+        "host_swap_free_bytes": 85613264896,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249581,
+        "major_faults": 5966
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 4,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527611969942347,
+          4527615177066144
+        ],
+        "decode": [
+          4527615177073618,
+          4527621575914041
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p1024",
+      "category": "code",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "0c1cebb57ff5cbf29f04c0a41ab05b547ec65fddc7606d639c9b2fafb16e831d",
+      "repetition": 2,
+      "prefill_ms": 3227.396636,
+      "prefill_tok_s": 317.283592781188,
+      "decode_ms": 6395.015585,
+      "prefill_host_enqueue_ms": 3227.343887,
+      "prefill_device_drain_ms": 0.052749,
+      "decode_host_enqueue_ms": 6395.014132,
+      "decode_device_drain_ms": 0.001453,
+      "decode_host_enqueue_ms_per_step": 49.96104790625,
+      "decode_device_drain_ms_per_step": 1.13515625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.015588437381425,
+      "client_wall_s": 9.622412221000001,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b",
+      "memory_before": {
+        "rss_bytes": 641740800,
+        "rss_anon_bytes": 482086912,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41097633792,
+        "host_mem_free_bytes": 4989411328,
+        "host_swap_free_bytes": 85613264896,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249581,
+        "major_faults": 5966
+      },
+      "memory_after": {
+        "rss_bytes": 641740800,
+        "rss_anon_bytes": 482086912,
+        "rss_file_bytes": 122818560,
+        "host_mem_available_bytes": 41086214144,
+        "host_mem_free_bytes": 4977971200,
+        "host_swap_free_bytes": 85613363200,
+        "process_read_bytes": 81853431808,
+        "minor_faults": 20249581,
+        "major_faults": 5966
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527621576837875,
+          4527624804234511
+        ],
+        "decode": [
+          4527624804243918,
+          4527631199259503
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+      "repetition": 0,
+      "prefill_ms": 12552.306527,
+      "prefill_tok_s": 326.3145296196765,
+      "decode_ms": 7009.665233,
+      "prefill_host_enqueue_ms": 12552.257284,
+      "prefill_device_drain_ms": 0.049243,
+      "decode_host_enqueue_ms": 7009.66373,
+      "decode_device_drain_ms": 0.001503,
+      "decode_host_enqueue_ms_per_step": 54.762997890625,
+      "decode_device_drain_ms_per_step": 1.17421875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 18.26050114310787,
+      "client_wall_s": 19.56197176,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+      "memory_before": {
+        "rss_bytes": 644149248,
+        "rss_anon_bytes": 482996224,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40450043904,
+        "host_mem_free_bytes": 5690998784,
+        "host_swap_free_bytes": 85614284800,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20250952,
+        "major_faults": 6332
+      },
+      "memory_after": {
+        "rss_bytes": 644341760,
+        "rss_anon_bytes": 483188736,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40452472832,
+        "host_mem_free_bytes": 5689319424,
+        "host_swap_free_bytes": 85614473216,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20251573,
+        "major_faults": 6332
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 621,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527670460623128,
+          4527683012929655
+        ],
+        "decode": [
+          4527683012937740,
+          4527690022602973
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+      "repetition": 0,
+      "prefill_ms": 12497.088932,
+      "prefill_tok_s": 327.7563296770496,
+      "decode_ms": 7007.478483,
+      "prefill_host_enqueue_ms": 12497.04568,
+      "prefill_device_drain_ms": 0.043252,
+      "decode_host_enqueue_ms": 7007.477201,
+      "decode_device_drain_ms": 0.001282,
+      "decode_host_enqueue_ms_per_step": 54.7459156328125,
+      "decode_device_drain_ms_per_step": 1.0015625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 18.26619950536065,
+      "client_wall_s": 19.504567415,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+      "memory_before": {
+        "rss_bytes": 644341760,
+        "rss_anon_bytes": 483188736,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40452472832,
+        "host_mem_free_bytes": 5689319424,
+        "host_swap_free_bytes": 85614473216,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20251573,
+        "major_faults": 6332
+      },
+      "memory_after": {
+        "rss_bytes": 644341760,
+        "rss_anon_bytes": 483188736,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40453849088,
+        "host_mem_free_bytes": 5690511360,
+        "host_swap_free_bytes": 85614477312,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20252147,
+        "major_faults": 6332
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527690023677860,
+          4527702520766792
+        ],
+        "decode": [
+          4527702520775047,
+          4527709528253530
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+      "repetition": 1,
+      "prefill_ms": 12496.236171,
+      "prefill_tok_s": 327.7786962369983,
+      "decode_ms": 7004.717146,
+      "prefill_host_enqueue_ms": 12496.19285,
+      "prefill_device_drain_ms": 0.043321,
+      "decode_host_enqueue_ms": 7004.715874,
+      "decode_device_drain_ms": 0.001272,
+      "decode_host_enqueue_ms_per_step": 54.724342765625,
+      "decode_device_drain_ms_per_step": 9.9375e-06,
+      "decode_transitions": 128,
+      "decode_tok_s": 18.27340024330513,
+      "client_wall_s": 19.500953317,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+      "memory_before": {
+        "rss_bytes": 644341760,
+        "rss_anon_bytes": 483188736,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40453849088,
+        "host_mem_free_bytes": 5690511360,
+        "host_swap_free_bytes": 85614477312,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20252147,
+        "major_faults": 6332
+      },
+      "memory_after": {
+        "rss_bytes": 644345856,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40442892288,
+        "host_mem_free_bytes": 5679423488,
+        "host_swap_free_bytes": 85614501888,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20252722,
+        "major_faults": 6332
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 575,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527709529330551,
+          4527722025566722
+        ],
+        "decode": [
+          4527722025574687,
+          4527729030291833
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+      "repetition": 1,
+      "prefill_ms": 12561.196848,
+      "prefill_tok_s": 326.0835770320857,
+      "decode_ms": 6995.661079,
+      "prefill_host_enqueue_ms": 12561.173214,
+      "prefill_device_drain_ms": 0.023634,
+      "decode_host_enqueue_ms": 6995.659767,
+      "decode_device_drain_ms": 0.001312,
+      "decode_host_enqueue_ms_per_step": 54.6535919296875,
+      "decode_device_drain_ms_per_step": 1.025e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 18.29705563985056,
+      "client_wall_s": 19.556857927,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+      "memory_before": {
+        "rss_bytes": 644345856,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40442892288,
+        "host_mem_free_bytes": 5679423488,
+        "host_swap_free_bytes": 85614501888,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20252722,
+        "major_faults": 6332
+      },
+      "memory_after": {
+        "rss_bytes": 644345856,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40437559296,
+        "host_mem_free_bytes": 5674008576,
+        "host_swap_free_bytes": 85614514176,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20253296,
+        "major_faults": 6332
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527729031409611,
+          4527741592606459
+        ],
+        "decode": [
+          4527741592614634,
+          4527748588275713
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+      "repetition": 2,
+      "prefill_ms": 12549.055771,
+      "prefill_tok_s": 326.3990593990006,
+      "decode_ms": 7004.36407,
+      "prefill_host_enqueue_ms": 12549.032818,
+      "prefill_device_drain_ms": 0.022953,
+      "decode_host_enqueue_ms": 7004.362287,
+      "decode_device_drain_ms": 0.001783,
+      "decode_host_enqueue_ms_per_step": 54.7215803671875,
+      "decode_device_drain_ms_per_step": 1.39296875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 18.27432136890623,
+      "client_wall_s": 19.553419841,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+      "memory_before": {
+        "rss_bytes": 644345856,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40437559296,
+        "host_mem_free_bytes": 5674008576,
+        "host_swap_free_bytes": 85614514176,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20253296,
+        "major_faults": 6332
+      },
+      "memory_after": {
+        "rss_bytes": 644345856,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40441257984,
+        "host_mem_free_bytes": 5677658112,
+        "host_swap_free_bytes": 85614546944,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20253870,
+        "major_faults": 6332
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527748589379134,
+          4527761138434905
+        ],
+        "decode": [
+          4527761138442669,
+          4527768142806739
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "code-p4096",
+      "category": "code",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+      "repetition": 2,
+      "prefill_ms": 12500.584082,
+      "prefill_tok_s": 327.66468935623294,
+      "decode_ms": 7040.758206,
+      "prefill_host_enqueue_ms": 12500.563764,
+      "prefill_device_drain_ms": 0.020318,
+      "decode_host_enqueue_ms": 7040.756302,
+      "decode_device_drain_ms": 0.001904,
+      "decode_host_enqueue_ms_per_step": 55.005908609375,
+      "decode_device_drain_ms_per_step": 1.4875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 18.179860216037646,
+      "client_wall_s": 19.541342288,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+      "memory_before": {
+        "rss_bytes": 644345856,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40441257984,
+        "host_mem_free_bytes": 5677658112,
+        "host_swap_free_bytes": 85614546944,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20253870,
+        "major_faults": 6332
+      },
+      "memory_after": {
+        "rss_bytes": 644345856,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 124317696,
+        "host_mem_available_bytes": 40436994048,
+        "host_mem_free_bytes": 5673062400,
+        "host_swap_free_bytes": 85614604288,
+        "process_read_bytes": 81855111168,
+        "minor_faults": 20254444,
+        "major_faults": 6332
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527768143956707,
+          4527780644540789
+        ],
+        "decode": [
+          4527780644548654,
+          4527787685306860
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p512",
+      "category": "general_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "6f75ae560a9b18076c9a175b3f4fb806df50289b495c25ce68237e8af006ded6",
+      "repetition": 0,
+      "prefill_ms": 1732.837358,
+      "prefill_tok_s": 295.4691608166495,
+      "decode_ms": 6170.062276,
+      "prefill_host_enqueue_ms": 1732.791132,
+      "prefill_device_drain_ms": 0.046226,
+      "decode_host_enqueue_ms": 6170.060904,
+      "decode_device_drain_ms": 0.001372,
+      "decode_host_enqueue_ms_per_step": 48.2036008125,
+      "decode_device_drain_ms_per_step": 1.071875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.745333559741855,
+      "client_wall_s": 7.902899634,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816",
+      "memory_before": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40435503104,
+        "host_mem_free_bytes": 5659979776,
+        "host_swap_free_bytes": 85614796800,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_after": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40429162496,
+        "host_mem_free_bytes": 5653614592,
+        "host_swap_free_bytes": 85614985216,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527803959118825,
+          4527805691956183
+        ],
+        "decode": [
+          4527805691964249,
+          4527811862026525
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p512",
+      "category": "general_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "6f75ae560a9b18076c9a175b3f4fb806df50289b495c25ce68237e8af006ded6",
+      "repetition": 0,
+      "prefill_ms": 1750.385565,
+      "prefill_tok_s": 292.50698259728847,
+      "decode_ms": 6177.476644,
+      "prefill_host_enqueue_ms": 1750.344277,
+      "prefill_device_drain_ms": 0.041288,
+      "decode_host_enqueue_ms": 6177.475161,
+      "decode_device_drain_ms": 0.001483,
+      "decode_host_enqueue_ms_per_step": 48.2615246953125,
+      "decode_device_drain_ms_per_step": 1.15859375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.720434471301903,
+      "client_wall_s": 7.927862209000001,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816",
+      "memory_before": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40429162496,
+        "host_mem_free_bytes": 5653614592,
+        "host_swap_free_bytes": 85614985216,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_after": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40433848320,
+        "host_mem_free_bytes": 5658255360,
+        "host_swap_free_bytes": 85615071232,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527811863151957,
+          4527813613537522
+        ],
+        "decode": [
+          4527813613545597,
+          4527819791022241
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p512",
+      "category": "general_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "6f75ae560a9b18076c9a175b3f4fb806df50289b495c25ce68237e8af006ded6",
+      "repetition": 1,
+      "prefill_ms": 1751.178257,
+      "prefill_tok_s": 292.3745757768394,
+      "decode_ms": 6177.185061,
+      "prefill_host_enqueue_ms": 1751.156597,
+      "prefill_device_drain_ms": 0.02166,
+      "decode_host_enqueue_ms": 6177.182776,
+      "decode_device_drain_ms": 0.002285,
+      "decode_host_enqueue_ms_per_step": 48.2592404375,
+      "decode_device_drain_ms_per_step": 1.78515625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.721412542443495,
+      "client_wall_s": 7.928363318,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816",
+      "memory_before": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40433848320,
+        "host_mem_free_bytes": 5658255360,
+        "host_swap_free_bytes": 85615071232,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_after": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40439144448,
+        "host_mem_free_bytes": 5663522816,
+        "host_swap_free_bytes": 85615165440,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527819792227392,
+          4527821543405649
+        ],
+        "decode": [
+          4527821543412472,
+          4527827720597533
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p512",
+      "category": "general_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "6f75ae560a9b18076c9a175b3f4fb806df50289b495c25ce68237e8af006ded6",
+      "repetition": 1,
+      "prefill_ms": 1732.620258,
+      "prefill_tok_s": 295.50618355981385,
+      "decode_ms": 6178.874575,
+      "prefill_host_enqueue_ms": 1732.601302,
+      "prefill_device_drain_ms": 0.018956,
+      "decode_host_enqueue_ms": 6178.873192,
+      "decode_device_drain_ms": 0.001383,
+      "decode_host_enqueue_ms_per_step": 48.2724468125,
+      "decode_device_drain_ms_per_step": 1.08046875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.71574660503608,
+      "client_wall_s": 7.911494833,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816",
+      "memory_before": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40439144448,
+        "host_mem_free_bytes": 5663522816,
+        "host_swap_free_bytes": 85615165440,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_after": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40430608384,
+        "host_mem_free_bytes": 5654958080,
+        "host_swap_free_bytes": 85615259648,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527827721739786,
+          4527829454360044
+        ],
+        "decode": [
+          4527829454367899,
+          4527835633242474
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p512",
+      "category": "general_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "6f75ae560a9b18076c9a175b3f4fb806df50289b495c25ce68237e8af006ded6",
+      "repetition": 2,
+      "prefill_ms": 1732.451236,
+      "prefill_tok_s": 295.53501383515993,
+      "decode_ms": 6179.510113,
+      "prefill_host_enqueue_ms": 1732.411071,
+      "prefill_device_drain_ms": 0.040165,
+      "decode_host_enqueue_ms": 6179.5088,
+      "decode_device_drain_ms": 0.001313,
+      "decode_host_enqueue_ms_per_step": 48.2774125,
+      "decode_device_drain_ms_per_step": 1.02578125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.71361607301572,
+      "client_wall_s": 7.911961349,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816",
+      "memory_before": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40430608384,
+        "host_mem_free_bytes": 5654958080,
+        "host_swap_free_bytes": 85615259648,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_after": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40433127424,
+        "host_mem_free_bytes": 5657407488,
+        "host_swap_free_bytes": 85615296512,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527835634432858,
+          4527837366884094
+        ],
+        "decode": [
+          4527837366891488,
+          4527843546401601
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p512",
+      "category": "general_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "6f75ae560a9b18076c9a175b3f4fb806df50289b495c25ce68237e8af006ded6",
+      "repetition": 2,
+      "prefill_ms": 1749.290141,
+      "prefill_tok_s": 292.6901535655542,
+      "decode_ms": 6181.411034,
+      "prefill_host_enqueue_ms": 1749.272167,
+      "prefill_device_drain_ms": 0.017974,
+      "decode_host_enqueue_ms": 6181.409742,
+      "decode_device_drain_ms": 0.001292,
+      "decode_host_enqueue_ms_per_step": 48.292263609375,
+      "decode_device_drain_ms_per_step": 1.009375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.707246176634047,
+      "client_wall_s": 7.930701175,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816",
+      "memory_before": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40433127424,
+        "host_mem_free_bytes": 5657407488,
+        "host_swap_free_bytes": 85615296512,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_after": {
+        "rss_bytes": 655364096,
+        "rss_anon_bytes": 483192832,
+        "rss_file_bytes": 135335936,
+        "host_mem_available_bytes": 40434270208,
+        "host_mem_free_bytes": 5658427392,
+        "host_swap_free_bytes": 85615378432,
+        "process_read_bytes": 81866653696,
+        "minor_faults": 20254444,
+        "major_faults": 9022
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527843547570203,
+          4527845296860344
+        ],
+        "decode": [
+          4527845296867197,
+          4527851478278231
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p1024",
+      "category": "general_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "a54b2114bbf26cc1254f1828d6ab2bd521bf9211127848427f881d791d599fe7",
+      "repetition": 0,
+      "prefill_ms": 3202.47342,
+      "prefill_tok_s": 319.75284903379463,
+      "decode_ms": 6459.279978,
+      "prefill_host_enqueue_ms": 3202.450867,
+      "prefill_device_drain_ms": 0.022553,
+      "decode_host_enqueue_ms": 6459.278505,
+      "decode_device_drain_ms": 0.001473,
+      "decode_host_enqueue_ms_per_step": 50.4631133203125,
+      "decode_device_drain_ms_per_step": 1.15078125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.816450198158606,
+      "client_wall_s": 9.661753397999998,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be",
+      "memory_before": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40435081216,
+        "host_mem_free_bytes": 5654089728,
+        "host_swap_free_bytes": 85615620096,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_after": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40430010368,
+        "host_mem_free_bytes": 5648994304,
+        "host_swap_free_bytes": 85615620096,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527870944602291,
+          4527874147075711
+        ],
+        "decode": [
+          4527874147083485,
+          4527880606363463
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p1024",
+      "category": "general_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "a54b2114bbf26cc1254f1828d6ab2bd521bf9211127848427f881d791d599fe7",
+      "repetition": 0,
+      "prefill_ms": 3181.605422,
+      "prefill_tok_s": 321.8500926982642,
+      "decode_ms": 6487.887517,
+      "prefill_host_enqueue_ms": 3181.55597,
+      "prefill_device_drain_ms": 0.049452,
+      "decode_host_enqueue_ms": 6487.885353,
+      "decode_device_drain_ms": 0.002164,
+      "decode_host_enqueue_ms_per_step": 50.6866043203125,
+      "decode_device_drain_ms_per_step": 1.690625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.729072007584254,
+      "client_wall_s": 9.669492939,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be",
+      "memory_before": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40430010368,
+        "host_mem_free_bytes": 5648994304,
+        "host_swap_free_bytes": 85615620096,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_after": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40432541696,
+        "host_mem_free_bytes": 5651509248,
+        "host_swap_free_bytes": 85615681536,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527880607644707,
+          4527883789250129
+        ],
+        "decode": [
+          4527883789259617,
+          4527890277147134
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p1024",
+      "category": "general_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "a54b2114bbf26cc1254f1828d6ab2bd521bf9211127848427f881d791d599fe7",
+      "repetition": 1,
+      "prefill_ms": 3182.29125,
+      "prefill_tok_s": 321.78072952939175,
+      "decode_ms": 6536.989816,
+      "prefill_host_enqueue_ms": 3182.268928,
+      "prefill_device_drain_ms": 0.022322,
+      "decode_host_enqueue_ms": 6536.988363,
+      "decode_device_drain_ms": 0.001453,
+      "decode_host_enqueue_ms_per_step": 51.0702215859375,
+      "decode_device_drain_ms_per_step": 1.13515625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.58087798862803,
+      "client_wall_s": 9.719281065999999,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be",
+      "memory_before": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40432541696,
+        "host_mem_free_bytes": 5651509248,
+        "host_swap_free_bytes": 85615681536,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_after": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40422588416,
+        "host_mem_free_bytes": 5641527296,
+        "host_swap_free_bytes": 85615681536,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527890278359579,
+          4527893460650829
+        ],
+        "decode": [
+          4527893460657521,
+          4527899997647337
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p1024",
+      "category": "general_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "a54b2114bbf26cc1254f1828d6ab2bd521bf9211127848427f881d791d599fe7",
+      "repetition": 1,
+      "prefill_ms": 3199.273739,
+      "prefill_tok_s": 320.07264258671177,
+      "decode_ms": 6548.864952,
+      "prefill_host_enqueue_ms": 3199.231379,
+      "prefill_device_drain_ms": 0.04236,
+      "decode_host_enqueue_ms": 6548.861034,
+      "decode_device_drain_ms": 0.003918,
+      "decode_host_enqueue_ms_per_step": 51.162976828125,
+      "decode_device_drain_ms_per_step": 3.0609375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.545371745818223,
+      "client_wall_s": 9.748138691,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be",
+      "memory_before": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40422588416,
+        "host_mem_free_bytes": 5641527296,
+        "host_swap_free_bytes": 85615681536,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_after": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40432836608,
+        "host_mem_free_bytes": 5651746816,
+        "host_swap_free_bytes": 85615726592,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527899999031444,
+          4527903198305183
+        ],
+        "decode": [
+          4527903198312827,
+          4527909747177779
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p1024",
+      "category": "general_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "a54b2114bbf26cc1254f1828d6ab2bd521bf9211127848427f881d791d599fe7",
+      "repetition": 2,
+      "prefill_ms": 3208.795868,
+      "prefill_tok_s": 319.12282430052045,
+      "decode_ms": 6580.367489,
+      "prefill_host_enqueue_ms": 3208.752126,
+      "prefill_device_drain_ms": 0.043742,
+      "decode_host_enqueue_ms": 6580.36251,
+      "decode_device_drain_ms": 0.004979,
+      "decode_host_enqueue_ms_per_step": 51.409082109375,
+      "decode_device_drain_ms_per_step": 3.88984375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.451801166723563,
+      "client_wall_s": 9.789163357000001,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be",
+      "memory_before": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40432836608,
+        "host_mem_free_bytes": 5651746816,
+        "host_swap_free_bytes": 85615726592,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_after": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40436199424,
+        "host_mem_free_bytes": 5655060480,
+        "host_swap_free_bytes": 85615726592,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527909750231810,
+          4527912959027678
+        ],
+        "decode": [
+          4527912959034551,
+          4527919539402040
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p1024",
+      "category": "general_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "a54b2114bbf26cc1254f1828d6ab2bd521bf9211127848427f881d791d599fe7",
+      "repetition": 2,
+      "prefill_ms": 3205.959898,
+      "prefill_tok_s": 319.40511814848657,
+      "decode_ms": 6591.510672,
+      "prefill_host_enqueue_ms": 3205.922628,
+      "prefill_device_drain_ms": 0.03727,
+      "decode_host_enqueue_ms": 6591.506394,
+      "decode_device_drain_ms": 0.004278,
+      "decode_host_enqueue_ms_per_step": 51.496143703125,
+      "decode_device_drain_ms_per_step": 3.3421875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.418917205691507,
+      "client_wall_s": 9.797470570000002,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be",
+      "memory_before": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40436199424,
+        "host_mem_free_bytes": 5655060480,
+        "host_swap_free_bytes": 85615726592,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_after": {
+        "rss_bytes": 660340736,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 140308480,
+        "host_mem_available_bytes": 40435023872,
+        "host_mem_free_bytes": 5653872640,
+        "host_swap_free_bytes": 85615734784,
+        "process_read_bytes": 81871757312,
+        "minor_faults": 20254445,
+        "major_faults": 10236
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527919542462283,
+          4527922748422181
+        ],
+        "decode": [
+          4527922748430777,
+          4527929339941449
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p4096",
+      "category": "general_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "ef66cd9fc3e5b856c5a519f8a43f022d4747d76c03dc76329b86dab896df9c91",
+      "repetition": 0,
+      "prefill_ms": 12589.514997,
+      "prefill_tok_s": 325.35010292104585,
+      "decode_ms": 11743.495813,
+      "prefill_host_enqueue_ms": 12589.491543,
+      "prefill_device_drain_ms": 0.023454,
+      "decode_host_enqueue_ms": 11743.490624,
+      "decode_device_drain_ms": 0.005189,
+      "decode_host_enqueue_ms_per_step": 91.7460205,
+      "decode_device_drain_ms_per_step": 4.05390625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.899650499155843,
+      "client_wall_s": 24.33301081,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1",
+      "memory_before": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40441610240,
+        "host_mem_free_bytes": 5656403968,
+        "host_swap_free_bytes": 85615865856,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20255593,
+        "major_faults": 11030
+      },
+      "memory_after": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40433565696,
+        "host_mem_free_bytes": 5648338944,
+        "host_swap_free_bytes": 85615943680,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20256167,
+        "major_faults": 11030
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527975053362738,
+          4527987642877735
+        ],
+        "decode": [
+          4527987642885700,
+          4527999386381513
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p4096",
+      "category": "general_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "ef66cd9fc3e5b856c5a519f8a43f022d4747d76c03dc76329b86dab896df9c91",
+      "repetition": 0,
+      "prefill_ms": 12637.256593,
+      "prefill_tok_s": 324.1209806777878,
+      "decode_ms": 11873.931459,
+      "prefill_host_enqueue_ms": 12637.234141,
+      "prefill_device_drain_ms": 0.022452,
+      "decode_host_enqueue_ms": 11873.920889,
+      "decode_device_drain_ms": 0.01057,
+      "decode_host_enqueue_ms_per_step": 92.7650069453125,
+      "decode_device_drain_ms_per_step": 8.2578125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.779917371257921,
+      "client_wall_s": 24.511188051999998,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1",
+      "memory_before": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40433565696,
+        "host_mem_free_bytes": 5648338944,
+        "host_swap_free_bytes": 85615943680,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20256167,
+        "major_faults": 11030
+      },
+      "memory_after": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40429002752,
+        "host_mem_free_bytes": 5643616256,
+        "host_swap_free_bytes": 85616148480,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20256741,
+        "major_faults": 11030
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4527999390983439,
+          4528012028240032
+        ],
+        "decode": [
+          4528012028248117,
+          4528023902179576
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p4096",
+      "category": "general_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "ef66cd9fc3e5b856c5a519f8a43f022d4747d76c03dc76329b86dab896df9c91",
+      "repetition": 1,
+      "prefill_ms": 12648.788093,
+      "prefill_tok_s": 323.8254898322456,
+      "decode_ms": 11931.806687,
+      "prefill_host_enqueue_ms": 12648.76514,
+      "prefill_device_drain_ms": 0.022953,
+      "decode_host_enqueue_ms": 11931.795887,
+      "decode_device_drain_ms": 0.0108,
+      "decode_host_enqueue_ms_per_step": 93.2171553671875,
+      "decode_device_drain_ms_per_step": 8.4375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.727629382351557,
+      "client_wall_s": 24.58059478,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1",
+      "memory_before": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40431067136,
+        "host_mem_free_bytes": 5645680640,
+        "host_swap_free_bytes": 85616148480,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20256741,
+        "major_faults": 11030
+      },
+      "memory_after": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40434110464,
+        "host_mem_free_bytes": 5648662528,
+        "host_swap_free_bytes": 85616226304,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20257315,
+        "major_faults": 11030
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528023907188745,
+          4528036555976838
+        ],
+        "decode": [
+          4528036555984983,
+          4528048487791670
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p4096",
+      "category": "general_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "ef66cd9fc3e5b856c5a519f8a43f022d4747d76c03dc76329b86dab896df9c91",
+      "repetition": 1,
+      "prefill_ms": 12586.789407,
+      "prefill_tok_s": 325.42055543743794,
+      "decode_ms": 12021.96201,
+      "prefill_host_enqueue_ms": 12586.766094,
+      "prefill_device_drain_ms": 0.023313,
+      "decode_host_enqueue_ms": 12021.95123,
+      "decode_device_drain_ms": 0.01078,
+      "decode_host_enqueue_ms_per_step": 93.921493984375,
+      "decode_device_drain_ms_per_step": 8.421875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.647180542870473,
+      "client_wall_s": 24.608751417,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1",
+      "memory_before": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40434110464,
+        "host_mem_free_bytes": 5648662528,
+        "host_swap_free_bytes": 85616226304,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20257315,
+        "major_faults": 11030
+      },
+      "memory_after": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40432771072,
+        "host_mem_free_bytes": 5647282176,
+        "host_swap_free_bytes": 85616234496,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20257889,
+        "major_faults": 11030
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528048492617185,
+          4528061079406592
+        ],
+        "decode": [
+          4528061079414748,
+          4528073101376758
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p4096",
+      "category": "general_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "ef66cd9fc3e5b856c5a519f8a43f022d4747d76c03dc76329b86dab896df9c91",
+      "repetition": 2,
+      "prefill_ms": 12589.862592,
+      "prefill_tok_s": 325.34112029171223,
+      "decode_ms": 12075.714156,
+      "prefill_host_enqueue_ms": 12589.840099,
+      "prefill_device_drain_ms": 0.022493,
+      "decode_host_enqueue_ms": 12075.703777,
+      "decode_device_drain_ms": 0.010379,
+      "decode_host_enqueue_ms_per_step": 94.3414357578125,
+      "decode_device_drain_ms_per_step": 8.10859375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.599787171709533,
+      "client_wall_s": 24.665576748,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1",
+      "memory_before": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40432771072,
+        "host_mem_free_bytes": 5647282176,
+        "host_swap_free_bytes": 85616234496,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20257889,
+        "major_faults": 11030
+      },
+      "memory_after": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40436170752,
+        "host_mem_free_bytes": 5650288640,
+        "host_swap_free_bytes": 85616250880,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20258463,
+        "major_faults": 11030
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528073106903649,
+          4528085696766241
+        ],
+        "decode": [
+          4528085696774426,
+          4528097772488582
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_en-p4096",
+      "category": "general_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "ef66cd9fc3e5b856c5a519f8a43f022d4747d76c03dc76329b86dab896df9c91",
+      "repetition": 2,
+      "prefill_ms": 12700.789433,
+      "prefill_tok_s": 322.4996384364512,
+      "decode_ms": 12047.166781,
+      "prefill_host_enqueue_ms": 12700.749478,
+      "prefill_device_drain_ms": 0.039955,
+      "decode_host_enqueue_ms": 12047.1552,
+      "decode_device_drain_ms": 0.011581,
+      "decode_host_enqueue_ms_per_step": 94.1184,
+      "decode_device_drain_ms_per_step": 9.04765625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.624904786897545,
+      "client_wall_s": 24.747956214,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1",
+      "memory_before": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40436170752,
+        "host_mem_free_bytes": 5650288640,
+        "host_swap_free_bytes": 85616250880,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20258463,
+        "major_faults": 11030
+      },
+      "memory_after": {
+        "rss_bytes": 663592960,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 143560704,
+        "host_mem_available_bytes": 40448913408,
+        "host_mem_free_bytes": 5662986240,
+        "host_swap_free_bytes": 85616279552,
+        "process_read_bytes": 81875042304,
+        "minor_faults": 20259037,
+        "major_faults": 11030
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528097778246807,
+          4528110479036240
+        ],
+        "decode": [
+          4528110479043704,
+          4528122526210485
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p512",
+      "category": "general_ja",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "165270b64b0061e9f2be4449475234fd9d680d6d10ca9be2d427b69c80667295",
+      "repetition": 0,
+      "prefill_ms": 1747.399178,
+      "prefill_tok_s": 293.0068907243128,
+      "decode_ms": 6517.512483,
+      "prefill_host_enqueue_ms": 1747.372739,
+      "prefill_device_drain_ms": 0.026439,
+      "decode_host_enqueue_ms": 6517.507784,
+      "decode_device_drain_ms": 0.004699,
+      "decode_host_enqueue_ms_per_step": 50.9180295625,
+      "decode_device_drain_ms_per_step": 3.67109375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.63939468223033,
+      "client_wall_s": 8.264911661,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3",
+      "memory_before": {
+        "rss_bytes": 674308096,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40434905088,
+        "host_mem_free_bytes": 5638148096,
+        "host_swap_free_bytes": 85616357376,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259037,
+        "major_faults": 13646
+      },
+      "memory_after": {
+        "rss_bytes": 674308096,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40434163712,
+        "host_mem_free_bytes": 5637107712,
+        "host_swap_free_bytes": 85616431104,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259037,
+        "major_faults": 13646
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528141075213728,
+          4528142822612906
+        ],
+        "decode": [
+          4528142822620180,
+          4528149340132663
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p512",
+      "category": "general_ja",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "165270b64b0061e9f2be4449475234fd9d680d6d10ca9be2d427b69c80667295",
+      "repetition": 0,
+      "prefill_ms": 1730.222795,
+      "prefill_tok_s": 295.9156482503746,
+      "decode_ms": 6357.518532,
+      "prefill_host_enqueue_ms": 1730.178402,
+      "prefill_device_drain_ms": 0.044393,
+      "decode_host_enqueue_ms": 6357.514364,
+      "decode_device_drain_ms": 0.004168,
+      "decode_host_enqueue_ms_per_step": 49.66808096875,
+      "decode_device_drain_ms_per_step": 3.25625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.133641664703525,
+      "client_wall_s": 8.087741327,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3",
+      "memory_before": {
+        "rss_bytes": 674308096,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40434163712,
+        "host_mem_free_bytes": 5637107712,
+        "host_swap_free_bytes": 85616431104,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259037,
+        "major_faults": 13646
+      },
+      "memory_after": {
+        "rss_bytes": 674308096,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40436625408,
+        "host_mem_free_bytes": 5639540736,
+        "host_swap_free_bytes": 85616431104,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259037,
+        "major_faults": 13646
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528149343835612,
+          4528151074058407
+        ],
+        "decode": [
+          4528151074066883,
+          4528157431585415
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p512",
+      "category": "general_ja",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "165270b64b0061e9f2be4449475234fd9d680d6d10ca9be2d427b69c80667295",
+      "repetition": 1,
+      "prefill_ms": 1729.740358,
+      "prefill_tok_s": 295.9981812484253,
+      "decode_ms": 6292.101421,
+      "prefill_host_enqueue_ms": 1729.716393,
+      "prefill_device_drain_ms": 0.023965,
+      "decode_host_enqueue_ms": 6292.097122,
+      "decode_device_drain_ms": 0.004299,
+      "decode_host_enqueue_ms_per_step": 49.157008765625,
+      "decode_device_drain_ms_per_step": 3.35859375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.342965161495606,
+      "client_wall_s": 8.021841779,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3",
+      "memory_before": {
+        "rss_bytes": 674308096,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40436625408,
+        "host_mem_free_bytes": 5639540736,
+        "host_swap_free_bytes": 85616431104,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259037,
+        "major_faults": 13646
+      },
+      "memory_after": {
+        "rss_bytes": 674308096,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40430931968,
+        "host_mem_free_bytes": 5633822720,
+        "host_swap_free_bytes": 85616492544,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259037,
+        "major_faults": 13646
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528157435443154,
+          4528159165183512
+        ],
+        "decode": [
+          4528159165192168,
+          4528165457293589
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p512",
+      "category": "general_ja",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "165270b64b0061e9f2be4449475234fd9d680d6d10ca9be2d427b69c80667295",
+      "repetition": 1,
+      "prefill_ms": 1750.500722,
+      "prefill_tok_s": 292.4877399736371,
+      "decode_ms": 6260.196423,
+      "prefill_host_enqueue_ms": 1750.460637,
+      "prefill_device_drain_ms": 0.040085,
+      "decode_host_enqueue_ms": 6260.19495,
+      "decode_device_drain_ms": 0.001473,
+      "decode_host_enqueue_ms_per_step": 48.907773046875,
+      "decode_device_drain_ms_per_step": 1.15078125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.446642781003998,
+      "client_wall_s": 8.010697145,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3",
+      "memory_before": {
+        "rss_bytes": 674308096,
+        "rss_anon_bytes": 483196928,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40430931968,
+        "host_mem_free_bytes": 5633822720,
+        "host_swap_free_bytes": 85616492544,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259037,
+        "major_faults": 13646
+      },
+      "memory_after": {
+        "rss_bytes": 674312192,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40427991040,
+        "host_mem_free_bytes": 5630803968,
+        "host_swap_free_bytes": 85616492544,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259038,
+        "major_faults": 13646
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 1,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528165460942195,
+          4528167211442917
+        ],
+        "decode": [
+          4528167211450211,
+          4528173471646634
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p512",
+      "category": "general_ja",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "165270b64b0061e9f2be4449475234fd9d680d6d10ca9be2d427b69c80667295",
+      "repetition": 2,
+      "prefill_ms": 1733.171642,
+      "prefill_tok_s": 295.41217245464253,
+      "decode_ms": 6246.259704,
+      "prefill_host_enqueue_ms": 1733.132809,
+      "prefill_device_drain_ms": 0.038833,
+      "decode_host_enqueue_ms": 6246.258411,
+      "decode_device_drain_ms": 0.001293,
+      "decode_host_enqueue_ms_per_step": 48.7988938359375,
+      "decode_device_drain_ms_per_step": 1.01015625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.492263541016545,
+      "client_wall_s": 7.979431346,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3",
+      "memory_before": {
+        "rss_bytes": 674312192,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40427991040,
+        "host_mem_free_bytes": 5630803968,
+        "host_swap_free_bytes": 85616492544,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259038,
+        "major_faults": 13646
+      },
+      "memory_after": {
+        "rss_bytes": 674312192,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40429002752,
+        "host_mem_free_bytes": 5631004672,
+        "host_swap_free_bytes": 85616504832,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259038,
+        "major_faults": 13646
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528173473215859,
+          4528175206387501
+        ],
+        "decode": [
+          4528175206394915,
+          4528181452654619
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p512",
+      "category": "general_ja",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "165270b64b0061e9f2be4449475234fd9d680d6d10ca9be2d427b69c80667295",
+      "repetition": 2,
+      "prefill_ms": 1713.046516,
+      "prefill_tok_s": 298.8827187223911,
+      "decode_ms": 6246.710842,
+      "prefill_host_enqueue_ms": 1713.017591,
+      "prefill_device_drain_ms": 0.028925,
+      "decode_host_enqueue_ms": 6246.709509,
+      "decode_device_drain_ms": 0.001333,
+      "decode_host_enqueue_ms_per_step": 48.8024180390625,
+      "decode_device_drain_ms_per_step": 1.04140625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.490783587962337,
+      "client_wall_s": 7.959757358000001,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3",
+      "memory_before": {
+        "rss_bytes": 674312192,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40429002752,
+        "host_mem_free_bytes": 5631004672,
+        "host_swap_free_bytes": 85616504832,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259038,
+        "major_faults": 13646
+      },
+      "memory_after": {
+        "rss_bytes": 674312192,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 154275840,
+        "host_mem_available_bytes": 40429887488,
+        "host_mem_free_bytes": 5631860736,
+        "host_swap_free_bytes": 85616525312,
+        "process_read_bytes": 81885822976,
+        "minor_faults": 20259038,
+        "major_faults": 13646
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528181454234283,
+          4528183167280799
+        ],
+        "decode": [
+          4528183167288153,
+          4528189413998995
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "category": "general_ja",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "1960a6f71503c527fbd8b215ec0cf9a9da6dc4615d7e53b03577426697a93e7d",
+      "repetition": 0,
+      "prefill_ms": 3174.351676,
+      "prefill_tok_s": 322.585555892264,
+      "decode_ms": 6573.236393,
+      "prefill_host_enqueue_ms": 3174.29024,
+      "prefill_device_drain_ms": 0.061436,
+      "decode_host_enqueue_ms": 6573.231845,
+      "decode_device_drain_ms": 0.004548,
+      "decode_host_enqueue_ms_per_step": 51.3533737890625,
+      "decode_device_drain_ms_per_step": 3.553125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.472903809805217,
+      "client_wall_s": 9.747588069,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4",
+      "memory_before": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40426786816,
+        "host_mem_free_bytes": 5623410688,
+        "host_swap_free_bytes": 85616594944,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_after": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40426110976,
+        "host_mem_free_bytes": 5622706176,
+        "host_swap_free_bytes": 85616599040,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528209045476952,
+          4528212219828628
+        ],
+        "decode": [
+          4528212219837474,
+          4528218793073867
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "category": "general_ja",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "1960a6f71503c527fbd8b215ec0cf9a9da6dc4615d7e53b03577426697a93e7d",
+      "repetition": 0,
+      "prefill_ms": 3217.758923,
+      "prefill_tok_s": 318.23390891114315,
+      "decode_ms": 6595.647336,
+      "prefill_host_enqueue_ms": 3217.735509,
+      "prefill_device_drain_ms": 0.023414,
+      "decode_host_enqueue_ms": 6595.642287,
+      "decode_device_drain_ms": 0.005049,
+      "decode_host_enqueue_ms_per_step": 51.5284553671875,
+      "decode_device_drain_ms_per_step": 3.94453125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.40673803181644,
+      "client_wall_s": 9.813406258999999,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4",
+      "memory_before": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40426110976,
+        "host_mem_free_bytes": 5622706176,
+        "host_swap_free_bytes": 85616599040,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_after": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40431861760,
+        "host_mem_free_bytes": 5628432384,
+        "host_swap_free_bytes": 85616607232,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528218796984646,
+          4528222014743569
+        ],
+        "decode": [
+          4528222014751754,
+          4528228610399090
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "category": "general_ja",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "1960a6f71503c527fbd8b215ec0cf9a9da6dc4615d7e53b03577426697a93e7d",
+      "repetition": 1,
+      "prefill_ms": 3216.108772,
+      "prefill_tok_s": 318.3971913248461,
+      "decode_ms": 6634.749089,
+      "prefill_host_enqueue_ms": 3216.082172,
+      "prefill_device_drain_ms": 0.0266,
+      "decode_host_enqueue_ms": 6634.74471,
+      "decode_device_drain_ms": 0.004379,
+      "decode_host_enqueue_ms_per_step": 51.833943046875,
+      "decode_device_drain_ms_per_step": 3.42109375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.292364832939352,
+      "client_wall_s": 9.850857861,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4",
+      "memory_before": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40431861760,
+        "host_mem_free_bytes": 5628432384,
+        "host_swap_free_bytes": 85616607232,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_after": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40432287744,
+        "host_mem_free_bytes": 5628829696,
+        "host_swap_free_bytes": 85616615424,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528228614270926,
+          4528231830379698
+        ],
+        "decode": [
+          4528231830387603,
+          4528238465136692
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "category": "general_ja",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "1960a6f71503c527fbd8b215ec0cf9a9da6dc4615d7e53b03577426697a93e7d",
+      "repetition": 1,
+      "prefill_ms": 3189.722145,
+      "prefill_tok_s": 321.03109720862534,
+      "decode_ms": 6666.234851,
+      "prefill_host_enqueue_ms": 3189.690014,
+      "prefill_device_drain_ms": 0.032131,
+      "decode_host_enqueue_ms": 6666.230964,
+      "decode_device_drain_ms": 0.003887,
+      "decode_host_enqueue_ms_per_step": 52.07992940625,
+      "decode_device_drain_ms_per_step": 3.03671875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.201243709678,
+      "client_wall_s": 9.855956996000002,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4",
+      "memory_before": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40432287744,
+        "host_mem_free_bytes": 5628829696,
+        "host_swap_free_bytes": 85616615424,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_after": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40434323456,
+        "host_mem_free_bytes": 5630701568,
+        "host_swap_free_bytes": 85616623616,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528238469200627,
+          4528241658922772
+        ],
+        "decode": [
+          4528241658929985,
+          4528248325164836
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "category": "general_ja",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "1960a6f71503c527fbd8b215ec0cf9a9da6dc4615d7e53b03577426697a93e7d",
+      "repetition": 2,
+      "prefill_ms": 3197.653293,
+      "prefill_tok_s": 320.23484292110214,
+      "decode_ms": 6698.085989,
+      "prefill_host_enqueue_ms": 3197.630961,
+      "prefill_device_drain_ms": 0.022332,
+      "decode_host_enqueue_ms": 6698.07614,
+      "decode_device_drain_ms": 0.009849,
+      "decode_host_enqueue_ms_per_step": 52.32871984375,
+      "decode_device_drain_ms_per_step": 7.69453125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.109936810337953,
+      "client_wall_s": 9.895739282000001,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4",
+      "memory_before": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40434323456,
+        "host_mem_free_bytes": 5630701568,
+        "host_swap_free_bytes": 85616623616,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_after": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40430112768,
+        "host_mem_free_bytes": 5626478592,
+        "host_swap_free_bytes": 85616623616,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528248329158099,
+          4528251526811392
+        ],
+        "decode": [
+          4528251526819146,
+          4528258224905135
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "category": "general_ja",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "1960a6f71503c527fbd8b215ec0cf9a9da6dc4615d7e53b03577426697a93e7d",
+      "repetition": 2,
+      "prefill_ms": 3219.306139,
+      "prefill_tok_s": 318.080963967621,
+      "decode_ms": 6726.757156,
+      "prefill_host_enqueue_ms": 3219.273066,
+      "prefill_device_drain_ms": 0.033073,
+      "decode_host_enqueue_ms": 6726.750273,
+      "decode_device_drain_ms": 0.006883,
+      "decode_host_enqueue_ms_per_step": 52.5527365078125,
+      "decode_device_drain_ms_per_step": 5.37734375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.028485350601528,
+      "client_wall_s": 9.946063295,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4",
+      "memory_before": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40430112768,
+        "host_mem_free_bytes": 5626478592,
+        "host_swap_free_bytes": 85616623616,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_after": {
+        "rss_bytes": 679612416,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 159576064,
+        "host_mem_available_bytes": 40432009216,
+        "host_mem_free_bytes": 5628350464,
+        "host_swap_free_bytes": 85616672768,
+        "process_read_bytes": 81891123200,
+        "minor_faults": 20259038,
+        "major_faults": 14940
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528258229039312,
+          4528261448345451
+        ],
+        "decode": [
+          4528261448353085,
+          4528268175110241
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "category": "general_ja",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "13bde7cae91b24eec51008e5c580f9713542f108db970336549c930da4e89d87",
+      "repetition": 0,
+      "prefill_ms": 12665.993147,
+      "prefill_tok_s": 323.38561630835534,
+      "decode_ms": 11808.280146,
+      "prefill_host_enqueue_ms": 12665.968751,
+      "prefill_device_drain_ms": 0.024396,
+      "decode_host_enqueue_ms": 11808.270117,
+      "decode_device_drain_ms": 0.010029,
+      "decode_host_enqueue_ms_per_step": 92.2521102890625,
+      "decode_device_drain_ms_per_step": 7.83515625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.839851224512099,
+      "client_wall_s": 24.474273293,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243",
+      "memory_before": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40429281280,
+        "host_mem_free_bytes": 5622358016,
+        "host_swap_free_bytes": 85616676864,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20260186,
+        "major_faults": 15711
+      },
+      "memory_after": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40436707328,
+        "host_mem_free_bytes": 5629747200,
+        "host_swap_free_bytes": 85616701440,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20260760,
+        "major_faults": 15711
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528314423484015,
+          4528327089477162
+        ],
+        "decode": [
+          4528327089485468,
+          4528338897765614
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "category": "general_ja",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "13bde7cae91b24eec51008e5c580f9713542f108db970336549c930da4e89d87",
+      "repetition": 0,
+      "prefill_ms": 12587.702423,
+      "prefill_tok_s": 325.3969519104511,
+      "decode_ms": 11980.69654,
+      "prefill_host_enqueue_ms": 12587.675773,
+      "prefill_device_drain_ms": 0.02665,
+      "decode_host_enqueue_ms": 11980.686872,
+      "decode_device_drain_ms": 0.009668,
+      "decode_host_enqueue_ms_per_step": 93.5991161875,
+      "decode_device_drain_ms_per_step": 7.553125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.683852943995857,
+      "client_wall_s": 24.568398963,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243",
+      "memory_before": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40436707328,
+        "host_mem_free_bytes": 5629747200,
+        "host_swap_free_bytes": 85616701440,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20260760,
+        "major_faults": 15711
+      },
+      "memory_after": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40425603072,
+        "host_mem_free_bytes": 5618286592,
+        "host_swap_free_bytes": 85616717824,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20261334,
+        "major_faults": 15711
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528338903946622,
+          4528351491649045
+        ],
+        "decode": [
+          4528351491658072,
+          4528363472354612
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "category": "general_ja",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "13bde7cae91b24eec51008e5c580f9713542f108db970336549c930da4e89d87",
+      "repetition": 1,
+      "prefill_ms": 12583.37143,
+      "prefill_tok_s": 325.50894828032585,
+      "decode_ms": 12221.903885,
+      "prefill_host_enqueue_ms": 12583.348176,
+      "prefill_device_drain_ms": 0.023254,
+      "decode_host_enqueue_ms": 12221.893115,
+      "decode_device_drain_ms": 0.01077,
+      "decode_host_enqueue_ms_per_step": 95.4835399609375,
+      "decode_device_drain_ms_per_step": 8.4140625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.47300005010635,
+      "client_wall_s": 24.805275315,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243",
+      "memory_before": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40425603072,
+        "host_mem_free_bytes": 5618286592,
+        "host_swap_free_bytes": 85616717824,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20261334,
+        "major_faults": 15711
+      },
+      "memory_after": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40396521472,
+        "host_mem_free_bytes": 5531627520,
+        "host_swap_free_bytes": 85616791552,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20261908,
+        "major_faults": 15711
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528363479295366,
+          4528376062666796
+        ],
+        "decode": [
+          4528376062675202,
+          4528388284579087
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "category": "general_ja",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "13bde7cae91b24eec51008e5c580f9713542f108db970336549c930da4e89d87",
+      "repetition": 1,
+      "prefill_ms": 12641.359286,
+      "prefill_tok_s": 324.0157887558991,
+      "decode_ms": 12114.711244,
+      "prefill_host_enqueue_ms": 12641.332877,
+      "prefill_device_drain_ms": 0.026409,
+      "decode_host_enqueue_ms": 12114.697027,
+      "decode_device_drain_ms": 0.014217,
+      "decode_host_enqueue_ms_per_step": 94.6460705234375,
+      "decode_device_drain_ms_per_step": 0.0001110703125,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.56566660335334,
+      "client_wall_s": 24.756070530000002,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243",
+      "memory_before": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40396521472,
+        "host_mem_free_bytes": 5531627520,
+        "host_swap_free_bytes": 85616791552,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20261908,
+        "major_faults": 15711
+      },
+      "memory_after": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40396288000,
+        "host_mem_free_bytes": 5531357184,
+        "host_swap_free_bytes": 85617049600,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20262482,
+        "major_faults": 15711
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528388290857157,
+          4528400932216443
+        ],
+        "decode": [
+          4528400932226923,
+          4528413046938167
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "category": "general_ja",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "13bde7cae91b24eec51008e5c580f9713542f108db970336549c930da4e89d87",
+      "repetition": 2,
+      "prefill_ms": 12641.003466,
+      "prefill_tok_s": 324.0249091788359,
+      "decode_ms": 12121.977628,
+      "prefill_host_enqueue_ms": 12640.981054,
+      "prefill_device_drain_ms": 0.022412,
+      "decode_host_enqueue_ms": 12121.966998,
+      "decode_device_drain_ms": 0.01063,
+      "decode_host_enqueue_ms_per_step": 94.702867171875,
+      "decode_device_drain_ms_per_step": 8.3046875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.55933313260195,
+      "client_wall_s": 24.762981094000004,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243",
+      "memory_before": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40396288000,
+        "host_mem_free_bytes": 5531357184,
+        "host_swap_free_bytes": 85617049600,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20262482,
+        "major_faults": 15711
+      },
+      "memory_after": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40405057536,
+        "host_mem_free_bytes": 5539340288,
+        "host_swap_free_bytes": 85617119232,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20263056,
+        "major_faults": 15711
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528413053656634,
+          4528425694660100
+        ],
+        "decode": [
+          4528425694667123,
+          4528437816644751
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "category": "general_ja",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "13bde7cae91b24eec51008e5c580f9713542f108db970336549c930da4e89d87",
+      "repetition": 2,
+      "prefill_ms": 12610.575149,
+      "prefill_tok_s": 324.80675556854413,
+      "decode_ms": 12167.319569,
+      "prefill_host_enqueue_ms": 12610.553298,
+      "prefill_device_drain_ms": 0.021851,
+      "decode_host_enqueue_ms": 12167.308769,
+      "decode_device_drain_ms": 0.0108,
+      "decode_host_enqueue_ms_per_step": 95.0570997578125,
+      "decode_device_drain_ms_per_step": 8.4375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.519983409174154,
+      "client_wall_s": 24.777894718,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243",
+      "memory_before": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40405057536,
+        "host_mem_free_bytes": 5539340288,
+        "host_swap_free_bytes": 85617119232,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20263056,
+        "major_faults": 15711
+      },
+      "memory_after": {
+        "rss_bytes": 682770432,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 162734080,
+        "host_mem_available_bytes": 40426491904,
+        "host_mem_free_bytes": 5560750080,
+        "host_swap_free_bytes": 85617139712,
+        "process_read_bytes": 81894281216,
+        "minor_faults": 20263630,
+        "major_faults": 15711
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528437823678579,
+          4528450434253728
+        ],
+        "decode": [
+          4528450434262064,
+          4528462601581633
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "32e6513f92edd6d5a14548897df15e285807d155031eed5a47a4c39e621f53e8",
+      "repetition": 0,
+      "prefill_ms": 1761.384726,
+      "prefill_tok_s": 290.68039051452524,
+      "decode_ms": 6506.657434,
+      "prefill_host_enqueue_ms": 1761.34968,
+      "prefill_device_drain_ms": 0.035046,
+      "decode_host_enqueue_ms": 6506.652985,
+      "decode_device_drain_ms": 0.004449,
+      "decode_host_enqueue_ms_per_step": 50.8332264453125,
+      "decode_device_drain_ms_per_step": 3.47578125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.672159061447832,
+      "client_wall_s": 8.268042159999998,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241",
+      "memory_before": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40418799616,
+        "host_mem_free_bytes": 5540855808,
+        "host_swap_free_bytes": 85617295360,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_after": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40428298240,
+        "host_mem_free_bytes": 5550055424,
+        "host_swap_free_bytes": 85617295360,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528481387100036,
+          4528483148484762
+        ],
+        "decode": [
+          4528483148492126,
+          4528489655149560
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "32e6513f92edd6d5a14548897df15e285807d155031eed5a47a4c39e621f53e8",
+      "repetition": 0,
+      "prefill_ms": 1778.690708,
+      "prefill_tok_s": 287.8521812123842,
+      "decode_ms": 6345.782491,
+      "prefill_host_enqueue_ms": 1778.668847,
+      "prefill_device_drain_ms": 0.021861,
+      "decode_host_enqueue_ms": 6345.778353,
+      "decode_device_drain_ms": 0.004138,
+      "decode_host_enqueue_ms_per_step": 49.5763933828125,
+      "decode_device_drain_ms_per_step": 3.2328125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.17087730024436,
+      "client_wall_s": 8.124473199,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241",
+      "memory_before": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40427782144,
+        "host_mem_free_bytes": 5549539328,
+        "host_swap_free_bytes": 85617295360,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_after": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40418906112,
+        "host_mem_free_bytes": 5540646912,
+        "host_swap_free_bytes": 85617295360,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528489659641989,
+          4528491438332697
+        ],
+        "decode": [
+          4528491438340632,
+          4528497784123123
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "32e6513f92edd6d5a14548897df15e285807d155031eed5a47a4c39e621f53e8",
+      "repetition": 1,
+      "prefill_ms": 1777.595512,
+      "prefill_tok_s": 288.02953008355706,
+      "decode_ms": 6295.020936,
+      "prefill_host_enqueue_ms": 1777.576566,
+      "prefill_device_drain_ms": 0.018946,
+      "decode_host_enqueue_ms": 6295.016026,
+      "decode_device_drain_ms": 0.00491,
+      "decode_host_enqueue_ms_per_step": 49.179812703125,
+      "decode_device_drain_ms_per_step": 3.8359375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.33353046818207,
+      "client_wall_s": 8.072616448,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241",
+      "memory_before": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40418906112,
+        "host_mem_free_bytes": 5540646912,
+        "host_swap_free_bytes": 85617295360,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_after": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40416628736,
+        "host_mem_free_bytes": 5538340864,
+        "host_swap_free_bytes": 85617295360,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528497788550109,
+          4528499566145621
+        ],
+        "decode": [
+          4528499566153456,
+          4528505861174392
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "32e6513f92edd6d5a14548897df15e285807d155031eed5a47a4c39e621f53e8",
+      "repetition": 1,
+      "prefill_ms": 1761.6128,
+      "prefill_tok_s": 290.6427564559022,
+      "decode_ms": 6262.075041,
+      "prefill_host_enqueue_ms": 1761.590939,
+      "prefill_device_drain_ms": 0.021861,
+      "decode_host_enqueue_ms": 6262.073589,
+      "decode_device_drain_ms": 0.001452,
+      "decode_host_enqueue_ms_per_step": 48.9224499140625,
+      "decode_device_drain_ms_per_step": 1.134375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.440508802903054,
+      "client_wall_s": 8.023687841,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241",
+      "memory_before": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40416628736,
+        "host_mem_free_bytes": 5538340864,
+        "host_swap_free_bytes": 85617295360,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_after": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40415776768,
+        "host_mem_free_bytes": 5537464320,
+        "host_swap_free_bytes": 85617324032,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528505865711455,
+          4528507627324255
+        ],
+        "decode": [
+          4528507627332621,
+          4528513889407662
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "32e6513f92edd6d5a14548897df15e285807d155031eed5a47a4c39e621f53e8",
+      "repetition": 2,
+      "prefill_ms": 1746.546608,
+      "prefill_tok_s": 293.14992090952546,
+      "decode_ms": 6247.160701,
+      "prefill_host_enqueue_ms": 1746.52111,
+      "prefill_device_drain_ms": 0.025498,
+      "decode_host_enqueue_ms": 6247.159309,
+      "decode_device_drain_ms": 0.001392,
+      "decode_host_enqueue_ms_per_step": 48.8059321015625,
+      "decode_device_drain_ms_per_step": 1.0875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.489308043494173,
+      "client_wall_s": 7.9937073089999995,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241",
+      "memory_before": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40415776768,
+        "host_mem_free_bytes": 5537464320,
+        "host_swap_free_bytes": 85617324032,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_after": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40420417536,
+        "host_mem_free_bytes": 5541933056,
+        "host_swap_free_bytes": 85617324032,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528513891577414,
+          4528515638124022
+        ],
+        "decode": [
+          4528515638131386,
+          4528521885292087
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 512,
+      "prompt_token_ids_sha256": "32e6513f92edd6d5a14548897df15e285807d155031eed5a47a4c39e621f53e8",
+      "repetition": 2,
+      "prefill_ms": 1766.474491,
+      "prefill_tok_s": 289.8428494770718,
+      "decode_ms": 6254.209143,
+      "prefill_host_enqueue_ms": 1766.450485,
+      "prefill_device_drain_ms": 0.024006,
+      "decode_host_enqueue_ms": 6254.207741,
+      "decode_device_drain_ms": 0.001402,
+      "decode_host_enqueue_ms_per_step": 48.8609979765625,
+      "decode_device_drain_ms_per_step": 1.0953125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 20.466216762716275,
+      "client_wall_s": 8.020683634,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241",
+      "memory_before": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40420675584,
+        "host_mem_free_bytes": 5542191104,
+        "host_swap_free_bytes": 85617324032,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_after": {
+        "rss_bytes": 694902784,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 174866432,
+        "host_mem_available_bytes": 40421904384,
+        "host_mem_free_bytes": 5543333888,
+        "host_swap_free_bytes": 85617324032,
+        "process_read_bytes": 81906429952,
+        "minor_faults": 20263630,
+        "major_faults": 18673
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528521887302870,
+          4528523653777361
+        ],
+        "decode": [
+          4528523653784544,
+          4528529907993687
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "b7a7dfa527c2abecc09bc05e110afab9b6652f6248a6466759b4721e3b8d1010",
+      "repetition": 0,
+      "prefill_ms": 3240.830096,
+      "prefill_tok_s": 315.9684308239033,
+      "decode_ms": 6577.38448,
+      "prefill_host_enqueue_ms": 3240.791594,
+      "prefill_device_drain_ms": 0.038502,
+      "decode_host_enqueue_ms": 6577.380392,
+      "decode_device_drain_ms": 0.004088,
+      "decode_host_enqueue_ms_per_step": 51.3857843125,
+      "decode_device_drain_ms_per_step": 3.19375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.46062304692883,
+      "client_wall_s": 9.818214576,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc",
+      "memory_before": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40412712960,
+        "host_mem_free_bytes": 5531521024,
+        "host_swap_free_bytes": 85618761728,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_after": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40422395904,
+        "host_mem_free_bytes": 5541183488,
+        "host_swap_free_bytes": 85618761728,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528549529444467,
+          4528552770274563
+        ],
+        "decode": [
+          4528552770281576,
+          4528559347666056
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "b7a7dfa527c2abecc09bc05e110afab9b6652f6248a6466759b4721e3b8d1010",
+      "repetition": 0,
+      "prefill_ms": 3236.623441,
+      "prefill_tok_s": 316.37909650794,
+      "decode_ms": 6615.863737,
+      "prefill_host_enqueue_ms": 3236.597482,
+      "prefill_device_drain_ms": 0.025959,
+      "decode_host_enqueue_ms": 6615.85985,
+      "decode_device_drain_ms": 0.003887,
+      "decode_host_enqueue_ms_per_step": 51.686405078125,
+      "decode_device_drain_ms_per_step": 3.03671875e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.34743596427854,
+      "client_wall_s": 9.852487177999999,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc",
+      "memory_before": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40422395904,
+        "host_mem_free_bytes": 5541183488,
+        "host_swap_free_bytes": 85618761728,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_after": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40427376640,
+        "host_mem_free_bytes": 5546135552,
+        "host_swap_free_bytes": 85618769920,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528559352695132,
+          4528562589318573
+        ],
+        "decode": [
+          4528562589326638,
+          4528569205190375
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "b7a7dfa527c2abecc09bc05e110afab9b6652f6248a6466759b4721e3b8d1010",
+      "repetition": 1,
+      "prefill_ms": 3239.845705,
+      "prefill_tok_s": 316.0644343092258,
+      "decode_ms": 6633.826728,
+      "prefill_host_enqueue_ms": 3239.823513,
+      "prefill_device_drain_ms": 0.022192,
+      "decode_host_enqueue_ms": 6633.822691,
+      "decode_device_drain_ms": 0.004037,
+      "decode_host_enqueue_ms_per_step": 51.8267397734375,
+      "decode_device_drain_ms_per_step": 3.15390625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.29504722511649,
+      "client_wall_s": 9.873672433,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc",
+      "memory_before": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40427376640,
+        "host_mem_free_bytes": 5546135552,
+        "host_swap_free_bytes": 85618769920,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_after": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40425627648,
+        "host_mem_free_bytes": 5544361984,
+        "host_swap_free_bytes": 85618769920,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528569209996363,
+          4528572449842068
+        ],
+        "decode": [
+          4528572449850063,
+          4528579083676791
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "b7a7dfa527c2abecc09bc05e110afab9b6652f6248a6466759b4721e3b8d1010",
+      "repetition": 1,
+      "prefill_ms": 3257.774754,
+      "prefill_tok_s": 314.32498478990914,
+      "decode_ms": 6669.599938,
+      "prefill_host_enqueue_ms": 3257.750769,
+      "prefill_device_drain_ms": 0.023985,
+      "decode_host_enqueue_ms": 6669.59586,
+      "decode_device_drain_ms": 0.004078,
+      "decode_host_enqueue_ms_per_step": 52.10621765625,
+      "decode_device_drain_ms_per_step": 3.1859375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.191555893888157,
+      "client_wall_s": 9.927374692,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc",
+      "memory_before": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40425627648,
+        "host_mem_free_bytes": 5544361984,
+        "host_swap_free_bytes": 85618769920,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_after": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40414134272,
+        "host_mem_free_bytes": 5532590080,
+        "host_swap_free_bytes": 85618782208,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528579088578449,
+          4528582346353203
+        ],
+        "decode": [
+          4528582346361429,
+          4528589015961367
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "b7a7dfa527c2abecc09bc05e110afab9b6652f6248a6466759b4721e3b8d1010",
+      "repetition": 2,
+      "prefill_ms": 3251.665228,
+      "prefill_tok_s": 314.91556731682095,
+      "decode_ms": 6689.082982,
+      "prefill_host_enqueue_ms": 3251.626346,
+      "prefill_device_drain_ms": 0.038882,
+      "decode_host_enqueue_ms": 6689.078844,
+      "decode_device_drain_ms": 0.004138,
+      "decode_host_enqueue_ms_per_step": 52.25842846875,
+      "decode_device_drain_ms_per_step": 3.2328125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.13565736057421,
+      "client_wall_s": 9.940748209999999,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc",
+      "memory_before": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40414134272,
+        "host_mem_free_bytes": 5532590080,
+        "host_swap_free_bytes": 85618782208,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_after": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40409104384,
+        "host_mem_free_bytes": 5527535616,
+        "host_swap_free_bytes": 85618782208,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528589021038654,
+          4528592272703882
+        ],
+        "decode": [
+          4528592272711397,
+          4528598961794379
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 1024,
+      "prompt_token_ids_sha256": "b7a7dfa527c2abecc09bc05e110afab9b6652f6248a6466759b4721e3b8d1010",
+      "repetition": 2,
+      "prefill_ms": 3232.933297,
+      "prefill_tok_s": 316.7402188440512,
+      "decode_ms": 6724.140088,
+      "prefill_host_enqueue_ms": 3232.894554,
+      "prefill_device_drain_ms": 0.038743,
+      "decode_host_enqueue_ms": 6724.134157,
+      "decode_device_drain_ms": 0.005931,
+      "decode_host_enqueue_ms_per_step": 52.5322981015625,
+      "decode_device_drain_ms_per_step": 4.63359375e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 19.03589132957398,
+      "client_wall_s": 9.957073385,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc",
+      "memory_before": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40409104384,
+        "host_mem_free_bytes": 5527535616,
+        "host_swap_free_bytes": 85618782208,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_after": {
+        "rss_bytes": 697495552,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 177459200,
+        "host_mem_available_bytes": 40421531648,
+        "host_mem_free_bytes": 5539938304,
+        "host_swap_free_bytes": 85618819072,
+        "process_read_bytes": 81909022720,
+        "minor_faults": 20263630,
+        "major_faults": 19306
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 0,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528598966941136,
+          4528602199874433
+        ],
+        "decode": [
+          4528602199881797,
+          4528608924021885
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "d74cef6a5d25af32dfaa5dce89652944fd30b6ef8dfd783d4d83bbf37ff4da51",
+      "repetition": 0,
+      "prefill_ms": 12641.5373,
+      "prefill_tok_s": 324.01122607137347,
+      "decode_ms": 11798.588106,
+      "prefill_host_enqueue_ms": 12641.515068,
+      "prefill_device_drain_ms": 0.022232,
+      "decode_host_enqueue_ms": 11798.577777,
+      "decode_device_drain_ms": 0.010329,
+      "decode_host_enqueue_ms_per_step": 92.1763888828125,
+      "decode_device_drain_ms_per_step": 8.06953125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.848755702803752,
+      "client_wall_s": 24.440125406,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f",
+      "memory_before": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40416485376,
+        "host_mem_free_bytes": 5532999680,
+        "host_swap_free_bytes": 85618843648,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20264778,
+        "major_faults": 19748
+      },
+      "memory_after": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40407027712,
+        "host_mem_free_bytes": 5522112512,
+        "host_swap_free_bytes": 85618864128,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20265352,
+        "major_faults": 19748
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528655166439679,
+          4528667807976979
+        ],
+        "decode": [
+          4528667807985435,
+          4528679606573541
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 0,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "d74cef6a5d25af32dfaa5dce89652944fd30b6ef8dfd783d4d83bbf37ff4da51",
+      "repetition": 0,
+      "prefill_ms": 12660.25335,
+      "prefill_tok_s": 323.53223010343623,
+      "decode_ms": 11999.146047,
+      "prefill_host_enqueue_ms": 12660.2106,
+      "prefill_device_drain_ms": 0.04275,
+      "decode_host_enqueue_ms": 11999.134826,
+      "decode_device_drain_ms": 0.011221,
+      "decode_host_enqueue_ms_per_step": 93.743240828125,
+      "decode_device_drain_ms_per_step": 8.76640625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.667425790021305,
+      "client_wall_s": 24.659399397,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f",
+      "memory_before": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40407027712,
+        "host_mem_free_bytes": 5522112512,
+        "host_swap_free_bytes": 85618864128,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20265352,
+        "major_faults": 19748
+      },
+      "memory_after": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40411594752,
+        "host_mem_free_bytes": 5523845120,
+        "host_swap_free_bytes": 85619163136,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20265926,
+        "major_faults": 19748
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528679614191456,
+          4528692274444806
+        ],
+        "decode": [
+          4528692274453462,
+          4528704273599509
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 1,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "d74cef6a5d25af32dfaa5dce89652944fd30b6ef8dfd783d4d83bbf37ff4da51",
+      "repetition": 1,
+      "prefill_ms": 12657.254655,
+      "prefill_tok_s": 323.6088797804155,
+      "decode_ms": 12035.440943,
+      "prefill_host_enqueue_ms": 12657.232102,
+      "prefill_device_drain_ms": 0.022553,
+      "decode_host_enqueue_ms": 12035.430955,
+      "decode_device_drain_ms": 0.009988,
+      "decode_host_enqueue_ms_per_step": 94.0268043359375,
+      "decode_device_drain_ms_per_step": 7.803125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.635256373755611,
+      "client_wall_s": 24.692695597999997,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f",
+      "memory_before": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40411594752,
+        "host_mem_free_bytes": 5523845120,
+        "host_swap_free_bytes": 85619163136,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20265926,
+        "major_faults": 19748
+      },
+      "memory_after": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40409616384,
+        "host_mem_free_bytes": 5521698816,
+        "host_swap_free_bytes": 85619163136,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20266500,
+        "major_faults": 19748
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528704281834491,
+          4528716939089146
+        ],
+        "decode": [
+          4528716939097141,
+          4528728974538084
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 2,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "d74cef6a5d25af32dfaa5dce89652944fd30b6ef8dfd783d4d83bbf37ff4da51",
+      "repetition": 1,
+      "prefill_ms": 12606.05697,
+      "prefill_tok_s": 324.92317064310396,
+      "decode_ms": 12140.587575,
+      "prefill_host_enqueue_ms": 12606.020021,
+      "prefill_device_drain_ms": 0.036949,
+      "decode_host_enqueue_ms": 12140.577175,
+      "decode_device_drain_ms": 0.0104,
+      "decode_host_enqueue_ms_per_step": 94.8482591796875,
+      "decode_device_drain_ms_per_step": 8.125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.543147043688288,
+      "client_wall_s": 24.746644545,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f",
+      "memory_before": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40409616384,
+        "host_mem_free_bytes": 5521698816,
+        "host_swap_free_bytes": 85619163136,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20266500,
+        "major_faults": 19748
+      },
+      "memory_after": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40413036544,
+        "host_mem_free_bytes": 5524373504,
+        "host_swap_free_bytes": 85619191808,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20267074,
+        "major_faults": 19748
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528728982119079,
+          4528741588176049
+        ],
+        "decode": [
+          4528741588183623,
+          4528753728771198
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 3,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "d74cef6a5d25af32dfaa5dce89652944fd30b6ef8dfd783d4d83bbf37ff4da51",
+      "repetition": 2,
+      "prefill_ms": 12613.858712,
+      "prefill_tok_s": 324.72220384895655,
+      "decode_ms": 12151.859274,
+      "prefill_host_enqueue_ms": 12613.816733,
+      "prefill_device_drain_ms": 0.041979,
+      "decode_host_enqueue_ms": 12151.847622,
+      "decode_device_drain_ms": 0.011652,
+      "decode_host_enqueue_ms_per_step": 94.936309546875,
+      "decode_device_drain_ms_per_step": 9.103125e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.533367537745237,
+      "client_wall_s": 24.765717986,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f",
+      "memory_before": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40412008448,
+        "host_mem_free_bytes": 5523345408,
+        "host_swap_free_bytes": 85619191808,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20267074,
+        "major_faults": 19748
+      },
+      "memory_after": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40411205632,
+        "host_mem_free_bytes": 5522481152,
+        "host_swap_free_bytes": 85619200000,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20267648,
+        "major_faults": 19748
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528753736798130,
+          4528766350656842
+        ],
+        "decode": [
+          4528766350664386,
+          4528778502523660
+        ]
+      },
+      "candidate_calls": 70,
+      "mode": "after",
+      "sequence_slot": 4,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "prompt_token_ids_sha256": "d74cef6a5d25af32dfaa5dce89652944fd30b6ef8dfd783d4d83bbf37ff4da51",
+      "repetition": 2,
+      "prefill_ms": 12659.79456,
+      "prefill_tok_s": 323.5439548870531,
+      "decode_ms": 12154.678223,
+      "prefill_host_enqueue_ms": 12659.774613,
+      "prefill_device_drain_ms": 0.019947,
+      "decode_host_enqueue_ms": 12154.669186,
+      "decode_device_drain_ms": 0.009037,
+      "decode_host_enqueue_ms_per_step": 94.958353015625,
+      "decode_device_drain_ms_per_step": 7.06015625e-05,
+      "decode_transitions": 128,
+      "decode_tok_s": 10.530924607924932,
+      "client_wall_s": 24.814472783,
+      "output_token_count": 129,
+      "output_token_ids_sha256": "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f",
+      "memory_before": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40411205632,
+        "host_mem_free_bytes": 5522481152,
+        "host_swap_free_bytes": 85619200000,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20267648,
+        "major_faults": 19748
+      },
+      "memory_after": {
+        "rss_bytes": 699305984,
+        "rss_anon_bytes": 483201024,
+        "rss_file_bytes": 179269632,
+        "host_mem_available_bytes": 40411467776,
+        "host_mem_free_bytes": 5522112512,
+        "host_swap_free_bytes": 85619204096,
+        "process_read_bytes": 81910833152,
+        "minor_faults": 20268222,
+        "major_faults": 19748
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 574,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4528778510729057,
+          4528791170523617
+        ],
+        "decode": [
+          4528791170532033,
+          4528803325210256
+        ]
+      },
+      "candidate_calls": 0,
+      "mode": "before",
+      "sequence_slot": 5,
+      "case_sequence": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "measurement_stage": null
+    }
+  ],
+  "diagnostic_registry_substitution": true,
+  "route_package": "dense-wide-padded",
+  "diagnostic_subset": false,
+  "screen_only": false,
+  "summary": {
+    "correctness": {
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "mismatched_case_ids": []
+    },
+    "by_case": {
+      "code-p1024": {
+        "category": "code",
+        "prompt_tokens": 1024,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 317.19414948743986,
+        "after_prefill_tok_s_weighted": 319.02461371401824,
+        "after_over_before_prefill": 1.0057708007210608,
+        "before_decode_tok_s_weighted": 20.02696956890709,
+        "after_decode_tok_s_weighted": 20.002285045416805,
+        "after_over_before_decode": 0.9987674359115915,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b"
+          ],
+          "after": [
+            "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b"
+          ]
+        }
+      },
+      "code-p4096": {
+        "category": "code",
+        "prompt_tokens": 4096,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 326.2656675125345,
+        "after_prefill_tok_s_weighted": 327.7332309994499,
+        "after_over_before_prefill": 1.0044980628765026,
+        "before_decode_tok_s_weighted": 18.277280293906237,
+        "after_decode_tok_s_weighted": 18.239720801629733,
+        "after_over_before_decode": 0.9979450174384519,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+          ],
+          "after": [
+            "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+          ]
+        }
+      },
+      "code-p512": {
+        "category": "code",
+        "prompt_tokens": 512,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 291.6483699799089,
+        "after_prefill_tok_s_weighted": 294.5465472482944,
+        "after_over_before_prefill": 1.0099372311547126,
+        "before_decode_tok_s_weighted": 20.98554829282302,
+        "after_decode_tok_s_weighted": 20.984384299433636,
+        "after_over_before_decode": 0.9999445335726691,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898"
+          ],
+          "after": [
+            "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898"
+          ]
+        }
+      },
+      "general_en-p1024": {
+        "category": "general_en",
+        "prompt_tokens": 1024,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 319.64895129957574,
+        "after_prefill_tok_s_weighted": 321.0079458902486,
+        "after_over_before_prefill": 1.0042515221312245,
+        "before_decode_tok_s_weighted": 19.60332626522149,
+        "after_decode_tok_s_weighted": 19.57546924041891,
+        "after_over_before_decode": 0.998578964384631,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be"
+          ],
+          "after": [
+            "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be"
+          ]
+        }
+      },
+      "general_en-p4096": {
+        "category": "general_en",
+        "prompt_tokens": 4096,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 323.48049751937265,
+        "after_prefill_tok_s_weighted": 325.37058900633156,
+        "after_over_before_prefill": 1.0058429843574903,
+        "before_decode_tok_s_weighted": 10.710429204603125,
+        "after_decode_tok_s_weighted": 10.713935365310952,
+        "after_over_before_decode": 1.0003273594961368,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1"
+          ],
+          "after": [
+            "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1"
+          ]
+        }
+      },
+      "general_en-p512": {
+        "category": "general_en",
+        "prompt_tokens": 512,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 292.52384675395325,
+        "after_prefill_tok_s_weighted": 295.50345027866217,
+        "after_over_before_prefill": 1.0101858482915929,
+        "before_decode_tok_s_weighted": 20.716362381987306,
+        "after_decode_tok_s_weighted": 20.724888639943543,
+        "after_over_before_decode": 1.0004115711918444,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816"
+          ],
+          "after": [
+            "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816"
+          ]
+        }
+      },
+      "general_ja-p1024": {
+        "category": "general_ja",
+        "prompt_tokens": 1024,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 318.2373023450517,
+        "after_prefill_tok_s_weighted": 321.2808693841584,
+        "after_over_before_prefill": 1.0095638286796644,
+        "before_decode_tok_s_weighted": 19.24122087057461,
+        "after_decode_tok_s_weighted": 19.260132799238598,
+        "after_over_before_decode": 1.0009828861064065,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+          ],
+          "after": [
+            "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+          ]
+        }
+      },
+      "general_ja-p4096": {
+        "category": "general_ja",
+        "prompt_tokens": 4096,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 323.80849470013027,
+        "after_prefill_tok_s_weighted": 325.23726000814645,
+        "after_over_before_prefill": 1.0044123774743443,
+        "before_decode_tok_s_weighted": 10.653359136145728,
+        "after_decode_tok_s_weighted": 10.558175549007231,
+        "after_over_before_decode": 0.9910653920587781,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243"
+          ],
+          "after": [
+            "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243"
+          ]
+        }
+      },
+      "general_ja-p512": {
+        "category": "general_ja",
+        "prompt_tokens": 512,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 293.6300885330159,
+        "after_prefill_tok_s_weighted": 296.9257933548239,
+        "after_over_before_prefill": 1.0112240024115833,
+        "before_decode_tok_s_weighted": 20.1850627422792,
+        "after_decode_tok_s_weighted": 20.32140547103499,
+        "after_over_before_decode": 1.006754634875135,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3"
+          ],
+          "after": [
+            "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3"
+          ]
+        }
+      },
+      "mixed_ja_en-p1024": {
+        "category": "mixed_ja_en",
+        "prompt_tokens": 1024,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 315.0681955909612,
+        "after_prefill_tok_s_weighted": 316.3943422918637,
+        "after_over_before_prefill": 1.0042090782867346,
+        "before_decode_tok_s_weighted": 19.261572119283667,
+        "after_decode_tok_s_weighted": 19.225155584506776,
+        "after_over_before_decode": 0.9981093685109725,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc"
+          ],
+          "after": [
+            "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc"
+          ]
+        }
+      },
+      "mixed_ja_en-p4096": {
+        "category": "mixed_ja_en",
+        "prompt_tokens": 4096,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 323.56168474494706,
+        "after_prefill_tok_s_weighted": 324.55172826679234,
+        "after_over_before_prefill": 1.0030598292953805,
+        "before_decode_tok_s_weighted": 10.610881368822557,
+        "after_decode_tok_s_weighted": 10.639761383368178,
+        "after_over_before_decode": 1.0027217356920488,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f"
+          ],
+          "after": [
+            "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f"
+          ]
+        }
+      },
+      "mixed_ja_en-p512": {
+        "category": "mixed_ja_en",
+        "prompt_tokens": 512,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 288.57205563002435,
+        "after_prefill_tok_s_weighted": 291.4863147439008,
+        "after_over_before_prefill": 1.0100988957767025,
+        "before_decode_tok_s_weighted": 20.322823209426424,
+        "after_decode_tok_s_weighted": 20.193634684730313,
+        "after_over_before_decode": 0.9936431802134563,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241"
+          ],
+          "after": [
+            "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241"
+          ]
+        }
+      }
+    },
+    "by_shape": {
+      "512": {
+        "case_count": 4,
+        "samples_per_mode": 12,
+        "before_prefill_tok_s_weighted": 291.5814081510017,
+        "after_prefill_tok_s_weighted": 294.60196385340123,
+        "after_over_before_prefill": 1.010359219133873,
+        "before_decode_tok_s_weighted": 20.547571189216477,
+        "after_decode_tok_s_weighted": 20.55124632529995,
+        "after_over_before_decode": 1.0001788598783588
+      },
+      "1024": {
+        "case_count": 4,
+        "samples_per_mode": 12,
+        "before_prefill_tok_s_weighted": 317.5283472885515,
+        "after_prefill_tok_s_weighted": 319.4149285072629,
+        "after_over_before_prefill": 1.0059414576204655,
+        "before_decode_tok_s_weighted": 19.528102021245164,
+        "after_decode_tok_s_weighted": 19.510811520386056,
+        "after_over_before_decode": 0.9991145836476941
+      },
+      "4096": {
+        "case_count": 4,
+        "samples_per_mode": 12,
+        "before_prefill_tok_s_weighted": 324.27500066355594,
+        "after_prefill_tok_s_weighted": 325.71878603018155,
+        "after_over_before_prefill": 1.0044523486660126,
+        "before_decode_tok_s_weighted": 11.898045873574905,
+        "after_decode_tok_s_weighted": 11.874291994871134,
+        "after_over_before_decode": 0.998003547897178
+      }
+    },
+    "by_category": {
+      "code": {
+        "case_count": 3,
+        "samples_per_mode": 9,
+        "before_prefill_tok_s_weighted": 321.1306757961093,
+        "after_prefill_tok_s_weighted": 322.82437266274354,
+        "after_over_before_prefill": 1.0052741671671055,
+        "before_decode_tok_s_weighted": 19.698321164477502,
+        "after_decode_tok_s_weighted": 19.675463413390034,
+        "after_over_before_decode": 0.9988396091780305
+      },
+      "general_en": {
+        "case_count": 3,
+        "samples_per_mode": 9,
+        "before_prefill_tok_s_weighted": 319.7079570203936,
+        "after_prefill_tok_s_weighted": 321.6206977532645,
+        "after_over_before_prefill": 1.0059827748758499,
+        "before_decode_tok_s_weighted": 15.572304476352931,
+        "after_decode_tok_s_weighted": 15.570511878140236,
+        "after_over_before_decode": 0.999884885489144
+      },
+      "general_ja": {
+        "case_count": 3,
+        "samples_per_mode": 9,
+        "before_prefill_tok_s_weighted": 319.8025384374754,
+        "after_prefill_tok_s_weighted": 321.72815679227347,
+        "after_over_before_prefill": 1.0060212728898479,
+        "before_decode_tok_s_weighted": 15.354658378654918,
+        "after_decode_tok_s_weighted": 15.318373235341964,
+        "after_over_before_decode": 0.9976368641738461
+      },
+      "mixed_ja_en": {
+        "case_count": 3,
+        "samples_per_mode": 9,
+        "before_prefill_tok_s_weighted": 318.4899873720782,
+        "after_prefill_tok_s_weighted": 319.75534138674396,
+        "after_over_before_prefill": 1.0039729789470195,
+        "before_decode_tok_s_weighted": 15.355834436510287,
+        "after_decode_tok_s_weighted": 15.343478411673212,
+        "after_over_before_decode": 0.9991953530830147
+      }
+    }
+  },
+  "memory_before_close": {
+    "current_allocated_bytes": 89404925864,
+    "peak_allocated_bytes": 89404925864,
+    "total_allocated_bytes": 90191357896,
+    "total_freed_bytes": 786432032,
+    "active_allocations": 1622,
+    "peak_allocations": 1622
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 89404925864,
+    "total_allocated_bytes": 90191357896,
+    "total_freed_bytes": 90191357896,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  },
+  "raw_capture_sha256": "661a9d956463e223da64235cad9a795691ac023bdc91e3c440e661f8520082e6",
+  "compaction": "untimed warmup payloads and duplicated per-arm aggregates omitted; all measured samples and original summary retained"
+}
