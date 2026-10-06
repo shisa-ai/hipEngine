@@ -22,10 +22,20 @@ Final p1024/p4096 medians and both order strata improve, but p512 has a
 pooled shared-expert loss and a QKV order-stratum loss. Outputs, final F16
 bytes, input/weight immutability and teardown pass. Shared-expert timings
 vary substantially between runs; both are preserved. This is sampled
-operation wall, not model throughput. No runtime default changes; native
-ordered-consumer ownership, state/KV/engagement and clean engine qualification
-are pending for exactly1024/4096 rows.
-[Protocol and samples](results/2026-10-06-qwen4exp-dp2-shared-cast/README.md).
+operation wall, not model throughput. The native ordered-consumer ownership
+check now passes exact state/KV/engagement validation; a tracked-clean engine
+A/B is still pending for any model-wall or production claim.
+[Operation protocol and samples](results/2026-10-06-qwen4exp-dp2-shared-cast/README.md).
+
+Native qualification now passes 28 canonical/heldout cases with 168 arm runs
+and 128 decode steps per run. Logits, Conv/GDN state, full KV, repeat bytes,
+parent isolation and teardown are exact. The route engages only the four
+qualified pair shapes at p1024/p4096, eliminating 61 casts per prefill; p512
+remains on the parent. This is correctness/engagement evidence, not a model
+throughput claim. The route remains default-off pending a tracked-clean
+same-host canonical/heldout engine A/B.
+[Native qualification artifact](results/2026-10-06-qwen4exp-dp2-shared-cast/native-qualification.json).
+
 
 ## Qwen3.8 Flash Next host-sized routed-grid diagnostic
 

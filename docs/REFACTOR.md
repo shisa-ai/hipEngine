@@ -1244,6 +1244,28 @@
 - Do not repeat unchanged bank/scale loop reorderings. Production
   raw-vector schedule remains; larger architectural work still open.
 
+## Qwen4Exp DP-2 two-consumer F16 ownership
+
+- `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` is a temporary, default-off opt-in for
+  one immediate ordered pair of Q8 dense-wide consumers. The existing bounded
+  runner workspace is borrowed once: the first consumer casts F32 to F16 and
+  the second consumes the same bytes. It is not a persistent activation cache,
+  adds no device allocation or synchronization, and does not change arithmetic.
+- gfx1151 registry policy admits only layers13–47, rows1024/4096, and the
+  measured `attn_qkv`→`attn_gate` and `shared_gate`→`shared_up` pairs. Exact
+  source/count/output/weight/key/stream/runtime/workspace/context checks and
+  mismatch, nesting, exception and context-lifecycle invalidation retain the
+  parent route. p512 and all unmeasured rows remain on the parent.
+- Native qualification passes 28 canonical/heldout cases, 168 arm runs and
+  128 decode steps per run. Logits, Conv/GDN state, full KV, repeat bytes,
+  parent isolation and teardown are exact; 61 casts are eliminated at p1024
+  and p4096, with zero elimination at p512. This is correctness and
+  engagement evidence, not a model-wall speed claim. Evidence:
+  `benchmarks/results/2026-10-06-qwen4exp-dp2-shared-cast/native-qualification.json`.
+- **Remove or promote when:** a tracked-clean same-host canonical/heldout engine
+  A/B measures the enabled route against the unchanged parent. Until that A/B
+  passes the applicable profile and task gates, keep the flag default-off and
+  keep DP-5's separately qualified single-use publication contract unchanged.
 ## Qwen4Exp wide-F16 activation hoist: opt-in runner integration
 
 - `qwen4_exp_runner.py` now binds a lazy, runner-owned staging buffer during

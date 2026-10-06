@@ -163,7 +163,9 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
+    WIDE_F16_PAIR_ENV,
     _q8_dense_wide_enabled,
+    wide_f16_activation_pair,
     wide_f16_activation_enabled,
     wide_f16_activation_publication,
     wide_f16_activation_session,
@@ -203,6 +205,27 @@ from hipengine.loading.qwen4_exp_gguf import Qwen4ExpGGUFConfig
 from hipengine.loading.qwen4_exp_scratch import qwen4_exp_wide_f16_activation_nbytes
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 from hipengine.runtime.moe_graph import MoeGraphCache
+
+
+def _launch_qwen4_exp_dense_pair(
+    weight_a, weight_b, x_ptr, out_a_ptr, out_b_ptr, rows, in_features,
+    out_features_a, out_features_b, *, stream=0, runtime=None,
+) -> None:
+    """Keep normal dispatch; optionally loan staging to this immediate pair."""
+    scope = (
+        wide_f16_activation_pair(weight_a, weight_b, x_ptr, out_a_ptr, out_b_ptr,
+            rows=rows, in_features=in_features, out_features_a=out_features_a,
+            out_features_b=out_features_b, stream=stream, runtime=runtime)
+        if rows > 1 and os.environ.get(WIDE_F16_PAIR_ENV, "0").strip().lower()
+            in {"1", "true", "yes", "on"}
+        else contextlib.nullcontext()
+    )
+    with scope:
+        for weight, output, n in ((weight_a, out_a_ptr, out_features_a),
+                                  (weight_b, out_b_ptr, out_features_b)):
+            launch_gguf_linear(weight, x_ptr, output, rows, in_features, n,
+                activation_dtype=GGUF_ACTIVATION_F32, output_dtype=GGUF_OUTPUT_F32,
+                stream=stream, runtime=runtime)
 
 
 def _qwen4_exp_layer_allowed(
@@ -5332,17 +5355,11 @@ def run_qwen4_exp_moe(
                     stream=stream,
                     runtime=active_runtime,
                 )
-    for slot, output in (
-        ("shared_gate", scratch.shared_gate),
-        ("shared_up", scratch.shared_up),
-    ):
-        launch_gguf_linear(
-            weights[slot], mixed_ptr, output.ptr,
-            rows, hidden, ffn,
-            activation_dtype=GGUF_ACTIVATION_F32,
-            output_dtype=GGUF_OUTPUT_F32,
-            stream=stream, runtime=active_runtime,
-        )
+    _launch_qwen4_exp_dense_pair(
+        weights["shared_gate"], weights["shared_up"], mixed_ptr,
+        scratch.shared_gate.ptr, scratch.shared_up.ptr, rows, hidden, ffn, ffn,
+        stream=stream, runtime=active_runtime,
+    )
     qwen4_exp_silu_mul_f32(
         scratch.shared_gate.ptr,
         scratch.shared_up.ptr,
@@ -6038,9 +6055,12 @@ def run_qwen4_exp_gdn_token_mixer(
     missing = sorted(required - set(weights))
     if missing:
         raise ValueError("missing Qwen4Exp GDN weights: " + ", ".join(missing))
+    _launch_qwen4_exp_dense_pair(
+        weights["attn_qkv"], weights["attn_gate"], mixed_ptr,
+        scratch.qkv.ptr, scratch.gate.ptr, rows, hidden, qkv_width, core_width,
+        stream=stream, runtime=active_runtime,
+    )
     for slot, output, out_features in (
-        ("attn_qkv", scratch.qkv, qkv_width),
-        ("attn_gate", scratch.gate, core_width),
         ("ssm_alpha", scratch.alpha, num_v_heads),
         ("ssm_beta", scratch.beta, num_v_heads),
     ):
