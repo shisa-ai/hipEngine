@@ -25,9 +25,12 @@ whose tensors they cannot fails inside the dispatch that could not serve it.
 from __future__ import annotations
 
 import contextlib
+import ctypes
+import json
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
 import numpy as np
@@ -1284,6 +1287,189 @@ class Gemma4Runner:
                 capacity=self.capacity,
                 write_offset=target,
             )
+
+    # --- cross-process KV state -----------------------------------------
+
+    # The save/restore file schema this runner writes and accepts. Class
+    # attributes, deliberately not dataclass fields: they are format constants,
+    # not per-runner state.
+    KV_STATE_SCHEMA = 1
+    _KV_STATE_CHUNK_BYTES = 16 * 1024 * 1024
+
+    def save_kv_state(
+        self,
+        path: str | Path,
+        *,
+        identity: Mapping[str, Any] | None = None,
+        logits: np.ndarray | None = None,
+    ) -> dict[str, Any]:
+        """Serialize the live KV prefix to ``path`` for a later restore.
+
+        The BF16 key and value planes of every layer are copied out up to the
+        current position -- exactly the bytes a continuation's attention would
+        read -- under a JSON header carrying the position, the per-layer plane
+        sizes and the caller's ``identity`` mapping. ``logits``, the last
+        row's FP32 logits, is stored alongside when given, so a restored
+        caller can sample its first token without re-running the prefill.
+
+        The file is a checkpoint of device bytes, not an engine input:
+        :meth:`restore_kv_state` validates the capacity, the plane sizes and
+        the identity, and refuses a mismatch rather than guessing.
+        """
+        if self._closed:
+            raise RuntimeError("runner is closed")
+        if self._int8_kv is not None:
+            raise NotImplementedError(
+                "save_kv_state requires the BF16 KV route; this runner holds "
+                "an int8_per_token_head cache"
+            )
+        from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
+
+        runtime = get_hip_runtime()
+        runtime.device_synchronize()
+        position = int(self._position)
+        if not 0 <= position <= self.capacity:
+            raise RuntimeError(
+                f"position {position} is outside capacity {self.capacity}"
+            )
+        if logits is not None:
+            logits = np.ascontiguousarray(logits, dtype=np.float32)
+
+        header = {
+            "schema": self.KV_STATE_SCHEMA,
+            "kind": "gemma4_kv_state",
+            "capacity": int(self.capacity),
+            "position": position,
+            "plane_bytes": [int(cache.nbytes) for cache in self._caches],
+            "identity": dict(identity) if identity is not None else None,
+            "logits": None if logits is None else int(logits.size),
+        }
+
+        chunk = np.empty(self._KV_STATE_CHUNK_BYTES, dtype=np.uint8)
+        chunk_ptr = host_array_ptr(chunk)
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("wb") as handle:
+            handle.write(json.dumps(header).encode("utf-8") + b"\n")
+            for cache in self._caches:
+                per_position = int(cache.nbytes) // int(self.capacity)
+                remaining = position * per_position
+                done = 0
+                while remaining > 0:
+                    take = min(self._KV_STATE_CHUNK_BYTES, remaining)
+                    runtime.memcpy(
+                        chunk_ptr, cache.ptr + done, take, HipMemcpyKind.DEVICE_TO_HOST
+                    )
+                    handle.write(memoryview(chunk)[:take])
+                    done += take
+                    remaining -= take
+            if logits is not None:
+                handle.write(logits.tobytes())
+        return header
+
+    def restore_kv_state(
+        self,
+        path: str | Path,
+        *,
+        identity: Mapping[str, Any] | None = None,
+    ) -> np.ndarray | None:
+        """Restore a KV prefix saved by :meth:`save_kv_state`.
+
+        Returns the saved last-row logits when the file carries them. The
+        planes are copied into this runner's own caches and the position is
+        set to the saved one, so the next :meth:`forward` decodes from exactly
+        the cached prefix without the prefill that produced it.
+
+        The saved capacity, the per-layer plane sizes and -- when ``identity``
+        is given -- the saved identity must match this runner. A file whose
+        identity is null while the caller passes one is also a mismatch: the
+        caller knows something the file does not. Every mismatch raises
+        ``ValueError`` naming it; nothing is partially restored, because the
+        validation runs before the first byte lands in a cache.
+        """
+        if self._closed:
+            raise RuntimeError("runner is closed")
+        if self._int8_kv is not None:
+            raise NotImplementedError(
+                "restore_kv_state requires the BF16 KV route; this runner "
+                "holds an int8_per_token_head cache"
+            )
+        from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
+
+        runtime = get_hip_runtime()
+        path = Path(path)
+        with path.open("rb") as handle:
+            header = json.loads(handle.readline().decode("utf-8"))
+            if header.get("schema") != self.KV_STATE_SCHEMA:
+                raise ValueError(
+                    f"kv state schema {header.get('schema')!r} is not "
+                    f"{self.KV_STATE_SCHEMA}"
+                )
+            if header.get("kind") != "gemma4_kv_state":
+                raise ValueError(f"kv state kind {header.get('kind')!r} is unrecognized")
+            if int(header["capacity"]) != int(self.capacity):
+                raise ValueError(
+                    f"kv state capacity {header['capacity']} does not match this "
+                    f"runner's capacity {self.capacity}"
+                )
+            planes = [int(cache.nbytes) for cache in self._caches]
+            if [int(size) for size in header["plane_bytes"]] != planes:
+                raise ValueError(
+                    f"kv state plane sizes {header['plane_bytes']} do not match "
+                    f"this runner's {planes}"
+                )
+            saved_identity = header.get("identity")
+            if identity is not None and saved_identity != dict(identity):
+                raise ValueError(
+                    f"kv state identity mismatch: file has {saved_identity!r}, "
+                    f"caller asked for {dict(identity)!r}"
+                )
+            position = int(header["position"])
+            if not 0 <= position <= self.capacity:
+                raise ValueError(
+                    f"kv state position {position} is outside this runner's "
+                    f"capacity {self.capacity}"
+                )
+
+            # Validation is done: rewind the exposed state, then land the bytes.
+            self.reset()
+            chunk = np.empty(self._KV_STATE_CHUNK_BYTES, dtype=np.uint8)
+            for cache in self._caches:
+                per_position = int(cache.nbytes) // int(self.capacity)
+                remaining = position * per_position
+                done = 0
+                while remaining > 0:
+                    take = min(self._KV_STATE_CHUNK_BYTES, remaining)
+                    data = handle.read(take)
+                    if len(data) != take:
+                        raise ValueError(
+                            f"kv state file {path} ends inside its planes"
+                        )
+                    runtime.memcpy(
+                        cache.ptr + done,
+                        ctypes.cast(data, ctypes.c_void_p).value or 0,
+                        take,
+                        HipMemcpyKind.HOST_TO_DEVICE,
+                    )
+                    done += take
+                    remaining -= take
+            logits = None
+            if header.get("logits") is not None:
+                raw = handle.read(int(header["logits"]) * 4)
+                if len(raw) != int(header["logits"]) * 4:
+                    raise ValueError(f"kv state file {path} ends inside its logits")
+                logits = np.frombuffer(raw, dtype=np.float32).copy()
+
+        for index in range(len(self._kv)):
+            entry = self._kv[index]
+            self._kv[index] = Gemma4LayerKV(
+                key_cache=entry.key_cache,
+                value_cache=entry.value_cache,
+                capacity=self.capacity,
+                write_offset=position,
+            )
+        self._position = position
+        return logits
 
     @property
     def normalized_hidden(self) -> DeviceBuffer:
