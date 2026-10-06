@@ -107,6 +107,7 @@ def _run_both(
     head_dim: int = SLIDING_HEAD_DIM,
     scale: float = 1.0,
     seed: int = 20260930,
+    value: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Run the strict kernel and the candidate on identical buffers."""
 
@@ -128,7 +129,11 @@ def _run_both(
     rng = np.random.default_rng(seed)
     query = _bf16(rng.standard_normal((tokens, num_heads, head_dim)).astype(np.float32))
     key = _bf16(rng.standard_normal((keys, num_kv_heads, head_dim)).astype(np.float32))
-    value = _bf16(rng.standard_normal((keys, num_kv_heads, head_dim)).astype(np.float32))
+    if value is None:
+        value = _bf16(rng.standard_normal((keys, num_kv_heads, head_dim)).astype(np.float32))
+    else:
+        value = np.ascontiguousarray(value, dtype=np.uint16)
+        assert value.shape == (keys, num_kv_heads, head_dim)
     out_strict = np.zeros((tokens, num_heads, head_dim), dtype=np.uint16)
     out_candidate = np.zeros_like(out_strict)
 
@@ -232,6 +237,45 @@ def test_chunked_prefill_matches_the_strict_kernel(tokens, keys, row_offset):
         tokens=tokens, keys=keys, mask=mask, window=SLIDING_WINDOW, row_offset=row_offset
     )
     _assert_matches(strict, candidate, context=f"chunked row_offset={row_offset}")
+
+
+def test_a_masked_out_of_range_value_cannot_poison_the_accumulator():
+    """A V beyond FP16 range that every row masks must not become inf.
+
+    The kernel stages V for every key of a batch, including keys the mask
+    hides: their weight is exactly zero, but ``0 * inf`` is NaN in the tensor
+    core, so an out-of-range masked V would poison the whole accumulator while
+    the strict kernel -- which never touches masked keys -- stays finite. The
+    staged operand is clamped to FP16's range instead, so a masked monster
+    value contributes exactly nothing and the visible columns decide.
+    """
+
+    tokens, keys = 128, 256
+    # window == 0 is the no-promise case, so the mask alone decides: hide one
+    # column from every row and put a BF16-representable 1e30 there.
+    mask = (np.ones((tokens, keys), dtype=np.uint8))
+    hidden = 17
+    mask[:, hidden] = 0
+    mask[-1, :] = 0
+
+    rng = np.random.default_rng(20261007)
+    value = _bf16(rng.standard_normal((keys, SLIDING_KV_HEADS, SLIDING_HEAD_DIM)).astype(np.float32))
+    huge = _bf16(np.full((SLIDING_KV_HEADS, SLIDING_HEAD_DIM), 1e30, dtype=np.float32))
+    value[hidden] = huge
+
+    strict, candidate = _run_both(
+        tokens=tokens, keys=keys, mask=mask, window=0, row_offset=0, value=value
+    )
+    # The fully masked row is 0/0 in both kernels and stays NaN in both; every
+    # visible row must be finite, because the masked out-of-range V
+    # contributes exactly nothing.
+    np.testing.assert_array_equal(
+        np.isnan(strict), np.isnan(candidate), err_msg="NaN placement differs"
+    )
+    assert np.isfinite(candidate[:-1]).all(), (
+        "the masked out-of-range V poisoned visible rows"
+    )
+    _assert_matches(strict, candidate, context="masked out-of-range V")
 
 
 @pytest.mark.parametrize("window", [1, 2, 4, 17])
