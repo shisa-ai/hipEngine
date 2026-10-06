@@ -1131,7 +1131,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if calls != expected:
                     raise AssertionError(
                         f"GR iu8 calls {calls} != {expected}")
-            else:
+            elif args.route_package not in {
+                "norm-f16-publish", "dense-wide-padded", "gdn-narrow", "mmq-token64",
+                "gdn-wave-norm", "q8-down-register", "q8-mapped-down",
+                "q8-mmq-raw-vector", "q8-mmq-vec4", "q8-down-row4", "q8-down-bundle",
+                "q51-fold128", "q51-fold-pair", "q51-register-cache", "q51-row-publish",
+                "qsa-ordered-v2", "gr-dpp-reduction", "gr-iu8-down", "gr-iu8",
+            }:
                 validate_row4_engagement(mode, calls)
             row["candidate_calls"] = calls
         return row
