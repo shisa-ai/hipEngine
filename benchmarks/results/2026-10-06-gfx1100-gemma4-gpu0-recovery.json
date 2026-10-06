@@ -1,0 +1,465 @@
+{
+  "kind": "gemma4_gpu0_recovery",
+  "schema": 1,
+  "date": "2026-10-06",
+  "status": "recovery_validated",
+  "performance_claim": false,
+  "retained_benchmark": false,
+  "default_promotion": false,
+  "production_unchanged": true,
+  "base_commit": "ce4a3b3d5d20b5c9a88211d7a5bd41290fa872c8",
+  "git_dirty": true,
+  "summary": "Recovered GPU0 (AMD Radeon Pro W7900, gfx1100, PCI 0000:0d:00.0) after an unrelated Qwen3.8-27B server (PID 3897695) was stopped, then ran the Gemma 4 26B-A4B UD-Q4_K_XL production profile on the recovered device: a 512p/8o smoke, a 32K-prompt/128-output decode row, a 64K-prompt/128-output decode row, and tier-1 allocation-only capacity probes at 131328 and 262400 slots. The 32K/64K rows and capacity probes ran single-tenant under a 24G/2G cgroup; the 512p/8o smoke did not use that cgroup. Performance rows passed public-path parity, while capacity probes report no public telemetry. A separate CPU-only repair of the out-of-tree sliding-attention capture diagnostic closed five reviewed defects. This artifact records recovery, decode, capacity, and test evidence; it is not a retained performance claim and does not change any production default.",
+  "hardware": {
+    "host": "epyc",
+    "gpu_device0": "AMD Radeon Pro W7900",
+    "gpu_device1": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "pci": "0000:0d:00.0",
+    "python": "3.11.11",
+    "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+    "hipcc": [
+      "HIP version: 7.2.53211-3d9ef42",
+      "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+    ],
+    "env": {
+      "HIPENGINE_EXECUTION_PROFILE": "production",
+      "HIP_INCLUDE_PATH": "/opt/rocm/include",
+      "HIP_LIB_PATH": "/opt/rocm/lib",
+      "HIP_PATH": "/opt/rocm",
+      "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+      "ROCR_VISIBLE_DEVICES": "0"
+    },
+    "rocm_smi_clock_power": [
+      "============================ ROCm System Management Interface ============================",
+      "====================================== Temperature =======================================",
+      "GPU[0]\t\t: Temperature (Sensor edge) (C): 34.0",
+      "GPU[0]\t\t: Temperature (Sensor junction) (C): 40.0",
+      "GPU[0]\t\t: Temperature (Sensor memory) (C): 46.0",
+      "GPU[1]\t\t: Temperature (Sensor edge) (C): 31.0",
+      "GPU[1]\t\t: Temperature (Sensor junction) (C): 39.0",
+      "GPU[1]\t\t: Temperature (Sensor memory) (C): 46.0",
+      "==========================================================================================",
+      "=============================== Current clock frequencies ================================",
+      "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+      "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+      "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+      "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+      "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+      "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+      "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+      "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+      "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+      "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+      "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+      "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+      "==========================================================================================",
+      "=================================== Power Consumption ====================================",
+      "GPU[0]\t\t: Average Graphics Package Power (W): 15.0",
+      "GPU[1]\t\t: Average Graphics Package Power (W): 5.0",
+      "==========================================================================================",
+      "================================== End of ROCm SMI Log ==================================="
+    ]
+  },
+  "artifact": {
+    "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "bytes": 17010980576,
+    "mtime": "2026-09-22T10:30:20.793299+00:00",
+    "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+  },
+  "execution_profile": {
+    "resolved_backend": "hip_gfx1100",
+    "resolved_quant": "gguf_q4_k_m",
+    "resolved_execution_profile": "production",
+    "manifest_sha256": "e4c4dc051f4c47143a26a22673433dd9ecf5f638d41b006bbf40097674ad80ba",
+    "fell_back_to_strict": false,
+    "generator_type": "SubmitPollTextGenerator"
+  },
+  "recovery": {
+    "competing_process": {
+      "pid": 3897695,
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python3 /home/lhl/hipEngine-main/.venv/bin/hipengine serve --model /mnt/nvme1/models/qwen38-27b/Qwen3.8-27B-Q4_K_M.gguf --served-model-name qwen3.8-27b --speculative-mtp-serving off --host 127.0.0.1 --port 8000 --metrics prometheus",
+      "vram_bytes_at_stop": 24462741504
+    },
+    "stop_command": "kill -TERM 3897695 && for i in 1 2 3 4 5; do if ! kill -0 3897695 2>/dev/null; then break; fi; sleep 1; done; ps -p 3897695 -o pid,stat,cmd || true; rocm-smi --showpids 2>/dev/null || true",
+    "device_check_command": "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip library: OK')\" && rocminfo | grep -E 'Name:|gfx'",
+    "device_after_stop": {
+      "hip_library": "OK",
+      "rocminfo_device0": "gfx1100 / AMD Radeon Pro W7900",
+      "rocminfo_device1": "gfx1100 / AMD Radeon RX 7900 XTX",
+      "kfd_pids": "No KFD PIDs currently running",
+      "vram_idle_mb": 28
+    },
+    "note": "The kill returned before the KFD entry cleared; a follow-up rocm-smi showed no KFD PIDs. No crash-cause inference is made about the prior process."
+  },
+  "measurements": {
+    "smoke_512p8o": {
+      "label": "512 prompt / 8 output",
+      "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 512 --output 8 --context 640 --warmup 0 --samples 1 --expect-gpu W7900 --out /tmp/gemma-llamacpp-512-256k/gpu0-recovery-smoke.json",
+      "workload": {
+        "prompt_tokens": 512,
+        "output_tokens": 8,
+        "samples": 1,
+        "warmups": 0,
+        "context": 640,
+        "decode_forwards_per_sample": 7,
+        "eos": "ignored (fixed-length row)"
+      },
+      "prompt_ids_sha256": "fba226ff8653b8b10e532f12d1d9b8fa364e57f552f51fab8c9079b23b0b268c",
+      "stats": {
+        "samples": 1,
+        "prefill_s": 0.5175620308145881,
+        "prefill_tps": 989.253402522913,
+        "first_token_s": 0.5176940429955721,
+        "decode_s": 0.12711891625076532,
+        "decode_tps": 55.066548759676486,
+        "decode_tps_min": 55.066548759676486,
+        "decode_tps_max": 55.066548759676486,
+        "decode_tps_stdev": null,
+        "wall_s": 0.6448256373405457,
+        "decode_forwards_per_sample": 7
+      },
+      "per_sample_decode_tps": [
+        55.0665
+      ],
+      "correctness": {
+        "instrumented_finite_logits": true,
+        "public_finite_logits": null,
+        "all_replays_and_public_ids_equal": true
+      },
+      "public": {
+        "public_wall_s": 0.5299911089241505,
+        "public_tps": 15.094592843716777,
+        "public_path_parity": true,
+        "public_generated_equals_expected": true,
+        "public_path_first_divergence": null
+      },
+      "memory": {
+        "total_bytes": 48301604864,
+        "used_bytes": {
+          "before_load": 37748736,
+          "after_load": 19985858560,
+          "after_runs": 25139224576
+        },
+        "peak_used_bytes": 25139224576,
+        "labels": [
+          "before_load",
+          "after_load",
+          "after_runs"
+        ]
+      },
+      "loading": {
+        "resolve_s": 0.9797746492549777,
+        "load_s": 41.644920939579606,
+        "context_length": 640,
+        "runner_capacity": 640,
+        "max_block": 640
+      },
+      "log": "/tmp/kendex-pi-bg/bg-145-1791301753183.log"
+    },
+    "decode_32768p128o": {
+      "label": "32768 prompt / 128 output",
+      "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 32768 --output 128 --context 33024 --warmup 1 --samples 3 --expect-gpu W7900 --out /tmp/gemma-llamacpp-512-256k/gpu0-current-p32768.json",
+      "workload": {
+        "prompt_tokens": 32768,
+        "output_tokens": 128,
+        "samples": 3,
+        "warmups": 1,
+        "context": 33024,
+        "decode_forwards_per_sample": 127,
+        "eos": "ignored (fixed-length row)"
+      },
+      "prompt_ids_sha256": "4c9f993372aa2f928bd77a633ba4ec927bbebc9c69eb8549587d74c2990dc358",
+      "stats": {
+        "samples": 3,
+        "prefill_s": 38.00257139559835,
+        "prefill_tps": 862.2574419739227,
+        "first_token_s": 38.00271395780146,
+        "decode_s": 3.488587842322886,
+        "decode_tps": 36.40441512157444,
+        "decode_tps_min": 36.35018568358557,
+        "decode_tps_max": 36.47592956475203,
+        "decode_tps_stdev": 0.06306963238938537,
+        "wall_s": 41.491369377821684,
+        "decode_forwards_per_sample": 127
+      },
+      "per_sample_decode_tps": [
+        36.4759,
+        36.4044,
+        36.3502
+      ],
+      "correctness": {
+        "instrumented_finite_logits": true,
+        "public_finite_logits": null,
+        "all_replays_and_public_ids_equal": true
+      },
+      "public": {
+        "public_wall_s": 41.904692301526666,
+        "public_tps": 3.0545505281120207,
+        "public_path_parity": true,
+        "public_generated_equals_expected": true,
+        "public_path_first_divergence": null
+      },
+      "memory": {
+        "total_bytes": 48301604864,
+        "used_bytes": {
+          "before_load": 37748736,
+          "after_load": 20982005760,
+          "after_runs": 29480992768
+        },
+        "peak_used_bytes": 29480992768,
+        "labels": [
+          "before_load",
+          "after_load",
+          "after_runs"
+        ]
+      },
+      "loading": {
+        "resolve_s": 0.9651721687987447,
+        "load_s": 25.71772520430386,
+        "context_length": 33024,
+        "runner_capacity": 33024,
+        "max_block": 1024
+      },
+      "log": "/tmp/kendex-pi-bg/bg-148-1791302525523.log"
+    },
+    "decode_65536p128o": {
+      "label": "65536 prompt / 128 output",
+      "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 65536 --output 128 --context 65792 --warmup 1 --samples 3 --expect-gpu W7900 --out /tmp/gemma-llamacpp-512-256k/gpu0-current-p65536.json",
+      "workload": {
+        "prompt_tokens": 65536,
+        "output_tokens": 128,
+        "samples": 3,
+        "warmups": 1,
+        "context": 65792,
+        "decode_forwards_per_sample": 127,
+        "eos": "ignored (fixed-length row)"
+      },
+      "prompt_ids_sha256": "9f80c975afcf0f5818755923d2073a7424b50f69b2bab0ffe2be5d2d74f484a1",
+      "stats": {
+        "samples": 3,
+        "prefill_s": 87.83876255899668,
+        "prefill_tps": 746.0942992677398,
+        "first_token_s": 87.83891566097736,
+        "decode_s": 5.458454659208655,
+        "decode_tps": 23.266658409582163,
+        "decode_tps_min": 20.902236364175312,
+        "decode_tps_max": 23.560731277804773,
+        "decode_tps_stdev": 1.4574272804285586,
+        "wall_s": 93.29547087103128,
+        "decode_forwards_per_sample": 127
+      },
+      "per_sample_decode_tps": [
+        20.9022,
+        23.5607,
+        23.2667
+      ],
+      "correctness": {
+        "instrumented_finite_logits": true,
+        "public_finite_logits": null,
+        "all_replays_and_public_ids_equal": true
+      },
+      "public": {
+        "public_wall_s": 93.12130904663354,
+        "public_tps": 1.3745511238023922,
+        "public_path_parity": true,
+        "public_generated_equals_expected": true,
+        "public_path_first_divergence": null
+      },
+      "memory": {
+        "total_bytes": 48301604864,
+        "used_bytes": {
+          "before_load": 37748736,
+          "after_load": 21653094400,
+          "after_runs": 30420516864
+        },
+        "peak_used_bytes": 30420516864,
+        "labels": [
+          "before_load",
+          "after_load",
+          "after_runs"
+        ]
+      },
+      "loading": {
+        "resolve_s": 0.9985079299658537,
+        "load_s": 32.98906779009849,
+        "context_length": 65792,
+        "runner_capacity": 65792,
+        "max_block": 1024
+      },
+      "log": "/tmp/kendex-pi-bg/bg-149-1791302996966.log"
+    }
+  },
+  "capacity": {
+    "probe_command": "systemd-run --user --scope --unit=hipengine-capacity-recovery --quiet -p MemoryMax=24G -p MemorySwapMax=2G env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_EXECUTION_PROFILE=production /bin/bash -c '.venv/bin/python /tmp/gemma-llamacpp-512-256k/bounded_capacity.py 131328 /tmp/gemma-llamacpp-512-256k/gpu0-capacity-128k-recovery.json && .venv/bin/python /tmp/gemma-llamacpp-512-256k/bounded_capacity.py 262400 /tmp/gemma-llamacpp-512-256k/gpu0-capacity-256k-recovery.json'",
+    "probe_script": "/tmp/gemma-llamacpp-512-256k/bounded_capacity.py",
+    "protocol": "tier-1 allocation probe",
+    "points": [
+      {
+        "label": "131328 slots",
+        "command": "systemd-run --user --scope --unit=hipengine-capacity-recovery --quiet -p MemoryMax=24G -p MemorySwapMax=2G env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_EXECUTION_PROFILE=production /bin/bash -c '.venv/bin/python /tmp/gemma-llamacpp-512-256k/bounded_capacity.py 131328 /tmp/gemma-llamacpp-512-256k/gpu0-capacity-128k-recovery.json && .venv/bin/python /tmp/gemma-llamacpp-512-256k/bounded_capacity.py 262400 /tmp/gemma-llamacpp-512-256k/gpu0-capacity-256k-recovery.json'",
+        "capacity": 131328,
+        "status": "pass",
+        "protocol_tier": 1,
+        "performance_claim": false,
+        "kv_storage": "bf16",
+        "prompt_tokens": 1024,
+        "finite_logits": true,
+        "memory": {
+          "current_allocated_bytes": 30126530550,
+          "peak_allocated_bytes": 30126530550,
+          "total_allocated_bytes": 30126530550,
+          "total_freed_bytes": 0,
+          "active_allocations": 1839,
+          "peak_allocations": 1839
+        },
+        "kv_capacity_distinct": [
+          2111,
+          131328
+        ],
+        "public_ids": [
+          2551,
+          563,
+          2760,
+          236761,
+          2551,
+          563,
+          2760,
+          236761
+        ],
+        "public_path": null,
+        "public_telemetry_available": false
+      },
+      {
+        "label": "262400 slots",
+        "command": "systemd-run --user --scope --unit=hipengine-capacity-recovery --quiet -p MemoryMax=24G -p MemorySwapMax=2G env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_EXECUTION_PROFILE=production /bin/bash -c '.venv/bin/python /tmp/gemma-llamacpp-512-256k/bounded_capacity.py 131328 /tmp/gemma-llamacpp-512-256k/gpu0-capacity-128k-recovery.json && .venv/bin/python /tmp/gemma-llamacpp-512-256k/bounded_capacity.py 262400 /tmp/gemma-llamacpp-512-256k/gpu0-capacity-256k-recovery.json'",
+        "capacity": 262400,
+        "status": "pass",
+        "protocol_tier": 1,
+        "performance_claim": false,
+        "kv_storage": "bf16",
+        "prompt_tokens": 1024,
+        "finite_logits": true,
+        "memory": {
+          "current_allocated_bytes": 32810885110,
+          "peak_allocated_bytes": 32810885110,
+          "total_allocated_bytes": 32810885110,
+          "total_freed_bytes": 0,
+          "active_allocations": 1839,
+          "peak_allocations": 1839
+        },
+        "kv_capacity_distinct": [
+          2111,
+          262400
+        ],
+        "public_ids": [
+          2551,
+          563,
+          2760,
+          236761,
+          2551,
+          563,
+          2760,
+          236761
+        ],
+        "public_path": null,
+        "public_telemetry_available": false
+      }
+    ],
+    "note": "Allocation-only. Each point loaded the artifact, ran one bounded prefill block and three singleton forwards with finite logits and eight public ids, then reported status pass. No full-depth completion or throughput is claimed at 128K/256K."
+  },
+  "correctness": {
+    "instrumented_finite_logits": true,
+    "all_replays_and_public_ids_equal": true,
+    "public_path_parity": true,
+    "public_path_first_divergence": null,
+    "public_generated_equals_expected": true,
+    "capacity_finite_logits": true
+  },
+  "tests": {
+    "mtp_unit_cpu": {
+      "command": "cd /home/lhl/hipEngine-gemma4 && HIP_VISIBLE_DEVICES=-1 ROCR_VISIBLE_DEVICES=-1 .venv/bin/python -m pytest tests/test_unit_gemma4_mtp_admission.py tests/test_unit_gemma4_mtp_loader.py tests/test_unit_gemma4_mtp_cycle_accounting.py tests/test_unit_gemma4_merge_ownership.py --override-ini addopts='' -q",
+      "result": "46 passed in 0.83s",
+      "correction": "An earlier session report stated 28 tests; the collected and passing count is 46."
+    },
+    "sliding_cpu": {
+      "command": "cd /home/lhl/hipEngine-gemma4 && .venv/bin/python -m pytest tests/test_unit_gemma4_sliding_kv_ownership.py tests/test_unit_gemma4_sliding_read_range.py --override-ini addopts='' -q",
+      "result": "63 passed in 0.96s"
+    },
+    "live_mtp_gpu": {
+      "command": "cd /home/lhl/hipEngine-gemma4 && env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 .venv/bin/python -m pytest tests/test_live_gemma4_generate_mtp_flag.py::test_live_gemma4_attached_mtp_preserves_plain_request_state --override-ini addopts='' -q",
+      "result": "1 passed in 60.83s",
+      "log": "/tmp/kendex-pi-bg/bg-146-1791301953220.log"
+    }
+  },
+  "external_capture": {
+    "path": "/mnt/nvme1/hipengine-diagnostics/wmma-sliding-inputs/gemma4_sliding_attention_capture.py",
+    "cpu_test_path": "/mnt/nvme1/hipengine-diagnostics/wmma-sliding-inputs/test_gemma4_sliding_attention_capture_cpu.py",
+    "hashes_sha256": {
+      "capture": "a6aaa94faf85bbce027af454489bae592237f0dd0bf85b87d1cd1b01e6bdf28e",
+      "cpu_test": "0d5e3a20671c03f1cc52007e4f6c5e574cd74ad7f791d5a32623cd8fd51dedf3",
+      "plan": "6a5349efd5a43e5f650daf1e8dcebc675b9a90d49c2b83e24d1d1804736ee065",
+      "route_manifest": "dc2b6229dfddc6b6d300849191d76ab8798c8291e7eda5a0b2ac91448030b3dc"
+    },
+    "cpu_test_command": "cd /mnt/nvme1/hipengine-diagnostics/wmma-sliding-inputs && HIP_VISIBLE_DEVICES=-1 ROCR_VISIBLE_DEVICES=-1 python3 -m pytest test_gemma4_sliding_attention_capture_cpu.py -q",
+    "cpu_test_result": "44 passed in 0.13s",
+    "reviewer_repair_closure": [
+      "_load_generator unwraps EngineService/SubmitPollTextGenerator to the owner defining _ensure_runner, requires a cold runner, sets the logits-row bound before _ensure_runner, and keeps LLM lifetime explicit with exception-safe close.",
+      "No launcher replacement: capture observes the actual launcher code object via sys.setprofile on the return event, leaves selection launchers and their arguments unchanged, and restores the previous profiler.",
+      "block_start is part of the capture identity, so the two distinct 3073:1 blocks at starts 1024 and 2048 no longer collide; reconcile_capture_sites reports planned/captured/missing with reasons.",
+      "install() is transactional and rolls back every applied patch if any step raises; restore() is idempotent; cleanup errors are surfaced without replacing a primary failure.",
+      "Plan uses the runner's actual max_block and reports a nondefault --max-block mismatch instead of planning from the CLI value."
+    ],
+    "device_identity_gate": "require_expected_device needs a live device name and PCI bus id and fails early unless the name contains 'AMD Radeon Pro W7900'; environment text is not treated as physical-device proof.",
+    "pending": {
+      "route_only_run": {
+        "owner": "parent",
+        "status": "pass",
+        "device": {"device_name": "AMD Radeon Pro W7900", "pci_bus_id": "0000:0d:00.0"},
+        "route_events": 680,
+        "observability_gaps": [],
+        "command": "systemd-run --user --scope --unit=hipengine-capture-route-repaired --quiet -p MemoryMax=24G -p MemorySwapMax=2G env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_ROOT=/home/lhl/hipEngine-gemma4 .venv/bin/python /mnt/nvme1/hipengine-diagnostics/wmma-sliding-inputs/gemma4_sliding_attention_capture.py --route-only --out /mnt/nvme1/hipengine-diagnostics/wmma-sliding-inputs/gpu0-repaired-routes.json",
+        "log": "/tmp/kendex-pi-bg/bg-150-1791303528635.log",
+        "note": "Parent verified successful exit, 680 route events and live W7900 PCI identity. This does not establish prior GPU fault causality or operand-capture validity."
+      }
+    }
+  },
+  "superseded_findings": [
+    {
+      "finding": "Gemma MTP support is missing",
+      "disposition": "misidentification; already fixed",
+      "commit": "7a1e5ce7b53abf5bf24ea0fc1a6ab7812cf5c3e9",
+      "subject": "fix: enable gfx1100 Gemma MTP with paired admission"
+    },
+    {
+      "finding": "Gemma sliding-KV capacity is missing",
+      "disposition": "misidentification; already fixed",
+      "commit": "723949442fc3fc18600b5bc432f1ded0c16d1a48",
+      "subject": "fix: bound Gemma sliding KV without changing graph ownership"
+    }
+  ],
+  "pending": [
+    "Operand capture and local replay (bg-151) are pending GPU validation.",
+    "Full-depth throughput and completion at 128K/256K are not measured."
+  ],
+  "limitations": [
+    "This artifact carries no retained performance claim and changes no production default.",
+    "The 32K and 64K rows are single-tenant single-prompt fixed-length rows; they are not a multi-prompt benchmark suite.",
+    "The 128K and 256K points are tier-1 allocation probes only; no full-depth completion or throughput is claimed.",
+    "Route-only completed on W7900 PCI 0000:0d:00.0; operand capture and local replay remain pending.",
+    "No crash-cause inference is made about the stopped Qwen process.",
+    "The 64K decode samples span 20.90-23.56 tok/s (stdev 1.46); the median is reported, not a best sample."
+  ],
+  "sources": [
+    "/tmp/gemma-llamacpp-512-256k/gpu0-recovery-smoke.json",
+    "/tmp/gemma-llamacpp-512-256k/gpu0-capacity-128k-recovery.json",
+    "/tmp/gemma-llamacpp-512-256k/gpu0-capacity-256k-recovery.json",
+    "/tmp/gemma-llamacpp-512-256k/gpu0-current-p32768.json",
+    "/tmp/gemma-llamacpp-512-256k/gpu0-current-p65536.json",
+    "/tmp/kendex-pi-bg/bg-145-1791301753183.log",
+    "/tmp/kendex-pi-bg/bg-146-1791301953220.log",
+    "/tmp/kendex-pi-bg/bg-148-1791302525523.log",
+    "/tmp/kendex-pi-bg/bg-149-1791302996966.log",
+    "/tmp/kendex-pi-bg/bg-150-1791303528635.log"
+  ]
+}
