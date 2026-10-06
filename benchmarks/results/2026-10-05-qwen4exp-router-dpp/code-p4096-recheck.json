@@ -1,0 +1,486 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_halo_box_campaign_same_residency_ab",
+ "status": "completed",
+ "performance_claim": false,
+ "host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "Current active profile: accelerator-performance",
+  "cpu_governors": {
+   "performance": 32
+  },
+  "gpu_clock_policies": {
+   "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+  },
+  "rocm_platform": "10.0.0",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+ },
+ "source": {
+  "path": "/home/lhl/hipEngine",
+  "head": "ef927ba05d7005e197e45a21a40cd28f91346e25",
+  "tracked_clean": true
+ },
+ "commands": {
+  "argv": [
+   "/home/lhl/hipEngine/.venv/bin/python3",
+   "/home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py",
+   "--model-root",
+   "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+   "--compiler-version-file",
+   "/tmp/hipengine-gr-dpp-20261005/hipcc-version.txt",
+   "--require-cached-build",
+   "--route-package",
+   "router-dpp",
+   "--prefill-chunk-size",
+   "4096",
+   "--case-id",
+   "code-p4096",
+   "--warmups-per-mode",
+   "1",
+   "--repetitions-per-mode",
+   "3",
+   "--output",
+   "/tmp/qwen4exp-router-dpp-qualification/code-p4096-recheck.json"
+  ],
+  "shell": "/home/lhl/hipEngine/.venv/bin/python3 /home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-gr-dpp-20261005/hipcc-version.txt --require-cached-build --route-package router-dpp --prefill-chunk-size 4096 --case-id code-p4096 --warmups-per-mode 1 --repetitions-per-mode 3 --output /tmp/qwen4exp-router-dpp-qualification/code-p4096-recheck.json"
+ },
+ "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "model_identity": {
+  "architecture": "qwen4exp",
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "first_part": "Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+  "first_part_sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082",
+  "tokenizer_backend": "huggingface_tokenizers"
+ },
+ "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+ "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+ "profile": {
+  "requested": "production",
+  "manifest_sha256": "850829d509ebf741403e71e30450b8b7b681994f16e0f02038ba672c1f493d5b",
+  "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+  "fell_back_to_strict": false
+ },
+ "arms": {
+  "before": {
+   "router_logits": "f32_hidden_token_tile4_dense_exact"
+  },
+  "after": {
+   "router_logits": "f32_hidden_token_tile4_dpp_exact"
+  }
+ },
+ "protocol": {
+  "one_model_residency": true,
+  "one_python_process": true,
+  "case_ids": [
+   "code-p4096"
+  ],
+  "case_order": "fixture order",
+  "case_counterbalance_indices": {
+   "code-p4096": 2
+  },
+  "arm_order_even_case": [
+   "before",
+   "after",
+   "after",
+   "before",
+   "before",
+   "after"
+  ],
+  "arm_order_odd_case": [
+   "after",
+   "before",
+   "before",
+   "after",
+   "after",
+   "before"
+  ],
+  "qualification": "canonical-three-pair",
+  "promotion_eligible_protocol": true,
+  "warmups_per_mode_per_case": 1,
+  "measured_repetitions_per_mode_per_case": 3,
+  "decode_transitions": 128,
+  "visible_output_tokens": 129,
+  "prefill_chunk_size": 4096,
+  "timing_boundary": "synchronized runner.prefill including first greedy output, then exactly 128 runner.step transitions and a final device synchronize"
+ },
+ "warmups": [
+  {
+   "case_id": "code-p4096",
+   "mode": "before"
+  },
+  {
+   "case_id": "code-p4096",
+   "mode": "after"
+  }
+ ],
+ "samples": [
+  {
+   "case_id": "code-p4096",
+   "category": "code",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+   "repetition": 0,
+   "prefill_ms": 12623.728155,
+   "prefill_tok_s": 324.468330568229,
+   "decode_ms": 7032.285208,
+   "prefill_host_enqueue_ms": 12623.683031,
+   "prefill_device_drain_ms": 0.045124,
+   "decode_host_enqueue_ms": 7032.283425,
+   "decode_device_drain_ms": 0.001783,
+   "decode_host_enqueue_ms_per_step": 54.9397142578125,
+   "decode_device_drain_ms_per_step": 1.39296875e-05,
+   "decode_transitions": 128,
+   "decode_tok_s": 18.20176460624576,
+   "client_wall_s": 19.656013363000003,
+   "output_token_count": 129,
+   "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+   "memory_delta": {
+    "process_read_bytes": 0,
+    "minor_faults": 582,
+    "major_faults": 0
+   },
+   "phase_windows_ns": {
+    "prefill": [
+     4517936859312225,
+     4517949483040380
+    ],
+    "decode": [
+     4517949483049708,
+     4517956515334916
+    ]
+   },
+   "candidate_calls": 0,
+   "mode": "before",
+   "sequence_slot": 0,
+   "case_sequence": [
+    "before",
+    "after",
+    "after",
+    "before",
+    "before",
+    "after"
+   ],
+   "measurement_stage": null
+  },
+  {
+   "case_id": "code-p4096",
+   "category": "code",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+   "repetition": 0,
+   "prefill_ms": 12546.55978,
+   "prefill_tok_s": 326.4639926658844,
+   "decode_ms": 6995.407727,
+   "prefill_host_enqueue_ms": 12546.537118,
+   "prefill_device_drain_ms": 0.022662,
+   "decode_host_enqueue_ms": 6995.405653,
+   "decode_device_drain_ms": 0.002074,
+   "decode_host_enqueue_ms_per_step": 54.6516066640625,
+   "decode_device_drain_ms_per_step": 1.6203125e-05,
+   "decode_transitions": 128,
+   "decode_tok_s": 18.29771830253176,
+   "client_wall_s": 19.541967507000003,
+   "output_token_count": 129,
+   "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+   "memory_delta": {
+    "process_read_bytes": 0,
+    "minor_faults": 582,
+    "major_faults": 0
+   },
+   "phase_windows_ns": {
+    "prefill": [
+     4517956516153973,
+     4517969062713753
+    ],
+    "decode": [
+     4517969062722610,
+     4517976058130337
+    ]
+   },
+   "candidate_calls": 48,
+   "mode": "after",
+   "sequence_slot": 1,
+   "case_sequence": [
+    "before",
+    "after",
+    "after",
+    "before",
+    "before",
+    "after"
+   ],
+   "measurement_stage": null
+  },
+  {
+   "case_id": "code-p4096",
+   "category": "code",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+   "repetition": 1,
+   "prefill_ms": 12542.111193,
+   "prefill_tok_s": 326.5797868453007,
+   "decode_ms": 6977.296454,
+   "prefill_host_enqueue_ms": 12542.071529,
+   "prefill_device_drain_ms": 0.039664,
+   "decode_host_enqueue_ms": 6977.29424,
+   "decode_device_drain_ms": 0.002214,
+   "decode_host_enqueue_ms_per_step": 54.51011125,
+   "decode_device_drain_ms_per_step": 1.7296875e-05,
+   "decode_transitions": 128,
+   "decode_tok_s": 18.34521448871778,
+   "client_wall_s": 19.519407647,
+   "output_token_count": 129,
+   "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+   "memory_delta": {
+    "process_read_bytes": 0,
+    "minor_faults": 575,
+    "major_faults": 0
+   },
+   "phase_windows_ns": {
+    "prefill": [
+     4517976058913036,
+     4517988601024229
+    ],
+    "decode": [
+     4517988601033767,
+     4517995578330221
+    ]
+   },
+   "candidate_calls": 48,
+   "mode": "after",
+   "sequence_slot": 2,
+   "case_sequence": [
+    "before",
+    "after",
+    "after",
+    "before",
+    "before",
+    "after"
+   ],
+   "measurement_stage": null
+  },
+  {
+   "case_id": "code-p4096",
+   "category": "code",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+   "repetition": 1,
+   "prefill_ms": 12622.151152,
+   "prefill_tok_s": 324.50886942127784,
+   "decode_ms": 6952.775753,
+   "prefill_host_enqueue_ms": 12622.127849,
+   "prefill_device_drain_ms": 0.023303,
+   "decode_host_enqueue_ms": 6952.773599,
+   "decode_device_drain_ms": 0.002154,
+   "decode_host_enqueue_ms_per_step": 54.3185437421875,
+   "decode_device_drain_ms_per_step": 1.6828125e-05,
+   "decode_transitions": 128,
+   "decode_tok_s": 18.40991347157576,
+   "client_wall_s": 19.574926905,
+   "output_token_count": 129,
+   "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+   "memory_delta": {
+    "process_read_bytes": 0,
+    "minor_faults": 582,
+    "major_faults": 0
+   },
+   "phase_windows_ns": {
+    "prefill": [
+     4517995579098422,
+     4518008201249574
+    ],
+    "decode": [
+     4518008201257980,
+     4518015154033733
+    ]
+   },
+   "candidate_calls": 0,
+   "mode": "before",
+   "sequence_slot": 3,
+   "case_sequence": [
+    "before",
+    "after",
+    "after",
+    "before",
+    "before",
+    "after"
+   ],
+   "measurement_stage": null
+  },
+  {
+   "case_id": "code-p4096",
+   "category": "code",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+   "repetition": 2,
+   "prefill_ms": 12616.152219,
+   "prefill_tok_s": 324.66317216999016,
+   "decode_ms": 6985.805694,
+   "prefill_host_enqueue_ms": 12616.129015,
+   "prefill_device_drain_ms": 0.023204,
+   "decode_host_enqueue_ms": 6985.803771,
+   "decode_device_drain_ms": 0.001923,
+   "decode_host_enqueue_ms_per_step": 54.5765919609375,
+   "decode_device_drain_ms_per_step": 1.50234375e-05,
+   "decode_transitions": 128,
+   "decode_tok_s": 18.322868629160016,
+   "client_wall_s": 19.601957913,
+   "output_token_count": 129,
+   "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+   "memory_delta": {
+    "process_read_bytes": 0,
+    "minor_faults": 574,
+    "major_faults": 0
+   },
+   "phase_windows_ns": {
+    "prefill": [
+     4518015154841118,
+     4518027770993337
+    ],
+    "decode": [
+     4518027771016009,
+     4518034756821703
+    ]
+   },
+   "candidate_calls": 0,
+   "mode": "before",
+   "sequence_slot": 4,
+   "case_sequence": [
+    "before",
+    "after",
+    "after",
+    "before",
+    "before",
+    "after"
+   ],
+   "measurement_stage": null
+  },
+  {
+   "case_id": "code-p4096",
+   "category": "code",
+   "prompt_tokens": 4096,
+   "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+   "repetition": 2,
+   "prefill_ms": 12550.659067,
+   "prefill_tok_s": 326.3573632375843,
+   "decode_ms": 6981.616579,
+   "prefill_host_enqueue_ms": 12550.635413,
+   "prefill_device_drain_ms": 0.023654,
+   "decode_host_enqueue_ms": 6981.614585,
+   "decode_device_drain_ms": 0.001994,
+   "decode_host_enqueue_ms_per_step": 54.5438639453125,
+   "decode_device_drain_ms_per_step": 1.5578125e-05,
+   "decode_transitions": 128,
+   "decode_tok_s": 18.33386273102008,
+   "client_wall_s": 19.532275646000002,
+   "output_token_count": 129,
+   "output_token_ids_sha256": "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5",
+   "memory_delta": {
+    "process_read_bytes": 0,
+    "minor_faults": 574,
+    "major_faults": 0
+   },
+   "phase_windows_ns": {
+    "prefill": [
+     4518034757712916,
+     4518047308371983
+    ],
+    "decode": [
+     4518047308379918,
+     4518054289996497
+    ]
+   },
+   "candidate_calls": 48,
+   "mode": "after",
+   "sequence_slot": 5,
+   "case_sequence": [
+    "before",
+    "after",
+    "after",
+    "before",
+    "before",
+    "after"
+   ],
+   "measurement_stage": null
+  }
+ ],
+ "route_package": "router-dpp",
+ "diagnostic_subset": true,
+ "screen_only": false,
+ "summary": {
+  "correctness": {
+   "within_mode_deterministic": true,
+   "cross_mode_output_exact": true,
+   "mismatched_case_ids": []
+  },
+  "by_case": {
+   "code-p4096": {
+    "category": "code",
+    "prompt_tokens": 4096,
+    "samples_per_mode": 3,
+    "before_prefill_tok_s_weighted": 324.5467690121642,
+    "after_prefill_tok_s_weighted": 326.46702231260014,
+    "after_over_before_prefill": 1.00591672290031,
+    "before_decode_tok_s_weighted": 18.31111733803545,
+    "after_decode_tok_s_weighted": 18.325576113782848,
+    "after_over_before_decode": 1.0007896173390447,
+    "within_mode_deterministic": true,
+    "cross_mode_output_exact": true,
+    "output_token_ids_sha256": {
+     "before": [
+      "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+     ],
+     "after": [
+      "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+     ]
+    }
+   }
+  },
+  "by_shape": {
+   "4096": {
+    "case_count": 1,
+    "samples_per_mode": 3,
+    "before_prefill_tok_s_weighted": 324.5467690121642,
+    "after_prefill_tok_s_weighted": 326.46702231260014,
+    "after_over_before_prefill": 1.00591672290031,
+    "before_decode_tok_s_weighted": 18.31111733803545,
+    "after_decode_tok_s_weighted": 18.325576113782848,
+    "after_over_before_decode": 1.0007896173390447
+   }
+  },
+  "by_category": {
+   "code": {
+    "case_count": 1,
+    "samples_per_mode": 3,
+    "before_prefill_tok_s_weighted": 324.5467690121642,
+    "after_prefill_tok_s_weighted": 326.46702231260014,
+    "after_over_before_prefill": 1.00591672290031,
+    "before_decode_tok_s_weighted": 18.31111733803545,
+    "after_decode_tok_s_weighted": 18.325576113782848,
+    "after_over_before_decode": 1.0007896173390447
+   }
+  }
+ },
+ "memory_before_close": {
+  "current_allocated_bytes": 89404925864,
+  "peak_allocated_bytes": 89404925864,
+  "total_allocated_bytes": 89824356272,
+  "total_freed_bytes": 419430408,
+  "active_allocations": 1622,
+  "peak_allocations": 1622
+ },
+ "memory_after_close": {
+  "current_allocated_bytes": 0,
+  "peak_allocated_bytes": 89404925864,
+  "total_allocated_bytes": 89824356272,
+  "total_freed_bytes": 89824356272,
+  "active_allocations": 0,
+  "peak_allocations": 1622
+ },
+ "raw_artifact": {
+  "path": "/tmp/qwen4exp-router-dpp-qualification/code-p4096-recheck.json",
+  "sha256": "cbfb40495d5295137a95d06780a64498a12af557ed8efde69c37290e52d44b4d"
+ },
+ "claim_scope": "Focused diagnosis only; does not replace the original full-suite samples or certify all-case request wall."
+}

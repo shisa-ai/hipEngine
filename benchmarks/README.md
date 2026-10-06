@@ -1,9 +1,31 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-05 UTC**
+Last updated: **2026-10-06 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
+
+## Qwen3.8 Flash Next ordered router DPP production route
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+BF16 KV and chunk4096, ordered router DPP is the gfx1151 production
+prefill route. The comparison uses one model residency and three
+counterbalanced measurements per arm for all 12 canonical cases.
+
+| Prompt tokens | Parent prefill tok/s | DPP prefill tok/s | Change |
+| ---: | ---: | ---: | ---: |
+| 512 | 287.913 | 289.505 | +0.553% |
+| 1024 | 312.834 | 314.353 | +0.486% |
+| 4096 | 319.356 | 321.238 | +0.589% |
+
+All cases improve prefill; all 72 measured output trajectories are exact
+and deterministic. The D128 full-logit/state/KV gate and 576 natural-router
+captures match the parent; four GPU row-isolation/ownership tests pass.
+Strict and Q4_K_M production keep the tile4 parent. No decode-speed claim:
+the original p4096 complete-request aggregate is 0.364% worse, with one
+abrupt decode slowdown. A focused same-protocol recheck does not reproduce
+that slowdown; it does not replace the full-suite samples.
+[Protocol and artifacts](results/2026-10-05-qwen4exp-router-dpp/README.md).
 
 ## Qwen3.8 Flash Next ordered router DPP operation screen
 
@@ -18,8 +40,8 @@ router logits plus top-10 selection with exact logits/IDs/routing.
 | 1024 | 3.062–3.078 | 2.615–2.626 | 1.167–1.172x |
 | 4096 | 12.970–12.974 | 11.410–11.423 | 1.135–1.137x |
 
-Thirty-two GPU tests pass and cached trace confirms the leaf. The runtime
-parent remains selected; no full-model gate or model-speed claim yet.
+Thirty-two GPU operation tests pass and cached trace confirms the leaf.
+The full-model correctness and prefill results are reported separately above.
 [Protocol and artifacts](results/2026-10-05-qwen4exp-router-dpp/README.md).
 
 ## Qwen3.8 Flash Next current prefill owner diagnostic

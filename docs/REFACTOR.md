@@ -520,30 +520,36 @@
   fused kernel without changing operand or accumulation order. Evidence:
   `benchmarks/results/2026-09-27-gr-up-wide-tile-screen/`.
 
-## Router ordered DPP diagnostic leaf
+## Router ordered DPP production owner
 
-- `f32_hidden_token_tile4_dpp_exact` is a registered operation-only sibling;
-  no added env flag or runtime/default selector. It preserves the parent
-  FMA/tree via one LDS publication, register inter-wave folds and DPP finish.
-- Complete logits plus top-10 operation screen improves 1.135–1.172× on real
-  layer 0/22/47 weights at rows 512/1024/4096, 180 counterbalanced pairs, exact
-  logits/IDs/routing. New/existing GPU fixtures: 32 pass. Evidence:
-  `benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md`.
-- Remove the diagnostic-only status after exact real-activation/model
-  state/KV gates and complete-suite model timing qualify a default; preserve
-  the strict parent fallback. If that screen loses, remove the unused
-  candidate implementation rather than adding another persistent selector.
-- This is not the removed shuffle-tail or rejected warp-per-token route;
-  their previous dispositions do not measure this one-barrier implementation.
+- `f32_hidden_token_tile4_dpp_exact` is the gfx1151 UD-Q4_K_XL production
+  multirow router owner. Strict and Q4_K_M production keep the tile4 parent.
+  The raw-pointer/selection ABI and per-thread FMA/reduction association
+  are unchanged: one LDS publication, register inter-wave folds, DPP finish.
+- Complete operation screen improves 1.135–1.172x on layer0/22/47 weights;
+  canonical model prefill improves +0.553%/+0.486%/+0.589% at p512/1K/4K.
+  D128 full-state/KV, 576 natural-router calls and four GPU row-isolation/
+  ownership tests pass. Exact tile4 remains registered as strict fallback.
+- `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT=f32_hidden_token_tile4_dense_exact`
+  is a temporary rollback/bisection lever. Remove the launch-time experiment
+  reader after one production checkpoint with no route regression; keep the
+  named profile selection and registered parent. Until then bind from the
+  resolved manifest so strict cannot inherit a production override.
+- The historical warp-per-token sibling remains registered for diagnostics,
+  unselected by default; its failed arithmetic gate does not qualify it.
+  This DPP owner replaces neither its reduction association nor selection
+  policy. Original model-wall evidence preserves a p4096 decode outlier and
+  does not claim decode-speed or all-case request-wall non-regression.
+- Evidence: `benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md`.
 
 ## Router Producer Variant (`HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`)
 
-- Selects the multirow F32 router logits producer. Default
-  `f32_hidden_token_tile4_dense_exact` (shipped, exact parent); candidate
-  `f32_hidden_warp_reduce_dense_exact` (one warp per token, 32-lane shuffle
-  reduction, expert row staged once per block in LDS). Read by the runner at
-  launch, and the profile binder publishes the resolved selection so the
-  manifest and the launched kernel cannot disagree.
+- Historical warp screening: `f32_hidden_warp_reduce_dense_exact` uses one
+  warp per token, a 32-lane shuffle reduction and one expert row staged per
+  block in LDS. Its comparison parent was `f32_hidden_token_tile4_dense_exact`.
+  The current UD production default is ordered DPP as documented in the
+  preceding section. The runner reads the selector at launch, and the profile
+  binder publishes the resolved selection.
 - Screened at `+1.65%` prefill on `code-p4096` (247.739 -> 251.823 tok/s,
   `-0.272 s`), with the router kernel itself `2.158x` faster
   (619.45 -> 287.11 ms). Same-session two-arm A/B, disjoint per-run spreads.
@@ -586,9 +592,11 @@
   reference too, so it re-baselines strict and needs a campaign decision, not a
   kernel change. Reopen this route only alongside that decision; do not spend
   another kernel attempt on it before then.
-- Remove this switch once the candidate is rejected or promoted. Rejected: delete
-  the switch, keep the kernel registered but unselected, keep the tile4 parent as
-  the default. Evidence: `benchmarks/results/2026-09-27-router-warp-reduce/`.
+- Historical screening note: the selector also accepts the ordered DPP
+  owner described above. UD production defaults to that qualified T0 owner;
+  the failed warp route remains opt-in and diagnostic only. Remove the reader
+  under the DPP rollback checkpoint condition, not by treating all named
+  siblings as one failed candidate.
 
 ## MoE Backend Refresh Cache
 

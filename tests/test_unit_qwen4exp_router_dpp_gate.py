@@ -88,7 +88,8 @@ def test_private_checker_rejects_signed_zero_flip_and_nonfinite():
         assert_router_outputs_exact(parent, candidate, candidate)
 
 
-def test_named_candidate_manifest_and_strict_binder_in_fresh_process():
+@pytest.mark.parametrize("override", [None, PARENT, DPP, "f32_hidden_warp_reduce_dense_exact"])
+def test_named_default_manifest_and_strict_binder_in_fresh_process(override):
     # Import-time selection must be tested in a fresh interpreter; reloading
     # shared profile modules would mutate another test's module/registry state.
     code = '''
@@ -110,14 +111,25 @@ for mode in ("strict", "production"):
  out[mode] = dict(selection=dict(row), bound=os.environ[p._ROUTER_VARIANT_ENV])
 print(json.dumps(out))
 '''
-    env = dict(os.environ, **{ENV: DPP})
+    env = dict(os.environ)
+    if override is None:
+        env.pop(ENV, None)
+    else:
+        env[ENV] = override
     result = subprocess.run([sys.executable, "-c", code], env=env,
                             cwd=Path(__file__).resolve().parents[1],
                             capture_output=True, text=True, check=True, timeout=60)
     data = json.loads(result.stdout)
     assert data["strict"]["bound"] == PARENT
     assert data["strict"]["selection"]["selected_variant"] == PARENT
-    assert data["production"]["bound"] == DPP
-    assert data["production"]["selection"]["selected_variant"] == DPP
+    selected = override or DPP
+    assert data["production"]["bound"] == selected
+    assert data["production"]["selection"]["selected_variant"] == selected
     assert data["production"]["selection"]["strict_fallback_variant"] == PARENT
-    assert data["production"]["selection"]["evidence_artifact"].endswith("qwen4exp-router-dpp/README.md")
+    evidence = data["production"]["selection"]["evidence_artifact"]
+    expected = {
+        PARENT: "2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json",
+        DPP: "qwen4exp-router-dpp/README.md",
+        "f32_hidden_warp_reduce_dense_exact": "2026-09-27-router-warp-reduce/",
+    }
+    assert evidence.endswith(expected[selected])

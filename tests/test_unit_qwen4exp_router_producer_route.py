@@ -25,6 +25,13 @@ def test_profile_selects_shipped_tile_by_default(monkeypatch) -> None:
     assert profiles._selected_router_producer_variant() == profiles._ROUTER_TILE4_VARIANT
 
 
+def test_ud_production_selects_dpp_by_default_with_parent_rollback(monkeypatch) -> None:
+    monkeypatch.delenv(_ENV, raising=False)
+    assert profiles._selected_router_producer_variant(recovery=True) == profiles._ROUTER_DPP_VARIANT
+    monkeypatch.setenv(_ENV, profiles._ROUTER_TILE4_VARIANT)
+    assert profiles._selected_router_producer_variant(recovery=True) == profiles._ROUTER_TILE4_VARIANT
+
+
 def test_profile_follows_the_candidate_switch(monkeypatch) -> None:
     monkeypatch.setenv(_ENV, profiles._ROUTER_WARP_REDUCE_VARIANT)
     assert profiles._selected_router_producer_variant() == profiles._ROUTER_WARP_REDUCE_VARIANT
@@ -76,7 +83,14 @@ def test_strict_stays_pinned_to_the_exact_parent() -> None:
     assert strict.selected_variant != profiles._ROUTER_DPP_VARIANT
 
 
-def test_production_follows_the_switch_and_keeps_the_exact_fallback() -> None:
+def test_ud_production_promotes_dpp_and_keeps_the_exact_fallback() -> None:
     production = _router_selection(profiles._production_selections(recovery=True))
-    assert production.selected_variant == profiles._ROUTER_LOGITS_SELECTED_VARIANT
+    assert production.selected_variant == profiles._ROUTER_UD_LOGITS_SELECTED_VARIANT
+    assert production.selected_variant == profiles._ROUTER_DPP_VARIANT
     assert production.strict_fallback_variant == profiles._ROUTER_TILE4_VARIANT
+    assert production.evidence_artifact.endswith("qwen4exp-router-dpp/README.md")
+
+
+def test_q4_k_m_production_router_is_unchanged() -> None:
+    production = _router_selection(profiles._production_selections())
+    assert production.selected_variant == profiles._ROUTER_TILE4_VARIANT

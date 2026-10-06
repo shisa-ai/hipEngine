@@ -557,8 +557,14 @@ alongside the unchanged `f32_hidden_token_tile4_dense_exact` strict parent.
 The candidate keeps tile4's per-thread FMA assignment and 256-way reduction
 tree: one LDS publication, register-folded inter-wave pairs, ordered DPP
 wave finish. Raw-pointer signatures, output strides and selection ABI are
-unchanged. It is a direct diagnostic leaf; runtime/profile selection stays
-on the existing parent until model qualification.
+unchanged. The gfx1151 `gguf_ud_q4_k_xl` production profile selects this
+T0 owner by default after the canonical D128 full-logit/state/KV gate,
+576 natural-router captures and row-isolation/ownership fixtures. The
+tracked-clean same-residency twelve-case A/B improves weighted prefill
++0.553%/+0.486%/+0.589% at p512/p1024/p4096, all cases positive. Strict
+and Q4_K_M keep tile4; no gfx1100 execution or decode-speed claim.
+The tile4 parent remains registered as strict fallback and temporary rollback.
+Evidence: `benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md`.
 
 ## Qwen4Exp GR-up ordered DPP sibling
 

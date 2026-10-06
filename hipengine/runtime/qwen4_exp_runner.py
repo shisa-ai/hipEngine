@@ -3544,11 +3544,11 @@ _ROUTER_PRODUCER_VARIANTS = (
 def _qwen4_exp_router_producer_variant(rows: int) -> str | None:
     """Return the multirow F32 router producer variant, or None for the linear path.
 
-    The selector accepts the existing rejected warp route and the ordered DPP
-    diagnostic leaf. It is removed once the named candidate is promoted or
-    rejected; see docs/REFACTOR.md. An unrecognized value raises instead of
-    silently falling back, because a silently inert arm produces a measurement
-    that looks like a null result.
+    The named profile binder publishes the qualified producer. UD production
+    uses ordered DPP, while strict and Q4_K_M keep tile4. The environment
+    reader remains for a temporary exact-parent rollback and gate arms;
+    see docs/REFACTOR.md. Unknown values raise rather than silently running
+    an inert measurement arm.
     """
 
     if rows < 2:
