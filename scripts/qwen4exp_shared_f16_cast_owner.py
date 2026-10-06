@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Replay adjacent natural Q8 consumers with two casts versus one shared cast.
 
-The named production runner executes normally. After a qualifying adjacent pair
-has run, a diagnostic hook replays its two unchanged F16-input GEMMs into
-separate outputs. Both arms charge the whole cast/GEMM sequence, event recording
-and end synchronization in host wall. Allocation, input/output validation,
-dispatch selection and the surrounding model are outside the timed boundary.
-No production publication loan, activation cache or default is changed.
+The default prebound primitive replay excludes dispatch and native ownership.
+With --native-owner, the real runner pair helper charges scope admission,
+both normal dispatches, casts/GEMMs, scope exit, events and final device sync.
+Both modes validate native outputs and immutable inputs outside timing. Neither
+mode changes production defaults or introduces a persistent activation cache.
 """
 from __future__ import annotations
 
@@ -71,6 +70,36 @@ def paired_operation(arm, cast, first, second):
     second()
 
 
+def native_pair_operation(helper, left, right, outputs):
+    """Invoke the runner's ordinary pair helper, not prebound kernel callables."""
+    a, b = left[0], right[0]
+    helper(left[1], right[1], a.x, outputs[0], outputs[1], a.rows, a.k, a.n, b.n,
+           stream=a.stream, runtime=a.runtime)
+
+
+def replay_operation(arm, native_owner, cast, first, second, native):
+    if arm not in {"two_casts", "one_cast"}:
+        raise ValueError("unknown cast-sharing arm")
+    if native_owner:
+        native()
+    else:
+        paired_operation(arm, cast, first, second)
+
+
+def measure_operation(runtime, start, stop, operation, *, final_device_sync=False):
+    """Charge the complete operation and completion; exclude the pre-run wait."""
+    runtime.device_synchronize()
+    began = time.perf_counter()
+    runtime.event_record(start)
+    operation()
+    runtime.event_record(stop)
+    runtime.event_synchronize(stop)
+    if final_device_sync:
+        runtime.device_synchronize()
+    wall = (time.perf_counter() - began) * 1e3
+    return wall, runtime.event_elapsed_time_ms(start, stop)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -79,6 +108,8 @@ def main():
     parser.add_argument("--case-id", action="append")
     parser.add_argument("--layer", type=int, action="append")
     parser.add_argument("--pairs", type=int, default=6)
+    parser.add_argument("--native-owner", action="store_true",
+                        help="charge the actual runner pair helper and ownership admission")
     args = parser.parse_args()
     if args.pairs < 2 or args.pairs % 2:
         parser.error("an even number of at least two measured pairs is required")
@@ -91,32 +122,43 @@ def main():
     )
     from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_dense_wide as wide
     from hipengine.kernels.registry import KernelKey, resolve
-    from hipengine.runtime import gguf_linear as linear
+    from hipengine.runtime import gguf_linear as linear, qwen4_exp_runner as runner
     from scripts import qwen4exp_row4_state_gate as gate
     from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
     check_host()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
+    os.environ[linear.WIDE_F16_PAIR_ENV] = "0"
     gate.register_gfx1151_kernels(replace=True)
     gate.register_qwen4_exp_gfx1151_profiles()
     profile = gate.resolve_runtime_profile(model=gate.QWEN4_EXP_MODEL, backend=gate.QWEN4_EXP_BACKEND,
         quant=gate.QWEN4_EXP_QUANTS[1], profile=gate.ExecutionProfile.PRODUCTION)
     fixture, digest = gate.load_fixture(gate.DEFAULT_FIXTURE)
-    ids = args.case_id or ["code-p512", "code-p1024", "code-p4096", "general_en-p4096",
-                          "general_ja-p4096", "mixed_ja_en-p4096"]
+    ids = args.case_id or ([f"{category}-p{rows}" for rows in (1024, 4096)
+                            for category in ("code", "general_en", "general_ja", "mixed_ja_en")]
+                           if args.native_owner else
+                           ["code-p512", "code-p1024", "code-p4096", "general_en-p4096",
+                            "general_ja-p4096", "mixed_ja_en-p4096"])
     cases = [next(c for c in fixture["cases"] if c["id"] == name) for name in ids]
+    if args.native_owner and any(c["prompt_tokens"] not in {1024, 4096} for c in cases):
+        parser.error("native ownership screen admits only measured rows1024/4096")
     report = dict(schema=1, status="running", performance_claim=False, command=sys.argv,
         source=gate._git_metadata(ROOT), host=gate._host_metadata(), model_identity=model_identity(args.model_root),
         execution_profile="production", manifest_sha256=profile.manifest_sha256,
         fixture_sha256=digest, script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        boundary=__doc__, chunk_size=4096, layers=sorted(layers), pairs=args.pairs, cases=[])
+        boundary=("actual runner pair helper: scope admission, both normal dispatches, "
+                  "cast/GEMMs, scope exit, events and final device sync; allocation, "
+                  "validation and surrounding model excluded" if args.native_owner else
+                  "prebound casts/two GEMMs, events and end sync; allocation, validation, "
+                  "dispatch selection, native ownership and surrounding model excluded"),
+        native_owner=args.native_owner, chunk_size=4096, layers=sorted(layers), pairs=args.pairs, cases=[])
     report["hipengine_artifact_provenance"] = collect_artifact_provenance(
         repo_root=ROOT, configured_backend="hip_gfx1151", resolved_backend="hip_gfx1151",
         target_arch="gfx1151", model_path=args.model_root,
         model_revision=report["model_identity"]["revision"], quant="UD-Q4_K_XL", kv_dtype="bf16",
         command=sys.argv, build_profile="cached production",
-        timing_protocol="adjacent natural pair replay; synchronized wall and HIP events; alternating arms",
+        timing_protocol=report["boundary"] + "; alternating arms",
         warmups=1, repetitions=args.pairs,
     )
     with open("/tmp/hipengine-gfx1151-benchmark.lock", "a") as lock:
@@ -132,6 +174,7 @@ def main():
         original = linear._launch_dense_wide_f16_staged
         start, stop = runtime.event_create(), runtime.event_create()
         pending, captures = [], []
+        replaying = False
 
         def download(ptr, shape, dtype):
             out = np.empty(shape, dtype=dtype)
@@ -142,6 +185,9 @@ def main():
             return hashlib.sha256(array.tobytes()).hexdigest()
 
         def replay(left, right):
+            nonlocal replaying
+            replaying = True
+            prior_pair_env = os.environ.get(linear.WIDE_F16_PAIR_ENV)
             a, b = left[0], right[0]
             role = checked_pair(a, b)
             before = memory_stats()
@@ -152,10 +198,13 @@ def main():
             input_hash = sha(inputs)
             weights_before = [sha(download(info[1].allocation("raw").tensor.ptr,
                 (c.n * (c.k // 32) * 34,), np.uint8)) for c, info in ((a, left), (b, right))]
-            native = [sha(download(c.out, (c.rows, c.n), np.float32)) for c in (a, b)]
+            native_outputs = [sha(download(c.out, (c.rows, c.n), np.float32)) for c in (a, b)]
             samples = {arm: [] for arm in ("two_casts", "one_cast")}
             try:
-                half = malloc(a.rows * a.k * 2, runtime=runtime); allocations.append(half)
+                if args.native_owner:
+                    half = DeviceBuffer(a.half, a.rows * a.k * 2)
+                else:
+                    half = malloc(a.rows * a.k * 2, runtime=runtime); allocations.append(half)
                 outs = []
                 for c in (a, b):
                     out = malloc(c.rows * c.n * 4, runtime=runtime)
@@ -172,29 +221,68 @@ def main():
                     linear._LAUNCH_ABI["raw"](fn, weight, half.ptr, out.ptr,
                                                c.rows, c.k, c.n, kw)
 
+                output_ptrs = tuple(out.ptr for out in outs)
+
+                def native():
+                    native_pair_operation(runner._launch_qwen4_exp_dense_pair, left, right,
+                                          output_ptrs)
+
                 for pair in range(args.pairs + 1):
                     order = (("two_casts", "one_cast") if (pair + len(captures)) % 2 == 0
                              else ("one_cast", "two_casts"))
                     for position, arm in enumerate(order):
-                        runtime.device_synchronize()
-                        began = time.perf_counter()
-                        runtime.event_record(start)
-                        paired_operation(arm, cast, lambda: consumer(left, outs[0]),
-                                         lambda: consumer(right, outs[1]))
-                        runtime.event_record(stop)
-                        runtime.event_synchronize(stop)
-                        wall = (time.perf_counter() - began) * 1e3
-                        event = runtime.event_elapsed_time_ms(start, stop)
+                        if args.native_owner:
+                            os.environ[linear.WIDE_F16_PAIR_ENV] = "1" if arm == "one_cast" else "0"
+                        wall, event = measure_operation(runtime, start, stop,
+                            lambda: replay_operation(arm, args.native_owner, cast,
+                                lambda: consumer(left, outs[0]),
+                                lambda: consumer(right, outs[1]), native),
+                            final_device_sync=args.native_owner)
                         if pair:
                             samples[arm].append(dict(pair=pair, position=position,
                                 first_arm=order[0], wall_ms=wall, event_ms=event))
-                        for c, out, expected in zip((a, b), outs, native):
+                        for c, out, expected in zip((a, b), outs, native_outputs):
                             actual = download(out.ptr, (c.rows, c.n), np.float32)
                             if not np.isfinite(actual).all() or sha(actual) != expected:
                                 raise AssertionError((role, arm, "native output/repeat mismatch"))
                         staged = download(half.ptr, (a.rows, a.k), np.float16)
                         if sha(staged) != sha(inputs.astype(np.float16)):
                             raise AssertionError("F16 staging bytes differ from CPU conversion")
+                engagement = {}
+                if args.native_owner:
+                    import contextlib
+                    original_scope, original_cast = runner.wide_f16_activation_pair, wide.f32_to_f16
+                    counts = dict(pairs=0, accepted=0, casts=0)
+
+                    @contextlib.contextmanager
+                    def counted_scope(*args, **kwargs):
+                        with original_scope(*args, **kwargs) as loan:
+                            yield loan
+                            if loan is not None:
+                                counts["pairs"] += 1
+                                counts["accepted"] += loan.accepted
+
+                    def counted_cast(*args, **kwargs):
+                        counts["casts"] += 1
+                        return original_cast(*args, **kwargs)
+
+                    try:
+                        runner.wide_f16_activation_pair, wide.f32_to_f16 = counted_scope, counted_cast
+                        for arm in samples:
+                            for field in counts:
+                                counts[field] = 0
+                            os.environ[linear.WIDE_F16_PAIR_ENV] = "1" if arm == "one_cast" else "0"
+                            native()
+                            runtime.device_synchronize()
+                            expected = dict(pairs=1, accepted=2, casts=1) if arm == "one_cast" else dict(pairs=0, accepted=0, casts=2)
+                            if counts != expected:
+                                raise AssertionError((arm, "native engagement", counts, expected))
+                            engagement[arm] = dict(counts)
+                            for c, out, expected_hash in zip((a, b), outs, native_outputs):
+                                if sha(download(out.ptr, (c.rows, c.n), np.float32)) != expected_hash:
+                                    raise AssertionError("census output differs from native")
+                    finally:
+                        runner.wide_f16_activation_pair, wide.f32_to_f16 = original_scope, original_cast
                 if sha(download(a.x, (a.rows, a.k), np.float32)) != input_hash:
                     raise AssertionError("source activation changed")
                 for c, info, expected in zip((a, b), (left, right), weights_before):
@@ -209,11 +297,16 @@ def main():
                 captures.append(dict(layer=a.layer, role=role, rows=a.rows, k=a.k, n=[a.n, b.n],
                     variants=[left[4], right[4]], samples=samples, medians=medians,
                     wall_speedup=medians["two_casts"]["wall_ms"] / medians["one_cast"]["wall_ms"],
-                    order_strata_speedup=strata, native_output_sha256=native, input_sha256=input_hash,
-                    weight_sha256=weights_before, exact_native_outputs=True,
+                    order_strata_speedup=strata, native_output_sha256=native_outputs, input_sha256=input_hash,
+                    native_engagement=engagement, weight_sha256=weights_before, exact_native_outputs=True,
                     exact_f16_staging=True, source_weights_immutable=True))
                 print(a.layer, role, "one/two cast wall speedup", captures[-1]["wall_speedup"], flush=True)
             finally:
+                replaying = False
+                if prior_pair_env is None:
+                    os.environ.pop(linear.WIDE_F16_PAIR_ENV, None)
+                else:
+                    os.environ[linear.WIDE_F16_PAIR_ENV] = prior_pair_env
                 for allocation in reversed(allocations):
                     free(allocation, runtime=runtime)
             after = memory_stats()
@@ -222,6 +315,8 @@ def main():
 
         def hooked(fn, weight, x, out, rows, k, n, kwargs, **kw):
             result = original(fn, weight, x, out, rows, k, n, kwargs, **kw)
+            if replaying:
+                return result
             slot = str(weight.spec.slot_path).split(".")
             role = slot[-1]
             layer = int(slot[1]) if len(slot) > 2 and slot[1].isdigit() else -1
@@ -264,6 +359,8 @@ def main():
                           for arm in ("two_casts", "one_cast")}
                 report["cases"].append(dict(id=case["id"], first_token=token.token_id,
                     diagnostic_sum_wall_medians_ms=totals, captures=list(captures)))
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(json.dumps(report, indent=2) + "\n")
             report["status"] = "passed"
         except Exception as error:
             report["status"] = "failed"; report["error"] = repr(error)
