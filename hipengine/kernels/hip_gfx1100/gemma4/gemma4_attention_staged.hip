@@ -794,7 +794,40 @@ __global__ void gemma4_attention_staged_pv_singleton_kernel(
     }
     __syncthreads();
 
-    for (int k = 0; k < tile; ++k) {
+    // Eight keys' V loads in flight per thread: the per-(row, dimension)
+    // accumulation stays one ascending-key FMA chain -- keys in ascending
+    // order within the window, zero weights skipped per key -- while the loads
+    // overlap each other's latency instead of serializing behind the FMA that
+    // consumes them. The tile remainder keeps the original single-key walk.
+    int k = 0;
+    for (; k + 8 <= tile; k += 8) {
+      const float vs[8] = {
+          gemma4_staged_to_float(v_base[(j0 + k) * v_stride + d]),
+          gemma4_staged_to_float(v_base[(j0 + k + 1) * v_stride + d]),
+          gemma4_staged_to_float(v_base[(j0 + k + 2) * v_stride + d]),
+          gemma4_staged_to_float(v_base[(j0 + k + 3) * v_stride + d]),
+          gemma4_staged_to_float(v_base[(j0 + k + 4) * v_stride + d]),
+          gemma4_staged_to_float(v_base[(j0 + k + 5) * v_stride + d]),
+          gemma4_staged_to_float(v_base[(j0 + k + 6) * v_stride + d]),
+          gemma4_staged_to_float(v_base[(j0 + k + 7) * v_stride + d]),
+      };
+#pragma unroll
+      for (int r = 0; r < kResidentRows; ++r) {
+        // Dead for an exact variant, whose group has no row past its end.
+        if (!kExactRows && r >= rows) {
+          continue;
+        }
+#pragma unroll
+        for (int u = 0; u < 8; ++u) {
+          const float weight = w_s[r * kStagedPvTileKeys + k + u];
+          if (weight == 0.0f) {
+            continue;
+          }
+          acc[r] += weight * vs[u];
+        }
+      }
+    }
+    for (; k < tile; ++k) {
       const float v = gemma4_staged_to_float(v_base[(j0 + k) * v_stride + d]);
 #pragma unroll
       for (int r = 0; r < kResidentRows; ++r) {
