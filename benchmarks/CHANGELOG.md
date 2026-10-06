@@ -1,6 +1,10 @@
-## 2026-10-06 — DP-2 bounded two-consumer engine A/B closed default-off
+## 2026-10-06 — DP-2 native owner gate identified after engine A/B
 
-- Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next UD-Q4_K_XL production/BF16/chunk1024. A tracked-clean one-process/one-residency A/B covers 12 canonical and 16 category-heldout cases with 168 measured arm runs, three repetitions per arm, exact deterministic outputs and zero teardown allocations. Qualified p1024/p4096 prefill is 0.999575x parent (−0.043%), decode 1.000842x (+0.084%) and complete client wall 1.000254x (+0.025%); all rows are 1.000245x wall (+0.024%). Native engagement is exact and bounded at 10,980 candidate pairs with 10,980 casts eliminated, but no complete-engine improvement is measured, so the route remains default-off. Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/`.
+- Correct the default-off rationale without changing samples: qualified prefill −0.043%, request wall +0.025%; parent-first/candidate-first case groups have wall +0.067%/−0.016%, not a demonstrated causal regression. Default-off now names the missing native admission/dispatch/ownership complete-operation screen, not a minimum headline gain. Same Radeon 8060S host/model/quant/protocol as the A/B below; source: `results/2026-10-06-qwen4exp-dp2-shared-cast/artifact.json`.
+
+## 2026-10-06 — DP-2 bounded two-consumer engine A/B completed
+
+- Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8-Flash-Next UD-Q4_K_XL production/BF16/chunk1024. A tracked-clean one-process/one-residency A/B covers 12 canonical and 16 category-heldout cases with 168 measured arm runs, three repetitions per arm, exact deterministic outputs and zero teardown allocations. Qualified p1024/p4096 prefill is 0.999575x parent (−0.043%), decode 1.000842x (+0.084%) and complete client wall 1.000254x (+0.025%); all rows are 1.000245x wall (+0.024%). Native engagement is exact and bounded at 10,980 candidate pairs with 10,980 casts eliminated. The aggregate complete-wall difference does not establish a causal regression; native owner cost remains to be measured before promotion. Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/`.
 
 
 - Radeon8060S host `55ea6c509d0b49eea8de7094a1023668`, Qwen3.8 Flash

@@ -1262,10 +1262,15 @@
   and p4096, with zero elimination at p512. This is correctness and
   engagement evidence, not a model-wall speed claim. Evidence:
   `benchmarks/results/2026-10-06-qwen4exp-dp2-shared-cast/native-qualification.json`.
-- **Remove or promote when:** a tracked-clean same-host canonical/heldout engine
-  A/B measures the enabled route against the unchanged parent. Until that A/B
-  passes the applicable profile and task gates, keep the flag default-off and
-  keep DP-5's separately qualified single-use publication contract unchanged.
+- **Remove or promote when:** the complete native runner pair operation is
+  measured, including admission, normal dispatch, scope teardown and final
+  synchronization. The tracked-clean 28-case engine A/B is complete and exact:
+  qualified prefill −0.043%, request wall +0.025%, with request-wall sign
+  reversal between parent-first and candidate-first case groups. This does not
+  demonstrate a causal regression. The prebound primitive replay excluded
+  native ownership cost, so that cost is the concrete remaining gate; do not
+  require a minimum headline gain. Keep DP-5's single-use contract unchanged.
+
 ## Qwen4Exp wide-F16 activation hoist: opt-in runner integration
 
 - `qwen4_exp_runner.py` now binds a lazy, runner-owned staging buffer during

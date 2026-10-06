@@ -12,7 +12,9 @@ The candidate enables `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR=1`; the parent disable
 | 1024 | 0.999418x (−0.058%) | 1.000615x (+0.061%) | 1.000230x (+0.023%) |
 | 4096 | 0.999612x (−0.039%) | 1.000965x (+0.096%) | 1.000263x (+0.026%) |
 
-Across the qualified p1024/p4096 rows, prefill is 0.999575x (−0.043%), decode is 1.000842x (+0.084%), and complete client wall is 1.000254x (+0.025%). Across all 28 cases, prefill is 0.999592x (−0.041%), decode is 1.000774x (+0.077%), and complete client wall is 1.000245x (+0.024%). These differences are small and do not support a model-throughput improvement claim.
+Across the qualified p1024/p4096 rows, prefill is 0.999575x (−0.043%), decode is 1.000842x (+0.084%), and complete client wall is 1.000254x (+0.025%). Across all 28 cases, prefill is 0.999592x (−0.041%), decode is 1.000774x (+0.077%), and complete client wall is 1.000245x (+0.024%). These duration ratios do not establish a model-throughput improvement or a candidate-caused request regression.
+
+Qualified cases whose six-slot sequence starts with the parent have prefill −0.037% and complete wall +0.067%; candidate-first cases have prefill −0.049% and complete wall −0.016%. These are different case groups, not a within-case randomized order test. The request-wall sign reversal and within-arm variation make the aggregate +0.025% insufficient grounds to reject an otherwise qualified owner saving.
 
 The route engages only at the existing bounded scope: gfx1151 production Q8_0 dense-wide layers13–47, p1024/p4096 rows, and immediate `attn_qkv→attn_gate` or `shared_gate→shared_up` pairs. Across all measured samples it records 10,980 candidate pairs, 21,960 accepted consumers, and 28,440 casts, versus 39,420 parent casts. P512 remains on the parent with zero pair engagement. The full p4096 prompts execute four 1024-token chunks, so each candidate sample records 244 pairs and eliminates 244 casts.
 
@@ -23,7 +25,7 @@ The route engages only at the existing bounded scope: gfx1151 production Q8_0 de
 - Final teardown reports zero active allocations and zero current allocated bytes.
 - The native qualification artifact remains the source for full logits, Conv/GDN state, full KV, repeat bytes, isolation and native admission checks.
 
-The operation-level cast screen remains useful evidence, but its savings do not translate into a measurable complete-engine win in this protocol. DP-2 therefore remains default-off; strict, Q4_K_M, other backends and unqualified shapes retain the parent. No production profile or model-throughput claim follows from this packet.
+DP-2 remains default-off pending a complete **native ownership-operation** screen. The earlier replay charges casts and two prebound GEMMs but excludes dispatch selection and native admission/ownership bookkeeping. The next screen must charge the actual runner pair helper, scope entry/admission, both normal dispatches, scope exit and final synchronization. A measured non-regressive native owner saving is retainable even when complete-engine timing is flat within noise; no minimum headline gain is required. Strict, Q4_K_M, other backends and unqualified shapes retain the parent. No production default or model-throughput claim follows from this packet.
 
 ## Reproduce
 
@@ -38,4 +40,4 @@ uv run --no-sync python scripts/qwen4exp_f16_pair_engine_ab.py \
   --output /tmp/qwen4exp-dp2-engine-ab-20261006-clean.json
 ```
 
-The full measured samples are in [engine-ab.json](engine-ab.json), with the compact comparison in [artifact.json](artifact.json). The earlier operation screen, native qualification, partial run and repair history remain in [initial.json](initial.json), [final.json](final.json), [native-qualification.json](native-qualification.json), [focused_p1024.json](focused_p1024.json) and the preceding sections of this directory.
+The full measured samples are in [engine-ab.json](engine-ab.json), with the compact comparison and order review in [artifact.json](artifact.json). The earlier primitive-operation screen and native qualification remain in [initial.json](initial.json), [final.json](final.json), [native-qualification.json](native-qualification.json) and [focused_p1024.json](focused_p1024.json). The engine samples are unchanged by this interpretation correction.
