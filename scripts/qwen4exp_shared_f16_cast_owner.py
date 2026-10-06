@@ -135,14 +135,14 @@ def main():
     profile = gate.resolve_runtime_profile(model=gate.QWEN4_EXP_MODEL, backend=gate.QWEN4_EXP_BACKEND,
         quant=gate.QWEN4_EXP_QUANTS[1], profile=gate.ExecutionProfile.PRODUCTION)
     fixture, digest = gate.load_fixture(gate.DEFAULT_FIXTURE)
-    ids = args.case_id or ([f"{category}-p{rows}" for rows in (1024, 4096)
-                            for category in ("code", "general_en", "general_ja", "mixed_ja_en")]
+    ids = args.case_id or ([f"{category}-p4096" for category in
+                            ("code", "general_en", "general_ja", "mixed_ja_en")]
                            if args.native_owner else
                            ["code-p512", "code-p1024", "code-p4096", "general_en-p4096",
                             "general_ja-p4096", "mixed_ja_en-p4096"])
     cases = [next(c for c in fixture["cases"] if c["id"] == name) for name in ids]
-    if args.native_owner and any(c["prompt_tokens"] not in {1024, 4096} for c in cases):
-        parser.error("native ownership screen admits only measured rows1024/4096")
+    if args.native_owner and any(c["prompt_tokens"] != 4096 for c in cases):
+        parser.error("native ownership screen admits only measured row4096")
     report = dict(schema=1, status="running", performance_claim=False, command=sys.argv,
         source=gate._git_metadata(ROOT), host=gate._host_metadata(), model_identity=model_identity(args.model_root),
         execution_profile="production", manifest_sha256=profile.manifest_sha256,

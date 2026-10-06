@@ -1,6 +1,10 @@
+## 2026-10-07 — DP-2 native owner cost narrows admission to p4096
+
+- Clean gfx1151 source `5ed9c3e37`, Qwen3.8-Flash-Next UD-Q4_K_XL production/BF16: complete runner-pair owner timing over eight canonical cases, four categories, p1024/p4096, layers13/24/46, both pairs, one warmup and 12 measured pairs per arm. All 48 captures are exact and leak-free with 2→1 cast engagement. Native owner wall is **+3.245% at p1024** and **−3.986% at p4096**, with both order strata agreeing within each shape. Admission is narrowed to rows4096; p1024 remains parent. No model-wall/default promotion claim. Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/native-owner.json`.
+
 ## 2026-10-06 — DP-2 native owner gate identified after engine A/B
 
-- Correct the default-off rationale without changing samples: qualified prefill −0.043%, request wall +0.025%; parent-first/candidate-first case groups have wall +0.067%/−0.016%, not a demonstrated causal regression. Default-off now names the missing native admission/dispatch/ownership complete-operation screen, not a minimum headline gain. Same Radeon 8060S host/model/quant/protocol as the A/B below; source: `results/2026-10-06-qwen4exp-dp2-shared-cast/artifact.json`.
+The complete native owner screen now supplies the missing cost gate: p1024 loses and p4096 wins. The opt-in policy is narrowed to p4096; a separate full-engine A/B is required before any production binding or model-wall claim. Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/native-owner.json`.
 
 ## 2026-10-06 — DP-2 bounded two-consumer engine A/B completed
 

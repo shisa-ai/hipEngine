@@ -1251,25 +1251,29 @@
   runner workspace is borrowed once: the first consumer casts F32 to F16 and
   the second consumes the same bytes. It is not a persistent activation cache,
   adds no device allocation or synchronization, and does not change arithmetic.
-- gfx1151 registry policy admits only layers13–47, rows1024/4096, and the
-  measured `attn_qkv`→`attn_gate` and `shared_gate`→`shared_up` pairs. Exact
-  source/count/output/weight/key/stream/runtime/workspace/context checks and
-  mismatch, nesting, exception and context-lifecycle invalidation retain the
-  parent route. p512 and all unmeasured rows remain on the parent.
+- gfx1151 registry policy now admits only layers13–47, rows4096, and the
+  measured `attn_qkv`→`attn_gate` and `shared_gate`→`shared_up` pairs. The
+  complete native owner screen charges scope admission, normal dispatch,
+  teardown, events and final synchronization: p1024 loses +3.245% aggregated
+  wall while p4096 wins −3.986%, with both order strata agreeing per shape.
+  Rows1024 and p512 remain parent-only; all other shapes/routes retain the
+  parent. Exact source/count/output/weight/key/stream/runtime/workspace/context
+  checks and mismatch, nesting, exception and context-lifecycle invalidation
+  remain in force.
 - Native qualification passes 28 canonical/heldout cases, 168 arm runs and
   128 decode steps per run. Logits, Conv/GDN state, full KV, repeat bytes,
-  parent isolation and teardown are exact; 61 casts are eliminated at p1024
-  and p4096, with zero elimination at p512. This is correctness and
-  engagement evidence, not a model-wall speed claim. Evidence:
+  parent isolation and teardown are exact; the prior policy eliminated 61
+  casts at p1024 and p4096, with zero elimination at p512. This is correctness
+  and engagement evidence, not a model-wall speed claim. Evidence:
   `benchmarks/results/2026-10-06-qwen4exp-dp2-shared-cast/native-qualification.json`.
-- **Remove or promote when:** the complete native runner pair operation is
-  measured, including admission, normal dispatch, scope teardown and final
-  synchronization. The tracked-clean 28-case engine A/B is complete and exact:
-  qualified prefill −0.043%, request wall +0.025%, with request-wall sign
-  reversal between parent-first and candidate-first case groups. This does not
-  demonstrate a causal regression. The prebound primitive replay excluded
-  native ownership cost, so that cost is the concrete remaining gate; do not
-  require a minimum headline gain. Keep DP-5's single-use contract unchanged.
+- The complete owner result is operation-level evidence, not a model-wall
+  claim. A separate full-engine A/B is required before production binding;
+  `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` remains default-off. Evidence:
+  `benchmarks/results/2026-10-06-qwen4exp-dp2-shared-cast/native-owner.json`.
+- **Remove or promote when:** a tracked-clean full-engine A/B qualifies the
+  narrowed rows4096-only policy against the unchanged parent. Do not promote
+  from the owner screen alone, and do not interpolate the p4096 result to
+  p1024/p512. Keep DP-5's single-use contract unchanged.
 
 ## Qwen4Exp wide-F16 activation hoist: opt-in runner integration
 

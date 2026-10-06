@@ -9,7 +9,7 @@ from hipengine.runtime import gguf_linear as linear
 
 RT = object()
 X, HALF, OA, OB, WA, WB = (i << 32 for i in range(1, 7))
-ROWS, K, NA, NB = 1024, 2560, 10240, 6144
+ROWS, K, NA, NB = 4096, 2560, 10240, 6144
 SOURCE = "dense_wide256_f32_f32_out"
 TARGET = "dense_wide256_f16in_f32_f32_out"
 KEY = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", TARGET)
@@ -234,11 +234,14 @@ def test_native_dispatch_probe_and_backend_policy_admit_only_measured_pairs(monk
     a, b = weight("attn_qkv", WA, NA), weight("attn_gate", WB, NB)
     with linear.raw_k_prefill_variant_session("coltile8"), linear.wide_f16_activation_session(
             workspace_ptr=HALF, workspace_nbytes=4096 * K * 2):
-        for rows in (1024, 4096):
+        for rows in (4096,):
             with linear.wide_f16_activation_pair(a, b, X, OA, OB, rows=rows,
                     in_features=K, out_features_a=NA, out_features_b=NB, runtime=RT) as loan:
                 assert loan is not None
                 assert [c.key for c in loan.consumers] == [KEY, KEY]
+        with linear.wide_f16_activation_pair(a, b, X, OA, OB, rows=1024,
+                in_features=K, out_features_a=NA, out_features_b=NB, runtime=RT) as loan:
+            assert loan is None
         monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
         with linear.wide_f16_activation_pair(a, b, X, OA, OB, rows=ROWS,
                 in_features=K, out_features_a=NA, out_features_b=NB, runtime=RT) as loan:

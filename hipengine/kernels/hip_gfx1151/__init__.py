@@ -2367,11 +2367,12 @@ GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = False
 # this does not admit the W7900 Q5/Q6 policies above.
 GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED = True
 GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED = True
-# Exact padded HC-down tail, qualified on natural inputs and full-model state.
-# Runtime consumes registry-axis keys; peer backends expose no admission.
+# Complete native-owner timing is positive only at rows=4096. The p1024
+# owner is slower after scope admission/dispatch bookkeeping and remains on the
+# parent. Runtime consumes registry-axis keys; peer backends expose no admission.
 GGUF_DENSE_WIDE_F16_PAIR_POLICIES = {
     ("linear", "gguf_q8_0", "dense_wide256_f32_f32_out"): {
-        "rows": frozenset({1024, 4096}),
+        "rows": frozenset({4096}),
         "layers": frozenset(range(13, 48)),
         "pairs": {
             ("attn_qkv", "attn_gate"): (2560, 10240, 6144),
