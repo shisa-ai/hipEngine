@@ -2688,6 +2688,8 @@ def test_gguf_resident_full_prefill_uses_block_table_path_when_required(
     )
     runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
     runner._route_counts = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
     runner._refresh_prefix_cache = lambda candidate: None
     runner._mtp2_adapter = None
     runner._mtp2_adapter_resolved = True
@@ -4202,6 +4204,8 @@ def test_gguf_resident_direct_int8_buffers_scheduler_chunks_for_exact_full_prefi
         qwen35_gguf.Qwen35GGUFResidentModelRunner
     )
     runner._fallback_reasons = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
 
     runner._prefill_native_chunk(row, (10, 11), final_chunk=False)
 
@@ -4258,6 +4262,8 @@ def test_gguf_resident_native_prefill_falls_back_when_packed_route_refuses_conte
     )
     runner._route_counts = Counter()
     runner._fallback_reasons = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
     runner._refresh_prefix_cache = lambda row: None
     runner._resolved_mtp2_adapter = lambda: None
     runner._finish_native_prefill = (
@@ -4316,6 +4322,8 @@ def test_gguf_resident_native_prefill_keeps_block_table_route_fail_closed() -> N
     )
     runner._route_counts = Counter()
     runner._fallback_reasons = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
     runner._refresh_prefix_cache = lambda row: None
     runner._resolved_mtp2_adapter = lambda: None
 
@@ -5175,6 +5183,8 @@ def test_resident_packed_prefill_falls_back_when_the_slab_hits_the_context_bound
     runner._packed_execution_owner = lambda session: owner
     runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(tuple(_rows))
     runner._finish_mtp2_prompt_streaming = lambda *args, **kwargs: None
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
     runner._refresh_prefix_cache = lambda _row: None
     runner._finish_native_prefill = lambda *args, **kwargs: None
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")

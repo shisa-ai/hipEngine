@@ -27,6 +27,14 @@ def test_host_metadata_uses_cached_compiler_without_spawning_hipcc(
         return SimpleNamespace(stdout="active", stderr="")
 
     monkeypatch.setattr(module.subprocess, "run", run)
+    read_text = Path.read_text
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda path, *args, **kwargs: "test-machine-id"
+        if str(path) == "/etc/machine-id"
+        else read_text(path, *args, **kwargs),
+    )
     assert module._host_metadata()["hipcc_version"] == "HIP version: pinned"
 
 

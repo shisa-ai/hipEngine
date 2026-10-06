@@ -1566,6 +1566,7 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             },
         },
         "capabilities": {
+            "surfaces": ["text"],
             "completions": True,
             "chat_completions": True,
             "streaming": True,
@@ -1575,10 +1576,16 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             "continuations": True,
             "sessions": True,
             "grammars": False,
+            "song_generation": False,
             "speculative_mtp": False,
             "speculative": False,
             "tensor_parallel": False,
             "multiple_models": False,
+        },
+        "song_generation": {
+            "enabled": False,
+            "reason": "the served model declares no song surface",
+            "surfaces": ["text"],
         },
         "capabilities_url": "/v1/hipengine/capabilities",
         "routing": {"loaded_model_count": 1, "multiple_models": False},
@@ -4478,6 +4485,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         kv_scale_dtype: str = "fp16",
         kv_scale_granularity: str = "per_token_head",
         vision_model: str | None = None,
+        vae_model: str | None = None,
     ) -> FakeLLM:
         captured.update(
             {
@@ -4495,6 +4503,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "kv_scale_dtype": kv_scale_dtype,
                 "kv_scale_granularity": kv_scale_granularity,
                 "vision_model": vision_model,
+                "vae_model": vae_model,
             }
         )
         return fake
@@ -4535,6 +4544,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "kv_scale_dtype": "fp32",
         "kv_scale_granularity": "per_token_head",
         "vision_model": None,
+        "vae_model": None,
     }
 
 

@@ -242,11 +242,20 @@ def test_gate_requires_the_broad_floor(gate):
     assert not gate._gate_passes({"pooled_mean_kl": None, "top1_agreement": None})
 
 
-def test_artifact_provenance_names_the_machine_and_the_command(gate, request):
+def test_artifact_provenance_names_the_machine_and_the_command(gate, request, monkeypatch):
     """The evidence-policy fields are collected, never typed into the artifact."""
 
     if not run_in_clean_interpreter(request.node.nodeid):
         return
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        gate.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout="Marketing Name: Test CPU\nMarketing Name: Test Radeon Graphics\n"
+        ),
+    )
     provenance = gate._provenance(
         ["--prefill-variant", "strict", "--json", "out.json"],
         REPO / "tests/fixtures/yue2",
@@ -258,7 +267,7 @@ def test_artifact_provenance_names_the_machine_and_the_command(gate, request):
         "python3 scripts/yue2_ar_replay.py --prefill-variant strict --json out.json"
     )
     assert provenance["host"]["name"]
-    assert provenance["host"]["gpu"]
+    assert provenance["host"]["gpu"] == "Test Radeon Graphics"
     assert provenance["date"].endswith("+00:00")
     assert len(provenance["fixtures_integrity_sha256"]) == 64
     assert provenance["torch_imported"] is False

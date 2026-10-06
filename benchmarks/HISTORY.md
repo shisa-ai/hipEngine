@@ -3095,3 +3095,562 @@ These are same-model retained rows, but CUDA and HIP run on different hardware.
 | RTX PRO 6000 Blackwell | c1 natural+heldout continuation | **402.361 tok/s** | 1,152/1,152 paired wins; 1,296/1,296 positions exact | [`CUDA split-K`](results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json) |
 
 CUDA resident batching and serving are not claimed by these c1 rows.
+
+<!-- moved from benchmarks/README.md: intro latest-results feed, XTX dynamic-routing stack, YuE2 NAR attention packing -->
+## Moved from the compact scoreboard (2026-10-06)
+
+Full narrative moved out of [`benchmarks/README.md`](README.md) to keep that file a
+compact scoreboard. The README keeps each heading and a summary; the detail below is
+historical evidence, not a topline.
+
+### Latest benchmark narrative (moved 2026-10-06)
+
+**Halo-box Vulkan MTP** (`strix-llama.cpp@03895887abe6`) completes the same Qwen3.6 Q4_K_M 140-turn
+replay on Radeon 8060S in **643.08 s** (mean **4.593 s**), and passes **77/96** frozen BFCL
+diagnostic cases. Saved hipEngine/llama.cpp HIP MTP times are 793.15/827.10 s, with corrected
+hipEngine quality 75/96 and llama.cpp 76/96; gufo is 1,041.49 s and 73/96. The new arm uses BF16
+target KV, FP16 draft KV and the same target-plus-NextN tensor bytes. Different backends and outputs
+preclude an isolated kernel gain; the small diagnostic does not establish accuracy parity or a
+full-gate pass.
+[Four-engine table and protocol](mlperf-edge/README.md#latest-halo-box-vulkan-comparison-2026-09-26)
+· [Artifact](results/2026-09-26-gfx1151-halo-edge140-bfcl96.json).
+
+A **96-case BFCL quality diagnostic** on the same Qwen3.6 target and speculative configurations
+scores hipEngine **75/96**, llama.cpp **76/96**, and gufo **73/96**. All cases complete. Correcting
+hipEngine's omitted `parallel_tool_calls` default from disabled to enabled raises its score from
+52/96, with 23 newly passing parallel-call cases and no regressions. The unchanged llama.cpp/gufo
+outputs are reused. This small diagnostic is not the full accuracy gate or an accuracy-parity
+finding. Performance rows below predate the default repair.
+[Quality results and protocol](mlperf-edge/README.md#parallel-call-default-repair-2026-09-26) ·
+[Artifact](results/2026-09-26-gfx1151-bfcl96-parallel-default.json).
+
+MLPerf Edge Agentic **speculative 140-turn screen**, physical host **gfx1151 / Radeon 8060S**,
+Qwen3.6-27B Q4_K_M target tensors, 32K context and concurrency 1:
+
+| Engine | Completed | Mean turn latency | Measured phase | Inline command IoU |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine production + Qwen3.6 MTP | 140/140 | 5.665 s | 793.15 s | 0.5586 |
+| llama.cpp HIP + Qwen3.6 MTP | 140/140 | 5.908 s | 827.10 s | 0.6423 |
+| Patched gufo + Qwen3.8 DFlash2 | 140/140 | 7.439 s | 1,041.49 s | 0.6387 |
+
+All three execute speculation and return valid tool calls. MTP arms use a separate GGUF with all
+original target tensor bytes preserved plus NextN weights; gufo uses the original target file.
+hipEngine/llama.cpp target KV is BF16, gufo target KV is FP16. Effective cache-inclusive prefill is
+4,744 / 6,089 / approximately 8,023 tok/s; client-visible TTFT averages 2.535 / 2.872 / 7.039 s.
+Different outputs, tokenization and timing windows preclude a kernel-throughput or accuracy-parity
+claim. Inline IoU is not task correctness; see the separate BFCL diagnostic above.
+[Protocol and accounting](mlperf-edge/README.md#speculative-140-turn-comparison-2026-09-25) ·
+[Paired MTP artifact](results/2026-09-25-gfx1151-edge-speculative-140.json).
+
+Earlier **autoregressive 140-turn screen**, physical host **gfx1151 / Radeon 8060S**, same
+Qwen3.6-27B Q4_K_M, BF16 KV, 32K window, concurrency 1, reasoning off and shipped cache policies:
+
+| Engine | Completed | Mean turn latency | Measured phase | Inline command IoU |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine production, AR host sampler | 140/140 | 8.925 s | 1,249.47 s | 0.5586 |
+| llama.cpp HIP, AR | 140/140 | 9.157 s | 1,282.06 s | 0.6420 |
+
+One fresh-server pass each, with different outputs: not a stable speedup or quality-parity finding.
+Both return valid calls without empty/missing/error responses. Harness TPOT has a post-first-chunk
+tokenization defect and is not valid decode-rate evidence. BFCL and full performance gates have not
+run. [Protocol, commands and breakdown](mlperf-edge/README.md) ·
+[Artifact](results/2026-09-25-gfx1151-mlperf-edge-140.json).
+
+A compatibility-patched **gufo + Qwen3.8 DFlash2 draft** completes the same Qwen3.6 target workload
+with **FP16 KV**, active speculation and prefix caching:
+
+| Engine | Completed | Mean turn latency | Measured phase | Inline command IoU |
+| --- | ---: | ---: | ---: | ---: |
+| Patched gufo, Qwen3.6 target + Qwen3.8 DFlash2 | 140/140 | 7.439 s | 1,041.49 s | 0.6387 |
+
+Draft acceptance is 15.79%; prefix token reuse is 96.55%. Effective prefill is approximately 8,023
+tok/s (full prompt tokens / pooled prefill seconds, durations reconstructed from rounded server
+rates). Client-visible TTFT averages 7.039 s: 132/140 responses buffer tool output until essentially
+completion. The prior pair below the speculative table is AR. Different KV/output settings and no
+gufo AR control prevent a speculative-speedup or quality-parity claim. The full BFCL gate has not
+run.
+[Timing definitions and checks](mlperf-edge/README.md#patched-gufo-with-cross-version-dflash2-2026-09-25)
+· [Artifact](results/2026-09-25-gfx1151-gufo-dflash-edge-140.json).
+
+
+Qwen3.8-27B Q4_K_M sampling on **zbook / Radeon 8060S (gfx1151)**: full-vocabulary GPU sampling
+achieves **11.61 decode tok/s and 9.63 engine end-to-end tok/s**, 1.34% and 1.63% below the fresh
+greedy control. Fast CPU ordering achieves 9.99 decode and 8.53 end-to-end tok/s.
+
+The protocol uses BF16 KV, strict model arithmetic with the sampler algorithm recorded separately,
+one active request in a capacity-4 service, MTP/cache off, all 10 category prompts plus 8 heldouts
+at natural lengths, 16 output tokens, temperature 0.7, top-p 0.95, no top-k cap, and two
+repetitions.
+
+| Path | Selection ms/token | Decode ms/token | Decode tok/s | Decode loss vs greedy | End-to-end tok/s | End-to-end loss vs greedy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Greedy, fresh control | — | 84.95 | 11.77 | — | 9.79 | — |
+| Original CPU | 49.17 | 135.59 | 7.38 | 37.5% | 6.55 | 33.3% |
+| CPU with redundant sort removed | 25.08 | 111.38 | 8.98 | 23.9% | 7.81 | 20.5% |
+| CPU with numeric sorting | 13.17 | 100.11 | 9.99 | 15.1% | 8.53 | 12.8% |
+| Original GPU | 48.39 | 132.40 | 7.55 | 36.0% | 6.71 | 31.7% |
+| GPU full-vocabulary sort/scan | 0.95 | 86.10 | 11.61 | 1.34% | 9.63 | 1.63% |
+
+Decode rates pool steady transitions, excluding the first two transitions per request. End-to-end
+rates divide all output tokens by total `generate_detailed()` wall time, including prefill and every
+decode step but excluding model loading, preparation and tokenization. Neither rate is HTTP
+throughput or a long-context measurement. No graph replay occurs at this short horizon.
+
+Original CPU/GPU and redundant-sort-removal rows are earlier same-host runs with the same protocol;
+their loss percentages use the original greedy control (11.80 decode / 9.82 end-to-end tok/s).
+Numeric CPU and sorted GPU share the fresh interleaved control. Versus the originals, CPU
+decode/end-to-end improve 35.4%/30.2%; GPU improves 53.8%/43.5%.
+
+All 144 requests complete and all 72 repeat pairs match. CPU generated tokens match the original in
+all 36 sampled requests. GPU numerical fixtures and the full-vocabulary c1/c4
+lifecycle/state/ownership gate pass; GPU versus CPU or old GPU sampled-token identity is not
+required. The short output suite is not a separate task-quality certification. Supported, available
+GGUF native sampling is default-on; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` selects host rollback. This
+does not widen supported request shapes or claim gfx1100 hardware validation.
+[Commands, correctness checks, and per-request evidence](results/2026-09-21-zbook-fast-cpu-gpu-sampling.json).
+
+September 20 W7900 C1 refresh on physical host **epyc**, GPU0 `0xe282895b62c2b295`: BF16 KV, 512/128
+and 4096/128, one warmup and three measured repetitions. Both GGUF models pass 18-prompt graph/eager
+identity checks; PARO has repetition-stable IDs, not a newly run independent arithmetic gate. These
+are standalone resident-harness snapshots, not HTTP throughput or new arithmetic promotions. MTP,
+INT8 KV, and capacity were not re-measured.
+[Commands and samples](results/2026-09-20-w7900-gfx1100-v060-headline-refresh.json).
+
+HTTP prefix caching defaults to radix. On W7900, the BF16 layout repair passes all four categories
+and four heldouts with active and completed sources: 2,048 teacher-forced rows have zero KL and
+exact state against private same-schedule recomputation. The serial-suffix arithmetic comparison is
+reported separately; this packet does not validate INT8 prefix reuse.
+[Correctness and diagnosis](results/2026-09-20-w7900-prefix-bf16-layout-repair.json).
+
+The separate no-mirror INT8/FP32 prefix reader repair passes the same 16 category/lifecycle scopes
+on **epyc GPU1, Radeon RX 7900 XTX**, using Qwen3.8-27B `Q4_K_M`: 2,048 teacher-forced rows have
+zero KL and exact retained payload, scales, and state against private same-schedule recomputation.
+This is not a W7900 transfer or cross-schedule output-identity claim.
+[INT8 ownership evidence](results/2026-09-20-rx7900xtx-prefix-int8-ownership-repair.json).
+
+
+September 20 C1 refresh on **Framework Desktop / Radeon 8060S**, physical host `gfx1151`:
+Qwen3.6-35B-A3B `UD_Q4_K_M` measures 1,418.1 prefill and 56.7 decode tok/s at 512/128; Qwen3.8-27B
+`Q4_K_M` measures 404.5 and 12.15. Each has three timing samples and an 18-prompt graph/eager
+identity check. Qwen3.8 production MTP completes the ten-prompt natural25 category suite, including
+four heldouts, at 22.37 versus 11.30 tok/s true AR (1.979x), with all ten cells exact, engaged and
+budget-conformed. These are current snapshots, not an isolated optimization A/B. The Qwen3.6 packed
+c2/c4 byte-exact diagnostic fails and is not certified by these C1 results. Other model rows retain
+their stated measurement dates.
+[Commands, provenance, samples, and limitations](results/2026-09-20-gfx1151-v060-headline-refresh.json).
+
+Merged-tree working baseline on physical host `gfx1151` (Radeon 8060S): the upstream prefix-cache
+A/B reproduces the merge screening rows (35B MoE all lanes 28.19 → 33.88 tok/s, 16/27 hits; dense
+27B code lanes 5.64 → 7.35 tok/s, 9/18 hits). On the served multi-turn protocol with an in-load
+true-AR control, rows that used MTP decode at **25.34 against 12.27 tok/s per request (2.07x)** with
+median ITL halved (82.8 → 40.1 ms) at c=1, that per-request advantage is gone at c=4 (9.59 against
+9.30), and the c=4 speculative lane loses coverage to activation (2 of 6 rows, 635 `no_provider`
+events). Warm prefix hits now speculate too: a hit row restores the draft provider's checkpoint at
+its reused boundary and streams its suffix, measuring **82.6 → 35-41 ms median ITL and 1.63-1.82x
+lower end-to-end latency** on the served c=1 protocol with byte-identical output. This is a working
+baseline, not a promotion or an aggregate MTP throughput claim.
+[Baseline artifact](results/2026-09-20-gfx1151-post-merge-baseline-cache-and-mtp-arms.json).
+
+Merge qualification on physical host `gfx1151` (Radeon 8060S): the local MTP/containment branch and
+upstream prefix-cache branch pass the CPU and serving integration checks, live cache-hit/lifecycle
+checks, and sampled-MTP repeatability smoke. The dense27B serial-oracle numerical probe has a
+pre-existing failure reproduced on untouched upstream; this is not full production numerical
+qualification or a new performance claim.
+[Qualification and limitations](results/2026-09-20-gfx1151-prefix-mtp-merge-qualification.json).
+
+Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**, 12 pages covering
+layout/markup, Japanese and mixed script, dense text, tables, blank and degraded pages, and longer
+layouts. Both lanes explicitly execute preprocessing, vision, prefill, and a manual greedy loop;
+loading is excluded. Three measured repetitions follow a discarded warmup, in separate lane
+processes.
+
+| Metric across 12 pages | hipEngine HIP fp32 | transformers torch HIP fp32 |
+| --- | ---: | ---: |
+| Decode rate | 55.4–57.0 tok/s | 25.1–30.2 tok/s |
+| Complete request | 0.199–8.874 s | 0.273–13.732 s |
+
+Median per-page speedup: **2.16x decode, 1.65x end to end**. hipEngine wins end to end on 11/12
+pages; blank is 0.438 s versus torch's 0.401 s. All 24 rows pass reference, termination,
+repeatability, and output-format gates. Eleven pages require exact generated IDs; the degraded scan
+gates its layout structure and records bbox drift (90/1000) under the benchmark's ad-hoc prompt.
+Full-page text accuracy is qualified separately with the real training prompt. The final runtime
+passes 415 Surya tests with zero skips. Removing redundant upload synchronization is near-flat in
+the paired run: decode rate +0.18%, request latency +0.22%; no end-to-end speedup is claimed for
+that cleanup. [Final per-page results](results/2026-09-14-gfx1151-surya-final-lanes.json),
+[cleanup A/B](results/2026-09-14-gfx1151-surya-upload-cleanup-ab.json),
+[protocol and environment](../docs/model-cards/MODEL-SURYA.md#final-lane-comparison-2026-09-14).
+Separate processes follow the established protocol; combined-process qualification is tracked in
+`docs/REFACTOR.md`.
+
+Full-page transcription is gated against the text drawn on each page, not only against a captured
+oracle. Using the checkpoint's real full-page HTML prompt, eight documents (Japanese, mixed script,
+dense small text, a ruled table, a blank page, a degraded scan, a 25-line block-heavy page, and a
+300-DPI A4 page) all reach a natural EOS with line recall 1.000, line exact rate 1.000, character
+error rate 0.0000, and zero reading-order violations; the ruled table reads as 4x8 with 32/32 cells
+and a matching header, and a deliberately starved budget is reported as truncation with omissions
+rather than passing a prefix. The A4 page is the page-scale case at 2480x3508 (220x156 patch grid,
+8580 image tokens): 2108 tokens to a natural EOS, vision 43.297 s, prefill 7.860 s, decode 40.504 s
+(52.04 tok/s), 91.891 s end to end (one request); its ground truth is paragraph-level because its
+body is wrapped prose. One caveat is recorded: on the degraded scan the HIP lane differs from torch
+fp32 on 21 of 616 ids, all bbox coordinate digits, with identical labels and text and a worst
+coordinate delta of 4 of 1000 — and torch bf16 differs from torch fp32 on 15 ids there and changes
+the decoded text, so the drift is a property of that page's coordinates rather than of the HIP
+route. [Final transcription acceptance](results/2026-09-14-gfx1151-surya-final-transcription.json).
+
+Surya OCR 2 is also reachable through hipEngine's OpenAI-compatible server.
+`scripts/surya_http_e2e.py` serves the A4 page over `/v1/chat/completions` and verified output
+equality with a direct call on 2026-09-12: 2108 completion tokens, 8701 prompt tokens (121 text plus
+8580 image), 13 blocks, 12/12 units, CER 0.0000, 32/32 table cells, `stop`. Its historical 119.9 s
+HTTP timing is not a final latency measurement. Vision bounds and media form are engine
+declarations, so a page-scale model is admitted without editing the server.
+[HTTP serving e2e](results/2026-09-12-gfx1151-surya-http-serving-e2e.json).
+
+Text-prefill score tiles take the byte budget's own width and vision tiles are bounded by a shape
+envelope (`max(128, rows/32)` rows): the budget's widest tile is within 1.1% of the text optimum at
+every measured length, while a dense vision tile costs 19-43%
+([text](results/2026-09-13-gfx1151-surya-text-prefill-postfix.json),
+[vision](results/2026-09-13-gfx1151-surya-vision-tiling-postfix.json)).
+
+### XTX (RX 7900 XTX) Qwen3.8 `UD-Q4_K_M` / `UD-Q4_K_S` dynamic-routing stack
+
+No valid final W7900 parity row exists: the four-arm A/B below was measured on the XTX, and the
+W7900 paired MTP run is withdrawn as invalid (see the dated retraction in
+[`CHANGELOG.md`](CHANGELOG.md)).
+
+2026-09-11 four-arm A/B (hipEngine direct, p512/d128, graph-replay decode, medians of 3, all four
+arms same-conditions): the UD artifacts vs their plain counterparts. Prefill is tokens/s.
+
+| Model | Prefill plain | Prefill UD | Ratio | Decode plain | Decode UD | Decode ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `UD-Q4_K_M` | 986.0 | **905.6** | **0.918x** | 35.37 | **29.98** | **0.848x** |
+| `UD-Q4_K_S` | 946.0 | **893.7** | **0.944x** | 36.66 | **29.49** | **0.804x** |
+
+2026-09-11 decode-parity campaign final re-measure (same conditions; the plain arms also gained from
+the shared Q5 local32 owner — plain K_M 34.12 -> 35.37, plain K_S 30.55 -> 36.66): the four levers —
+IQ4_XS gate/up dual+SiLU, IQ4_NL local32, the split/scale IQ (IQ3_S/IQ3_XXS/ IQ2_S/IQ2_XS) local32
+family, and the Q5 dense local32 single — took UD decode 26.20 -> **29.98** (K_M, +14.4%) and 25.53
+-> **29.49** (K_S, +15.5%), pure-kernel 35.23 -> 30.26 and 36.16 -> 30.02 ms/tok, 898 -> 831 and 918
+-> 839 launches/tok. Both artifacts pass the tokenized category gate on the final stack (K_M max
+1.484e-2, K_S max 2.014e-2, top-1 99.91%); K_M's local32-family tail is pinned at its admitted state
+(all four IQ3_S decode slots strict). Remaining decode levers: the Q5 MoE selected-expert path (2.22
+ms/tok K_M on the direct GEMV), Q3_K strict decode (1.43/2.43 ms/tok), and the Q5 gate/up dual.
+([final rollup](results/final-decode-campaign-2026-09-11/).)
+
+MTP for these artifacts is now **admitted**: the U6 certification records are complete,
+`_UD_MTP_PRESET_FINGERPRINTS` carries both fingerprints, and the artifacts derive the `mtp` scope
+alongside `ar`. The admitted scope is width c1 and the 4-95 token context bucket, and it is the
+measured scope — c2 K2 engages and holds `ar_exact` but reaches only 1.0418x, c4 has no production
+physical width cell, c8 runs out of memory at capacity 8 on a 24 GB card, and above 1023 context the
+adapter refuses MTP while the packed verifier stops batching. An admission check with no request
+field, no diagnostic flag and no in-process grant measures `UD-Q4_K_M` AR 14.23 -> MTP **34.32**
+tok/s (**2.4126x**) and `UD-Q4_K_S` AR 15.19 -> MTP **35.71** tok/s (**2.3517x**), 10/10 engaged and
+10/10 `ar_exact`, on the server-path diagnostic denominator
+([admission check](results/2026-09-12-ud-gfx1100-mtp-automatic-admission.json),
+[width census](results/2026-09-12-ud-gfx1100-mtp-width-cells.json)). That denominator is not the
+resident graph-replay leaf used below, so it does not replace these rates.
+
+The retained paired measurement (c1, natural25, B3, ten prompts, two repeats, recorded production
+graph replay for the true-AR arm), taken on a clean worktree at `92c7e3dc4`:
+
+| Tier | UD AR | Plain AR | UD / plain AR | UD MTP B3 | Plain MTP B3 | UD / plain MTP | UD MTP / AR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `Q4_K_M` | 32.922 | 38.373 | **0.858x** | 50.231 | 65.347 | **0.769x** | **1.5258x** |
+| `Q4_K_S` | 32.311 | 41.135 | **0.785x** | 49.356 | 70.092 | **0.704x** | **1.5275x** |
+
+All four arms have complete 20-row-per-group evidence, deterministic repeats, GPU/CPU acceptance
+agreement, and a positive MTP/AR ratio. The `Q4_K_M` arms are generated-ID exact and both carry
+`speed_claim_eligible: true` from a clean worktree. `Q4_K_S` carries the recorded `general_ja_plan`
+exactness divergence (2/20 rows) described below, which the suite scores as `correctness_failed` and
+so marks `speed_claim_eligible: false`; the `Q4_K_S` row is published as a measured rate with that
+caveat, not as an eligible speed claim. The remaining gap is concentrated in MTP compute: UD trails
+plain by 14.2%/21.5% in AR but 23.1%/29.6% in MTP.
+([paired artifact](results/2026-09-13-ud-gfx1100-paired-clean-provenance.json),
+[predecessor, superseded](results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json),
+[provenance audit](../worklog/entries/20260913T114312.816781Z-lhl-ud-claim-evidence-audit-c22a97.md).)
+
+Those rates follow the rows 2-4 local32 IQ verifier sibling (`2ac44d7a7`), the Q5_K gate/up pair row
+gate, the Q8_0 attention K/V rowtile route, the Q5T16 single-wave verifier rowtile, and the rounded
+fixed-5120 norm leaf (all `2026-09-13`), which together moved UD MTP B3 35.541 -> **50.231** (K_M,
++41.3%) at flat AR; the K_S progression 33.061 -> **49.356** carries the same exactness divergence
+at both ends.
+
+**Provenance of the per-lever deltas.** The incremental before/after figures quoted in the per-lever
+paragraphs below were measured on worktrees that the suite records as `dirty: true`, so their own
+provenance gate marks them `speed_claim_eligible: false`. They remain valid as kernel- and
+verifier-level diagnostics, and the verifier sub-window A/Bs they rest on are separate measurements,
+but only the retained table above carries `speed_claim_eligible: true`. Re-deriving each lever's
+end-to-end delta on a clean tree is tracked in the provenance audit entry.
+
+The rows 2-4 local32 IQ verifier sibling gives each block several prompt rows over the same local32
+IQ decode geometry, with every row bit-identical to the rows == 1 owner's output for that row; at
+kernel level it is 2.0-4.3x the strict per-row GEMV at rows 2-4 and covers 94.1% (K_M) / 85.9% (K_S)
+of the rows 2-7 dead-zone MACs. The block verifier also had to bind the dense-IQ execution-owner
+session, without which its raw-IQ rows 2-4 kept the strict owner. All four section-6.1 arms still
+pass with at least 24x margin on the binding mean limit and 100% top-1 overall and per category, and
+a fresh-process reproduction matches all sixteen arm numbers to the last digit.
+([kernel headroom](results/2026-09-12-ud-gfx1100-phase4-local32-rows-headroom.json),
+[numerics gate](results/2026-09-12-ud-gfx1100-phase4-ar-verify-numerics.json),
+[gate reproduction](results/2026-09-12-ud-gfx1100-phase5-ar-verify-numerics.json),
+[implementation entry](../worklog/entries/20260912T092947.074218Z-ud-phase4-lane-ud-phase4-local32-rows-sibling-103062.md).)
+
+The Q8_0 attention K/V route removes the last prefill-sized owner from the verifier.
+`gguf_q8_0_t16_prefill_wmma` ran the ten `(5120, 1024)` Q8_0 `attn_k`/`attn_v` projections at
+verifier rows as one wave32 per block with 32 blocks total — 122.6 us per call, 45 GB/s on 5.6 MB
+tensors — for 0.858 ms/step, or 2.0% of verifier kernel time. Admitting those shapes to the
+128-thread `q8_0_t16_rowtile_gemv` owner, which reads each tile once for four rows, runs the same 84
+calls per step at 51.8 us each for 0.363 ms/step: **-0.495 ms/step on the Q8_0 family (-57.7%)** at
+an unchanged call count. The generated token sequence is unchanged, and the section-6.1 gate
+improves on every metric — mean/p95/p99/max KL **3.02e-05 / 1.23e-04 / 2.81e-04 / 3.66e-04** against
+3.92e-05 / 1.88e-04 / 4.06e-04 / 4.06e-04 before, top-1 1.0000, two deterministic repeats. The
+paired arm measures UD-Q4_K_M 45.973 -> **46.192** tok/s (+0.48%) against a plain-control spread of
+-0.31%/+0.18%, and UD-Q4_K_S 46.990 -> **47.023** (+0.07%), which tracks the shape count: K_M
+carries ten of these projections and K_S three.
+([census](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-census.json),
+[numerics gate](results/2026-09-13-ud-gfx1100-q8-rowtile-attn-kv-ar-verify.json).)
+
+The rounded add+rmsnorm leaf now has a fixed-5120 owner too. It was the last norm-family item in the
+verifier without one, and it carried the same defect the plain generic owner had: one block per row,
+but a runtime-trip-count loop over `hidden_size` with no register cache, so it read the residual and
+the addend twice and paid the nine-barrier tree. `gguf_norm_fixed5120_wave256_kernel` gains a
+`kRoundSum` template parameter that makes both the reduction and the residual output consume
+`bf16(bf16(x) + bf16(add))`, the `add+rmsnorm` layer gets a `rounded_bf16_out_fixed5120_wave256`
+variant of it, and gfx1100 declares `GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES` for
+`2 <= rows <= 8`. The interleaved A/B (three baseline runs, two candidate runs) puts the family at
+**12.640 -> 5.171 ms over 12 steps** (**1.053 -> 0.431 ms/step**, 13.38 -> 5.47 us per call, -59.1%)
+and the whole verifier at **36.760 -> 36.321 ms/step (-1.19%)** at an unchanged 985 calls/step, with
+the two bands not overlapping. The leaves are **byte-identical to their generic counterparts at rows
+2/3/4/5/6/8**, so the section-6.1 gate is **identical to the last digit** to the parent commit's run
+(mean/p95/p99/max KL **2.503e-05 / 1.654e-04 / 2.930e-04 / 2.971e-04**, top-1 **1.0000** overall and
+per category and per budget). The paired suite follows: MTP B3 rises **49.371 -> 50.131 tok/s**
+(UD-Q4_K_M, +1.54%) and **48.294 -> 48.634** (UD-Q4_K_S, +0.70%) while the true-AR denominator stays
+flat (32.750 -> 32.705 and 32.098 -> 32.081), which is what a verifier-only change must do. All four
+paired arms are `binding_passed` with `timing_evidence_valid`. Rollback:
+`HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120=0`.
+([artifact](results/2026-09-13-ud-gfx1100-rounded-norm-fixed5120.json),
+[worklog](../worklog/entries/20260913T090609.044291Z-lhl-ud-rounded-norm-fixed5120-fa5016.md).)
+
+The fixed-5120 norm leaf now reaches the verifier row slab. The kernel and both of its registry keys
+already existed on this backend, but only the gfx1151 package declared
+`GGUF_NORM_RESIDUAL_DECODE_POLICIES` and its table admits `rows == 1` alone, so every W7900 call
+fell through to the generic local256 owner - which has a runtime-trip-count loop and no register
+cache, so it reloads `x` and `add` for its second pass and pays nine tree barriers. That covers the
+rows-3 verifier slab and the rows-1 decode alike. Both fixed-5120 entry points now accept rows 1-8
+and launch one block per row, and the gfx1100 package declares the policy for rows 1-8 under both
+the plain and the UD-preset-extended keys. One block owns one row, so every per-thread partial, the
+reduction tree, the `rsqrtf` argument and the epilogue are unchanged, and the leaves are
+**byte-identical to their generic counterparts at rows 1/2/3/4/6/8**. The verifier A/B puts the
+`add_rmsnorm` leaf at **0.770 -> 0.329 ms/step** (770.07 -> 328.56 us/step, 64 calls, **12.03 ->
+5.13 us** per call, -57.3%) and the whole verifier at **37.067 -> 36.6206 ms/step (-1.21%)** at an
+unchanged 985 calls/step. Because the change is bit-identical, the movement it produces is a pure
+speed effect: the same 64 norm launches per step at 16.9 -> 5.9 us each is about -0.7 ms on a 30.5
+ms single-row step, and the paired suite measures true-AR decode at **31.904 -> 32.750 tok/s**
+(UD-Q4_K_M, +2.65%) and **31.303 -> 32.098** (UD-Q4_K_S, +2.54%). The MTP B3 step is roughly twice
+as long, so the same absolute saving is about half the percentage and sits inside the
+acceptance-driven spread (UD-Q4_K_M 49.408 -> 49.371, UD-Q4_K_S 48.548 -> 48.294). The section-6.1
+teacher-forced gate passes on both repeats at mean/p95/p99/max KL **2.503e-05 / 1.654e-04 /
+2.930e-04 / 2.971e-04** with top-1 **1.0000 overall and in every category and at every budget**, and
+all four paired arms are `binding_passed` with `timing_evidence_valid`.
+([artifact](results/2026-09-13-ud-gfx1100-norm-fixed5120-row-slab.json),
+[worklog](../worklog/entries/20260913T073710.202482Z-lhl-ud-norm-fixed5120-rowslab-8c2632.md).)
+
+The strict dense IQ row slab now covers the verifier's row count instead of sitting below it.
+`gguf_iq_dense_strict_kernel` is the exactness-contract owner for Q3_K/IQ3_S/IQ3_XXS/IQ2_S/IQ2_XS,
+and `grid.y` is `ceil(rows/R)`, so at the 3-row native verifier the old largest-slab-at-or-below
+rule picked `R=2` and read every weight slice **twice**. The smallest slab at or above the row count
+makes `grid.y` one. An interleaved A/B (three old-rule runs, two new-rule runs) puts the strict
+family at **4.264 -> 3.179 ms/step (-25.4%)** and the whole verifier at **38.275 -> 37.039 ms/step
+(-3.23%)**, with no overlap between the two bands. The change is arithmetic-neutral by the kernel's
+declared contract - `R` only changes which prompt rows share a block, padding rows load `0.0f` and
+are never stored - and the section-6.1 gate confirms it directly by reporting **identical numbers to
+the last digit** under both rules on UD-Q4_K_M (mean/p95/p99/max **3.435e-05 / 2.112e-04 / 2.904e-04
+/ 2.952e-04**, top-1 1.0000, two deterministic repeats); UD-Q4_K_S passes at 1.871e-05 / 1.115e-04 /
+3.704e-04 / 4.865e-04. The paired suite does not separate this change from run-to-run spread
+(UD-Q4_K_M flat, UD-Q4_K_S +3.39% against an AR denominator that moved +2.9%), so the retention
+rests on the verifier sub-window A/B and the exact gate identity.
+([artifact](results/2026-09-13-ud-gfx1100-iq-dense-strict-row-slab-cover.json),
+[worklog](../worklog/entries/20260913T063400.608406Z-lhl-ud-iq-dense-row-slab-cover-5bb456.md).)
+
+The Q5T16 single-wave route retires the four-wave WG128 geometry from the verifier rows-2-8 rowtile.
+The four-wave owner runs four wave32 waves and sums their partial vectors through shared memory; the
+single-wave owner runs one wave32 per output block over eight columns with each lane owning eight
+contiguous `k` inside the 256-element block, so the subblock `d`/`dmin` decode hoists out of the
+inner loop and the block needs no cross-wave exchange or `__syncthreads()`. On the verifier the Q5_K
+family falls **11.75 -> 7.98 ms/step (-32%)** across 126 in-window calls per step, at 1.05x-1.58x
+per call on all six Q5_K shapes, and the whole-kernel step falls 40.9 -> 38.4 ms/step. The paired
+arm measures UD-Q4_K_M MTP B3 46.192 -> **49.409** tok/s (+6.96%) at an unchanged AR denominator
+(31.909 -> 31.904), so MTP/AR rises 1.4476 -> **1.5487x**. The plain control arms carry no Q5_K
+weights and move +1.16%/+0.41%, which bounds the session spread. The four-wave entry point stays
+registered as the parent-parity owner that the grouped rows6/rows8 variants are bit-identical to,
+and the single-wave owner is selected by policy with `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE=0`
+as the rollback. ([artifact](results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json),
+[worklog](../worklog/entries/20260913T041334.891199Z-lhl-ud-q5t16-single-wave-rowtile-06039f.md).)
+
+The 2026-09-11 baseline this compares against measured UD-Q4_K_M 31.993 AR / 35.541 MTP B3 (1.1109x)
+and UD-Q4_K_S 31.311 / 33.061 (1.0559x), with plain controls at 37.186 / 63.465 and 39.565 / 64.094.
+Across the runs since, both UD AR arms have stayed within 0.3% and the plain controls within 3.2%,
+which bounds the run-to-run spread.
+([baseline artifact](results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json),
+[invalidated eager-denominator attempt](results/paired-ud-plain-mtp-c1-natural25-b3-xtx.json).)
+
+Earlier revisions of this section published a W7900/XTX census comparison (46,913 vs 30,263 µs/token
+pure, localised to two local32 GEMV kernels at 3.84x and 3.33x). **That is withdrawn**: it read a
+contended GPU0 census as a clean device property.
+
+Both artifacts pass the tokenized 18-prompt category/heldout screen
+(`scripts/gguf_ud_combined_stack_gate.py --category-heldout`, real tokenizer
++ chat template, incumbent-extended 512-token prompts, 1170 teacher-forced
+positions, seeds 7/11/23): K_S with the full shipped stack (max 5.1e-3, top-1 99.83%); K_M with the
+Q3_K W4A16 prefill route pinned strict for `layers.0.ffn_up` only - the per-tensor bisection showed
+that earliest Q3_K tensor carries ~92% of the route's max-row KL tail (its 1-ULP accumulation-order
+flips get the most downstream amplification), so pinning it recovers the envelope (max 2.8e-2, p99
+1.9e-3, top-1 99.74%) at ~3.4% prefill cost. Everything else - IQ4_XS dual, coop64/coop32 owners,
+IQ2 additions, local32 decode - is bit-exact vs the incumbent once that slot reverts. Next lever: a
+precision-preserving Q3_K owner (strict accumulation association with shared decoded weights, or a
+higher-precision split representation); cooperative geometry alone cannot help.
+([gate artifacts](results/combined-stack-gate2/perslot-2026-09-11/),
+[four-arm artifacts + bisection](results/final-four-arm-perslot-2026-09-11/),
+[pre-pin record](results/final-four-arm-2026-09-10/).)
+
+
+### Radeon 8060S: YuE2 3B NAR attention packing and projection selection
+
+The NAR attention kernel walked the key/value cache once per (query row, query head) pair, so a 1
+299-frame song re-read 27.9 GB of K/V per call. Blocks now own eight query rows
+(`YUE2_NAR_ROWS_PER_BLOCK`) and reuse every K and V element they load across those rows; the K row
+and the query row are read eight and four elements per instruction instead of one, which is what a
+lane owning one key had been asking the L1 for 32 sectors at a time; and the V walk steps by pointer
+instead of multiplying and branching per key. `rocprofv3 --pmc` on the previous kernel measures why
+the packing mattered more than the traffic: 3.5e8 cycles carried 3.7e9 VALU instructions at **19%
+occupancy**, so it was stalled rather than bandwidth-bound, and the same run after the change
+reaches **93%**. The projection path had a second, larger defect: both YuE2 runtimes took the first
+hipBLASLt algorithm hipBLASLt returned, and that entry is 2.9-4.2× slower on these shapes than the
+measured best, which the same wrapper already documented as its fast heuristic. Both now select by
+measured index.
+
+| Measurement | Before | After | Ratio |
+| --- | ---: | ---: | ---: |
+| `yue2_nar_attention_kernel`, 1 299 rows / 2 695 keys, per call | 177.22 ms | **19.33 ms** | **9.17x** |
+| The same kernel, tile maximum vectorized (paired, same session) | 32.82 ms | **31.34 ms** | **1.05x** |
+| The same kernel, softmax weights stored key-major (paired, same session) | 27.40 ms | **26.38 ms** | **1.04x** |
+| The same kernel, dot-product row loop specialized and walks unrolled (paired) | 26.27 ms | **19.33 ms** | **1.36x** |
+| `yue2_nar_attention_wmma_kernel`, same shape, per call | 20.1 ms | **3.85 ms** | **5.1x** |
+| The same kernel, block widened to 384 threads and the key batch to 32 (paired) | 3.85 ms | **2.13 ms** | **1.84x** |
+| NAR projections, one 2-step solve, 800 GEMMs | 3.89 s | **0.94 s** | **4.14x** |
+| NAR solve of `mandarin-off-s1234`, 2 ODE steps | 27.76 s | **5.14 s** | **5.40x** |
+| NAR solve of the same case, product 32 ODE steps | 443.4 s | **26.07 s** | **17.01x** |
+| Full replay of the same case, 32 steps (solve + decode) | 465.9 s | **46.16 s** | **10.09x** |
+
+All rows are gfx1151 (zbook) measurements. The kernel row is a median of six batches of five calls;
+every replay row was run on the same host with the gate's own JSON as the source, and the 32-step
+pair uses the protocol the reference's own 27.32 s figure was measured under, which puts the solver
+16.2× behind the pinned upstream before this work and **1.05× ahead** of it now. Eight rows per
+block is a measured optimum: four rows lands at 22.53 ms, sixteen at 25.39 ms and thirty-two at
+88.50 ms, where shared-memory and register pressure take over.
+
+Per-call times on this host drift about 10% between batches — the same kernel source measures
+27.4-28.5 ms in one batch and 32.0-33.4 ms in another — so the last three rows are quoted as paired
+same-session ratios, alternating the two sources within one batch. What they change: the per-tile
+maximum walked the tile's shared-memory scores one float at a time, 128 requests per row in a single
+dependent `fmax` chain, and it now reads four entries per instruction into four independent
+accumulators; the softmax weights were stored row-major, so one key's weights for eight rows cost
+eight index computations against the runtime block size and eight shared-memory requests, and they
+are now stored key-major, eight consecutive floats per key; and the row loop inside the dot product
+was rolled at 46 instructions per (row, eight dimensions) against eight multiply-adds, because its
+bound is only known at run time — a full row set now takes an unrolled path, and both accumulation
+walks carry running pointers and a 32-bit trip count. All three changes are bit-exact — a maximum
+over a set is exact and order-independent for finite scores, the sums still walk each row
+key-ascending, and the dot products keep their order — and all three are confirmed against the
+recorded parent-bits fixture. The third is the largest: it removes **38% of the kernel's
+instructions** (12 581 to 7 816 per lane-tile, with vector ALU down 36%, scalar ALU 45% and global
+loads 64%), measured with `rocprofv3 --pmc`, which is deterministic where the wall clock is not.
+
+What is left is a kernel-design change rather than more loop surgery. Profiling the pinned upstream
+on the same case puts its own attention kernel at **4.14 s** for the whole 32-step solve (1 792
+calls at 2.31 ms, 12.4 TFLOP/s); this kernel's share is about 39 s, so it is **9.4×** off a
+tensor-core flash attention. The scalar FP32 ceiling on 40 CUs is 25.6 TFLOP/s and this kernel keeps
+roughly a quarter of its instructions as useful arithmetic after the softmax reductions, the weight
+exchange and the loads, so even a perfect scalar kernel lands near 6 TFLOP/s — about 8.5 s here.
+Closing the rest needs matrix cores, which is what the reference uses.
+
+`yue2_nar_attention_wmma_kernel` is that tensor-core path: a second attention for the production
+head geometry (16 query heads over 8 key/value heads at head_dim 128) with f16 WMMA operands, f32
+score accumulation, a 16-key tile per lane-half reduction, K and V sharing one staged buffer, and an
+f16 output accumulator rescaled by the online softmax — the same arithmetic class as the reference.
+Its fragment contracts follow the in-tree Laguna flash attention, which preserves llama.cpp's
+`fattn-mma-f16` design. It runs the production shape in **2.13 ms per call against the scalar
+kernel's 19.0 ms (9.3×)**, faster than the reference's own 2.31 ms dispatch, and takes the product's
+32-step solve to **26.07 s against the reference's 27.32 s (1.05× faster)**. It changes arithmetic
+by design, so the scalar kernel stays registered as the strict fallback behind
+`HIPENGINE_YUE2_NAR_ATTENTION=scalar` and this variant is held to the production gates instead of
+the parent-bits fixture: all three M4 solver gates pass (chunk0 latents rel L2 0.01099 / cosine
+0.999941, restricted visibility 0.00894 / 0.999961, multi-chunk 0.01090 / 0.999943 against 0.05 /
+0.999), the full twelve-case replay passes with every case reproducing its exact frame and sample
+counts in 458.7 s against 527.4 s, and its own unit test checks seven shapes against an independent
+FP64 reference. Evidence:
+[`M7 tensor-core attention`](results/yue2_m7_attention_wmma_20260917.json),
+[`M7 block geometry`](results/yue2_m7_attention_wmma_geometry_20260917.json).
+
+The geometry is where most of that came from, and the measurement that found it was an instruction
+count rather than a timing. At the original 128-thread block the kernel was at 7.5 TFLOP/s, 15% of
+the device's fp16 peak, while the reference's kernel reached 12.4. A static ISA count of the built
+object showed 2 902 instructions per key batch of which only 64 are WMMA, and 1 312 waves over 40
+CUs × 4 SIMD against 11.2M cycles puts it at roughly **11 cycles per instruction** — latency-bound
+at two waves per SIMD, not issue-bound or WMMA-bound. Three instruction-level attempts came back as
+measured no-ops: vectorizing the K-fragment load produced a **byte-identical ISA** (the compiler had
+already done it) and tightening `__launch_bounds__` to 3 and 4 blocks per CU changed nothing,
+because the shared-memory footprint already limits the block count to one per CU. Widening the block
+from 4 waves to 12 (384 threads, 96 rows) with a 32-key batch took the kernel to **2.13 ms** while
+leaving the lane-to-column mapping untouched. The lane mapping is what made that a small change: 16
+columns per wave means 8 query rows × 2 query heads, so the fragment code is independent of how many
+waves the block has.
+
+At 32 steps the solver is now ~5.3 s of attention, ~14.7 s of projections and ~6 s of conditioning
+prefill and other work, so the projections are the largest single item and run at hipBLASLt's rate.
+
+`scripts/yue2_solver_stage_profile.py` measures that split directly rather than by differencing two
+solve lengths. It times one velocity evaluation with HIP events and splits it by suppressing one
+launch at a time, so the differences stay pipeline-clean; inserting a synchronize around each kernel
+does not work, because with 200 projection launches per evaluation the sync cost alone exceeds the
+kernel time being measured. The result for the production case at 28 layers, 1 299 rows and 2 695
+keys:
+
+| Stage | Per evaluation (old geometry) | Per evaluation (now) | At 32 steps | Share |
+| --- | ---: | ---: | ---: | ---: |
+| Projections (200 launches, 3 662 GFLOP) | 229 ms | 229 ms | **14.7 s** | 56% |
+| NAR attention (28 launches) | 136 ms | 83 ms | **5.3 s** | 20% |
+| Conditioning prefill (paid once) | — | — | **3.44 s** | 13% |
+| Everything else (norms, RoPE, casts, state) | 53 ms | 53 ms | **3.4 s** | 13% |
+
+The projection and attention columns are the same measurement at the two attention geometries; the
+solve total is 26.07 s.
+
+The projections are the remaining lever, and they are close to a ceiling. They run at 16.0 TFLOP/s
+where the same shapes launched back to back by hipBLASLt measure 19.4 TFLOP/s, so three quarters of
+the library's own in-place rate is already reached; the runtime already selects the fastest
+zero-workspace algorithm, and a 4 096³ square GEMM also measures 21 TFLOP/s, so ~20 TFLOP/s is the
+library's practical ceiling on this device against a ~51 TFLOP/s fp16 peak for 40 CUs. The solver is
+device-bound rather than host-bound — host enqueue for one evaluation is 28 ms against 419 ms of
+device time. Evidence: [`solver stage profile`](results/yue2_solver_stage_profile_20260917.json).
+
+An earlier version of this section quoted a synchronize-wrapped split of the 7.95 s two-step solve
+(3.31 s of attention, 0.94 s of projections, 3.73 s of conditioning prefill, RoPE and norms). Those
+numbers are superseded: the syncs drained the pipeline, which understated the GEMMs and overstated
+the elementwise remainder.
+
+The attention rewrite is bit-exact rather than merely close: the parity fixture
+`tests/fixtures/yue2/operators/nar_attention_parent.npz` holds the parent kernel's own output bits
+and the kernel test compares against them exactly. The projection change cannot be bit-exact (a
+different GEMM accumulation order is the point), so it is held to the production gates instead: all
+three M4 solver gates pass (chunk0 latents rel L2 0.01248 / cosine 0.999923 against 0.01225 /
+0.999926, multi-chunk 0.01071 / 0.999944 unchanged, restricted visibility 0.00905 / 0.999960 against
+0.00885 / 0.999962), the 18-case AR replay stays inside its floor while improving, and the
+three-case greedy session gate passes with every case slightly better (semantic teacher-forced 98.2%
+/ 97.1% / 96.7%). The kernel keeps a scalar K walk for head dimensions that are not a multiple of
+eight, where the rows are not 16-byte aligned; that fallback has its own test, and perturbing it
+fails the new `head_dim=100` case while `head_dim=128` still passes. Evidence:
+[`M7 attention packing`](results/yue2_m7_attention_packed_20260917.json),
+[`M7 projection selection`](results/yue2_m7_gemm_algorithm_20260917.json),
+[`M7 row blocking`](results/yue2_m7_attention_20260917.json).
+
+The decoder is faster than the reference's (22.47 s against 69.09 s) and the AR stage runs at 19.35
+tokens/s against 31.97.

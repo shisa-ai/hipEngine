@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import pytest
-import torch
+
+torch = pytest.importorskip("torch", reason="DMS training diagnostics require optional torch")
 
 from scripts.qwen38_dms_objectives import (
     fold_affine_importance_into_eviction,

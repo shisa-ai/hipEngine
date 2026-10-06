@@ -346,10 +346,18 @@
       },
       "expected": {
         "status_code": 200,
-        "finish_reason": "stop",
-        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
+        "finish_reason": "tool_calls",
+        "finish_details": {
+          "reason": "tool_calls",
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "tool_call_tokens": 2
+        },
         "message_content": "",
-        "no_tool_calls": true,
+        "tool_calls": [
+          {"name": "read", "arguments": {"path": "README.md"}},
+          {"name": "read", "arguments": {"path": "WORKLOG.md"}}
+        ],
         "response_excludes": ["<tool_call>"]
       }
     },

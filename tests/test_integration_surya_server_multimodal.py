@@ -97,6 +97,12 @@ def _engine(generator: object) -> object:
 
     engine = LLM("fake-path")
     engine._text_generator = generator
+    # The server reads ``generation_surfaces`` off the engine before any load.
+    # ``fake-path`` has no checkpoint on disk, so seed the metadata cache with a
+    # plugin that declares nothing -- the text default -- instead of letting the
+    # property try to read a real config and raise ``MissingConfigError``.
+    engine._weight_index = object()
+    engine._model_plugin = object()
     return engine
 
 
