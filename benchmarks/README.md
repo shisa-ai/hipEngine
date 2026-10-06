@@ -5,6 +5,25 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next checked-index GDN operation screen
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, a checked
+int32-index sibling improves complete GDN recurrence+norm+gate timing at
+UD-Q4_K_XL Hk16/Hv48/D128 geometry. The screen uses synthetic F32 inputs,
+nonzero FP32 state and 21 counterbalanced pairs per case.
+
+| Tokens | Parent ms | Candidate ms | Speedup |
+| ---: | ---: | ---: | ---: |
+| 512 | 2.709651 | 2.594705 | 1.0443x |
+| 1024 | 5.371735 | 5.155940 | 1.0419x |
+| 4096 | 21.318647 | 20.451752 | 1.0424x |
+
+Exact output/state replay, guarded ownership, cross-head isolation,
+CPU-reference floor and cached trace pass. Private scratch drops36→28B;
+static VGPR remains256. This is operation-only evidence, not model
+throughput. The production route is unchanged pending natural-model gates.
+[Protocol and artifact](results/2026-10-06-qwen4exp-gdn-narrow-index/README.md).
+
 ## Qwen3.8 Flash Next ordered router DPP production route
 
 On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,

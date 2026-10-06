@@ -1192,6 +1192,20 @@
 - Candidate removed; no model admission. Keep row8 production and do not
   repeat unchanged row16 on the assumption that spill removal makes it faster.
 
+## Qwen4Exp GDN checked-index diagnostic sibling
+
+- `qwen4exp_sigmoid_wave_norm_narrow_prefill` is registered separately; no
+  env selector or named profile uses it. Wide-index wave-norm and strict
+  primitives remain fallbacks. Element bounds are checked before build/launch.
+- The gfx1151 synthetic complete-operation gate passes with1.042–1.044x at
+  512/1024/4096 tokens and reduced scratch. No model-speed claim follows.
+- Next: natural-input output/state parity and operation timing, full-model
+  state/KV/lifecycle gates, then default admission if non-regressive. Remove
+  the diagnostic key if those gates reject it, or collapse diagnostic
+  selection after production qualification; do not leave an unexplained
+  default-off perf path. Evidence:
+  `benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md`.
+
 ## Qwen4Exp GDN wave-tail normalization production
 
 - Kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: original serial

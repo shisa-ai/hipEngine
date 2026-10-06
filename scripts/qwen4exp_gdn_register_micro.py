@@ -22,21 +22,27 @@ def main():
     parser.add_argument("--tokens", type=int, nargs="+", default=[16, 64, 512])
     parser.add_argument("--repeats", type=int, default=15)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--wave-norm", action="store_true")
+    family = parser.add_mutually_exclusive_group()
+    family.add_argument("--wave-norm", action="store_true")
+    family.add_argument("--narrow-index", action="store_true")
     args = parser.parse_args()
     if args.repeats < 1 or any(t < 1 for t in args.tokens):
         parser.error("positive tokens and repeats required")
-    parent_fn = gdn.qwen4_exp_gdn_register_prefill_f32 if args.wave_norm else gdn.qwen4_exp_gdn_prefill_f32
-    candidate_fn = gdn.qwen4_exp_gdn_wave_norm_prefill_f32 if args.wave_norm else gdn.qwen4_exp_gdn_register_prefill_f32
+    if args.narrow_index:
+        parent_fn = gdn.qwen4_exp_gdn_wave_norm_prefill_f32
+        candidate_fn = gdn.qwen4_exp_gdn_wave_norm_narrow_prefill_f32
+    else:
+        parent_fn = gdn.qwen4_exp_gdn_register_prefill_f32 if args.wave_norm else gdn.qwen4_exp_gdn_prefill_f32
+        candidate_fn = gdn.qwen4_exp_gdn_wave_norm_prefill_f32 if args.wave_norm else gdn.qwen4_exp_gdn_register_prefill_f32
     rows = []
     for tokens in args.tokens:
         f = Fixture(tokens)
         runtime = f.runtime
         start, stop = runtime.event_create(), runtime.event_create()
         try:
-            f.run(False)
+            f.run(False, fn=parent_fn)
             parent = f.result(False)
-            f.run(True)
+            f.run(True, fn=candidate_fn)
             for a, b in zip(f.result(True), parent):
                 np.testing.assert_array_equal(a.view(np.uint32), b.view(np.uint32))
             samples = [[], []]
@@ -67,9 +73,8 @@ def main():
                     runtime.event_synchronize(stop)
                     if repeat >= 3:
                         samples[idx].append(runtime.event_elapsed_time_ms(start, stop))
-                if args.wave_norm:
-                    for actual, expected in zip(f.result(True), f.result(False)):
-                        np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+                for actual, expected in zip(f.result(True), f.result(False)):
+                    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
             medians = [statistics.median(x) for x in samples]
             row = {
                 "tokens": tokens,
