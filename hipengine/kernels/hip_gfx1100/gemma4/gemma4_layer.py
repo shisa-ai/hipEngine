@@ -40,10 +40,15 @@ from dataclasses import dataclass, field
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    DECODE_ATTENTION_LAYER,
+    DECODE_ATTENTION_PLAIN,
+    DECODE_ATTENTION_QUANT,
+    DECODE_ATTENTION_STAGED,
     Gemma4AttentionScratch,
     aotriton_prefill_admits,
     gemma4_attention_prefill_aotriton,
     gemma4_attention_prefill_bf16,
+    gemma4_attention_resident_overflows,
     select_prefill_attention,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import (
@@ -632,6 +637,108 @@ def _select_prefill_route(
     ):
         return "aotriton"
     return "exact"
+
+
+# The strict native/exact entry's own decode kernel holds one FP32 logit per
+# live key in shared memory. Past 15,616 keys at head_dim 512 it keeps the same
+# arithmetic and moves the logit row to owned global scratch (the launcher's
+# ``global_class`` variant), which is correct but slow. The staged singleton
+# candidate computes the identical arithmetic in bounded shared memory, so a
+# production profile may prefer it for exactly that shape. The preference is
+# scoped here, at the one call site the exact route owns, and never touches the
+# tiled, aotriton, or profile-selected prefill routes.
+_EXACT_DECODE_STAGED = DECODE_ATTENTION_STAGED
+
+
+def _resolve_decode_attention_launcher(*, backend: str, variant: str):
+    """Resolve one decode-attention variant from the kernel registry.
+
+    The registration is executable, not decorative: the layer runs whatever
+    callable the registry holds for this key, so a replaced entry is what runs.
+    A missing entry is a named :class:`MissingKernelError` rather than a silent
+    fall back to a hard-coded wrapper.
+    """
+
+    from hipengine.kernels.registry import resolve
+
+    return resolve(
+        backend=backend,
+        layer=DECODE_ATTENTION_LAYER,
+        quant=DECODE_ATTENTION_QUANT,
+        variant=variant,
+    )
+
+
+def _select_exact_decode_attention(
+    *,
+    decode_attention_variants: tuple[str, ...] | None,
+    backend: str | None = None,
+    tokens: int,
+    keys: int | None,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    sliding_window: int | None,
+    key_begin: int = 0,
+):
+    """Resolve the launcher for the native/exact attention call site.
+
+    Returns ``(launcher, route)`` where ``route`` is what the diagnostic
+    reporter should show. The staged candidate is chosen only where it was
+    verified against the native ``global_class`` route bit for bit:
+
+    * one query token (``tokens == 1``) -- a decode step, not a prefill block or
+      a speculative verify block, which arrive multi-row;
+    * ``head_dim`` 512 with a GQA ratio of 8 -- Gemma 4's five global layers;
+    * a key count past the resident LDS bound, so the native path is the slow
+      owned-global-logits route this candidate replaces;
+    * the untrimmed global scope: no sliding window on the layer
+      (``sliding_window is None``) and no caller-dropped prefix
+      (``key_begin == 0``). A sliding layer's decode is windowed and a trimmed
+      global call skips keys the candidate was not verified against, so both
+      keep the native kernel.
+
+    Both launchers come from the registry under ``DECODE_ATTENTION_LAYER``: the
+    registered strict fallback (``gemma4_plain``) for every call that keeps the
+    native arithmetic, and the staged candidate (``gemma4_staged``) for the
+    scoped shape. A caller that requests no decode scope keeps the strict entry
+    point directly, because nothing asked the registry for the scope.
+    """
+
+    if not decode_attention_variants:
+        return gemma4_attention_prefill_bf16, "exact"
+    resolved_backend = str(backend) if backend is not None else "hip_gfx1100"
+    plain = _resolve_decode_attention_launcher(
+        backend=resolved_backend, variant=DECODE_ATTENTION_PLAIN
+    )
+
+    def keep_native():
+        return plain, "exact"
+
+    if DECODE_ATTENTION_STAGED not in decode_attention_variants:
+        return keep_native()
+    if int(tokens) != 1:
+        return keep_native()
+    if int(head_dim) != 512:
+        return keep_native()
+    if int(num_kv_heads) <= 0 or int(num_heads) % int(num_kv_heads):
+        return keep_native()
+    if int(num_heads) // int(num_kv_heads) != 8:
+        return keep_native()
+    if keys is None or int(keys) <= 0:
+        return keep_native()
+    if not gemma4_attention_resident_overflows(head_dim=512, keys=int(keys)):
+        return keep_native()
+    if sliding_window is not None:
+        return keep_native()
+    if int(key_begin) != 0:
+        return keep_native()
+    staged = _resolve_decode_attention_launcher(
+        backend=resolved_backend, variant=DECODE_ATTENTION_STAGED
+    )
+    return staged, DECODE_ATTENTION_STAGED
+
+
 def _layer_backend(layer: Gemma4LayerPointers) -> str | None:
     """The backend of whichever projection carries resident quantized weights.
 
@@ -671,6 +778,12 @@ def gemma4_layer_forward_bf16(
     attention_mask_is_causal: bool = False,
     window: int = 0,
     prefill_attention_variants: tuple[str, ...] | None = None,
+    # The decode-attention variants the execution profile requests, or ``None``
+    # for the strict native kernel. Consumed only at the native/exact call site
+    # below; a profile that selects the staged candidate keeps every other route
+    # -- the tiled and aotriton prefills and the profile-selected prefill
+    # variants -- unchanged.
+    decode_attention_variants: tuple[str, ...] | None = None,
     stream: int = 0,
     # -1 (the default) selects a second stream so the MoE branch overlaps the
     # dense branch. Passing ``stream_moe=stream`` restores the single-stream
@@ -988,7 +1101,28 @@ def gemma4_layer_forward_bf16(
                 **kwargs,
             )
         else:
-            gemma4_attention_prefill_bf16(
+            # The native/exact route. Its BF16 entry serves the multi-row prefill
+            # fallback and the one-token global decode step; a production profile
+            # may route the latter to the staged singleton candidate, which
+            # reproduces this entry's ``global_class`` arithmetic in bounded
+            # shared memory. The reporter shows the inner variant that ran.
+            launcher, _last_prefill_route = _select_exact_decode_attention(
+                decode_attention_variants=decode_attention_variants,
+                backend=_layer_backend(layer),
+                tokens=rows,
+                keys=key_count,
+                num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
+                head_dim=head_dim,
+                # The scope the candidate was verified on: a windowless global
+                # layer and a caller that dropped no prefix. A sliding layer's
+                # decode is windowed, and a trimmed global call skips keys the
+                # candidate was not checked against; both keep the native
+                # kernel.
+                sliding_window=geometry.sliding_window,
+                key_begin=key_begin,
+            )
+            launcher(
                 buf("q_rot"),
                 (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
                 if kv is not None

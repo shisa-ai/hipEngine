@@ -472,6 +472,23 @@ def _resident_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
     )
 
 
+def gemma4_attention_resident_overflows(*, head_dim: int, keys: int) -> bool:
+    """True when a resident logit row no longer fits the 64 KiB LDS budget.
+
+    This is the launcher's own ``global_logits`` condition: at a 256/512 head
+    width the class kernel then moves its logits to request-owned global scratch
+    rather than refusing, keeping the same reduction order and mask semantics.
+    At ``head_dim`` 512 it is the 15,616 / 15,617 key boundary -- 15,616 keys
+    still fit at 65,536 bytes, 15,617 need 65,540. Exposed so a caller that
+    wants to route that exact shape elsewhere can ask the question without
+    re-deriving the formula; it is a capability fact, not a quality gate.
+    """
+
+    if head_dim <= 0 or keys <= 0:
+        raise ValueError("head_dim and keys must be positive")
+    return _resident_attention_shared_bytes(head_dim=head_dim, keys=keys) > _LDS_BUDGET_BYTES
+
+
 def gemma4_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
     """LDS requirement of the selected strict attention implementation.
 
@@ -1110,6 +1127,24 @@ PREFILL_ATTENTION_STAGED = "gemma4_staged"
 PREFILL_ATTENTION_WMMA_FLASH = "gemma4_wmma_flash"
 PREFILL_ATTENTION_WMMA_FLASH_FULL = "gemma4_wmma_flash_full"
 PREFILL_ATTENTION_QUANTS = ("gguf_q4_k_m", "gguf_q4_k_xl", "gguf_q8_0", "gguf")
+
+# --- the one-token global decode scope --------------------------------------
+#
+# A second, narrower registration of the same two launchers, under its own layer
+# key, so a production profile can prefer the staged singleton for the long
+# global decode step while leaving the prefill-attention scope untouched. It is
+# resolved through the registry like any other kernel: the layer asks for the
+# key and runs whatever is registered there, so a test (or a future candidate)
+# can replace the callable and have the layer run it.
+#
+# The quant axis is structural, not the artifact's weight quant: the decode
+# kernels are quant-independent BF16 attention, exactly as the INT8 attention
+# consumer is keyed by ``int8_per_token_head``. One key names the scope for every
+# artifact the backend serves, rather than enumerating weight quants.
+DECODE_ATTENTION_LAYER = "decode_attention"
+DECODE_ATTENTION_QUANT = "gemma4_decode_attention"
+DECODE_ATTENTION_PLAIN = PREFILL_ATTENTION_PLAIN
+DECODE_ATTENTION_STAGED = PREFILL_ATTENTION_STAGED
 
 
 def _requested_variants(requested: str | Sequence[str] | None) -> tuple[str, ...]:

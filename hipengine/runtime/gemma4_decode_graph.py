@@ -442,6 +442,8 @@ class Gemma4DecodeGraphSession:
                 stream_moe=-1,
                 needs_logits=True,
                 return_hidden=False,
+                # The captured launch is one incremental decode step.
+                decode_phase=True,
             )
 
         # Reserve workspace on the capture stream for the selected route. The
@@ -460,10 +462,18 @@ class Gemma4DecodeGraphSession:
             split_workspace_bytes,
         )
         from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
+            build_gemma4_attention_staged,
             staged_workspace_bytes,
         )
 
         library = build_gemma4_attention(load=True)
+        # A cold staged library must be built and loaded *before* the stream
+        # enters capture: the first launch inside a capture cannot dlopen or
+        # compile, and doing it here also matches the native library, which the
+        # line above already loads. Built at most once per capture, and only
+        # when a layer actually selects the staged route.
+        staged_loaded = False
+        decode_backend = str(getattr(runner.weights, "backend", "hip_gfx1100"))
         for index in range(len(runner.weights.layers)):
             attention = runner.weights.config.geometry(index)
             base = int(runner._kv_base[index]) if getattr(runner, "_kv", None) else 0
@@ -486,6 +496,36 @@ class Gemma4DecodeGraphSession:
                     continue
                 if not selected.is_strict:
                     continue
+            # A production decode preference can route this exact shape to the
+            # staged singleton at the layer's native/exact attention call site;
+            # that candidate needs its own global scores, which the split
+            # reservation below does not cover. Ask the layer's own selector so
+            # the reservation matches the launch the capture records.
+            if getattr(runner, "decode_attention_variants", None) is not None:
+                from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
+                    _EXACT_DECODE_STAGED,
+                    _select_exact_decode_attention,
+                )
+
+                _, decode_route = _select_exact_decode_attention(
+                    decode_attention_variants=runner.decode_attention_variants,
+                    backend=decode_backend,
+                    tokens=1,
+                    keys=keys,
+                    num_heads=attention.num_heads,
+                    num_kv_heads=attention.num_kv_heads,
+                    head_dim=attention.head_dim,
+                    sliding_window=attention.sliding_window,
+                    key_begin=key_begin,
+                )
+                if decode_route == _EXACT_DECODE_STAGED:
+                    if not staged_loaded:
+                        build_gemma4_attention_staged(load=True)
+                        staged_loaded = True
+                    runner._scratches[index].attention.buffer(
+                        staged_workspace_bytes(1, attention.num_heads, keys),
+                        stream=self._stream, runtime=runtime,
+                    )
             slices = decode_slices(keys, attention.head_dim)
             if slices > 1:
                 need = split_workspace_bytes(

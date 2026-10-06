@@ -942,6 +942,10 @@ class Gemma4Runner:
     #: explicit strict variant rather than ``None`` so a verify block does not
     #: fall onto a production prefill route.
     prefill_attention_variants: tuple[str, ...] | None = None
+    #: The decode-attention variants the execution profile requests, or ``None``
+    #: for the strict native kernel. Consumed only at the layer's native/exact
+    #: attention call site; the prefill routes are unaffected.
+    decode_attention_variants: tuple[str, ...] | None = None
     #: KV storage request. ``bf16`` is the BF16 comparison path; ``auto`` is
     #: resolved to ``bf16``. ``int8_per_token_head`` selects the BF16-source INT8
     #: writer and the direct INT8 consumers over the owned INT8 cache.
@@ -1624,6 +1628,12 @@ class Gemma4Runner:
                     logits_rows=wanted if last else 1,
                     capture_layers=capture_layers,
                     verification=verification,
+                    # The semantic phase of *this call*, not of the block: a
+                    # single-token forward is an incremental decode step, and a
+                    # prompt chunked into blocks is prefill even when its final
+                    # chunk is one row. The decode-attention preference is
+                    # forwarded only for the former.
+                    decode_phase=rows == 1,
                 )
         assert logits is not None
         return logits
@@ -1662,6 +1672,7 @@ class Gemma4Runner:
                     apply_softcap=apply_softcap,
                     needs_logits=start == last_start,
                     collect_argmax=True,
+                    decode_phase=rows == 1,
                 )
         assert token is not None
         return int(token)
@@ -1730,6 +1741,7 @@ class Gemma4Runner:
         logits_rows: int = 1,
         capture_layers: list[np.ndarray] | None = None,
         verification: bool = False,
+        decode_phase: bool = False,
     ) -> np.ndarray | int:
         """Run one block of at most ``max_block`` tokens; see :meth:`forward`.
 
@@ -1747,6 +1759,7 @@ class Gemma4Runner:
                 logits_rows=logits_rows,
                 capture_layers=capture_layers,
                 verification=verification,
+                decode_phase=decode_phase,
             )
 
     def _forward_block_inner(
@@ -1760,6 +1773,7 @@ class Gemma4Runner:
         logits_rows: int = 1,
         capture_layers: list[np.ndarray] | None = None,
         verification: bool = False,
+        decode_phase: bool = False,
     ) -> np.ndarray | int:
         """The block body, run under whatever session :meth:`_forward_block` set.
 
@@ -1805,6 +1819,7 @@ class Gemma4Runner:
             logits_rows=projected,
             capture_layers=capture_layers,
             verification=verification,
+            decode_phase=decode_phase,
         )
         if collect_argmax:
             return self._collect_block_argmax(
@@ -2075,6 +2090,7 @@ class Gemma4Runner:
         logits_rows: int = 1,
         capture_layers: list[np.ndarray] | None = None,
         verification: bool = False,
+        decode_phase: bool = False,
     ) -> None:
         """Enqueue every device launch for this block on ``stream``.
 
@@ -2091,6 +2107,12 @@ class Gemma4Runner:
         names ``gemma4_plain`` explicitly rather than leaving the variants at
         ``None``, because ``None`` selects the layer's own automatic tiled/AOTriton
         route, which is not what a target-verify block must run.
+
+        ``decode_phase`` is the semantic phase of the forward this block belongs
+        to: true only for an incremental decode step, false for prefill -- even
+        a prefill whose final chunk is one row. The decode-attention preference
+        is a decode-step scope, so it is forwarded only under ``decode_phase``;
+        a one-row prefill tail keeps the native kernel.
         """
 
         config = self.weights.config
@@ -2186,6 +2208,11 @@ class Gemma4Runner:
                 ),
                 prefill_attention_variants=(
                     ("gemma4_plain",) if verification else self.prefill_attention_variants
+                ),
+                decode_attention_variants=(
+                    None
+                    if verification or not decode_phase
+                    else self.decode_attention_variants
                 ),
                 stream=stream,
                 stream_moe=stream_moe,
