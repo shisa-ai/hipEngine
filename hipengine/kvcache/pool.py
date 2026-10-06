@@ -562,6 +562,19 @@ class DeviceChunkedKVPool:
     def refcount(self, block_id: int) -> int:
         return int(self._refcounts.get(int(block_id), 0))
 
+    def actively_leased(self, block_id: int) -> bool:
+        """True while a request lease holds this page beyond its cache refs.
+
+        Mirrors ``GlobalDeviceKVPool.actively_leased`` so prefix pressure skips
+        the same reclaimable-nothing entries on both pool implementations.
+        """
+
+        block = int(block_id)
+        return (
+            int(self._refcounts.get(block, 0))
+            - int(self._retained_refcounts.get(block, 0))
+        ) > 0
+
     def pin_count(self, block_id: int) -> int:
         return int(self._pin_counts.get(int(block_id), 0))
 
