@@ -4,8 +4,9 @@ The strict family (:mod:`hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention`)
 holds one FP32 logit per live key in shared memory, so its footprint grows with
 the context and its launch refuses above 15,616 keys at head_dim 512. This
 candidate computes the same arithmetic in three kernels over a caller-owned
-global workspace, with a shared footprint that is a constant 8 KB and does not
-mention ``keys``.
+global workspace, with a shared footprint constant in ``keys`` (the score
+stage's query-row tile is the largest term and is bounded by the launcher's
+budget check).
 
 The arithmetic is the strict family's, not an approximation of it, and
 ``tests/test_gpu_gemma4_attention_staged.py`` asserts the outputs match the
@@ -14,10 +15,13 @@ shipped strict wrapper bitwise on identical device buffers.
 the workspace layout and the launch shape; this module states the host side of
 the same contract.
 
-The score stage pairs two query heads of the same KV head, stages both Q rows
-and reuses each decoded K vector in registers. Odd GQA ratios leave one query
-head in the last group. Each head retains the strict warp-key reduction tree;
-the per-row workspace, softmax and P*V arithmetic are unchanged.
+The score stage holds up to :data:`SCORE_ROWS_PER_BLOCK` query heads of the
+same KV head in one CTA, stages their Q rows and reuses each decoded K vector
+in registers for every resident row, so a bigger group amortizes the decode
+over more strict trees. A ratio that does not fill the tile leaves its
+remainder rows in the last group. Each head retains the strict warp-key
+reduction tree; the per-row workspace, softmax and P*V arithmetic are
+unchanged.
 
 The PV stage has two work decompositions, and the plan reports which one a
 launch selected. A single query token -- the shape with the fewest independent
@@ -107,7 +111,7 @@ _ARGTYPES_STAGED = (
 # `test_staged_workspace_bytes_matches_the_kernel_export` compares them against
 # the kernel's exports on a device.
 THREADS = 256
-SCORE_ROWS_PER_BLOCK = 2
+SCORE_ROWS_PER_BLOCK = 8
 SCORE_CHUNK_KEYS = 1024
 MAX_ROWS_PER_BLOCK = 8
 PV_TILE_KEYS = 256
@@ -434,7 +438,7 @@ def _staged_launch_shape(tokens: int, num_heads: int, keys: int) -> int:
 
 
 def staged_score_lds_bytes(head_dim: int) -> int:
-    """Shared bytes for two query rows and their eight warp maxima each."""
+    """Shared bytes for the score stage's query-row tile and warp maxima."""
 
     return SCORE_ROWS_PER_BLOCK * (int(head_dim) + (THREADS // 32)) * 4
 

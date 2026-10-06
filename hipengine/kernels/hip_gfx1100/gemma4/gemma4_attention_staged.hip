@@ -4,11 +4,12 @@
 // shared memory, so its shared footprint grows with the context and its launch
 // refuses above 15,616 keys at head_dim 512 (`gemma4_attention_shared_bytes`).
 // This candidate computes the same arithmetic in three kernels over a
-// caller-owned global workspace, so its shared footprint is a constant 8 KB
-// that does not mention `keys` at all:
+// caller-owned global workspace, so its shared footprint is constant in
+// `keys` (the score stage's query-row tile is the largest term and is bounded
+// by the launcher's budget check):
 //
 //   1. `gemma4_attention_staged_score_kernel` writes FP32 logits -- one warp per
-//      key with two query heads sharing each decoded K vector -- and one
+//      key with up to eight query heads sharing each decoded K vector -- and one
 //      running maximum per (row, key chunk). The strict warp-key tree is unchanged.
 //   2. `gemma4_attention_staged_softmax_kernel` reduces those maxima to the row
 //      maximum and runs the strict pass 2: the 256-lane `j mod 256` partition,
@@ -87,11 +88,15 @@ namespace {
 // dimension walk (head_dim 256 -> one dimension per thread, 512 -> two).
 // Singleton PV uses kStagedSingletonThreads instead.
 constexpr int kStagedThreads = 256;
-// Keys per score CTA. Sets the workspace's chunk-maximum array: one float per
-// (row, chunk). A power of two so the partial-max reduction is a short loop.
-// Two query heads per score CTA share each decoded K vector. Groups never
-// cross a KV-head boundary; an odd GQA ratio leaves one row in its last group.
-constexpr int kStagedScoreRows = 2;
+// Query rows per score CTA. Every resident row reuses the one decoded K
+// vector a warp holds, so a bigger group amortizes the decode over more strict
+// trees and cuts the score grid's group count; the per-(row, key) tree is
+// unchanged either way. Sets the Q tile in shared memory, whose footprint is
+// `kStagedScoreRows * (head_dim + 8)` floats -- 16.6 KB at head_dim 512,
+// inside `kStagedLdsBudgetBytes`. Groups never cross a KV-head boundary; a
+// ratio that does not fill the tile leaves its remainder rows in the last
+// group.
+constexpr int kStagedScoreRows = 8;
 constexpr int kStagedScoreChunkKeys = 1024;
 // Query rows per PV CTA. Rows in one CTA share a KV head, so this is the V
 // reuse factor. The accumulator array is `kStagedMaxRows * kDimsPerThread`
@@ -333,10 +338,12 @@ __device__ inline float gemma4_staged_tree1(
 // ---------------------------------------------------------------------------
 // Stage 1: one warp per key.
 //
-// Grid (tokens * num_kv_heads * ceil(GQA / 2), key chunks); each CTA holds
-// two query heads of one KV head (one in an odd tail). 256 threads = 8 warps;
-// warp w owns columns w, w + 8, ... and reuses each decoded K vector for both
-// heads. Lane 0 writes each head's logit to its own workspace row.
+// Grid (tokens * num_kv_heads * ceil(GQA / kStagedScoreRows), key chunks); each
+// CTA holds up to kStagedScoreRows query heads of one KV head, and the tail of
+// a ratio that does not fill the tile holds its remainder rows. 256 threads = 8
+// warps; warp w owns columns w, w + 8, ... and reuses each decoded K vector
+// for every resident head. Lane 0 writes each head's logit to its own workspace
+// row.
 // A column outside `[first_kept, walk_end)` or masked out is
 // -INFINITY, which is exactly what the strict kernel stores for it, so the
 // softmax stage needs no mask of its own: expf(-INFINITY - row_max) is 0.
@@ -415,7 +422,11 @@ __global__ void gemma4_attention_staged_score_kernel(
   int64_t j = j0 + warp;
   const int64_t j_load = j < keys ? j : 0;
   const scalar_t* k_row = key + (j_load * num_kv_heads + kv_head) * head_dim;
-  float running_max[kStagedScoreRows] = {-INFINITY, -INFINITY};
+  float running_max[kStagedScoreRows];
+#pragma unroll
+  for (int r = 0; r < kStagedScoreRows; ++r) {
+    running_max[r] = -INFINITY;
+  }
   for (; j < j1; j += 8) {
     const bool keep = j >= first_kept && j < walk_end && mask_row[j] != 0;
     // The same exact scalar-to-FP32 conversion as the parent, done once for
@@ -779,9 +790,9 @@ __global__ void gemma4_attention_staged_pv_singleton_kernel(
 }
 
 // Shared footprint of each stage, in bytes, for a given head_dim. Constant in
-// `keys`: the score stage holds two query rows and their eight warp maxima,
-// the softmax stage holds the 256-lane tree plus the broadcast maximum, and the PV
-// stage holds one weight tile per row.
+// `keys`: the score stage holds its query-row tile and each resident row's warp
+// maxima, the softmax stage holds the 256-lane tree plus the broadcast maximum,
+// and the PV stage holds one weight tile per row.
 size_t gemma4_staged_score_shared_bytes(int64_t head_dim) {
   return static_cast<size_t>(kStagedScoreRows * (head_dim + (kStagedThreads >> 5))) * sizeof(float);
 }

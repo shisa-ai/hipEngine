@@ -439,7 +439,9 @@ def test_kernel_exports_match_the_python_planner(staged_library):
             head_dim, library=staged_library
         ) == staged.staged_lds_bytes(head_dim)
     # The bounded-layout property, from the kernel's own numbers.
-    assert staged.staged_lds_bytes_from_kernel(512, library=staged_library) == 8 * 256 * 4
+    assert staged.staged_lds_bytes_from_kernel(
+        512, library=staged_library
+    ) == staged.SCORE_ROWS_PER_BLOCK * (512 + staged.THREADS // 32) * 4
 
 
 def test_returned_plan_names_the_decomposition_that_ran(staged_library):
@@ -451,11 +453,11 @@ def test_returned_plan_names_the_decomposition_that_ran(staged_library):
         shape, dtype="bf16", mask=mask, scale=1.0, window=0, row_offset=0,
         library=staged_library,
     )
-    assert plan.score_grid == (24, 4)
+    assert plan.score_grid == (6, 4)
     assert plan.softmax_grid == (48, 1)
     assert plan.pv_grid == (3, 2, 1)
     assert plan.rows_per_head == 8
-    assert plan.lds_bytes == 8 * 256 * 4
+    assert plan.lds_bytes == staged.SCORE_ROWS_PER_BLOCK * (512 + staged.THREADS // 32) * 4
     assert plan.workspace_bytes == staged.staged_workspace_bytes(3, 16, 4096)
     assert "pv_grid=3x2x1" in plan.describe()
 
