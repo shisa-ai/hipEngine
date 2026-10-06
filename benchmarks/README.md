@@ -5,6 +5,27 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next first-scratch decode diagnostic
+
+Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+real layer4 weights and synthetic top-k10 decode activations/routes. Sixteen
+fresh-process sham/scratch runs measure the original 36-byte GDN and 92-byte
+F32 dense-wide triggers before zero-private Q4_K gate/up and Q8_0 down victims.
+
+| Trigger / victim | Scratch after/before range | Sham after/before range |
+| --- | ---: | ---: |
+| GDN / Q4 gate-up | 0.97600–0.98272 | 0.97518–0.99822 |
+| GDN / Q8 down | 0.98965–1.02339 | 0.98063–0.98278 |
+| Dense-wide / Q4 gate-up | 0.97557–0.97979 | 0.97549–0.97801 |
+| Dense-wide / Q8 down | 0.98041–1.00065 | 0.98099–0.99999 |
+
+All outputs are exact and finite; trigger checks pass. Four cached traces
+confirm first queue allocations of 1,638,400/3,932,160 bytes between baseline
+and trigger, with post-victim calls on the same queue. No multi-fold penalty
+appears for these pairs. The small Q8/GDN effect is unresolved; this is not
+universal throttle clearance or a performance improvement. No defaults change.
+[Protocol, timing correction and artifact](results/2026-10-06-qwen4exp-x5-decode-victims/README.md).
+
 ## Qwen3.8 Flash Next bounded grouped-norm F16 publication
 
 On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, the gfx1151
