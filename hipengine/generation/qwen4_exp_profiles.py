@@ -911,6 +911,10 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
             else "0"
         ),
+        # Default-off K320/full-row GR DPP screen. It is enabled only by the
+        # explicit experiment override after the promoted DPP selector; all
+        # other shapes remain on the generic DPP owner.
+        "HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR": "1" if production else "0",

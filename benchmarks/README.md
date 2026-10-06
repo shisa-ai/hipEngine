@@ -185,7 +185,16 @@ throughput comparison.
 
 [Protocol and artifacts](results/2026-10-06-qwen4exp-post-dp5-prefill-owners/README.md).
 
-## Qwen3.8 Flash Next split-operand dense operation screen
+## Qwen3.8 Flash Next K320/full-row GR-up DPP screen
+
+A separately registered K320/full-row GR-up DPP specialization is **1.084–1.103x
+faster** than the promoted DPP owner across 12 real-weight complete operations
+at rows512/1024/4096, with exact gate/mixed outputs. Geometric mean speedup is
+1.092x. The arm is default-off; generic DPP remains fallback. This operation
+screen does not claim a model-level or default promotion.
+
+[Protocol and artifacts](results/2026-10-06-qwen4exp-gr-k320-full-rows-screen.md).
+
 
 On Radeon 8060S physical host `55ea6c509d0b49eea8de7094a1023668`, the
 default-off compensated Q8_0 high/low split WMMA candidate is faster per
