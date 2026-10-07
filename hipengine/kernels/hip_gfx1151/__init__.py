@@ -3378,11 +3378,24 @@ _GFX1100_MODULES = (
 )
 
 
-def register_gfx1151_kernels(*, replace: bool = False) -> None:
-    """Register gfx1151 aliases for the current gfx1100 kernel key space."""
+def import_gfx1100_kernel_modules() -> None:
+    """Import every gfx1100 kernel module so import-time registrations run.
+
+    Several gfx1100 kernel modules register their kernels at module import
+    time. Importing a module is a once-per-process side effect, so callers that
+    need those registrations to exist (the alias pass below, the unit-test
+    conftest baseline snapshot) must trigger the imports through this helper
+    instead of assuming a previous caller already did.
+    """
 
     for module_name in _GFX1100_MODULES:
         import_module(module_name)
+
+
+def register_gfx1151_kernels(*, replace: bool = False) -> None:
+    """Register gfx1151 aliases for the current gfx1100 kernel key space."""
+
+    import_gfx1100_kernel_modules()
 
     # LDS-staged f32 dense Q8_0 tile. A production-gate candidate, not a default:
     # it is measured 1.23x to 2.22x faster than the exact coltile leaf across all
