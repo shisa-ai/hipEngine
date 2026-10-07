@@ -3766,6 +3766,80 @@ def _qwen4_exp_q51_iu8_exact_enabled() -> bool:
     ) not in {"", "0", "false", "False"}
 
 
+def _run_qwen4_exp_q51_wmma_down(
+    *,
+    input_ptr: int,
+    expert_start_ptr: int,
+    wmma_expert_start_ptr: int,
+    tile_expert_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    wmma_total_buffer: DeviceBuffer,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    tile_capacity: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> int:
+    """Run the F16 Q5_1 grouped down owner on a current 16-row WMMA tile map.
+
+    The owner consumes a 16-row tile map and requires a positive multiple-of-16
+    host row count. Only the non-exact gate/up paths build that map for the
+    current invocation, so a down-only configuration (production exact gate/up
+    with the F16 down owner) would otherwise pass a stale zero, and a preceding
+    ``q4_k_mmq_prefill`` map carries 32-row geometry the F16 owner cannot
+    consume. Rebuilding the map here from this invocation's compact expert
+    starts makes the map and count current by construction, independent of
+    which gate/up route ran. The extra map launch and D2H readback are charged
+    only on this F16 down route.
+    """
+
+    qwen35_moe_wmma_tile_map(
+        expert_start_ptr,
+        wmma_expert_start_ptr,
+        tile_expert_ptr,
+        wmma_total_buffer.ptr,
+        num_experts,
+        tile_capacity=tile_capacity,
+        stream=stream,
+        runtime=runtime,
+    )
+    wmma_total_host = np.empty(1, dtype=np.int64)
+    if stream:
+        runtime.stream_synchronize(stream)
+    copy_device_to_host(
+        host_array_ptr(wmma_total_host),
+        wmma_total_buffer,
+        DType.INT64.itemsize,
+        runtime=runtime,
+    )
+    wmma_total_rows = int(wmma_total_host[0])
+    if (
+        wmma_total_rows <= 0
+        or wmma_total_rows % 16
+        or wmma_total_rows > tile_capacity * 16
+    ):
+        raise RuntimeError("Qwen4Exp F16 Q5_1 down tile row count is invalid")
+    qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
+        input_ptr,
+        expert_start_ptr,
+        wmma_expert_start_ptr,
+        tile_expert_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        wmma_total_rows,
+        stream=stream,
+        runtime=runtime,
+    )
+    return wmma_total_rows
+
+
 def _qwen4_exp_q51_iu8_risk_multiplier() -> float:
     """Kahan-bound multiplier for the exact Q5_1 iu8 risk criterion.
 
@@ -4872,18 +4946,23 @@ def run_qwen4_exp_moe(
                         runtime=active_runtime,
                     )
             elif q5_wmma:
-                qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
-                    scratch.expert_intermediate.ptr,
-                    scratch.group_expert_start.ptr,
-                    scratch.group_wmma_expert_start.ptr,
-                    scratch.group_tile_expert.ptr,
-                    weights["expert_down"].allocation("raw").tensor.ptr,
-                    scratch.expert_down.ptr,
-                    compact,
-                    experts,
-                    ffn,
-                    hidden,
-                    wmma_total_rows,
+                # The F16 Q5_1 down owner needs a current 16-row WMMA tile map
+                # and its host row count. Only the non-exact gate/up paths build
+                # that map, so the down-only configuration (production exact
+                # gate/up) would otherwise pass a stale zero; rebuild it here.
+                _run_qwen4_exp_q51_wmma_down(
+                    input_ptr=scratch.expert_intermediate.ptr,
+                    expert_start_ptr=scratch.group_expert_start.ptr,
+                    wmma_expert_start_ptr=scratch.group_wmma_expert_start.ptr,
+                    tile_expert_ptr=scratch.group_tile_expert.ptr,
+                    weights_ptr=weights["expert_down"].allocation("raw").tensor.ptr,
+                    output_ptr=scratch.expert_down.ptr,
+                    wmma_total_buffer=scratch.group_wmma_total,
+                    compact_rows=compact,
+                    num_experts=experts,
+                    in_features=ffn,
+                    out_features=hidden,
+                    tile_capacity=tile_capacity,
                     stream=stream,
                     runtime=active_runtime,
                 )
