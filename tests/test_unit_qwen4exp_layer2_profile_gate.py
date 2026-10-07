@@ -330,3 +330,94 @@ def test_gr_up_staged_candidate_targets_the_registered_hc1_variant() -> None:
     defined = getattr(import_module(spec.direct_dispatch_reference[0]),
                       spec.direct_dispatch_reference[1])
     assert called is defined
+
+
+def test_f16_compact_down_candidate_pins_down_only_overrides() -> None:
+    """MX-1's down half must be gated as a down-only change.
+
+    The candidate selects the F16 down owner by clearing the exact-grouped-down
+    gate and opening the Q5_1 WMMA route. The gate/up leg is selected by the
+    independent ``exact_grouped_q4_gate`` predicate, which stays on when only
+    ``EXACT_GROUPED_DOWN`` is cleared because ``EXACT_GROUPED_Q4_ALL`` keeps its
+    production default. A gate/up override here would silently turn the run into
+    the already-refuted full route, so none of those keys may appear.
+    """
+
+    module = _load_script()
+    candidate = module.CANDIDATES["f16_compact_down"]
+
+    assert candidate.classification == "T1"
+    assert candidate.base_profile == "production"
+    assert candidate.scenario_id == "qwen4exp-f16-compact-down"
+    assert candidate.environment == {
+        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "0",
+        "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
+    }
+    for gate_up_key in (
+        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4",
+        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL",
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
+    ):
+        assert gate_up_key not in candidate.environment, gate_up_key
+
+
+def test_f16_compact_down_candidate_engages_direct_alias_and_keeps_fallback() -> None:
+    """The down candidate must count the alias the runner actually calls.
+
+    The runner invokes ``qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out``
+    through a direct module-attribute call, so a registry-only dispatch count
+    would read zero no matter how often the route engaged. The declared direct
+    target must be that same module attribute, and the registered strict
+    fallback (the production iu8-risk down owner) must stay resolvable.
+    """
+
+    from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+        register_qwen4_exp_q5_1_kernels,
+    )
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import is_registered, KernelKey, resolve
+
+    # The source keys are registered by a module-level call that does not re-run
+    # once the module is imported, and ``tests/conftest.py`` restores the
+    # registry to its collection-time baseline after every test. Calling the two
+    # registrars explicitly keeps this test independent of collection order.
+    register_qwen4_exp_q5_1_kernels(replace=True)
+    register_gfx1151_kernels(replace=True)
+
+    module = _load_script()
+    spec = module.CANDIDATES["f16_compact_down"]
+
+    assert spec.candidate_key == (
+        "hip_gfx1151", "moe_linear", "gguf_q5_1",
+        "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+    )
+    assert spec.fallback_key == (
+        "hip_gfx1151", "moe_linear", "gguf_q5_1",
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out",
+    )
+    assert is_registered(KernelKey(*spec.candidate_key))
+    assert is_registered(KernelKey(*spec.fallback_key))
+
+    assert spec.direct_dispatch_target == (
+        "hipengine.runtime.qwen4_exp_runner",
+        "qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+    )
+    assert spec.direct_dispatch_reference == (
+        "hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1",
+        "qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+    )
+    assert spec.count_registered_dispatch is True
+    # The counted ABI is (compact_rows, num_experts, in_features, out_features),
+    # matching qwen4_exp_runner.py's direct call site.
+    assert spec.dispatch_shape_positions == (6, 7, 8, 9)
+
+    from importlib import import_module
+
+    called = getattr(import_module(spec.direct_dispatch_target[0]),
+                     spec.direct_dispatch_target[1])
+    defined = getattr(import_module(spec.direct_dispatch_reference[0]),
+                      spec.direct_dispatch_reference[1])
+    assert called is defined
+    assert resolve(backend=spec.candidate_key[0], layer=spec.candidate_key[1],
+                   quant=spec.candidate_key[2], variant=spec.candidate_key[3]) is defined
