@@ -6,12 +6,27 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import select_prefill
 @pytest.mark.parametrize('tokens,keys', [(1,31),(7,257),(19,1025),(3,262144)])
 @pytest.mark.parametrize('heads,kv_heads,dim', [(16,8,256),(16,2,512)])
 def test_explicit_staged_attention_selects_declared_geometry(tokens,keys,heads,kv_heads,dim):
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        _STRICT_DECODE_WINS_UNTIL_KEYS,
+    )
     selection=select_prefill_attention(requested_variant='gemma4_staged',num_heads=heads,
                                       num_kv_heads=kv_heads,head_dim=dim,tokens=tokens,keys=keys)
-    assert selection.variant == 'gemma4_staged'
-    assert selection.is_strict
-    assert selection.launcher.__name__ == 'gemma4_attention_staged_bf16'
-    assert 'capability match' in selection.reason
+    # A one-token block below the measured decode crossover takes the strict
+    # decode kernel for every request set, staged included (2026-10-07: the
+    # crossover is uniform -- it already governed WMMA requests, and the A/B
+    # measured the strict kernel faster than the singleton there, with
+    # identical token IDs). Multi-row blocks and deep one-token blocks serve
+    # the staged request as declared.
+    if tokens == 1 and keys <= _STRICT_DECODE_WINS_UNTIL_KEYS:
+        assert selection.variant == 'gemma4_plain'
+        assert selection.is_strict
+        assert selection.launcher.__name__ == 'gemma4_attention_prefill_bf16'
+        assert 'decode' in selection.reason
+    else:
+        assert selection.variant == 'gemma4_staged'
+        assert selection.is_strict
+        assert selection.launcher.__name__ == 'gemma4_attention_staged_bf16'
+        assert 'capability match' in selection.reason
 
 
 def test_staged_capability_miss_names_geometry_and_keeps_strict_fallback():

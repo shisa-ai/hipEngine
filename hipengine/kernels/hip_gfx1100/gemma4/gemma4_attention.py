@@ -1223,8 +1223,14 @@ def _select_prefill_attention(
             requested_variant=requested_variant,
             reason="strict",
         )
-    if (tokens is not None and tokens <= 1 and _strict_decode_preferred(keys)
-            and PREFILL_ATTENTION_STAGED not in requests):
+    # The measured decode crossover applies to every request set: the strict
+    # decode kernel is faster than the staged singleton below
+    # `_STRICT_DECODE_WINS_UNTIL_KEYS` even when staged is requested (A/B at
+    # 512 keys, 2026-10-07: strict decode 34.64 vs singleton 32.33 tok/s,
+    # identical token IDs, promoted-build prefill on both arms). Above the
+    # crossover the singleton wins, so a staged entry in the request set
+    # serves one-token blocks there.
+    if (tokens is not None and tokens <= 1 and _strict_decode_preferred(keys)):
         return PrefillAttentionSelection(
             variant=PREFILL_ATTENTION_PLAIN,
             launcher=gemma4_attention_prefill_bf16,
