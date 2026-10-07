@@ -1,0 +1,42 @@
+{
+  "kind": "qwen4exp_de11_paired_decode_session",
+  "session_dir": "benchmarks/results/2026-10-07-qwen4exp-de11-paired-decode-wall-kernel",
+  "cases": {
+    "code-p4096": {
+      "wall_ms_per_step_median": 55.94599772265625,
+      "wall_ms_per_step_runs": [
+        55.8442293046875,
+        56.047766140625
+      ],
+      "kernel_ms_per_step_median": 45.0503155546875,
+      "kernel_ms_per_step_runs": [
+        45.0475761796875,
+        45.0530549296875
+      ],
+      "remainder_ms_per_step": 10.89568216796875,
+      "kernel_share": 0.8052464410057993,
+      "launches_per_step": [
+        1815.0,
+        1815.0
+      ]
+    },
+    "code-p512": {
+      "wall_ms_per_step_median": 47.6997245703125,
+      "wall_ms_per_step_runs": [
+        47.7443845390625,
+        47.6550646015625
+      ],
+      "kernel_ms_per_step_median": 44.242256749999996,
+      "kernel_ms_per_step_runs": [
+        44.2284559921875,
+        44.2560575078125
+      ],
+      "remainder_ms_per_step": 3.4574678203125018,
+      "kernel_share": 0.9275159793592525,
+      "launches_per_step": [
+        1740.0,
+        1740.0
+      ]
+    }
+  }
+}
