@@ -6,10 +6,12 @@ from scripts.qwen4exp_f16_pair_engine_ab import (
     ARM_SEQUENCE,
     CATEGORIES,
     HELDOUTS,
+    _admitted_pair_rows,
     _arm_order,
     _expected_pairs,
     _load_jsonl,
     _select_cases,
+    build_parser,
     summarize_engine_ab,
 )
 
@@ -23,12 +25,29 @@ def test_dp2_arm_order_is_counterbalanced():
 
 
 @pytest.mark.parametrize("tokens, chunk, expected", [
-    (512, 1024, 0), (1024, 1024, 61), (4096, 1024, 244),
-    (1025, 1024, 61), (4096, 4096, 61), (1024, 4096, 61),
+    (512, 1024, 0), (1024, 1024, 0), (4096, 1024, 0),
+    (1025, 1024, 0), (4096, 4096, 61), (1024, 4096, 0),
     (2048, 4096, 0), (8192, 4096, 122), (4096, 512, 0),
+    (5120, 4096, 61),
 ])
-def test_dp2_pair_count_follows_executed_chunks(tokens, chunk, expected):
+def test_dp2_pair_count_follows_narrowed_policy_and_executed_chunks(tokens, chunk, expected):
     assert _expected_pairs(tokens, chunk) == expected
+
+
+def test_dp2_pair_admission_is_read_from_backend_policy():
+    assert _admitted_pair_rows() == frozenset({4096})
+
+
+def test_dp2_historical_policy_counts_remain_explicit():
+    assert _expected_pairs(4096, 1024, admitted_rows={1024, 4096}) == 244
+    assert _expected_pairs(1024, 4096, admitted_rows={1024, 4096}) == 61
+
+
+def test_dp2_parser_defaults_to_qualified_chunk_and_preserves_control():
+    args = ["--model-root", "/tmp/model", "--compiler-version-file", "/tmp/version",
+            "--output", "/tmp/ab.json"]
+    assert build_parser().parse_args(args).prefill_chunk_size == 4096
+    assert build_parser().parse_args(args + ["--prefill-chunk-size", "1024"]).prefill_chunk_size == 1024
 
 
 @pytest.mark.parametrize("tokens, chunk", [(0, 1024), (4096, 0)])
@@ -46,10 +65,10 @@ def test_dp2_subset_preserves_full_suite_counterbalance():
         _select_cases(cases, [1024])
 
 
-def sample_rows(tokens=4096, chunk=1024):
+def sample_rows(tokens=4096, chunk=4096):
     from scripts.qwen4exp_canonical_ar_bench import token_ids_sha256
 
-    expected = 244 if chunk == 1024 else 61
+    expected = 61 if tokens == 4096 and chunk == 4096 else 0
     return [dict(case_id="case", category="code", prompt_tokens=tokens,
                  mode=mode, source="canonical", repetition=slot // 2,
                  sequence_slot=slot, case_sequence=list(ARM_SEQUENCE),
@@ -66,10 +85,16 @@ def sample_rows(tokens=4096, chunk=1024):
 
 def test_dp2_summary_validates_all_samples_and_chunk_engagement():
     rows = sample_rows()
-    summary = summarize_engine_ab(rows, chunk_size=1024)
+    summary = summarize_engine_ab(rows, chunk_size=4096)
     assert summary["correctness"]["all_cross_arm_output_exact"]
-    assert summary["by_case"]["case"]["candidate_engagement"]["pairs"] == 244
+    assert summary["by_case"]["case"]["candidate_engagement"]["pairs"] == 61
     assert summary["by_shape"]["4096"]["candidate_over_parent_prefill"] == pytest.approx(100 / 99)
+
+
+@pytest.mark.parametrize("tokens, chunk", [(1024, 4096), (4096, 1024)])
+def test_dp2_summary_checks_zero_engagement_controls(tokens, chunk):
+    summary = summarize_engine_ab(sample_rows(tokens, chunk), chunk_size=chunk)
+    assert summary["by_case"]["case"]["candidate_engagement"]["pairs"] == 0
 
 
 @pytest.mark.parametrize("damage", ["missing", "ids", "hash", "casts", "pairs", "accepted", "order"])
@@ -86,7 +111,7 @@ def test_dp2_summary_refuses_incomplete_or_corrupt_evidence(damage):
     else:
         rows[0]["engagement"][damage] += 1
     with pytest.raises(ValueError):
-        summarize_engine_ab(rows, chunk_size=1024)
+        summarize_engine_ab(rows, chunk_size=4096)
 
 
 def test_dp2_heldout_suite_is_eight_rows_and_covers_categories():
