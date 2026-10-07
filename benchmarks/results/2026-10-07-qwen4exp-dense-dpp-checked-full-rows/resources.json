@@ -3,6 +3,7 @@
  "kind": "qwen4exp_dense_dpp_checked_full_rows_resources",
  "performance_claim": false,
  "status": "diagnostic",
+ "source_commit": "83b028c60b719988e973b4b2d0d7e72bbb74ea5a",
  "host": {
   "machine_id": "55ea6c509d0b49eea8de7094a1023668",
   "arch": "gfx1151"
@@ -13,8 +14,9 @@
   "commit": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
  },
  "build": {
-  "cache_key": "6f0b72061932469996e61bcd1c1ffde555a9c2dd0cb78600e238993838e19ce3",
-  "device_object_sha256": "930ea769d838ae9d59fc1d2e69fcdb165512ca01f1466c80d8ff983cd8ab0814",
+  "cache_key": "6a62e39137715b18337383ba5cb7c2896351b2367a11946a6e18a25700de5be9",
+  "loaded_library_sha256": "e5d1cf9572a225ce5920e133616b3a474e4393f62942dd2f6c8562cc7d09bd86",
+  "device_object_sha256": "f38d594b938c58819c81ce5f265578889081755db627a5aa5ae79894e33233c2",
   "command": "hipcc -shared -fPIC -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1151 hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip"
  },
  "cached_metadata": {
@@ -61,14 +63,14 @@
   }
  },
  "trace": {
-  "file": "dense-checked_kernel_trace.csv",
-  "sha256": "c50c7f2ea5a532b5d2117cd29c5c8bea76c8d51c3e6979122dd05acd17b48d2f",
+  "file": "dense-checked-repair_kernel_trace.csv",
+  "sha256": "7e959844bed65c38ef78cdce8657d9e6bede96946fbce7bda26c86a9046ca240",
   "launches": {
    "parent": 3,
    "sibling": 3
   },
-  "parent_median_ns": 8014371,
-  "sibling_median_ns": 5424961,
+  "parent_median_ns": 8008661,
+  "sibling_median_ns": 5427913,
   "grid": {
    "parent": "163840x128",
    "sibling": "163840x128"
@@ -87,6 +89,7 @@
  "notes": [
   "Resource counts are from the cached device code object, not a standalone object census.",
   "Static instruction counts are per-symbol disassembly line counts, not dynamic counts.",
-  "Register counts do not establish runtime occupancy."
+  "Register counts do not establish runtime occupancy.",
+  "The repair commit changed host-side admission only, so device resources are unchanged from the pre-repair screen."
  ]
 }
