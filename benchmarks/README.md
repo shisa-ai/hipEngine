@@ -37,6 +37,27 @@ operation evidence, not model throughput. Natural-input and model-state gates
 are pending; the production selector is unchanged.
 [Protocol, identities, samples and artifact](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows/README.md).
 
+## Qwen3.8 Flash Next dense Q8 checked/full-row qualification
+
+On the Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, the
+separately registered checked-int32/full-four-row dense Q8 DPP sibling was
+qualified on natural activations and complete model state. The candidate
+remains diagnostic-only; the generic DPP parent remains the production path.
+
+The natural-input owner screen covers six canonical cases and six declared Q8
+geometries with **594 candidate captures**. Complete owner-operation ratios
+are 1.454x at p512, 1.458x at p1024 and 1.466x–1.467x across four category
+p4096 cases; geometric mean is **1.463x**. Every capture is full-output
+bit-identical, input/raw-weight immutable and finite; teardown is clean.
+
+The full-state gate covers all 12 canonical category/shape cases with
+parent/candidate/candidate/candidate/parent arms, 16 decode steps and full KV
+hashes: **3,564 candidate calls**, exact prefill/decode logits, exact recurrent
+state/layout, exact full KV bytes and exact token IDs/repeats, with zero
+teardown allocations. This is operation and correctness evidence, not request
+throughput. A complete-engine A/B remains required before any default decision.
+[Protocol, artifacts and identities](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-qualification/README.md).
+
 ## Qwen3.8 Flash Next paired decode wall/kernel diagnostic
 
 On Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`,

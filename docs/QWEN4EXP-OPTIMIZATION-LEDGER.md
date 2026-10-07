@@ -490,6 +490,25 @@ and the 1.414x projection ratio is not a prefill-rate claim. It does not close
 DP-8's remaining arithmetic or unrelated scope gates. [Screen and review
 basis](../benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows/README.md).
 
+### 1.3.4 Dense Q8 checked/full-row natural and state qualification — 2026-10-07 UTC
+
+The checked-int32/full-four-row sibling advanced through natural-input and
+complete-state qualification without changing the runtime selector. On the
+tracked-clean `6b3f5253e` natural owner screen, six canonical cases and six
+declared dense Q8 geometries produced 594 candidate captures. Complete owner
+ratios were 1.454x/1.458x at p512/p1024 and 1.466–1.467x for four category
+p4096 cases; geometric mean 1.463x. Every output matched bit-for-bit and
+natural inputs/raw weights were immutable; teardown was clean.
+
+The tracked-clean `40365a64c` state gate covered all 12 canonical category/shape
+cases using parent/candidate/candidate/candidate/parent arms, 16 decode steps
+and full KV hashing. It engaged 3,564 candidate calls and passed exact
+prefill/decode logits, recurrent/layout state, full KV bytes, token IDs and
+repeat determinism with zero teardown allocations. This qualifies the declared
+owner/state boundary, not complete request throughput. The next gate is a
+tracked-clean canonical engine A/B; no production/default change is made.
+[Qualification packet](../benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-qualification/README.md).
+
 ## 2. Arithmetic policy and kernel mechanisms
 
 ### 2.1 What the fast engines compute
