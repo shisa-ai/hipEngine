@@ -15,6 +15,28 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
+## Qwen3.8 Flash Next dense Q8 projection diagnostic
+
+On Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, a checked
+32-bit/full-four-row sibling of the current dense Q8 DPP owner was measured
+using Qwen3.8-Flash-Next UD-Q4_K_XL weights, synthetic F32 activations and
+20 counterbalanced synchronized pairs per case. The tracked-clean screen
+covers eight projection tensors at layers 0/22 and rows 512/1024/4096.
+
+| Rows | Cases | Geometric-mean operation speedup | Range |
+| ---: | ---: | ---: | ---: |
+| 512 | 16 | 1.420x | 1.240–1.506x |
+| 1024 | 16 | 1.424x | 1.238–1.506x |
+| 4096 | 16 | 1.398x | 1.188–1.473x |
+
+All 48 medians and both arm-order strata improve; the aggregate geometric
+mean is 1.414x (29.2% less projection-operation time). Full outputs match the
+parent before and after each timing loop. CPU-reference, guarded GPU parity,
+byte-range admission and cached engagement checks pass. This is synthetic-input
+operation evidence, not model throughput. Natural-input and model-state gates
+are pending; the production selector is unchanged.
+[Protocol, identities, samples and artifact](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows/README.md).
+
 ## Qwen3.8 Flash Next paired decode wall/kernel diagnostic
 
 On Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`,
