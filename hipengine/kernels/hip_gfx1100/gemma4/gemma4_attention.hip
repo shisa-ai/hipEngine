@@ -1610,16 +1610,27 @@ __global__ void gemma4_attention_decode_flash_kernel(
   }
   __syncthreads();
 
-  // Slice denominator: every thread derives the same full-slice sum (identical
-  // reads, identical order), so only tid 0's copy reaches the partials.
+  // Slice denominator: one lane per query row derives the same full-slice sum
+  // in the incumbent order, then publishes it through warp_max. The previous
+  // implementation repeated this identical accumulation in every thread of
+  // the block; only the broadcast is needed because every consumer uses the
+  // same value.
   float denom[kQ];
 #pragma unroll
   for (int q = 0; q < kQ; ++q) {
+    denom[q] = 0.0f;
+  }
+  if (warp == 0 && lane < kQ) {
     float s = 0.0f;
     for (int64_t jj = 0; jj < slice_keys; ++jj) {
-      s += logits_s[q * slice_keys + jj];
+      s += logits_s[lane * slice_keys + jj];
     }
-    denom[q] = s;
+    warp_max[lane] = s;
+  }
+  __syncthreads();
+#pragma unroll
+  for (int q = 0; q < kQ; ++q) {
+    denom[q] = warp_max[q];
   }
 
   // Phase B: every thread walks dimensions (2*tid, 2*tid+1) with the
