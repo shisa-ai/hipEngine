@@ -1483,8 +1483,8 @@ int gemma4_decode_split_launch(
 // tokens * num_heads * slices * (2 + head_dim) floats, since
 // num_kv_heads * kQ == num_heads under either admission.
 
-constexpr int kFlashThreads = 128;   // 4 warps
-constexpr int kFlashWarps = 4;
+constexpr int kFlashThreads = 256;   // 8 warps
+constexpr int kFlashWarps = 8;
 
 template <typename scalar_t, int kQ, int kHalves>
 __global__ void gemma4_attention_decode_flash_kernel(
