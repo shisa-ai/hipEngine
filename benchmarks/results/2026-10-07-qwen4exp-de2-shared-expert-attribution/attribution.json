@@ -1,0 +1,248 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp-de2-shared-expert-attribution",
+ "performance_claim": false,
+ "promotion_claim": false,
+ "command": [
+  "scripts/qwen4exp_de2_shared_expert_attribution.py",
+  "--output",
+  "benchmarks/results/2026-10-07-qwen4exp-de2-shared-expert-attribution/attribution.json"
+ ],
+ "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "renamed_trace": "/home/lhl/hipEngine/benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_kernel_trace.csv",
+ "name_trace": "/home/lhl/hipEngine/benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/rocprof/e2ebase_kernel_trace.csv",
+ "name_trace_graph_replayed_kernels": 1797,
+ "step_windows": 3,
+ "selected_decode_kernels": 5313,
+ "moe_graph_kernels": 1749,
+ "total_decode_kernel_ms_per_step": 54.218067999999995,
+ "gguf_role_shapes": {
+  "down_shexp_out": 2560,
+  "router_out": 512,
+  "gate_shexp_out": 640,
+  "gate_inp_shexp_out": 1
+ },
+ "ambiguous_signatures": {
+  "('2560', '1', '1', '256', '1', '1', '8', '0')": [
+   "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+   "void (anonymous namespace)::weighted_sum_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long)"
+  ]
+ },
+ "result": {
+  "moe_graph_ms_per_step": 24.550393666666665,
+  "moe_graph_kernels_per_step": 583.0,
+  "roles": {
+   "routed_gate_up": {
+    "ms_per_step": 14.012586999999998,
+    "kernels_per_step": 47.0,
+    "pct_of_moe": 57.0768322099275,
+    "pct_of_decode_kernel_sum": 25.844865958705867
+   },
+   "routed_down": {
+    "ms_per_step": 5.443577,
+    "kernels_per_step": 43.0,
+    "pct_of_moe": 22.173074183291103,
+    "pct_of_decode_kernel_sum": 10.040153035331324
+   },
+   "routed_selected_misc": {
+    "ms_per_step": 1.3444013333333331,
+    "kernels_per_step": 7.0,
+    "pct_of_moe": 5.47608869978609,
+    "pct_of_decode_kernel_sum": 2.479618663898782
+   },
+   "shared_gate_up": {
+    "ms_per_step": 1.293879,
+    "kernels_per_step": 96.0,
+    "pct_of_moe": 5.270298381230303,
+    "pct_of_decode_kernel_sum": 2.3864350902359712
+   },
+   "router_gemv": {
+    "ms_per_step": 1.2389386666666669,
+    "kernels_per_step": 48.0,
+    "pct_of_moe": 5.046512424559765,
+    "pct_of_decode_kernel_sum": 2.285102941452408
+   },
+   "shared_down": {
+    "ms_per_step": 0.5185433333333334,
+    "kernels_per_step": 48.0,
+    "pct_of_moe": 2.112158934695155,
+    "pct_of_decode_kernel_sum": 0.9564031926282092
+   },
+   "router_select": {
+    "ms_per_step": 0.33101966666666655,
+    "kernels_per_step": 48.0,
+    "pct_of_moe": 1.3483273268897067,
+    "pct_of_decode_kernel_sum": 0.6105338660659516
+   },
+   "shared_gate_weight": {
+    "ms_per_step": 0.12391366666666663,
+    "kernels_per_step": 48.0,
+    "pct_of_moe": 0.504731892893883,
+    "pct_of_decode_kernel_sum": 0.2285468133365922
+   },
+   "moe_convert_mixed": {
+    "ms_per_step": 0.11636266666666661,
+    "kernels_per_step": 101.0,
+    "pct_of_moe": 0.4739747486194415,
+    "pct_of_decode_kernel_sum": 0.21461972172572918
+   },
+   "shared_combine": {
+    "ms_per_step": 0.067099,
+    "kernels_per_step": 48.0,
+    "pct_of_moe": 0.27331129965180057,
+    "pct_of_decode_kernel_sum": 0.12375763739866202
+   },
+   "shared_silu_mul": {
+    "ms_per_step": 0.05867000000000001,
+    "kernels_per_step": 48.0,
+    "pct_of_moe": 0.23897783797927155,
+    "pct_of_decode_kernel_sum": 0.108211159423829
+   },
+   "misc": {
+    "ms_per_step": 0.0014023333333333333,
+    "kernels_per_step": 1.0,
+    "pct_of_moe": 0.0057120604759888375,
+    "pct_of_decode_kernel_sum": 0.002586468653463147
+   }
+  },
+  "signatures": [
+   {
+    "role": "routed_gate_up",
+    "real_kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_silu_logical128_t64_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+    "grid_x": 40960,
+    "workgroup_x": 64,
+    "vgpr": 24,
+    "lds": 512,
+    "kernels_per_step": 47.0,
+    "ms_per_step": 14.012586999999998
+   },
+   {
+    "role": "routed_down",
+    "real_kernel": "(anonymous namespace)::q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel(unsigned short const*, long const*, unsigned char const*, float const*, unsigned short*, long, long, long, long, long)",
+    "grid_x": 163840,
+    "workgroup_x": 64,
+    "vgpr": 56,
+    "lds": 0,
+    "kernels_per_step": 43.0,
+    "ms_per_step": 5.443577
+   },
+   {
+    "role": "shared_gate_up",
+    "real_kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<float, float, 8>(float const*, unsigned char const*, float*, int, int, int, int)",
+    "grid_x": 10240,
+    "workgroup_x": 128,
+    "vgpr": 48,
+    "lds": 512,
+    "kernels_per_step": 96.0,
+    "ms_per_step": 1.293879
+   },
+   {
+    "role": "router_gemv",
+    "real_kernel": "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)",
+    "grid_x": 131072,
+    "workgroup_x": 256,
+    "vgpr": 24,
+    "lds": 1024,
+    "kernels_per_step": 48.0,
+    "ms_per_step": 1.2389386666666669
+   },
+   {
+    "role": "routed_selected_misc",
+    "real_kernel": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+    "grid_x": 327680,
+    "workgroup_x": 128,
+    "vgpr": 16,
+    "lds": 512,
+    "kernels_per_step": 5.0,
+    "ms_per_step": 0.8707266666666665
+   },
+   {
+    "role": "shared_down",
+    "real_kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<float, float, 8>(float const*, unsigned char const*, float*, int, int, int, int)",
+    "grid_x": 40960,
+    "workgroup_x": 128,
+    "vgpr": 48,
+    "lds": 512,
+    "kernels_per_step": 48.0,
+    "ms_per_step": 0.5185433333333334
+   },
+   {
+    "role": "routed_selected_misc",
+    "real_kernel": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+    "grid_x": 81920,
+    "workgroup_x": 128,
+    "vgpr": 16,
+    "lds": 512,
+    "kernels_per_step": 2.0,
+    "ms_per_step": 0.4736746666666667
+   },
+   {
+    "role": "router_select",
+    "real_kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+    "grid_x": 512,
+    "workgroup_x": 512,
+    "vgpr": 24,
+    "lds": 512,
+    "kernels_per_step": 48.0,
+    "ms_per_step": 0.33101966666666655
+   },
+   {
+    "role": "shared_gate_weight",
+    "real_kernel": "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)",
+    "grid_x": 256,
+    "workgroup_x": 256,
+    "vgpr": 24,
+    "lds": 1024,
+    "kernels_per_step": 48.0,
+    "ms_per_step": 0.12391366666666663
+   },
+   {
+    "role": "moe_convert_mixed",
+    "real_kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+    "grid_x": 2560,
+    "workgroup_x": 256,
+    "vgpr": 8,
+    "lds": 0,
+    "kernels_per_step": 101.0,
+    "ms_per_step": 0.11636266666666661
+   },
+   {
+    "role": "shared_combine",
+    "real_kernel": "void (anonymous namespace)::shared_gate_combine_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short*, long)",
+    "grid_x": 2560,
+    "workgroup_x": 256,
+    "vgpr": 16,
+    "lds": 0,
+    "kernels_per_step": 48.0,
+    "ms_per_step": 0.067099
+   },
+   {
+    "role": "shared_silu_mul",
+    "real_kernel": "(anonymous namespace)::silu_mul_f32_kernel(float const*, float const*, float*, long)",
+    "grid_x": 768,
+    "workgroup_x": 256,
+    "vgpr": 16,
+    "lds": 0,
+    "kernels_per_step": 48.0,
+    "ms_per_step": 0.05867000000000001
+   },
+   {
+    "role": "misc",
+    "real_kernel": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+    "grid_x": 6400,
+    "workgroup_x": 256,
+    "vgpr": 16,
+    "lds": 0,
+    "kernels_per_step": 1.0,
+    "ms_per_step": 0.0014023333333333333
+   }
+  ],
+  "shared_expert_ms_per_step": 2.062105,
+  "shared_expert_pct_of_decode_kernel_sum": 3.8033538930232633,
+  "routed_ms_per_step": 20.80056533333333,
+  "router_ms_per_step": 1.5699583333333333,
+  "mixed_ms_per_step": 0.11636266666666661,
+  "unclassified_ms_per_step": 0
+ },
+ "limits": "Profiled capture: per-kernel times are diagnostic, not a performance measurement. One case (code-p4096), one live count (4097), one model, one host, one execution profile. The shared expert runs inside the replayed per-layer MoE HIP graph, so its kernels carry generic names; the split is by dispatch signature cross-checked against exact GGUF payload shapes. f32_to_bf16 / bf16_to_f32 / weighted_sum_out share one signature and are reported together as moe_convert_mixed."
+}
