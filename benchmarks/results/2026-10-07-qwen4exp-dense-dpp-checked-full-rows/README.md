@@ -2,10 +2,10 @@
 
 The separately registered diagnostic sibling
 `coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out`
-is **1.111–1.506x faster** than the current dense DPP owner
+is **1.188–1.506x faster** than the current dense DPP owner
 `coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out` across 48 real-weight,
-complete dense Q8_0 projection cases. Geometric mean speedup is **1.409x**
-(29.0% less operation time); 48/48 case medians improve and both first/second
+complete dense Q8_0 projection cases. Geometric mean speedup is **1.414x**
+(29.2% less operation time); 48/48 case medians improve and both first/second
 arm orders win every case. The full output tensor is bit-identical to the
 parent before and after the timing loop (one full-tensor `uint32` comparison at
 each end, not a per-pair check). The candidate
@@ -40,31 +40,39 @@ This is a diagnostic operation screen, not a model rate or default promotion.
 
 | Rows | Cases | Geomean speedup | Range |
 | ---: | ---: | ---: | ---: |
-| 512 | 16 | 1.419x | 1.240–1.504x |
-| 1024 | 16 | 1.423x | 1.241–1.506x |
-| 4096 | 16 | 1.384x | 1.111–1.474x |
+| 512 | 16 | 1.420x | 1.240–1.506x |
+| 1024 | 16 | 1.424x | 1.238–1.506x |
+| 4096 | 16 | 1.398x | 1.188–1.473x |
 
-The exact per-case medians, order strata, weight hashes and command are in
-[`screen.json`](screen.json). Raw per-sample JSON stays outside Git under
-`/tmp/qwen4exp-dense-dpp-checked-20261007/`.
+The exact per-case medians, order strata, weight hashes, source-file/build
+hashes and command are in [`screen.json`](screen.json). Raw per-sample JSON
+stays outside Git under
+`/tmp/qwen4exp-dense-dpp-checked-repair-20261007/screen.samples.json`
+(SHA256 `c6e8bced2fe2f9998c8e1c28902d43e2add0a5e01f38243592fe4a2a99785c95`); the
+committed `screen.json` records the raw full-output hash
+`raw_artifact_sha256` and the raw-sample hash `raw_samples_sha256`.
 
 ## Contract and validation
 
 The sibling is separately registered under `linear`/`gguf_q8_0`. Its Python and
 C++ admission both require a Q8_0 block-aligned `in_features`, `out_features`
-divisible by 8, rows divisible by 4, and complete signed-int32 activation
-(`rows * in_features`), output (`rows * out_features`), raw-weight byte
-(`out_features * row_bytes`) and grid products. A tail, overflow or unsupported
-shape raises before the library loads; the generic DPP parent keeps serving it.
+divisible by 8, rows divisible by 4, and complete signed-int32 float activation
+byte (`rows * in_features * 4`), float output byte (`rows * out_features * 4`),
+raw-weight byte (`out_features * row_bytes`) and grid products. The C++ launcher
+validates the scalar dimensions before forming the packed row byte count, so a
+block-aligned near-INT64_MAX `in_features` cannot overflow signed int64. A tail,
+overflow or unsupported shape raises before the library loads; the generic DPP
+parent keeps serving it.
 
 The focused GPU gate passes 25/25 cases on gfx1151: bit-exact parity with the
 DPP parent at K32/96/160/2560/6144/10240, subnormal/wide/mixed Q8 scales,
 subnormal/cancellation/wide activations, output guard bands, input immutability,
-a nondefault stream, tail-row refusal with parent fallback, grandparent parity
-and the CPU-reference floor (max KL <= 0.05, top-1 >= 90%). The CPU unit gate
-passes 55 cases including the admission bounds and refusal-before-build. The
-existing DPP-reduction and pipelined-sibling gates still pass, so the old
-instantiations are unchanged.
+a nondefault stream, tail-row refusal with parent fallback, grandparent parity,
+raw-ABI refusal of block-aligned near-INT64_MAX K and extreme int64 rows/N before
+any pointer dereference, and the CPU-reference floor (max KL <= 0.05, top-1 >=
+90%). The CPU unit gate passes 59 cases including the admission bounds and
+refusal-before-build. The existing DPP-reduction and pipelined-sibling gates
+still pass, so the old instantiations are unchanged.
 
 ## Implementation boundary
 
@@ -80,7 +88,10 @@ output-layout change or default edit is included.
 ## Cached resource and trace evidence
 
 From the cached gfx1151 device code object (`cache_key`
-`6f0b72061932469996e61bcd1c1ffde555a9c2dd0cb78600e238993838e19ce3`):
+`6a62e39137715b18337383ba5cb7c2896351b2367a11946a6e18a25700de5be9`, loaded
+library SHA256 `e5d1cf9572a225ce5920e133616b3a474e4393f62942dd2f6c8562cc7d09bd86`,
+device object SHA256
+`f38d594b938c58819c81ce5f265578889081755db627a5aa5ae79894e33233c2`):
 
 | Symbol (template tail) | VGPR | SGPR | Private | Static instrs | Carry pairs |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -92,10 +103,23 @@ The sibling drops 169 static instructions (19.4%) and 29 int64 carry pairs
 (69%) while keeping the DPP reduction (32 `v_permlanex16` + 128
 `v_add_f32_dpp`). A cached `rocprofv3 --kernel-trace` on `attn_qkv` rows 512
 shows both instantiations engaged on the same 163840x128 grid, 3 launches each,
-with median device durations 8.014 ms (parent) and 5.425 ms (sibling),
+with median device durations 8.009 ms (parent) and 5.428 ms (sibling),
 scratch 0. Trace CSV SHA256
-`c50c7f2ea5a532b5d2117cd29c5c8bea76c8d51c3e6979122dd05acd17b48d2f`.
+`7e959844bed65c38ef78cdce8657d9e6bede96946fbce7bda26c86a9046ca240`.
 Full rows are in [`resources.json`](resources.json).
+
+## Repair and provenance
+
+The repair commit `83b028c60b719988e973b4b2d0d7e72bbb74ea5a` tightened the
+Python/C++ admission to float activation/output byte ranges and validates scalar
+dimensions before forming the packed row byte count. The earlier `b91209bc8`
+screen recorded only a dirty head with no diff or source-file hashes, so its
+source provenance was incomplete; this packet was regenerated on the
+tracked-clean repair commit with per-file source hashes
+(`kernel_hip` `8716c2f8…`, `wrapper_py` `e6f7d0d6…`, `harness_py` `64704876…`),
+loaded-library and build-cache identity, and raw-sample hashes. The repair is
+host-side admission only, so the device resource rows and trace durations are
+unchanged.
 
 ## Reproduce
 
@@ -109,26 +133,27 @@ uv run --no-sync python scripts/qwen4exp_dense_dpp_checked_full_rows_screen.py \
   --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
   --compiler-version-file "$HIPENGINE_COMPILER_VERSION_FILE" \
   --layers 0,22 --rows 512,1024,4096 --pairs 20 \
-  --output /tmp/qwen4exp-dense-dpp-checked-20261007/screen.json
+  --output /tmp/qwen4exp-dense-dpp-checked-repair-20261007/screen.json
 ```
 
 The harness pins `HIPENGINE_REQUIRE_CACHED_BUILD=1`, so prebuild the family with
 the pinned compiler-version file before profiling. Trace:
 
 ```bash
-rocprofv3 --kernel-trace --output-format csv --output-file dense-checked \
-  --output-directory /tmp/qwen4exp-dense-dpp-checked-20261007/trace -- \
+rocprofv3 --kernel-trace --output-format csv --output-file dense-checked-repair \
+  --output-directory /tmp/qwen4exp-dense-dpp-checked-repair-20261007/trace -- \
   uv run --no-sync python scripts/qwen4exp_dense_dpp_checked_full_rows_screen.py \
   --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
   --compiler-version-file "$HIPENGINE_COMPILER_VERSION_FILE" \
   --layers 0 --rows 512 --pairs 2 --tensors attn_qkv.weight \
-  --output /tmp/qwen4exp-dense-dpp-checked-20261007/trace/trace-run.json
+  --output /tmp/qwen4exp-dense-dpp-checked-repair-20261007/trace/trace-run.json
 ```
 
 ## Limitations
 
-- The screen ran from a dirty working tree (the candidate commit follows it);
-  the source state is recorded in `screen.json`.
+- The screen ran on the tracked-clean repair commit
+  `83b028c60b719988e973b4b2d0d7e72bbb74ea5a`; the source state, source-file
+  hashes and build identity are recorded in `screen.json`.
 - Synthetic activations only. A natural-input owner/state qualification and a
   production numerical-envelope review are required before any default change.
 - One host, one model, two layers and one quant. No model rate is claimed.
