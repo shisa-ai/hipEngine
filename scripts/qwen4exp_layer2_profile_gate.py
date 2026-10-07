@@ -81,6 +81,28 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
 )
 
 CANDIDATES = {
+    "dense_q8_checked_full_rows": CandidateSpec(
+        name="dense_q8_checked_full_rows",
+        classification="T0",
+        mechanism=(
+            "checked-int32/full-four-row sibling of the production dense Q8 DPP "
+            "owner; same ordered FMA/DPP arithmetic with complete-range admission"
+        ),
+        environment={
+            "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION": "1",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-dense-q8-checked-full-rows",
+        candidate_key=(
+            "hip_gfx1151", "linear", "gguf_q8_0",
+            "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out",
+        ),
+        fallback_key=(
+            "hip_gfx1151", "linear", "gguf_q8_0",
+            "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out",
+        ),
+        count_registered_dispatch=True,
+    ),
     "q8_blockscale": CandidateSpec(
         name="q8_blockscale",
         classification="T1",
