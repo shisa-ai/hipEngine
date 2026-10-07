@@ -10,10 +10,26 @@ production default or performance claim changed.
 
 [Protocol, test and artifact](results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/README.md).
 
-Last updated: **2026-10-06 UTC**
+Last updated: **2026-10-07 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
+
+## Qwen3.8 Flash Next paired decode wall/kernel diagnostic
+
+On Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`,
+UD-Q4_K_XL production/BF16, warm PLE and chunk1024, interleaved unprofiled
+walls and profiled kernel sums cover 128 decode transitions at two depths.
+
+| Case | Wall ms/step | Kernel sum ms/step | Estimated remainder ms/step |
+| --- | ---: | ---: | ---: |
+| code-p512 | 47.700 | 44.242 | 3.457 |
+| code-p4096 | 55.946 | 45.050 | 10.896 |
+
+The remainder is the difference between separate measurements, not a directly
+observed host gap. Its cause is unresolved. This is a diagnostic, not a speedup
+or production promotion; defaults are unchanged.
+[Protocol, identity checks and artifact](results/2026-10-07-qwen4exp-de11-paired-decode-wall-kernel/README.md).
 
 ## Qwen4Exp QA-6 raw-index key ring audit
 

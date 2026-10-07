@@ -30,7 +30,11 @@ def _load_script():
 
 def _artifact(**overrides):
     payload = {
-        "protocol": {"case_ids": ["code-p512"], "decode_transitions": 2},
+        "protocol": {
+            "case_ids": ["code-p512"], "decode_transitions": 2,
+            "capture_mode": "full", "prefill_chunk_size": 1024,
+            "ple_cache_mode": "warm", "prefill_kwargs": {}, "step_kwargs": {},
+        },
         "samples": [
             {
                 "repetition": 0,
@@ -46,8 +50,10 @@ def _artifact(**overrides):
             },
         ],
         "source": {"head": "deadbeef"},
-        "profile": {"manifest_sha256": "manifest"},
+        "profile": {"requested": "production", "manifest_sha256": "manifest"},
         "host": {"machine_id": "host"},
+        "model_root": "/models/test",
+        "fixture_sha256": "fixture",
     }
     payload.update(overrides)
     return payload
@@ -105,16 +111,21 @@ def test_summarize_kernel_requires_a_kernel_inside_the_window(tmp_path) -> None:
         module.summarize_kernel(_artifact(), trace)
 
 
+def _summary_identity(module):
+    return {
+        key: value
+        for key, value in module.summarize_wall(_artifact()).items()
+        if key in module.IDENTITY_FIELDS
+    }
+
+
 def test_pair_row_computes_remainder() -> None:
     module = _load_script()
     wall = module.summarize_wall(_artifact())
     kernel = {
-        "case_id": "code-p512",
+        **_summary_identity(module),
         "kernel_ms_per_step": 6.5,
         "launches_per_step": 1234.0,
-        "source_head": "deadbeef",
-        "profile_manifest_sha256": "manifest",
-        "host": "host",
     }
     row = module.pair_row(wall, kernel)
     assert row["wall_ms_per_step"] == pytest.approx(10.5)
@@ -125,7 +136,7 @@ def test_pair_row_computes_remainder() -> None:
 def test_pair_row_rejects_case_mismatch() -> None:
     module = _load_script()
     wall = module.summarize_wall(_artifact())
-    with pytest.raises(ValueError, match="case mismatch"):
+    with pytest.raises(ValueError, match="case_id mismatch"):
         module.pair_row(wall, {"case_id": "code-p4096", "kernel_ms_per_step": 1.0})
 
 
@@ -133,14 +144,15 @@ def test_session_summary_joins_wall_and_kernel_runs(tmp_path) -> None:
     module = _load_script()
     (tmp_path / "wall").mkdir()
     (tmp_path / "kernel").mkdir()
+    identity = _summary_identity(module)
     for tag, value in (("A", 10.0), ("B", 12.0)):
         (tmp_path / "wall" / f"code-p512-{tag}.json").write_text(
-            json.dumps({"case_id": "code-p512", "wall_ms_per_step_median": value})
+            json.dumps({**identity, "wall_ms_per_step_median": value})
         )
     for tag, value in (("A", 6.0), ("B", 8.0)):
         (tmp_path / "kernel" / f"code-p512-{tag}.json").write_text(
             json.dumps(
-                {"case_id": "code-p512", "kernel_ms_per_step": value, "launches_per_step": 1700.0}
+                {**identity, "kernel_ms_per_step": value, "launches_per_step": 1700.0}
             )
         )
     summary = module.session_summary(tmp_path)
@@ -155,9 +167,57 @@ def test_session_summary_requires_both_arms(tmp_path) -> None:
     (tmp_path / "wall").mkdir()
     (tmp_path / "kernel").mkdir()
     (tmp_path / "wall" / "code-p512-A.json").write_text(
-        json.dumps({"case_id": "code-p512", "wall_ms_per_step_median": 10.0})
+        json.dumps({**_summary_identity(module), "wall_ms_per_step_median": 10.0})
     )
     with pytest.raises(ValueError, match="need at least one wall and one kernel"):
+        module.session_summary(tmp_path)
+
+
+@pytest.mark.parametrize("field", [
+    "host", "source_head", "profile_manifest_sha256", "decode_transitions",
+    "model_root", "fixture_sha256", "requested_profile", "capture_mode",
+    "prefill_chunk_size", "ple_cache_mode", "prefill_kwargs", "step_kwargs",
+])
+@pytest.mark.parametrize("missing", [False, True, None])
+def test_pair_row_rejects_incompatible_or_missing_identity(field, missing) -> None:
+    module = _load_script()
+    wall = module.summarize_wall(_artifact())
+    kernel = {
+        **_summary_identity(module),
+        "kernel_ms_per_step": 6.5,
+        "launches_per_step": 1234.0,
+    }
+    if missing is None:
+        kernel[field] = None
+    elif missing:
+        kernel.pop(field)
+    else:
+        kernel[field] = "different"
+    with pytest.raises(ValueError, match=field):
+        module.pair_row(wall, kernel)
+
+
+@pytest.mark.parametrize("field", [
+    "host", "source_head", "profile_manifest_sha256", "decode_transitions",
+    "model_root", "fixture_sha256", "requested_profile", "capture_mode",
+    "prefill_chunk_size", "ple_cache_mode", "prefill_kwargs", "step_kwargs",
+])
+def test_session_summary_rejects_mixed_runs_across_depths(tmp_path, field) -> None:
+    module = _load_script()
+    (tmp_path / "wall").mkdir()
+    (tmp_path / "kernel").mkdir()
+    identity = _summary_identity(module)
+    for case in ("code-p512", "code-p4096"):
+        for arm in ("wall", "kernel"):
+            row = {
+                **identity, "case_id": case,
+                "wall_ms_per_step_median": 10.0,
+                "kernel_ms_per_step": 6.0, "launches_per_step": 1700.0,
+            }
+            if case == "code-p4096":
+                row[field] = "different"
+            (tmp_path / arm / f"{case}.json").write_text(json.dumps(row))
+    with pytest.raises(ValueError, match=field):
         module.session_summary(tmp_path)
 
 

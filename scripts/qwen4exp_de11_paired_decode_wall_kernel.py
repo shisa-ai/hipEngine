@@ -38,7 +38,7 @@ import argparse
 import json
 import statistics
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 import sys
@@ -52,6 +52,46 @@ from scripts.gguf_decode_rocprof import (  # noqa: E402
 )
 
 DEFAULT_STEPS = 128
+IDENTITY_FIELDS = (
+    "case_id", "host", "source_head", "profile_manifest_sha256",
+    "decode_transitions", "model_root", "fixture_sha256", "requested_profile",
+    "capture_mode", "prefill_chunk_size", "ple_cache_mode", "prefill_kwargs",
+    "step_kwargs",
+)
+
+
+def _identity(artifact: Mapping[str, Any]) -> dict[str, Any]:
+    protocol = artifact.get("protocol") or {}
+    profile = artifact.get("profile") or {}
+    case_ids = sorted({str(case) for case in protocol.get("case_ids", [])})
+    return {
+        "case_id": case_ids[0] if len(case_ids) == 1 else case_ids,
+        "host": (artifact.get("host") or {}).get("machine_id"),
+        "source_head": (artifact.get("source") or {}).get("head"),
+        "profile_manifest_sha256": profile.get("manifest_sha256"),
+        "decode_transitions": protocol.get("decode_transitions"),
+        "model_root": artifact.get("model_root"),
+        "fixture_sha256": artifact.get("fixture_sha256"),
+        "requested_profile": profile.get("requested"),
+        **{key: protocol.get(key) for key in (
+            "capture_mode", "prefill_chunk_size", "ple_cache_mode",
+            "prefill_kwargs", "step_kwargs",
+        )},
+    }
+
+
+def _require_matching_identity(
+    left: Mapping[str, Any], right: Mapping[str, Any], *, across_cases: bool = False,
+) -> None:
+    for field in IDENTITY_FIELDS:
+        if across_cases and field == "case_id":
+            continue
+        if field not in left or field not in right or left[field] is None or right[field] is None:
+            raise ValueError(f"missing identity field: {field}")
+        if left[field] != right[field]:
+            raise ValueError(f"{field} mismatch: {left[field]!r} vs {right[field]!r}")
+    if not isinstance(left.get("case_id"), str) or not left["case_id"]:
+        raise ValueError("case_id must identify one case per arm")
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -92,19 +132,14 @@ def summarize_wall(artifact: Mapping[str, Any]) -> dict[str, Any]:
     per_step = [row["ms_per_step"] for row in rows]
     median = statistics.median(per_step)
     spread = (max(per_step) - min(per_step)) / median if median else 0.0
-    case_ids = sorted({str(row) for row in (artifact.get("protocol") or {}).get("case_ids", [])})
     return {
+        **_identity(artifact),
         "kind": "qwen4exp_de11_decode_wall",
-        "case_id": case_ids[0] if len(case_ids) == 1 else case_ids,
-        "decode_transitions": decode_steps(artifact),
         "measured_repetitions": len(rows),
         "wall_ms_per_step_median": median,
         "wall_ms_per_step_samples": per_step,
         "within_arm_spread": spread,
         "decode_tok_s_median": statistics.median([row["decode_tok_s"] for row in rows]),
-        "source_head": (artifact.get("source") or {}).get("head"),
-        "profile_manifest_sha256": (artifact.get("profile") or {}).get("manifest_sha256"),
-        "host": (artifact.get("host") or {}).get("machine_id"),
     }
 
 
@@ -139,11 +174,9 @@ def summarize_kernel(
         entry = families.setdefault(name, {"ms": 0.0, "n": 0.0})
         entry["ms"] += int(row["duration_ns"]) / 1_000_000.0
         entry["n"] += 1.0
-    case_ids = sorted({str(row) for row in (artifact.get("protocol") or {}).get("case_ids", [])})
     return {
+        **_identity(artifact),
         "kind": "qwen4exp_de11_decode_kernel_sum",
-        "case_id": case_ids[0] if len(case_ids) == 1 else case_ids,
-        "decode_transitions": steps,
         "decode_window_ns": [start_ns, end_ns],
         "span_s": (end_ns - start_ns) / 1_000_000_000.0,
         "launches": len(inside),
@@ -151,8 +184,6 @@ def summarize_kernel(
         "kernel_ms": total_ns / 1_000_000.0,
         "kernel_ms_per_step": total_ns / 1_000_000.0 / steps,
         "trace": str(trace_path),
-        "source_head": (artifact.get("source") or {}).get("head"),
-        "profile_manifest_sha256": (artifact.get("profile") or {}).get("manifest_sha256"),
         "families": {name: {"ms": value["ms"], "n": value["n"]} for name, value in families.items()},
     }
 
@@ -161,20 +192,16 @@ def pair_row(
     wall: Mapping[str, Any],
     kernel: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if wall.get("case_id") != kernel.get("case_id"):
-        raise ValueError(f"case mismatch: {wall.get('case_id')!r} vs {kernel.get('case_id')!r}")
+    _require_matching_identity(wall, kernel)
     wall_step = float(wall["wall_ms_per_step_median"])
     kernel_step = float(kernel["kernel_ms_per_step"])
     return {
-        "case_id": wall.get("case_id"),
+        **{field: wall[field] for field in IDENTITY_FIELDS},
         "wall_ms_per_step": wall_step,
         "kernel_ms_per_step": kernel_step,
         "remainder_ms_per_step": wall_step - kernel_step,
         "kernel_share": kernel_step / wall_step if wall_step else None,
         "launches_per_step": kernel.get("launches_per_step"),
-        "source_head": wall.get("source_head"),
-        "profile_manifest_sha256": wall.get("profile_manifest_sha256"),
-        "host": wall.get("host"),
     }
 
 
@@ -183,12 +210,18 @@ def session_summary(session_dir: Path) -> dict[str, Any]:
 
     wall_runs: dict[str, list[dict[str, Any]]] = {}
     kernel_runs: dict[str, list[dict[str, Any]]] = {}
-    for path in sorted((session_dir / "wall").glob("*.json")):
-        row = json.loads(path.read_text())
-        wall_runs.setdefault(str(row["case_id"]), []).append(row)
-    for path in sorted((session_dir / "kernel").glob("*.json")):
-        row = json.loads(path.read_text())
-        kernel_runs.setdefault(str(row["case_id"]), []).append(row)
+    reference: dict[str, Any] | None = None
+    for directory, runs in (("wall", wall_runs), ("kernel", kernel_runs)):
+        for path in sorted((session_dir / directory).glob("*.json")):
+            row = json.loads(path.read_text())
+            _require_matching_identity(row, row)
+            if reference is not None:
+                _require_matching_identity(reference, row, across_cases=True)
+            else:
+                reference = row
+            runs.setdefault(row["case_id"], []).append(row)
+    if reference is None:
+        raise ValueError("session contains no wall or kernel runs")
     cases: dict[str, Any] = {}
     for case_id in sorted(set(wall_runs) | set(kernel_runs)):
         walls = [float(row["wall_ms_per_step_median"]) for row in wall_runs.get(case_id, [])]
@@ -209,6 +242,7 @@ def session_summary(session_dir: Path) -> dict[str, Any]:
     return {
         "kind": "qwen4exp_de11_paired_decode_session",
         "session_dir": str(session_dir),
+        "identity": {field: reference[field] for field in IDENTITY_FIELDS if field != "case_id"},
         "cases": cases,
     }
 

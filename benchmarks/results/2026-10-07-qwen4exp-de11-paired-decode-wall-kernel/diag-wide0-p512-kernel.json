@@ -155,5 +155,14 @@
       "ms": 0.14583499999999994,
       "n": 128.0
     }
-  }
+  },
+  "host": "55ea6c509d0b49eea8de7094a1023668",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "requested_profile": "production",
+  "capture_mode": "full",
+  "prefill_chunk_size": 1024,
+  "ple_cache_mode": "warm",
+  "prefill_kwargs": {},
+  "step_kwargs": {}
 }

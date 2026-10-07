@@ -1,7 +1,18 @@
 {
-  "kind": "qwen4exp_de11_decode_wall",
   "case_id": "code-p4096",
+  "host": "55ea6c509d0b49eea8de7094a1023668",
+  "source_head": "7d97832d36c9aa99b5cd40f256d246ea576657e2",
+  "profile_manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
   "decode_transitions": 128,
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "requested_profile": "production",
+  "capture_mode": "full",
+  "prefill_chunk_size": 1024,
+  "ple_cache_mode": "warm",
+  "prefill_kwargs": {},
+  "step_kwargs": {},
+  "kind": "qwen4exp_de11_decode_wall",
   "measured_repetitions": 3,
   "wall_ms_per_step_median": 56.047766140625,
   "wall_ms_per_step_samples": [
@@ -10,8 +21,5 @@
     56.047766140625
   ],
   "within_arm_spread": 0.00529818018647598,
-  "decode_tok_s_median": 17.841924288132724,
-  "source_head": "7d97832d36c9aa99b5cd40f256d246ea576657e2",
-  "profile_manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
-  "host": "55ea6c509d0b49eea8de7094a1023668"
+  "decode_tok_s_median": 17.841924288132724
 }

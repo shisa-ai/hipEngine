@@ -24,7 +24,7 @@ SCRATCH=${DE11_SCRATCH:-/tmp/de11/traces}
 export PYTHONPATH=$REPO
 export HIPENGINE_HIP_ARCH=gfx1151
 
-mkdir -p "$OUT/wall" "$OUT/kernel"
+mkdir -p "$OUT/wall" "$OUT/kernel" "$OUT/wall-raw" "$OUT/kernel-raw" "$SCRATCH"
 
 cooldown() {
   local t
@@ -52,6 +52,7 @@ run_wall() {  # case tag
   bench "$case_id" 1024 3 "$SCRATCH/wall-${case_id}-${tag}.json"
   local rc=$?
   if [ $rc -eq 0 ]; then
+    cp "$SCRATCH/wall-${case_id}-${tag}.json" "$OUT/wall-raw/${case_id}-${tag}.json"
     python "$REPO/scripts/qwen4exp_de11_paired_decode_wall_kernel.py" wall \
       "$SCRATCH/wall-${case_id}-${tag}.json" \
       --output "$OUT/wall/${case_id}-${tag}.json" >/dev/null
@@ -74,6 +75,7 @@ run_kernel() {  # case tag
         --output "$dir/bench.json" )
   local rc=$?
   if [ $rc -eq 0 ]; then
+    cp "$dir/bench.json" "$OUT/kernel-raw/${case_id}-${tag}.json"
     python "$REPO/scripts/qwen4exp_de11_paired_decode_wall_kernel.py" kernel \
       "$dir/bench.json" --trace "$dir/trace_kernel_trace.csv" \
       --output "$OUT/kernel/${case_id}-${tag}.json" >/dev/null
