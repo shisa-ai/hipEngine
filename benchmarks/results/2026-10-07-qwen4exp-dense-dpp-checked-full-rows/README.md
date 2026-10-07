@@ -118,8 +118,8 @@ source provenance was incomplete; this packet was regenerated on the
 tracked-clean repair commit with per-file source hashes
 (`kernel_hip` `8716c2f8…`, `wrapper_py` `e6f7d0d6…`, `harness_py` `64704876…`),
 loaded-library and build-cache identity, and raw-sample hashes. The repair is
-host-side admission only, so the device resource rows and trace durations are
-unchanged.
+host-side admission only; regenerated device resources match the prior counts
+and trace durations are similar, not identical.
 
 ## Reproduce
 

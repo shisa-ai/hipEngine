@@ -465,6 +465,31 @@ strict fallback remain. This closes the bounded DP-7/X-5 tail experiment,
 not all dense-wide shapes or scratch causality.
 [Full evidence](../benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md).
 
+### 1.3.3 Dense F32 checked/full-row screen — 2026-10-07 UTC
+
+The current dense F32 pipelined DPP owner has a separately registered
+checked-int32/full-four-row sibling. It narrows weight, activation and output
+address intermediates and removes row-validity control only after complete
+signed-int32 byte-range admission. Generic DPP remains the tail/overflow
+parent; no runtime/default selector changes.
+
+A tracked-clean screen at `83b028c60` uses real UD-Q4_K_XL Q8 weights at
+layers 0/22, eight dense projection tensors, rows 512/1024/4096 and 20
+counterbalanced synchronized pairs. All 48 medians and both order strata
+improve: 1.188–1.506x, geometric mean 1.414x (29.2% less operation time).
+Full outputs match before/after each timing loop. Parent review repaired
+float byte-range and pre-multiplication guards; 59 CPU and 50 GPU tests pass
+in the parent rerun. Cached object/trace identity and raw-sample hashes are
+verified. Static instructions fall 872→703 with the DPP publication unchanged;
+resource counts do not prove runtime occupancy or model savings.
+
+This advances DP-8's dense exact-owner work to natural-input owner timing and
+full-model logits/state/KV qualification, followed by a clean engine A/B if
+those gates pass. Synthetic activations are not natural-input qualification,
+and the 1.414x projection ratio is not a prefill-rate claim. It does not close
+DP-8's remaining arithmetic or unrelated scope gates. [Screen and review
+basis](../benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows/README.md).
+
 ## 2. Arithmetic policy and kernel mechanisms
 
 ### 2.1 What the fast engines compute
