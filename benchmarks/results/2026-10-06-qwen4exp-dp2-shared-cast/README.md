@@ -29,6 +29,32 @@ and weights, parent two-cast/candidate one-cast engagement, finite timings and
 zero teardown allocations. This is an owner-level measurement, not a
 whole-model throughput claim.
 
+## Narrowed rows-4096-only complete-engine A/B
+
+The corrected policy was measured in a tracked-clean one-process/one-residency
+run at commit `b59b2872068237631e869f09b25bf3976d8ec361`. It covers 12 canonical
+cases plus 16 category-heldouts, one warmup and three measured repetitions per
+arm, counterbalanced parent/candidate order and 128 decode transitions. The
+candidate is admitted only for rows=4096; p512 and p1024 are explicit
+zero-engagement controls.
+
+| Prompt shape | Parent prefill tok/s | Candidate prefill tok/s | Candidate / parent | Parent decode tok/s | Candidate decode tok/s |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 294.748 | 294.777 | 1.000098x | 20.986 | 20.979 |
+| 1024 | 321.450 | 321.377 | 0.999771x | 19.500 | 19.513 |
+| 4096 | 324.521 | 325.134 | 1.001890x | 10.555 | 10.543 |
+
+At p4096, all four canonical categories engaged exactly 61 ordered pairs per
+case, with 122 accepted consumers and 123 recorded casts in the candidate
+arm. All 28 cases have exact cross-arm output IDs and deterministic repeats.
+The p4096 client-wall totals are 890.940731 s (parent) and 890.593658 s
+(candidate), or 0.999610x; this small aggregate difference is not promoted as a
+model-wall win. The complete candidate remains opt-in/default-off: the native
+operation screen's saving does not establish a production complete-engine
+improvement, and no scope outside rows=4096 is inferred.
+
+[Full narrowed-policy artifact](narrowed-engine-ab.json).
+
 ## Existing engine A/B
 
 The earlier tracked-clean one-process/one-residency A/B covers 12 canonical and

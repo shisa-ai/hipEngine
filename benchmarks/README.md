@@ -75,7 +75,29 @@ appears for these pairs. The small Q8/GDN effect is unresolved; this is not
 universal throttle clearance or a performance improvement. No defaults change.
 [Protocol, timing correction and artifact](results/2026-10-06-qwen4exp-x5-decode-victims/README.md).
 
-## Qwen3.8 Flash Next bounded grouped-norm F16 publication
+## Qwen3.8 Flash Next DP-2 rows-4096-only engine qualification
+
+On the Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, the
+production/BF16 route was measured in one tracked-clean process and one model
+residency at commit `b59b2872068237631e869f09b25bf3976d8ec361`. The run covers
+12 canonical cases plus 16 category-heldouts, one warmup, three counterbalanced
+measurements per arm and 128 decode transitions. Admission is only rows=4096;
+p512 and p1024 are zero-engagement controls.
+
+| Prompt shape | Parent prefill tok/s | Candidate prefill tok/s | Candidate / parent | Parent decode tok/s | Candidate decode tok/s |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 294.748 | 294.777 | 1.000098x | 20.986 | 20.979 |
+| 1024 | 321.450 | 321.377 | 0.999771x | 19.500 | 19.513 |
+| 4096 | 324.521 | 325.134 | 1.001890x | 10.555 | 10.543 |
+
+At p4096, all four canonical categories engage exactly 61 ordered pairs per
+case. Cross-arm output IDs are exact and all 28 cases are deterministic. The
+candidate's p4096 client-wall total is 0.999610x parent, but this small
+complete-engine difference is not promoted as a model-wall win. The bounded
+candidate remains opt-in/default-off; no unmeasured row or scope is inferred.
+
+[Protocol, full artifact and decision](results/2026-10-06-qwen4exp-dp2-shared-cast/README.md).
+
 
 On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, the gfx1151
 UD-Q4_K_XL production profile publishes existing F32 grouped norm and identical
