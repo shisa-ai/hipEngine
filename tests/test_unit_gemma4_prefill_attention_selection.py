@@ -346,8 +346,14 @@ def test_the_production_plan_carries_one_selection_per_geometry():
               else (PREFILL_ATTENTION_PLAIN,))
 
 
-def test_a_promoted_plan_routes_prefill_to_wmma_and_decode_to_staged():
-    """The section 2.11 promotion split: WMMA prefill, staged singleton decode."""
+def test_a_promoted_plan_routes_prefill_to_wmma_and_decode_by_the_crossover():
+    """The section 2.11 promotion split: WMMA prefill, measured decode crossover.
+
+    Multi-row prefill resolves to the WMMA candidates. A one-token block
+    takes the strict decode kernel below `_STRICT_DECODE_WINS_UNTIL_KEYS`
+    (measured faster than the staged singleton there, 2026-10-07 A/B) and the
+    staged singleton above it, where the pipelined singleton leads.
+    """
 
     request = (PREFILL_ATTENTION_WMMA_FLASH, PREFILL_ATTENTION_WMMA_FLASH_FULL,
                PREFILL_ATTENTION_STAGED)
@@ -355,15 +361,15 @@ def test_a_promoted_plan_routes_prefill_to_wmma_and_decode_to_staged():
         requested_variant=request, tokens=512, keys=1024, **SLIDING)
     full_prefill = select_prefill_attention(
         requested_variant=request, tokens=512, keys=1024, **FULL)
-    sliding_decode = select_prefill_attention(
+    shallow_decode = select_prefill_attention(
         requested_variant=request, tokens=1, keys=1024, **SLIDING)
-    full_decode = select_prefill_attention(
+    deep_decode = select_prefill_attention(
         requested_variant=request, tokens=1, keys=262144, **FULL)
 
     assert sliding_prefill.variant == PREFILL_ATTENTION_WMMA_FLASH
     assert full_prefill.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL
-    assert sliding_decode.variant == PREFILL_ATTENTION_STAGED
-    assert full_decode.variant == PREFILL_ATTENTION_STAGED
+    assert shallow_decode.variant == PREFILL_ATTENTION_PLAIN
+    assert deep_decode.variant == PREFILL_ATTENTION_STAGED
 
 
 def test_a_wmma_only_request_still_takes_the_wmma_decode_shape():
