@@ -509,6 +509,21 @@ owner/state boundary, not complete request throughput. The next gate is a
 tracked-clean canonical engine A/B; no production/default change is made.
 [Qualification packet](../benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-qualification/README.md).
 
+### 1.3.5 Dense Q8 checked/full-row complete-engine diagnostic — 2026-10-07 UTC
+
+The diagnostic sibling then passed a tracked-clean same-residency complete-engine
+A/B over all 12 canonical cases. The run used 72 measured parent/candidate arms,
+3,564 candidate calls in the six qualified dense Q8 geometries, exact deterministic
+trajectories, and zero active allocations after teardown. Aggregate prefill moved
+322.442→336.954 tok/s (1.0450x), decode 16.211→16.409 tok/s (1.0122x), and client
+wall 493.845→481.402 s (0.9748x). A cached one-case trace observed 396 positive-
+duration checked sibling launches and 476 parent launches with the expected
+`int,true` and `long,false` kernel signatures, WG128/grid5120x128 and scratch0.
+This is diagnostic complete-engine evidence, not a production profile or default
+promotion; the candidate remains default-off and the parent remains fallback.
+[Complete-engine artifact](../benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-engine-ab/README.md).
+
+
 ## 2. Arithmetic policy and kernel mechanisms
 
 ### 2.1 What the fast engines compute

@@ -58,7 +58,27 @@ teardown allocations. This is operation and correctness evidence, not request
 throughput. A complete-engine A/B remains required before any default decision.
 [Protocol, artifacts and identities](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-qualification/README.md).
 
-## Qwen3.8 Flash Next paired decode wall/kernel diagnostic
+## Qwen3.8 Flash Next dense Q8 checked/full-row complete-engine diagnostic
+
+On the Radeon 8060S/gfx1151 host, the checked-int32/full-four-row dense Q8 DPP
+sibling was run through the complete Qwen4Exp request path over all 12 canonical
+cases. The candidate remains diagnostic-only and the parent remains the default
+fallback.
+
+| Metric | Parent | Checked sibling | Ratio |
+| --- | ---: | ---: | ---: |
+| Prefill | 322.442 tok/s | 336.954 tok/s | **1.0450x** |
+| Decode | 16.211 tok/s | 16.409 tok/s | **1.0122x** |
+| Aggregate client wall | 493.845 s | 481.402 s | **0.9748x** |
+
+The one-residency run used 72 measured arms and engaged the candidate 3,564 times.
+All 12 trajectories were exact and deterministic, with zero active allocations
+at teardown. A cached one-case kernel trace observed 396 positive-duration
+candidate launches and 476 parent launches with the expected checked/parent
+signatures, workgroup 128, grid `5120x128` and scratch 0. This is complete-engine
+diagnostic evidence, not a promoted model-rate row or GUFO comparison.
+[Protocol, artifact and trace identity](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-engine-ab/README.md).
+
 
 On Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`,
 UD-Q4_K_XL production/BF16, warm PLE and chunk1024, interleaved unprofiled

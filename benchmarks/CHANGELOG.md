@@ -1,4 +1,16 @@
-## 2026-10-07 — Dense Q8 checked/full-row natural and state qualification
+## 2026-10-07 — Dense Q8 checked/full-row complete-engine diagnostic: 4.50% prefill gain
+
+The tracked-clean diagnostic sibling was measured through the complete Qwen4Exp
+runner on Radeon 8060S/gfx1151: 12 canonical cases, one model residency, 72
+balanced request samples and 3,564 candidate calls in the six qualified dense Q8
+geometries. All trajectories were exact and deterministic, with zero active
+allocations after teardown. Aggregate prefill moved **322.442→336.954 tok/s
+(1.0450x)**, decode **16.211→16.409 tok/s (1.0122x)** and client wall
+**493.845→481.402 s (0.9748x)**. A cached one-case rocprof trace observed 396
+positive-duration candidate launches and 476 parent launches with the expected
+checked/parent signatures, WG128/grid5120x128 and scratch0. Diagnostic only; no
+production selector, profile manifest or default changed. [Artifact](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-engine-ab/README.md).
+
 
 The checked-int32/full-four-row dense Q8 DPP sibling passed the natural-input and full model-state gates on the Radeon 8060S/gfx1151 host. Six canonical cases and six declared dense geometries produced 594 candidate captures with complete-owner operation ratios of 1.454x–1.467x (1.463x geometric mean); all full outputs matched and input/raw-weight bytes remained immutable. The 12-case parent/candidate/candidate/candidate/parent state gate then ran 16 decode steps with full KV hashes: 3,564 candidate calls, exact prefill/decode logits, recurrent/layout state, full KV bytes and token IDs, and zero teardown allocations. No default or profile changed; a complete-engine A/B is next. [Artifact](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-qualification/README.md).
 

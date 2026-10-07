@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_dense_dpp_checked_full_rows_engine_ab",
+  "status": "completed",
+  "performance_claim": false,
+  "source": {
+    "head": "7c3319a02054e7593cf35febb6fc6f750ab27ae9",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "gpu": "AMD Radeon 8060S / gfx1151",
+    "rocm": "10.0.0 / HIP 7.15.26333 / AMD clang 23.0.0git"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "parent_variant": "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out",
+  "candidate_variant": "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out",
+  "backend": "hip_gfx1151",
+  "quant": "gguf_q8_0",
+  "profile_manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "strict_manifest_sha256": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+  "protocol": {
+    "one_model_residency": true,
+    "one_python_process": true,
+    "canonical_cases": 12,
+    "samples": 72,
+    "repetitions_per_arm": 3,
+    "decode_transitions": 128,
+    "prefill_chunk_size": 4096,
+    "candidate_calls": 3564,
+    "parent_calls": 4284,
+    "candidate_scope": "six declared Q8_0 dense geometries, complete four-row groups, rows 512/1024/4096; parent fallback otherwise"
+  },
+  "correctness": {
+    "within_arm_output_deterministic": true,
+    "cross_arm_output_token_ids_exact": true,
+    "all_cases_exact": true,
+    "lifecycle_clean": true
+  },
+  "summary": {
+    "before_prefill_tok_s": 322.4422774720231,
+    "after_prefill_tok_s": 336.9541546935402,
+    "after_over_before_prefill": 1.045006124306315,
+    "before_decode_tok_s": 16.211365897969127,
+    "after_decode_tok_s": 16.408570559182028,
+    "after_over_before_decode": 1.0121645925737575,
+    "before_client_wall_s": 493.845324447,
+    "after_client_wall_s": 481.402129934,
+    "client_wall_ratio": 0.9748032298549798
+  },
+  "trace": {
+    "status": "completed",
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/qwen4exp-dense-checked-engine-trace -- uv run python -u scripts/qwen4exp_dense_dpp_checked_full_rows_engine_ab.py --case-id code-p512 --warmups-per-mode 1 --require-cached-build",
+    "csv_path": "/tmp/qwen4exp-dense-checked-engine-trace/gfx1151/2320678_kernel_trace.csv",
+    "csv_sha256": "b75eb1eb0de2df9e9679532e076099e126165db8a108f808bc91068d6c91b6e1",
+    "candidate_launches": 396,
+    "parent_launches": 476,
+    "candidate_kernel_signature": "gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<float,float,8,8,4,true,false,true,int,true>",
+    "parent_kernel_signature": "gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<float,float,8,8,4,true,false,true,long,false>",
+    "geometry": "WG128 grid5120x128 scratch0",
+    "candidate_positive_duration_ms_median": 0.6919785,
+    "parent_positive_duration_ms_median": 1.0066685
+  },
+  "decision": "diagnostic-only; no production selector, profile manifest or default changed"
+}
