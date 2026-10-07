@@ -1,0 +1,540 @@
+{
+ "schema": 1,
+ "kind": "gemma4_wmma_promotion_packet",
+ "performance_claim": false,
+ "created": "2026-10-07",
+ "question": "Do the WMMA prefill candidates pass the section 2.11 router-routing-scoped production envelope and may they become the production prefill default?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV, zbook / Radeon 8060S (gfx1151)",
+ "envelope": "EXECUTION-PROFILES section 2.11 (2026-10-07 lead decision)",
+ "candidate_variants": [
+  "gemma4_wmma_flash",
+  "gemma4_wmma_flash_full"
+ ],
+ "bars": {
+  "kl_median": 0.001,
+  "kl_p90": 0.02,
+  "damage_line_kl": 0.05,
+  "flip_damage_rate_global": 0.03,
+  "flip_damage_rate_category": 0.08,
+  "top1_global": 0.96,
+  "top1_scope": 0.94
+ },
+ "verdict": {
+  "passed": true,
+  "promotion_eligible": true,
+  "global": {
+   "rows": 1134,
+   "kl_median": 3.823585633376944e-06,
+   "kl_p90": 0.00595961394348204,
+   "flip_damage_rate": 0.013227513227513227,
+   "damage_line_kl": 0.05,
+   "top1_rate": 0.9841269841269841,
+   "thresholds": {
+    "kl_median": 0.001,
+    "kl_p90": 0.02,
+    "flip_damage_rate": 0.03,
+    "top1_rate": 0.96
+   },
+   "failed": [],
+   "passed": true
+  },
+  "by_category": {
+   "code": {
+    "rows": 378,
+    "kl_median": 9.576477748162021e-09,
+    "kl_p90": 0.0011409766924405462,
+    "flip_damage_rate": 0.0026455026455026454,
+    "damage_line_kl": 0.05,
+    "top1_rate": 0.9973544973544973,
+    "thresholds": {
+     "kl_median": 0.001,
+     "kl_p90": 0.02,
+     "flip_damage_rate": 0.08,
+     "top1_rate": 0.94
+    },
+    "failed": [],
+    "passed": true
+   },
+   "general_en": {
+    "rows": 252,
+    "kl_median": 5.713269840866355e-05,
+    "kl_p90": 0.005489980670204457,
+    "flip_damage_rate": 0.003968253968253968,
+    "damage_line_kl": 0.05,
+    "top1_rate": 0.9801587301587301,
+    "thresholds": {
+     "kl_median": 0.001,
+     "kl_p90": 0.02,
+     "flip_damage_rate": 0.08,
+     "top1_rate": 0.94
+    },
+    "failed": [],
+    "passed": true
+   },
+   "general_ja": {
+    "rows": 252,
+    "kl_median": 1.4922584872928216e-05,
+    "kl_p90": 0.007026487492306211,
+    "flip_damage_rate": 0.023809523809523808,
+    "damage_line_kl": 0.05,
+    "top1_rate": 0.9841269841269841,
+    "thresholds": {
+     "kl_median": 0.001,
+     "kl_p90": 0.02,
+     "flip_damage_rate": 0.08,
+     "top1_rate": 0.94
+    },
+    "failed": [],
+    "passed": true
+   },
+   "mixed_ja_en": {
+    "rows": 252,
+    "kl_median": 0.0001426663745353247,
+    "kl_p90": 0.012880526683450511,
+    "flip_damage_rate": 0.027777777777777776,
+    "damage_line_kl": 0.05,
+    "top1_rate": 0.9682539682539683,
+    "thresholds": {
+     "kl_median": 0.001,
+     "kl_p90": 0.02,
+     "flip_damage_rate": 0.08,
+     "top1_rate": 0.94
+    },
+    "failed": [],
+    "passed": true
+   }
+  },
+  "tasks_noninferior": 18,
+  "repeat_isolation_green": 18,
+  "routing_flip_rate_diagnostic": 0.9091710758377425,
+  "routing_identical_kl_max_diagnostic": 0.02522399594280257
+ },
+ "cases": [
+  {
+   "id": "code_merge_intervals",
+   "category": "code",
+   "split": "canonical",
+   "prompt_tokens": 513,
+   "robust_diagnostic": {
+    "kl_median": 3.385608576354832e-09,
+    "kl_p90": 0.0005956581019690007,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 1.0
+   },
+   "routing_flips": 56,
+   "routing_identical": 7,
+   "flipped_kl_max": 0.018686308044455684,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "code_topological_sort",
+   "category": "code",
+   "split": "canonical",
+   "prompt_tokens": 1031,
+   "robust_diagnostic": {
+    "kl_median": 1.99859423202305e-08,
+    "kl_p90": 0.00018904580721344636,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 1.0
+   },
+   "routing_flips": 53,
+   "routing_identical": 10,
+   "flipped_kl_max": 0.0021664481079133706,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "code_lru_cache",
+   "category": "code",
+   "split": "canonical",
+   "prompt_tokens": 2053,
+   "robust_diagnostic": {
+    "kl_median": 5.256850398952042e-09,
+    "kl_p90": 0.0051584138886969465,
+    "flip_damage_rate": 0.015873015873015872,
+    "top1_rate": 1.0
+   },
+   "routing_flips": 60,
+   "routing_identical": 3,
+   "flipped_kl_max": 0.05383683917740223,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "code_markdown_table",
+   "category": "code",
+   "split": "canonical",
+   "prompt_tokens": 4093,
+   "robust_diagnostic": {
+    "kl_median": 1.1975864332850766e-08,
+    "kl_p90": 0.0008719784132854296,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 1.0
+   },
+   "routing_flips": 58,
+   "routing_identical": 5,
+   "flipped_kl_max": 0.04390799912133395,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "general_en_plan",
+   "category": "general_en",
+   "split": "canonical",
+   "prompt_tokens": 8191,
+   "robust_diagnostic": {
+    "kl_median": 2.748489727254625e-06,
+    "kl_p90": 0.0033048083872942013,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 1.0
+   },
+   "routing_flips": 52,
+   "routing_identical": 11,
+   "flipped_kl_max": 0.02192912062968095,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "general_en_explain",
+   "category": "general_en",
+   "split": "canonical",
+   "prompt_tokens": 513,
+   "robust_diagnostic": {
+    "kl_median": 9.571182219030586e-05,
+    "kl_p90": 0.008319537425429685,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 0.9682539682539683
+   },
+   "routing_flips": 59,
+   "routing_identical": 4,
+   "flipped_kl_max": 0.030060294309391184,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "general_ja_plan",
+   "category": "general_ja",
+   "split": "canonical",
+   "prompt_tokens": 1031,
+   "robust_diagnostic": {
+    "kl_median": 6.939746833066258e-06,
+    "kl_p90": 0.007113664378452487,
+    "flip_damage_rate": 0.015873015873015872,
+    "top1_rate": 0.9841269841269841
+   },
+   "routing_flips": 58,
+   "routing_identical": 5,
+   "flipped_kl_max": 0.051614178824811605,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "general_ja_explain",
+   "category": "general_ja",
+   "split": "canonical",
+   "prompt_tokens": 2053,
+   "robust_diagnostic": {
+    "kl_median": 9.130437996928903e-06,
+    "kl_p90": 0.008043237619654047,
+    "flip_damage_rate": 0.015873015873015872,
+    "top1_rate": 0.9841269841269841
+   },
+   "routing_flips": 59,
+   "routing_identical": 4,
+   "flipped_kl_max": 0.06522535998841154,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "mixed_ja_en_translate",
+   "category": "mixed_ja_en",
+   "split": "canonical",
+   "prompt_tokens": 4093,
+   "robust_diagnostic": {
+    "kl_median": 2.2999532716532432e-07,
+    "kl_p90": 0.002921379425388246,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 0.9841269841269841
+   },
+   "routing_flips": 58,
+   "routing_identical": 5,
+   "flipped_kl_max": 0.03098266117215817,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "mixed_ja_en_review",
+   "category": "mixed_ja_en",
+   "split": "canonical",
+   "prompt_tokens": 8191,
+   "robust_diagnostic": {
+    "kl_median": 0.0002426183118913386,
+    "kl_p90": 0.008489094812011596,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 0.9682539682539683
+   },
+   "routing_flips": 60,
+   "routing_identical": 3,
+   "flipped_kl_max": 0.03524248661037959,
+   "task": {
+    "strict_passed": false,
+    "candidate_passed": false,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "heldout_code_rate_limiter",
+   "category": "code",
+   "split": "heldout",
+   "prompt_tokens": 513,
+   "robust_diagnostic": {
+    "kl_median": 1.2182894439238217e-09,
+    "kl_p90": 0.0005190848312989227,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 1.0
+   },
+   "routing_flips": 53,
+   "routing_identical": 10,
+   "flipped_kl_max": 0.008959683640631813,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "heldout_code_interval_schedule",
+   "category": "code",
+   "split": "heldout",
+   "prompt_tokens": 1031,
+   "robust_diagnostic": {
+    "kl_median": 1.3658148237588762e-07,
+    "kl_p90": 0.0019116891086027518,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 0.9841269841269841
+   },
+   "routing_flips": 60,
+   "routing_identical": 3,
+   "flipped_kl_max": 0.02627199849234379,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "heldout_general_en_incident",
+   "category": "general_en",
+   "split": "heldout",
+   "prompt_tokens": 2053,
+   "robust_diagnostic": {
+    "kl_median": 5.571806899367748e-05,
+    "kl_p90": 0.005350577655845581,
+    "flip_damage_rate": 0.0,
+    "top1_rate": 0.9682539682539683
+   },
+   "routing_flips": 55,
+   "routing_identical": 8,
+   "flipped_kl_max": 0.04475798443506217,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "heldout_general_en_quant",
+   "category": "general_en",
+   "split": "heldout",
+   "prompt_tokens": 4093,
+   "robust_diagnostic": {
+    "kl_median": 9.186608269149764e-05,
+    "kl_p90": 0.004988672529392548,
+    "flip_damage_rate": 0.015873015873015872,
+    "top1_rate": 0.9841269841269841
+   },
+   "routing_flips": 58,
+   "routing_identical": 5,
+   "flipped_kl_max": 0.14598492128295695,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "heldout_general_ja_migration",
+   "category": "general_ja",
+   "split": "heldout",
+   "prompt_tokens": 8191,
+   "robust_diagnostic": {
+    "kl_median": 2.0349070382786355e-05,
+    "kl_p90": 0.00476972121819838,
+    "flip_damage_rate": 0.015873015873015872,
+    "top1_rate": 0.9841269841269841
+   },
+   "routing_flips": 56,
+   "routing_identical": 7,
+   "flipped_kl_max": 0.12079790473804887,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "heldout_general_ja_speculative",
+   "category": "general_ja",
+   "split": "heldout",
+   "prompt_tokens": 513,
+   "robust_diagnostic": {
+    "kl_median": 0.00012609564348371545,
+    "kl_p90": 0.008815276803787823,
+    "flip_damage_rate": 0.047619047619047616,
+    "top1_rate": 0.9841269841269841
+   },
+   "routing_flips": 59,
+   "routing_identical": 4,
+   "flipped_kl_max": 0.18636646091225903,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "heldout_mixed_summary",
+   "category": "mixed_ja_en",
+   "split": "heldout",
+   "prompt_tokens": 1031,
+   "robust_diagnostic": {
+    "kl_median": 7.614629132417789e-05,
+    "kl_p90": 0.024720734204661452,
+    "flip_damage_rate": 0.047619047619047616,
+    "top1_rate": 0.9682539682539683
+   },
+   "routing_flips": 58,
+   "routing_identical": 5,
+   "flipped_kl_max": 0.12475464120673835,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  },
+  {
+   "id": "heldout_mixed_review",
+   "category": "mixed_ja_en",
+   "split": "heldout",
+   "prompt_tokens": 2053,
+   "robust_diagnostic": {
+    "kl_median": 0.0011885282078340322,
+    "kl_p90": 0.022908816115114264,
+    "flip_damage_rate": 0.06349206349206349,
+    "top1_rate": 0.9523809523809523
+   },
+   "routing_flips": 59,
+   "routing_identical": 4,
+   "flipped_kl_max": 0.2082923182694076,
+   "task": {
+    "strict_passed": true,
+    "candidate_passed": true,
+    "noninferior": true
+   },
+   "repeat": true,
+   "isolation": true,
+   "passed": true
+  }
+ ],
+ "invalidated_attempts": {
+  "note": "Two earlier same-day runs are not evidence: the harness replayed the candidate's own greedy chain instead of the strict teacher chain, measuring free-running chain divergence (global KL medians 17-24) rather than arithmetic. The defect is disclosed in EXECUTION-PROFILES section 2.11 and the campaign doc; raw reports were preserved under /tmp only."
+ },
+ "promotion": {
+  "effective_default": [
+   "gemma4_wmma_flash (sliding head_dim 256)",
+   "gemma4_wmma_flash_full (head_dim 512)",
+   "gemma4_staged (single-token decode; strict parity)"
+  ],
+  "rollback": "HIPENGINE_EXECUTION_PROFILE=strict selects plain attention; the staged decode entry is strict-parity arithmetic",
+  "public_route_check": "campaign bench at 512 tokens: sliding prefill routes to gemma4_wmma_flash, full prefill to gemma4_wmma_flash_full, decode to gemma4_staged; public_path_parity True"
+ }
+}

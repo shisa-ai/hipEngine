@@ -30,6 +30,7 @@ from hipengine.generation.gemma4_gguf_profiles import (
     PREFILL_ATTENTION_PRODUCTION_VARIANTS,
     PREFILL_ATTENTION_SCOPE,
     PREFILL_ATTENTION_SCOPE_FULL,
+    PREFILL_ATTENTION_STAGED,
     PREFILL_ATTENTION_WMMA_FLASH,
     PREFILL_ATTENTION_WMMA_FLASH_FULL,
     gemma4_gguf_profiles_registered,
@@ -300,15 +301,25 @@ def test_the_selection_scopes_are_the_ones_the_plan_declares():
 
 
 def test_the_production_plan_carries_one_selection_per_geometry():
-    """Both geometries have to be named, or the full layers have no stated intent."""
+    """Both geometries have to be named, or the full layers have no stated intent.
+
+    The plan's selection rows name one promoted variant per geometry (the WMMA
+    candidates under the section 2.11 promotion); the strict-parity staged
+    entry rides the request composition for decode, not the per-geometry
+    selection rows, so the resolved request tuple is what carries it.
+    """
 
     from hipengine.execution_profiles import resolve_runtime_profile
 
     register_gemma4_gguf_profiles()
-    for profile, expected in (
-        (ExecutionProfile.PRODUCTION, SHIPPED_PRODUCTION),
-        (ExecutionProfile.STRICT, (PREFILL_ATTENTION_PLAIN,)),
-    ):
+    plan_selected = {
+        ExecutionProfile.PRODUCTION: (
+            PREFILL_ATTENTION_WMMA_FLASH,
+            PREFILL_ATTENTION_WMMA_FLASH_FULL,
+        ),
+        ExecutionProfile.STRICT: (PREFILL_ATTENTION_PLAIN,),
+    }
+    for profile in (ExecutionProfile.PRODUCTION, ExecutionProfile.STRICT):
         resolved = resolve_runtime_profile(
             model=GEMMA4_GGUF_MODEL,
             backend=GEMMA4_GGUF_BACKEND,
@@ -325,9 +336,43 @@ def test_the_production_plan_carries_one_selection_per_geometry():
             PREFILL_ATTENTION_SCOPE,
             PREFILL_ATTENTION_SCOPE_FULL,
         }
-        assert tuple(dict.fromkeys(sorted(row["selected_variant"] for row in rows))) == expected
+        assert tuple(dict.fromkeys(sorted(row["selected_variant"] for row in rows))) == plan_selected[profile]
         for row in rows:
             assert row["strict_fallback_variant"] == PREFILL_ATTENTION_PLAIN
+        # The request composition adds the decode entry for a promoted plan.
+        assert resolve_gemma4_prefill_attention_variants(
+            requested_profile=profile
+        ) == (SHIPPED_PRODUCTION if profile is ExecutionProfile.PRODUCTION
+              else (PREFILL_ATTENTION_PLAIN,))
+
+
+def test_a_promoted_plan_routes_prefill_to_wmma_and_decode_to_staged():
+    """The section 2.11 promotion split: WMMA prefill, staged singleton decode."""
+
+    request = (PREFILL_ATTENTION_WMMA_FLASH, PREFILL_ATTENTION_WMMA_FLASH_FULL,
+               PREFILL_ATTENTION_STAGED)
+    sliding_prefill = select_prefill_attention(
+        requested_variant=request, tokens=512, keys=1024, **SLIDING)
+    full_prefill = select_prefill_attention(
+        requested_variant=request, tokens=512, keys=1024, **FULL)
+    sliding_decode = select_prefill_attention(
+        requested_variant=request, tokens=1, keys=1024, **SLIDING)
+    full_decode = select_prefill_attention(
+        requested_variant=request, tokens=1, keys=262144, **FULL)
+
+    assert sliding_prefill.variant == PREFILL_ATTENTION_WMMA_FLASH
+    assert full_prefill.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL
+    assert sliding_decode.variant == PREFILL_ATTENTION_STAGED
+    assert full_decode.variant == PREFILL_ATTENTION_STAGED
+
+
+def test_a_wmma_only_request_still_takes_the_wmma_decode_shape():
+    """An explicit WMMA-only request is not overridden for decode."""
+
+    selection = select_prefill_attention(
+        requested_variant=(PREFILL_ATTENTION_WMMA_FLASH, PREFILL_ATTENTION_WMMA_FLASH_FULL),
+        tokens=1, keys=262144, **FULL)
+    assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL
 
 
 def test_a_one_token_block_keeps_the_strict_kernel():

@@ -98,3 +98,33 @@ Promote the WMMA prefill candidates to the production default only when:
 No numeric bar was widened to admit the candidate. If the candidate fails the
 stable-row bars, this protocol does not admit it and the result is recorded as
 a rejection.
+
+## Outcome (2026-10-07)
+
+Promoted. The WMMA prefill candidates are the production default for both
+geometries under `EXECUTION-PROFILES` section 2.11, with the strict-parity
+staged singleton retained for single-token decode and strict plain as the
+registered fallback.
+
+The promotion packet (18 cases, 1152 teacher-forced rows, strict chain forced
+into both arms) passes every binding bar:
+
+| binding metric | measured | requirement |
+| --- | ---: | ---: |
+| median row KL | 3.824e-06 | <= 1e-3 |
+| p90 row KL | 5.960e-03 | <= 2e-2 |
+| flip-damage rate (rows > 5e-2) | 1.32% global, worst category 2.78% | <= 3% / <= 8% |
+| top-1 agreement | 98.41% global, worst category 96.83% | >= 96% / >= 94% |
+
+Task non-inferiority, three-run repeatability and unrelated-request isolation
+pass on all 18 cases. The routing diagnostic measures 91% of rows flipping a
+boundary expert at some layer with damage on only 1.3% -- flips are ubiquitous
+and benign, which is why the envelope bounds their rate instead of their
+magnitude.
+
+Two earlier promotion-run attempts (2026-10-07) are recorded as invalid: their
+harness replayed the candidate's own greedy chain instead of the strict
+teacher chain, so they measured free-running chain divergence (KL 17-24,
+top-1 collapse) rather than arithmetic drift. The defect and both runs are
+documented in the promotion artifact's history; their numbers are not
+evidence for or against the candidate.
