@@ -69,6 +69,15 @@ def pytest_collection_finish(session: pytest.Session) -> None:  # pragma: no cov
     del session
     from hipengine import execution_profiles
     from hipengine.kernels import registry
+    from hipengine.kernels.hip_gfx1151 import import_gfx1100_kernel_modules
+
+    # Several gfx1100 kernel modules register their kernels at module import
+    # time, and test modules import hipengine lazily inside test bodies. Import
+    # them here so the baseline below actually contains every import-time
+    # registration; otherwise the first test that triggers the imports consumes
+    # the once-per-process side effect and every later test that relies on those
+    # keys after the teardown restore sees an incomplete registry.
+    import_gfx1100_kernel_modules()
 
     global _BASELINE_KERNELS, _BASELINE_RUNTIME_PROFILE_PLANS
     _BASELINE_KERNELS = dict(registry._KERNELS)
