@@ -1978,6 +1978,40 @@ numeric 128K row is carried forward. Evidence:
 
 ### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
 
+#### Paired depth ladder on the promoted build (2026-10-07)
+
+On zbook/Radeon 8060S, both engines ran identical prompt IDs, BF16 KV, greedy
+128-output requests ignoring EOS, context rounded to 256 tokens above
+prompt+128, one full-shape warmup per engine per depth, one engine at a time.
+hipEngine runs the promoted default: `gemma4_wmma_flash`/
+`gemma4_wmma_flash_full` prefill with the strict-parity staged singleton for
+decode; llama.cpp HIP is pinned at `17252c769`.
+
+| Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | **1288.2** | 890.9 | **1.45x** | 33.53 | **35.98** | 0.93x |
+| 1024 | **1351.3** | 1158.7 | **1.17x** | **34.64** | 33.45 | **1.04x** |
+| 2048 | **1262.1** | 1136.5 | **1.11x** | **34.18** | 30.01 | **1.14x** |
+| 4096 | **1213.4** | 1116.8 | **1.09x** | **33.30** | 29.13 | **1.14x** |
+| 8192 | 1128.4 | **1277.3** | 0.88x | **31.62** | 27.47 | **1.15x** |
+| 16384 | 1008.2 | **1105.3** | 0.91x | **28.64** | 24.95 | **1.15x** |
+| 32768 | 840.6 | **864.5** | 0.97x | **23.92** | 21.22 | **1.13x** |
+| 65536 | **656.1** | 619.3 | **1.06x** | **18.05** | 16.53 | **1.09x** |
+| 131072 | **470.7** | 388.7 | **1.21x** | **12.04** | 11.45 | **1.05x** |
+
+hipEngine leads prefill at six of nine depths (up to 1.45x) and decode at
+eight of nine (up to 1.15x); at 131072 it leads both phases. llama.cpp's own
+repeatability gate rejected its 8192 and 32768 rows in this run (its greedy
+continuation is not repeatable there — one of five samples diverged at the
+same depth in an isolated re-measure); those comparator numbers are retained
+as best-available evidence with the rejection recorded, and the 16384 row
+passes with five identical samples. The mid-depth prefill band 8192-32768 is
+where hipEngine still trails (0.88-0.97x), and 512-token decode trails by 7%.
+Correctness: prompt hashes match across engines at every depth; hipEngine
+repeats, public-path parity and finite logits pass on every row.
+
+[Commands, samples, identities and rejections](results/2026-10-07-gemma4-gfx1151-depth-ladder-paired.json).
+
 #### Full-depth 256Ki endpoint (2026-10-06)
 
 On **zbook / Radeon 8060S (gfx1151)**, both engines ran the same
