@@ -1,0 +1,148 @@
+{
+  "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "probe": "qwen4exp_mt1_batched_verifier_body",
+  "schema": 1,
+  "status": "measured",
+  "widths": [
+    {
+      "batched_token_ids": [
+        271,
+        1088
+      ],
+      "hidden_bit_exact": false,
+      "hidden_max_abs_delta": 0.3125,
+      "hidden_per_row_max_abs_delta": [
+        0.10546875,
+        0.3125
+      ],
+      "logits_max_abs_delta": 1.081824541091919,
+      "logits_per_row_max_abs_delta": [
+        0.5147767066955566,
+        1.081824541091919
+      ],
+      "rows": 2,
+      "serial_token_ids": [
+        271,
+        1088
+      ],
+      "top1_agreement": 1.0
+    },
+    {
+      "batched_token_ids": [
+        271,
+        1088,
+        4,
+        5
+      ],
+      "hidden_bit_exact": false,
+      "hidden_max_abs_delta": 0.3125,
+      "hidden_per_row_max_abs_delta": [
+        0.10546875,
+        0.3125,
+        0.15234375,
+        0.1904296875
+      ],
+      "logits_max_abs_delta": 1.081824541091919,
+      "logits_per_row_max_abs_delta": [
+        0.5147767066955566,
+        1.081824541091919,
+        0.4035378694534302,
+        0.4357171058654785
+      ],
+      "rows": 4,
+      "serial_token_ids": [
+        271,
+        1088,
+        4,
+        5
+      ],
+      "top1_agreement": 1.0
+    },
+    {
+      "batched_token_ids": [
+        271,
+        1088,
+        4,
+        5,
+        6,
+        24218
+      ],
+      "hidden_bit_exact": false,
+      "hidden_max_abs_delta": 0.517578125,
+      "hidden_per_row_max_abs_delta": [
+        0.10546875,
+        0.3125,
+        0.15234375,
+        0.1904296875,
+        0.517578125,
+        0.283203125
+      ],
+      "logits_max_abs_delta": 1.081824541091919,
+      "logits_per_row_max_abs_delta": [
+        0.5147767066955566,
+        1.081824541091919,
+        0.4035378694534302,
+        0.4357171058654785,
+        0.7689218521118164,
+        0.7187058925628662
+      ],
+      "rows": 6,
+      "serial_token_ids": [
+        271,
+        1088,
+        4,
+        5,
+        6,
+        24218
+      ],
+      "top1_agreement": 1.0
+    },
+    {
+      "batched_token_ids": [
+        271,
+        1088,
+        4,
+        5,
+        6,
+        24218,
+        198,
+        198
+      ],
+      "hidden_bit_exact": false,
+      "hidden_max_abs_delta": 0.517578125,
+      "hidden_per_row_max_abs_delta": [
+        0.10546875,
+        0.3125,
+        0.15234375,
+        0.1904296875,
+        0.517578125,
+        0.283203125,
+        0.2265625,
+        0.234375
+      ],
+      "logits_max_abs_delta": 1.081824541091919,
+      "logits_per_row_max_abs_delta": [
+        0.5147767066955566,
+        1.081824541091919,
+        0.4035378694534302,
+        0.4357171058654785,
+        0.7689218521118164,
+        0.7187058925628662,
+        0.6568441390991211,
+        0.8663873672485352
+      ],
+      "rows": 8,
+      "serial_token_ids": [
+        271,
+        1088,
+        4,
+        5,
+        6,
+        24218,
+        198,
+        198
+      ],
+      "top1_agreement": 1.0
+    }
+  ]
+}
