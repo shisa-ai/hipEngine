@@ -1,0 +1,17 @@
+{
+  "kind": "qwen4exp_de11_decode_wall",
+  "case_id": "code-p4096",
+  "decode_transitions": 128,
+  "measured_repetitions": 3,
+  "wall_ms_per_step_median": 55.8442293046875,
+  "wall_ms_per_step_samples": [
+    55.7771903515625,
+    56.1129885859375,
+    55.8442293046875
+  ],
+  "within_arm_spread": 0.006013123263692559,
+  "decode_tok_s_median": 17.90695318837646,
+  "source_head": "7d97832d36c9aa99b5cd40f256d246ea576657e2",
+  "profile_manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "host": "55ea6c509d0b49eea8de7094a1023668"
+}
