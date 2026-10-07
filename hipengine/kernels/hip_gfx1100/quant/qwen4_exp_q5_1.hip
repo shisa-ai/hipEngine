@@ -1954,7 +1954,7 @@ static int launch_q5_1_staged_grouped(
       static_cast<unsigned int>(num_experts));
   const dim3 block(128);
   hipLaunchKernelGGL(
-      (q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<4, 4, 256>),
+      (q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<4, 8, 256>),
       grid, block, static_cast<size_t>(staged_bytes), stream,
       static_cast<const uint16_t*>(input),
       static_cast<const int64_t*>(expert_start),
