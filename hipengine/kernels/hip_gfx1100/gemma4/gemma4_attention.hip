@@ -1487,6 +1487,7 @@ constexpr int kFlashThreads = 256;   // 8 warps
 constexpr int kFlashWarps = 8;
 
 template <typename scalar_t, int kQ, int kHalves>
+__launch_bounds__(kFlashThreads, 2)
 __global__ void gemma4_attention_decode_flash_kernel(
     const scalar_t* __restrict__ query,
     const scalar_t* __restrict__ key,
