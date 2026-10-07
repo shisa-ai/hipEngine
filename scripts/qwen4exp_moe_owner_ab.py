@@ -103,6 +103,7 @@ ROUTES = {
             "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "selected_wmma_iu8_risk_prefill_bf16_bf16_out",
+            "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
         ],
     },
 }
@@ -306,12 +307,30 @@ def main() -> int:
                     rows, in_features, out_features, EXPERTS, padded_rows,
                 )
 
+            def f16_compact_down() -> None:
+                compact_dev, padded_dev, tile_dev, padded_rows = maps_by_tile[args.tile_rows]
+                # Note the argument order differs from the iu8-risk arm above: this
+                # owner takes (compact_rows, num_experts, in_features, out_features,
+                # wmma_total_rows), matching qwen4_exp_runner.py:4874.
+                dn.qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
+                    x.ptr, compact_dev.ptr, padded_dev.ptr, tile_dev.ptr,
+                    w_a.ptr, out_a.ptr,
+                    rows, EXPERTS, in_features, out_features, padded_rows,
+                )
+
             arms = {
                 "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": pair2,
                 "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": compact8,
                 "selected_wmma_iu8_risk_prefill_bf16_bf16_out": wmma_down,
+                "selected_grouped_wmma_prefill_compact_bf16_bf16_out": f16_compact_down,
             }
             primary = "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"
+
+        # The reported padding belongs to the primary arm's own tile height. The
+        # 8544227b7 refactor moved the map build into ``build()`` and dropped the
+        # ``measure``-scope binding, so this is recomputed from the primary arm's
+        # map rather than read from a closure-local name.
+        padded_rows = maps_by_tile[owner_tiles.get(primary, args.tile_rows)][3]
 
         # Fixed order, with the primary arm repeated last to expose drift across the sweep.
         order = [name for name in route["owners"] if name in arms]
