@@ -175,7 +175,17 @@ def _four_wave_prefill_applies(
     out_features: int,
     default: bool = False,
 ) -> bool:
-    """Return whether the LCP-3 four-wave schedule covers this tile."""
+    """Return whether the LCP-3 four-wave schedule covers this tile.
+
+    The `out_features == 1408` arm is the Gemma 4 26B-A4B expert gate/up
+    (2 x 704): measured on the 8060S (gfx1151, 2026-10-07, in-process A/B at
+    1024 routed rows: 6.83 ms four-wave vs 7.72 ms nwave, +13.2%, outputs
+    identical arithmetic class) the four-wave schedule wins there too, and
+    1408 is a whole multiple of the schedule's 128-column tile so it pays no
+    tail waste. Only the measured width is added; every other sub-2048 width
+    keeps the previous policy, and `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=0`
+    remains the rollback for the whole wide-wave family.
+    """
 
     raw = os.environ.get(_FOUR_WAVE_ENV, "").strip().lower()
     two_wave_raw = os.environ.get(_TWO_WAVE_ENV, "").strip().lower()
@@ -187,7 +197,8 @@ def _four_wave_prefill_applies(
         enabled = False
     else:
         enabled = _wide_wave_prefill_enabled(default=default)
-    return enabled and tile_m in {32, 64} and tile_n == 32 and out_features >= 2048
+    covered = out_features >= 2048 or out_features == 1408
+    return enabled and tile_m in {32, 64} and tile_n == 32 and covered
 
 
 def _symbol_for_variant(variant: str) -> str:
