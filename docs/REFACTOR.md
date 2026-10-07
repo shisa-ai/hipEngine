@@ -1948,6 +1948,17 @@ should be removed or collapsed.
   direct/grouped routes only after the full category+heldout mean/tail/max,
   per-category top-1, determinism/isolation, BF16-relative, task, and lifecycle
   gates pass; otherwise remove the candidates after the campaign.
+- The 2026-10-07 down-only `HIPENGINE_QWEN4_EXP_Q5_1_WMMA=1` experiment,
+  with `EXACT_GROUPED_DOWN=0` and production gate/up unchanged, fails the full
+  18-prompt layer2 envelope: global top-1 444/450 and prefill-last mean/p95 KL
+  0.002424/0.010571. Keep it default-off. The per-call 16-row tile-map/readback
+  helper exists only to make this diagnostic route valid; it is not a new
+  production owner. Remove the selector, helper and duplicate F16-down dispatch
+  when this investigation closes without a separately qualified successor;
+  preserve the registered strict owner and the immutable
+  [qualification evidence](../benchmarks/results/2026-10-07-qwen4exp-mx1-f16-down-only-layer2-qualification/README.md).
+  A successor must charge map construction, synchronization and readback in
+  its full-operation timing.
 - `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL{,_LAYERS}` is now an internal named
   production-profile bridge selecting certified global layers 35–47. Strict
   binds it off; the all-layer and suffix-34 candidates are measured failures.

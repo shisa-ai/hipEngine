@@ -1,7 +1,7 @@
 # MX-1 F16 down-only (`f16_compact_down`) canonical layer2 qualification
 
-This packet is the complete first qualification of the MX-1 **down-only**
-candidate against the canonical layer2 numerical/state/task gate. The candidate
+This packet records the complete 18-prompt, 24-step qualification of the MX-1
+**down-only** candidate against the layer2 numerical/state/task gate. The candidate
 is **rejected on the production numerical envelope**: the global top-1 gate and
 the binding `prefill_last` / `prefill_to_c1` scope fail. The task axis separately
 lands on `requires_task_review` (deterministic cross-route divergences), which is
@@ -30,9 +30,10 @@ HIPENGINE_QWEN4_EXP_Q5_1_WMMA=1
 - `dispatch_count_mode`: direct_alias (the runner attribute the `q5_wmma` branch
   calls), `candidate_dispatch_calls = 3870`
 
-The candidate manifest is the unmodified **production** manifest; the two
-overrides are applied at run time and are not part of the manifest. The gate/up
-leg is therefore unchanged at production.
+The candidate manifest records the unmodified **production base**; the two
+overrides are applied at run time and are recorded separately in `gate.json`.
+The runner's independent gate/up predicate stays on the production route with
+these overrides. This packet does not certify a named candidate manifest.
 
 ## Command, environment, host, model
 
@@ -106,11 +107,9 @@ The `prefill_last` scope exceeds the mean limit by 2.42x and the p95 limit by
 2.11x. No row crosses the 0.02 review line (`rows_over_review_boundary: []`),
 and `eligible_for_automatic_admission` is false.
 
-For context, the gate/up-only F16 candidate failed the same 18-row scope more
-narrowly (mean 1.127e-3, p95 5.067e-3) with global top-1 0.99778. The F16 down
-leg therefore roughly doubles the prefill-scope drift and additionally pushes
-the global top-1 below its gate, consistent with the earlier full-route
-observation that the F16 down roughly doubles the accumulated drift.
+These measurements reject the tested down-only composition. They do not
+quantify the down leg's isolated contribution by comparison with the historical
+gate/up-only or full-F16 packets, which change other owners and source state.
 
 ## State, determinism, lifecycle, task
 
@@ -119,15 +118,16 @@ observation that the F16 down roughly doubles the accumulated drift.
   out=2560)`).
 - Repeat determinism: **passed** (3 repeats identical per prompt, no
   mismatches).
-- Request-state repeat gate: **passed** (finite, layout exact, metadata exact,
-  repeat exact; `strict_candidate_state_exact` is false, as expected for a
-  non-bit-exact candidate).
-- Lifecycle: **passed** (both strict and candidate `current_allocated_bytes` 0
+- Request-state repeat gate: passed (finite, layout exact, metadata exact,
+  repeat exact). Strict/candidate state bytes differ; that difference alone is
+  not a production failure. This gate does not test same-width neighbor isolation.
+- Lifecycle: passed (both strict and candidate `current_allocated_bytes` 0
   after close).
 - Task gate: `requires_review` — 11/18 strict-exact, 7 deterministic
-  cross-route divergences (repeat-exact, no nondeterminism), all semantic
-  paraphrases at the first divergent token. This is a separate task review, not
-  the arithmetic rejection basis.
+  cross-route divergences (repeat-exact, no nondeterminism). The 32-token outputs
+  are prefixes, including incomplete code. No semantic-equivalence or task-quality
+  verdict is established by these differences; they are not the numerical
+  rejection basis.
 
 ## Decision
 
