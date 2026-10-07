@@ -1,0 +1,92 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_dense_dpp_checked_full_rows_resources",
+ "performance_claim": false,
+ "status": "diagnostic",
+ "host": {
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "arch": "gfx1151"
+ },
+ "compiler": {
+  "hip": "7.15.26333-0000000",
+  "clang": "23.0.0git",
+  "commit": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+ },
+ "build": {
+  "cache_key": "6f0b72061932469996e61bcd1c1ffde555a9c2dd0cb78600e238993838e19ce3",
+  "device_object_sha256": "930ea769d838ae9d59fc1d2e69fcdb165512ca01f1466c80d8ff983cd8ab0814",
+  "command": "hipcc -shared -fPIC -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1151 hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip"
+ },
+ "cached_metadata": {
+  "parent_dpp_long_full_false": {
+   "template": "<float,float,8,8,4,true,false,true,long,false>",
+   "vgpr": 76,
+   "sgpr": 50,
+   "private_segment_bytes": 0,
+   "lds_bytes": 512,
+   "vgpr_spills": 0,
+   "static_instructions": 872,
+   "carry_pairs": 42,
+   "shift64": 3,
+   "ds_bpermute": 0,
+   "permlanex16": 32,
+   "add_f32_dpp": 128
+  },
+  "sibling_int_full_true": {
+   "template": "<float,float,8,8,4,true,false,true,int,true>",
+   "vgpr": 73,
+   "sgpr": 54,
+   "private_segment_bytes": 0,
+   "lds_bytes": 512,
+   "vgpr_spills": 0,
+   "static_instructions": 703,
+   "carry_pairs": 13,
+   "shift64": 4,
+   "ds_bpermute": 0,
+   "permlanex16": 32,
+   "add_f32_dpp": 128
+  },
+  "wave_scale_pipelined_dpp_false": {
+   "template": "<float,float,8,8,4,true,false,false,long,false>",
+   "vgpr": 76,
+   "sgpr": 50,
+   "private_segment_bytes": 0,
+   "lds_bytes": 512,
+   "vgpr_spills": 0,
+   "static_instructions": 1035,
+   "carry_pairs": 42,
+   "shift64": 3,
+   "ds_bpermute": 128,
+   "waitcnt": 113
+  }
+ },
+ "trace": {
+  "file": "dense-checked_kernel_trace.csv",
+  "sha256": "c50c7f2ea5a532b5d2117cd29c5c8bea76c8d51c3e6979122dd05acd17b48d2f",
+  "launches": {
+   "parent": 3,
+   "sibling": 3
+  },
+  "parent_median_ns": 8014371,
+  "sibling_median_ns": 5424961,
+  "grid": {
+   "parent": "163840x128",
+   "sibling": "163840x128"
+  },
+  "vgpr_count_reported": {
+   "parent": 80,
+   "sibling": 80
+  },
+  "sgpr_count_reported": {
+   "parent": 128,
+   "sibling": 128
+  },
+  "scratch_bytes": 0,
+  "note": "rocprofv3 kernel-trace on the cached build; both templated instantiations engage with identical grid."
+ },
+ "notes": [
+  "Resource counts are from the cached device code object, not a standalone object census.",
+  "Static instruction counts are per-symbol disassembly line counts, not dynamic counts.",
+  "Register counts do not establish runtime occupancy."
+ ]
+}

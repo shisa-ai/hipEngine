@@ -1702,6 +1702,99 @@ def _check_launch(runtime: HipRuntime, err: int) -> None:
         runtime.check(int(err))
 
 
+_Q8_0_BLOCK_BYTES = 34
+_INT32_MAX = 2**31 - 1
+
+
+def q8_0_coltile_checked_int32_admissible(
+    rows: int,
+    in_features: int,
+    out_features: int,
+    col_tile: int = 8,
+    row_batch: int = 4,
+) -> bool:
+    """Complete int32 range admission for the checked dense coltile sibling.
+
+    The checked sibling narrows the weight/activation/output offsets of the
+    pipelined DPP leaf to int32 and removes per-row validity control for complete
+    four-row groups. It is only safe when every product that forms one of those
+    offsets, and the grid product, fits signed int32:
+
+    * activation element range ``rows * in_features``;
+    * output element range ``rows * out_features``;
+    * raw weight byte range ``out_features * row_bytes`` where
+      ``row_bytes = (in_features // 32) * 34`` for Q8_0;
+    * the ``rows + row_batch - 1`` grid product.
+
+    It also requires ``in_features`` to be a Q8_0 block multiple and
+    ``out_features``/``rows`` to be whole ``col_tile``/``row_batch`` groups. Host
+    dimensions stay int64 on the public ABI.
+    """
+    if rows <= 0 or in_features <= 0 or out_features <= 0:
+        return False
+    if col_tile <= 0 or row_batch <= 0:
+        return False
+    if in_features % 32 != 0 or out_features % col_tile != 0 or rows % row_batch != 0:
+        return False
+    if rows > _INT32_MAX or in_features > _INT32_MAX or out_features > _INT32_MAX:
+        return False
+    if rows > _INT32_MAX - (row_batch - 1):
+        return False
+    row_bytes = (in_features // 32) * _Q8_0_BLOCK_BYTES
+    if out_features > _INT32_MAX // row_bytes:
+        return False
+    if rows > _INT32_MAX // in_features:
+        return False
+    if rows > _INT32_MAX // out_features:
+        return False
+    return True
+
+
+def gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out(
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Diagnostic checked-int32/full-four-row sibling of the DPP leaf.
+
+    A separate registered variant; the generic DPP parent
+    ``gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out``
+    remains the fallback for tails, overflows and unsupported shapes. Raises
+    ``ValueError`` before loading the library when the shape is not admissible.
+    """
+    if not q8_0_coltile_checked_int32_admissible(rows, in_features, out_features):
+        raise ValueError(
+            "checked full-row sibling requires complete int32 ranges, a Q8_0 "
+            "block-aligned in_features, out_features divisible by 8 and rows "
+            "divisible by 4"
+        )
+    _launch(
+        "gguf_q8_0",
+        _symbol(
+            "gguf_q8_0",
+            "gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out",
+        ),
+        x_ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 gguf_q8_0_iu8_wmma_prefill_f32_f32_t = _make_wrapper(
     "gguf_q8_0",
     "hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32_t",
@@ -1752,7 +1845,7 @@ _WRAPPERS = {
         "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out,
         "coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out,
         "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out,
-        "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out,
+        "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out,
         "coltile8_rowbatch4_pipelined_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out,
         "coltile4_rowbatch8_pipelined_f32_f32_out": gguf_q8_0_gemv_coltile4_rowbatch8_pipelined_f32_f32_out,
         "coltile8_rowbatch8_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out,
@@ -1866,6 +1959,7 @@ __all__ = [
     "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out",
+    "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out",
     "gguf_q8_0_gemv_coltile4_rowbatch8_pipelined_f32_f32_out",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
