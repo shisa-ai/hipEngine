@@ -497,6 +497,8 @@ def test_the_production_profile_routes_both_geometries_to_their_own_candidate():
     from hipengine.generation.gemma4_gguf_profiles import (
         PREFILL_ATTENTION_PRODUCTION_VARIANTS,
         PREFILL_ATTENTION_STAGED,
+        PREFILL_ATTENTION_WMMA_FLASH,
+        PREFILL_ATTENTION_WMMA_FLASH_FULL,
     )
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
         gemma4_attention_prefill_bf16,
@@ -521,10 +523,12 @@ def test_the_production_profile_routes_both_geometries_to_their_own_candidate():
         requested_variant=requested, num_heads=8, num_kv_heads=1, head_dim=64
     )
 
-    # The production default since the 2026-10-03 demotion is the strict-order
-    # staged kernel for both geometries; the WMMA candidates remain explicit
-    # evaluation paths. The GEMMA4-WMMA-CALIBRATION campaign may flip this
-    # default back, and this assertion is where that flip will be felt first.
-    assert full.variant == PREFILL_ATTENTION_STAGED
-    assert sliding.variant == PREFILL_ATTENTION_STAGED
+    # The 2026-10-07 section 2.11 promotion: production routes multi-row
+    # prefill to the WMMA candidates per geometry; single-token decode keeps
+    # the strict-parity staged singleton via the appended request entry, and
+    # unsupported widths keep the strict kernel.
+    assert full.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL
+    assert full.launcher is gemma4_attention_prefill_wmma_full_bf16
+    assert sliding.variant == PREFILL_ATTENTION_WMMA_FLASH
+    assert sliding.launcher is gemma4_attention_prefill_wmma_bf16
     assert other.launcher is gemma4_attention_prefill_bf16

@@ -56,10 +56,18 @@ PREFILL_ATTENTION_EVIDENCE_FULL = (
     "benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-full-candidate.json"
 )
 
-# Both production geometry scopes request the same strict-parity launcher.
-# WMMA candidates remain registered, but saved teacher-chain KL failures
-# prevent using them as the shipped arithmetic choice.
-PREFILL_ATTENTION_PRODUCTION_VARIANTS = (PREFILL_ATTENTION_STAGED,)
+# Production prefill attention: the WMMA candidates per geometry, with the
+# strict-parity staged variant appended last so single-token decode keeps the
+# pipelined staged singleton (the measured decode lead) while multi-row
+# prefill resolves to the WMMA entries first. Order matters: the selector
+# matches in request order. Promoted 2026-10-07 under the section 2.11
+# router-routing-scoped envelope (EXECUTION-PROFILES); strict remains the
+# registered fallback and the profile is the rollback lever.
+PREFILL_ATTENTION_PRODUCTION_VARIANTS = (
+    PREFILL_ATTENTION_WMMA_FLASH,
+    PREFILL_ATTENTION_WMMA_FLASH_FULL,
+    PREFILL_ATTENTION_STAGED,
+)
 
 KV_POLICY = "paged_bf16"
 GRAPH_POLICY = "eager_blocks"
@@ -105,9 +113,27 @@ def _selections(*, production: bool) -> tuple[VariantSelection, ...]:
     has to say which geometry each strict row is the fallback for.
     """
 
+    if production:
+        # One WMMA selection per geometry under the section 2.11 promotion:
+        # the sliding scope runs the sliding flash candidate and the full
+        # scope runs the full-layer one, each with its own evidence artifact.
+        by_scope = {
+            PREFILL_ATTENTION_SCOPE: (PREFILL_ATTENTION_WMMA_FLASH, PREFILL_ATTENTION_EVIDENCE),
+            PREFILL_ATTENTION_SCOPE_FULL: (PREFILL_ATTENTION_WMMA_FLASH_FULL, PREFILL_ATTENTION_EVIDENCE_FULL),
+        }
+        return tuple(
+            _selection(
+                selected=by_scope[scope][0],
+                fallback=PREFILL_ATTENTION_PLAIN,
+                quant=GEMMA4_GGUF_QUANT,
+                evidence=by_scope[scope][1],
+                scope=scope,
+            )
+            for scope in (PREFILL_ATTENTION_SCOPE, PREFILL_ATTENTION_SCOPE_FULL)
+        )
     return tuple(
         _selection(
-            selected=PREFILL_ATTENTION_STAGED if production else PREFILL_ATTENTION_PLAIN,
+            selected=PREFILL_ATTENTION_PLAIN,
             fallback=PREFILL_ATTENTION_PLAIN,
             quant=GEMMA4_GGUF_QUANT,
             evidence=None,
@@ -115,6 +141,25 @@ def _selections(*, production: bool) -> tuple[VariantSelection, ...]:
         )
         for scope in (PREFILL_ATTENTION_SCOPE, PREFILL_ATTENTION_SCOPE_FULL)
     )
+
+
+def _with_decode_fallback(variants: tuple[str, ...]) -> tuple[str, ...]:
+    """Append the strict-parity staged variant after promoted prefill entries.
+
+    A plan that promotes a reassociated prefill candidate keeps the staged
+    singleton for single-token decode: it is strict-parity arithmetic (no
+    additional numerical surface) and it is the measured decode path. Order is
+    load-bearing -- the selector matches in request order, so the WMMA
+    entries must come first for multi-row prefill while the appended staged
+    entry is what a one-token block resolves to.
+    """
+
+    if (PREFILL_ATTENTION_STAGED in variants
+            or not any(v in (PREFILL_ATTENTION_WMMA_FLASH,
+                             PREFILL_ATTENTION_WMMA_FLASH_FULL)
+                       for v in variants)):
+        return variants
+    return variants + (PREFILL_ATTENTION_STAGED,)
 
 
 def _binder(generator: Any, resolved: Any) -> None:
@@ -134,6 +179,7 @@ def _binder(generator: Any, resolved: Any) -> None:
             }
         )
     )
+    variants = _with_decode_fallback(variants)
     if variants:
         generator.prefill_attention_variants = variants
 
@@ -273,7 +319,7 @@ def resolve_gemma4_prefill_attention_variants(
         )
     except MissingRuntimeProfilePlanError:
         return ()
-    return tuple(
+    return _with_decode_fallback(tuple(
         sorted(
             {
                 str(selection["selected_variant"])
@@ -281,4 +327,4 @@ def resolve_gemma4_prefill_attention_variants(
                 if selection["layer"] == PREFILL_ATTENTION_LAYER
             }
         )
-    )
+    ))

@@ -1236,8 +1236,22 @@ def _select_prefill_attention(
                 else f"decode: a {tokens}-token block routes to the decode kernel"
             ),
         )
+    # A one-token block is a decode step. The 2026-10-07 promotion pairs the
+    # WMMA prefill candidates with the strict-parity staged singleton for
+    # decode: when the request set offers staged alongside the WMMA entries,
+    # a decode step skips the WMMA decode shapes and resolves to staged, which
+    # is bit-exact to the strict family and the measured decode path. An
+    # explicit WMMA-only request still takes the WMMA decode shape -- the
+    # request is the product surface, and it runs or names its miss.
+    ordered = requests
+    if (tokens is not None and tokens <= 1
+            and PREFILL_ATTENTION_STAGED in requests):
+        ordered = tuple(
+            v for v in requests
+            if v not in (PREFILL_ATTENTION_WMMA_FLASH, PREFILL_ATTENTION_WMMA_FLASH_FULL)
+        )
     refusals: list[str] = []
-    for request in requests:
+    for request in ordered:
         if request == PREFILL_ATTENTION_PLAIN:
             return PrefillAttentionSelection(
                 variant=PREFILL_ATTENTION_PLAIN,

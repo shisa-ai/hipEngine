@@ -31,14 +31,17 @@ def test_plain_attention_request_stays_unchanged():
     assert selection.reason == 'strict'
 
 
-def test_default_profile_requests_registered_staged_attention():
+def test_default_profile_requests_wmma_prefill_with_staged_decode():
     from hipengine.generation.gemma4_gguf_profiles import (
         GEMMA4_GGUF_BACKEND, GEMMA4_GGUF_QUANT,
         register_gemma4_gguf_profiles, resolve_gemma4_prefill_attention_variants,
     )
     from hipengine.kernels.registry import resolve
     register_gemma4_gguf_profiles()
-    assert resolve_gemma4_prefill_attention_variants(environ={}) == ('gemma4_staged',)
+    # The 2026-10-07 section 2.11 promotion: WMMA prefill per geometry with
+    # the strict-parity staged singleton appended for single-token decode.
+    assert resolve_gemma4_prefill_attention_variants(environ={}) == (
+        'gemma4_wmma_flash', 'gemma4_wmma_flash_full', 'gemma4_staged')
     fn = resolve(backend=GEMMA4_GGUF_BACKEND, layer='prefill_attention',
                  quant=GEMMA4_GGUF_QUANT, variant='gemma4_staged')
     assert fn.__name__ == 'gemma4_attention_staged_bf16'

@@ -26,13 +26,17 @@ returns only the definition, the package export, and this entry, and the Gemma 4
 unit tier plus one public `LLM.generate()` request pass after the wrapper is
 gone. Removal should be its own unit, separate from the fusion that stranded it.
 
-## Gemma 4 WMMA attention candidates are explicit evaluation paths (updated 2026-10-03)
+## Gemma 4 WMMA attention candidates were promoted to the production prefill default (updated 2026-10-07)
 
-Production requests `gemma4_staged` for sliding head_dim 256 and full head_dim
-512 attention; strict requests `gemma4_plain`. Staged attention preserves the
-strict score tree, 256-lane softmax denominator, and ascending-key FP32 P*V
-chain, with scores in global workspace and bounded LDS. The profile is the
-rollback lever: `HIPENGINE_EXECUTION_PROFILE=strict` selects plain attention.
+Production routes multi-row prefill to `gemma4_wmma_flash` (sliding) and
+`gemma4_wmma_flash_full` (head_dim 512) and keeps single-token decode on the
+strict-parity staged singleton (the appended request entry). Strict requests
+`gemma4_plain`. The promotion passed the section 2.11 router-routing-scoped
+envelope (EXECUTION-PROFILES, 2026-10-07 lead decision): median row KL 3.8e-6,
+p90 6.0e-3, flip-damage 1.3% against a 3% budget, top-1 98.4%, tasks
+non-inferior on all 18 packet cases with repeats and isolation green. The
+profile remains the rollback lever: `HIPENGINE_EXECUTION_PROFILE=strict`
+selects plain attention.
 
 `gemma4_wmma_flash` and `gemma4_wmma_flash_full` remain registered for explicit
 evaluation. They are not production defaults: the multicategory teacher-chain
@@ -67,11 +71,10 @@ parent-parity validation; only the reassociated-arithmetic promotion packet
 can be avoided. See the correction and implementation in
 `worklog/entries/20261005T152628.367992Z-lhl-gemma4-score-reuse-e96b93.md`.
 
-Removal condition: delete the WMMA wrappers, HIP sources and explicit routing
-branches once their remaining arithmetic-evaluation work is closed. Preserve
-strict plain attention as the registered fallback and parity oracle. Do not
-remove the execution-profile selection itself; it is a product API, not a
-candidate-only flag.
+Removal condition: none. The candidates are the shipped prefill default; the
+staged decode entry and the strict plain fallback stay registered, and the
+execution-profile selection is a product API, not a candidate-only flag. A
+revert is a profile decision, not a file deletion.
 
 ## Plain Gemma attention needs raw-coordinate boundary validation (found 2026-10-03)
 
