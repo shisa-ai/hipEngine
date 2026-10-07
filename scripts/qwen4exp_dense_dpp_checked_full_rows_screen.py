@@ -66,6 +66,39 @@ def _load_raw(readers, name: str) -> np.ndarray | None:
     return None
 
 
+def _file_sha256(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _build_identity(library, kernel_py: Path) -> dict:
+    """Loaded shared-library and build-cache identity for this run."""
+    identity: dict = {"loaded_library": None, "loaded_library_sha256": None}
+    name = getattr(library, "_name", None)
+    if name:
+        identity["loaded_library"] = str(name)
+        identity["loaded_library_sha256"] = _file_sha256(Path(name))
+        manifest = Path(name).with_name("manifest.txt")
+        if manifest.exists():
+            text = manifest.read_text()
+            identity["build_manifest"] = text
+            for line in text.splitlines():
+                if line.startswith("cache_key="):
+                    identity["cache_key"] = line.split("=", 1)[1]
+                elif line.startswith("compiler_version<<"):
+                    pass
+        device_object = next(
+            iter(Path(name).parent.glob("*.hipv4-amdgcn-amd-amdhsa--gfx1151")), None
+        )
+        if device_object is not None:
+            identity["device_object"] = str(device_object)
+            identity["device_object_sha256"] = _file_sha256(device_object)
+    identity["wrapper_source_sha256"] = _file_sha256(kernel_py)
+    return identity
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -94,12 +127,24 @@ def main() -> int:
     candidate_fn = getattr(q8, CANDIDATE)
 
     readers = [GGUFReader(path) for path in discover_gguf_files(args.model_root)]
+    source_files = {
+        "kernel_hip": str(ROOT / "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip"),
+        "wrapper_py": str(ROOT / "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py"),
+        "harness_py": str(ROOT / "scripts/qwen4exp_dense_dpp_checked_full_rows_screen.py"),
+    }
     report = {
         "schema": 1,
         "kind": "qwen4exp_dense_dpp_checked_full_rows_screen",
         "performance_claim": False,
         "status": "diagnostic",
         "source": _git_metadata(ROOT),
+        "source_files": {
+            key: {"path": path, "sha256": _file_sha256(Path(path))}
+            for key, path in source_files.items()
+        },
+        "build_identity": _build_identity(
+            library, ROOT / "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py"
+        ),
         "host": _host_metadata(),
         "command": sys.argv,
         "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
@@ -240,6 +285,17 @@ def main() -> int:
             }
             for rows, vals in sorted(by_rows.items())
         }
+        # Raw per-sample arrays are hashed and written beside the output so a
+        # compact Git artifact can cite them without committing the samples.
+        samples_payload = {
+            f"{case['tensor']}|rows={case['shape'][0]}": case["samples_ms"]
+            for case in report["cases"]
+        }
+        samples_bytes = json.dumps(samples_payload, indent=1).encode()
+        report["raw_samples_sha256"] = hashlib.sha256(samples_bytes).hexdigest()
+        samples_path = args.output.with_name(args.output.stem + ".samples.json")
+        samples_path.write_bytes(samples_bytes)
+        report["raw_samples_path"] = str(samples_path)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(f"\nwrote {args.output}")

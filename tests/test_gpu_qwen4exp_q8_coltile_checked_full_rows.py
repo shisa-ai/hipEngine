@@ -242,5 +242,14 @@ def test_raw_abi_refuses_overflow_before_touching_pointers() -> None:
         (4, 2560, 2**32),
         (2**32, 2560, 10240),
         (1000000, 2560, 128),
+        (16777216, 32, 8),  # activation elements fit, float bytes overflow
+        (16777212, 32, 40),  # output elements fit, float bytes overflow
+        # Block-aligned near-INT64_MAX K must be refused before the launcher
+        # computes the packed row byte count (which would overflow signed int64).
+        (4, (2**63 - 1) // 32 * 32, 10240),
+        (4, (2**63 - 1) // 32 * 32 + 32, 10240),
+        # Extreme int64 rows and N.
+        (2**62, 2560, 10240),
+        (4, 2560, 2**62),
     ]:
         assert fn(1, 2, 3, rows, k, n, 128, 0) == 1
