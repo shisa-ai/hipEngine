@@ -1,4 +1,14 @@
-# hipEngine Topline Benchmarks
+## Qwen4Exp MT-8 rollback/replay accounting diagnostic
+
+A CPU-only instrumented screen covers a four-token Qwen4Exp MTP proposal at all
+rejection depths, all-reject and full-accept. Target verification stops at the
+first mismatch, while the draft executes the proposal and trims its cursor.
+Target forwards are 1/2/3/4/4; draft forwards are 4 in every case. Restored
+bytes, restore allocations and per-cycle allocations are zero. The shared
+resident-weight attachment is counted once, not once per rollback case. No
+production default or performance claim changed.
+
+[Protocol, test and artifact](results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/README.md).
 
 Last updated: **2026-10-06 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only

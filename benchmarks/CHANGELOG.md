@@ -1,4 +1,7 @@
-## 2026-10-06 — DP-2 native owner cost narrows admission to p4096
+## 2026-10-07 — Qwen4Exp MT-8 rollback/replay accounting complete
+
+- CPU-only instrumented Qwen4Exp MTP provider screen at proposal budget 4 covers all rejection depths, all-reject and full-accept. Target forwards are 1/2/3/4/4 and draft forwards are 4/4/4/4/4; target verification stops at the first mismatch and draft rollback is cursor trim. Restored bytes, restore allocations and per-cycle allocations are zero; shared resident weights are attached once and not double-counted. No duplicate replay or dirty-destination restore exists in this route, so no production change or performance claim. Artifact: `results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/accounting.json`.
+
 
 - Clean gfx1151 source `5ed9c3e37`, Qwen3.8-Flash-Next UD-Q4_K_XL production/BF16: complete runner-pair owner timing over eight canonical cases, four categories, p1024/p4096, layers13/24/46, both pairs, one warmup and 12 measured pairs per arm. All 48 captures are exact and leak-free with 2→1 cast engagement. Native owner wall is **+3.245% at p1024** and **−3.986% at p4096**, with both order strata agreeing within each shape. Admission is narrowed to rows4096; p1024 remains parent. No model-wall/default promotion claim. Artifact: `results/2026-10-06-qwen4exp-dp2-shared-cast/native-owner.json`.
 

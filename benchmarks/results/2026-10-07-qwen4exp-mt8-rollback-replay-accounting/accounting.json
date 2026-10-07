@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_mtp_rollback_replay_accounting",
+  "created_at": "2026-10-07T00:00:00Z",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "candidate_admitted": false,
+  "production_defaults_changed": false,
+  "model": {
+    "family": "Qwen4Exp",
+    "provider": "qwen4_exp_mtp",
+    "transaction_mode": "serial_exact_target_verify",
+    "proposal_budget": 4,
+    "workload": "synthetic CPU accounting doubles; all rejection depths plus full accept"
+  },
+  "rows": [
+    {"case": "all_reject", "rejection_depth": 0, "target_forwards": 1, "draft_forwards": 4, "restored_bytes": 0, "restored_allocations": 0, "per_cycle_allocations": 0, "shared_weight_allocations": 1},
+    {"case": "reject_after_1", "rejection_depth": 1, "target_forwards": 2, "draft_forwards": 4, "restored_bytes": 0, "restored_allocations": 0, "per_cycle_allocations": 0, "shared_weight_allocations": 1},
+    {"case": "reject_after_2", "rejection_depth": 2, "target_forwards": 3, "draft_forwards": 4, "restored_bytes": 0, "restored_allocations": 0, "per_cycle_allocations": 0, "shared_weight_allocations": 1},
+    {"case": "reject_after_3", "rejection_depth": 3, "target_forwards": 4, "draft_forwards": 4, "restored_bytes": 0, "restored_allocations": 0, "per_cycle_allocations": 0, "shared_weight_allocations": 1},
+    {"case": "full_accept", "rejection_depth": null, "target_forwards": 4, "draft_forwards": 4, "restored_bytes": 0, "restored_allocations": 0, "per_cycle_allocations": 0, "shared_weight_allocations": 1}
+  ],
+  "invariants": {
+    "target_stops_at_first_mismatch": true,
+    "draft_executes_full_proposal_before_cursor_trim": true,
+    "rollback_kind": "cursor_trim",
+    "snapshot_restore_replay_forwards": false,
+    "shared_weight_double_count": false
+  },
+  "decision": "diagnostic_complete_no_production_change"
+}
