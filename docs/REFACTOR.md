@@ -1,3 +1,23 @@
+## Dense Q8_0 checked-int32/full-four-row DPP coltile screen
+
+- `coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out`
+  is a separately registered, default-off diagnostic sibling of the dense Q8_0
+  DPP prefill owner. Its wrapper admits only complete four-row groups whose
+  weight, activation, output and grid products fit signed int32; tails,
+  overflows and unsupported shapes keep the generic DPP parent. No production
+  selector points here.
+- The sibling narrows the pipelined leaf's weight/activation/output offsets from
+  int64 to int32 and removes the per-row validity control for complete groups. It
+  preserves the Q8 scale decode, ascending per-lane K FMA order, DPP reduction,
+  four-wave publication, F32 output, tile shape and grid order, so every admitted
+  shape is bit-identical to the DPP parent.
+- Remove the variant, wrapper and extern symbol once a different mechanism or a
+  production decision supersedes the screen; the generic DPP parent needs no
+  cleanup.
+- Evidence:
+  `benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows/`.
+
+
 ## K320/full-row GR-up DPP screen
 
 - `coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact` is a

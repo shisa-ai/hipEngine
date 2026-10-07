@@ -3,6 +3,7 @@
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
+#include <type_traits>
 
 namespace {
 
@@ -750,7 +751,8 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
 // inline form in gguf_k_prefill_out_coltile_rowbatch_kernel; only the point at
 // which the loads are issued differs.
 template <typename scalar_t, int qtype, int COL_TILE, int ROW_BATCH,
-          bool WAVE_SCALE>
+          bool WAVE_SCALE, typename index_t = int64_t,
+          bool FULL_ROWS = false>
 __device__ __forceinline__ void gguf_k_coltile_load_stage(
     float (&w)[COL_TILE],
     float (&xv)[ROW_BATCH],
@@ -773,10 +775,18 @@ __device__ __forceinline__ void gguf_k_coltile_load_stage(
   }
 #pragma unroll
   for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
-    xv[row_idx] = row_ok[row_idx]
-        ? scalar_to_float<scalar_t>(
-              x[static_cast<int64_t>(row_base + row_idx) * in_features + k])
-        : 0.0f;
+    if constexpr (FULL_ROWS) {
+      // Complete four-row group: every row is valid, so the activation index is
+      // computed directly in ``index_t`` (int32 for the checked sibling) with no
+      // per-row validity select.
+      xv[row_idx] = scalar_to_float<scalar_t>(
+          x[static_cast<index_t>(row_base + row_idx) * in_features + k]);
+    } else {
+      xv[row_idx] = row_ok[row_idx]
+          ? scalar_to_float<scalar_t>(
+                x[static_cast<index_t>(row_base + row_idx) * in_features + k])
+          : 0.0f;
+    }
   }
 }
 
@@ -799,7 +809,8 @@ template <
     int qtype,
     int COL_TILE,
     int ROW_BATCH, bool WAVE_SCALE = false, bool ROW_FIRST = false,
-    bool DPP_REDUCTION = false>
+    bool DPP_REDUCTION = false, typename index_t = int64_t,
+    bool FULL_ROWS = false>
 __launch_bounds__(128, 2)
 __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
     const scalar_t* __restrict__ x,
@@ -826,7 +837,12 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
   const int row_base =
       static_cast<int>(ROW_FIRST ? blockIdx.x : blockIdx.y) * ROW_BATCH;
   const int tid = threadIdx.x;
-  if (out_col_base >= out_features || row_base >= rows) return;
+  // ``FULL_ROWS`` admits only complete four-row groups inside complete bounds,
+  // so the column tile and the row batch are both whole and the generic
+  // out-of-range early return is provably dead.
+  if constexpr (!FULL_ROWS) {
+    if (out_col_base >= out_features || row_base >= rows) return;
+  }
 
   int row_bytes = 0;
   if constexpr (qtype == 8) {
@@ -840,7 +856,7 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
 #pragma unroll
   for (int col = 0; col < COL_TILE; ++col) {
     weight_rows[col] =
-        qweight + static_cast<int64_t>(out_col_base + col) * row_bytes;
+        qweight + static_cast<index_t>(out_col_base + col) * row_bytes;
   }
 
   // Row validity does not depend on k, so it is decided once. Invalid rows keep
@@ -861,7 +877,8 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
   int k = tid;
   bool have_a = k < in_features;
   if (have_a) {
-    gguf_k_coltile_load_stage<scalar_t, qtype, COL_TILE, ROW_BATCH, WAVE_SCALE>(
+    gguf_k_coltile_load_stage<scalar_t, qtype, COL_TILE, ROW_BATCH, WAVE_SCALE,
+                              index_t, FULL_ROWS>(
         wa, xa, weight_rows, x, row_ok, row_base, in_features, k);
   }
   while (have_a) {
@@ -869,7 +886,7 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
     const bool have_b = k_b < in_features;
     if (have_b) {
       gguf_k_coltile_load_stage<
-          scalar_t, qtype, COL_TILE, ROW_BATCH, WAVE_SCALE>(
+          scalar_t, qtype, COL_TILE, ROW_BATCH, WAVE_SCALE, index_t, FULL_ROWS>(
           wb, xb, weight_rows, x, row_ok, row_base, in_features, k_b);
     }
 #pragma unroll
@@ -885,7 +902,7 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
     const bool have_a_next = k_a < in_features;
     if (have_a_next) {
       gguf_k_coltile_load_stage<
-          scalar_t, qtype, COL_TILE, ROW_BATCH, WAVE_SCALE>(
+          scalar_t, qtype, COL_TILE, ROW_BATCH, WAVE_SCALE, index_t, FULL_ROWS>(
           wa, xa, weight_rows, x, row_ok, row_base, in_features, k_a);
     }
 #pragma unroll
@@ -941,7 +958,7 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
     const int row_idx = tid / COL_TILE;
     const int col = tid - row_idx * COL_TILE;
     const int row = row_base + row_idx;
-    if (row < rows) {
+    if (FULL_ROWS || row < rows) {
       float total = 0.0f;
 #pragma unroll
       for (int wave_idx = 0; wave_idx < 4; ++wave_idx) {
@@ -949,7 +966,7 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
       }
       store_output<out_t>(
           out,
-          static_cast<int64_t>(row) * out_features + out_col_base + col,
+          static_cast<index_t>(row) * out_features + out_col_base + col,
           total);
     }
   }
@@ -4893,13 +4910,48 @@ int launch_gguf_k_gemv_coltile_rowbatch_out(
   return static_cast<int>(hipGetLastError());
 }
 
+// Complete signed-int32 range admission for the checked dense coltile sibling.
+// The kernel narrows weight/activation/output offsets to int32, so every product
+// that forms one of those offsets plus the grid dimensions must fit before it is
+// safe to launch. Host dimensions stay int64 on the public ABI.
+static bool gguf_k_coltile_checked_int32_admissible(
+    int64_t rows, int64_t in_features, int64_t out_features,
+    int64_t row_bytes, int64_t col_tile, int64_t row_batch) {
+  const int64_t kInt32Max = static_cast<int64_t>(INT32_MAX);
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || row_bytes <= 0 ||
+      col_tile <= 0 || row_batch <= 0) {
+    return false;
+  }
+  if (rows > kInt32Max || in_features > kInt32Max ||
+      out_features > kInt32Max || row_batch > kInt32Max) {
+    return false;
+  }
+  if (out_features % col_tile != 0 || rows % row_batch != 0) {
+    return false;
+  }
+  if (rows > kInt32Max - (row_batch - 1)) {
+    return false;
+  }
+  if (out_features > kInt32Max / row_bytes) {
+    return false;
+  }
+  if (rows > kInt32Max / in_features) {
+    return false;
+  }
+  if (rows > kInt32Max / out_features) {
+    return false;
+  }
+  return true;
+}
+
 template <
     typename scalar_t,
     typename out_t,
     int qtype,
     int COL_TILE,
     int ROW_BATCH, bool WAVE_SCALE = false, bool ROW_FIRST = false,
-    bool DPP_REDUCTION = false>
+    bool DPP_REDUCTION = false, typename index_t = int64_t,
+    bool FULL_ROWS = false>
 int launch_gguf_k_gemv_coltile_rowbatch_pipelined_out(
     const scalar_t* x,
     const uint8_t* qweight,
@@ -4916,6 +4968,18 @@ int launch_gguf_k_gemv_coltile_rowbatch_pipelined_out(
       (out_features % COL_TILE) != 0 || threads != 128) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  if constexpr (std::is_same<index_t, int>::value) {
+    const int64_t checked_row_bytes =
+        (qtype == 8)
+            ? static_cast<int64_t>(in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES
+            : static_cast<int64_t>(in_features / QK_K) *
+                  ((qtype == 5) ? Q5_K_BLOCK_BYTES : Q6_K_BLOCK_BYTES);
+    if (!gguf_k_coltile_checked_int32_admissible(
+            rows, in_features, out_features, checked_row_bytes, COL_TILE,
+            ROW_BATCH)) {
+      return static_cast<int>(hipErrorInvalidValue);
+    }
+  }
   const dim3 block(128);
   const dim3 grid(
       static_cast<unsigned int>(ROW_FIRST ? (rows + ROW_BATCH - 1) / ROW_BATCH
@@ -4927,7 +4991,8 @@ int launch_gguf_k_gemv_coltile_rowbatch_pipelined_out(
       out_t,
       qtype,
       COL_TILE,
-      ROW_BATCH, WAVE_SCALE, ROW_FIRST, DPP_REDUCTION><<<grid, block, 0, stream>>>(
+      ROW_BATCH, WAVE_SCALE, ROW_FIRST, DPP_REDUCTION, index_t,
+      FULL_ROWS><<<grid, block, 0, stream>>>(
       x,
       qweight,
       out,
@@ -5519,6 +5584,21 @@ extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_
     int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
   return launch_gguf_k_gemv_coltile_rowbatch_pipelined_out<
       float, float, 8, 8, 4, true, false, true>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+// Diagnostic checked-int32/full-four-row sibling of the DPP leaf. The weight,
+// activation and output offsets are narrowed to int32 and the per-row validity
+// control is removed, but only after the launcher admits a complete four-row
+// group inside complete int32 byte/element bounds. Q8 scale decode, ascending
+// per-lane K FMA order, DPP reduction, four-wave publication and F32 output are
+// unchanged, so every admitted shape is bit-identical to the DPP parent. Tails
+// and overflows keep the generic DPP parent.
+extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out(
+    const float* x, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_gemv_coltile_rowbatch_pipelined_out<
+      float, float, 8, 8, 4, true, false, true, int, true>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 
