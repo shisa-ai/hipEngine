@@ -247,6 +247,48 @@ def test_gfx1151_registry_contains_layer2_candidate_and_strict_fallback() -> Non
     ) is not None
 
 
+def test_checked_dense_q8_candidate_pins_checked_owner_and_parent_fallback() -> None:
+    module = _load_script()
+    candidate = module.CANDIDATES["dense_q8_checked_full_rows"]
+
+    assert candidate.classification == "T0"
+    assert candidate.base_profile == "production"
+    assert candidate.environment == {
+        "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION": "1",
+    }
+    assert candidate.candidate_key == (
+        "hip_gfx1151",
+        "linear",
+        "gguf_q8_0",
+        "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out",
+    )
+    assert candidate.fallback_key == (
+        "hip_gfx1151",
+        "linear",
+        "gguf_q8_0",
+        "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out",
+    )
+    assert candidate.count_registered_dispatch is True
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import KernelKey, is_registered, resolve
+
+    register_gfx1151_kernels(replace=True)
+    assert is_registered(KernelKey(*candidate.candidate_key))
+    assert is_registered(KernelKey(*candidate.fallback_key))
+    assert resolve(
+        backend=candidate.candidate_key[0],
+        layer=candidate.candidate_key[1],
+        quant=candidate.candidate_key[2],
+        variant=candidate.candidate_key[3],
+    ) is not resolve(
+        backend=candidate.fallback_key[0],
+        layer=candidate.fallback_key[1],
+        quant=candidate.fallback_key[2],
+        variant=candidate.fallback_key[3],
+    )
+
+
 def test_task_gate_requires_repeatability_and_flags_cross_route_divergence() -> None:
     module = _load_script()
     strict = {"a": {"ids": [1, 2], "ids_sha256": "s", "text": "strict"}}
