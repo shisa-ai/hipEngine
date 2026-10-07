@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_optimization_coverage_audit",
+  "generated": "2026-10-07",
+  "source": {
+    "ledger": "docs/QWEN4EXP-OPTIMIZATION-LEDGER.md",
+    "ledger_table_rows": 74,
+    "logical_ids": 75,
+    "folded_rows": ["HC-4", "HC-5"],
+    "method": "Manual reading of every ledger state cell, cross-checked against cited tracked artifacts and the current DP-2/MT-8 packets; no status inferred from keyword position alone."
+  },
+  "coverage": {
+    "terminal_or_closed": 37,
+    "partial_or_incomplete": 7,
+    "open_actionable": 15,
+    "open_gated": 15,
+    "not_a_candidate": 1,
+    "needs_work_total": 37,
+    "counts_note": "A logical-ID total is used here: HC-4 and HC-5 are split. The table has 74 physical rows because they are folded in one row. A row can be partial and still require work; open_gated includes named prerequisites."
+  },
+  "terminal_or_closed_ids": [
+    "X-8", "DP-1", "DP-3", "DP-4", "DP-9", "ED-1", "EG-1", "EG-3", "ED-3", "ED-4", "EG-5",
+    "MR-1", "MR-3", "MR-5", "HC-1", "HC-3", "HC-6", "HC-7", "QA-2", "QA-5", "QA-8", "QA-9", "QA-10",
+    "GD-3", "GD-4", "GD-1", "PL-1", "PL-2", "RT-2", "RT-3", "RT-4", "DE-1", "DE-3", "DE-6", "DE-8",
+    "MT-5", "MT-8"
+  ],
+  "partial_or_incomplete_ids": ["X-1", "X-3", "X-4", "X-5", "X-6", "X-7", "DE-4"],
+  "open_actionable_ids": ["X-2", "X-9", "X-10", "X-11", "DP-6", "MX-1", "QA-4", "RT-5", "DE-2", "DE-5", "DE-7", "DE-9", "DE-10", "DE-11", "MT-1"],
+  "open_gated_ids": ["DP-5", "DP-7", "DP-8", "MR-4", "HC-4", "HC-5", "QA-6", "QA-7", "RT-1", "RT-6", "MT-2", "MT-3", "MT-4", "MT-6", "DP-2"],
+  "not_a_candidate_ids": ["MT-7"],
+  "recent_packets": {
+    "DP-2": {
+      "artifact": "benchmarks/results/2026-10-06-qwen4exp-dp2-shared-cast/engine-ab.json",
+      "source": "/tmp/qwen4exp-dp2-p4096-engine-ab-b59b28720.json",
+      "status": "complete_default_off",
+      "coverage": "12 canonical + 16 heldout; 3 measured repetitions per arm; D128; p512 control, p1024 control, p4096 admission",
+      "correctness": "all_within_arm_deterministic=true; all_cross_arm_output_exact=true",
+      "p4096": {"prefill_candidate_over_parent": 1.0018895488424404, "decode_candidate_over_parent": 0.9988312745231783},
+      "decision": "No production promotion: p4096 prefill is +0.189% in this complete-engine run despite the native owner saving; candidate remains opt-in/default-off."
+    },
+    "MT-8": {
+      "artifact": "benchmarks/results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/accounting.json",
+      "status": "diagnostic_complete",
+      "coverage": "all rejection depths plus full accept",
+      "decision": "No duplicate target replay or dirty-destination restore exists in the screened route; no production change."
+    }
+  },
+  "remaining_high_value_or_blocked": [
+    {"id": "MX-1", "gate": "Implement and run the F16 expert owner; complete production numerical/task gate; preserve strict fallback."},
+    {"id": "DP-7", "gate": "Re-run/close the chunk-4096 qualification against the corrected X-6 gate; do not promote from the stale/vacuous gate."},
+    {"id": "DP-5", "gate": "Separate complete-operation/native ownership screen for any further promotion; current 4096 handoff is bounded and not a universal claim."},
+    {"id": "MT-1", "gate": "Compose the existing rowbatch kernel into a complete verifier body and measure it; current kernel-pair screen is not end-to-end."},
+    {"id": "X-2", "gate": "Establish same-protocol comparator/quality basis before setting a target."},
+    {"id": "X-6/X-7/X-10/X-11", "gate": "Finish current qualification, scope-policy, stability and long-task engagement certificates; partial local fixes are not full qualification."}
+  ],
+  "claims_not_supported": [
+    "No whole-model promotion follows from the DP-2 native operation saving or the rows-4096 engine A/B.",
+    "MT-8's zero restored bytes/allocations are accounting results, not native GPU allocation measurements.",
+    "The census does not close X-1/X-3/X-5/X-6/X-7 or any partial row; it records the missing gate explicitly.",
+    "The 75 logical-ID count is not comparable to earlier 72/74 counts without applying the HC-4/HC-5 split."
+  ]
+}

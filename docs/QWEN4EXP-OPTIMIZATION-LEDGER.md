@@ -1595,8 +1595,8 @@ with 0 keeps and 0 reverts, and metric values spanning **0.00038 to 2245** —
 shares, percentages, milliseconds, byte counts and candidate counts interleaved,
 because `multiloop_measure` was called with whatever the iteration happened to
 measure. The recorded baseline 10 / current 6 / best 10 are therefore not a
-baseline, and `keep`/`revert` has never been meaningful for this loop. **This
-census is offered as the loop's actual metric: the count of actionable rows,
-which is 25 as of this date and can only fall when a row is closed.** It is a
-definition change, not a regression against 6 — the previous 6 was not the same
-quantity.
+baseline, and `keep`/`revert` has never been meaningful for this loop.
+
+**CURRENT COVERAGE AUDIT (`20261007T`).** The complete ledger has **75 logical IDs in 74 physical rows**: `HC-4` and `HC-5` remain folded into one table row. The audit is recorded in [`benchmarks/results/2026-10-07-qwen4exp-optimization-coverage-audit.json`](../benchmarks/results/2026-10-07-qwen4exp-optimization-coverage-audit.json). It reads every state cell and cross-checks the current cited packet rather than classifying by the first or last keyword. The result is **37 terminal/closed, 7 partial/incomplete, 15 open-actionable, 15 open-gated, and 1 not-a-candidate**. Thus **37 logical IDs still need work**; “needs work” includes partial rows and rows blocked by a named prerequisite. The previous census numbers are historical readings, not this split-ID result.
+
+The two latest packets are accounted for explicitly. `DP-2`'s corrected rows-4096-only engine A/B covers 12 canonical plus 16 heldout cases, three repetitions per arm, D128, exact cross-arm outputs and deterministic repeats; the candidate remains default-off because complete p4096 prefill is **1.0018895x** parent despite the native operation saving. `MT-8` is a CPU accounting diagnostic covering all rejection depths and full accept; its zero restored bytes/allocations are not native GPU measurements and justify no production change. The highest-value unfinished work remains `MX-1`'s F16 expert-owner build/gate, `DP-7`'s rerun against the corrected X-6 gate, and `MT-1`'s complete verifier-body composition. This audit does not promote any candidate or claim that a partial row is closed.
