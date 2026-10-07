@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_execution_profile_candidate_gate_blocker",
+  "status": "blocked",
+  "created_at": "2026-10-07T03:22:55Z",
+  "performance_claim": false,
+  "candidate": {
+    "name": "f16_compact_down",
+    "candidate_id": "f16_compact_down",
+    "classification": "T1",
+    "base_profile": "production",
+    "scenario_id": "qwen4exp-f16-compact-down",
+    "mechanism": "the F16-WMMA compact grouped Q5_1 down owner with no repair pass; the Q4_K gate/up leg is left on the production exact iu8-risk+repair route",
+    "environment": {
+      "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "0",
+      "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1"
+    },
+    "candidate_key": [
+      "hip_gfx1151",
+      "moe_linear",
+      "gguf_q5_1",
+      "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+    ],
+    "fallback_key": [
+      "hip_gfx1151",
+      "moe_linear",
+      "gguf_q5_1",
+      "selected_wmma_iu8_risk_prefill_bf16_bf16_out"
+    ],
+    "direct_dispatch_target": [
+      "hipengine.runtime.qwen4_exp_runner",
+      "qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+    ],
+    "direct_dispatch_reference": [
+      "hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1",
+      "qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+    ],
+    "dispatch_shape_positions": [6, 7, 8, 9],
+    "strict_fallback_registered": true
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "0c0bcb6e8e5938a714e83502567c53312bb37a45",
+    "head_subject": "test: add named layer2 gate candidate for MX-1 F16 down-only route",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix"
+  },
+  "model": {
+    "root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "quant": "gguf_ud_q4_k_xl"
+  },
+  "commands": {
+    "canonical_gate_command_not_completed": "python scripts/qwen4exp_layer2_profile_gate.py --candidate f16_compact_down --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --output benchmarks/results/2026-10-07-qwen4exp-mx1-f16-down-only-layer2-gate/gate.json",
+    "blocker_reproduction_command": "python scripts/qwen4exp_layer2_profile_gate.py --candidate f16_compact_down --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --limit 1 --decode-steps 2 --free-tokens 4 --free-runs 2 --output /tmp/mx1-down-gate/smoke.json",
+    "environment": {
+      "PYTHONPATH": "/home/lhl/hipEngine",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "ROCm": "TheRock 10.0.0 via /home/lhl/miniforge3/envs/therock"
+    }
+  },
+  "protocol": {
+    "complete_default_suite": false,
+    "reason_not_complete": "the candidate leg aborts on its first call before any numerical, state, or task measurement; running the complete 18-prompt protocol would only reproduce the same deterministic precondition failure after the strict pass",
+    "blocker_reproduction_settings": {
+      "prompt_limit": 1,
+      "decode_steps": 2,
+      "repeat_runs": 3,
+      "free_tokens": 4,
+      "free_runs": 2,
+      "prefill_chunk_size": 512,
+      "kv": "BF16"
+    }
+  },
+  "engagement": {
+    "established": true,
+    "evidence": "the counted direct alias is the frame that raises: the traceback passes through scripts/qwen4exp_candidate_dispatch.py:43 counted() before reaching the kernel wrapper, so the down dispatch predicate selected the F16 down owner and the runner called it",
+    "note": "engagement is established; the failure is a kernel precondition, not a non-engagement"
+  },
+  "failure": {
+    "exception": "ValueError",
+    "message": "compact_rows, num_experts, and wmma_total_rows must be positive",
+    "raised_at": "hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py:158",
+    "call_site": "hipengine/runtime/qwen4_exp_runner.py:4875",
+    "dispatch_branch": "elif q5_wmma: (qwen4_exp_runner.py:4874)",
+    "stack_summary": [
+      "scripts/qwen4exp_layer2_profile_gate.py:990 _candidate_trajectory -> runner.prefill",
+      "hipengine/runtime/qwen4_exp_runner.py:7997 prefill -> 7847 prefill_chunked -> 7931 _prefill_chunked_impl -> 7733 _prefill_chunk",
+      "hipengine/runtime/qwen4_exp_runner.py:5824 run_qwen4_exp_gdn_layer -> run_qwen4_exp_moe",
+      "hipengine/runtime/qwen4_exp_runner.py:4875 qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+      "scripts/qwen4exp_candidate_dispatch.py:43 counted",
+      "hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py:158 ValueError"
+    ]
+  },
+  "root_cause": {
+    "summary": "the host-side WMMA tile-row count consumed by the F16 down owner is only read back on gate/up paths that are not the production exact route",
+    "predicates": {
+      "exact_grouped_down": "false (HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN=0)",
+      "exact_grouped_q4_gate": "true (production default: HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL=1 keeps it on when only EXACT_GROUPED_DOWN is cleared)",
+      "q5_wmma": "true (HIPENGINE_QWEN4_EXP_Q5_1_WMMA=1)",
+      "wmma_total_rows": 0
+    },
+    "code_paths": {
+      "predicate_definitions": "hipengine/runtime/qwen4_exp_runner.py:4153 exact_grouped_down; :4160 exact_grouped_q4_gate; :4559 q5_wmma",
+      "wmma_total_rows_init": "hipengine/runtime/qwen4_exp_runner.py:4244 (wmma_total_rows = 0)",
+      "tile_map_and_readback_guard": "hipengine/runtime/qwen4_exp_runner.py:4254 elif not exact_grouped_down and not exact_grouped_q4_gate: builds the WMMA tile map; :4268-4284 reads group_wmma_total back into the host only when q4_k_mmq_prefill or (not exact_grouped_down and not exact_grouped_q4_gate)",
+      "down_dispatch": "hipengine/runtime/qwen4_exp_runner.py:4874 elif q5_wmma: passes wmma_total_rows (0) at :4886",
+      "kernel_precondition": "hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py:157-158"
+    },
+    "why_the_full_route_works": "the full MX-1 route also clears HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4=0, which makes exact_grouped_q4_gate false, so the tile map runs and wmma_total_rows is read back; the down-only route deliberately leaves gate/up at production, which keeps exact_grouped_q4_gate true and skips that read-back",
+    "scope": "the down-only configuration is not dispatchable on the current tree; the failure is structural and independent of prompt count, decode steps, repeats, or free-token count"
+  },
+  "qualification_results": {
+    "numerical": null,
+    "state": null,
+    "task": null,
+    "lifecycle": null,
+    "note": "no numerical, state, task, or lifecycle verdict exists for this candidate; the run aborted before the first candidate trajectory completed"
+  },
+  "required_follow_up": {
+    "owner": "parent coordination",
+    "candidate_fix": "populate the host-side wmma_total_rows for the F16 down owner on the production exact gate/up path (the exact gate/up branch already builds the device tile map at qwen4_exp_runner.py:4340), or have the q5_wmma down branch build/read its own tile map before the call. A runtime change is out of scope for this unit per its constraints and would need its own RED test and profile re-validation.",
+    "note": "not fixed in-unit; recorded as a concrete blocker"
+  }
+}
