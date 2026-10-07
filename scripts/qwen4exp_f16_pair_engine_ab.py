@@ -88,12 +88,29 @@ def _arm_order(index: int) -> tuple[str, ...]:
     return ARM_SEQUENCE if int(index) % 2 == 0 else tuple(reversed(ARM_SEQUENCE))
 
 
-def _expected_pairs(tokens: int, chunk_size: int = 1024) -> int:
-    """Count admitted pairs per executed chunk, not per complete prompt."""
+def _admitted_pair_rows() -> frozenset[int]:
+    """Read row admission from the same backend capability as the runner."""
+    from hipengine.kernels.hip_gfx1151 import GGUF_DENSE_WIDE_F16_PAIR_POLICIES
+
+    policy = GGUF_DENSE_WIDE_F16_PAIR_POLICIES[
+        ("linear", "gguf_q8_0", "dense_wide256_f32_f32_out")
+    ]
+    return frozenset(int(rows) for rows in policy["rows"])
+
+
+def _expected_pairs(
+    tokens: int, chunk_size: int = 4096, *, admitted_rows=None,
+) -> int:
+    """Count admitted pairs per executed chunk, not per complete prompt.
+
+    The override supports verification of historical artifacts without silently
+    treating their wider admission policy as the current production candidate.
+    """
     if tokens <= 0 or chunk_size <= 0:
         raise ValueError("positive tokens and chunk size required")
+    rows = _admitted_pair_rows() if admitted_rows is None else frozenset(admitted_rows)
     full, tail = divmod(tokens, chunk_size)
-    return 61 * (full * (chunk_size in (1024, 4096)) + (tail in (1024, 4096)))
+    return 61 * (full * (chunk_size in rows) + (tail in rows))
 
 
 def _select_cases(cases, prompt_tokens):
@@ -191,7 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
-    parser.add_argument("--prefill-chunk-size", type=int, default=1024)
+    parser.add_argument("--prefill-chunk-size", type=int, choices=(1024, 4096), default=4096)
     parser.add_argument("--warmups-per-arm", type=int, default=1)
     parser.add_argument("--repetitions-per-arm", type=int, default=3)
     parser.add_argument("--prompt-tokens", type=int, choices=(512, 1024, 4096), action="append",
@@ -201,8 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.prefill_chunk_size != 1024:
-        raise SystemExit("DP-2 A/B requires --prefill-chunk-size 1024")
+    admitted_rows = _admitted_pair_rows()
     if args.warmups_per_arm != 1 or args.repetitions_per_arm != 3:
         raise SystemExit("DP-2 A/B requires one warmup and three measured samples per arm")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
@@ -298,7 +314,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "prefill_chunk_size": args.prefill_chunk_size,
             "decode_transitions": int(fixture["decode_transitions"]),
             "timing_boundary": "synchronized runner.prefill plus exactly 128 synchronized runner.step transitions",
-            "candidate_scope": "gfx1151 production Q8_0 dense-wide layers13-47, rows1024/4096, immediate ordered pairs",
+            "candidate_scope": "gfx1151 production Q8_0 dense-wide layers13-47, rows"
+                               + "/".join(str(rows) for rows in sorted(admitted_rows))
+                               + ", immediate ordered pairs",
+            "candidate_admitted_rows": sorted(admitted_rows),
         },
         "arms": {
             "parent": {"env": PAIR_ENV, "value": "0", "description": "ordinary two-cast parent route"},
