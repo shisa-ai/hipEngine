@@ -221,6 +221,53 @@ CANDIDATES = {
         dispatch_shape_positions=(7, 8, 9, 10),
         count_registered_dispatch=True,
     ),
+    # MX-1's down half, gated on its own. The full F16 route and its gate/up
+    # half are refuted on numerics, but the down half's main kernel is the
+    # fastest registered down owner (-42.29% median vs the production iu8-risk
+    # owner, `2026-10-07-qwen4exp-mx1-f16-owner-recheck`), so a down-only F16
+    # variant is the only MX-1 configuration whose numerical status is unknown.
+    # The two overrides isolate exactly that leg:
+    #   * `EXACT_GROUPED_DOWN=0` skips the production Q5_1 down branch so the
+    #     chain falls through to `elif q5_wmma`.
+    #   * `Q5_1_WMMA=1` selects the F16 down owner there.
+    # The gate/up leg is selected by the independent `exact_grouped_q4_gate`
+    # predicate, which stays true because `EXACT_GROUPED_Q4_ALL` keeps its
+    # production default of 1 when only `EXACT_GROUPED_DOWN` is cleared. No
+    # gate/up key is overridden, so gate/up stays on the production
+    # exact iu8-risk+repair route.
+    "f16_compact_down": CandidateSpec(
+        name="f16_compact_down",
+        classification="T1",
+        mechanism=(
+            "the F16-WMMA compact grouped down owner (Q5_1 decoded to F16, F16 "
+            "WMMA, F32 accumulate) with no repair pass; the Q4_K gate/up leg "
+            "is left on the production exact iu8-risk+repair route"
+        ),
+        environment={
+            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "0",
+            "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-f16-compact-down",
+        candidate_key=("hip_gfx1151", "moe_linear", "gguf_q5_1",
+                       "selected_grouped_wmma_prefill_compact_bf16_bf16_out"),
+        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q5_1",
+                      "selected_wmma_iu8_risk_prefill_bf16_bf16_out"),
+        # The down owner is invoked by a direct module-attribute call in the
+        # runner, so counting the registry entry alone would read zero however
+        # often the route ran. The direct target makes the gate's counter patch
+        # the same attribute the runner calls.
+        direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
+                                "qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out"),
+        direct_dispatch_reference=(
+            "hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1",
+            "qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out"),
+        # Direct call site ABI: (compact_rows, num_experts, in_features,
+        # out_features) are positional arguments 6-9 of
+        # qwen4_exp_runner.py's Q5_1 down dispatch.
+        dispatch_shape_positions=(6, 7, 8, 9),
+        count_registered_dispatch=True,
+    ),
     "mx1_full_route": CandidateSpec(
         name="mx1_full_route",
         classification="T1",
