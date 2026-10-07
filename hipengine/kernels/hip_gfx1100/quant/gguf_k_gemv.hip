@@ -4913,32 +4913,44 @@ int launch_gguf_k_gemv_coltile_rowbatch_out(
 // Complete signed-int32 range admission for the checked dense coltile sibling.
 // The kernel narrows weight/activation/output offsets to int32, so every product
 // that forms one of those offsets plus the grid dimensions must fit before it is
-// safe to launch. Host dimensions stay int64 on the public ABI.
+// safe to launch. Scalar dimensions are validated first, so the packed row byte
+// count can never overflow signed int64 for a block-aligned near-INT64_MAX
+// in_features. Host dimensions stay int64 on the public ABI.
 static bool gguf_k_coltile_checked_int32_admissible(
     int64_t rows, int64_t in_features, int64_t out_features,
-    int64_t row_bytes, int64_t col_tile, int64_t row_batch) {
+    int64_t block_size, int64_t block_bytes, int64_t col_tile,
+    int64_t row_batch) {
   const int64_t kInt32Max = static_cast<int64_t>(INT32_MAX);
-  if (rows <= 0 || in_features <= 0 || out_features <= 0 || row_bytes <= 0 ||
-      col_tile <= 0 || row_batch <= 0) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || block_size <= 0 ||
+      block_bytes <= 0 || col_tile <= 0 || row_batch <= 0) {
     return false;
   }
   if (rows > kInt32Max || in_features > kInt32Max ||
       out_features > kInt32Max || row_batch > kInt32Max) {
     return false;
   }
-  if (out_features % col_tile != 0 || rows % row_batch != 0) {
+  if (in_features % block_size != 0 || out_features % col_tile != 0 ||
+      rows % row_batch != 0) {
     return false;
   }
   if (rows > kInt32Max - (row_batch - 1)) {
     return false;
   }
+  // Float activation and output byte ranges. in_features/out_features are
+  // already <= INT32_MAX, so the *4 cannot overflow int64.
+  if (rows > kInt32Max / (in_features * 4)) {
+    return false;
+  }
+  if (rows > kInt32Max / (out_features * 4)) {
+    return false;
+  }
+  // Packed raw-weight byte range, formed only after the range checks above.
+  const int64_t blocks_per_row = in_features / block_size;
+  if (blocks_per_row > kInt32Max / block_bytes) {
+    return false;
+  }
+  const int64_t row_bytes = blocks_per_row * block_bytes;
   if (out_features > kInt32Max / row_bytes) {
-    return false;
-  }
-  if (rows > kInt32Max / in_features) {
-    return false;
-  }
-  if (rows > kInt32Max / out_features) {
     return false;
   }
   return true;
@@ -4969,14 +4981,13 @@ int launch_gguf_k_gemv_coltile_rowbatch_pipelined_out(
     return static_cast<int>(hipErrorInvalidValue);
   }
   if constexpr (std::is_same<index_t, int>::value) {
-    const int64_t checked_row_bytes =
-        (qtype == 8)
-            ? static_cast<int64_t>(in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES
-            : static_cast<int64_t>(in_features / QK_K) *
-                  ((qtype == 5) ? Q5_K_BLOCK_BYTES : Q6_K_BLOCK_BYTES);
+    const int64_t checked_block_size = (qtype == 8) ? Q8_0_BLOCK : QK_K;
+    const int64_t checked_block_bytes =
+        (qtype == 8) ? Q8_0_BLOCK_BYTES
+                     : ((qtype == 5) ? Q5_K_BLOCK_BYTES : Q6_K_BLOCK_BYTES);
     if (!gguf_k_coltile_checked_int32_admissible(
-            rows, in_features, out_features, checked_row_bytes, COL_TILE,
-            ROW_BATCH)) {
+            rows, in_features, out_features, checked_block_size,
+            checked_block_bytes, COL_TILE, ROW_BATCH)) {
       return static_cast<int>(hipErrorInvalidValue);
     }
   }

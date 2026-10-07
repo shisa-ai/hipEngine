@@ -1720,13 +1720,16 @@ def q8_0_coltile_checked_int32_admissible(
     four-row groups. It is only safe when every product that forms one of those
     offsets, and the grid product, fits signed int32:
 
-    * activation element range ``rows * in_features``;
-    * output element range ``rows * out_features``;
+    * float activation byte range ``rows * in_features * 4``;
+    * float output byte range ``rows * out_features * 4``;
     * raw weight byte range ``out_features * row_bytes`` where
       ``row_bytes = (in_features // 32) * 34`` for Q8_0;
     * the ``rows + row_batch - 1`` grid product.
 
-    It also requires ``in_features`` to be a Q8_0 block multiple and
+    All products are bounded division-first, and the packed row byte count is
+    only formed after the scalar dimensions are known to fit int32, so a
+    block-aligned near-INT64_MAX ``in_features`` cannot overflow. It also
+    requires ``in_features`` to be a Q8_0 block multiple and
     ``out_features``/``rows`` to be whole ``col_tile``/``row_batch`` groups. Host
     dimensions stay int64 on the public ABI.
     """
@@ -1740,12 +1743,19 @@ def q8_0_coltile_checked_int32_admissible(
         return False
     if rows > _INT32_MAX - (row_batch - 1):
         return False
-    row_bytes = (in_features // 32) * _Q8_0_BLOCK_BYTES
+    # Float activation and output byte ranges (element count times 4 bytes).
+    # in_features/out_features are already <= INT32_MAX, so the *4 is safe.
+    if rows > _INT32_MAX // (in_features * 4):
+        return False
+    if rows > _INT32_MAX // (out_features * 4):
+        return False
+    # Packed raw-weight byte range, division-first so the product cannot
+    # overflow before it is bounded.
+    blocks_per_row = in_features // 32
+    if blocks_per_row > _INT32_MAX // _Q8_0_BLOCK_BYTES:
+        return False
+    row_bytes = blocks_per_row * _Q8_0_BLOCK_BYTES
     if out_features > _INT32_MAX // row_bytes:
-        return False
-    if rows > _INT32_MAX // in_features:
-        return False
-    if rows > _INT32_MAX // out_features:
         return False
     return True
 

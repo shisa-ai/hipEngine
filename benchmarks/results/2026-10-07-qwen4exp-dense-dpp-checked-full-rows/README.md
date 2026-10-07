@@ -6,7 +6,9 @@ is **1.111–1.506x faster** than the current dense DPP owner
 `coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out` across 48 real-weight,
 complete dense Q8_0 projection cases. Geometric mean speedup is **1.409x**
 (29.0% less operation time); 48/48 case medians improve and both first/second
-arm orders win every case. Every measured pair is bit-identical. The candidate
+arm orders win every case. The full output tensor is bit-identical to the
+parent before and after the timing loop (one full-tensor `uint32` comparison at
+each end, not a per-pair check). The candidate
 is default-off, no production selector points at it, and the generic DPP parent
 remains the fallback for tails, overflows and unsupported shapes.
 

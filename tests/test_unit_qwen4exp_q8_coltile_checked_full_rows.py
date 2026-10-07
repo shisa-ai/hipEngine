@@ -76,18 +76,32 @@ def test_invalid_or_overflow_dimensions_fail_closed(rows, in_features, out_featu
     assert not admits(rows, in_features, out_features)
 
 
-def test_every_complete_byte_range_is_independently_checked():
-    # Activation element range: rows * in_features must fit signed int32.
-    safe_rows = (LIMIT // 32) // 4 * 4
-    assert admits(safe_rows, 32, 8)
-    assert not admits(safe_rows + 4, 32, 8)
-    # Output element range: rows * out_features must fit signed int32, with the
-    # raw-weight byte range still inside int32 so the output range is binding.
+def test_float_activation_byte_range_is_independently_checked():
+    # Element range fits (rows * K <= INT32_MAX) but the float byte range
+    # (rows * K * 4) does not. K=32 is the smallest Q8_0 block-aligned K.
+    rows = (LIMIT // 128 + 1 + 3) // 4 * 4
+    assert rows * 32 <= LIMIT < rows * 32 * 4
+    assert not admits(rows, 32, 8)
+    # The last four-row group whose activation bytes still fit is admitted.
+    safe = rows - 4
+    assert safe * 32 * 4 <= LIMIT
+    assert admits(safe, 32, 8)
+
+
+def test_float_output_byte_range_is_independently_checked():
+    # Activation bytes fit at K=32; N=40 keeps the output element range inside
+    # INT32_MAX while its float byte range exceeds it.
+    rows = (LIMIT // 128) // 4 * 4
+    assert rows * 32 * 4 <= LIMIT
+    assert rows * 40 <= LIMIT < rows * 40 * 4
+    assert not admits(rows, 32, 40)
+    assert admits(rows, 32, 8)
+
+
+def test_raw_weight_byte_range_is_independently_checked():
+    # Activation/output bytes fit; only out_features * row_bytes exceeds int32.
     row_bytes = 34
     out_cols = (LIMIT // row_bytes) // 8 * 8
-    assert admits(32, 32, out_cols)
-    assert not admits(36, 32, out_cols)
-    # Raw weight byte range: out_features * row_bytes must fit signed int32.
     assert admits(4, 32, out_cols)
     assert not admits(4, 32, out_cols + 8)
 
@@ -148,6 +162,8 @@ def test_sibling_uses_int64_host_dimensions_and_forwards_the_stream():
     [
         (2, 2560, 10240),  # tail rows: the generic DPP parent owns these
         (1000000, 2560, 128),
+        (16777216, 32, 8),  # activation elements fit, float bytes overflow
+        (16777212, 32, 40),  # output elements fit, float bytes overflow
         (4, 2**32, 10240),
         (4, 2560, 2**32),
         (0, 2560, 10240),
