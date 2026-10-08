@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_de11_head_refresh_gap_analysis",
+  "cases": {
+    "code-p512": [
+      {
+        "arm": "A",
+        "span_ms_per_step": 48.939878640625,
+        "kernel_ms_per_step": 44.278409375,
+        "gap_ms_per_step": 4.6592587890625,
+        "gaps_per_step": 1739.9921875,
+        "mean_gap_us": 2.6777469591727696,
+        "launches_per_step": 1740.0,
+        "top_gaps_ms": [
+          2.573,
+          1.893,
+          0.549,
+          0.525,
+          0.478,
+          0.465,
+          0.392,
+          0.387
+        ]
+      },
+      {
+        "arm": "B",
+        "span_ms_per_step": 48.9724460390625,
+        "kernel_ms_per_step": 44.2805095859375,
+        "gap_ms_per_step": 4.689797984375,
+        "gaps_per_step": 1739.9921875,
+        "mean_gap_us": 2.69529829965113,
+        "launches_per_step": 1740.0,
+        "top_gaps_ms": [
+          2.806,
+          2.036,
+          1.923,
+          0.65,
+          0.607,
+          0.425,
+          0.406,
+          0.39
+        ]
+      }
+    ],
+    "code-p4096": [
+      {
+        "arm": "A",
+        "span_ms_per_step": 56.5438784921875,
+        "kernel_ms_per_step": 45.0128621171875,
+        "gap_ms_per_step": 11.527429328125,
+        "gaps_per_step": 1814.9921875,
+        "mean_gap_us": 6.351228070024407,
+        "launches_per_step": 1815.0,
+        "top_gaps_ms": [
+          2.546,
+          2.375,
+          2.185,
+          1.095,
+          1.036,
+          1.011,
+          0.995,
+          0.988
+        ]
+      },
+      {
+        "arm": "B",
+        "span_ms_per_step": 56.3101030859375,
+        "kernel_ms_per_step": 45.0362078984375,
+        "gap_ms_per_step": 11.2694906875,
+        "gaps_per_step": 1814.96875,
+        "mean_gap_us": 6.209192685824481,
+        "launches_per_step": 1815.0,
+        "top_gaps_ms": [
+          2.255,
+          2.131,
+          1.979,
+          1.098,
+          1.061,
+          0.943,
+          0.9,
+          0.861
+        ]
+      }
+    ]
+  },
+  "conclusion": "Kernels + gaps account for the decode wall exactly at both depths. The depth growth is inter-kernel dispatch gap time: ~1,740-1,815 launches per step each incur 2.7 us (p512) to 6.2 us (p4096) of GPU-side queue latency. Host-side Python cost removal cannot reduce it (the build-identity A/B tie proved that). The lever is fewer, larger launches: extend the existing per-layer MoE HIP graph to the whole decode step, or fuse launch chains."
+}
