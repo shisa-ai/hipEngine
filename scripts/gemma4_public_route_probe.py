@@ -137,11 +137,20 @@ def observe_attention_launches():
 
 
 def summarize_attention_launches(records):
-    """Count by query width, not semantic phase: prefill can end in one row."""
-    counts = Counter((r["variant"], "singleton" if r["tokens"] == 1 else "multi_token")
-                     for r in records)
-    return [{"variant": variant, "query_width": width, "invocations": count}
-            for (variant, width), count in sorted(counts.items())]
+    """Count by query width, not semantic phase: prefill can end in one row.
+
+    ``reason`` is part of the key because a decode call produces two records with
+different meanings -- the route the layer resolved and the kernel the launcher
+    selected -- and they legitimately disagree.
+    """
+    counts = Counter(
+        (r["variant"], r.get("reason"), "singleton" if r["tokens"] == 1 else "multi_token")
+        for r in records
+    )
+    return [{"variant": variant, "reason": reason, "query_width": width,
+             "invocations": count}
+            for (variant, reason, width), count in sorted(
+                counts.items(), key=lambda item: (item[0][2], item[0][0], item[0][1] or ""))]
 
 
 def main(argv=None):
