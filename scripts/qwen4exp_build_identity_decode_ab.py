@@ -82,7 +82,7 @@ def main(argv=None) -> int:
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--case-id", action="append", default=["code-p512", "code-p4096"])
+    parser.add_argument("--case-id", action="append")
     parser.add_argument("--reps-per-arm", type=int, default=REPS_PER_ARM)
     args = parser.parse_args(argv)
 
@@ -106,7 +106,8 @@ def main(argv=None) -> int:
         profile=ExecutionProfile.PRODUCTION,
     )
     fixture, fixture_sha = load_fixture(DEFAULT_FIXTURE)
-    cases = [next(c for c in fixture["cases"] if c["id"] == name) for name in args.case_id]
+    case_ids = args.case_id or ["code-p512", "code-p4096"]
+    cases = [next(c for c in fixture["cases"] if c["id"] == name) for name in case_ids]
     index = load_gguf_index(discover_gguf_files(args.model_root.resolve())[0])
     generator = profile.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
         model_path=args.model_root.resolve(),

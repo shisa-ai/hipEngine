@@ -8757,7 +8757,13 @@ misses, identical libraries and launch counts - no mechanism identified).
 Reverted pending a cooled paired re-measurement; evidence in
 `benchmarks/results/2026-10-08-qwen4exp-build-identity-fast-read/`. The
 resolution-key construction and the library-handle path remain; the library
-threading below is still open.
+threading below is still open. **Cooled re-measurement (2026-10-08, later):** a
+fresh-process single-case p4096 A/B on a fully cooled host tied the arms
+(+0.019%) - the hot-host inversion was thermal non-stationarity, and the 13x
+isolated saving moves nothing at engine level. The per-launch Python enqueue
+cost is NOT the decode-depth remainder; the micro-cut is closed as an
+engine-level lever and the remainder work must target launch-queue gaps,
+per-step transfers, or step-boundary synchronization instead.
 
 **Do not expect wall movement from removing it.** Two ablations of ~2 ms/step of
 host work at p4096 measured +2.53% and -0.45% against base spreads of 0.73% and
