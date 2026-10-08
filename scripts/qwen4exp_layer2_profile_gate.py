@@ -257,6 +257,32 @@ CANDIDATES = {
     # production default of 1 when only `EXACT_GROUPED_DOWN` is cleared. No
     # gate/up key is overridden, so gate/up stays on the production
     # exact iu8-risk+repair route.
+    "gdn_tiled16_multi": CandidateSpec(
+        name="gdn_tiled16_multi",
+        classification="T1",
+        mechanism=(
+            "the registered tiled16 multi-column GDN prefill owner for the "
+            "certified suffix window: the same recurrence reassociated over "
+            "multi-column tiles (NMSE 1.8e-14 vs the sequential chain per the "
+            "GD-4 drift screens, fp32 round-off class); the production "
+            "wave_norm route stays the registered strict fallback"
+        ),
+        environment={
+            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
+            "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-gdn-tiled16-multi",
+        candidate_key=(
+            "hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+            "qwen4exp_gdn_tiled16_multi_prefill",
+        ),
+        fallback_key=(
+            "hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+            "qwen4exp_sigmoid_wave_norm_prefill",
+        ),
+        count_registered_dispatch=True,
+    ),
     "f16_compact_down": CandidateSpec(
         name="f16_compact_down",
         classification="T1",
