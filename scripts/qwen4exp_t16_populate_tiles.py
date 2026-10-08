@@ -86,6 +86,10 @@ def populate_t16_gate_up_tiles_bounded(
     *,
     max_layers: int | None = None,
 ) -> dict:
+    if max_layers is None:
+        raw = os.environ.get("HIPENGINE_QWEN4_EXP_T16_GATE_UP_MAX_LAYERS")
+        if raw:
+            max_layers = int(raw)
     """Populate the cache, stopping gracefully at the memory bound.
 
     The model leaves a finite UMA slack after load; the full 47-layer tile set
