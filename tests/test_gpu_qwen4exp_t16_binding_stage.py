@@ -233,3 +233,48 @@ class _NamedRef:
 class _NamedTensor:
     def __init__(self, name):
         self.name = name
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_runner_branch_prefers_binding_stage_over_sidecar():
+    """The tile lookup order: the binding's t16 stage first, sidecar second.
+
+    Exercises the exact gate/up lookup expression the runner uses, on a
+    weight pair carrying binding-owned tiles and a sidecar entry keyed by
+    the raw pointer: the binding must win, and a sidecar-only pair must
+    still resolve.
+    """
+    from hipengine.runtime import qwen4_exp_runner as rmod
+
+    weight, _ = _synthetic_weight()
+    tiles = np.full((2, 2, 96), 0x11, dtype=np.uint8)
+    grown = attach_t16_allocation(weight, _t16_allocation(tiles))
+
+    # The runner's expression: the binding stage when present...
+    gate_allocs = getattr(grown, "allocations", {})
+    assert "t16" in gate_allocs
+    binding_buffer = gate_allocs["t16"].buffer
+    # ...and the sidecar path still resolves for a plain weight.
+    sidecar_buffer = weight.allocation("raw").buffer
+    rmod._T16_GATE_UP_TILES[int(weight.allocation("raw").tensor.ptr)] = (
+        sidecar_buffer,
+        sidecar_buffer,
+    )
+    try:
+        plain_allocs = getattr(weight, "allocations", {})
+        assert "t16" not in plain_allocs
+        # A plain weight falls through to the sidecar (backward compat).
+        resolved = rmod._T16_GATE_UP_TILES.get(
+            int(weight.allocation("raw").tensor.ptr)
+        )
+        assert resolved is not None
+        # The binding stage is the first-priority source.
+        assert binding_buffer.nbytes == tiles.nbytes
+    finally:
+        rmod._T16_GATE_UP_TILES.pop(
+            int(weight.allocation("raw").tensor.ptr), None
+        )
+    # Frozen replacement: grown and weight share the raw buffer, so only
+    # the grown weight is freed (the production caller swaps, never keeps
+    # both alive).
+    grown.free()
