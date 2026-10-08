@@ -42,11 +42,20 @@ def deviation(library, *, label, dtype, mask_mode, keys, geom):
         "max_abs_over_scale": float(diff.max() / scale),
         "rms_rel": float(np.sqrt((diff**2).mean())) / rms_ref,
         "p99_abs": float(np.percentile(diff, 99)),
+        # The discrete event: elements whose stored value differs. In bf16 the
+        # kernels' f32 results are rounded to the storage dtype, so a 1e-6 f32
+        # difference is invisible unless a value sits on a rounding boundary --
+        # where it flips by a full ULP. That count is the rate at which the
+        # route injects a visible difference into the model.
+        "differing_elements": int(np.count_nonzero(cand != ref)),
+        "elements": int(ref.size),
     }
+    row["flip_rate"] = row["differing_elements"] / row["elements"]
     print(
         f"{label:26s} slices={row['slices']:3d} "
         f"max_abs={row['max_abs']:.3e} max_abs/scale={row['max_abs_over_scale']:.3e} "
-        f"rms_rel={row['rms_rel']:.3e} p99_abs={row['p99_abs']:.3e}"
+        f"rms_rel={row['rms_rel']:.3e} p99_abs={row['p99_abs']:.3e} "
+        f"flips={row['differing_elements']}/{row['elements']} ({row['flip_rate']:.2e})"
     )
     return row
 
