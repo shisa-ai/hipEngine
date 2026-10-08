@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next (Qwen4Exp) Optimization Status
 
-- **Status date:** 2026-10-08 (refreshed; the pre-2026-10-08 narrative below is
+- **Status date:** 2026-10-09 (refreshed; the pre-2026-10-09 narrative below is
   preserved as history where later sections do not supersede it)
 - **Model / quant:** unsloth `Qwen3.8-Flash-Next` `UD-Q4_K_XL`, fingerprint
   `fb1f2fbf73d588c9…`, 111.3 GB, four shards
@@ -17,6 +17,11 @@
   this lane). Current canonical rates (12-case protocol, chunk 4096, compact
   capture, idle-settled): prefill 314.8 / 342.0 / 346.7 tok/s at p512/1024/4096,
   decode 20.4 / 19.8 / 16.7 tok/s — [scoreboard](../benchmarks/README.md).
+  A 2026-10-09 re-run after ~4 h of continuous heavy GPU load measured prefill
+  317.5 / 345.5 / 348.9 with the decode leg collapsing in its last repetition
+  (16.4 / 12.2 / 10.9 tok/s at p4096) — the host thermal-throttles under
+  sustained load, an ~7% aggregate cost on the same protocol; settled-state
+  figures remain the scoreboard's basis.
 
 **2026-10-08 state additions (see the ledger sections 1.3.6-1.3.8 and the DE-11
 head-refresh packet):** the decode depth growth is fully localized — device
@@ -30,6 +35,38 @@ performance: the F16 gate/up owner is +138.5% slower than the production iu8
 owner). The single decision that reopens the F16 class is the prefill_last
 scope-and-threshold question recorded in ledger row X-7 — the human owner's
 call, not an experiment.
+
+**2026-10-09 state additions (ledger rows T16-GU, T16-DOWN, and the residency
+design doc):** the compensated-T16 routed-expert class now has two complete
+evidence chains, both landed and both gated on the same X-7 question. The
+routed Q4 gate/up route (bit-lossless T16 repack, F16 WMMA with compensated F32
+accumulate, no repair by construction) measures **+6.53% aggregate prefill,
+12/12 canonical cases positive** on a 30-of-46-layer window
+(`benchmarks/results/2026-10-08-qwen4exp-t16-owner-ab/`); its layer2 gate
+passes every global aggregate and every category and is rejected only on the
+prefill_last scope's mean-KL floor at 1.69x, with top-1 18/18 on that failing
+scope. The routed Q5_1 down route (a new Q5_1 T16 tile layout and kernel,
+built and gated this date) measures **+9.46% aggregate prefill, 12/12 positive**
+with all 43 Q5_1 layers resident
+(`benchmarks/results/2026-10-09-qwen4exp-t16-down-engine-ab/`); its layer2
+gate passes every global aggregate and every category and is rejected only on
+the same prefill_last mean-KL floor at 1.53x, **with top-1 18/18 (100%) on that
+scope** — clearing the exact axis the F16 compact down failed at 98.667%
+(`benchmarks/results/2026-10-09-qwen4exp-t16-down-gate/`). Both candidates
+are default-off behind `HIPENGINE_QWEN4_EXP_T16_GATE_UP` /
+`HIPENGINE_QWEN4_EXP_T16_DOWN`, each with a registered strict fallback. **The
+X-7 decision therefore now governs roughly +16% combined prefill on disjoint
+legs, both with top-1 18/18 on the failing scope.** The QSA
+scores-coefficients fusion is also built, bit-identical, and measured
+wall-neutral (default-off, `0ea6d7ae2`), completing the fusion line's honest
+verdict: small launch-count fusions sit below the decode wall's resolution.
+The production tile-residency mechanism — the binding-owned `t16` allocation
+stage, the load-path materialization, the dispatch re-keying, and the
+construction populate, all default-off — is implemented per
+`docs/QWEN4EXP-T16-RESIDENCY.md`: the tile sets are bit-lossless rearrangements
+of the raw bytes (gate/up 42.38 GiB, Q5_1 down ~26.3 GiB), so the
+materialize-and-free phase that the X-7-admitted routes would turn on makes
+the full windows resident at net-zero memory.
 
 **This document is rewritten in place. It is the current-state tracker for this
 model; the `QWEN4EXP-*` and `QWEN3.8-FLASH-NEXT-*` campaign documents are dated
