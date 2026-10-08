@@ -13,6 +13,7 @@ kernel, and a cache miss falls back to the production iu8 chain.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
