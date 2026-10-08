@@ -64,7 +64,7 @@ PRODUCTION_Q4_DP4A_DECODE_LAYERS = (
 PRODUCTION_ARITHMETIC_RECOVERY_FLAGS = (
     "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
-    "GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
+    "GDN_PEER_PREFILL", "Q4_DP4A64",
     "QSA_H256_WAVE_PREFILL", "QSA_HEAD_PAIR", "QSA_FLASH_PREFILL",
     "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2", "GR_WIDE",
 )
@@ -673,10 +673,17 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
         _selection(
             "gdn_recurrence_norm_gate",
             "prefill_rows_ge2_layers27_47_gdn",
-            "qwen4exp_gdn_columnwarps_prefill",
+            # tiled16_multi supersedes the columnwarps owner on the 27-47 window
+            # after the full layer2 production-envelope admission on the UD lane
+            # (2026-10-08: all aggregates and scopes, prefill_to_c1 top-1 18/18,
+            # eligible for automatic admission; engine A/B +0.68% prefill with
+            # 12/12 cases positive). The columnwarps/wave_norm chain stays
+            # registered as the runtime fallback and HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0
+            # is the opt-out.
+            "qwen4exp_gdn_tiled16_multi_prefill",
             "qwen4exp_sigmoid_strict_prefill",
             "f32_state",
-            evidence=_GDN_COLWARPS_EVIDENCE,
+            evidence="benchmarks/results/2026-10-08-qwen4exp-gdn-multicolumn-admission/gate.json",
         ),
         _selection(
             "linear",
@@ -692,7 +699,6 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
     # Scope identifiers are shared with strict and remain stable. Select the
     # recovered owners while preserving the registered rollback contracts.
     inactive = {
-        "qwen4exp_gdn_tiled16_multi_prefill",
         "qwen4exp_gdn_tiled16_dpp_prefill",
         "qwen4exp_gdn_tiled16_prefill",
         "qwen4exp_gdn_columnwarps_prefill",
@@ -1073,14 +1079,16 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # Decode retains its separately tuned rows==1 owner.
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
         # The tile16 variant is consulted only inside the colwarps gate above, so
-        # it must be bound exactly where that gate is open. The UD quant is the
-        # arithmetic-recovery profile, which closes the gate (GDN_COLWARPS_PREFILL
-        # is in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS), so naming a tile16 route
-        # there selects a variant that can never be dispatched. Bind it for the
-        # profiles that actually keep the column-warp suffix enabled.
+        # it must be bound exactly where that gate is open. Since the tiled16_multi
+        # admission passed the full layer2 production envelope on the UD lane
+        # (2026-10-08, all aggregates and scopes, prefill_to_c1 top-1 18/18,
+        # eligible for automatic admission; wave_norm remains the registered
+        # strict fallback and HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0 is the
+        # opt-out), GDN_COLWARPS_PREFILL is no longer recovery-zeroed for UD and
+        # the multi variant is named for every production quant.
         "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": (
             "qwen4exp_gdn_tiled16_multi_prefill"
-            if production and resolved.manifest.get("quant") != "gguf_ud_q4_k_xl"
+            if production
             else ""
         ),
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": (

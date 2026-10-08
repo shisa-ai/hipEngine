@@ -576,6 +576,35 @@ prefill, with the aggregate wall effect (-0.25%) below the cross-process
 instrument's resolution — the same-residency A/B is the controlling evidence.
 [Qualification packet](../benchmarks/results/2026-10-08-qwen4exp-gr-k320-natural-owner/README.md).
 
+### 1.3.8 tiled16_multi GDN prefill admitted on the UD lane — 2026-10-08 UTC
+
+The registered `qwen4exp_gdn_tiled16_multi_prefill` kernel - multi-column
+reassociation of the gated-delta recurrence at fp32 round-off (NMSE 1.8e-14),
+85 VGPR against the production wave_norm route's 256, GD-4-measured
+1.39-2.39x faster - passed the full layer2 production envelope and is the
+production default for its certified suffix window. It had been gated off on
+this lane solely for non-bit-exactness, which the production-correctness
+contract does not require. The 18-prompt gate passed every aggregate and
+scope: mean KL 3.454e-4 (2.9x margin), p95 1.599e-3, p99 5.180e-3, max
+1.086e-2, top-1 0.99333; the binding `prefill_to_c1` scope ran at mean
+4.149e-4 with **top-1 18/18 perfect** where the F16 operand class failed at
+1.13-1.85x over; zero rows over the review boundary; eligible for automatic
+admission; 1,350 engaged dispatches; state/lifecycle/measurement clean. The
+task axis carries requires_review (14/18 free-run strict-exact,
+deterministic divergences) - the same class the K320 promotion carried;
+recorded for the human owner. Same-residency engine A/B: prefill
+**340.958->343.291 tok/s (1.0068x, 12/12 cases positive)**, client wall
+0.9937x, decode unchanged within noise, engagement 15 multi calls per prefill
+at every depth. Promotion: GDN_COLWARPS_PREFILL no longer recovery-zeroed for
+UD; the tile16 variant binds for every production quant; the UD manifest 27-47
+row declares the multi variant; opt-out
+`HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0`; the columnwarps/wave_norm/serial
+chain stays registered as the runtime fallback. This is the first
+arithmetic-changing candidate to pass the full envelope on this lane where
+the F16 class failed - reassociation at fp32 round-off, not an operand-class
+change.
+[Admission packet](../benchmarks/results/2026-10-08-qwen4exp-gdn-multicolumn-admission/README.md).
+
 
 ## 2. Arithmetic policy and kernel mechanisms
 
