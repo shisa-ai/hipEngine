@@ -95,8 +95,7 @@ def test_observe_decode_launches_report_the_registered_variant(monkeypatch):
         assert wrapped(tokens=512, keys=16384, head_dim=512, num_heads=16,
                        num_kv_heads=2) == "launched"
     assert records == [{"variant": attention.DECODE_ATTENTION_FLASH,
-                        "reason": "launcher selection counter",
-                        "launcher_selection_sticky": True, "tokens": 1,
+                        "reason": "launcher kernel selection", "tokens": 1,
                         "keys": 16384, "head_dim": 512, "num_heads": 16,
                         "num_kv_heads": 2}]
     assert attention._launch_prefill is launch
@@ -123,7 +122,7 @@ def test_observe_decode_launches_name_every_selection(monkeypatch, selection, co
 
 
 def test_observe_records_the_scoped_route_the_layer_resolved(monkeypatch):
-    """The resolver's route is the per-call answer; the counter is only a hint."""
+    """The resolver's route is the plan's decision; the launcher's is the kernel."""
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer as layer
 
     def resolver(*args, **kwargs):
