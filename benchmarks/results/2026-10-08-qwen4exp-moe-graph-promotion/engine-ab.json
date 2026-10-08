@@ -1,0 +1,312 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_moe_graph_engine_ab",
+  "status": "completed",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "e73b30ea77a9e73750939607564f38db0a86dd85",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_moe_graph_engine_ab.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipcc-version-qwen4exp.txt",
+    "--output",
+    "benchmarks/results/2026-10-08-qwen4exp-moe-graph-promotion/engine-ab.json"
+  ],
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "arms": {
+    "before": "MoE eager",
+    "after": "MoE graph replay"
+  },
+  "chunk_size": 4096,
+  "transitions": 128,
+  "warmups_per_mode": 1,
+  "cases": {
+    "code-p512": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 311.09217644438485,
+        "decode_tok_s": 21.07821226722863,
+        "client_wall_s": 23.155307146,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 310.9677150617501,
+        "decode_tok_s": 20.97569039142638,
+        "client_wall_s": 23.246325882,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "code-p1024": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 337.7641547036788,
+        "decode_tok_s": 19.697322510414672,
+        "client_wall_s": 28.59013908,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 337.9940668334467,
+        "decode_tok_s": 19.97550974310895,
+        "client_wall_s": 28.312456412,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "code-p4096": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 345.842429552477,
+        "decode_tok_s": 17.557839933977938,
+        "client_wall_s": 57.401203588,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 345.9016399774886,
+        "decode_tok_s": 17.959417287996494,
+        "client_wall_s": 56.906089747,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "general_en-p512": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 312.27553105981895,
+        "decode_tok_s": 21.0960518116646,
+        "client_wall_s": 23.121191267999997,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 312.2986106650325,
+        "decode_tok_s": 20.988785792595575,
+        "client_wall_s": 23.213853878000002,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "general_en-p1024": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 341.190462480873,
+        "decode_tok_s": 19.60975627404878,
+        "client_wall_s": 28.585858056,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 340.9379062762921,
+        "decode_tok_s": 19.88800681656876,
+        "client_wall_s": 28.318557277,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "general_en-p4096": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 345.34502214689405,
+        "decode_tok_s": 14.158363224844011,
+        "client_wall_s": 62.703586327,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 345.12829786073746,
+        "decode_tok_s": 13.678636905597024,
+        "client_wall_s": 63.67712357800001,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "general_ja-p512": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 315.8822822886458,
+        "decode_tok_s": 19.295698689623478,
+        "client_wall_s": 24.763379186999998,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 315.02868575531767,
+        "decode_tok_s": 20.37153346173513,
+        "client_wall_s": 23.725579279999998,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "general_ja-p1024": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 340.36645928666064,
+        "decode_tok_s": 18.194320058226484,
+        "client_wall_s": 30.131053968,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 341.10643645713645,
+        "decode_tok_s": 19.303368035960872,
+        "client_wall_s": 28.898888166,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "general_ja-p4096": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 344.8979243829005,
+        "decode_tok_s": 10.217852249942041,
+        "client_wall_s": 73.209215877,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 345.1163905524254,
+        "decode_tok_s": 10.781955435625894,
+        "client_wall_s": 71.22044028399999,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "mixed_ja_en-p512": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 309.2832848243778,
+        "decode_tok_s": 19.285079859534783,
+        "client_wall_s": 24.878086898000003,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 309.9444591273233,
+        "decode_tok_s": 20.250518880073614,
+        "client_wall_s": 23.918203672,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "mixed_ja_en-p1024": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 337.17147991139024,
+        "decode_tok_s": 18.143107784180962,
+        "client_wall_s": 30.276152831,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 337.0973082548401,
+        "decode_tok_s": 19.215601898511437,
+        "client_wall_s": 29.096856828,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    },
+    "mixed_ja_en-p4096": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 344.60635388281264,
+        "decode_tok_s": 10.089782840598275,
+        "client_wall_s": 73.716379042,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 344.4271404883777,
+        "decode_tok_s": 10.773359554481479,
+        "client_wall_s": 71.32010861100001,
+        "within_mode_output_deterministic": true,
+        "replay_delta": 18432
+      },
+      "cross_mode_output_exact": true
+    }
+  },
+  "summary": {
+    "correctness": {
+      "all_cases_within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "mismatched_case_ids": []
+    },
+    "all": {
+      "before": {
+        "samples": 36,
+        "prefill_tok_s": 340.78421225914,
+        "decode_tok_s": 16.328121141675805,
+        "client_wall_s": 480.53155326800004
+      },
+      "after": {
+        "samples": 36,
+        "prefill_tok_s": 340.7853046091398,
+        "decode_tok_s": 16.846041368123,
+        "client_wall_s": 471.85448361500005
+      },
+      "after_over_before_prefill": 1.0000032054008388,
+      "after_over_before_decode": 1.0317195237561816,
+      "after_over_before_client_wall": 0.981942768182466
+    },
+    "moe_graph_stats": {
+      "capture": 48,
+      "replay": 294864,
+      "eager": 294912,
+      "reject": 0
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 89404925864,
+    "total_allocated_bytes": 90191357896,
+    "total_freed_bytes": 90191357896,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  }
+}
