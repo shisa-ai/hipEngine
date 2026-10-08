@@ -25,6 +25,87 @@ sys.path.insert(0, str(ROOT))
 from hipengine.core.memory import copy_host_to_device, host_array_ptr, malloc
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16
+
+
+def populate_t16_down_tiles(
+    runner,
+    model_root: str | Path,
+    *,
+    max_layers: int | None = None,
+) -> dict:
+    """Insert Q5_1 T16 down tiles for every Q5_1 down layer into the cache.
+
+    The down-leg build's populate (step 4): reads each Q5_1 ``ffn_down_exps``
+    tensor from the model's GGUF, repacks through the bit-lossless Q5_1 T16
+    layout (repack_gguf_q5_1_tile16), uploads, and inserts into
+    hipengine.runtime.qwen4_exp_runner's _T16_DOWN_TILES keyed by the resident
+    down weight's raw device pointer. Layers whose down is not Q5_1 (the
+    Q8_0 split) are skipped. The env-gated runner branch
+    (HIPENGINE_QWEN4_EXP_T16_DOWN=1) then dispatches the T16 expert-major
+    compensated kernel; a cache miss falls back to the production chain.
+    """
+
+    from hipengine.runtime import qwen4_exp_runner as rmod
+
+    readers = [GGUFReader(p) for p in discover_gguf_files(model_root)]
+    layer_weights = {}
+    layer_weights.update(getattr(runner, "gdn_bindings", {}) or {})
+    layer_weights.update(getattr(runner, "qsa_bindings", {}) or {})
+    if not layer_weights:
+        raise AssertionError("runner exposes no gdn/qsa layer bindings")
+
+    runtime = runner.runtime
+    inserted = {}
+    for layer in sorted(layer_weights):
+        if max_layers is not None and len(inserted) >= max_layers:
+            break
+        lw = layer_weights[layer]
+        moe = getattr(lw, "moe", None)
+        if moe is None or "expert_down" not in moe:
+            continue
+        down_w = moe["expert_down"]
+        if getattr(down_w.spec, "quant_key", "") != "gguf_q5_1":
+            continue
+        slot = f"blk.{layer}.ffn_down_exps.weight"
+        reader = next(
+            (r for r in readers if any(t.name == slot for t in r.info.tensors)),
+            None,
+        )
+        if reader is None:
+            print(f"layer {layer}: GGUF tensor not found ({slot}); skipped", file=sys.stderr)
+            continue
+        raw = reader.tensor_data(slot)
+        if raw.ndim != 3 or raw.shape[2] % 24 != 0:
+            print(f"layer {layer}: unexpected down byte shape; skipped", file=sys.stderr)
+            continue
+        tiles = np.ascontiguousarray(repack_gguf_q5_1_tile16(raw).tiles)
+        try:
+            dev = malloc(int(tiles.nbytes))
+        except Exception as error:
+            print(
+                f"layer {layer}: memory bound reached ({error!r}); "
+                f"stopping with {len(inserted)} layers cached",
+                file=sys.stderr,
+                flush=True,
+            )
+            break
+        try:
+            copy_host_to_device(dev, host_array_ptr(tiles), int(tiles.nbytes))
+        except Exception as error:
+            from hipengine.core.memory import free as mem_free
+            mem_free(dev, runtime=runtime)
+            print(
+                f"layer {layer}: upload failed ({error!r}); stopping with "
+                f"{len(inserted)} layers cached",
+                file=sys.stderr,
+                flush=True,
+            )
+            break
+        down_ptr = int(down_w.allocation("raw").tensor.ptr)
+        rmod._T16_DOWN_TILES[down_ptr] = dev
+        inserted[layer] = (down_ptr, int(tiles.nbytes))
+    return inserted
 
 
 def populate_t16_gate_up_tiles(
