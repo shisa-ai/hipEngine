@@ -1,0 +1,790 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_de11_head_refresh_host_profile",
+  "case": "code-p4096",
+  "source_head": "6243efce279e19c9c4cc9d926170a01c9ea3af03",
+  "host_profile": {
+    "case_id": "code-p4096",
+    "transitions": 128,
+    "total_s": 7.703539,
+    "entries": [
+      {
+        "function": "_launch",
+        "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+        "line": 1279,
+        "ncalls": 45184,
+        "tottime_s": 0.848943,
+        "share": 0.110202,
+        "callers": [
+          {
+            "function": "wrapper",
+            "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "line": 282,
+            "ncalls": 45184,
+            "tottime_s": 1.563184
+          }
+        ]
+      },
+      {
+        "function": "__getitem__",
+        "file": "<frozen os>",
+        "line": 712,
+        "ncalls": 1900288,
+        "tottime_s": 0.770087,
+        "share": 0.099965,
+        "callers": [
+          {
+            "function": "get",
+            "file": "<frozen _collections_abc>",
+            "line": 808,
+            "ncalls": 1900288,
+            "tottime_s": 1.882164
+          }
+        ]
+      },
+      {
+        "function": "launch_gguf_linear",
+        "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+        "line": 4286,
+        "ncalls": 69760,
+        "tottime_s": 0.634714,
+        "share": 0.082393,
+        "callers": [
+          {
+            "function": "run_qwen4_exp_gr_read",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 3125,
+            "ncalls": 24704,
+            "tottime_s": 1.756396
+          },
+          {
+            "function": "_run_qwen4_exp_gr_norm_down",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 3052,
+            "ncalls": 12416,
+            "tottime_s": 1.042088
+          },
+          {
+            "function": "run_qwen4_exp_gdn_token_mixer",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 6102,
+            "ncalls": 13824,
+            "tottime_s": 0.937049
+          },
+          {
+            "function": "_launch_qwen4_exp_dense_pair",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 210,
+            "ncalls": 9216,
+            "tottime_s": 0.709424
+          },
+          {
+            "function": "run_qwen4_exp_dense_qsa_token_mixer",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 2369,
+            "ncalls": 9216,
+            "tottime_s": 0.669933
+          }
+        ]
+      },
+      {
+        "function": "encode",
+        "file": "<frozen os>",
+        "line": 794,
+        "ncalls": 1900288,
+        "tottime_s": 0.5482,
+        "share": 0.071162,
+        "callers": [
+          {
+            "function": "__getitem__",
+            "file": "<frozen os>",
+            "line": 712,
+            "ncalls": 1900288,
+            "tottime_s": 0.913574
+          }
+        ]
+      },
+      {
+        "function": "get",
+        "file": "<frozen _collections_abc>",
+        "line": 808,
+        "ncalls": 1900288,
+        "tottime_s": 0.47882,
+        "share": 0.062156,
+        "callers": [
+          {
+            "function": "_resolution_environment_identity",
+            "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+            "line": 486,
+            "ncalls": 980992,
+            "tottime_s": 1.194984
+          },
+          {
+            "function": "_raw_env_value",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 3919,
+            "ncalls": 209280,
+            "tottime_s": 0.241995
+          },
+          {
+            "function": "_q8_dense_wide_enabled",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 3636,
+            "ncalls": 69760,
+            "tottime_s": 0.102409
+          },
+          {
+            "function": "_env_flag_enabled",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 2610,
+            "ncalls": 69760,
+            "tottime_s": 0.099529
+          },
+          {
+            "function": "_q8_dense_wide_layers",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 3601,
+            "ncalls": 69760,
+            "tottime_s": 0.098653
+          }
+        ]
+      },
+      {
+        "function": "memcpy",
+        "file": "/home/lhl/hipEngine/hipengine/core/hip.py",
+        "line": 110,
+        "ncalls": 384,
+        "tottime_s": 0.407428,
+        "share": 0.052888,
+        "callers": [
+          {
+            "function": "copy_device_to_host",
+            "file": "/home/lhl/hipEngine/hipengine/core/memory.py",
+            "line": 137,
+            "ncalls": 128,
+            "tottime_s": 0.396112
+          },
+          {
+            "function": "copy_host_to_device",
+            "file": "/home/lhl/hipEngine/hipengine/core/memory.py",
+            "line": 124,
+            "ncalls": 256,
+            "tottime_s": 0.011396
+          }
+        ]
+      },
+      {
+        "function": "dense_gemv_out_f32",
+        "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+        "line": 512,
+        "ncalls": 21504,
+        "tottime_s": 0.402462,
+        "share": 0.052244,
+        "callers": [
+          {
+            "function": "_launch_dense_bf16",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 8103,
+            "ncalls": 21504,
+            "tottime_s": 0.42257
+          }
+        ]
+      },
+      {
+        "function": "<method 'encode' of 'str' objects>",
+        "file": "~",
+        "line": 0,
+        "ncalls": 1900288,
+        "tottime_s": 0.234286,
+        "share": 0.030413,
+        "callers": [
+          {
+            "function": "encode",
+            "file": "<frozen os>",
+            "line": 794,
+            "ncalls": 1900288,
+            "tottime_s": 0.234286
+          }
+        ]
+      },
+      {
+        "function": "_resolution_environment_identity",
+        "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+        "line": 486,
+        "ncalls": 122624,
+        "tottime_s": 0.203707,
+        "share": 0.026443,
+        "callers": [
+          {
+            "function": "build_hip",
+            "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+            "line": 234,
+            "ncalls": 122624,
+            "tottime_s": 1.448129
+          }
+        ]
+      },
+      {
+        "function": "build_hip",
+        "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+        "line": 234,
+        "ncalls": 122624,
+        "tottime_s": 0.152077,
+        "share": 0.019741,
+        "callers": [
+          {
+            "function": "build_qwen4_exp_gr",
+            "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+            "line": 102,
+            "ncalls": 50176,
+            "tottime_s": 0.671242
+          },
+          {
+            "function": "build_gguf_k_gemv",
+            "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "line": 74,
+            "ncalls": 45184,
+            "tottime_s": 0.614737
+          },
+          {
+            "function": "build_qwen4_exp_qsa",
+            "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+            "line": 175,
+            "ncalls": 9600,
+            "tottime_s": 0.126485
+          },
+          {
+            "function": "build_cast",
+            "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/convert/cast.py",
+            "line": 42,
+            "ncalls": 6144,
+            "tottime_s": 0.082315
+          },
+          {
+            "function": "build_qwen35_linear_attn_conv",
+            "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear_attn/conv.py",
+            "line": 96,
+            "ncalls": 4608,
+            "tottime_s": 0.063866
+          }
+        ]
+      },
+      {
+        "function": "<built-in method builtins.isinstance>",
+        "file": "~",
+        "line": 0,
+        "ncalls": 1982336,
+        "tottime_s": 0.137468,
+        "share": 0.017845,
+        "callers": [
+          {
+            "function": "encode",
+            "file": "<frozen os>",
+            "line": 794,
+            "ncalls": 1900288,
+            "tottime_s": 0.131087
+          },
+          {
+            "function": "_weight_layer_index",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 3614,
+            "ncalls": 69760,
+            "tottime_s": 0.005351
+          },
+          {
+            "function": "parse",
+            "file": "/home/lhl/hipEngine/hipengine/core/dtype.py",
+            "line": 24,
+            "ncalls": 11904,
+            "tottime_s": 0.000969
+          },
+          {
+            "function": "ggml_type",
+            "file": "/home/lhl/hipEngine/hipengine/quant/gguf.py",
+            "line": 401,
+            "ncalls": 384,
+            "tottime_s": 6.1e-05
+          }
+        ]
+      },
+      {
+        "function": "qwen4_exp_grouped_rmsnorm_bf16_f32",
+        "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+        "line": 148,
+        "ncalls": 12544,
+        "tottime_s": 0.126091,
+        "share": 0.016368,
+        "callers": [
+          {
+            "function": "_run_qwen4_exp_gr_norm_down",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 3052,
+            "ncalls": 12416,
+            "tottime_s": 0.306509
+          },
+          {
+            "function": "run_qwen4_exp_ple",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 5961,
+            "ncalls": 128,
+            "tottime_s": 0.002484
+          }
+        ]
+      },
+      {
+        "function": "<method 'get' of '_contextvars.ContextVar' objects>",
+        "file": "~",
+        "line": 0,
+        "ncalls": 1288704,
+        "tottime_s": 0.120929,
+        "share": 0.015698,
+        "callers": [
+          {
+            "function": "launch_gguf_linear",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 4286,
+            "ncalls": 488320,
+            "tottime_s": 0.050067
+          },
+          {
+            "function": "_record_selector",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 202,
+            "ncalls": 139520,
+            "tottime_s": 0.013629
+          },
+          {
+            "function": "_invalidate_wide_f16_pair",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 689,
+            "ncalls": 139520,
+            "tottime_s": 0.011773
+          },
+          {
+            "function": "_invalidate_wide_f16_publication",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 695,
+            "ncalls": 139520,
+            "tottime_s": 0.011131
+          },
+          {
+            "function": "_launch_dense_wide_f16_staged",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 949,
+            "ncalls": 90368,
+            "tottime_s": 0.007939
+          }
+        ]
+      },
+      {
+        "function": "decode",
+        "file": "<frozen os>",
+        "line": 798,
+        "ncalls": 561280,
+        "tottime_s": 0.115448,
+        "share": 0.014986,
+        "callers": [
+          {
+            "function": "__getitem__",
+            "file": "<frozen os>",
+            "line": 712,
+            "ncalls": 561280,
+            "tottime_s": 0.198503
+          }
+        ]
+      },
+      {
+        "function": "<method 'get' of 'dict' objects>",
+        "file": "~",
+        "line": 0,
+        "ncalls": 441472,
+        "tottime_s": 0.112954,
+        "share": 0.014663,
+        "callers": [
+          {
+            "function": "build_hip",
+            "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+            "line": 234,
+            "ncalls": 122624,
+            "tottime_s": 0.038594
+          },
+          {
+            "function": "launch_gguf_linear",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 4286,
+            "ncalls": 69760,
+            "tottime_s": 0.031349
+          },
+          {
+            "function": "_compiler_env_prefix",
+            "file": "/home/lhl/hipEngine/hipengine/core/build.py",
+            "line": 595,
+            "ncalls": 122624,
+            "tottime_s": 0.017561
+          },
+          {
+            "function": "_env_flag_enabled",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 2610,
+            "ncalls": 69760,
+            "tottime_s": 0.011682
+          },
+          {
+            "function": "_cached_fn",
+            "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "line": 24,
+            "ncalls": 45184,
+            "tottime_s": 0.008604
+          }
+        ]
+      },
+      {
+        "function": "_weight_layer_index",
+        "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+        "line": 3614,
+        "ncalls": 69760,
+        "tottime_s": 0.083972,
+        "share": 0.0109,
+        "callers": [
+          {
+            "function": "launch_gguf_linear",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 4286,
+            "ncalls": 69760,
+            "tottime_s": 0.136831
+          }
+        ]
+      },
+      {
+        "function": "<method 'decode' of 'bytes' objects>",
+        "file": "~",
+        "line": 0,
+        "ncalls": 561280,
+        "tottime_s": 0.083055,
+        "share": 0.010781,
+        "callers": [
+          {
+            "function": "decode",
+            "file": "<frozen os>",
+            "line": 798,
+            "ncalls": 561280,
+            "tottime_s": 0.083055
+          }
+        ]
+      },
+      {
+        "function": "_raw_env_value",
+        "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+        "line": 3919,
+        "ncalls": 209280,
+        "tottime_s": 0.06606,
+        "share": 0.008575,
+        "callers": [
+          {
+            "function": "_q8_dpp_reduction_raw",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 3893,
+            "ncalls": 69760,
+            "tottime_s": 0.105545
+          },
+          {
+            "function": "_q4_pack8_wmma_bulk_raw",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 3910,
+            "ncalls": 69760,
+            "tottime_s": 0.101602
+          },
+          {
+            "function": "_q8_dpp_checked_full_rows_raw",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 3904,
+            "ncalls": 69760,
+            "tottime_s": 0.100907
+          }
+        ]
+      },
+      {
+        "function": "_weight_backend",
+        "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+        "line": 2273,
+        "ncalls": 69760,
+        "tottime_s": 0.064527,
+        "share": 0.008376,
+        "callers": [
+          {
+            "function": "launch_gguf_linear",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 4286,
+            "ncalls": 69760,
+            "tottime_s": 0.098281
+          }
+        ]
+      },
+      {
+        "function": "qwen4_exp_scaled_silu_f32",
+        "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+        "line": 416,
+        "ncalls": 12544,
+        "tottime_s": 0.064079,
+        "share": 0.008318,
+        "callers": [
+          {
+            "function": "run_qwen4_exp_gr_read",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 3125,
+            "ncalls": 12416,
+            "tottime_s": 0.243583
+          },
+          {
+            "function": "run_qwen4_exp_ple",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 5961,
+            "ncalls": 128,
+            "tottime_s": 0.002366
+          }
+        ]
+      },
+      {
+        "function": "run_qwen4_exp_gr_read",
+        "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+        "line": 3125,
+        "ncalls": 12416,
+        "tottime_s": 0.061253,
+        "share": 0.007951,
+        "callers": [
+          {
+            "function": "_segment_gr_read_attn",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 5794,
+            "ncalls": 4608,
+            "tottime_s": 1.43135
+          },
+          {
+            "function": "_segment_gr_write_ffn_read",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 5851,
+            "ncalls": 4608,
+            "tottime_s": 1.363422
+          },
+          {
+            "function": "run_qwen4_exp_dense_qsa_layer",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 5517,
+            "ncalls": 3072,
+            "tottime_s": 0.929888
+          },
+          {
+            "function": "step",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 7370,
+            "ncalls": 128,
+            "tottime_s": 0.030023
+          }
+        ]
+      },
+      {
+        "function": "qwen4_exp_gated_mean_sigmoid_f32",
+        "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+        "line": 340,
+        "ncalls": 12416,
+        "tottime_s": 0.0607,
+        "share": 0.00788,
+        "callers": [
+          {
+            "function": "run_qwen4_exp_gr_read",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 3125,
+            "ncalls": 12416,
+            "tottime_s": 0.247146
+          }
+        ]
+      },
+      {
+        "function": "qwen4_exp_gr_write_bf16_f32",
+        "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+        "line": 377,
+        "ncalls": 12288,
+        "tottime_s": 0.059113,
+        "share": 0.007673,
+        "callers": [
+          {
+            "function": "_segment_gr_write_ffn_read",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 5851,
+            "ncalls": 4608,
+            "tottime_s": 0.09332
+          },
+          {
+            "function": "_segment_epilogue",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 5912,
+            "ncalls": 4608,
+            "tottime_s": 0.090811
+          },
+          {
+            "function": "run_qwen4_exp_dense_qsa_layer",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/qwen4_exp_runner.py",
+            "line": 5517,
+            "ncalls": 3072,
+            "tottime_s": 0.059811
+          }
+        ]
+      },
+      {
+        "function": "dense_gemv_f32_bf16w_f32_out",
+        "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+        "line": 314,
+        "ncalls": 3072,
+        "tottime_s": 0.058241,
+        "share": 0.00756,
+        "callers": [
+          {
+            "function": "_launch_dense_bf16",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 8103,
+            "ncalls": 3072,
+            "tottime_s": 0.061145
+          }
+        ]
+      },
+      {
+        "function": "prefill_f16_staging_enabled",
+        "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+        "line": 415,
+        "ncalls": 69760,
+        "tottime_s": 0.058212,
+        "share": 0.007556,
+        "callers": [
+          {
+            "function": "launch_gguf_linear",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 4286,
+            "ncalls": 69760,
+            "tottime_s": 0.165006
+          }
+        ]
+      },
+      {
+        "function": "<built-in method builtins.getattr>",
+        "file": "~",
+        "line": 0,
+        "ncalls": 446848,
+        "tottime_s": 0.053719,
+        "share": 0.006973,
+        "callers": [
+          {
+            "function": "signed_kernel_fn",
+            "file": "/home/lhl/hipEngine/hipengine/core/ctypes_cache.py",
+            "line": 52,
+            "ncalls": 178944,
+            "tottime_s": 0.022886
+          },
+          {
+            "function": "_weight_layer_index",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 3614,
+            "ncalls": 139520,
+            "tottime_s": 0.014787
+          },
+          {
+            "function": "_weight_backend",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 2273,
+            "ncalls": 69760,
+            "tottime_s": 0.008441
+          },
+          {
+            "function": "__post_init__",
+            "file": "/home/lhl/hipEngine/hipengine/kernels/registry.py",
+            "line": 24,
+            "ncalls": 41856,
+            "tottime_s": 0.004017
+          },
+          {
+            "function": "host_array_ptr",
+            "file": "/home/lhl/hipEngine/hipengine/core/memory.py",
+            "line": 150,
+            "ncalls": 768,
+            "tottime_s": 0.001384
+          }
+        ]
+      },
+      {
+        "function": "_invalidate_wide_f16_publication",
+        "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+        "line": 695,
+        "ncalls": 139520,
+        "tottime_s": 0.052222,
+        "share": 0.006779,
+        "callers": [
+          {
+            "function": "launch_gguf_linear",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 4286,
+            "ncalls": 94336,
+            "tottime_s": 0.068588
+          },
+          {
+            "function": "_launch_dense_wide_f16_staged",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 949,
+            "ncalls": 45184,
+            "tottime_s": 0.035243
+          }
+        ]
+      },
+      {
+        "function": "_launch_dense_wide_f16_staged",
+        "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+        "line": 949,
+        "ncalls": 45184,
+        "tottime_s": 0.046781,
+        "share": 0.006073,
+        "callers": [
+          {
+            "function": "launch_gguf_linear",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 4286,
+            "ncalls": 45184,
+            "tottime_s": 0.201627
+          }
+        ]
+      },
+      {
+        "function": "_pack8_gemv_decode_threads",
+        "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+        "line": 8723,
+        "ncalls": 69760,
+        "tottime_s": 0.044803,
+        "share": 0.005816,
+        "callers": [
+          {
+            "function": "launch_gguf_linear",
+            "file": "/home/lhl/hipEngine/hipengine/runtime/gguf_linear.py",
+            "line": 4286,
+            "ncalls": 69760,
+            "tottime_s": 0.163668
+          }
+        ]
+      },
+      {
+        "function": "_launch_cast",
+        "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/convert/cast.py",
+        "line": 278,
+        "ncalls": 6144,
+        "tottime_s": 0.043962,
+        "share": 0.005707,
+        "callers": [
+          {
+            "function": "bf16_to_f32",
+            "file": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/convert/cast.py",
+            "line": 78,
+            "ncalls": 6144,
+            "tottime_s": 0.130522
+          }
+        ]
+      }
+    ]
+  },
+  "note": "cProfile of the bench decode loop, compact capture, chunk 4096. Absolute times are inflated by the profiler; read the ordering, shares and call counts."
+}

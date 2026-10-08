@@ -1,0 +1,168 @@
+{
+  "case_id": "code-p512",
+  "host": "55ea6c509d0b49eea8de7094a1023668",
+  "source_head": "6243efce279e19c9c4cc9d926170a01c9ea3af03",
+  "profile_manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "decode_transitions": 128,
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "requested_profile": "production",
+  "capture_mode": "full",
+  "prefill_chunk_size": 1024,
+  "ple_cache_mode": "warm",
+  "prefill_kwargs": {},
+  "step_kwargs": {},
+  "kind": "qwen4exp_de11_decode_kernel_sum",
+  "decode_window_ns": [
+    4699740546283907,
+    4699746810588373
+  ],
+  "span_s": 6.264304466,
+  "launches": 222720,
+  "launches_per_step": 1740.0,
+  "kernel_ms": 5667.6364,
+  "kernel_ms_per_step": 44.278409375,
+  "trace": "/tmp/de11/traces/code-p512-A/trace_kernel_trace.csv",
+  "families": {
+    "__amd_rocclr_copyBuffer": {
+      "ms": 3.4490809999999885,
+      "n": 2048.0
+    },
+    "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)": {
+      "ms": 0.27010499999999993,
+      "n": 128.0
+    },
+    "(anonymous namespace)::repeat_bf16_branches_kernel(unsigned short const*, unsigned short*, long, long, long)": {
+      "ms": 0.19355899999999984,
+      "n": 128.0
+    },
+    "(anonymous namespace)::grouped_rmsnorm_bf16_f32_kernel(unsigned short const*, float const*, float*, long, long, float)": {
+      "ms": 70.70978400000054,
+      "n": 12544.0
+    },
+    "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<float, float, 8>(float const*, unsigned char const*, float*, int, int, int, int)": {
+      "ms": 2850.9178859999784,
+      "n": 63616.0
+    },
+    "(anonymous namespace)::scaled_silu_f32_kernel(float const*, float*, long, float)": {
+      "ms": 11.07016099999955,
+      "n": 12544.0
+    },
+    "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)": {
+      "ms": 250.8266320000003,
+      "n": 33792.0
+    },
+    "(anonymous namespace)::gated_mean_sigmoid_f32_kernel(float const*, float*, float*, long, long)": {
+      "ms": 22.504674999999573,
+      "n": 12416.0
+    },
+    "(anonymous namespace)::qwen35_linear_attn_conv_decode_kernel(float const*, float*, float const*, float*, long, long)": {
+      "ms": 17.42741799999987,
+      "n": 4608.0
+    },
+    "(anonymous namespace)::qwen4_exp_gdn_decode_f32_kernel(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)": {
+      "ms": 283.3519310000001,
+      "n": 4608.0
+    },
+    "(anonymous namespace)::gr_write_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long, long)": {
+      "ms": 50.869743999999315,
+      "n": 12288.0
+    },
+    "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)": {
+      "ms": 42.34012899999963,
+      "n": 6144.0
+    },
+    "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)": {
+      "ms": 11.196419999999597,
+      "n": 12288.0
+    },
+    "void (anonymous namespace)::gguf_quantize_q8_1_kernel<unsigned short>(unsigned short const*, (anonymous namespace)::gguf_q8_1_block*, int, int, int)": {
+      "ms": 6.612398999999946,
+      "n": 5376.0
+    },
+    "(anonymous namespace)::gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_kernel((anonymous namespace)::gguf_q8_1_block const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int, int)": {
+      "ms": 688.9284929999985,
+      "n": 5376.0
+    },
+    "(anonymous namespace)::q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel(unsigned short const*, long const*, unsigned char const*, float const*, unsigned short*, long, long, long, long, long)": {
+      "ms": 694.1336479999975,
+      "n": 5504.0
+    },
+    "(anonymous namespace)::silu_mul_f32_kernel(float const*, float const*, float*, long)": {
+      "ms": 5.3895600000000545,
+      "n": 6144.0
+    },
+    "void (anonymous namespace)::shared_gate_combine_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short*, long)": {
+      "ms": 6.8329899999998345,
+      "n": 6144.0
+    },
+    "(anonymous namespace)::ple_repeat_gated_value_f32_kernel(float const*, float const*, float*, long, long)": {
+      "ms": 0.311983,
+      "n": 128.0
+    },
+    "(anonymous namespace)::ple_dilated_depthwise_conv_f32_kernel(float const*, float const*, float*, float*, long, long, long, long, long)": {
+      "ms": 0.7173110000000001,
+      "n": 128.0
+    },
+    "(anonymous namespace)::grouped_rmsnorm_f32_kernel(float const*, float const*, float*, long, long, float)": {
+      "ms": 1.4753630000000004,
+      "n": 256.0
+    },
+    "(anonymous namespace)::ple_add_delta_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long)": {
+      "ms": 0.18105700000000005,
+      "n": 128.0
+    },
+    "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)": {
+      "ms": 5.457577000000063,
+      "n": 6144.0
+    },
+    "(anonymous namespace)::qwen35_write_paged_kv_position_tensor_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)": {
+      "ms": 2.785528000000004,
+      "n": 1536.0
+    },
+    "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long)": {
+      "ms": 8.068053999999993,
+      "n": 1536.0
+    },
+    "(anonymous namespace)::ple_signed_sqrt_gate_f32_kernel(float const*, float const*, float*, long)": {
+      "ms": 0.34733199999999986,
+      "n": 128.0
+    },
+    "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)": {
+      "ms": 255.83989999999997,
+      "n": 1536.0
+    },
+    "void (anonymous namespace)::gguf_q4_k_selected_dual_silu_logical128_t64_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)": {
+      "ms": 188.99962899999986,
+      "n": 640.0
+    },
+    "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)": {
+      "ms": 61.257955999999986,
+      "n": 256.0
+    },
+    "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)": {
+      "ms": 0.15352399999999994,
+      "n": 128.0
+    },
+    "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)": {
+      "ms": 117.01088500000002,
+      "n": 640.0
+    },
+    "void (anonymous namespace)::weighted_sum_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long)": {
+      "ms": 1.6805420000000006,
+      "n": 640.0
+    },
+    "void (anonymous namespace)::qsa_split_norm_rope_f32_kernel<false>(float const*, float const*, float const*, float const*, long const*, float*, float*, float*, long, long, long, long, float, float)": {
+      "ms": 4.570015999999972,
+      "n": 1536.0
+    },
+    "(anonymous namespace)::qsa_gate_context_f32_kernel(float const*, float const*, float*, long)": {
+      "ms": 1.609297000000003,
+      "n": 1536.0
+    },
+    "__amd_rocclr_fillBufferUnAligned": {
+      "ms": 0.145831,
+      "n": 128.0
+    }
+  }
+}
