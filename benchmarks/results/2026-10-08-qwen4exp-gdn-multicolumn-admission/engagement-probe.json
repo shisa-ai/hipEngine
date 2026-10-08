@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_gdn_tiled16_multi_engagement_probe",
+  "status": "passed",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "bc02f0a9de4c06b41684896b0fcba42401fc31be",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_gdn_tiled16_multi_engagement_probe.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipcc-version-qwen4exp.txt",
+    "--output",
+    "benchmarks/results/2026-10-08-qwen4exp-gdn-multicolumn-admission/engagement-probe.json"
+  ],
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "variant": "qwen4exp_gdn_tiled16_multi_prefill",
+  "registry_key": [
+    "hip_gfx1151",
+    "gdn_recurrence_norm_gate",
+    "f32_state",
+    "qwen4exp_gdn_tiled16_multi_prefill"
+  ],
+  "cases": [
+    {
+      "id": "code-p512",
+      "first_token": 248068,
+      "multi_calls": 15,
+      "first_shapes": [
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ],
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ],
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ],
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ]
+      ]
+    },
+    {
+      "id": "code-p1024",
+      "first_token": 248068,
+      "multi_calls": 15,
+      "first_shapes": [
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ],
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ],
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ],
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ]
+      ]
+    },
+    {
+      "id": "code-p4096",
+      "first_token": 248068,
+      "multi_calls": 15,
+      "first_shapes": [
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ],
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ],
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ],
+        [
+          140568942346240,
+          140576116703232,
+          140578766520320,
+          140578362753024
+        ]
+      ]
+    }
+  ],
+  "engaged": true,
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 89406349064,
+    "total_allocated_bytes": 90192781096,
+    "total_freed_bytes": 90192781096,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  }
+}
