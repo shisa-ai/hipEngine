@@ -82,6 +82,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     DECODE_ATTENTION_PLAIN as _DECODE_ATTENTION_PLAIN,
     DECODE_ATTENTION_QUANT as _DECODE_ATTENTION_QUANT,
     DECODE_ATTENTION_STAGED as _DECODE_ATTENTION_STAGED,
+    DECODE_ATTENTION_FLASH as _DECODE_ATTENTION_FLASH,
     EXACT_PREFILL_ATTENTION_LAYER as _EXACT_PREFILL_ATTENTION_LAYER,
     EXACT_PREFILL_ATTENTION_PLAIN as _EXACT_PREFILL_ATTENTION_PLAIN,
     EXACT_PREFILL_ATTENTION_QUANT as _EXACT_PREFILL_ATTENTION_QUANT,
@@ -115,6 +116,7 @@ DECODE_ATTENTION_LAYER = _DECODE_ATTENTION_LAYER
 DECODE_ATTENTION_SCOPE = "global_head_dim_512"
 DECODE_ATTENTION_PLAIN = _DECODE_ATTENTION_PLAIN
 DECODE_ATTENTION_STAGED = _DECODE_ATTENTION_STAGED
+DECODE_ATTENTION_FLASH = _DECODE_ATTENTION_FLASH
 DECODE_ATTENTION_QUANT = _DECODE_ATTENTION_QUANT
 
 # The multi-row sliding prefill block: the native/exact route's own geometry once
@@ -234,7 +236,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             layer=DECODE_ATTENTION_LAYER, scope=DECODE_ATTENTION_SCOPE,
-            selected_variant=DECODE_ATTENTION_STAGED,
+            selected_variant=DECODE_ATTENTION_FLASH,
             strict_fallback_variant=DECODE_ATTENTION_PLAIN,
             registry_quant=DECODE_ATTENTION_QUANT,
         ),
@@ -401,6 +403,8 @@ def _register_decode_attention_variants() -> None:
     """
 
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        DECODE_ATTENTION_FLASH,
+        gemma4_attention_decode_flash_bf16,
         gemma4_attention_prefill_bf16,
     )
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
@@ -411,6 +415,7 @@ def _register_decode_attention_variants() -> None:
     for variant, fn in (
         (DECODE_ATTENTION_PLAIN, gemma4_attention_prefill_bf16),
         (DECODE_ATTENTION_STAGED, gemma4_attention_staged_bf16),
+        (DECODE_ATTENTION_FLASH, gemma4_attention_decode_flash_bf16),
     ):
         key = KernelKey(
             GEMMA4_GGUF_BACKEND, DECODE_ATTENTION_LAYER, DECODE_ATTENTION_QUANT, variant

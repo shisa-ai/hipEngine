@@ -1664,7 +1664,12 @@ __global__ void gemma4_attention_decode_flash_kernel(
       const gemma4_pair2<scalar_t> v_cur = pipe[0];
       pipe[0] = pipe[1];
       pipe[1] = pipe[2];
-      const int64_t jn = jj + 2;
+      // The stage this refills is kStages rows ahead of the one consumed, not
+      // two: with a three-deep pipe the shift above leaves pipe[2] holding
+      // V[jj+2], so the lookahead is jj + 3. Loading jj + 2 here refilled
+      // pipe[2] with the row already sitting in pipe[1], and from jj == 3 on
+      // every V row was accumulated against the previous row's weight.
+      const int64_t jn = jj + 3;
       pipe[2] = jn < slice_keys
           ? gemma4_load_v<2>(v_base + jn * v_stride + d0)
           : kZeroPair;
@@ -1767,6 +1772,40 @@ __global__ void gemma4_attention_decode_flash_combine_kernel(
   }
 }
 
+// The flash route's admission, in one place. The launcher refuses a shape the
+// LDS budget cannot hold and the two exported queries below report the same
+// answer to Python, which decides a route and sizes a workspace from it: a
+// second copy of this expression would drift into memory corruption rather
+// than a slow path. ``kFlashLdsBudgetBytes`` is the shared-memory budget every
+// other 256/512-lane route in this file uses.
+constexpr int64_t kFlashLdsBudgetBytes = 64 * 1024;
+
+// The two packings the kernels are instantiated for, as query heads per KV
+// head, or 0 when the shape has no flash instantiation.
+__host__ inline int64_t gemma4_flash_packing_kq(
+    int64_t head_dim, int64_t num_heads, int64_t num_kv_heads) {
+  if (num_heads <= 0 || num_kv_heads <= 0 || num_heads % num_kv_heads != 0) {
+    return 0;
+  }
+  const int64_t kq = num_heads / num_kv_heads;
+  return ((head_dim == 256 && kq == 2) || (head_dim == 512 && kq == 8)) ? kq : 0;
+}
+
+// Per-block shared floats that do not depend on the slice count: the warp-max
+// slots and the staged query row.
+__host__ inline int64_t gemma4_flash_fixed_floats(int64_t kq, int64_t head_dim) {
+  return kq * kFlashWarps + kq * head_dim;
+}
+
+// Shared bytes the flash decode kernel reserves for this launch. One FP32
+// logit per key of the slice per query head, plus the fixed term above.
+__host__ inline int64_t gemma4_flash_lds_bytes(
+    int64_t kq, int64_t head_dim, int64_t keys, int64_t slices) {
+  const int64_t slice_max = (keys + slices - 1) / slices;
+  return (gemma4_flash_fixed_floats(kq, head_dim) + kq * slice_max) *
+      static_cast<int64_t>(sizeof(float));
+}
+
 // Flash launcher: KV slices over one q-pair, then the combine. Returns -1
 // when the shape is outside what this template implements, so the caller
 // falls through to the incumbent chain with the same workspace (the Python
@@ -1792,16 +1831,13 @@ int gemma4_decode_flash_launch_impl(
       head_dim != kHalves * 256) {
     return -1;
   }
-  const int64_t slice_max = (keys + slices - 1) / slices;
-  const size_t shared_bytes =
-      static_cast<size_t>(
-          kQ * kFlashWarps + kQ * head_dim + kQ * slice_max) *
-      sizeof(float);
-  if (shared_bytes > 64 * 1024) {
+  if (gemma4_flash_lds_bytes(kQ, head_dim, keys, slices) > kFlashLdsBudgetBytes) {
     return -1;
   }
   const unsigned int grid =
       static_cast<unsigned int>(tokens * num_kv_heads * slices);
+  const size_t shared_bytes =
+      static_cast<size_t>(gemma4_flash_lds_bytes(kQ, head_dim, keys, slices));
   gemma4_attention_decode_flash_kernel<scalar_t, kQ, kHalves>
       <<<dim3(grid), dim3(kFlashThreads), shared_bytes, stream>>>(
           query, key, value, keep_mask, workspace, num_heads, num_kv_heads,
@@ -1875,6 +1911,25 @@ int launch_gemma4_attention_decode(
   if (num_heads % num_kv_heads != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  int effective_slices = split_slices;
+  if (split_slices < 0 && split_workspace != nullptr) {
+    // The flash request is tried first, whatever the row length. Python admits
+    // the shape and this launcher re-checks it; the request is the caller's
+    // decision, so it is honoured before the resident bound below -- that bound
+    // describes the class kernel's owned global logits, which the flash kernel
+    // does not use. Any rejection falls through to the incumbent chain on the
+    // same workspace, which the caller sized as max(split, flash), so a long
+    // row that the slice geometry cannot serve lands on the class kernel
+    // exactly as it did before.
+    const int flash_rc = gemma4_decode_flash_launch<scalar_t>(
+        query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim,
+        scale, tokens, keys, stream, split_workspace, -split_slices);
+    if (flash_rc >= 0) {
+      gemma4_decode_selection() = 3;  // flash-decoding
+      return flash_rc;
+    }
+    effective_slices = -split_slices;
+  }
   // Long rows use the strict class arithmetic with global logits, not an
   // oversized LDS launch or a changed softmax. Match Python's resident bound
   // so multi-row prefill uses the same owned-workspace route.
@@ -1888,21 +1943,6 @@ int launch_gemma4_attention_decode(
               num_heads, num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace);
     gemma4_decode_selection() = 4;
     return rc;
-  }
-  int effective_slices = split_slices;
-  if (split_slices < 0 && split_workspace != nullptr) {
-    // Flash request: Python's admission already checked the capability
-    // (head_dim 256, GQA ratio 2, decode token). Any rejection here falls
-    // through to the incumbent chain on the same workspace, which the
-    // caller sized as max(split, flash).
-    const int flash_rc = gemma4_decode_flash_launch<scalar_t>(
-        query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim,
-        scale, tokens, keys, stream, split_workspace, -split_slices);
-    if (flash_rc >= 0) {
-      gemma4_decode_selection() = 3;  // flash-decoding
-      return flash_rc;
-    }
-    effective_slices = -split_slices;
   }
   int threads_i = 1;
   while (threads_i < head_dim && threads_i < kGemma4AttentionMaxThreads) {
@@ -2112,6 +2152,56 @@ extern "C" size_t hipengine_gemma4_decode_flash_workspace_bytes(
   return static_cast<size_t>(tokens) * static_cast<size_t>(num_heads) *
          static_cast<size_t>(slices) * (2 + static_cast<size_t>(head_dim)) *
          sizeof(float);
+}
+
+// Whether the flash route can serve a shape, asked of the launcher's own
+// admission instead of re-derived by the caller. A long global row has to fall
+// back to the chain that served it before -- the staged singleton -- and not to
+// the owned-scratch class kernel, which is slower than both at long context; so
+// the fallback decision needs exactly the test the launch makes, and the two
+// must not drift. Both call the one admission above.
+extern "C" int hipengine_gemma4_decode_flash_admits(
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t keys,
+    int slices) {
+  if (tokens < 1 || slices < 2 || slices > keys) {
+    return 0;
+  }
+  const int64_t kq = gemma4_flash_packing_kq(head_dim, num_heads, num_kv_heads);
+  if (kq == 0) {
+    return 0;
+  }
+  return gemma4_flash_lds_bytes(kq, head_dim, keys, slices) <= kFlashLdsBudgetBytes
+      ? 1 : 0;
+}
+
+// The smallest slice count whose per-block LDS logits fit the budget, for a
+// caller that has to fit a shape the default policy's cap does not cover. Zero
+// means no slice count serves the shape at all.
+extern "C" int64_t hipengine_gemma4_decode_flash_min_slices(
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t keys) {
+  if (keys < 1) {
+    return 0;
+  }
+  const int64_t kq = gemma4_flash_packing_kq(head_dim, num_heads, num_kv_heads);
+  if (kq == 0) {
+    return 0;
+  }
+  // Invert the LDS expression above: the largest per-slice key count that fits.
+  const int64_t fixed = gemma4_flash_fixed_floats(kq, head_dim);
+  const int64_t per_slice_budget =
+      (kFlashLdsBudgetBytes / static_cast<int64_t>(sizeof(float)) - fixed) / kq;
+  if (per_slice_budget < 1) {
+    return 0;
+  }
+  const int64_t needed = (keys + per_slice_budget - 1) / per_slice_budget;
+  return needed < 2 ? 2 : needed;
 }
 
 extern "C" int hipengine_gemma4_attention_decode_bf16(

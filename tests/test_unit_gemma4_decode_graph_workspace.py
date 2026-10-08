@@ -40,6 +40,20 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
     monkeypatch.setattr(attention, "build_gemma4_attention", lambda **kwargs: object())
     monkeypatch.setattr(attention, "split_workspace_bytes", lambda t, h, d, k, s, **kw: t * h * k * 4)
     monkeypatch.setattr(attention, "flash_workspace_bytes", lambda t, h, d, s, **kw: t * h * d * s * 4)
+    # The reservation must ask the launcher's own count rather than re-derive
+    # one: the global packing's count is not the occupancy target, and a
+    # capture that reserved the smaller one would have the launch allocate
+    # inside the capture. A sentinel that no key count maps to makes the
+    # difference observable.
+    requested_slices = 7
+    flash_requests: list[int] = []
+
+    def request_slices(**kwargs):
+        flash_requests.append(kwargs["keys"])
+        return requested_slices
+
+    monkeypatch.setattr(attention, "flash_request_slices", request_slices)
+    flash_needs: list[int] = []
     monkeypatch.setattr(graph, "get_hip_runtime", lambda: runtime)
     owner = attention.Gemma4AttentionScratch()
     warmed = owner.buffer(128, stream=0, runtime=runtime)
@@ -59,24 +73,40 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
         assert capturing
         for geometry in geometries:
             keys = bucket.end - session._frozen_key_begin(geometry, bucket)
+            need = 0
             if variant == "gemma4_staged":
                 need = staged_workspace_bytes(1, geometry.num_heads, keys)
-            else:
-                global_scores = attention._resident_attention_shared_bytes(
-                    head_dim=geometry.head_dim, keys=keys) > 65536
-                slices = 1 if global_scores else attention.decode_slices(keys, geometry.head_dim)
-                if not global_scores and slices == 1:
-                    continue
-                need = geometry.num_heads * keys * 4
-                if not global_scores and attention.flash_admits(
+            # The incumbent sizing, mirroring the reservation's own expression:
+            # the split weights plus, when the admission can pick flash, the
+            # flash partials at the launcher's count. A staged capture falls
+            # through to it as well, because the launch it records still goes
+            # through the same native call site.
+            slices = attention.decode_slices(keys, geometry.head_dim)
+            if slices > 1:
+                need = max(need, geometry.num_heads * keys * 4)
+                if attention.flash_admits(
                     tokens=1, head_dim=geometry.head_dim, num_heads=geometry.num_heads,
                     num_kv_heads=geometry.num_kv_heads):
-                    need = max(need, geometry.num_heads * geometry.head_dim * attention.flash_slices(keys) * 4)
-            owner.buffer(need, stream=kwargs["stream"], runtime=runtime)
+                    count = attention.flash_request_slices(
+                        keys=keys, num_heads=geometry.num_heads,
+                        num_kv_heads=geometry.num_kv_heads,
+                        head_dim=geometry.head_dim)
+                    if count:
+                        flash_needs.append(geometry.num_heads * geometry.head_dim * count * 4)
+                        need = max(need, flash_needs[-1])
+            if need:
+                owner.buffer(need, stream=kwargs["stream"], runtime=runtime)
 
     runner._launch_block = launch
     session._capture(bucket, {}, {}, ("test",), token=1)
     assert session._captures == 1
     assert owner._current[0] is warmed
+    if position > 1024:
+        # The route the capture can pick is the launcher's own count, so the
+        # reservation is at least the partials that count needs -- and asking
+        # the shared helper is what makes the two agree.
+        assert flash_requests, "the capture did not ask for the launcher's slice count"
+        assert requested_slices not in (attention.flash_slices(k) for k in flash_requests)
+        assert owner._current[7].nbytes >= max(flash_needs)
     if variant == "gemma4_staged" or position > 1024:
         assert owner._current[7] is not warmed

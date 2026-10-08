@@ -28,11 +28,15 @@ gone. Removal should be its own unit, separate from the fusion that stranded it.
 
 ## Gemma 4 WMMA attention candidates are explicit evaluation paths (updated 2026-10-03)
 
-Production requests `gemma4_staged` for sliding head_dim 256 and full head_dim
-512 attention; strict requests `gemma4_plain`. Staged attention preserves the
+Production requests `gemma4_staged` for the sliding multi-row prefill and
+`gemma4_flash` for the one-token global decode past the resident-logit bound;
+strict requests `gemma4_plain` for both scopes. Staged attention preserves the
 strict score tree, 256-lane softmax denominator, and ascending-key FP32 P*V
-chain, with scores in global workspace and bounded LDS. The profile is the
-rollback lever: `HIPENGINE_EXECUTION_PROFILE=strict` selects plain attention.
+chain, with scores in global workspace and bounded LDS. Flash decode reassociates
+across key slices, so it is a production variant rather than the strict chain:
+`gemma4_staged` stays registered under the decode scope's key as the rollback
+lever. The profile is the rollback lever for both: `HIPENGINE_EXECUTION_PROFILE=strict`
+selects plain attention.
 
 `gemma4_wmma_flash` and `gemma4_wmma_flash_full` remain registered for explicit
 evaluation. They are not production defaults: the multicategory teacher-chain
@@ -54,6 +58,27 @@ branches once their remaining arithmetic-evaluation work is closed. Preserve
 strict plain attention as the registered fallback and parity oracle. Do not
 remove the execution-profile selection itself; it is a product API, not a
 candidate-only flag.
+
+## Gemma flash decode keeps a fallback the current scope cannot reach (found 2026-10-08)
+
+`gemma4_attention_decode_flash_bf16` asks the launcher's own admission before it
+requests the flash route, and delegates to the staged singleton when that
+admission rejects the shape. The delegate is the chain the decode scope used
+before flash, and the launcher's own fallback -- the owned-scratch class kernel
+-- is far slower at long context: measured 2026-10-08 at a 128K prefix, a
+global row that left the flash route took **225.3 ms** per decode step against
+the staged singleton's **73.4 ms** on the same teacher token and KV prefix
+(`/tmp/gemma4-pv/flashvar-decode-attrib.json`, `baseline-decode-attrib.json`,
+both at `308c4c38c`). Nothing the selector admits currently reaches the
+fallback: for the scope (one token, head_dim 512, GQA ratio 8, past the
+15,616-key resident bound) the fitted slice count always exists and is always
+admitted, which the fitting unit tests pin.
+
+Removal condition: move the admission into the selector that chooses the variant
+-- so a shape flash cannot serve resolves to `gemma4_staged` there -- and drop
+the wrapper's own check. That needs the selector to answer with the kernel's
+fitted slice count, which is a device-library call on the route-decision path;
+until that is measured, keep the wrapper's check as the single authority.
 
 ## Plain Gemma attention needs raw-coordinate boundary validation (found 2026-10-03)
 

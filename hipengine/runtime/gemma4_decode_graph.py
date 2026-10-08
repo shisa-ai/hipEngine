@@ -452,11 +452,12 @@ class Gemma4DecodeGraphSession:
         # Split sizes are not monotonic in the key count, and staged attention
         # needs global scores even below the split threshold.
         from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+            DECODE_ATTENTION_FLASH,
             PREFILL_ATTENTION_STAGED,
             build_gemma4_attention,
             decode_slices,
             flash_admits,
-            flash_slices,
+            flash_request_slices,
             flash_workspace_bytes,
             select_prefill_attention,
             split_workspace_bytes,
@@ -497,10 +498,12 @@ class Gemma4DecodeGraphSession:
                 if not selected.is_strict:
                     continue
             # A production decode preference can route this exact shape to the
-            # staged singleton at the layer's native/exact attention call site;
-            # that candidate needs its own global scores, which the split
-            # reservation below does not cover. Ask the layer's own selector so
-            # the reservation matches the launch the capture records.
+            # staged singleton or to key-sliced flash at the layer's
+            # native/exact attention call site; the first needs its own global
+            # scores, which the split reservation below does not cover, and the
+            # second needs the staged library loaded because that is where it
+            # falls back. Ask the layer's own selector so the reservation
+            # matches the launch the capture records.
             if getattr(runner, "decode_attention_variants", None) is not None:
                 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
                     _EXACT_DECODE_STAGED,
@@ -518,7 +521,12 @@ class Gemma4DecodeGraphSession:
                     sliding_window=attention.sliding_window,
                     key_begin=key_begin,
                 )
-                if decode_route == _EXACT_DECODE_STAGED:
+                if decode_route in (_EXACT_DECODE_STAGED, DECODE_ATTENTION_FLASH):
+                    # Both routes can reach the staged singleton: the staged
+                    # variant is it, and the flash variant falls back to it
+                    # when its own admission rejects a shape. A cold staged
+                    # library cannot be loaded once the stream is recording, so
+                    # it is loaded here for either.
                     if not staged_loaded:
                         build_gemma4_attention_staged(load=True)
                         staged_loaded = True
@@ -539,23 +547,35 @@ class Gemma4DecodeGraphSession:
                 # The launched route may be flash-decoding (negative slices),
                 # whose partials need more than the split's weights buffer;
                 # size for whichever the admission can pick, exactly as
-                # _launch_prefill does.
+                # _launch_prefill does. The count is the launcher's own
+                # :func:`flash_request_slices`, not the occupancy-target policy
+                # value: for the global packing the two differ, and a capture
+                # that reserved the smaller one would have the launch allocate
+                # its workspace inside the capture.
                 if flash_admits(
                     tokens=1,
                     head_dim=attention.head_dim,
                     num_heads=attention.num_heads,
                     num_kv_heads=attention.num_kv_heads,
                 ):
-                    need = max(
-                        need,
-                        flash_workspace_bytes(
-                            1,
-                            attention.num_heads,
-                            attention.head_dim,
-                            flash_slices(keys),
-                            library=library,
-                        ),
+                    request_slices = flash_request_slices(
+                        keys=keys,
+                        num_heads=attention.num_heads,
+                        num_kv_heads=attention.num_kv_heads,
+                        head_dim=attention.head_dim,
+                        library=library,
                     )
+                    if request_slices:
+                        need = max(
+                            need,
+                            flash_workspace_bytes(
+                                1,
+                                attention.num_heads,
+                                attention.head_dim,
+                                request_slices,
+                                library=library,
+                            ),
+                        )
                 runner._scratches[index].attention.buffer(
                     need, stream=self._stream, runtime=runtime
                 )
