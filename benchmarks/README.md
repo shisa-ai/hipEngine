@@ -15,28 +15,29 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
-## Qwen3.8 Flash Next current production rates (checked full-rows dense Q8 + K320 GR-up defaults)
+## Qwen3.8 Flash Next current production rates (checked dense Q8 + K320 GR-up + tiled16_multi GDN defaults)
 
 On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, production profile,
-BF16 KV, chunk 4096, greedy decode (compact capture), idle-settled host. Two
-exact-class promotions are live: the checked full-rows dense Q8 DPP leaf for
-its qualified dense shapes, and the K320/full-row GR-up DPP leaf for the
-K=320 production shape. Both are bit-identical to their prior defaults (12/12
-canonical digests identical in each qualification), with the previous leaves
-retained as registered fallbacks.
+BF16 KV, chunk 4096, greedy decode (compact capture), idle-settled host. Three
+promotions are live: the checked full-rows dense Q8 DPP leaf (exact), the
+K320/full-row GR-up DPP leaf (exact), and the tiled16_multi GDN prefill for
+its certified suffix window (production-envelope-admitted reassociation at
+fp32 round-off, NMSE 1.8e-14). Registered strict fallbacks retained for all
+three.
 
 | Prompt length | Prefill tok/s | Decode (128) tok/s |
 | ---: | ---: | ---: |
-| 512 | 312.20 | 20.35 |
-| 1024 | 340.47 | 19.64 |
-| 4096 | 345.22 | 16.68 |
+| 512 | 314.83 | 20.39 |
+| 1024 | 342.00 | 19.77 |
+| 4096 | 346.66 | 16.75 |
 
-Prefill improved +5.9/+6.3/+5.4% and total request wall −2.21% over the
+Prefill improved +6.8/+6.8/+5.9% and total request wall −2.66% over the
 2026-10-07 defaults; decode is unchanged within noise. Cross-run comparisons
 on this host require an idle-settled or same-residency protocol for effects
 under 3%.
 [Dense Q8 promotion](results/2026-10-08-qwen4exp-checked-q8-dpp-promotion/README.md)
-· [GR-up K320 qualification](results/2026-10-08-qwen4exp-gr-k320-natural-owner/README.md).
+· [GR-up K320 qualification](results/2026-10-08-qwen4exp-gr-k320-natural-owner/README.md)
+· [GDN tiled16_multi admission](results/2026-10-08-qwen4exp-gdn-multicolumn-admission/README.md).
 
 ## Qwen3.8 Flash Next dense Q8 projection diagnostic
 
