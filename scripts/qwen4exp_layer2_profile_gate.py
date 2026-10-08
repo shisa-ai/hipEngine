@@ -340,6 +340,31 @@ CANDIDATES = {
         dispatch_shape_positions=(6, 7, 8, 9),
         count_registered_dispatch=True,
     ),
+    "t16_down": CandidateSpec(
+        name="t16_down",
+        classification="T1",
+        mechanism=(
+            "the T16 Q5_1 expert-major compensated down route (bit-lossless "
+            "repack decoded in registers, F16 WMMA with compensated F32 "
+            "accumulate, additive m, no repair by construction) replacing the "
+            "production exact grouped down chain for the layers whose tile "
+            "cache is resident"
+        ),
+        environment={
+            "HIPENGINE_QWEN4_EXP_T16_DOWN": "1",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-t16-down",
+        candidate_key=None,
+        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q5_1",
+                      "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"),
+        # The T16 down wrapper is a direct module-attribute call in the runner
+        # branch, so counting patches the attribute the branch calls (the
+        # t16_gate_up pattern).
+        direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
+                                "gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out"),
+        count_registered_dispatch=False,
+    ),
     "mx1_full_route": CandidateSpec(
         name="mx1_full_route",
         classification="T1",
@@ -1112,19 +1137,26 @@ def _make_generator(args: argparse.Namespace, profile: str, quant: str | None = 
 
 
 def _post_construct_hook(generator, args) -> dict:
-    """Candidate-specific post-construction setup (the T16 tile cache).
+    """Candidate-specific post-construction setup (the T16 tile caches).
 
-    The t16_gate_up candidate needs the module tile cache populated after
-    generator construction and before any measured row; the bounded populate
-    fills what fits in the UMA slack and reports the window honestly.
+    The T16 candidates need the module tile cache populated after
+    generator construction and before any measured row; the bounded
+    populate fills what fits in the UMA slack and reports the window
+    honestly. The down-leg populate reads the Q5_1 ffn_down_exps tensors
+    and fills the _T16_DOWN_TILES cache the same way.
     """
 
-    if args.candidate != "t16_gate_up":
-        return {}
-    from scripts.qwen4exp_t16_populate_tiles import populate_t16_gate_up_tiles_bounded
+    if args.candidate == "t16_gate_up":
+        from scripts.qwen4exp_t16_populate_tiles import populate_t16_gate_up_tiles_bounded
 
-    cache = populate_t16_gate_up_tiles_bounded(generator.runner, args.model_root)
-    return {"t16_cache_layers": sorted(cache)}
+        cache = populate_t16_gate_up_tiles_bounded(generator.runner, args.model_root)
+        return {"t16_cache_layers": sorted(cache)}
+    if args.candidate == "t16_down":
+        from scripts.qwen4exp_t16_populate_tiles import populate_t16_down_tiles
+
+        cache = populate_t16_down_tiles(generator.runner, args.model_root)
+        return {"t16_down_cache_layers": sorted(cache)}
+    return {}
 
 
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
