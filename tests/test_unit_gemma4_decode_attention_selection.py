@@ -1,14 +1,16 @@
 """The scoped long-global decode-attention preference, on CPU.
 
-The gfx1100 production profile may route the one-token global decode step to the
-key-sliced flash-decoding candidate. The strict native/exact kernel holds one
-FP32 logit per live key in shared memory and, past 15,616 keys at ``head_dim``
-512, keeps the same arithmetic on owned global scratch (its ``global_class``
-variant); the flash candidate reassociates across key slices in bounded shared
-memory, so it is a production variant rather than the exact chain, and the
-staged singleton it replaced stays registered as the rollback lever. The route
-change is not a changed result: the two agree on the sampled token at 32K, 64K,
-and 128K, with a margin wider than the difference at the deciding logits.
+The gfx1100 production profile keeps the staged singleton for the one-token
+global decode step. The strict native/exact kernel holds one FP32 logit per live
+key in shared memory and, past 15,616 keys at ``head_dim`` 512, keeps the same
+arithmetic on owned global scratch (its ``global_class`` variant); the staged
+candidate reproduces that arithmetic in bounded shared memory and is bit-exact
+with it. A key-sliced flash candidate is registered for the same scope and is
+**not** selected: it reassociates across key slices, and the teacher-forced
+gate measured that divergence above the production envelope (mean KL 1.11e-2
+against 1e-3, max 1.61 against 5e-2, 7 top-1 flips in 527 rows), so the
+selection stays on the exact chain. Its registration is pinned here anyway,
+because the route has to stay reachable and its fallback has to keep working.
 
 The scope is resolved through the kernel registry, so the registration is
 executable: the layer runs whatever callable the ``decode_attention`` key holds,
@@ -31,7 +33,7 @@ including the registered strict fallback. Six separate contracts are pinned:
   the occupancy target, and the default cap alone is rejected from 64K up.
 * **The registry.** A replaced decode-attention callable is what the layer runs;
   the strict fallback is the registered one too.
-* **The profile and the phase.** ``production`` selects the candidate and
+* **The profile and the phase.** ``production`` selects the staged candidate and
   ``strict`` keeps the native kernel, and the runner forwards the preference
   only for a genuine decode step -- a one-row prefill tail stays native.
 
@@ -432,7 +434,11 @@ def _decode_rows(resolved):
 @pytest.mark.parametrize(
     ("profile", "expected"),
     [
-        (ExecutionProfile.PRODUCTION, DECODE_ATTENTION_FLASH),
+        # The flash candidate is registered but not selected: it failed the
+        # production numerical envelope, so the staged singleton stays the
+        # production decode route. See the selection's own comment for the
+        # measured numbers and the artifact that records them.
+        (ExecutionProfile.PRODUCTION, DECODE_ATTENTION_STAGED),
         (ExecutionProfile.STRICT, DECODE_ATTENTION_PLAIN),
         # batch_invariant is deliberately unregistered: it falls back to strict.
         (ExecutionProfile.BATCH_INVARIANT, DECODE_ATTENTION_PLAIN),
@@ -459,7 +465,7 @@ def test_the_binder_binds_the_selected_decode_variant(
     # started with instead of leaking the strict route into later tests.
     monkeypatch.setenv(MOE_PREFILL_ENV, "auto")
     for profile, expected in (
-        (ExecutionProfile.PRODUCTION, (DECODE_ATTENTION_FLASH,)),
+        (ExecutionProfile.PRODUCTION, (DECODE_ATTENTION_STAGED,)),
         (ExecutionProfile.STRICT, (DECODE_ATTENTION_PLAIN,)),
         (ExecutionProfile.BATCH_INVARIANT, (DECODE_ATTENTION_PLAIN,)),
     ):
@@ -896,7 +902,7 @@ def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int, *, va
         # keys == 15680: past the resident bound, so the staged candidate runs and
         # its cold library must be loaded before capture.
         (15679, DECODE_ATTENTION_STAGED, True),
-        # The flash route is the production selection for the same shape. It
+        # The flash candidate reaches the same shape when a plan selects it. It
         # does not use the staged workspace, but it can fall back to the staged
         # singleton, so its library is still loaded before capture.
         (15679, DECODE_ATTENTION_FLASH, True),
