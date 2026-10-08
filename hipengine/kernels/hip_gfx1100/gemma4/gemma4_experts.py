@@ -818,7 +818,23 @@ def gemma4_experts_forward_bf16(
                 hidden_size,
                 **kwargs,
             )
-    elif down_wmma and wmma_rows and gemma4_project_experts_wmma(
+    elif down_wmma and wmma_rows and (
+        (not compensated and _gemma4_project_experts_down_wmma_t16(
+            down_proj,
+            activated.ptr,
+            expert_start.ptr,
+            scratch.buffer("wmma_expert_start").ptr,
+            scratch.buffer("wmma_tile_expert").ptr,
+            expert_out.ptr,
+            lanes,
+            num_experts,
+            intermediate,
+            hidden_size,
+            wmma_rows,
+            stream=stream,
+            runtime=runtime,
+        ))
+        or gemma4_project_experts_wmma(
         down_proj,
         activated.ptr,
         expert_start.ptr,
@@ -833,6 +849,7 @@ def gemma4_experts_forward_bf16(
         compensated=compensated,
         stream=stream,
         runtime=runtime,
+    )
     ):
         pass
     elif use_mmq and gemma4_project_experts_mmq(
@@ -2565,6 +2582,90 @@ def _gemma4_project_experts_gate_up_wmma_t16(
         library=library,
         **kwargs,
     )
+    return True
+
+
+def _gemma4_down_t16_tiles_ready(weight: object) -> bool:
+    """Whether ``weight`` carries the Q5_1T16 down tile allocation."""
+
+    allocations = getattr(weight, "allocations", None)
+    if not isinstance(allocations, Mapping):
+        return False
+    return "t16_down" in allocations
+
+
+def _gemma4_project_experts_down_wmma_t16(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    expert_start_ptr: int,
+    wmma_starts_ptr: int,
+    tile_expert_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    runtime: object | None = None,
+) -> bool:
+    """Run the Q5_1 expert down projection through the Q5_1T16 tile layout.
+
+    The raw-block grouped WMMA down kernel decodes every weight fragment from
+    sixteen scalar global byte loads; the tile layout pre-combines each
+    value's low nibble and high bit into one byte and stages the current K
+    block's 32-byte per-column runs in LDS, so a fragment decode reads four
+    uint32 words from shared memory instead. The decoded weights, the
+    accumulation order, and the output are bit-identical to the raw-block
+    kernel; the tiles are produced once at materialize time and the raw blocks
+    stay resident for the selected GEMV decode path. Measured at the Gemma 4
+    26B-A4B expert geometry the leaf is 1.64x the raw-block WMMA kernel.
+
+    Returns ``False`` when the weight does not carry the tile allocation or
+    its geometry is outside the leaf's contract; the caller falls through to
+    the raw-block WMMA owner.
+    """
+
+    import os
+
+    quant_key = getattr(getattr(weight, "spec", None), "quant_key", None)
+    if quant_key != "gguf_q5_1":
+        return False
+    if os.environ.get("HIPENGINE_GEMMA4_Q5_1_DOWN_T16", "1") in {"", "0", "false", "False"}:
+        return False
+    if in_features % 32 or out_features % 16:
+        return False
+    if not _gemma4_down_t16_tiles_ready(weight):
+        return False
+    if isinstance(weight, int):
+        return False
+
+    from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+        build_qwen4_exp_q5_1,
+        qwen4_exp_q5_1_t16_selected_grouped_prefill_bf16_bf16_out as wmma_down_t16,
+    )
+
+    library = build_qwen4_exp_q5_1(load=True)
+    kwargs = {"stream": stream}
+    if runtime is not None:
+        kwargs["runtime"] = runtime
+    wmma_down_t16(
+        x_ptr,
+        expert_start_ptr,
+        wmma_starts_ptr,
+        tile_expert_ptr,
+        weight.allocation("t16_down").buffer.ptr,
+        out_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        wmma_total_rows,
+        library=library,
+        **kwargs,
+    )
+    _record_moe_route("down_t16")
     return True
 
 
