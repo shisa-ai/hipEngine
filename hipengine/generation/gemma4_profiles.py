@@ -236,7 +236,16 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             layer=DECODE_ATTENTION_LAYER, scope=DECODE_ATTENTION_SCOPE,
-            selected_variant=DECODE_ATTENTION_FLASH,
+            # Not ``gemma4_flash``: the key-sliced candidate was measured against
+            # the production numerical envelope and rejected -- over the 527
+            # teacher-forced rows at keys 15,857-16,383 it reads mean KL 1.11e-2
+            # against a 1e-3 limit, p99 3.35e-1 against 2e-2, max 1.61 against
+            # 5e-2, and 7 top-1 flips (1.3% against a 1% budget), three of them
+            # on rows whose baseline margin is above 0.20. The variant stays
+            # registered so the route is reachable by explicit request; the
+            # selection clears when it passes that gate.
+            # ``benchmarks/results/2026-10-08-gemma4-teacher-forced-gate-flash-global-decode.json``
+            selected_variant=DECODE_ATTENTION_STAGED,
             strict_fallback_variant=DECODE_ATTENTION_PLAIN,
             registry_quant=DECODE_ATTENTION_QUANT,
         ),
