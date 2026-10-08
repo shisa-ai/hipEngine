@@ -1,0 +1,56 @@
+{
+  "kind": "qwen4exp_de11_paired_decode_session",
+  "session_dir": "/home/lhl/hipEngine/benchmarks/results/2026-10-08-qwen4exp-de11-head-refresh",
+  "identity": {
+    "host": "55ea6c509d0b49eea8de7094a1023668",
+    "source_head": "6243efce279e19c9c4cc9d926170a01c9ea3af03",
+    "profile_manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+    "decode_transitions": 128,
+    "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "requested_profile": "production",
+    "capture_mode": "full",
+    "prefill_chunk_size": 1024,
+    "ple_cache_mode": "warm",
+    "prefill_kwargs": {},
+    "step_kwargs": {}
+  },
+  "cases": {
+    "code-p4096": {
+      "wall_ms_per_step_median": 56.38448191015625,
+      "wall_ms_per_step_runs": [
+        56.386634921875,
+        56.3823288984375
+      ],
+      "kernel_ms_per_step_median": 45.0245350078125,
+      "kernel_ms_per_step_runs": [
+        45.0128621171875,
+        45.0362078984375
+      ],
+      "remainder_ms_per_step": 11.35994690234375,
+      "kernel_share": 0.7985270677764702,
+      "launches_per_step": [
+        1815.0,
+        1815.0
+      ]
+    },
+    "code-p512": {
+      "wall_ms_per_step_median": 47.7770491796875,
+      "wall_ms_per_step_runs": [
+        47.787580328125,
+        47.76651803125
+      ],
+      "kernel_ms_per_step_median": 44.27945948046875,
+      "kernel_ms_per_step_runs": [
+        44.278409375,
+        44.2805095859375
+      ],
+      "remainder_ms_per_step": 3.49758969921875,
+      "kernel_share": 0.926793517823496,
+      "launches_per_step": [
+        1740.0,
+        1740.0
+      ]
+    }
+  }
+}
