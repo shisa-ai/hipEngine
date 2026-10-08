@@ -77,6 +77,20 @@ constexpr int Q6_T16_QL_OFFSET = Q6_T16_SCALE_OFFSET + Q6_GROUPS16 * T16_COLS;
 constexpr int Q6_T16_QH_OFFSET = Q6_T16_QL_OFFSET + QK_K * (T16_COLS / 2);
 constexpr int Q6_T16_BLOCK_BYTES = Q6_T16_QH_OFFSET + QK_K * (T16_COLS / 4);
 
+// ---- Q5_1 T16 layout (matches hipengine/quant/gguf_t16.py) -------------
+// One Q5_1 block is 24 bytes for 32 values: d (f16), m (f16), qh (uint32)
+// and ql (16 nibble bytes). The tile stages 16 output columns per block:
+// d pairs, m pairs, the per-column ql planes (16B each) and the per-column
+// qh words. Value = d * (ql | (qh_bit << 4)) + m (additive m, unlike the
+// Q5_K scale/min subtraction form).
+constexpr int Q5_1_T16_D_OFFSET = 0;
+constexpr int Q5_1_T16_DMIN_OFFSET = Q5_1_T16_D_OFFSET + T16_COLS * 2;
+constexpr int Q5_1_T16_QL_OFFSET = Q5_1_T16_DMIN_OFFSET + T16_COLS * 2;
+constexpr int Q5_1_T16_QH_OFFSET = Q5_1_T16_QL_OFFSET + T16_COLS * 16;
+constexpr int Q5_1_T16_BLOCK_BYTES = Q5_1_T16_QH_OFFSET + T16_COLS * 4;
+constexpr int Q5_1_BLOCK_VALUES = 32;
+constexpr int Q5_1_K_TILES_PER_BLOCK = Q5_1_BLOCK_VALUES / K_TILE;  // == 2
+
 // ---- scalar conversion helpers (identical to gguf_q4_k_t16_selected_prefill.hip) ----
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
@@ -190,9 +204,26 @@ __host__ __device__ constexpr int qtype_block_bytes() {
     return Q4_T16_BLOCK_BYTES;
   } else if constexpr (qtype == 5) {
     return qmicro ? Q5_QMICRO_T16_BLOCK_BYTES : Q5_T16_BLOCK_BYTES;
+  } else if constexpr (qtype == 7) {
+    return Q5_1_T16_BLOCK_BYTES;
   } else {
     return Q6_T16_BLOCK_BYTES;
   }
+}
+
+// Q5_1 T16 dequant: ``col`` is the column inside the 16-col tile slab. The
+// GGUF Q5_1 ``qs`` bytes follow the ggml lows-then-highs convention: value j
+// (j < 16) is the low nibble of byte j and value j+16 is the high nibble of
+// the same byte; the qh bit is per-value (bit j of the per-column uint32).
+__device__ inline uint8_t q5_1_t16_quant(
+    const uint8_t* __restrict__ tile,
+    int lane32,
+    int col) {
+  const uint8_t packed = tile[Q5_1_T16_QL_OFFSET + col * 16 + (lane32 & 15)];
+  const uint8_t ql = (lane32 < 16) ? (packed & 0x0Fu) : (packed >> 4);
+  uint32_t qh_word;
+  __builtin_memcpy(&qh_word, tile + Q5_1_T16_QH_OFFSET + col * 4, 4);
+  return static_cast<uint8_t>(ql | (((qh_word >> lane32) & 1u) << 4));
 }
 
 __device__ inline const uint8_t* k_t16_tile_ptr(
@@ -2056,7 +2087,7 @@ __global__ void gguf_k_t16_selected_expert_major_wmma_comp_kernel(
     int64_t in_features,
     int64_t out_features,
     int64_t num_experts) {
-  static_assert(qtype == 4 || qtype == 6, "expert-major path supports Q4 or Q6");
+  static_assert(qtype == 4 || qtype == 6 || qtype == 7, "expert-major path supports Q4, Q6 or Q5_1");
   const int64_t out_tiles = out_features / T16_COLS;
   const int64_t active_idx = static_cast<int64_t>(blockIdx.x) / out_tiles;
   const int64_t col_tile = static_cast<int64_t>(blockIdx.x) - active_idx * out_tiles;
@@ -2073,7 +2104,8 @@ __global__ void gguf_k_t16_selected_expert_major_wmma_comp_kernel(
   const int half_id = threadIdx.x >> 4;
   const int64_t out_col = col_tile * T16_COLS + lane16;
   const int col_in_slab = lane16;
-  const int64_t blocks_per_row = in_features / QK_K;
+  constexpr int q_block_values = (qtype == 7) ? Q5_1_BLOCK_VALUES : QK_K;
+  const int64_t blocks_per_row = in_features / q_block_values;
   constexpr int tile_bytes = qtype_block_bytes<qtype>();
 
   for (int64_t row_base = begin; row_base < end; row_base += 16) {
@@ -2086,7 +2118,7 @@ __global__ void gguf_k_t16_selected_expert_major_wmma_comp_kernel(
     for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
       const uint8_t* __restrict__ tile = k_t16_tile_ptr(
           tiles, expert_id, col_tile, blk, out_tiles, blocks_per_row, tile_bytes);
-      const int64_t g_k_base = blk * QK_K;
+      const int64_t g_k_base = blk * static_cast<int64_t>(q_block_values);
 
       if constexpr (qtype == 4) {
         const float d_f = fp16_bytes_to_float(
@@ -2117,7 +2149,7 @@ __global__ void gguf_k_t16_selected_expert_major_wmma_comp_kernel(
                 a_reg, b_reg, &sum, &compensation);
           }
         }
-      } else {
+      } else if constexpr (qtype == 6) {
         const float d_f = fp16_bytes_to_float(
             tile + Q6_T16_D_OFFSET + col_in_slab * 2);
         const int8_t* __restrict__ scales =
@@ -2136,6 +2168,28 @@ __global__ void gguf_k_t16_selected_expert_major_wmma_comp_kernel(
             const int q = q6_t16_quant(tile, k_off + kk, col_in_slab);
             b_reg[kk] = static_cast<half_t>(
                 scale_f * static_cast<float>(q));
+          }
+          compensated_wmma_accumulate(
+              a_reg, b_reg, &sum, &compensation);
+        }
+      } else if constexpr (qtype == 7) {
+        // Q5_1: d and m are plain f16 pairs; value = d * q + m (additive).
+        const float d_f = fp16_bytes_to_float(
+            tile + Q5_1_T16_D_OFFSET + col_in_slab * 2);
+        const float m_f = fp16_bytes_to_float(
+            tile + Q5_1_T16_DMIN_OFFSET + col_in_slab * 2);
+#pragma unroll
+        for (int kt = 0; kt < Q5_1_K_TILES_PER_BLOCK; ++kt) {
+          const int k_off = kt * K_TILE;
+          const half16_t a_reg = load_compact_row_half16<scalar_t>(
+              x, compact_row, in_features, g_k_base + k_off, valid_row);
+          half16_t b_reg;
+#pragma unroll
+          for (int kk = 0; kk < 16; ++kk) {
+            const int lane32 = k_off + kk;
+            const uint8_t q = q5_1_t16_quant(tile, lane32, col_in_slab);
+            b_reg[kk] = static_cast<half_t>(
+                d_f * static_cast<float>(q) + m_f);
           }
           compensated_wmma_accumulate(
               a_reg, b_reg, &sum, &compensation);
@@ -2167,10 +2221,11 @@ int launch_k_t16_selected_expert_major_comp(
     int64_t out_features,
     int64_t num_experts,
     hipStream_t stream) {
+  constexpr int q_block_values = (qtype == 7) ? Q5_1_BLOCK_VALUES : QK_K;
   if (x == nullptr || expert_start_compact == nullptr ||
       active_experts == nullptr || active_count == nullptr || tiles == nullptr ||
       out == nullptr || compact_rows <= 0 || in_features <= 0 ||
-      (in_features % QK_K) != 0 || out_features <= 0 ||
+      (in_features % q_block_values) != 0 || out_features <= 0 ||
       (out_features % T16_COLS) != 0 || num_experts <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -3441,3 +3496,4 @@ extern "C" int hipengine_##NAME##_selected_expert_major_wmma_comp_bf16_bf16_out(
 
 HIPENGINE_GGUF_K_T16_EXPERT_MAJOR_COMP_EXPORT(gguf_q4_k_t16, 4)
 HIPENGINE_GGUF_K_T16_EXPERT_MAJOR_COMP_EXPORT(gguf_q6_k_t16, 6)
+HIPENGINE_GGUF_K_T16_EXPERT_MAJOR_COMP_EXPORT(gguf_q5_1_t16, 7)

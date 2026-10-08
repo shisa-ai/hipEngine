@@ -186,6 +186,7 @@ _Q5_DENSE_WMMA_LOWVGPR48_BF16 = (
 _EXPERT_MAJOR_COMP_SYMBOLS = {
     "gguf_q4_k_t16": "hipengine_gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q6_k_t16": "hipengine_gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
+    "gguf_q5_1_t16": "hipengine_gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
 }
 
 
@@ -1686,6 +1687,9 @@ gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out = (
 )
 gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out = (
     _make_expert_major_comp_wrapper("gguf_q6_k_t16")
+)
+gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out = (
+    _make_expert_major_comp_wrapper("gguf_q5_1_t16")
 )
 
 
