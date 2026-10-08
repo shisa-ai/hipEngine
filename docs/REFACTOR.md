@@ -8794,3 +8794,59 @@ cache-key term) once the checked sibling has held the default through a full
 campaign cycle without a rollback, or when the plain DPP leaf it narrows is
 itself retired; keep the `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` family flag
 until then.
+
+## The T16 down route flag
+
+`HIPENGINE_QWEN4_EXP_T16_DOWN` (default off) is the env gate for the T16
+Q5_1 expert-major compensated down route — the down-leg candidate built and
+gated on 2026-10-09 (ledger row T16-DOWN; engine A/B +9.46% aggregate
+prefill, 12/12 positive; layer2 gate rejected only on the prefill_last
+mean-KL floor at 1.53x with top-1 18/18). The dispatch is tile-cache-keyed
+with a structural fallback to the production down chain on a miss, so the
+default path is untouched.
+
+Removal condition: this flag is the X-7 decision's direct subject. If the
+owner admits the prefill_last scope for the compensated-T16 class, promote
+the route to the production default and delete the flag (the strict
+fallback stays registered). If the owner rejects it, delete the flag, the
+runner branch, and the sidecar together once the rejection is final —
+keeping the kernel, layout, and their round-trip/quality-gate tests as
+reference lineage.
+
+## The T16 residency flags
+
+`HIPENGINE_QWEN4_EXP_T16_RESIDENT` and
+`HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS` (both default off/empty) drive
+the binding-owned tile-residency populate at generator construction (the
+docs/QWEN4EXP-T16-RESIDENCY.md mechanism: read -> repack -> upload -> attach
+as the weight's `t16` allocation stage, raw kept). They exist so the
+X-7-admitted full-window phase has its mechanism ready and so the
+transition off the module sidecar caches is testable without a model load
+of the full tile set.
+
+Removal condition: fold the populate into the load path unconditionally (no
+flag) once the X-7 decision lands and either (a) the T16 routes are
+promoted — then the binding stage is the production residency and the
+sidecar caches themselves move to this same removal list — or (b) the
+routes are rejected — then delete the populate, the `t16` stage helpers'
+generator call site, and keep the loading-layer primitives only if another
+consumer names them. The `MAX_LAYERS` bound exists solely because the
+transient dual residency (tiles + raw) may not fit; it dies with the
+free_raw phase that makes residency net-zero.
+
+## The QSA ordered-decode fusion flag
+
+`HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED` (default off) selects the
+fused QSA coefficients+values v2 sibling — bit-identical to the unfused
+pair (2/2 cross-mode exact) and measured wall-neutral on the canonical
+decode protocol (0.9997x, inside the same-session AR variance), committed
+at `0ea6d7ae2`. The fusion line's verdict is now complete: both rungs
+(router select+cast at 96 launches/step, QSA at 12) are bit-identical and
+below the decode wall's resolution, so the flag has no measured reason to
+turn on.
+
+Removal condition: delete the flag and the fused sibling at the next
+cleanup pass unless a whole-step graph (the committed bigger-seam build)
+demonstrates the launch-count savings compound at graph scope — in which
+case the fused kernel is the graph's building block and the flag becomes
+its temporary selector until the graph lands.
