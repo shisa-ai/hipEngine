@@ -7,10 +7,27 @@ from scripts.gemma4_public_route_probe import observe_attention_launches, summar
 
 
 def test_single_row_prefill_tail_is_not_claimed_as_decode():
-    records = [{"variant": "gemma4_staged", "tokens": width} for width in (512, 1, 1)]
+    records = [{"variant": "gemma4_staged", "reason": "capability match",
+                "tokens": width} for width in (512, 1, 1)]
     assert summarize_attention_launches(records) == [
-        {"variant": "gemma4_staged", "query_width": "multi_token", "invocations": 1},
-        {"variant": "gemma4_staged", "query_width": "singleton", "invocations": 2},
+        {"variant": "gemma4_staged", "reason": "capability match",
+         "query_width": "multi_token", "invocations": 1},
+        {"variant": "gemma4_staged", "reason": "capability match",
+         "query_width": "singleton", "invocations": 2},
+    ]
+
+
+def test_summary_keeps_the_resolution_and_the_launcher_apart():
+    """Same variant name, different meaning: the two must not be merged."""
+    records = [
+        {"variant": "exact", "reason": "scoped decode resolution", "tokens": 1},
+        {"variant": "exact", "reason": "launcher kernel selection", "tokens": 1},
+    ]
+    assert summarize_attention_launches(records) == [
+        {"variant": "exact", "reason": "launcher kernel selection",
+         "query_width": "singleton", "invocations": 1},
+        {"variant": "exact", "reason": "scoped decode resolution",
+         "query_width": "singleton", "invocations": 1},
     ]
 
 
@@ -100,7 +117,8 @@ def test_observe_decode_launches_report_the_registered_variant(monkeypatch):
                         "num_kv_heads": 2}]
     assert attention._launch_prefill is launch
     assert summarize_attention_launches(records) == [
-        {"variant": attention.DECODE_ATTENTION_FLASH, "query_width": "singleton",
+        {"variant": attention.DECODE_ATTENTION_FLASH,
+         "reason": "launcher kernel selection", "query_width": "singleton",
          "invocations": 1},
     ]
 
