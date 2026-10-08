@@ -123,9 +123,15 @@ def test_flash_matches_single_kernel_to_float_precision(
     reference = _as_float(out_single, dtype)
     candidate = _as_float(out_flash, dtype)
     # f32: the rescale identity is exact in reals; only f32 rounding differs.
-    # bf16: both arms round to bf16, so the bound is one bf16 quantum of head.
+    # Measured over this matrix, the worst per-element deviation is 0.099 of an
+    # rtol=atol=1e-5 bound (10x margin) and 0.985 of 1e-6 (no margin). The
+    # deviation is flat in the slice count -- 5e-7 at 2 slices through 1.6e-6 at
+    # 256 -- because phase A reproduces the class kernel's logits by contract,
+    # so this pins the softmax weighting, not the fold depth.
+    # bf16: both arms round to bf16, so the bound is one quantum of head;
+    # measured worst is 0.139 of it.
     if dtype == "f32":
-        np.testing.assert_allclose(candidate, reference, rtol=1e-4, atol=1e-4, equal_nan=True)
+        np.testing.assert_allclose(candidate, reference, rtol=1e-5, atol=1e-5, equal_nan=True)
     else:
         np.testing.assert_allclose(candidate, reference, rtol=6e-3, atol=6e-3, equal_nan=True)
 
@@ -155,7 +161,7 @@ def test_flash_ignores_poisoned_workspace(attention_library, geom, dtype, keys):
     candidate = _as_float(out_flash, dtype)
     assert np.isfinite(candidate).all() or np.isnan(reference).all()
     if dtype == "f32":
-        np.testing.assert_allclose(candidate, reference, rtol=1e-4, atol=1e-4, equal_nan=True)
+        np.testing.assert_allclose(candidate, reference, rtol=1e-5, atol=1e-5, equal_nan=True)
     else:
         np.testing.assert_allclose(candidate, reference, rtol=6e-3, atol=6e-3, equal_nan=True)
 
