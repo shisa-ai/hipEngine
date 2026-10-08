@@ -911,10 +911,21 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
             else "0"
         ),
-        # Default-off K320/full-row GR DPP screen. It is enabled only by the
-        # explicit experiment override after the promoted DPP selector; all
-        # other shapes remain on the generic DPP owner.
-        "HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS": "0",
+        # K320/full-row GR-up DPP sibling: promoted production default for the
+        # qualified lane (2026-10-08). Exact-class (bit-identical outputs); the
+        # complete qualification chain is natural-input owner (576 captures,
+        # 1.093-1.106x), full model-state gate (12 cases, 3,456 calls, full
+        # logits/state/KV exact) and complete-engine A/B (prefill 1.0111x,
+        # client wall 0.9975x, cross-mode exact 12/12). The selector admits only
+        # rows>256 in complete groups of 4 with four branches and low rank 320;
+        # every other shape keeps the generic DPP owner, which remains the
+        # registered strict fallback. HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS=0
+        # is the bisection opt-out.
+        "HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS": (
+            "1"
+            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+            else "0"
+        ),
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR": "1" if production else "0",

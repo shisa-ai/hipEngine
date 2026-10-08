@@ -15,25 +15,28 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
-## Qwen3.8 Flash Next current production rates (dense Q8 checked full-rows default)
+## Qwen3.8 Flash Next current production rates (checked full-rows dense Q8 + K320 GR-up defaults)
 
 On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, production profile,
-BF16 KV, chunk 4096, greedy decode (compact capture), idle-settled host: the
-checked full-rows dense Q8 DPP leaf is the production default for its
-qualified dense shapes, with exact outputs (bit-identical to the previous
-DPP leaf; 12/12 canonical digests identical) and the plain DPP parent as the
-registered fallback.
+BF16 KV, chunk 4096, greedy decode (compact capture), idle-settled host. Two
+exact-class promotions are live: the checked full-rows dense Q8 DPP leaf for
+its qualified dense shapes, and the K320/full-row GR-up DPP leaf for the
+K=320 production shape. Both are bit-identical to their prior defaults (12/12
+canonical digests identical in each qualification), with the previous leaves
+retained as registered fallbacks.
 
 | Prompt length | Prefill tok/s | Decode (128) tok/s |
 | ---: | ---: | ---: |
-| 512 | 308.43 | 20.37 |
-| 1024 | 335.63 | 19.73 |
-| 4096 | 340.24 | 16.94 |
+| 512 | 312.20 | 20.35 |
+| 1024 | 340.47 | 19.64 |
+| 4096 | 345.22 | 16.68 |
 
-Prefill improved +3.9-4.8% and total request wall −2.05% over the prior
-default; decode is unchanged within noise. Cross-run comparisons on this
-host require an idle-settled or same-residency protocol for effects under 3%.
-[Promotion evidence and protocol](results/2026-10-08-qwen4exp-checked-q8-dpp-promotion/README.md).
+Prefill improved +5.9/+6.3/+5.4% and total request wall −2.21% over the
+2026-10-07 defaults; decode is unchanged within noise. Cross-run comparisons
+on this host require an idle-settled or same-residency protocol for effects
+under 3%.
+[Dense Q8 promotion](results/2026-10-08-qwen4exp-checked-q8-dpp-promotion/README.md)
+· [GR-up K320 qualification](results/2026-10-08-qwen4exp-gr-k320-natural-owner/README.md).
 
 ## Qwen3.8 Flash Next dense Q8 projection diagnostic
 
