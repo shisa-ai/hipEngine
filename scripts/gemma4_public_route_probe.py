@@ -16,14 +16,17 @@ shape of an answer that looks like "this scope is not reached" when the scope
 was reached and merely invisible.
 
 Decode is recorded twice, because the two records answer different questions.
-``scoped decode resolution`` is the route the layer resolved for that call, and
-it is what the plan's decode selection decides. ``launcher selection counter``
-is the last decode kernel the C launcher selected, which is a *sticky* value: it
-is read straight after the call, so it attributes correctly only when that call
-set it. Below the resident LDS bound the layer keeps the native path, which
-routes through a launcher that may not set the counter at all, and then this
-record carries the previous call's answer rather than this one's. Count scoped
-routes from the first record and treat the second as a hint.
+``scoped decode resolution`` is the route the layer resolved for that call, which
+is what the plan's decode selection decides; it reports ``exact`` below the
+resident LDS bound, where the plan does not select a variant.
+``launcher kernel selection`` is the kernel the launcher chose for that call,
+read from ``attention.decode_selection`` after the wrapped call returns. That
+reading is per-call: the wrapped function is the single funnel for decode
+symbols and the launcher writes the counter on every branch it can take. The two
+disagree by design below the bound -- ``launcher._launch_prefill`` admits flash
+whenever the shape is admitted and ``decode_slices`` asks for more than one
+slice, without any plan selection, so a short-context decode launch reports
+``exact`` for the resolution and the flash kernel for the selection.
 """
 from __future__ import annotations
 
@@ -100,8 +103,7 @@ def observe_attention_launches():
             selection = int(attention.decode_selection(kwargs.get("library")))
             records.append({
                 "variant": decode_names.get(selection, f"selection_{selection}"),
-                "reason": "launcher selection counter",
-                "launcher_selection_sticky": True,
+                "reason": "launcher kernel selection",
                 **{name: kwargs.get(name) for name in
                    ("tokens", "keys", "head_dim", "num_heads", "num_kv_heads")},
             })
