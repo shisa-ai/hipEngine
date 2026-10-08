@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import mmap
 import os
 import resource
@@ -289,6 +289,68 @@ class Qwen4ExpDeviceWeight:
     def free(self, *, runtime: HipRuntime | None = None) -> None:
         for allocation in reversed(tuple(self.allocations.values())):
             allocation.free(runtime=runtime)
+
+
+def attach_t16_allocation(
+    weight: "Qwen4ExpDeviceWeight",
+    t16: DeviceTensorAllocation,
+) -> "Qwen4ExpDeviceWeight":
+    """Return a new weight with ``t16`` attached as a tile-residency stage.
+
+    The T16 tile-residency design (docs/QWEN4EXP-T16-RESIDENCY.md): the tiles
+    live on the binding as an allocation stage instead of a module-level
+    sidecar cache. The stage is additive - the raw stage stays until the
+    caller explicitly detaches it (``detach_raw_allocation``), so a partial
+    materialization never loses its strict fallback. The spec's accounting
+    grows by the tile bytes so ``resident_nbytes``-style budgeting sees the
+    transient dual residency honestly.
+    """
+
+    if "t16" in weight.allocations or "t16" in weight.spec.allocation_names:
+        raise ValueError("weight already carries a t16 allocation stage")
+    allocations = dict(weight.allocations)
+    allocations["t16"] = t16
+    spec = replace(
+        weight.spec,
+        allocation_names=(*weight.spec.allocation_names, "t16"),
+        device_nbytes=weight.spec.device_nbytes + int(t16.buffer.nbytes),
+    )
+    return replace(weight, spec=spec, allocations=allocations)
+
+
+def detach_raw_allocation(
+    weight: "Qwen4ExpDeviceWeight",
+    *,
+    runtime: HipRuntime | None = None,
+) -> "Qwen4ExpDeviceWeight":
+    """Return a new weight without the raw stage, freeing its buffer.
+
+    The materialize-then-free half of the residency design: once the tiles
+    are resident the raw bytes they replace are freed, which is what makes
+    the full window net-zero. The freed buffer is gone for good - the strict
+    fallback for a detached layer is the strict profile or re-materialization
+    from the on-disk GGUF (the design's fallback contract), so callers must
+    only detach weights whose t16 stage is attached and verified.
+    """
+
+    raw = weight.allocations.get("raw")
+    if raw is None:
+        raise ValueError("weight has no raw allocation stage to detach")
+    if "t16" not in weight.allocations:
+        raise ValueError("refusing to detach raw before a t16 stage is attached")
+    allocations = {
+        key: allocation
+        for key, allocation in weight.allocations.items()
+        if key != "raw"
+    }
+    spec = replace(
+        weight.spec,
+        allocation_names=tuple(allocations),
+        device_nbytes=weight.spec.device_nbytes - int(raw.buffer.nbytes),
+    )
+    detached = replace(weight, spec=spec, allocations=allocations)
+    raw.free(runtime=runtime)
+    return detached
 
 
 @dataclass
