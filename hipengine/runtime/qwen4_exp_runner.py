@@ -90,7 +90,10 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_mmq32_tile_map,
     qwen35_moe_wmma_tile_map,
 )
-from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_select
+from hipengine.kernels.hip_gfx1100.moe.router import (
+    qwen35_router_select,
+    qwen35_router_select_cast_bf16,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
     lm_head_argmax_stage1_blocks,
@@ -4150,24 +4153,46 @@ def run_qwen4_exp_moe(
             output_dtype=GGUF_OUTPUT_F32,
             stream=stream, runtime=active_runtime,
         )
-    qwen35_router_select(
-        scratch.router_logits.ptr,
-        scratch.selected.ptr,
-        scratch.routing.ptr,
-        rows,
-        experts,
-        experts,
-        top_k,
-        stream=stream,
-        runtime=active_runtime,
-    )
-    f32_to_bf16(
-        mixed_ptr,
-        scratch.hidden_bf16.ptr,
-        rows * hidden,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    if os.environ.get(
+        "HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST", "0"
+    ) not in {"", "0", "false", "False"}:
+        # Fused select+cast sibling (2026-10-08 dispatch-gap fusion):
+        # bit-identical selection, routing and cast bits with one launch
+        # instead of two; the unfused pair stays the default path and the
+        # registered fallback.
+        qwen35_router_select_cast_bf16(
+            scratch.router_logits.ptr,
+            scratch.selected.ptr,
+            scratch.routing.ptr,
+            mixed_ptr,
+            scratch.hidden_bf16.ptr,
+            rows,
+            experts,
+            experts,
+            top_k,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        qwen35_router_select(
+            scratch.router_logits.ptr,
+            scratch.selected.ptr,
+            scratch.routing.ptr,
+            rows,
+            experts,
+            experts,
+            top_k,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        f32_to_bf16(
+            mixed_ptr,
+            scratch.hidden_bf16.ptr,
+            rows * hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
     compact = rows * top_k
 
     def selected_projection(

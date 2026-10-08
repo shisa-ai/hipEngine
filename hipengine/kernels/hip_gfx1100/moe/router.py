@@ -40,6 +40,7 @@ _SYMBOL_LOGITS_F32_F32W_WARP_REDUCE_DENSE_EXACT = (
     "hipengine_qwen35_router_logits_f32_f32w_warp_reduce_dense_exact"
 )
 _SYMBOL_SELECT = "hipengine_qwen35_router_select"
+_SYMBOL_SELECT_CAST_BF16 = "hipengine_qwen35_router_select_cast_bf16"
 _SYMBOL_TOPK_SHARED_OUT = "hipengine_qwen35_router_topk_shared_out_bf16"
 _SYMBOL_TOPK_SHARED_OUT_FP16 = "hipengine_qwen35_router_topk_shared_out_fp16"
 _SYMBOL_TOPK_SHARED_SIGMOID_OUT = "hipengine_qwen35_router_topk_shared_sigmoid_out_bf16"
@@ -101,6 +102,20 @@ _ARGTYPES_ROUTER_SELECT = (
     ctypes.c_int64,   # logits_stride
     ctypes.c_int64,   # num_experts
     ctypes.c_int64,   # top_k
+    ctypes.c_int64,   # threads
+    ctypes.c_void_p,  # stream
+)
+_ARGTYPES_ROUTER_SELECT_CAST = (
+    ctypes.c_void_p,  # logits
+    ctypes.c_void_p,  # selected
+    ctypes.c_void_p,  # routing
+    ctypes.c_void_p,  # hidden_f32
+    ctypes.c_void_p,  # hidden_bf16
+    ctypes.c_int64,   # tokens
+    ctypes.c_int64,   # logits_stride
+    ctypes.c_int64,   # num_experts
+    ctypes.c_int64,   # top_k
+    ctypes.c_int64,   # hidden_size
     ctypes.c_int64,   # threads
     ctypes.c_void_p,  # stream
 )
@@ -694,6 +709,49 @@ def qwen35_router_select(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_SELECT, _ARGTYPES_ROUTER_SELECT, ctypes.c_int)
     err = fn(logits_ptr, selected_ptr, routing_ptr, tokens, logits_stride, num_experts, top_k, threads, stream)
+    _check_launch(runtime, err)
+
+
+def qwen35_router_select_cast_bf16(
+    logits_ptr: int,
+    selected_ptr: int,
+    routing_ptr: int,
+    hidden_f32_ptr: int,
+    hidden_bf16_ptr: int,
+    tokens: int,
+    logits_stride: int,
+    num_experts: int,
+    top_k: int,
+    hidden_size: int,
+    *,
+    threads: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the fused router select plus f32->bf16 activation cast.
+
+    One block per token runs the same block-parallel top-k/softmax selection
+    as :func:`qwen35_router_select` (the identical device function), then casts
+    the same token's ``hidden_size`` activation values with the same
+    round-to-nearest-even bf16 conversion the standalone cast kernel uses.
+    Selection indices, routing weights and cast bits are bit-identical to the
+    unfused pair; the launch boundary between them is the only thing removed.
+    """
+
+    _check_router_select_shape(tokens, logits_stride, num_experts, top_k)
+    if hidden_size <= 0:
+        raise ValueError("hidden_size must be positive")
+    _check_threads(threads)
+    library = library or _router_library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, _SYMBOL_SELECT_CAST_BF16, _ARGTYPES_ROUTER_SELECT_CAST, ctypes.c_int
+    )
+    err = fn(
+        logits_ptr, selected_ptr, routing_ptr, hidden_f32_ptr, hidden_bf16_ptr,
+        tokens, logits_stride, num_experts, top_k, hidden_size, threads, stream,
+    )
     _check_launch(runtime, err)
 
 

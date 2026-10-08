@@ -1731,3 +1731,94 @@ extern "C" int hipengine_qwen35_router_topk_shared_out_fp16(
       top_k);
   return static_cast<int>(hipGetLastError());
 }
+
+// Fused router select + activation cast (2026-10-08 dispatch-gap fusion).
+//
+// The decode MoE path launches two independent kernels back to back per
+// layer: the block-parallel top-k/softmax router select and an elementwise
+// f32->bf16 cast of the same token's hidden activation. Inside the per-layer
+// MoE graph replay each launch pays the graph node-to-node dispatch gap, so
+// this kernel folds the cast into the select block: after the router selection
+// completes (the same qwen35_router_select_from_logits device function,
+// bit-identical), the same block casts the token's hidden_size values with the
+// same round-to-nearest-even bf16 conversion the cast kernel uses
+// (float_to_bf16_bits). Selection indices, routing weights and cast bits are
+// all bit-identical to the unfused pair; only the launch boundary is removed.
+__device__ inline uint16_t router_fused_float_to_bf16_bits(float value) {
+  union {
+    float f32;
+    uint32_t u32;
+  } in;
+  in.f32 = value;
+  const uint32_t lsb = (in.u32 >> 16) & 1U;
+  in.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(in.u32 >> 16);
+}
+
+__global__ void qwen35_router_select_cast_bf16_kernel(
+    const float* __restrict__ logits,
+    int64_t* __restrict__ selected,
+    float* __restrict__ routing,
+    const float* __restrict__ hidden_f32,
+    uint16_t* __restrict__ hidden_bf16,
+    int64_t logits_stride,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t hidden_size) {
+  extern __shared__ float shared_logits[];
+  const int64_t token = blockIdx.x;
+  qwen35_router_select_from_logits(
+      logits + token * logits_stride,
+      selected,
+      routing,
+      shared_logits,
+      token,
+      logits_stride,
+      num_experts,
+      top_k);
+  // The select device function ends with a thread-0 softmax; join the block
+  // before the cast so no thread is still inside the top-k shared-memory
+  // protocol while the cast reuses the same threads.
+  __syncthreads();
+  for (int64_t i = static_cast<int64_t>(threadIdx.x); i < hidden_size;
+       i += static_cast<int64_t>(blockDim.x)) {
+    hidden_bf16[token * hidden_size + i] =
+        router_fused_float_to_bf16_bits(hidden_f32[token * hidden_size + i]);
+  }
+}
+
+extern "C" int hipengine_qwen35_router_select_cast_bf16(
+    const float* logits,
+    int64_t* selected,
+    float* routing,
+    const float* hidden_f32,
+    uint16_t* hidden_bf16,
+    int64_t tokens,
+    int64_t logits_stride,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t hidden_size,
+    int threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || logits_stride <= 0 || num_experts <= 0 || top_k <= 0 ||
+      top_k > 16 || top_k > num_experts || hidden_size <= 0 ||
+      !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen35_router_select_cast_bf16_kernel,
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(num_experts) * sizeof(float),
+      stream,
+      logits,
+      selected,
+      routing,
+      hidden_f32,
+      hidden_bf16,
+      logits_stride,
+      num_experts,
+      top_k,
+      hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
