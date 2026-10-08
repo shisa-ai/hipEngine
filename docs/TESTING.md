@@ -51,6 +51,26 @@ Every non-trivial behavior change follows:
 
 If a failing test cannot be written first, record why in the unit's worklog entry before implementing. Avoid silent "trust me" math changes.
 
+### A red test you did not cause is still your problem
+
+When a suite is green except for failures you did not expect, the failures are
+evidence about the tree, not noise. Two rules before calling one pre-existing:
+
+- **Reproduce it at an ancestor, never at a descendant.** "It also fails at
+  `<later commit>`" is not a pre-existence check: any descendant carries the
+  defect too. Use `git bisect` or check out the parent of the commit you suspect,
+  and record which commit you reproduced it at.
+- **Read what the failing test names.** A failure whose name mentions the kernel
+  family, quant, or layer you just touched is a finding about your change, even
+  when the code paths look unrelated. "Unrelated to `<my subsystem>`" is not the
+  same as "unrelated to this change".
+
+A defect that stays in the tree is not just unfixed: every measurement taken
+above it -- timing, gate, benchmark, bisect -- is poisoned, and the resulting
+numbers are indistinguishable from a real regression in the thing being
+measured. The cost of the wrong pre-existence check is a day of measurement on a
+broken tree, not one red test.
+
 ## Oracles
 
 Preferred oracle order:
