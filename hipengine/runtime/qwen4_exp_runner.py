@@ -4326,10 +4326,18 @@ def run_qwen4_exp_moe(
     )
     t16_down_tiles = None
     if t16_down:
-        t16_down_raw_ptr = int(
-            weights["expert_down"].allocation("raw").tensor.ptr
-        )
-        t16_down_tiles = _T16_DOWN_TILES.get(t16_down_raw_ptr)
+        down_w = weights["expert_down"]
+        down_allocs = getattr(down_w, "allocations", {})
+        if "t16" in down_allocs:
+            # Binding-owned tile-residency stage
+            # (docs/QWEN4EXP-T16-RESIDENCY.md): the tiles live on the
+            # weight, not the module sidecar.
+            t16_down_tiles = down_allocs["t16"].buffer
+        else:
+            t16_down_raw_ptr = int(
+                down_w.allocation("raw").tensor.ptr
+            )
+            t16_down_tiles = _T16_DOWN_TILES.get(t16_down_raw_ptr)
         t16_down = t16_down_tiles is not None
     exact_grouped_q4_gate = (
         not production_grouped_moe
@@ -4524,10 +4532,23 @@ def run_qwen4_exp_moe(
                 # is structural and the default path is untouched.
                 t16_tiles = None
                 if _t16_gate_up_enabled():
-                    gate_raw_ptr = int(
-                        weights["expert_gate"].allocation("raw").tensor.ptr
-                    )
-                    t16_tiles = _T16_GATE_UP_TILES.get(gate_raw_ptr)
+                    gate_w = weights["expert_gate"]
+                    up_w = weights["expert_up"]
+                    gate_allocs = getattr(gate_w, "allocations", {})
+                    up_allocs = getattr(up_w, "allocations", {})
+                    if "t16" in gate_allocs and "t16" in up_allocs:
+                        # Binding-owned tile-residency stage
+                        # (docs/QWEN4EXP-T16-RESIDENCY.md): the tiles live on
+                        # the weight, not the module sidecar.
+                        t16_tiles = (
+                            gate_allocs["t16"].buffer,
+                            up_allocs["t16"].buffer,
+                        )
+                    else:
+                        gate_raw_ptr = int(
+                            gate_w.allocation("raw").tensor.ptr
+                        )
+                        t16_tiles = _T16_GATE_UP_TILES.get(gate_raw_ptr)
                 if t16_tiles is not None:
                     tile_capacity = (
                         scratch.group_tile_expert.nbytes // DType.INT64.itemsize
