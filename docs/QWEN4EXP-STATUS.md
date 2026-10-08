@@ -1,16 +1,35 @@
 # Qwen3.8-Flash-Next (Qwen4Exp) Optimization Status
 
-- **Status date:** 2026-09-26
+- **Status date:** 2026-10-08 (refreshed; the pre-2026-10-08 narrative below is
+  preserved as history where later sections do not supersede it)
 - **Model / quant:** unsloth `Qwen3.8-Flash-Next` `UD-Q4_K_XL`, fingerprint
   `fb1f2fbf73d588c9…`, 111.3 GB, four shards
 - **Host:** Framework `gfx1151`, Radeon 8060S / Strix Halo, machine
   `55ea6c509d0b49eea8de7094a1023668`
 - **Current default:** the shipped default is the `production` profile when the
   caller names none (a named profile still overrides), chunk1024, BF16 KV, warm
-  PLE, and since `15b056111` the certified wide-row Q8 dense prefill route at
-  layers 16-47 (`PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS`), which replaced the
-  f16 WMMA route bound there since `04f1dde42`; that route's layer env is now
-  bound empty for this quant and its selector stays registered for re-gating
+  PLE, the certified wide-row Q8 dense prefill route at its certified layer
+  scope, and — landed 2026-10-08 — three further production defaults: the
+  checked-int32/full-four-row dense Q8 DPP leaf for its qualified shapes, the
+  K320/full-row GR-up DDP leaf for the K=320 production shape, and the
+  tiled16_multi GDN prefill for its certified suffix window (the first
+  arithmetic-changing admission to pass the full layer2 production envelope on
+  this lane). Current canonical rates (12-case protocol, chunk 4096, compact
+  capture, idle-settled): prefill 314.8 / 342.0 / 346.7 tok/s at p512/1024/4096,
+  decode 20.4 / 19.8 / 16.7 tok/s — [scoreboard](../benchmarks/README.md).
+
+**2026-10-08 state additions (see the ledger sections 1.3.6-1.3.8 and the DE-11
+head-refresh packet):** the decode depth growth is fully localized — device
+kernel time is flat with depth while the non-kernel remainder is 100%
+inter-kernel dispatch gaps, dominated by ~52 layer-section-boundary stalls of
+~150 us at p4096; the MoE decode graph (already default) is validated at +3.2%
+decode over eager; the router select+cast fusion is built, bit-identical, and
+measured wall-neutral (retained default-off). The F16/WMMA routed-expert class
+is closed on both grounds (MX-1: numerics fail the prefill_last scope;
+performance: the F16 gate/up owner is +138.5% slower than the production iu8
+owner). The single decision that reopens the F16 class is the prefill_last
+scope-and-threshold question recorded in ledger row X-7 — the human owner's
+call, not an experiment.
 
 **This document is rewritten in place. It is the current-state tracker for this
 model; the `QWEN4EXP-*` and `QWEN3.8-FLASH-NEXT-*` campaign documents are dated
