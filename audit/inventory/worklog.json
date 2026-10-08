@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11505,
-    "current": 4273,
+    "entries": 11508,
+    "current": 4276,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1400,
+    "rows": 1401,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1239
+      "status": 1240
     }
   },
   "rows": [
@@ -44001,14 +44001,14 @@
         "written": "2026-09-26",
         "age_days": 13,
         "open_by": "dependency",
-        "continuation_entries": 5,
+        "continuation_entries": 6,
         "open_text": "- With the down projection no longer the largest item, the Q4_K gate/up\n  projection (~28% of prefill) is: its fastest route is the gated MMQ path\n  recorded in `20260926T222203.094525Z-lhl-gemma4-moe-gate-up-mmq-5b1878.md`,\n  which is still waiting on the lead's `kl_max` applicability call. The staged\n  Q5_1 kernel's own remaining cost is latency rather than bandwidth (3.5 GB in\n  20.2 ms is 173 GB/s), so occupancy - not traffic - is what a further pass on it\n  would have to buy.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'waiting on'",
-        "5 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T231216.332180Z-lhl-gemma4-q5-1-staged-grouped-prefill-d6a2a9.md",
@@ -44028,7 +44028,7 @@
         ]
       },
       "id": "worklog/20260926T231216.332180Z-lhl-gemma4-q5-1-staged-grouped-prefill-d6a2a9",
-      "evidence_hash": "2e1c030d177f"
+      "evidence_hash": "1d3e84737477"
     },
     {
       "kind": "worklog",
@@ -52875,14 +52875,14 @@
         "written": "2026-10-08",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 6,
         "open_text": "- The Q5_1 grouped-prefill failures in `tests/test_unit_gemma4_expert_route.py`\n  are real, pre-existing, and unowned; they are outside this unit's scope and\n  were left untouched.\n- The staged fallback inside `gemma4_attention_decode_flash_bf16` is unreachable\n  from today's selector scope. `docs/REFACTOR.md` records the removal condition:\n  move the admission into the variant selector, which needs the fitted slice\n  count on the route-decision path.\n- `gemma4_attention_decode_wmma*` and the other explicit evaluation candidates\n  remain registered and unselected.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261008T162238.312050Z-lhl-gemma4-gemma4-flash-global-decode-900c2e.md",
@@ -52901,7 +52901,7 @@
         ]
       },
       "id": "worklog/20261008T162238.312050Z-lhl-gemma4-gemma4-flash-global-decode-900c2e",
-      "evidence_hash": "fca7c57d8fc6"
+      "evidence_hash": "823fbb1ecdf2"
     },
     {
       "kind": "worklog",
@@ -52915,14 +52915,14 @@
         "written": "2026-10-08",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "- The cumulative strict-vs-production measurement is recorded in\n  `worklog/entries/20261008T174856.609217Z-lhl-gemma4-gemma4-short-route-vs-exact-f6ba87.md`.\n  It fails the mean/p99/max bars, and whether that is an arithmetic regression\n  in this unit's tuning ladder or increased model sensitivity is the open\n  question that entry hands to task 54.\n- No further action on the lookahead defect itself: its provenance is now\n  recorded correctly and the fix is in.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261008T172446.070038Z-lhl-gemma4-gemma4-flash-defect-provenance-c96b31.md",
@@ -52941,7 +52941,7 @@
         ]
       },
       "id": "worklog/20261008T172446.070038Z-lhl-gemma4-gemma4-flash-defect-provenance-c96b31",
-      "evidence_hash": "e7cc94fc4d79"
+      "evidence_hash": "2f0c6dccb0be"
     },
     {
       "kind": "worklog",
@@ -52992,14 +52992,14 @@
         "written": "2026-10-08",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "- **The amplification itself is now the open question**, and it is a property of\n  the model rather than of the attention route: something in the 2026-10-01 ..\n  10-07 work made the decode trajectory far more sensitive to a 1e-6 attention\n  difference. Worth knowing before judging any further decode-attention\n  candidate by this instrument, because the same candidate that measured 5e-6\n  on 2026-09-30 would measure ~1e-2 today without its arithmetic changing.\n- **One mechanism the kernel-level test cannot see:** it builds its own mask. If\n  the production sliding decode reaches the flash route",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261008T175723.624342Z-lhl-gemma4-gemma4-flash-kernel-deviation-a549c9.md",
@@ -53017,7 +53017,7 @@
         ]
       },
       "id": "worklog/20261008T175723.624342Z-lhl-gemma4-gemma4-flash-kernel-deviation-a549c9",
-      "evidence_hash": "93425dc35b3c"
+      "evidence_hash": "2a9faaf247e5"
     },
     {
       "kind": "worklog",
@@ -53031,14 +53031,14 @@
         "written": "2026-10-08",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "- The remaining question is unchanged and is now the only one: **why the model\n  amplifies the same 1e-6 difference ~1000x more than it did on 2026-09-30.**\n  Until that is understood, this instrument cannot distinguish \"this candidate\n  is worse\" from \"the model is less tolerant than it was\", which matters for\n  every decode-attention decision made on it.\n- Task 53 (gate the sliding route above its entry band, keys 2,048-15,856) is\n  unaffected and still open.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261008T175825.460802Z-lhl-gemma4-gemma4-flash-kernel-deviation-7e7578.md",
@@ -53054,7 +53054,7 @@
         ]
       },
       "id": "worklog/20261008T175825.460802Z-lhl-gemma4-gemma4-flash-kernel-deviation-7e7578",
-      "evidence_hash": "483d7bc5f98e"
+      "evidence_hash": "bc5d9ba69c30"
     },
     {
       "kind": "worklog",
@@ -53109,14 +53109,14 @@
         "written": "2026-10-08",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "- The remaining open question is unchanged: which downstream discrete decision\n  turns a bf16 ULP step into a trajectory divergence (task 55), with the MoE\n  router's top-k as the first candidate.\n- The instrument's role is the other open item, and it is a decision rather than\n  a measurement.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261008T180237.010842Z-lhl-gemma4-gemma4-flash-kernel-deviation-52329e.md",
@@ -53136,7 +53136,44 @@
         ]
       },
       "id": "worklog/20261008T180237.010842Z-lhl-gemma4-gemma4-flash-kernel-deviation-52329e",
-      "evidence_hash": "e2e926fdbaf6"
+      "evidence_hash": "3d68030d46d3"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261008T210446.468778Z-lhl-gemma4-gemma4-flash-kernel-deviation-937eed",
+      "title": "Calibrate the decode route's footprint against the shipped quantization",
+      "location": "worklog/entries/20261008T210446.468778Z-lhl-gemma4-gemma4-flash-kernel-deviation-937eed.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl-gemma4",
+        "topic": "gemma4-flash-kernel-deviation",
+        "written": "2026-10-08",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- The decision is the lead's and now has its numbers: the route is 1.49x-2.37x\n  faster on decode, its kernel agrees with the incumbent to 1e-6 and is\n  bit-identical to the version that passed this gate at 7.75e-6 on 2026-09-30,\n  and its footprint sits ~27x below a quantization-grade change with top-1\n  intact.\n- The router check (task 55) is a follow-up, not a precondition: the tail's\n  shape is explained by discrete boundary crossings and the kernel's\n  bit-identity rules out a slice or masking defect, which is the only competing\n  explanation the tail could have supported.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261008T210446.468778Z-lhl-gemma4-gemma4-flash-kernel-deviation-937eed.md",
+        "refs": [],
+        "tokens": [
+          "against",
+          "calibrate",
+          "decode",
+          "footprint",
+          "quantization",
+          "route",
+          "shipped"
+        ]
+      },
+      "id": "worklog/20261008T210446.468778Z-lhl-gemma4-gemma4-flash-kernel-deviation-937eed",
+      "evidence_hash": "eae768706aee"
     }
   ]
 }

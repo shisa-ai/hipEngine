@@ -60,28 +60,6 @@ strict plain attention as the registered fallback and parity oracle. Do not
 remove the execution-profile selection itself; it is a product API, not a
 candidate-only flag.
 
-## Gemma flash decode is registered, not selected (updated 2026-10-08)
-
-The key-sliced flash decode is registered under the decode scope's key and
-reachable by explicit request, but the production selection stays on the staged
-singleton: the candidate's teacher-forced gate over the 527 rows at keys
-15,857-16,383 reads mean KL 1.11e-2 against a 1e-3 limit, p95 9.18e-3 against
-5e-3, p99 3.35e-1 against 2e-2, max 1.61 against 5e-2, and 7 top-1 flips (1.3%
-against a 1% budget), three of them on rows whose baseline margin exceeds 0.20.
-The artifact is
-`benchmarks/results/2026-10-08-gemma4-teacher-forced-gate-flash-global-decode.json`;
-the baseline chain is frozen at
-`/mnt/nvme1/gemma4-eval/gemma4-flash-gate-baseline-308c4c38c.npz` (sha256
-`d1dab2e0b604a286de6ffeb4c9d3a45801a9059f9a48f543585181ca52d89390`).
-
-The route is worth keeping for the next attempt because the divergence is the
-slice reassociation, not the kernel: against an f64 oracle the flash arm is
-within 5.4e-6 at 4096 keys, and the per-slice softmax denominators are already
-the exact per-slice maxima. Clearing condition: a variant whose reassociation
-fits the envelope -- a higher slice count reduces the per-slice key span but not
-the number of reassociated terms, so the lever is the combine's arithmetic
-rather than the count. Re-run the gate above and record the artifact.
-
 ## Gemma flash decode keeps a fallback the current scope cannot reach (found 2026-10-08)
 
 `gemma4_attention_decode_flash_bf16` asks the launcher's own admission before it
