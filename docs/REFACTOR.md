@@ -29,16 +29,20 @@
 - The candidate preserves ascending FMA order, DPP reduction, four-wave
   publication, `expf`, branch mean, output layout and both materialized outputs.
   It removes only compile-time-provable generic row-validity and variable-K
-  control. No staging, row widening, operand rounding or gate-store removal is
-  included. The production binder explicitly sets
-  `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS=0`; enabling it is an experiment.
+  control. **Promoted 2026-10-08** after the full qualification chain
+  (natural-input owner, full model-state gate, complete-engine A/B — see
+  `benchmarks/results/2026-10-08-qwen4exp-gr-k320-natural-owner/`): the
+  production binder binds it on for the qualified lane (`gguf_ud_q4_k_xl`,
+  production) and `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS=0` is the dedicated
+  bisection opt-out; the generic DPP owner remains the registered strict
+  fallback. Removal condition for the opt-out flag: delete the flag (and its
+  profile binding + the selector's env read) once the K320 sibling has held the
+  production default through a full campaign cycle without a rollback, or when
+  the generic DPP leaf it narrows is retired.
 - Unit/profile tests pass33 and the HIP GPU bundle passes10/10 on gfx1151,
   including exact parent parity at rows512/1024/4096. The balanced complete
   operation screen covers 12 real-weight cases and20 pairs/case: 1.084–1.103x
-  operation speedup, geometric mean1.092x, exact outputs. This is not a model
-  state/KV/logit gate or promotion. The next required gate is native
-  state/KV/logit plus canonical engine A/B with the override, then numerical,
-  determinism, isolation, teardown and task checks. Evidence:
+  operation speedup, geometric mean1.092x, exact outputs. Evidence:
   `benchmarks/results/2026-10-06-qwen4exp-gr-k320-full-rows-screen.md`.
 
 

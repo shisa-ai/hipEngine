@@ -550,6 +550,32 @@ same-session reference arm, or the same-residency balanced A/B harness for
 keep/revert decisions.
 [Promotion packet](../benchmarks/results/2026-10-08-qwen4exp-checked-q8-dpp-promotion/README.md).
 
+### 1.3.7 GR-up K320/full-row qualification and promotion — 2026-10-08 UTC
+
+The K320/H2560/four-branch complete-rowbatch4 GR-up DPP sibling completed the
+full qualification pipeline and is the production default for the qualified
+lane. Natural-input owner gate: 576/576 captures with both materialized outputs
+bit-identical, activations/normalized inputs/raw weights immutable, and
+complete-owner speedups of **1.0925x** (p512), **1.0958x** (p1024) and
+**1.1046-1.1062x** (p4096) — about 1.5 s of owner time saved per p4096 prefill.
+Full model-state gate: 12/12 canonical cases, **3,456 candidate calls**, exact
+prefill/decode logits, recurrent/layout state and full KV bytes across
+parent/candidate/candidate/candidate/parent arms toggled through the runner's
+own selector, lifecycle clean. Complete-engine A/B (one residency, 72 balanced
+samples, compact capture): prefill **339.258→343.010 tok/s (1.0111x)**, client
+wall **484.934→483.709 s (0.9975x)**, decode 0.9967x (arm noise — both arms
+launch the bit-identical parent kernel at decode), cross-mode outputs exact on
+12/12 cases, 4,608 candidate calls, zero teardown allocations.
+
+The production profile binds `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS=1` for
+production `gguf_ud_q4_k_xl` only; strict and other lanes keep the generic DPP
+owner, which remains the registered strict fallback. `=0` is the bisection
+opt-out (REFACTOR.md carries the removal condition). This is a retained
+small-win promotion per the campaign rules: exact-class, +1.11% same-residency
+prefill, with the aggregate wall effect (-0.25%) below the cross-process
+instrument's resolution — the same-residency A/B is the controlling evidence.
+[Qualification packet](../benchmarks/results/2026-10-08-qwen4exp-gr-k320-natural-owner/README.md).
+
 
 ## 2. Arithmetic policy and kernel mechanisms
 
@@ -563,7 +589,7 @@ halo-box PR #91 / #87 / #104 descriptions and pwilkin `40a9f4d01`:
 | --- | --- | --- | --- |
 | Dense Q8_0 projections | `DenseF16GEMMKernel`: Q8_0 codes decoded to F16 in LDS (exact magic-number construction), **F16 activation rows**, F16 WMMA, F32 accumulate, at **every layer** for shapes with ≥2048 outputs and K ≤ 2560; the other Q8_0 shapes run `W8A8BlockedWmmaGEMMKernel` (int8 WMMA over activations quantized per 32-block) | `mmb.cu`: BF16 weights and BF16 activations, BF16 WMMA, all layers | F16 operands (`dense_wide256`) at layers 16-47 only; **exact F32 coltile chain at 0-15, now on the checked full-rows DPP leaf for its qualified window (2026-10-08)** |
 | Routed experts | `RoutedF16GEMMKernel`: Q4_K / Q5_1 / Q8_0 decoded to F16 in LDS, F16 activations, F16 WMMA; gate/up paired with a SwiGLU epilogue; 48/64/128-row expert tiles picked from the real bucket counts; **no repair pass** | MMB routed GLU (BF16), Q4_K two-lane decode | iu8 WMMA with at-risk flags plus a **sparse exact repair** (1240 ms per `code-p4096`) |
-| Hyper-connections | `HcDownF16Gemm` (int8 WMMA from a tiled-Q8 copy of the norm) plus `HcMixF16Gemm` (Q8 → F16 up projection with the mix and inject in the epilogue); combine fused with the MoE epilogue and the next norm | fused gate GEMM + mix, bf16 streams end to end, combine+norm computes the next inject | exact F32 `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4` (2507 ms, 256x weight re-read) |
+| Hyper-connections | `HcDownF16Gemm` (int8 WMMA from a tiled-Q8 copy of the norm) plus `HcMixF16Gemm` (Q8 → F16 up projection with the mix and inject in the epilogue); combine fused with the MoE epilogue and the next norm | fused gate GEMM + mix, bf16 streams end to end, combine+norm computes the next inject | exact F32 `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4` (2507 ms, 256x weight re-read), now on the K320 full-rows DPP leaf for its qualified window (2026-10-08) |
 | Router and small F32 weights | hipBLAS SGEMM (router and shared-expert gate in one GEMM) | activations rounded to F16 on WMMA ("every F32 weight of these GGUFs is F16-exact") | exact F32 tile4 producer |
 | Attention | `WmmaCausalAttentionKernel`: **F16 K/V cache**, WMMA QK and PV, four queries x twelve heads packed over the union of their selections | HS256 WMMA flash attention; WMMA indexer scoring | BF16 KV; scalar exact FMA sparse attention (`__fmul_rn` with a contraction barrier) |
 | GDN | F32 row-split recurrence, four tokens staged in LDS, three windows of loads in flight | chunked fp16 WMMA chunk scan (NMSE ~2e-7) with fused conv/SiLU, q/k norm and gated RMS norm | exact F32 register-state / tile-16 recurrence |
