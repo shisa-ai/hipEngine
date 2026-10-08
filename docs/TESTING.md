@@ -71,6 +71,27 @@ numbers are indistinguishable from a real regression in the thing being
 measured. The cost of the wrong pre-existence check is a day of measurement on a
 broken tree, not one red test.
 
+### A guard must exercise the path the change touches
+
+An automated loop decides keep/kill from its configured metric and guard, so
+these two rules are what stand between a candidate and the default path:
+
+- **The metric must move with the change.** A keep verdict read from a phase the
+  change does not affect is not a gate. A prefill tile candidate accepted on a
+  decode throughput reading was never measured in the direction it acted; the
+  reading that justified it was noise from a different phase. When a change can
+  affect both phases, both readings are required, and the one the change targets
+  is the one that decides.
+- **The guard's test list must include the tests that own the changed kernel's
+  arithmetic.** A hand-written file list is a snapshot of a previous change, not
+  a property of the tree. A candidate that touches a new kernel family, quant, or
+  layer adds that family's tests to the guard before the iteration is accepted.
+
+`tests/test_unit_gemma4_expert_route.py` compared the staged prefill kernel
+against a dequantized reference, ran in the default tier, and failed six times
+under the commit that overran its staging buffer. It was not in the optimizing
+loop's guard, and the loop kept the commit.
+
 ## Oracles
 
 Preferred oracle order:
