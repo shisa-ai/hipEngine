@@ -2226,3 +2226,212 @@ extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_rows_
       kv_heads, head_dim);
   return static_cast<int>(hipGetLastError());
 }
+
+// Fused coefficients+values v2 (2026-10-08 QSA dispatch-gap fusion).
+//
+// The unfused pair runs two grid-(query_heads) kernels back to back: the
+// coefficients kernel writes alpha/beta to a global plane that the values
+// kernel immediately re-reads into shared memory. The fused kernel computes
+// the chunked prefix-max and alpha/beta recurrence verbatim into shared
+// memory, writes only the denominator back to scores[base], and then runs the
+// values accumulation in the same block - the global coefficient round-trip
+// and one launch per q_head disappear. Arithmetic is unchanged: the same
+// chunked running-max scan, the same expf alpha/beta, the same VU=32
+// unrolled linear recurrence, the same final divide by scores[base].
+__global__ void qsa_sparse_attention_paged_bf16_ordered_fused_v2_f32_kernel(
+    const uint16_t* __restrict__ value_cache,
+    const int64_t* __restrict__ selected_positions,
+    const int32_t* __restrict__ block_table,
+    const float* __restrict__ scores,
+    float* __restrict__ scores_denominator,
+    float* __restrict__ coefficients_or_null,
+    float* __restrict__ output,
+    int64_t selected_count,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t query_heads,
+    int64_t kv_heads,
+    int64_t head_dim) {
+  extern __shared__ char raw[];
+  float* sh_scores = reinterpret_cast<float*>(raw);
+  float* sh_alpha = sh_scores + selected_count;
+  float* sh_beta = sh_alpha + selected_count;
+  int* sh_token = reinterpret_cast<int*>(sh_beta + selected_count);
+  __shared__ float warp_totals[8];
+  const int64_t q_head = blockIdx.x;
+  const int64_t kv_head = q_head / (query_heads / kv_heads);
+  const int64_t base = q_head * selected_count;
+  const int64_t plane = static_cast<int64_t>(query_heads) * selected_count;
+  const int tid = static_cast<int>(threadIdx.x);
+  const int warp = tid >> 5;
+  const int lane = tid & 31;
+
+  // Phase A: stage this q_head's scores (coefficients kernel's prologue).
+  for (int64_t i = tid; i < selected_count; i += blockDim.x)
+    sh_scores[i] = scores[base + i];
+  __syncthreads();
+
+  // Phase B: chunked prefix-max and alpha/beta recurrence, verbatim.
+  float carry = -INFINITY;
+  constexpr int chunk = 256 * 8;
+  for (int64_t start = 0; start < selected_count; start += chunk) {
+    const int64_t index = start + static_cast<int64_t>(tid) * 8;
+    float local[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const bool live = index + j < selected_count;
+      const float s = live ? sh_scores[index + j] : -INFINITY;
+      local[j] = (j == 0) ? s : fmaxf(local[j - 1], s);
+    }
+    float total = local[7];
+#pragma unroll
+    for (int offset = 1; offset < 32; offset <<= 1) {
+      const float other = __shfl_up_sync(0xffffffffffffffffull, total, offset);
+      if (lane >= offset) total = fmaxf(total, other);
+    }
+    const float from_prev_lane = __shfl_sync(0xffffffffffffffffull, total,
+                                             lane > 0 ? lane - 1 : lane);
+    const float warp_exclusive = lane > 0 ? from_prev_lane : -INFINITY;
+    if (lane == 31) warp_totals[warp] = total;
+    __syncthreads();
+    float exclusive = fmaxf(carry, warp_exclusive);
+    for (int w = 0; w < warp; ++w) exclusive = fmaxf(exclusive, warp_totals[w]);
+    for (int w = 0; w < 8; ++w) carry = fmaxf(carry, warp_totals[w]);
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int64_t i = index + j;
+      if (i >= selected_count) break;
+      const float s = sh_scores[i];
+      if (isnan(s)) {
+        sh_alpha[i] = 1.0f;
+        sh_beta[i] = 0.0f;
+        continue;
+      }
+      const float m_prev = (j == 0) ? exclusive : fmaxf(exclusive, local[j - 1]);
+      const float m = fmaxf(exclusive, local[j]);
+      sh_alpha[i] = isinf(m_prev) ? 0.0f : expf(m_prev - m);
+      sh_beta[i] = expf(s - m);
+    }
+    __syncthreads();
+  }
+  __syncthreads();
+
+  // Phase C: denominator recurrence into scores_denominator[base] (the only
+  // global output the values stage needs), plus the optional global
+  // coefficient planes for diagnostics.
+  if (tid == 0) {
+    float denominator = 0.0f;
+    constexpr int64_t DU = 32;
+    int64_t i = 0;
+    for (; i + DU <= selected_count; i += DU) {
+      float a[DU], b[DU];
+#pragma unroll
+      for (int u = 0; u < DU; ++u) {
+        a[u] = sh_alpha[i + u];
+        b[u] = sh_beta[i + u];
+      }
+#pragma unroll
+      for (int u = 0; u < DU; ++u)
+        denominator = a[u] * denominator + b[u];
+    }
+    for (; i < selected_count; ++i)
+      denominator = sh_alpha[i] * denominator + sh_beta[i];
+    scores_denominator[base] = denominator;
+  }
+  if (coefficients_or_null != nullptr) {
+    for (int64_t i = tid; i < selected_count; i += blockDim.x) {
+      coefficients_or_null[base + i] = sh_alpha[i];
+      coefficients_or_null[plane + base + i] = sh_beta[i];
+    }
+  }
+  __syncthreads();
+
+  // Phase D: values accumulation, verbatim (the unfused values kernel body
+  // after its coefficient/token staging prologue).
+  const int dim = tid;
+  for (int64_t i = threadIdx.x; i < selected_count; i += blockDim.x) {
+    const int64_t position = selected_positions[i];
+    const int64_t logical_block = position / block_size;
+    sh_token[i] = (position < 0 || logical_block >= block_table_len)
+        ? -1
+        : static_cast<int>(block_table[logical_block] * block_size
+                           + position % block_size);
+  }
+  __syncthreads();
+  float accumulator = 0.0f;
+  constexpr int64_t VU = 32;
+  int64_t i = 0;
+  for (; i + VU <= selected_count; i += VU) {
+    float v[VU];
+#pragma unroll
+    for (int u = 0; u < VU; ++u) {
+      const int token = sh_token[i + u];
+      const int safe = token < 0 ? 0 : token;
+      const float raw_v = bf16_bits_to_float(
+          value_cache[(static_cast<int64_t>(safe) * kv_heads + kv_head) * head_dim + dim]);
+      v[u] = token < 0 ? 0.0f : raw_v;
+    }
+#pragma unroll
+    for (int u = 0; u < VU; ++u)
+      accumulator = accumulator * sh_alpha[i + u] + v[u] * sh_beta[i + u];
+  }
+  for (; i < selected_count; ++i) {
+    const float alpha = sh_alpha[i];
+    const float beta = sh_beta[i];
+    const int token = sh_token[i];
+    const int safe = token < 0 ? 0 : token;
+    const float raw_v = bf16_bits_to_float(
+        value_cache[(static_cast<int64_t>(safe) * kv_heads + kv_head) * head_dim + dim]);
+    const float value = token < 0 ? 0.0f : raw_v;
+    accumulator = accumulator * alpha + value * beta;
+  }
+  output[q_head * head_dim + dim] = accumulator / scores_denominator[base];
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_fused_v2_f32(
+    const void* query,
+    const void* key_cache,
+    const void* value_cache,
+    const void* selected_positions,
+    const void* block_table,
+    void* scores,
+    void* coefficients,
+    void* output,
+    int64_t selected_count,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t query_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (!query || !key_cache || !value_cache || !selected_positions || !block_table ||
+      !scores || !coefficients || !output || selected_count <= 0 || block_size <= 0 ||
+      block_table_len <= 0 || query_heads <= 0 || kv_heads <= 0 ||
+      query_heads % kv_heads || head_dim != 256 || selected_count > 4096) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  hipLaunchKernelGGL(
+      qsa_sparse_attention_paged_bf16_ordered_scores_v2_f32_kernel,
+      dim3(static_cast<uint32_t>(query_heads), 8), dim3(threads),
+      static_cast<size_t>(selected_count) * sizeof(int), stream,
+      static_cast<const float*>(query), static_cast<const uint16_t*>(key_cache),
+      static_cast<const int64_t*>(selected_positions),
+      static_cast<const int32_t*>(block_table), static_cast<float*>(scores),
+      selected_count, block_size, block_table_len, query_heads, kv_heads,
+      head_dim, scale);
+  hipLaunchKernelGGL(
+      qsa_sparse_attention_paged_bf16_ordered_fused_v2_f32_kernel,
+      dim3(static_cast<uint32_t>(query_heads)), dim3(threads),
+      static_cast<size_t>(3 * selected_count) * sizeof(float)
+          + static_cast<size_t>(selected_count) * sizeof(int),
+      stream,
+      static_cast<const uint16_t*>(value_cache),
+      static_cast<const int64_t*>(selected_positions),
+      static_cast<const int32_t*>(block_table), static_cast<const float*>(scores),
+      static_cast<float*>(scores), static_cast<float*>(coefficients),
+      static_cast<float*>(output),
+      selected_count, block_size, block_table_len, query_heads, kv_heads, head_dim);
+  return static_cast<int>(hipGetLastError());
+}

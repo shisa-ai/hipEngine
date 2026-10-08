@@ -618,6 +618,65 @@ def qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_v2_f32(
     )
 
 
+def qwen4_exp_qsa_sparse_attention_paged_bf16_fused_v2_f32(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    selected_positions_ptr: int,
+    scores_ptr: int,
+    coefficients_ptr: int,
+    output_ptr: int,
+    spans: KVLiveSpans,
+    *,
+    selected_count: int,
+    block_size: int,
+    query_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    scale: float | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fused scores + coefficients/values ordered sparse QSA decode.
+
+    T0 sibling of the v2 three-pass route: the scores kernel runs unchanged,
+    then one fused block per q_head computes the coefficients recurrence
+    directly in shared memory and the values accumulation without the global
+    coefficient round-trip. The arithmetic (warp score tree, chunked
+    ``fmaxf`` scan, ``expf`` points, both serial recurrences and the final
+    divide) is identical; only the launch boundary and the global plane
+    round-trip are removed.
+    """
+
+    if spans.spans_mode != "uniform" or spans.storage_dtype != DType.BF16:
+        raise ValueError("sparse QSA attention requires uniform BF16 KVLiveSpans")
+    if selected_count <= 0 or block_size <= 0 or query_heads <= 0 or kv_heads <= 0:
+        raise ValueError("selected_count, block_size, and head counts must be positive")
+    if query_heads % kv_heads or head_dim != 256:
+        raise ValueError("fused v2 sparse QSA requires divisible GQA with head_dim=256")
+    if selected_count > 4096:
+        raise ValueError("fused v2 sparse QSA requires selected_count <= 4096")
+    attention_scale = head_dim ** -0.5 if scale is None else float(scale)
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_fused_v2_f32",
+        _ARGS_SPARSE_ATTN_ORDERED,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            query_ptr, key_cache_ptr, value_cache_ptr, selected_positions_ptr,
+            spans.base_offsets.ptr, scores_ptr, coefficients_ptr, output_ptr,
+            selected_count, block_size, spans.base_offsets.numel, query_heads,
+            kv_heads, head_dim, attention_scale, stream,
+        ),
+    )
+
+
 def qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32(
     query_ptr: int,
     key_cache_ptr: int,

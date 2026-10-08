@@ -59,6 +59,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_v2_f32,
+    qwen4_exp_qsa_sparse_attention_paged_bf16_fused_v2_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32,
@@ -2568,11 +2569,19 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2", "0")
             not in {"", "0", "false", "False"}
         )
+        ordered_decode_v2_fused = (
+            ordered_decode_v2
+            and os.environ.get(
+                "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED", "0"
+            ) not in {"", "0", "false", "False"}
+        )
         if ordered_decode:
             scores, coefficients = scratch.ordered_attention_scratch(
                 query_heads=query_heads, selected_count=selected_count
             )
-            if ordered_decode_v2:
+            if ordered_decode_v2_fused:
+                attention_fn = qwen4_exp_qsa_sparse_attention_paged_bf16_fused_v2_f32
+            elif ordered_decode_v2:
                 v2_key = KernelKey(
                     str(weights.projections["attn_q"].backend),
                     "qsa_sparse_attention", "bf16_kv",
