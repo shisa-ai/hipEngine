@@ -14,6 +14,16 @@ split), which bypass those functions and instead all pass through
 reports prefill launches and no decode launches at all, which is exactly the
 shape of an answer that looks like "this scope is not reached" when the scope
 was reached and merely invisible.
+
+Decode is recorded twice, because the two records answer different questions.
+``scoped decode resolution`` is the route the layer resolved for that call, and
+it is what the plan's decode selection decides. ``launcher selection counter``
+is the last decode kernel the C launcher selected, which is a *sticky* value: it
+is read straight after the call, so it attributes correctly only when that call
+set it. Below the resident LDS bound the layer keeps the native path, which
+routes through a launcher that may not set the counter at all, and then this
+record carries the previous call's answer rather than this one's. Count scoped
+routes from the first record and treat the second as a hint.
 """
 from __future__ import annotations
 
@@ -90,16 +100,34 @@ def observe_attention_launches():
             selection = int(attention.decode_selection(kwargs.get("library")))
             records.append({
                 "variant": decode_names.get(selection, f"selection_{selection}"),
-                "reason": "registered decode variant",
+                "reason": "launcher selection counter",
+                "launcher_selection_sticky": True,
                 **{name: kwargs.get(name) for name in
                    ("tokens", "keys", "head_dim", "num_heads", "num_kv_heads")},
             })
         return result
 
     attention._launch_prefill = observe_decode
+
+    original_resolver = layer._select_exact_decode_attention
+
+    def observe_resolution(*args, **kwargs):
+        launcher, route = original_resolver(*args, **kwargs)
+        if kwargs.get("tokens") == 1:
+            records.append({
+                "variant": route,
+                "reason": "scoped decode resolution",
+                **{name: kwargs.get(name) for name in
+                   ("tokens", "keys", "head_dim", "num_heads", "num_kv_heads",
+                    "sliding_window")},
+            })
+        return launcher, route
+
+    layer._select_exact_decode_attention = observe_resolution
     try:
         yield records
     finally:
+        layer._select_exact_decode_attention = original_resolver
         attention._launch_prefill = original_launch
         layer.select_prefill_attention = original
         for name, launch in originals.items():
