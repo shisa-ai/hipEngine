@@ -56,6 +56,7 @@ _spec.loader.exec_module(_mkc)
 from hipengine.core.hip import get_hip_runtime  # noqa: E402
 from hipengine.core.memory import (  # noqa: E402
     copy_host_to_device,
+    free,
     host_array_ptr,
     malloc,
 )
@@ -105,6 +106,7 @@ ROUTES = {
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "selected_wmma_iu8_risk_prefill_bf16_bf16_out",
             "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+            "gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
         ],
     },
 }
@@ -182,6 +184,23 @@ def main() -> int:
             t16_up, host_array_ptr(tiles_up), int(tiles_up.nbytes)
         )
     dn.build_qwen4_exp_q5_1(load=True)
+    t16_down_tiles = None
+    if route["quant"] == "gguf_q5_1":
+        # T16 down arm (2026-10-09, down-leg build step 3): repack the
+        # synthesized raw Q5_1 down weights into the bit-lossless Q5_1 T16
+        # layout and upload the tile buffer, mirroring the gate/up T16 arm.
+        from hipengine.kernels.hip_gfx1100.quant import gguf_k_t16_selected_prefill as t16mod
+        from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16
+        t16mod.build_gguf_k_t16_selected_prefill(load=True)
+        raw_down = np.full(
+            (EXPERTS, route["out_features"], row_bytes), 0x3C, dtype=np.uint8
+        )
+        tiles_down = repack_gguf_q5_1_tile16(raw_down).tiles
+        t16_down_tiles = malloc(int(tiles_down.nbytes))
+        copy_host_to_device(
+            t16_down_tiles, host_array_ptr(tiles_down), int(tiles_down.nbytes)
+        )
+        del raw_down, tiles_down
 
     rows_list = [int(v) for v in args.rows.split(",") if v.strip()]
     distributions = [v for v in args.distribution.split(",") if v.strip()]
@@ -357,11 +376,43 @@ def main() -> int:
                     rows, EXPERTS, in_features, out_features, padded_rows,
                 )
 
+            def t16_expert_major_down() -> None:
+                # Expert-major compensated WMMA over the Q5_1 T16 tiles
+                # (down-leg build step 2, RED->GREEN at bfd5ec470). The ABI
+                # is the active-experts list, not the 16-row tile map.
+                compact_dev = maps_by_tile[args.tile_rows][0]
+                compact_starts = np.asarray(
+                    _mkc._maps(counts)[0], dtype=np.int64
+                )
+                active_host = np.flatnonzero(np.diff(compact_starts)).astype(np.int64)
+                active_dev = malloc(max(8, active_host.nbytes))
+                copy_host_to_device(
+                    active_dev, host_array_ptr(active_host), active_host.nbytes
+                )
+                active_count_host = np.asarray([active_host.size], dtype=np.int64)
+                active_count_dev = malloc(8)
+                copy_host_to_device(
+                    active_count_dev,
+                    host_array_ptr(active_count_host),
+                    active_count_host.nbytes,
+                )
+                t16mod_local = t16mod
+                try:
+                    t16mod_local.gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out(
+                        x.ptr, compact_dev.ptr, active_dev.ptr,
+                        active_count_dev.ptr, t16_down_tiles.ptr, out_a.ptr,
+                        rows, in_features, out_features, EXPERTS,
+                    )
+                finally:
+                    free(active_dev)
+                    free(active_count_dev)
+
             arms = {
                 "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": pair2,
                 "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": compact8,
                 "selected_wmma_iu8_risk_prefill_bf16_bf16_out": wmma_down,
                 "selected_grouped_wmma_prefill_compact_bf16_bf16_out": f16_compact_down,
+                "gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out": t16_expert_major_down,
             }
             primary = "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"
 
