@@ -246,6 +246,11 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             # 2.29e-5, max 5.38e-4 against 5e-2, and zero top-1 flips (100%),
             # with all 15,790 decode launches on the flash route.
             # ``benchmarks/results/2026-10-09-gemma4-flash-global-decode-gate.json``
+            # The short-context end of the same scope is gated separately: over
+            # 4,095 rows at keys 4,097-8,191 it reads mean KL 6.87e-6, max
+            # 5.59e-3, zero flips, with 122,695 of 122,695 decode launches on
+            # flash at both head dimensions.
+            # ``benchmarks/results/2026-10-09-gemma4-sliding-band-4096-gate.json``
             selected_variant=DECODE_ATTENTION_FLASH,
             strict_fallback_variant=DECODE_ATTENTION_PLAIN,
             registry_quant=DECODE_ATTENTION_QUANT,
