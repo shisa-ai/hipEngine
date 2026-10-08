@@ -1,0 +1,293 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_gdn_multi_engine_ab",
+  "status": "completed",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "084095c52e44c424eb827152a5aa9aaa822b0e78",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_gdn_multi_engine_ab.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipcc-version-qwen4exp.txt",
+    "--output",
+    "benchmarks/results/2026-10-08-qwen4exp-gdn-multicolumn-admission/engine-ab.json"
+  ],
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "arms": {
+    "before": "production wave_norm (recovery-zeroed colwarps)",
+    "after": "tiled16_multi via colwarps gate + variant name"
+  },
+  "chunk_size": 4096,
+  "transitions": 128,
+  "warmups_per_mode": 1,
+  "cases": {
+    "code-p512": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 311.7968689437588,
+        "decode_tok_s": 20.961681581146117,
+        "client_wall_s": 23.245425212,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 315.6047472538712,
+        "decode_tok_s": 20.935291520746972,
+        "client_wall_s": 23.209080183999998,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "code-p1024": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 338.7301270823378,
+        "decode_tok_s": 19.85091653784095,
+        "client_wall_s": 28.413361710999997,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 341.84966397740396,
+        "decode_tok_s": 19.851008020469923,
+        "client_wall_s": 28.330512206999998,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "code-p4096": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 346.2213758308485,
+        "decode_tok_s": 18.07869492032396,
+        "client_wall_s": 56.732214001,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 347.9681486763835,
+        "decode_tok_s": 18.037838156579692,
+        "client_wall_s": 56.602159149,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "general_en-p512": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 312.9260333365344,
+        "decode_tok_s": 20.98604687224628,
+        "client_wall_s": 23.206380224,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 317.23335615230457,
+        "decode_tok_s": 20.976741095831574,
+        "client_wall_s": 23.147850976,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "general_en-p1024": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 341.9839980918219,
+        "decode_tok_s": 19.831548657659102,
+        "client_wall_s": 28.345963341,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 345.1120504935553,
+        "decode_tok_s": 19.763559614932234,
+        "client_wall_s": 28.331155042,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "general_en-p4096": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 345.25305294784306,
+        "decode_tok_s": 11.10092655255476,
+        "client_wall_s": 70.18299268,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 347.32730358472014,
+        "decode_tok_s": 11.70920585196683,
+        "client_wall_s": 68.17344230600001,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "general_ja-p512": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 314.91249947695513,
+        "decode_tok_s": 20.069853286385516,
+        "client_wall_s": 24.010719603000002,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 319.007169869115,
+        "decode_tok_s": 20.229976625922028,
+        "client_wall_s": 23.796671063999998,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "general_ja-p1024": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 339.9250085374899,
+        "decode_tok_s": 19.10014429473598,
+        "client_wall_s": 29.141847568,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 343.98336805300494,
+        "decode_tok_s": 19.1788439993833,
+        "client_wall_s": 28.952726154,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "general_ja-p4096": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 345.4283139154259,
+        "decode_tok_s": 10.588063325089795,
+        "client_wall_s": 71.840483214,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 347.18110656814224,
+        "decode_tok_s": 10.57110986693057,
+        "client_wall_s": 71.719050522,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "mixed_ja_en-p512": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 308.7032604090374,
+        "decode_tok_s": 20.22694298709986,
+        "client_wall_s": 23.960231161,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 312.62351490992705,
+        "decode_tok_s": 20.077956965857606,
+        "client_wall_s": 24.038709936,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "mixed_ja_en-p1024": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 336.26336441456806,
+        "decode_tok_s": 19.073196949301767,
+        "client_wall_s": 29.268661030000004,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 339.4029232811125,
+        "decode_tok_s": 19.0528210962568,
+        "client_wall_s": 29.205684637999997,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    },
+    "mixed_ja_en-p4096": {
+      "before": {
+        "samples": 3,
+        "prefill_tok_s": 344.69480323988546,
+        "decode_tok_s": 10.529959126466421,
+        "client_wall_s": 72.116305374,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 0
+      },
+      "after": {
+        "samples": 3,
+        "prefill_tok_s": 346.35355940653835,
+        "decode_tok_s": 10.534047902491794,
+        "client_wall_s": 71.9314208,
+        "within_mode_output_deterministic": true,
+        "multi_calls": 45
+      }
+    }
+  },
+  "summary": {
+    "correctness": {
+      "all_cases_within_mode_deterministic": true,
+      "note": "arithmetic-changing candidate: cross-arm digests are not expected to match; the binding correctness authority is the layer2 production gate"
+    },
+    "all": {
+      "before": {
+        "samples": 36,
+        "prefill_tok_s": 340.9575912916283,
+        "decode_tok_s": 16.326161261537454,
+        "client_wall_s": 480.46458511900005
+      },
+      "after": {
+        "samples": 36,
+        "prefill_tok_s": 343.2912017520991,
+        "decode_tok_s": 16.423843375858173,
+        "client_wall_s": 477.438462978
+      },
+      "after_over_before_prefill": 1.0068442836296165,
+      "after_over_before_decode": 1.005983164857672,
+      "after_over_before_client_wall": 0.9937016749314613
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 89404925864,
+    "total_allocated_bytes": 90191357896,
+    "total_freed_bytes": 90191357896,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  }
+}

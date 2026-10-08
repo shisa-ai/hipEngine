@@ -253,9 +253,11 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     gdn = selections[
         ("gdn_recurrence_norm_gate", "prefill_rows_ge2_layers27_47_gdn")
     ]
-    assert gdn["selected_variant"] == "qwen4exp_gdn_columnwarps_prefill"
+    assert gdn["selected_variant"] == "qwen4exp_gdn_tiled16_multi_prefill"
     assert gdn["strict_fallback_variant"] == "qwen4exp_sigmoid_strict_prefill"
-    assert gdn["evidence_artifact"].endswith("gdn-colwarps27-production.json")
+    assert gdn["evidence_artifact"].endswith(
+        "2026-10-08-qwen4exp-gdn-multicolumn-admission/gate.json"
+    )
     dp4a = selections[("linear", "decode_c1_calibrated_q4_dp4a_43_layers")]
     assert dp4a["selected_variant"] == (
         "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out"
