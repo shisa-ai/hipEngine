@@ -95,7 +95,8 @@ def test_observe_decode_launches_report_the_registered_variant(monkeypatch):
         assert wrapped(tokens=512, keys=16384, head_dim=512, num_heads=16,
                        num_kv_heads=2) == "launched"
     assert records == [{"variant": attention.DECODE_ATTENTION_FLASH,
-                        "reason": "registered decode variant", "tokens": 1,
+                        "reason": "launcher selection counter",
+                        "launcher_selection_sticky": True, "tokens": 1,
                         "keys": 16384, "head_dim": 512, "num_heads": 16,
                         "num_kv_heads": 2}]
     assert attention._launch_prefill is launch
@@ -119,6 +120,26 @@ def test_observe_decode_launches_name_every_selection(monkeypatch, selection, co
     with observe_attention_launches() as records:
         attention._launch_prefill(tokens=1, keys=2048, head_dim=512)
     assert records[0]["variant"] == getattr(attention, constant)
+
+
+def test_observe_records_the_scoped_route_the_layer_resolved(monkeypatch):
+    """The resolver's route is the per-call answer; the counter is only a hint."""
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer as layer
+
+    def resolver(*args, **kwargs):
+        return "launcher", "gemma4_flash"
+    monkeypatch.setattr(layer, "_select_exact_decode_attention", resolver)
+    with observe_attention_launches() as records:
+        assert layer._select_exact_decode_attention(tokens=1, keys=16384, head_dim=512,
+                                                    num_heads=16, num_kv_heads=2,
+                                                    sliding_window=None) == ("launcher", "gemma4_flash")
+        layer._select_exact_decode_attention(tokens=512, keys=16384, head_dim=512,
+                                             num_heads=16, num_kv_heads=2,
+                                             sliding_window=None)
+    assert records == [{"variant": "gemma4_flash", "reason": "scoped decode resolution",
+                        "tokens": 1, "keys": 16384, "head_dim": 512, "num_heads": 16,
+                        "num_kv_heads": 2, "sliding_window": None}]
+    assert layer._select_exact_decode_attention is resolver
 
 
 def test_observer_restores_selector_after_failure(monkeypatch):
