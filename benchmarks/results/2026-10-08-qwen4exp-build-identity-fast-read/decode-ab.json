@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_build_identity_decode_ab",
+  "status": "completed",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "35724d4e18409a3084b8210619d1baf65249983e",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_build_identity_decode_ab.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipcc-version-qwen4exp.txt",
+    "--output",
+    "benchmarks/results/2026-10-08-qwen4exp-build-identity-fast-read/decode-ab.json"
+  ],
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "arms": {
+    "slow": "historical str-view identity",
+    "fast": "raw-mapping identity"
+  },
+  "chunk_size": 4096,
+  "transitions": 128,
+  "reps_per_arm": 6,
+  "cases": {
+    "code-p512": {
+      "slow": {
+        "decode_ms_median": 6091.228439006954,
+        "decode_ms_samples": [
+          6090.589570812881,
+          6093.59607566148,
+          6088.575379922986,
+          6091.673135757446,
+          6091.096539050341,
+          6091.360338963568
+        ],
+        "decode_tok_s_median": 21.013823612379195,
+        "within_arm_deterministic": true
+      },
+      "fast": {
+        "decode_ms_median": 6083.7427014485,
+        "decode_ms_samples": [
+          6087.741872295737,
+          6086.191888898611,
+          6084.181529469788,
+          6083.226573653519,
+          6083.303873427212,
+          6082.889711484313
+        ],
+        "decode_tok_s_median": 21.039680059040634,
+        "within_arm_deterministic": true
+      },
+      "cross_arm_output_exact": true,
+      "median_delta_ms": 7.485737558454275
+    },
+    "code-p4096": {
+      "slow": {
+        "decode_ms_median": 7068.55977140367,
+        "decode_ms_samples": [
+          7045.513066463172,
+          7039.9832325056195,
+          7082.509590312839,
+          7062.333263456821,
+          7074.786279350519,
+          7078.352292068303
+        ],
+        "decode_tok_s_median": 18.108356460085762,
+        "within_arm_deterministic": true
+      },
+      "fast": {
+        "decode_ms_median": 7261.443430092186,
+        "decode_ms_samples": [
+          7248.09449724853,
+          7247.594812884927,
+          7253.883210942149,
+          7280.467717908323,
+          7269.003649242222,
+          7290.719715878367
+        ],
+        "decode_tok_s_median": 17.627349332441884,
+        "within_arm_deterministic": true
+      },
+      "cross_arm_output_exact": true,
+      "median_delta_ms": -192.88365868851542
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 89404925864,
+    "total_allocated_bytes": 89981642688,
+    "total_freed_bytes": 89981642688,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  }
+}

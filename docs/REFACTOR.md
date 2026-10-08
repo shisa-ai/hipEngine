@@ -8747,6 +8747,18 @@ Each call re-derives a resolution identity from **eight** environment variables
 (2.281 us micro-benchmarked), so the term is ~2.49 ms/step even after the memo in
 `d0f...` removed the key derivation.
 
+**Identity component, attempted 2026-10-08, reverted:** reading the identity from
+the live raw environment mapping measured 173 ns/call against 2,292 ns for the
+str path (13x cheaper in isolation, ~1.95 ms/step projected at the 980
+resolutions/step decode rate) with live-change observation preserved, but the
+same-residency decode A/B showed only +0.12% at p512 and an unexplained -2.7%
+at p4096 on a heat-soaked host (tight, order-balanced samples; zero memo
+misses, identical libraries and launch counts - no mechanism identified).
+Reverted pending a cooled paired re-measurement; evidence in
+`benchmarks/results/2026-10-08-qwen4exp-build-identity-fast-read/`. The
+resolution-key construction and the library-handle path remain; the library
+threading below is still open.
+
 **Do not expect wall movement from removing it.** Two ablations of ~2 ms/step of
 host work at p4096 measured +2.53% and -0.45% against base spreads of 0.73% and
 0.15%, and the host CPU is flat with context (70.816 -> 71.478 us/step for a
