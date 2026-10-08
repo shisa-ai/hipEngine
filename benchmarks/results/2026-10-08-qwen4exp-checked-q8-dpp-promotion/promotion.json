@@ -1,0 +1,270 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp-checked-q8-dpp-promotion",
+  "status": "promoted-default",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "AMD RYZEN AI MAX+ 395 / Radeon 8060S (Strix Halo), 128 GB",
+    "rocm": "TheRock 10.0.0"
+  },
+  "model": "unsloth Qwen3.8-Flash-Next UD-Q4_K_XL (qwen4exp)",
+  "profile": "production, BF16 KV, prefill chunk 4096, compact capture (production greedy), 1 warmup + 3 repetitions, 128 decode transitions",
+  "baseline_commit": "e1d97a9214276cad63cd824b0bf7ed5f215b0854",
+  "measured_state": "baseline commit + promotion diff (committed in the same unit)",
+  "variant": {
+    "key": [
+      "hip_gfx1151",
+      "linear",
+      "gguf_q8_0",
+      "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out"
+    ],
+    "strict_fallback": [
+      "hip_gfx1151",
+      "linear",
+      "gguf_q8_0",
+      "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
+    ],
+    "classification": "T0 exact-class (bit-identical, scheduling-only)",
+    "qualified_window": "rows 512-4096, six declared dense Q8_0 geometries",
+    "env_opt_out": "HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS=0",
+    "family_opt_out": "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION=0"
+  },
+  "cooled_single_arm": {
+    "note": "18-minute idle settle before the run to approximate the baseline fresh-host state",
+    "head_promotion_on": {
+      "total_client_wall_s": 447.633,
+      "deterministic": true,
+      "shapes": {
+        "1024": {
+          "prefill_tok_s_mean": 335.628,
+          "decode_tok_s_mean": 19.726,
+          "client_wall_s_total": 114.481
+        },
+        "4096": {
+          "prefill_tok_s_mean": 340.243,
+          "decode_tok_s_mean": 16.939,
+          "client_wall_s_total": 237.427
+        },
+        "512": {
+          "prefill_tok_s_mean": 308.428,
+          "decode_tok_s_mean": 20.371,
+          "client_wall_s_total": 95.725
+        }
+      },
+      "case_digests": {
+        "code-p1024": [
+          "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b"
+        ],
+        "code-p4096": [
+          "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+        ],
+        "code-p512": [
+          "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898"
+        ],
+        "general_en-p1024": [
+          "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be"
+        ],
+        "general_en-p4096": [
+          "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1"
+        ],
+        "general_en-p512": [
+          "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816"
+        ],
+        "general_ja-p1024": [
+          "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+        ],
+        "general_ja-p4096": [
+          "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243"
+        ],
+        "general_ja-p512": [
+          "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3"
+        ],
+        "mixed_ja_en-p1024": [
+          "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc"
+        ],
+        "mixed_ja_en-p4096": [
+          "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f"
+        ],
+        "mixed_ja_en-p512": [
+          "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241"
+        ]
+      }
+    },
+    "baseline_pre_promotion": {
+      "total_client_wall_s": 457.017,
+      "shapes": {
+        "512": {
+          "prefill_tok_s_mean": 294.68,
+          "decode_tok_s_mean": 20.4,
+          "client_wall_s_total": 96.543
+        },
+        "1024": {
+          "prefill_tok_s_mean": 320.15,
+          "decode_tok_s_mean": 19.85,
+          "client_wall_s_total": 115.763
+        },
+        "4096": {
+          "prefill_tok_s_mean": 327.42,
+          "decode_tok_s_mean": 16.75,
+          "client_wall_s_total": 244.712
+        }
+      }
+    }
+  },
+  "thermal_drift_series": {
+    "note": "four consecutive full-load runs, chronological; single-arm cross-process comparisons are confounded by ~1.5-3%/run sustained-load drift on this host",
+    "runs": [
+      {
+        "arm": "off",
+        "total_client_wall_s": 457.017,
+        "p4096_decode_tok_s": 16.75
+      },
+      {
+        "arm": "on",
+        "total_client_wall_s": 459.822,
+        "p4096_decode_tok_s": 15.69
+      },
+      {
+        "arm": "off",
+        "total_client_wall_s": 470.627,
+        "p4096_decode_tok_s": 15.6
+      },
+      {
+        "arm": "on",
+        "total_client_wall_s": 500.302,
+        "p4096_decode_tok_s": 11.49,
+        "note": "chained immediately after the previous full run"
+      }
+    ]
+  },
+  "fresh_pair_digest_check": {
+    "identical_digest_cases": 12,
+    "of_cases": 12,
+    "pair_off": {
+      "total_client_wall_s": 470.627,
+      "deterministic": true,
+      "shapes": {
+        "1024": {
+          "prefill_tok_s_mean": 318.421,
+          "decode_tok_s_mean": 19.42,
+          "client_wall_s_total": 117.728
+        },
+        "4096": {
+          "prefill_tok_s_mean": 326.767,
+          "decode_tok_s_mean": 15.603,
+          "client_wall_s_total": 253.784
+        },
+        "512": {
+          "prefill_tok_s_mean": 293.731,
+          "decode_tok_s_mean": 19.766,
+          "client_wall_s_total": 99.114
+        }
+      },
+      "case_digests": {
+        "code-p1024": [
+          "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b"
+        ],
+        "code-p4096": [
+          "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+        ],
+        "code-p512": [
+          "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898"
+        ],
+        "general_en-p1024": [
+          "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be"
+        ],
+        "general_en-p4096": [
+          "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1"
+        ],
+        "general_en-p512": [
+          "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816"
+        ],
+        "general_ja-p1024": [
+          "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+        ],
+        "general_ja-p4096": [
+          "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243"
+        ],
+        "general_ja-p512": [
+          "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3"
+        ],
+        "mixed_ja_en-p1024": [
+          "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc"
+        ],
+        "mixed_ja_en-p4096": [
+          "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f"
+        ],
+        "mixed_ja_en-p512": [
+          "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241"
+        ]
+      }
+    },
+    "pair_on": {
+      "total_client_wall_s": 500.302,
+      "deterministic": true,
+      "shapes": {
+        "1024": {
+          "prefill_tok_s_mean": 336.351,
+          "decode_tok_s_mean": 18.211,
+          "client_wall_s_total": 121.373
+        },
+        "4096": {
+          "prefill_tok_s_mean": 343.372,
+          "decode_tok_s_mean": 11.485,
+          "client_wall_s_total": 278.386
+        },
+        "512": {
+          "prefill_tok_s_mean": 308.357,
+          "decode_tok_s_mean": 19.148,
+          "client_wall_s_total": 100.543
+        }
+      },
+      "case_digests": {
+        "code-p1024": [
+          "829433ea8063a431345bf82ea30a71939dc49473456b2d435eb3d869a53c859b"
+        ],
+        "code-p4096": [
+          "c18d529b86947504e12e0d06aaa26f2ce7942387b98b95ec3bacdd65e6278eb5"
+        ],
+        "code-p512": [
+          "9045e90943e923b73a3eba23b772d7439a3430469244a6d2bbc021b9a747e898"
+        ],
+        "general_en-p1024": [
+          "11a11101e22d40da9aa34736ac762b6fc28f9cbe209169c886e43a7f706a56be"
+        ],
+        "general_en-p4096": [
+          "61feecb774bf7bc59cb52b8fd9f402eec1d2d9d2684dfe57a9addb0bc6e6f9d1"
+        ],
+        "general_en-p512": [
+          "3c961d4ee76936ddbff688d6c70bda542368382a657ab0b61c0f1153b030e816"
+        ],
+        "general_ja-p1024": [
+          "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+        ],
+        "general_ja-p4096": [
+          "10b96271b880d58707ec9f655713da72ff21e92a8f0859440d6c5b14634ab243"
+        ],
+        "general_ja-p512": [
+          "de6e1cbba5cf02f3d2b7bb846a89b06316d52ce2c54aab5f9af649f902bc02c3"
+        ],
+        "mixed_ja_en-p1024": [
+          "258ee87071e5637822b460db81ff3f78a3a43238af693f11f6a1c33560b8d0cc"
+        ],
+        "mixed_ja_en-p4096": [
+          "18ed36898d85d9fd8c970ae84fec41fbec4b11ce765b089e23d76df7c7491a8f"
+        ],
+        "mixed_ja_en-p512": [
+          "eeb1b96a61dccac60123e726d67d8d4680f5e5f5b7618155ec69cdebbb53b241"
+        ]
+      }
+    }
+  },
+  "controlling_same_residency_ab": {
+    "source": "benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-engine-ab/",
+    "prefill": "322.442 -> 336.954 tok/s (1.0450x)",
+    "decode": "16.211 -> 16.409 tok/s (1.0122x)",
+    "client_wall": "493.845 -> 481.402 s (0.9748x)",
+    "exact": true
+  }
+}

@@ -523,6 +523,33 @@ This is diagnostic complete-engine evidence, not a production profile or default
 promotion; the candidate remains default-off and the parent remains fallback.
 [Complete-engine artifact](../benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-engine-ab/README.md).
 
+### 1.3.6 Dense Q8 checked/full-row promotion to production default — 2026-10-08 UTC
+
+The sibling is promoted: `_raw_k_coltile_pipelined_dispatch` now prefers it for
+its qualified window (rows 512-4096 across the six declared dense Q8_0
+geometries, admission owned by `q8_0_coltile_dpp_checked_full_rows_qualified`
+in `gguf_k_gemv.py`), with `HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS=0` as
+the dedicated bisection opt-out and the plain DPP parent as the registered
+strict fallback. The DPP family flag still removes the whole family. Outputs
+are bit-identical: a fresh off/on pair reproduced 12/12 output digests.
+
+Cooled production-path measurement (chunk 4096, compact capture, idle-settled
+host): total client wall 457.017→447.633 s (−2.05%), prefill 294.68→308.43 /
+320.15→335.63 / 327.42→340.24 tok/s at p512/p1024/p4096, decode flat
+(20.40→20.37 / 19.85→19.73 / 16.75→16.94). The balanced same-residency A/B
+remains the controlling instrument (prefill 1.0450x, decode 1.0122x, wall
+0.9748x, exact).
+
+**Protocol finding recorded with this promotion:** four consecutive full-load
+canonical runs degraded monotonically regardless of arm (identical off-arm
+code: 457.017 → 470.627 s; a run chained immediately after another full run
+hit 500.302 s). The host drifts ~1.5-3%/run under sustained load, worst on
+bandwidth-bound p4096 decode. Cross-process single-arm comparisons cannot
+resolve sub-3% effects on this host: use idle-settled runs (18 min here), a
+same-session reference arm, or the same-residency balanced A/B harness for
+keep/revert decisions.
+[Promotion packet](../benchmarks/results/2026-10-08-qwen4exp-checked-q8-dpp-promotion/README.md).
+
 
 ## 2. Arithmetic policy and kernel mechanisms
 
@@ -534,7 +561,7 @@ halo-box PR #91 / #87 / #104 descriptions and pwilkin `40a9f4d01`:
 
 | Block | gufo (prefill) | halo-box / pwilkin | hipEngine production default |
 | --- | --- | --- | --- |
-| Dense Q8_0 projections | `DenseF16GEMMKernel`: Q8_0 codes decoded to F16 in LDS (exact magic-number construction), **F16 activation rows**, F16 WMMA, F32 accumulate, at **every layer** for shapes with ≥2048 outputs and K ≤ 2560; the other Q8_0 shapes run `W8A8BlockedWmmaGEMMKernel` (int8 WMMA over activations quantized per 32-block) | `mmb.cu`: BF16 weights and BF16 activations, BF16 WMMA, all layers | F16 operands (`dense_wide256`) at layers 16-47 only; **exact F32 coltile chain at 0-15** |
+| Dense Q8_0 projections | `DenseF16GEMMKernel`: Q8_0 codes decoded to F16 in LDS (exact magic-number construction), **F16 activation rows**, F16 WMMA, F32 accumulate, at **every layer** for shapes with ≥2048 outputs and K ≤ 2560; the other Q8_0 shapes run `W8A8BlockedWmmaGEMMKernel` (int8 WMMA over activations quantized per 32-block) | `mmb.cu`: BF16 weights and BF16 activations, BF16 WMMA, all layers | F16 operands (`dense_wide256`) at layers 16-47 only; **exact F32 coltile chain at 0-15, now on the checked full-rows DPP leaf for its qualified window (2026-10-08)** |
 | Routed experts | `RoutedF16GEMMKernel`: Q4_K / Q5_1 / Q8_0 decoded to F16 in LDS, F16 activations, F16 WMMA; gate/up paired with a SwiGLU epilogue; 48/64/128-row expert tiles picked from the real bucket counts; **no repair pass** | MMB routed GLU (BF16), Q4_K two-lane decode | iu8 WMMA with at-risk flags plus a **sparse exact repair** (1240 ms per `code-p4096`) |
 | Hyper-connections | `HcDownF16Gemm` (int8 WMMA from a tiled-Q8 copy of the norm) plus `HcMixF16Gemm` (Q8 → F16 up projection with the mix and inject in the epilogue); combine fused with the MoE epilogue and the next norm | fused gate GEMM + mix, bf16 streams end to end, combine+norm computes the next inject | exact F32 `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4` (2507 ms, 256x weight re-read) |
 | Router and small F32 weights | hipBLAS SGEMM (router and shared-expert gate in one GEMM) | activations rounded to F16 on WMMA ("every F32 weight of these GGUFs is F16-exact") | exact F32 tile4 producer |

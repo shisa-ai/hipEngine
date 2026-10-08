@@ -25,6 +25,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_array_ptr, malloc, memory_stats
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    Q8_0_DPP_CHECKED_FULL_ROWS_DECLARED_SHAPES as DECLARED_SHAPES,
+    q8_0_coltile_dpp_checked_full_rows_qualified,
+)
 from hipengine.kernels.registry import KernelKey, register, resolve
 from scripts import qwen4exp_row4_state_gate as gate
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
@@ -34,24 +38,15 @@ CANDIDATE = "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f
 BACKEND = "hip_gfx1151"
 QUANT = "gguf_q8_0"
 CHUNK_SIZE = 4096
-DECLARED_SHAPES = frozenset({
-    (2560, 10240),  # attn_qkv
-    (2560, 6144),   # attn_gate
-    (6144, 2560),   # ssm_out
-    (2560, 640),    # shared-expert gate/up
-    (640, 2560),    # shared-expert down
-    (10240, 320),   # HC down
-})
+# DECLARED_SHAPES and the admission contract are imported from the engine
+# (q8_0_coltile_dpp_checked_full_rows_qualified) so the screen cannot drift
+# from the production qualification gate.
 
 
 def admitted_shape(rows: int, in_features: int, out_features: int) -> bool:
-    rows, in_features, out_features = map(int, (rows, in_features, out_features))
-    return (
-        512 <= rows <= 4096
-        and rows % 4 == 0
-        and (in_features, out_features) in DECLARED_SHAPES
-        and gate_q8_admissible(rows, in_features, out_features)
-    )
+    """The production qualification contract; the engine helper is the source."""
+
+    return q8_0_coltile_dpp_checked_full_rows_qualified(rows, in_features, out_features)
 
 
 def gate_q8_admissible(rows: int, in_features: int, out_features: int) -> bool:

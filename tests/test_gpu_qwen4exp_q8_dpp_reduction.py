@@ -26,6 +26,7 @@ Evidence: ``benchmarks/results/2026-10-04-qwen4exp-q8-prefill-dpp-reduction/``.
 from __future__ import annotations
 
 import ctypes
+import os
 
 import numpy as np
 import pytest
@@ -82,16 +83,37 @@ def test_dispatch_prefers_the_dpp_leaf() -> None:
         KernelKey(backend, "linear", "gguf_q8_0", "coltile8_rowbatch4_wave_scale_f32_f32_out"),
         "raw",
     )
-    assert _raw_k_coltile_pipelined_dispatch(base).key.variant == (
+    decode_shape = {"rows": 1, "in_features": 2560, "out_features": 10240}
+    qualified_shape = {"rows": 4096, "in_features": 2560, "out_features": 10240}
+    assert _raw_k_coltile_pipelined_dispatch(
+        base, **decode_shape
+    ).key.variant == (
         "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
     )
+    # The qualified prefill window claims the checked full-row sibling; the
+    # same launch with the dedicated opt-out falls back to the plain DPP leaf.
+    os.environ.pop("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", None)
+    try:
+        assert _raw_k_coltile_pipelined_dispatch(
+            base, **qualified_shape
+        ).key.variant == (
+            "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out"
+        )
+        os.environ["HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS"] = "0"
+        assert _raw_k_coltile_pipelined_dispatch(
+            base, **qualified_shape
+        ).key.variant == (
+            "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
+        )
+    finally:
+        os.environ.pop("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", None)
 
     dpp_key = KernelKey(
         backend, "linear", "gguf_q8_0", "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
     )
     unregister(dpp_key)
     try:
-        assert _raw_k_coltile_pipelined_dispatch(base).key.variant == (
+        assert _raw_k_coltile_pipelined_dispatch(base, **decode_shape).key.variant == (
             "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
         )
     finally:
@@ -99,12 +121,14 @@ def test_dispatch_prefers_the_dpp_leaf() -> None:
 
     # A non-raw ABI and an unrelated variant are left alone.
     assert _raw_k_coltile_pipelined_dispatch(
-        GGUFLinearDispatch(base.key, "bf16")
+        GGUFLinearDispatch(base.key, "bf16"), **decode_shape
     ).key.variant == base.key.variant
     other = GGUFLinearDispatch(
         KernelKey(backend, "linear", "gguf_q8_0", "coltile8_rowbatch4_f32_f32_out"), "raw"
     )
-    assert _raw_k_coltile_pipelined_dispatch(other).key.variant == other.key.variant
+    assert _raw_k_coltile_pipelined_dispatch(
+        other, **decode_shape
+    ).key.variant == other.key.variant
 
 
 def _make_operands(rows: int, k: int, n: int, seed: int):

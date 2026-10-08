@@ -1,3 +1,7 @@
+## 2026-10-08 — Dense Q8 checked full-rows promoted to production default: -2.05% client wall
+
+The checked-int32/full-four-row dense Q8 DPP sibling (T0 exact-class, bit-identical outputs) is now the production default leaf for its qualified shape window (six declared dense Q8_0 geometries, rows 512-4096) with the plain DPP parent as strict fallback and `HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS=0` as the bisection opt-out. Cooled canonical client wall **457.017→447.633 s (0.9795x)**, prefill 294.68→308.43 / 320.15→335.63 / 327.42→340.24 tok/s at p512/p1024/p4096 (+4.7/+4.8/+3.9%), decode flat; 12/12 off/on output digests identical. The balanced same-residency A/B remains the controlling instrument (wall 0.9748x). Measurement-protocol finding recorded: this host drifts ~1.5-3%/run under sustained load, so cross-process single-arm comparisons cannot resolve sub-3% effects — use idle-settled runs or the same-residency A/B harness. [Artifact](results/2026-10-08-qwen4exp-checked-q8-dpp-promotion/README.md).
+
 ## 2026-10-07 — Dense Q8 checked/full-row complete-engine diagnostic: 4.50% prefill gain
 
 The tracked-clean diagnostic sibling was measured through the complete Qwen4Exp

@@ -10,10 +10,30 @@ production default or performance claim changed.
 
 [Protocol, test and artifact](results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/README.md).
 
-Last updated: **2026-10-07 UTC**
+Last updated: **2026-10-08 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
+
+## Qwen3.8 Flash Next current production rates (dense Q8 checked full-rows default)
+
+On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, production profile,
+BF16 KV, chunk 4096, greedy decode (compact capture), idle-settled host: the
+checked full-rows dense Q8 DPP leaf is the production default for its
+qualified dense shapes, with exact outputs (bit-identical to the previous
+DPP leaf; 12/12 canonical digests identical) and the plain DPP parent as the
+registered fallback.
+
+| Prompt length | Prefill tok/s | Decode (128) tok/s |
+| ---: | ---: | ---: |
+| 512 | 308.43 | 20.37 |
+| 1024 | 335.63 | 19.73 |
+| 4096 | 340.24 | 16.94 |
+
+Prefill improved +3.9-4.8% and total request wall −2.05% over the prior
+default; decode is unchanged within noise. Cross-run comparisons on this
+host require an idle-settled or same-residency protocol for effects under 3%.
+[Promotion evidence and protocol](results/2026-10-08-qwen4exp-checked-q8-dpp-promotion/README.md).
 
 ## Qwen3.8 Flash Next dense Q8 projection diagnostic
 

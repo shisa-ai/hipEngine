@@ -1760,6 +1760,49 @@ def q8_0_coltile_checked_int32_admissible(
     return True
 
 
+# The dense Q8_0 geometries the checked full-row sibling was qualified on by the
+# natural-input, full model-state and complete-engine gates. They are the
+# Qwen4Exp lane's dense Q8_0 projections; every other Q8_0 dense shape keeps the
+# generic DPP parent. Evidence:
+# benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-engine-ab/
+Q8_0_DPP_CHECKED_FULL_ROWS_DECLARED_SHAPES = frozenset({
+    (2560, 10240),  # attn_qkv
+    (2560, 6144),   # attn_gate
+    (6144, 2560),   # ssm_out
+    (2560, 640),    # shared-expert gate/up
+    (640, 2560),    # shared-expert down
+    (10240, 320),   # HC down
+})
+Q8_0_DPP_CHECKED_FULL_ROWS_MIN_ROWS = 512
+Q8_0_DPP_CHECKED_FULL_ROWS_MAX_ROWS = 4096
+
+
+def q8_0_coltile_dpp_checked_full_rows_qualified(
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> bool:
+    """Production shape qualification for the checked full-row DPP sibling.
+
+    The complete-engine A/B engaged the sibling on exactly these shapes: the
+    six declared dense Q8_0 geometries between 512 and 4096 rows, each also
+    passing complete-int32 admission. Outside the qualified window the generic
+    DPP parent remains the owner - it covers decode rows, prefill tails and
+    every other Q8_0 dense shape with the same bit-exact arithmetic.
+    """
+
+    rows, in_features, out_features = map(int, (rows, in_features, out_features))
+    if not (
+        Q8_0_DPP_CHECKED_FULL_ROWS_MIN_ROWS
+        <= rows
+        <= Q8_0_DPP_CHECKED_FULL_ROWS_MAX_ROWS
+    ):
+        return False
+    if (in_features, out_features) not in Q8_0_DPP_CHECKED_FULL_ROWS_DECLARED_SHAPES:
+        return False
+    return q8_0_coltile_checked_int32_admissible(rows, in_features, out_features)
+
+
 def gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out(
     x_ptr: int,
     qweight_ptr: int,
