@@ -297,11 +297,15 @@ CANDIDATES = {
         },
         base_profile="production",
         scenario_id="qwen4exp-t16-gate-up",
-        candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
-                       "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out"),
+        candidate_key=None,
         fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
                       "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
-        count_registered_dispatch=True,
+        # The T16 dual wrapper is a direct module-attribute call in the runner
+        # branch, not a registry-resolved variant, so counting patches the
+        # attribute the branch calls (the f16_compact_down pattern).
+        direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
+                                "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out"),
+        count_registered_dispatch=False,
     ),
     "f16_compact_down": CandidateSpec(
         name="f16_compact_down",
