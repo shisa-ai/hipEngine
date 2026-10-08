@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    DECODE_ATTENTION_FLASH,
     DECODE_ATTENTION_LAYER,
     DECODE_ATTENTION_PLAIN,
     DECODE_ATTENTION_QUANT,
@@ -719,7 +720,10 @@ def _select_exact_decode_attention(
     def keep_native():
         return plain, "exact"
 
-    if DECODE_ATTENTION_STAGED not in decode_attention_variants:
+    if (
+        DECODE_ATTENTION_FLASH not in decode_attention_variants
+        and DECODE_ATTENTION_STAGED not in decode_attention_variants
+    ):
         return keep_native()
     if int(tokens) != 1:
         return keep_native()
@@ -737,6 +741,18 @@ def _select_exact_decode_attention(
         return keep_native()
     if int(key_begin) != 0:
         return keep_native()
+    if DECODE_ATTENTION_FLASH in decode_attention_variants:
+        # The flash candidate is the same scoped shape as the staged one and
+        # replaces it in the production plan: one token, head_dim 512, GQA
+        # ratio 8, untrimmed global, past the resident bound. It is resolved
+        # after the guards rather than before them, so every shape outside that
+        # scope -- a prefill block, a sliding layer, a trimmed call -- keeps the
+        # native kernel. The staged entry stays registered as the exact chain
+        # strict and batch-invariant keep, and as this route's rollback lever.
+        flash = _resolve_decode_attention_launcher(
+            backend=resolved_backend, variant=DECODE_ATTENTION_FLASH
+        )
+        return flash, DECODE_ATTENTION_FLASH
     staged = _resolve_decode_attention_launcher(
         backend=resolved_backend, variant=DECODE_ATTENTION_STAGED
     )

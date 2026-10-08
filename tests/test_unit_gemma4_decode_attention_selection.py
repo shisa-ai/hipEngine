@@ -1,15 +1,18 @@
 """The scoped long-global decode-attention preference, on CPU.
 
 The gfx1100 production profile may route the one-token global decode step to the
-staged singleton attention candidate. The strict native/exact kernel holds one
+key-sliced flash-decoding candidate. The strict native/exact kernel holds one
 FP32 logit per live key in shared memory and, past 15,616 keys at ``head_dim``
 512, keeps the same arithmetic on owned global scratch (its ``global_class``
-variant); the staged candidate reproduces that arithmetic in bounded shared
-memory. This is a route preference, not a changed result.
+variant); the flash candidate reassociates across key slices in bounded shared
+memory, so it is a production variant rather than the exact chain, and the
+staged singleton it replaced stays registered as the rollback lever. The route
+change is not a changed result: the two agree on the sampled token at 32K, 64K,
+and 128K, with a margin wider than the difference at the deciding logits.
 
 The scope is resolved through the kernel registry, so the registration is
 executable: the layer runs whatever callable the ``decode_attention`` key holds,
-including the registered strict fallback. Four separate contracts are pinned:
+including the registered strict fallback. Six separate contracts are pinned:
 
 * **The threshold.** The switch is the launcher's own resident-LDS bound, not a
   literal: 15,616 keys still fit and keep the native kernel, 15,617 do not and
@@ -17,13 +20,24 @@ including the registered strict fallback. Four separate contracts are pinned:
 * **The scope.** A multi-row block, another head geometry, a short context, a
   sliding layer at head_dim 512, or a caller-dropped prefix all keep the native
   kernel, so the preference is scoped to exactly the shape it was verified on.
+* **The fallback.** A shape the candidate's own LDS budget cannot serve falls
+  back to the staged singleton -- the chain that served it before -- and never
+  to the owned-scratch class kernel, which is slower than both at long context.
+  Getting this wrong is a silent multi-fold regression rather than an error, so
+  it is pinned here.
+* **The slice count.** The count a request carries is one expression, refitted
+  from the kernel's own LDS budget: the global packing needs more slices than
+  the occupancy target at the same key count, the sliding packing needs exactly
+  the occupancy target, and the default cap alone is rejected from 64K up.
 * **The registry.** A replaced decode-attention callable is what the layer runs;
   the strict fallback is the registered one too.
 * **The profile and the phase.** ``production`` selects the candidate and
   ``strict`` keeps the native kernel, and the runner forwards the preference
   only for a genuine decode step -- a one-row prefill tail stays native.
 
-Everything here is host-only: no build, no device, no kernel launch.
+Everything here is host-only: no build, no device, no kernel launch. The two
+fitting tests ask the kernel's exported definitions, so they skip without a HIP
+runtime; the rest are pure host logic.
 """
 
 from __future__ import annotations
@@ -40,6 +54,7 @@ from hipengine.execution_profiles import (
     resolve_runtime_profile,
 )
 from hipengine.generation.gemma4_profiles import (
+    DECODE_ATTENTION_FLASH,
     DECODE_ATTENTION_LAYER,
     DECODE_ATTENTION_PLAIN,
     DECODE_ATTENTION_QUANT,
@@ -59,6 +74,10 @@ from hipengine.kernels.cpu_reference.gemma4 import (
 )
 from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer as layer_module
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    flash_request_slices,
+    flash_serves,
+    flash_slices,
+    gemma4_attention_decode_flash_bf16,
     gemma4_attention_prefill_bf16,
     gemma4_attention_resident_overflows,
 )
@@ -70,6 +89,14 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
     _select_prefill_route,
 )
 from hipengine.kernels.registry import KernelKey, register
+from tests._rocm_guard import hip_runtime_available
+
+# The fitting and admission tests ask the kernel's own exported definitions, so
+# they need the built library; the routing tests below do not.
+_needs_hip = pytest.mark.skipif(
+    not hip_runtime_available(),
+    reason="HIP runtime unavailable; skipping flash fitting tests",
+)
 
 # Importing the built-in generators registers the gfx1100 Gemma 4 kernels the
 # profile names. It runs at collection time so the conftest kernel baseline
@@ -405,7 +432,7 @@ def _decode_rows(resolved):
 @pytest.mark.parametrize(
     ("profile", "expected"),
     [
-        (ExecutionProfile.PRODUCTION, DECODE_ATTENTION_STAGED),
+        (ExecutionProfile.PRODUCTION, DECODE_ATTENTION_FLASH),
         (ExecutionProfile.STRICT, DECODE_ATTENTION_PLAIN),
         # batch_invariant is deliberately unregistered: it falls back to strict.
         (ExecutionProfile.BATCH_INVARIANT, DECODE_ATTENTION_PLAIN),
@@ -432,7 +459,7 @@ def test_the_binder_binds_the_selected_decode_variant(
     # started with instead of leaking the strict route into later tests.
     monkeypatch.setenv(MOE_PREFILL_ENV, "auto")
     for profile, expected in (
-        (ExecutionProfile.PRODUCTION, (DECODE_ATTENTION_STAGED,)),
+        (ExecutionProfile.PRODUCTION, (DECODE_ATTENTION_FLASH,)),
         (ExecutionProfile.STRICT, (DECODE_ATTENTION_PLAIN,)),
         (ExecutionProfile.BATCH_INVARIANT, (DECODE_ATTENTION_PLAIN,)),
     ):
@@ -459,6 +486,164 @@ def test_the_decode_variants_are_registered_under_their_own_layer() -> None:
         quant=DECODE_ATTENTION_QUANT,
         variant=DECODE_ATTENTION_STAGED,
     ) is gemma4_attention_staged_bf16
+    assert resolve(
+        backend=GEMMA4_GGUF_BACKEND,
+        layer=DECODE_ATTENTION_LAYER,
+        quant=DECODE_ATTENTION_QUANT,
+        variant=DECODE_ATTENTION_FLASH,
+    ) is gemma4_attention_decode_flash_bf16
+
+
+# --- the fallback a long row takes when flash cannot serve it ---------------
+
+
+def _flash_shape(**overrides):
+    shape = dict(
+        tokens=1, keys=262144, num_heads=16, num_kv_heads=2, head_dim=512,
+        scale=1.0,
+    )
+    shape.update(overrides)
+    return shape
+
+
+def _fit_shape(shape):
+    """The slice count and the shape fields flash's own admission takes."""
+
+    fit = {
+        k: v
+        for k, v in shape.items()
+        if k in ("keys", "num_heads", "num_kv_heads", "head_dim")
+    }
+    return flash_request_slices(**fit), fit
+
+
+@_needs_hip
+@pytest.mark.parametrize("keys", [4096, 16384, 65536, 98304, 131072, 262144])
+def test_the_sliding_packing_keeps_the_occupancy_target_count(keys: int) -> None:
+    """The refit is a no-op where the default policy already fits.
+
+    The sliding packing is the one the count was tuned on, so unifying the two
+    packings behind one expression must not move it: whatever the fitted
+    minimum is, the occupancy target wins. A change here would silently retune
+    every sliding decode step.
+    """
+
+    shape = _flash_shape(keys=keys, head_dim=256, num_heads=32, num_kv_heads=16)
+    requested, fit = _fit_shape(shape)
+    assert requested == flash_slices(keys)
+    assert flash_serves(tokens=1, slices=requested, **fit)
+
+
+@_needs_hip
+@pytest.mark.parametrize(
+    ("keys", "default_fits"),
+    [(16384, True), (65536, True), (98304, False), (131072, False), (262144, False)],
+)
+def test_the_global_packing_refits_where_the_default_cap_stops_fitting(
+    keys: int, default_fits: bool,
+) -> None:
+    """The default policy is sized for sliding; the global packing refits.
+
+    At ``head_dim`` 512 the per-block LDS logits are four times the sliding
+    packing's at the same key count, so the occupancy target stops fitting well
+    inside the context range this route exists to serve -- at 98,304 keys,
+    where 64 slices leave a 1,024-key slice holding 8 rows of 4 bytes each.
+    Below that the refit is the occupancy target exactly, so the route is
+    unchanged where it already worked; above it the refit is what keeps the
+    candidate reachable instead of silently falling back to the slower chain.
+    """
+
+    shape = _flash_shape(keys=keys)
+    requested, fit = _fit_shape(shape)
+    assert flash_serves(tokens=1, slices=requested, **fit)
+    assert flash_serves(tokens=1, slices=flash_slices(keys), **fit) is default_fits
+    if default_fits:
+        assert requested == flash_slices(keys)
+    else:
+        assert requested > flash_slices(keys)
+
+
+def test_a_shape_flash_cannot_serve_falls_back_to_the_staged_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unservable shape takes the chain that ran before, never class.
+
+    The class kernel is roughly three times slower than the staged singleton at
+    128K, so falling back to it would be a silent regression rather than a
+    failed launch. The launcher must therefore choose the staged route itself
+    when its own admission rejects the shape.
+    """
+
+    import hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention as attention
+
+    called: list[str] = []
+    monkeypatch.setattr(
+        attention, "gemma4_attention_prefill_bf16",
+        lambda *a, **k: called.append("prefill"),
+    )
+    # A packing the flash route does not implement at all: no slice count
+    # serves it, which is the same rejection a too-long row produces. The
+    # library is not needed to answer that, so stub the loader too and keep
+    # this a pure routing test.
+    monkeypatch.setattr(attention, "build_gemma4_attention", lambda **k: object())
+    monkeypatch.setattr(attention, "flash_min_slices", lambda **k: 0)
+    staged = pytest.MonkeyPatch()
+    staged.setattr(
+        "hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged"
+        ".gemma4_attention_staged_bf16",
+        lambda *a, **k: called.append("staged"),
+    )
+    try:
+        attention.gemma4_attention_decode_flash_bf16(
+            0, 0, 0, 0, 0, **_flash_shape(head_dim=128, num_kv_heads=8)
+        )
+    finally:
+        staged.undo()
+    assert called == ["staged"]
+
+
+def test_the_flash_route_forwards_arguments_the_launcher_accepts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The variant's keyword set must be one the private launcher takes.
+
+    The flash variant reaches the kernel through ``_launch_prefill``, and the
+    two are edited in different places: a keyword added to the variant but not
+    to the launcher's signature is an import-clean, test-clean TypeError that
+    only fires on a real long-context forward. Bind the call here instead, so
+    the mismatch is caught by the unit battery rather than by a benchmark.
+
+    The public prefill wrappers are deliberately not in this path: their
+    keyword set is the layer's shared call-site contract, which the prefill
+    selection battery pins against the other attention launchers.
+    """
+
+    import inspect
+
+    import hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention as attention
+
+    # Read the real signature before the stubs replace it: the stubs take
+    # ``**k`` and would accept anything.
+    signature = inspect.signature(attention._launch_prefill)
+    seen: list[tuple] = []
+    monkeypatch.setattr(attention, "_launch_prefill",
+                        lambda *a, **k: seen.append((a, k)))
+    # The fitting and the admission are the kernel's own; this test is about
+    # the keyword set that crosses between the two host functions.
+    monkeypatch.setattr(attention, "build_gemma4_attention", lambda **k: object())
+    monkeypatch.setattr(attention, "flash_request_slices", lambda **k: 4)
+    monkeypatch.setattr(attention, "flash_serves", lambda **k: True)
+
+    attention.gemma4_attention_decode_flash_bf16(
+        0, 0, 0, 0, 0, **_flash_shape(keys=131072)
+    )
+    assert seen, "the flash variant did not reach the private launcher"
+
+    for name in seen[0][1]:
+        assert name in signature.parameters, f"{name} is not a launcher parameter"
+    assert seen[0][1].get("prefer_flash") is True
+    # The symbol choice the public wrapper would have made for a bf16 launch.
+    assert seen[0][0][0] == attention.attention_symbol("bf16", tokens=1, head_dim=512)
 
 
 # --- the surrounding routing is unchanged -----------------------------------
@@ -619,7 +804,7 @@ def test_a_one_row_prefill_tail_stays_native_while_a_decode_step_takes_the_prefe
 # --- the decode-graph preparation -------------------------------------------
 
 
-def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int):
+def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int, *, variant: str):
     """Run one cold ``_capture`` preparation; return ``(builds, owner, session)``."""
 
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention
@@ -659,6 +844,12 @@ def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int):
     monkeypatch.setattr(
         attention, "flash_workspace_bytes", lambda t, h, d, s, **kw: t * h * d * s * 4
     )
+    # The fitting asks the kernel's own export, which the stubbed loader above
+    # cannot answer. This test is about which libraries are loaded before
+    # capture, so the count is stubbed with the policy value.
+    monkeypatch.setattr(
+        attention, "flash_request_slices", lambda **kw: attention.flash_slices(kw["keys"])
+    )
     monkeypatch.setattr(graph, "get_hip_runtime", lambda: runtime)
 
     def build_staged(**kwargs):
@@ -672,7 +863,7 @@ def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int):
     runner = SimpleNamespace(
         position=position,
         prefill_attention_variants=None,
-        decode_attention_variants=(DECODE_ATTENTION_STAGED,),
+        decode_attention_variants=(variant,),
         weights=SimpleNamespace(
             layers=[None],
             config=SimpleNamespace(geometry=lambda index: geometry),
@@ -697,28 +888,35 @@ def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int):
 
 
 @pytest.mark.parametrize(
-    ("position", "expect_staged"),
+    ("position", "variant", "expect_staged"),
     [
         # keys == 15616: the last resident count, so the native kernel runs and
         # no staged library is needed.
-        (15615, False),
+        (15615, DECODE_ATTENTION_STAGED, False),
         # keys == 15680: past the resident bound, so the staged candidate runs and
         # its cold library must be loaded before capture.
-        (15679, True),
+        (15679, DECODE_ATTENTION_STAGED, True),
+        # The flash route is the production selection for the same shape. It
+        # does not use the staged workspace, but it can fall back to the staged
+        # singleton, so its library is still loaded before capture.
+        (15679, DECODE_ATTENTION_FLASH, True),
+        (15615, DECODE_ATTENTION_FLASH, False),
     ],
 )
 def test_graph_preparation_preloads_the_staged_library_across_the_threshold(
-    monkeypatch: pytest.MonkeyPatch, position: int, expect_staged: bool
+    monkeypatch: pytest.MonkeyPatch, position: int, variant: str, expect_staged: bool
 ) -> None:
     """A cold staged library is built before capture, exactly where it is chosen.
 
     The first staged launch cannot dlopen or compile inside a capture, so the
     preparation that reserves the candidate's workspace must also load its
     library -- outside the capture window, and only on the side of the resident
-    bound where the candidate is selected.
+    bound where a route that can reach the staged singleton is selected.
     """
 
-    builds, _owner, session, bucket = _run_graph_preparation(monkeypatch, position)
+    builds, _owner, session, bucket = _run_graph_preparation(
+        monkeypatch, position, variant=variant
+    )
 
     assert session._captures == 1
     if expect_staged:

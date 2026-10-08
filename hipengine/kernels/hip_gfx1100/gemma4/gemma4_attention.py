@@ -79,6 +79,8 @@ _ARGTYPES_DECODE = _ARGTYPES_COMMON + (ctypes.c_void_p, ctypes.c_int)
 _DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
 _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
 _SYMBOL_FLASH_WORKSPACE_BYTES = "hipengine_gemma4_decode_flash_workspace_bytes"
+_SYMBOL_FLASH_ADMITS = "hipengine_gemma4_decode_flash_admits"
+_SYMBOL_FLASH_MIN_SLICES = "hipengine_gemma4_decode_flash_min_slices"
 _SYMBOL_DECODE_SELECTION = "hipengine_gemma4_decode_selection"
 
 # Head dims the committed AOTriton runtime carries images for. The vendored tree
@@ -341,12 +343,106 @@ def flash_slices(keys: int) -> int:
     pins the values. One slice per ~32 keys keeps the block count at the
     occupancy target (256 blocks at the 1024 entry threshold) while the cap
     bounds the per-block LDS logits at context maximum.
+
+    This is the *default* policy, sized for the sliding packing. The global
+    packing's per-block LDS is four times larger at the same key count, so the
+    cap is a tighter limit there and this count alone would be rejected. The
+    count a request actually carries is :func:`flash_request_slices`, which
+    raises this value to whatever the shape needs; this function stays a pure
+    function of the key count so the unit battery can pin it.
     """
 
     if keys <= 0:
         raise ValueError("keys must be positive")
     per_slice = 32
     return min(64, max(4, -(-int(keys) // per_slice)))
+
+
+def flash_min_slices(
+    *, keys: int, num_heads: int, num_kv_heads: int, head_dim: int,
+    library: ctypes.CDLL | None = None,
+) -> int:
+    """Smallest slice count whose per-block LDS logits fit the budget.
+
+    Asked of the kernel's own export rather than re-derived, so the fallback
+    decision and the launch test cannot drift. ``0`` means no slice count
+    serves this shape, which is the signal to take a different route.
+    """
+
+    library = library or build_gemma4_attention(load=True)
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_FLASH_MIN_SLICES,
+        (ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64),
+        ctypes.c_int64,
+    )
+    return int(fn(int(num_heads), int(num_kv_heads), int(head_dim), int(keys)))
+
+
+def flash_serves(
+    *,
+    tokens: int,
+    keys: int,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    slices: int,
+    library: ctypes.CDLL | None = None,
+) -> bool:
+    """Whether the flash launch accepts this shape at this slice count.
+
+    The same admission the launcher applies, exported by the kernel so a caller
+    choosing between routes does not have to guess whether the request will be
+    rejected.
+    """
+
+    library = library or build_gemma4_attention(load=True)
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_FLASH_ADMITS,
+        (ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+         ctypes.c_int64, ctypes.c_int),
+        ctypes.c_int,
+    )
+    return bool(
+        fn(int(tokens), int(num_heads), int(num_kv_heads), int(head_dim),
+           int(keys), int(slices))
+    )
+
+
+def flash_request_slices(
+    *,
+    keys: int,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    library: ctypes.CDLL | None = None,
+) -> int:
+    """Slice count a flash request for this shape carries, or ``0`` if none can.
+
+    The single definition of the count. It is what the launcher passes as the
+    negative-slices request, what the workspace is sized from, and what the
+    decode-graph capture reserves before it starts recording -- three callers
+    that must agree, because the partial layout is derived from this number and
+    a disagreement is memory corruption rather than a slow path.
+
+    ``flash_slices`` is the occupancy-target count and ``flash_min_slices`` is
+    the smallest count whose per-block LDS fits; the request is the larger, so
+    the route keeps the block count the policy was tuned for wherever that
+    fits and is still servable where it does not. For the sliding packing the
+    two never disagree, so this is the previous count exactly; for the global
+    packing it is what keeps a long row on the flash route instead of falling
+    back.
+    """
+
+    library = library or build_gemma4_attention(load=True)
+    fitted = flash_min_slices(
+        keys=keys, num_heads=num_heads, num_kv_heads=num_kv_heads,
+        head_dim=head_dim, library=library,
+    )
+    if not fitted:
+        return 0
+    return max(fitted, flash_slices(keys))
 
 
 def flash_admits(
@@ -698,6 +794,7 @@ def _launch_prefill(
     scratch: Gemma4AttentionScratch | None = None,
     window: int = 0,
     row_offset: int = 0,
+    prefer_flash: bool = False,
 ) -> None:
     _check_prefill_shape(tokens, num_heads, num_kv_heads, head_dim)
     key_count = tokens if keys is None else int(keys)
@@ -745,18 +842,55 @@ def _launch_prefill(
         # slice of the key range, and a combine sums the slices. Selected by
         # context length, because the kernel's parallelism is structurally low
         # (grid = tokens * num_heads is 16 blocks on a 96-CU GPU).
-        slices = 1 if global_logits else decode_slices(key_count, head_dim)
-        # Flash-decoding (D2) replaces the split for the sliding geometry when
+        # Flash-decoding (D2) replaces the split for either geometry when
         # admitted: a negative slice count is the flash request, and the
         # workspace is sized for whichever route is larger so a host-side
-        # rejection can fall through to the split without reallocating.
-        flash = slices > 1 and flash_admits(
+        # rejection can fall through to the incumbent chain without
+        # reallocating.
+        #
+        # ``prefer_flash`` is what lets a long *global* row make the request.
+        # That row used to force ``slices = 1`` because the resident-logit bound
+        # is what makes the class kernel the only route above it -- but the
+        # bound describes the class kernel's owned logits, and the flash kernel
+        # does not use them: it walks a key slice through the same warp tree
+        # with its own partials. The preference is not implied by the geometry,
+        # because the strict and batch-invariant profiles must keep the exact
+        # staged chain; a production plan selects the flash variant explicitly.
+        # A rejection still falls back to the class kernel on the same
+        # workspace, which the caller sized as max(split, flash).
+        admitted = flash_admits(
             tokens=tokens,
             head_dim=head_dim,
             num_heads=num_heads,
             num_kv_heads=num_kv_heads,
         )
-        request = -flash_slices(key_count) if flash else slices
+        flash = (
+            admitted
+            and decode_slices(key_count, head_dim) > 1
+            and (prefer_flash or not global_logits)
+        )
+        slices = (
+            1 if global_logits and not flash else decode_slices(key_count, head_dim)
+        )
+        # The request carries the count the shape actually needs, not the
+        # occupancy-target policy value: the global packing's per-block LDS is
+        # four times the sliding packing's at the same key count, so the policy
+        # cap would be rejected there and the row would leave the route. One
+        # expression for the request and the workspace, so the two cannot
+        # disagree.
+        request_slices = (
+            flash_request_slices(
+                keys=key_count,
+                num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
+                head_dim=head_dim,
+                library=library,
+            )
+            if flash
+            else 0
+        )
+        flash = flash and request_slices > 0
+        request = -request_slices if flash else slices
         workspace = 0
         needs_workspace = slices > 1 or global_logits
         temporary = Gemma4AttentionScratch() if needs_workspace and scratch is None else None
@@ -770,7 +904,7 @@ def _launch_prefill(
                     need = max(
                         need,
                         flash_workspace_bytes(
-                            tokens, num_heads, head_dim, flash_slices(key_count),
+                            tokens, num_heads, head_dim, request_slices,
                             library=library,
                         ),
                     )
@@ -934,6 +1068,116 @@ def gemma4_attention_prefill_f32(
         scratch=scratch,
         window=window,
         row_offset=row_offset,
+    )
+
+
+def gemma4_attention_decode_flash_bf16(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    keep_mask_ptr: int,
+    out_ptr: int,
+    *,
+    tokens: int,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    keys: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    scratch: Gemma4AttentionScratch | None = None,
+    window: int = 0,
+    row_offset: int = 0,
+) -> None:
+    """Decode attention that asks for key-sliced flash on a long global row.
+
+    Registered as the ``gemma4_flash`` decode-attention variant and identical to
+    :func:`gemma4_attention_prefill_bf16` except that it reaches the launcher
+    with the ``prefer_flash`` request. That request is what makes a global row
+    past the resident-logit bound ask for the key-sliced route instead of the
+    owned-scratch class kernel, and it is the only way that route is reachable:
+    the request is what a profile selects, not something the geometry implies.
+    A row short enough to keep its logits resident stays on the class kernel
+    under every profile.
+
+    A preference, not a promise. The flash route's per-block LDS logits are four
+    times larger for the global packing than for the sliding one, so the default
+    slice policy's cap is a tighter limit here: the request count is refitted
+    from the kernel's own export, and if even that cannot serve the shape the
+    call falls back to the staged singleton -- the chain this route replaced --
+    rather than to the owned-scratch class kernel, which is slower than both at
+    long context. Either way the fallback keeps working arithmetic and only the
+    route changes.
+    """
+
+    key_count = tokens if keys is None else int(keys)
+    library = library or build_gemma4_attention(load=True)
+    slices = flash_request_slices(
+        keys=key_count,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        library=library,
+    )
+    if not slices or not flash_serves(
+        tokens=tokens,
+        keys=key_count,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        slices=slices,
+        library=library,
+    ):
+        # Deferred: gemma4_attention_staged imports this module's scratch type,
+        # so a module-level import here would be circular.
+        from .gemma4_attention_staged import gemma4_attention_staged_bf16
+
+        return gemma4_attention_staged_bf16(
+            query_ptr,
+            key_ptr,
+            value_ptr,
+            keep_mask_ptr,
+            out_ptr,
+            tokens=tokens,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            scale=scale,
+            keys=keys,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+            scratch=scratch,
+            window=window,
+            row_offset=row_offset,
+        )
+
+    # Reaches the private launcher rather than the public wrapper: the wrapper's
+    # keyword set is the layer's shared call-site contract, which two tests pin
+    # against the other attention launchers, and a decode-only route preference
+    # is not part of it. Same symbol choice the wrapper makes for a bf16 launch.
+    _launch_prefill(
+        attention_symbol("bf16", tokens=tokens, head_dim=head_dim),
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        keep_mask_ptr,
+        out_ptr,
+        tokens=tokens,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        scale=scale,
+        keys=keys,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        scratch=scratch,
+        window=window,
+        row_offset=row_offset,
+        prefer_flash=True,
     )
 
 
@@ -1145,6 +1389,13 @@ DECODE_ATTENTION_LAYER = "decode_attention"
 DECODE_ATTENTION_QUANT = "gemma4_decode_attention"
 DECODE_ATTENTION_PLAIN = PREFILL_ATTENTION_PLAIN
 DECODE_ATTENTION_STAGED = PREFILL_ATTENTION_STAGED
+# A third registration under the same key: the key-sliced flash route, which a
+# production plan prefers for the long one-token global decode step. It is a
+# distinct variant rather than the staged candidate's behaviour because the two
+# differ in arithmetic (flash reassociates across key slices; staged is
+# bit-exact with the native class kernel) and strict/batch-invariant must keep
+# the exact one.
+DECODE_ATTENTION_FLASH = "gemma4_flash"
 
 # --- the multi-row sliding prefill scope -------------------------------------
 #
