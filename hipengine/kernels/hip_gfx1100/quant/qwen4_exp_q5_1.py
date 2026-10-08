@@ -135,6 +135,66 @@ def qwen4_exp_gather_bf16_lanes(
         runtime.check(int(error))
 
 
+def qwen4_exp_q5_1_t16_selected_grouped_prefill_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    tiles_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the compact grouped Q5_1 down projection through Q5_1T16 tiles.
+
+    Same contract and ABI as
+    :func:`qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out`,
+    but ``tiles_ptr`` addresses Q5_1T16 tiles
+    (``[experts, out_tiles16, blocks_per_row, 576]``) from
+    :func:`hipengine.quant.gguf_t16.repack_gguf_q5_1_tile16` instead of raw
+    Q5_1 blocks. The decoded weights, the accumulation order, and the output
+    are identical to the raw-block kernel.
+    """
+
+    if compact_rows <= 0 or num_experts <= 0 or wmma_total_rows <= 0:
+        raise ValueError("compact_rows, num_experts, and wmma_total_rows must be positive")
+    if wmma_total_rows % 16:
+        raise ValueError("wmma_total_rows must be divisible by 16")
+    if in_features <= 0 or in_features % 32 or out_features <= 0 or out_features % 16:
+        raise ValueError("Q5_1 grouped T16 projection has invalid feature geometry")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_t16_selected_grouped_prefill_bf16_bf16_out",
+        _ARGS_GROUPED_WMMA,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        tiles_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        wmma_total_rows,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out(
     input_ptr: int,
     expert_start_compact_ptr: int,

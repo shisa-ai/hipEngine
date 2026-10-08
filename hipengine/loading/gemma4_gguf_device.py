@@ -51,10 +51,15 @@ from hipengine.loading.materialize import (
 from hipengine.quant.gguf import GGMLQuantizationType, quant_layout
 from hipengine.quant.gguf_repack import Q4_K_T16_SHAPE, Q5_K_T16_SHAPE, Q8_0_T16_SHAPE
 from hipengine.quant.gguf_t16 import (
+    GGUF_Q5_1_T16_BLOCK_BYTES as GGUF_Q5_1_T16_BLOCK_BYTES_TILES,
     GGUF_Q5_K_BLOCK_BYTES,
     GGUF_Q5_K_T16_BLOCK_BYTES,
     GGUF_T16_COLS,
 )
+
+# A raw Q5_1 block is 24 bytes; the alias keeps the spec-site predicate
+# readable next to the Q4_K/Q5_K branches that name their own block size.
+GGUF_Q5_1_T16_BLOCK_BYTES_RAW = 24
 
 __all__ = [
     "LAYOUT_DENSE_F32",
@@ -258,6 +263,21 @@ def _plan_one(
         # expert down projections are Q5_1 (29 layers) and Q8_0 (1 layer), so
         # they take the ``("raw",)`` default above.
         allocation_names = ("raw", "t16_gate", "t16_up")
+    elif (
+        quant_key == "gguf_q5_1"
+        and len(source.shape) == 3
+        and source.shape[1] % GGUF_T16_COLS == 0
+        and source.byte_shape[2] % GGUF_Q5_1_T16_BLOCK_BYTES_RAW == 0
+    ):
+        # A stacked Q5_1 expert down tensor also carries its Q5_1T16 tiles,
+        # because the expert down prefill route reads that layout: one
+        # 576-byte tile block per 16 output columns per 32-element K block,
+        # with the low-nibble/high-bit planes pre-combined into a single
+        # value byte so a decode lane reads its fragment from LDS. The raw
+        # blocks stay resident for the selected GEMV decode path, so the
+        # tensor holds both layouts at once: 24 raw bytes per (column, K
+        # block) become 36 tile bytes, 1.5x the raw bytes.
+        allocation_names = ("raw", "t16_down")
     elif (
         quant_key == "gguf_q8_0"
         and len(source.shape) == 2
@@ -483,6 +503,20 @@ def derived_allocation_bytes(spec: Gemma4GGUFWeightSpec, name: str) -> int:
         # Q8T16 is the same 34-byte Q8_0 blocks per 16 rows, transposed:
         # exactly the raw byte count again, so the side copy doubles the leaf.
         return int(spec.source.nbytes)
+    if name == "t16_down":
+        if spec.quant_key != "gguf_q5_1" or len(spec.source.shape) != 3:
+            raise ValueError(
+                f"{spec.slot_path}: a t16_down allocation needs a rank-3 Q5_1 "
+                f"expert tensor, not {spec.quant_key} rank {len(spec.source.shape)}"
+            )
+        experts, out_features, bytes_per_row = spec.source.byte_shape
+        blocks = bytes_per_row // GGUF_Q5_1_T16_BLOCK_BYTES_RAW
+        return (
+            experts
+            * (out_features // GGUF_T16_COLS)
+            * blocks
+            * GGUF_Q5_1_T16_BLOCK_BYTES_TILES
+        )
     if name not in ("t16_gate", "t16_up"):
         raise ValueError(f"{spec.slot_path}: unknown derived allocation {name!r}")
     if spec.quant_key != "gguf_q4_k" or len(spec.source.shape) != 3:
@@ -681,6 +715,11 @@ def materialize_gemma4_gguf_device_weight(
             from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
 
             tiles = repack_gguf_q8_0_tile16(np.asarray(raw)).tiles
+        elif name == "t16_down":
+            # The Q5_1 expert down stack: one flat tile slab, no half split.
+            from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16
+
+            tiles = repack_gguf_q5_1_tile16(np.asarray(raw)).tiles
         else:
             from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
 

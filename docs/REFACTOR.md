@@ -4,6 +4,22 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Q5_1T16 down-prefill rollback lever (added 2026-10-08)
+
+`HIPENGINE_GEMMA4_Q5_1_DOWN_T16` (default on) rolls the Gemma 4 expert down
+prefill from the Q5_1T16 tile route back to the raw-block grouped WMMA
+kernel, in `_gemma4_project_experts_down_wmma_t16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`). The tile leaf is
+bit-identical to the raw-block leaf, so the lever exists only to A/B the two
+owners inside one process on the shared-memory iGPU, where mid-band session
+variance (~10 percent) is larger than the expected step-level delta.
+
+Removal condition: once the tile route has been measured through a published
+paired ladder (in-process A/B plus the standard verify) and one release cycle
+passes without a rollback, delete the env check and this entry together. The
+raw-block WMMA owner itself stays: it is the fallback for weights that carry
+no tile allocation, and the strict compensated variant resolves through it.
+
 ## The split dense GeGLU wrapper lost its only caller when gate/up fused (found 2026-09-29)
 
 The dense MLP's gate and up projections are fused into one resident weight

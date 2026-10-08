@@ -955,10 +955,22 @@ __global__ void q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel(
       half16_t activation[TN];
 #pragma unroll
       for (int tn = 0; tn < TN; ++tn) {
+        // One 32-byte aligned span per row: two 128-bit loads instead of
+        // sixteen scalar 16-bit gathers. Every row pointer stays 32-byte
+        // aligned (in_features is even and k_base is a multiple of 16).
+        const uint16_t* __restrict__ src =
+            input + safe_row[tn] * in_features + k_base;
+        const uint4 v[2] = {*reinterpret_cast<const uint4*>(src),
+                            *reinterpret_cast<const uint4*>(src + 8)};
 #pragma unroll
-        for (int kk = 0; kk < 16; ++kk) {
-          activation[tn][kk] = static_cast<half_t>(bf16_bits_to_float(
-              input[safe_row[tn] * in_features + k_base + kk]));
+        for (int half8 = 0; half8 < 2; ++half8) {
+          const uint16_t* __restrict__ elems =
+              reinterpret_cast<const uint16_t*>(&v[half8]);
+#pragma unroll
+          for (int kk = 0; kk < 8; ++kk) {
+            activation[tn][half8 * 8 + kk] = static_cast<half_t>(
+                bf16_bits_to_float(elems[kk]));
+          }
         }
       }
 #pragma unroll
@@ -2234,6 +2246,196 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_co
       static_cast<const int64_t*>(tile_expert),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Q5_1T16 selected grouped prefill: the same 32-column x 16-row output tile,
+// the same accumulation order, and the same decoded weight values as
+// ``q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel``, but the weight
+// bytes come from Q5_1T16 tiles (``[E, out_tiles16, blocks_per_row, 576]``)
+// and each 16-value weight fragment is read through LDS.  The value region
+// holds the pre-combined integer the raw decoder computes
+// (``low | (high << 4)``), so the arithmetic per value is unchanged: the same
+// ``d * (float)v + m`` in f32, the same fp16 rounding of the weight, and the
+// same WMMA operand sequence.
+//
+// Staging: each K block, lanes 0-15 copy tile0's 32-byte value run and lanes
+// 16-31 tile1's into LDS with one 128-bit load/store pair per 16 bytes; the
+// fragment decode then reads its sixteen values from LDS as four uint32
+// words instead of sixteen scalar global byte loads, and the d/m headers
+// stay global (two fp16 loads per out-tile per K block).
+__launch_bounds__(32, 8)
+__global__ void q5_1_t16_selected_grouped_prefill_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_wmma,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int TILE_M = 32;   // two 16-column out-tiles
+  constexpr int TILE_N = 16;   // one 16-row WMMA tile
+  constexpr int TILE_BYTES = 576;
+  constexpr int D_OFF = 0;
+  constexpr int M_OFF = 32;
+  constexpr int V_OFF = 64;
+  const int tid = threadIdx.x;
+  const int lane16 = tid & 15;
+  const int half_id = tid >> 4;
+  const int out_start = blockIdx.x * TILE_M;
+  const int64_t row_tile = blockIdx.y;
+  if (out_start >= out_features) return;
+  const int64_t expert = tile_expert[row_tile];
+  if (expert < 0 || expert >= num_experts) return;
+  const int64_t compact_start = expert_start_compact[expert];
+  const int64_t compact_end = expert_start_compact[expert + 1];
+  const int64_t expert_rows = compact_end - compact_start;
+  const int64_t local_start = row_tile * TILE_N - expert_start_wmma[expert];
+  if (expert_rows <= 0 || compact_start < 0 || compact_end > compact_rows) return;
+
+  const int blocks_per_row = static_cast<int>(in_features / 32);
+  const int out_tiles_total = static_cast<int>(out_features / 16);
+
+  // Column ownership: both halves of the wave decode the same fragment for
+  // WMMA's per-lane operand layout, exactly as the production kernel's 32
+  // threads cover the same (column, k) elements.
+  const int ot0 = out_start / 16;
+  const int ot1 = (out_start + 16 < out_features) ? (ot0 + 1) : ot0;
+  const uint8_t* __restrict__ tile0_base =
+      tiles + ((expert * out_tiles_total + ot0) * blocks_per_row) * TILE_BYTES;
+  const uint8_t* __restrict__ tile1_base =
+      tiles + ((expert * out_tiles_total + ot1) * blocks_per_row) * TILE_BYTES;
+
+  // Out-of-range rows read a clamped address and are discarded by the store
+  // loop, as in the production kernel.
+  int64_t local_row = local_start + lane16;
+  if (local_row >= expert_rows) local_row = expert_rows - 1;
+  const int64_t safe_row = compact_start + local_row;
+
+  float8_t acc[2] = {
+      {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+      {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+  };
+
+  // Two 512-byte LDS windows: the current K block's 32-byte value run for
+  // each of the two out-tiles. Lanes 0-15 fill window 0, lanes 16-31 window 1,
+  // one 128-bit load/store pair per 16 bytes of the run.
+  __shared__ uint8_t stage[1024];
+
+  for (int blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ t0 = tile0_base + blk * TILE_BYTES;
+    const uint8_t* __restrict__ t1 = tile1_base + blk * TILE_BYTES;
+    __builtin_amdgcn_s_barrier();
+    {
+      const int fill_win = tid >> 4;
+      const uint8_t* __restrict__ fill_src =
+          (fill_win ? t1 : t0) + V_OFF + lane16 * 32;
+      uint8_t* __restrict__ fill_dst = stage + fill_win * 512 + lane16 * 32;
+      *reinterpret_cast<uint4*>(fill_dst) =
+          *reinterpret_cast<const uint4*>(fill_src);
+      *reinterpret_cast<uint4*>(fill_dst + 16) =
+          *reinterpret_cast<const uint4*>(fill_src + 16);
+    }
+    __builtin_amdgcn_s_barrier();
+
+    const int64_t k_base = static_cast<int64_t>(blk) * 32;
+    // Headers: d/m per (column, K block), two fp16 loads per out-tile.
+    const float d0 = load_fp16(t0 + D_OFF + lane16 * 2);
+    const float m0 = load_fp16(t0 + M_OFF + lane16 * 2);
+    const float d1 = load_fp16(t1 + D_OFF + lane16 * 2);
+    const float m1 = load_fp16(t1 + M_OFF + lane16 * 2);
+
+#pragma unroll
+    for (int kt = 0; kt < 2; ++kt) {
+      half16_t a_reg;
+      const uint16_t* __restrict__ src =
+          input + safe_row * in_features + k_base + kt * 16;
+      const uint4 v[2] = {*reinterpret_cast<const uint4*>(src),
+                          *reinterpret_cast<const uint4*>(src + 8)};
+#pragma unroll
+      for (int half8 = 0; half8 < 2; ++half8) {
+        const uint16_t* __restrict__ elems =
+            reinterpret_cast<const uint16_t*>(&v[half8]);
+#pragma unroll
+        for (int kk = 0; kk < 8; ++kk) {
+          a_reg[half8 * 8 + kk] =
+              static_cast<half_t>(bf16_bits_to_float(elems[kk]));
+        }
+      }
+
+      const uint8_t* __restrict__ w0 = stage + lane16 * 32 + kt * 16;
+      const uint8_t* __restrict__ w1 = stage + 512 + lane16 * 32 + kt * 16;
+      half16_t b_reg[2];
+#pragma unroll
+      for (int p = 0; p < 2; ++p) {
+        const float d_f = p ? d1 : d0;
+        const float m_f = p ? m1 : m0;
+        const uint8_t* __restrict__ w = p ? w1 : w0;
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+          const uint32_t word = *reinterpret_cast<const uint32_t*>(w + 4 * j);
+#pragma unroll
+          for (int i = 0; i < 4; ++i) {
+            const uint32_t q = (word >> (8 * i)) & 0xFFu;
+            b_reg[p][4 * j + i] = static_cast<half_t>(
+                d_f * static_cast<float>(q) + m_f);
+          }
+        }
+      }
+      acc[0] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b_reg[0], a_reg, acc[0]);
+      acc[1] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b_reg[1], a_reg, acc[1]);
+    }
+  }
+
+#pragma unroll
+  for (int tm = 0; tm < 2; ++tm) {
+    const int out_col0 = out_start + tm * 16;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int col_j = out_col0 + 2 * j + half_id;
+      const int64_t out_row = compact_start + local_start + lane16;
+      if (col_j < out_features && local_start + lane16 < expert_rows &&
+          out_row < compact_rows) {
+        output[out_row * out_features + col_j] =
+            float_to_bf16_bits(static_cast<float>(acc[tm][j]));
+      }
+    }
+  }
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_t16_selected_grouped_prefill_bf16_bf16_out(
+    const void* input,
+    const void* expert_start_compact,
+    const void* expert_start_wmma,
+    const void* tile_expert,
+    const void* tiles,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (!input || !expert_start_compact || !expert_start_wmma || !tile_expert ||
+      !tiles || !output || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % 32) || out_features <= 0 ||
+      (out_features % 16) || wmma_total_rows <= 0 || (wmma_total_rows % 16)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (q5_1_t16_selected_grouped_prefill_bf16_bf16_kernel),
+      dim3(static_cast<uint32_t>((out_features + 31) / 32),
+           static_cast<uint32_t>(wmma_total_rows / 16)),
+      dim3(32), 0, stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start_compact),
+      static_cast<const int64_t*>(expert_start_wmma),
+      static_cast<const int64_t*>(tile_expert),
+      static_cast<const uint8_t*>(tiles), static_cast<uint16_t*>(output),
+      compact_rows, num_experts, in_features, out_features);
   return static_cast<int>(hipGetLastError());
 }
 
