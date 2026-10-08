@@ -8755,3 +8755,20 @@ once per process rather than once per launch, then delete the per-launch
 `build_hip` and is unchanged by that; decide explicitly whether the *launch*
 path must also observe a mid-process environment change, since that is the only
 reason the per-launch call exists.
+
+## The checked full-rows DPP opt-out flag
+
+`HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS` (default on) is the dedicated
+rollback/bisection opt-out for the checked-int32/full-four-row dense Q8 DPP
+sibling promoted to the default leaf for its qualified shape window (the six
+declared dense Q8_0 geometries, 512-4096 complete rows) in
+`_raw_k_coltile_pipelined_dispatch`. The generic
+`HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION=0` already removes the whole DPP family
+from the chain; the dedicated flag exists only to bisect the checked sibling
+against the plain DPP leaf without touching anything else.
+
+Removal condition: delete the flag (and its `_q8_dpp_checked_full_rows_raw()`
+cache-key term) once the checked sibling has held the default through a full
+campaign cycle without a rollback, or when the plain DPP leaf it narrows is
+itself retired; keep the `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` family flag
+until then.

@@ -35,18 +35,22 @@ def test_pipelined_upgrade_is_registry_checked_and_leaf_only(monkeypatch):
         "raw",
     )
     upgrade = linear._raw_k_coltile_pipelined_dispatch
+    # rows=1 (decode) is outside the checked full-row window, so this test
+    # exercises the DPP/pipelined chain exactly as before that variant existed.
+    shape = {"rows": 1, "in_features": 2560, "out_features": 10240}
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", raising=False)
     monkeypatch.setattr(linear, "is_registered", lambda key: True)
-    assert upgrade(wave).key.variant == (
+    assert upgrade(wave, **shape).key.variant == (
         "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
     )
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", "0")
-    assert upgrade(wave).key.variant == (
+    assert upgrade(wave, **shape).key.variant == (
         "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
     )
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", raising=False)
     monkeypatch.setattr(linear, "is_registered", lambda key: "_dpp_" not in key.variant)
-    assert upgrade(wave).key.variant == (
+    assert upgrade(wave, **shape).key.variant == (
         "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
     )
     monkeypatch.setattr(linear, "is_registered", lambda key: True)
@@ -60,8 +64,62 @@ def test_pipelined_upgrade_is_registry_checked_and_leaf_only(monkeypatch):
         other = linear.GGUFLinearDispatch(
             KernelKey("hip_gfx1151", "linear", "gguf_q8_0", variant), "raw"
         )
-        assert upgrade(other) is other
+        assert upgrade(other, **shape) is other
     non_raw = linear.GGUFLinearDispatch(wave.key, "wmma_raw")
-    assert upgrade(non_raw) is non_raw
+    assert upgrade(non_raw, **shape) is non_raw
     monkeypatch.setattr(linear, "is_registered", lambda key: False)
-    assert upgrade(wave) is wave
+    assert upgrade(wave, **shape) is wave
+
+
+def test_checked_full_rows_upgrade_is_shape_gated_and_env_opt_out(monkeypatch):
+    wave = linear.GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1151", "linear", "gguf_q8_0",
+            "coltile8_rowbatch4_wave_scale_f32_f32_out",
+        ),
+        "raw",
+    )
+    upgrade = linear._raw_k_coltile_pipelined_dispatch
+    qualified = {"rows": 4096, "in_features": 2560, "out_features": 10240}
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", raising=False)
+    monkeypatch.setattr(linear, "is_registered", lambda key: True)
+
+    # Qualified prefill shape: the checked full-row sibling claims the launch.
+    assert upgrade(wave, **qualified).key.variant == (
+        "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out"
+    )
+    # The dedicated opt-out falls back to the plain DPP leaf on the same shape.
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", "0")
+    assert upgrade(wave, **qualified).key.variant == (
+        "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
+    )
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", raising=False)
+
+    # The DPP family opt-out skips the checked sibling too: it is downstream of
+    # the DPP leaf in the degradation chain.
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", "0")
+    assert upgrade(wave, **qualified).key.variant == (
+        "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
+    )
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", raising=False)
+
+    # Unqualified shapes keep the plain DPP leaf: decode rows, sub-512 rows and
+    # geometry outside the declared dense Q8_0 set.
+    for shape in (
+        {"rows": 1, "in_features": 2560, "out_features": 10240},
+        {"rows": 508, "in_features": 2560, "out_features": 10240},
+        {"rows": 4096, "in_features": 2048, "out_features": 10240},
+    ):
+        assert upgrade(wave, **shape).key.variant == (
+            "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
+        )
+
+    # Registry guard: an unregistered checked key degrades to the DPP parent.
+    monkeypatch.setattr(
+        linear, "is_registered",
+        lambda key: "checked_full_rows" not in key.variant,
+    )
+    assert upgrade(wave, **qualified).key.variant == (
+        "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
+    )
