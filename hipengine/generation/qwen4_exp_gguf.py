@@ -31,6 +31,89 @@ from hipengine.loading.qwen4_exp_materialize import (
 from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
 from hipengine.tokenization.gguf import Qwen4ExpGGUFTokenizer
 
+_T16_RESIDENT_ENV = "HIPENGINE_QWEN4_EXP_T16_RESIDENT"
+_T16_RESIDENT_MAX_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS"
+
+
+def _t16_resident_enabled() -> bool:
+    """Default-off binding-owned T16 tile residency at load (design: the
+    docs/QWEN4EXP-T16-RESIDENCY.md mechanism; the routes stay behind X-7)."""
+
+    import os
+
+    return os.environ.get(_T16_RESIDENT_ENV, "0") not in {
+        "", "0", "false", "False",
+    }
+
+
+def _t16_resident_max_layers() -> int | None:
+    import os
+
+    raw = os.environ.get(_T16_RESIDENT_MAX_LAYERS_ENV, "")
+    if not raw:
+        return None
+    return int(raw)
+
+
+def _populate_t16_resident_stages(resident, readers, *, runtime=None) -> dict:
+    """Populate the routed-expert t16 binding stages at construction.
+
+    Default-off (HIPENGINE_QWEN4_EXP_T16_RESIDENT): for every routed-expert
+    slot in the residency plan, read the raw tensor, repack through the
+    production T16 layout, upload, and attach as the weight's own ``t16``
+    allocation stage (raw stays; the free_raw detach is a separate explicit
+    phase). The env-gated T16 routes (X-7's candidates) then dispatch from
+    the weights with no module-level sidecar cache. Failures here are fatal
+    to construction - a half-populated residency would dispatch half the
+    layers, so the caller's except path closes the resident set.
+    """
+
+    if not _t16_resident_enabled():
+        return {}
+    from hipengine.loading.qwen4_exp_materialize import (
+        materialize_qwen4_exp_t16_stages,
+    )
+
+    slots = [
+        spec.slot_path
+        for layer in resident.plan.layer_specs
+        for spec in layer.values()
+        if spec.slot_path.endswith(
+            (".expert_gate", ".expert_up", ".expert_down")
+        )
+    ]
+    max_layers = _t16_resident_max_layers()
+    if max_layers is not None:
+        # Bound the populate window by MoE layer index: the raw stages stay
+        # resident until the explicit free_raw phase, so an unbounded
+        # populate is a transient dual residency the host may not fit. The
+        # bound takes layers in plan order (numerical layer order).
+        seen_layers: set[str] = set()
+        bounded: list[str] = []
+        for slot in slots:
+            layer = slot.rsplit(".", 1)[0]
+            if len(seen_layers) < max_layers or layer in seen_layers:
+                seen_layers.add(layer)
+                bounded.append(slot)
+        slots = bounded
+    by_name = {}
+    for reader in readers:
+        for info in reader.info.tensors:
+            by_name[info.name] = reader
+
+    def read_tensor(name):
+        reader = by_name.get(name)
+        if reader is None:
+            raise KeyError(f"GGUF tensor not found for T16 residency: {name}")
+        return reader.tensor_data(name)
+
+    return materialize_qwen4_exp_t16_stages(
+        resident,
+        read_tensor=read_tensor,
+        slots=slots,
+        runtime=runtime,
+    )
+
 
 def _qwen4_exp_compact_prefill_kwargs() -> dict[str, bool]:
     return {"capture_logits": False, "capture_target_hidden": False}
@@ -177,6 +260,9 @@ class Qwen4ExpGGUFTextGenerator:
                 runtime=runtime,
             )
             try:
+                _populate_t16_resident_stages(
+                    self._resident, readers, runtime=runtime
+                )
                 runner = Qwen4ExpGGUFResidentModelRunner(
                     self._resident,
                     max_sequence_length=admission.context_tokens,
