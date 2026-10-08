@@ -236,16 +236,17 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             layer=DECODE_ATTENTION_LAYER, scope=DECODE_ATTENTION_SCOPE,
-            # Not ``gemma4_flash``: the key-sliced candidate was measured against
-            # the production numerical envelope and rejected -- over the 527
-            # teacher-forced rows at keys 15,857-16,383 it reads mean KL 1.11e-2
-            # against a 1e-3 limit, p99 3.35e-1 against 2e-2, max 1.61 against
-            # 5e-2, and 7 top-1 flips (1.3% against a 1% budget), three of them
-            # on rows whose baseline margin is above 0.20. The variant stays
-            # registered so the route is reachable by explicit request; the
-            # selection clears when it passes that gate.
-            # ``benchmarks/results/2026-10-08-gemma4-teacher-forced-gate-flash-global-decode.json``
-            selected_variant=DECODE_ATTENTION_STAGED,
+            # ``gemma4_flash``: the key-sliced route is the production decode for
+            # the one-token global step. It reassociates across key slices, so it
+            # is a production variant rather than the exact chain; the staged
+            # singleton it replaced stays registered as the rollback lever, and
+            # the strict plain kernel remains the fallback.
+            # Gate: over the 527 teacher-forced rows at keys 15,857-16,383 it
+            # reads mean KL 2.90e-6 against a 1e-3 limit, p95 1.50e-6, p99
+            # 2.29e-5, max 5.38e-4 against 5e-2, and zero top-1 flips (100%),
+            # with all 15,790 decode launches on the flash route.
+            # ``benchmarks/results/2026-10-09-gemma4-flash-global-decode-gate.json``
+            selected_variant=DECODE_ATTENTION_FLASH,
             strict_fallback_variant=DECODE_ATTENTION_PLAIN,
             registry_quant=DECODE_ATTENTION_QUANT,
         ),
