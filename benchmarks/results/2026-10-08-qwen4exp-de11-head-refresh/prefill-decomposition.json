@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_p4096_prefill_family_decomposition",
+  "cases": [
+    {
+      "case": "code-p4096",
+      "span_ms": 12903.1,
+      "kernel_ms": 12384.8,
+      "launches": 10808,
+      "prefill_tok_s_this_protocol": 317.4,
+      "groups": {
+        "routed_expert_complex": {
+          "ms": 5647.4,
+          "share_pct": 45.6
+        },
+        "dense_q8_projections": {
+          "ms": 2933.3,
+          "share_pct": 23.7
+        },
+        "gr_up_fused": {
+          "ms": 1382.1,
+          "share_pct": 11.2
+        },
+        "gdn_prefill": {
+          "ms": 741.6,
+          "share_pct": 6.0
+        },
+        "attention_qsa": {
+          "ms": 999.9,
+          "share_pct": 8.1
+        }
+      },
+      "families_top": {
+        "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill": {
+          "ms": 2707.8,
+          "n": 188
+        },
+        "gguf_k_prefill_out_coltile_rowbatch_pipelined": {
+          "ms": 1629.7,
+          "n": 436
+        },
+        "q5_1_selected_wmma_iu8_risk_prefill": {
+          "ms": 1498.3,
+          "n": 172
+        },
+        "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32": {
+          "ms": 1382.1,
+          "n": 384
+        },
+        "qwen4_exp_gdn_prefill_f32": {
+          "ms": 741.6,
+          "n": 144
+        },
+        "q8_0_dense_wide": {
+          "ms": 681.5,
+          "n": 1156
+        },
+        "qwen35_router_logits_f32_token_tile4_dpp_exact": {
+          "ms": 542.6,
+          "n": 192
+        },
+        "q5_1_selected_sparse_exact_repair_row_publish": {
+          "ms": 521.2,
+          "n": 172
+        },
+        "qsa_sparse_attention_h256_wave_rows_f32": {
+          "ms": 456.2,
+          "n": 24
+        },
+        "qwen35_paged_full_attn_decode_context_tensor_batch": {
+          "ms": 437.6,
+          "n": 36
+        },
+        "dense_gemv_f32_bf16w_f32_out": {
+          "ms": 274.1,
+          "n": 96
+        },
+        "dense_gemv_out": {
+          "ms": 209.3,
+          "n": 864
+        },
+        "gguf_q4_k_selected_dual_sparse_exact_repair_bf16": {
+          "ms": 171.4,
+          "n": 188
+        },
+        "q8_0_f32_to_f16": {
+          "ms": 138.7,
+          "n": 1156
+        },
+        "grouped_rmsnorm_bf16_f32": {
+          "ms": 113.0,
+          "n": 389
+        },
+        "qsa_score_f32": {
+          "ms": 106.0,
+          "n": 24
+        },
+        "q8_0_selected_grouped_wmma_prefill_bf16_bf16": {
+          "ms": 104.8,
+          "n": 20
+        },
+        "q8_0_selected_sparse_repair": {
+          "ms": 101.2,
+          "n": 20
+        }
+      }
+    },
+    {
+      "case": "code-p512",
+      "span_ms": 1654.0,
+      "kernel_ms": 1613.7,
+      "launches": 2714,
+      "prefill_tok_s_this_protocol": 309.6,
+      "groups": {
+        "routed_expert_complex": {
+          "ms": 851.8,
+          "share_pct": 52.8
+        },
+        "dense_q8_projections": {
+          "ms": 388.7,
+          "share_pct": 24.1
+        },
+        "gr_up_fused": {
+          "ms": 174.5,
+          "share_pct": 10.8
+        },
+        "gdn_prefill": {
+          "ms": 93.2,
+          "share_pct": 5.8
+        },
+        "attention_qsa": {
+          "ms": 24.7,
+          "share_pct": 1.5
+        }
+      },
+      "families_top": {
+        "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill": {
+          "ms": 424.1,
+          "n": 47
+        },
+        "q5_1_selected_wmma_iu8_risk_prefill": {
+          "ms": 238.3,
+          "n": 43
+        },
+        "gguf_k_prefill_out_coltile_rowbatch_pipelined": {
+          "ms": 205.5,
+          "n": 109
+        },
+        "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32": {
+          "ms": 174.5,
+          "n": 96
+        },
+        "q8_0_dense_wide": {
+          "ms": 110.4,
+          "n": 289
+        },
+        "qwen4_exp_gdn_prefill_f32": {
+          "ms": 93.2,
+          "n": 36
+        },
+        "qwen35_router_logits_f32_token_tile4_dpp_exact": {
+          "ms": 69.0,
+          "n": 48
+        },
+        "q5_1_selected_sparse_exact_repair_row_publish": {
+          "ms": 65.7,
+          "n": 43
+        },
+        "dense_gemv_f32_bf16w_f32_out": {
+          "ms": 34.1,
+          "n": 24
+        },
+        "qwen35_paged_full_attn_decode_context_tensor_batch": {
+          "ms": 24.7,
+          "n": 12
+        },
+        "dense_gemv_out": {
+          "ms": 24.1,
+          "n": 216
+        },
+        "gguf_q4_k_selected_dual_sparse_exact_repair_bf16": {
+          "ms": 20.9,
+          "n": 47
+        },
+        "q8_0_selected_grouped_wmma_prefill_bf16_bf16": {
+          "ms": 20.7,
+          "n": 5
+        },
+        "q8_0_f32_to_f16": {
+          "ms": 14.8,
+          "n": 289
+        },
+        "q8_0_selected_sparse_repair": {
+          "ms": 13.0,
+          "n": 5
+        },
+        "gguf_q5_k_selected_dual_wmma_iu8_risk_prefill": {
+          "ms": 10.7,
+          "n": 1
+        },
+        "weighted_lanes_sum_out": {
+          "ms": 9.8,
+          "n": 48
+        },
+        "grouped_rmsnorm_bf16_f32": {
+          "ms": 9.4,
+          "n": 98
+        }
+      }
+    }
+  ],
+  "conclusion": "The routed-expert MoE complex owns ~45.6% of p4096 prefill kernel time (Q4 gate/up iu8 21.9%, Q5_1 down iu8 12.1%, repairs 6.4%, router 4.4%); dense Q8 projections ~22%, GR-up 11.2%, GDN 6.0%, attention ~8.1%. Prefill is device-bound (gaps 4.0% of the window), so the gufo gap is kernel efficiency, not launch overhead. The structural target is the ledger section-2.1 mechanism: F16-in-LDS dequant fused routed GEMM with SwiGLU epilogue and bucket-count expert tiles, no repair pass - an arithmetic-changing T2 candidate that must pass the production numerical envelope (layer2 gate) with a registered strict fallback."
+}
