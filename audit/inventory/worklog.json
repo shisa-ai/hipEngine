@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11501,
-    "current": 4269,
+    "entries": 11505,
+    "current": 4273,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1396,
+    "rows": 1400,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1235
+      "status": 1239
     }
   },
   "rows": [
@@ -52875,14 +52875,14 @@
         "written": "2026-10-08",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 5,
         "open_text": "- The Q5_1 grouped-prefill failures in `tests/test_unit_gemma4_expert_route.py`\n  are real, pre-existing, and unowned; they are outside this unit's scope and\n  were left untouched.\n- The staged fallback inside `gemma4_attention_decode_flash_bf16` is unreachable\n  from today's selector scope. `docs/REFACTOR.md` records the removal condition:\n  move the admission into the variant selector, which needs the fitted slice\n  count on the route-decision path.\n- `gemma4_attention_decode_wmma*` and the other explicit evaluation candidates\n  remain registered and unselected.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261008T162238.312050Z-lhl-gemma4-gemma4-flash-global-decode-900c2e.md",
@@ -52901,7 +52901,7 @@
         ]
       },
       "id": "worklog/20261008T162238.312050Z-lhl-gemma4-gemma4-flash-global-decode-900c2e",
-      "evidence_hash": "1433cf764830"
+      "evidence_hash": "fca7c57d8fc6"
     },
     {
       "kind": "worklog",
@@ -52915,14 +52915,14 @@
         "written": "2026-10-08",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 3,
         "open_text": "- The cumulative strict-vs-production measurement is recorded in\n  `worklog/entries/20261008T174856.609217Z-lhl-gemma4-gemma4-short-route-vs-exact-f6ba87.md`.\n  It fails the mean/p99/max bars, and whether that is an arithmetic regression\n  in this unit's tuning ladder or increased model sensitivity is the open\n  question that entry hands to task 54.\n- No further action on the lookahead defect itself: its provenance is now\n  recorded correctly and the fix is in.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261008T172446.070038Z-lhl-gemma4-gemma4-flash-defect-provenance-c96b31.md",
@@ -52941,7 +52941,7 @@
         ]
       },
       "id": "worklog/20261008T172446.070038Z-lhl-gemma4-gemma4-flash-defect-provenance-c96b31",
-      "evidence_hash": "509c4a485f8e"
+      "evidence_hash": "e7cc94fc4d79"
     },
     {
       "kind": "worklog",
@@ -52979,6 +52979,164 @@
       },
       "id": "worklog/20261008T174856.609217Z-lhl-gemma4-gemma4-short-route-vs-exact-f6ba87",
       "evidence_hash": "3367f2101c08"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261008T175723.624342Z-lhl-gemma4-gemma4-flash-kernel-deviation-a549c9",
+      "title": "No flash-kernel arithmetic regression: the route's kernel is bit-identical across the window",
+      "location": "worklog/entries/20261008T175723.624342Z-lhl-gemma4-gemma4-flash-kernel-deviation-a549c9.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl-gemma4",
+        "topic": "gemma4-flash-kernel-deviation",
+        "written": "2026-10-08",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 2,
+        "open_text": "- **The amplification itself is now the open question**, and it is a property of\n  the model rather than of the attention route: something in the 2026-10-01 ..\n  10-07 work made the decode trajectory far more sensitive to a 1e-6 attention\n  difference. Worth knowing before judging any further decode-attention\n  candidate by this instrument, because the same candidate that measured 5e-6\n  on 2026-09-30 would measure ~1e-2 today without its arithmetic changing.\n- **One mechanism the kernel-level test cannot see:** it builds its own mask. If\n  the production sliding decode reaches the flash route",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "2 later entries by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261008T175723.624342Z-lhl-gemma4-gemma4-flash-kernel-deviation-a549c9.md",
+        "refs": [],
+        "tokens": [
+          "across",
+          "arithmetic",
+          "bit",
+          "flash",
+          "identical",
+          "kernel",
+          "regression",
+          "route",
+          "window"
+        ]
+      },
+      "id": "worklog/20261008T175723.624342Z-lhl-gemma4-gemma4-flash-kernel-deviation-a549c9",
+      "evidence_hash": "93425dc35b3c"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261008T175825.460802Z-lhl-gemma4-gemma4-flash-kernel-deviation-7e7578",
+      "title": "Closed: the decode flash route receives no production-only inputs",
+      "location": "worklog/entries/20261008T175825.460802Z-lhl-gemma4-gemma4-flash-kernel-deviation-7e7578.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl-gemma4",
+        "topic": "gemma4-flash-kernel-deviation",
+        "written": "2026-10-08",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 1,
+        "open_text": "- The remaining question is unchanged and is now the only one: **why the model\n  amplifies the same 1e-6 difference ~1000x more than it did on 2026-09-30.**\n  Until that is understood, this instrument cannot distinguish \"this candidate\n  is worse\" from \"the model is less tolerant than it was\", which matters for\n  every decode-attention decision made on it.\n- Task 53 (gate the sliding route above its entry band, keys 2,048-15,856) is\n  unaffected and still open.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "1 later entry by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261008T175825.460802Z-lhl-gemma4-gemma4-flash-kernel-deviation-7e7578.md",
+        "refs": [],
+        "tokens": [
+          "closed",
+          "decode",
+          "flash",
+          "inputs",
+          "production",
+          "receives",
+          "route"
+        ]
+      },
+      "id": "worklog/20261008T175825.460802Z-lhl-gemma4-gemma4-flash-kernel-deviation-7e7578",
+      "evidence_hash": "483d7bc5f98e"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261008T175944.497327Z-lhl-gemma4-gemma4-teacher-forced-sensitivity-545402",
+      "title": "The teacher-forced instrument's baseline moved 1000x while the kernel stayed bit-identical",
+      "location": "worklog/entries/20261008T175944.497327Z-lhl-gemma4-gemma4-teacher-forced-sensitivity-545402.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl-gemma4",
+        "topic": "gemma4-teacher-forced-sensitivity",
+        "written": "2026-10-08",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- The campaign's decode-attention decisions that rest on a 1e-3-scale mean KL\n  should be re-read in that light; the candidate-vs-incumbent *relative*\n  comparison they also carry is the part that still means something.\n- Task 53 (gate the sliding route above its entry band, keys 2,048-15,856)\n  remains open and is unaffected.\n- If the model's sensitivity is to be understood rather than routed around, the\n  next probe is which downstream boundary is being crossed -- the MoE router's\n  top-k is the first candidate, since it is discrete and its inputs move by\n  exactly one ULP per flip.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261008T175944.497327Z-lhl-gemma4-gemma4-teacher-forced-sensitivity-545402.md",
+        "refs": [],
+        "tokens": [
+          "1000x",
+          "baseline",
+          "bit",
+          "forced",
+          "identical",
+          "instrument",
+          "kernel",
+          "moved",
+          "stayed",
+          "teacher",
+          "while"
+        ]
+      },
+      "id": "worklog/20261008T175944.497327Z-lhl-gemma4-gemma4-teacher-forced-sensitivity-545402",
+      "evidence_hash": "f8576dc83b4c"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261008T180237.010842Z-lhl-gemma4-gemma4-flash-kernel-deviation-52329e",
+      "title": "Tighten the flash route's f32 bound to its measured agreement, and correct the flip-rate claim",
+      "location": "worklog/entries/20261008T180237.010842Z-lhl-gemma4-gemma4-flash-kernel-deviation-52329e.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl-gemma4",
+        "topic": "gemma4-flash-kernel-deviation",
+        "written": "2026-10-08",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- The remaining open question is unchanged: which downstream discrete decision\n  turns a bf16 ULP step into a trajectory divergence (task 55), with the MoE\n  router's top-k as the first candidate.\n- The instrument's role is the other open item, and it is a decision rather than\n  a measurement.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261008T180237.010842Z-lhl-gemma4-gemma4-flash-kernel-deviation-52329e.md",
+        "refs": [],
+        "tokens": [
+          "agreement",
+          "bound",
+          "claim",
+          "correct",
+          "f32",
+          "flash",
+          "flip",
+          "measured",
+          "rate",
+          "route",
+          "tighten"
+        ]
+      },
+      "id": "worklog/20261008T180237.010842Z-lhl-gemma4-gemma4-flash-kernel-deviation-52329e",
+      "evidence_hash": "e2e926fdbaf6"
     }
   ]
 }
