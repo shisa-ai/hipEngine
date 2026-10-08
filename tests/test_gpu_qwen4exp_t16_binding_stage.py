@@ -127,3 +127,109 @@ def test_detach_refused_without_t16_stage():
     weight, _ = _synthetic_weight()
     with pytest.raises(ValueError):
         detach_raw_allocation(weight)
+
+
+class _FakeResident:
+    """The minimal protocol materialize_qwen4_exp_t16_stages needs."""
+
+    def __init__(self, weights):
+        self.weights = dict(weights)
+
+    def weight(self, slot_path):
+        return self.weights[slot_path]
+
+    def swap_weight(self, slot_path, weight):
+        if slot_path not in self.weights:
+            raise KeyError(slot_path)
+        self.weights[slot_path] = weight
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_materialize_t16_stages_populates_and_preserves_raw_by_default():
+    from hipengine.loading.qwen4_exp_materialize import (
+        materialize_qwen4_exp_t16_stages,
+    )
+    from tests._gguf_synthetic_weights import make_q4_k_weight
+    from tests.test_gpu_gguf_q5_1_t16_expert_major_wmma import make_q5_1_weight
+
+    # Two routed-expert slots at tiny geometries: a Q4_K gate (256-value
+    # blocks) and a Q5_1 down (32-value blocks). Expert tensors are rank-3.
+    q4_raw = make_q4_k_weight(16, 256)[None]
+    q51_raw = make_q5_1_weight(16, 64, seed=5)[None]
+    sources = {
+        "layers.7.expert_gate": ("blk.7.ffn_gate_exps.weight", q4_raw),
+        "layers.7.expert_down": ("blk.7.ffn_down_exps.weight", q51_raw),
+    }
+
+    weights = {}
+    for slot, (name, raw) in sources.items():
+        quant = "gguf_q4_k" if "gate" in slot else "gguf_q5_1"
+        spec = Qwen4ExpGGUFWeightSpec(
+            slot_path=slot,
+            source_ref=_NamedRef(name),
+            quant_key=quant,
+            layout="raw",
+            allocation_names=("raw",),
+            device_resident=True,
+            device_nbytes=int(raw.nbytes),
+        )
+        raw_alloc = load_host_array_to_device_as_dtype(
+            slot, raw, "int8", source_dtype="int8"
+        )
+        weights[slot] = Qwen4ExpDeviceWeight(
+            spec=spec, backend="hip_gfx1151", allocations={"raw": raw_alloc}
+        )
+    resident = _FakeResident(weights)
+
+    populated = materialize_qwen4_exp_t16_stages(
+        resident,
+        read_tensor=lambda name: next(
+            raw for src, raw in sources.values() if src == name
+        ),
+        slots=["layers.7.expert_gate", "layers.7.expert_down"],
+    )
+
+    assert set(populated) == {"layers.7.expert_gate", "layers.7.expert_down"}
+    for slot in sources:
+        new_weight = resident.weight(slot)
+        # The t16 stage is resident with the exact repacked tile bytes.
+        assert "t16" in new_weight.allocations
+        assert new_weight.allocation("t16").buffer.nbytes == populated[slot]
+        # Default free_raw=False: the raw stage (the strict fallback) stays.
+        assert "raw" in new_weight.allocations
+        assert new_weight.allocation().name == new_weight.allocations["raw"].name
+
+    # A non-T16 quant slot is skipped, not an error.
+    q8_spec = Qwen4ExpGGUFWeightSpec(
+        slot_path="layers.8.expert_down",
+        source_ref=_NamedRef("blk.8.ffn_down_exps.weight"),
+        quant_key="gguf_q8_0",
+        layout="raw",
+        allocation_names=("raw",),
+        device_resident=True,
+        device_nbytes=64,
+    )
+    q8_raw = np.full(64, 1, dtype=np.uint8)
+    q8_alloc = load_host_array_to_device_as_dtype(
+        "layers.8.expert_down", q8_raw, "int8", source_dtype="int8"
+    )
+    resident.weights["layers.8.expert_down"] = Qwen4ExpDeviceWeight(
+        spec=q8_spec, backend="hip_gfx1151", allocations={"raw": q8_alloc}
+    )
+    populated_q8 = materialize_qwen4_exp_t16_stages(
+        resident,
+        read_tensor=lambda name: np.zeros(8, dtype=np.uint8),
+        slots=["layers.8.expert_down"],
+    )
+    assert populated_q8 == {}
+    assert set(resident.weight("layers.8.expert_down").allocations) == {"raw"}
+
+
+class _NamedRef:
+    def __init__(self, name):
+        self.tensor = _NamedTensor(name)
+
+
+class _NamedTensor:
+    def __init__(self, name):
+        self.name = name
