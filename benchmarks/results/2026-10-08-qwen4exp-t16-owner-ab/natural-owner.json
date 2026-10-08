@@ -1,0 +1,166 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_t16_natural_owner_screen",
+  "status": "passed",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "f91be04e6ce1d4760de6319d44ea4169bd3f1f1e",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_t16_natural_owner_screen.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipcc-version-qwen4exp.txt",
+    "--case-id",
+    "code-p4096",
+    "--layers",
+    "12,24,46",
+    "--output",
+    "benchmarks/results/2026-10-08-qwen4exp-t16-owner-ab/natural-owner.json"
+  ],
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "manifest_sha256": "be32e7193f30c4c4a65f5cbaf99b62033fd6458edd295fc2d7806e734001469b",
+  "case_id": "code-p4096",
+  "parent_variant": "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+  "t16_variant": "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out",
+  "repetitions": 6,
+  "captures": [
+    {
+      "layer": 12,
+      "compact_rows": 40960,
+      "hidden": 2560,
+      "ffn": 640,
+      "experts": 512,
+      "static_rows": 48640,
+      "x_sha256": "8372679c37c2035f4e8b540d74e547c6bd0c506d4039915308b191192757aeef",
+      "gate_weight_sha256": "580be074c472c481f460cd42d0df4a62b8e065bc4209301ff814eb6af8b652ae",
+      "x_immutable": true,
+      "weight_immutable": true,
+      "parent_ms": 59.38174819946289,
+      "t16_ms": 27.22412109375,
+      "speedup": 2.181218192314591,
+      "parent_samples": [
+        50.44416809082031,
+        53.93159103393555,
+        57.60087203979492,
+        61.16262435913086,
+        64.80221557617188,
+        68.62115478515625
+      ],
+      "t16_samples": [
+        27.340343475341797,
+        27.21693229675293,
+        27.3161678314209,
+        27.125682830810547,
+        27.23130989074707,
+        27.199047088623047
+      ],
+      "drift": {
+        "max_abs": 0.007813334465026855,
+        "rms_abs": 0.00021876399010004266,
+        "max_rel": 1148.918007438407,
+        "bf16_floor_rms": null
+      }
+    },
+    {
+      "layer": 24,
+      "compact_rows": 40960,
+      "hidden": 2560,
+      "ffn": 640,
+      "experts": 512,
+      "static_rows": 48640,
+      "x_sha256": "f7d2ba3a05a3300ea5c57faab2ba3970874d9079c8ad7a6531f172ac9c90895d",
+      "gate_weight_sha256": "918d603ab78903fe1df6cdd65bfa97041990778401b90062df16511f0d231c9e",
+      "x_immutable": true,
+      "weight_immutable": true,
+      "parent_ms": 59.75679588317871,
+      "t16_ms": 27.477360725402832,
+      "speedup": 2.1747647629029205,
+      "parent_samples": [
+        50.919281005859375,
+        54.33382797241211,
+        57.951446533203125,
+        61.5621452331543,
+        65.32980346679688,
+        69.01129150390625
+      ],
+      "t16_samples": [
+        27.516695022583008,
+        27.53519058227539,
+        27.465810775756836,
+        27.472021102905273,
+        27.470640182495117,
+        27.48270034790039
+      ],
+      "drift": {
+        "max_abs": 0.007816672325134277,
+        "rms_abs": 0.00021524076323300114,
+        "max_rel": 6364.646963232882,
+        "bf16_floor_rms": null
+      }
+    },
+    {
+      "layer": 46,
+      "compact_rows": 40960,
+      "hidden": 2560,
+      "ffn": 640,
+      "experts": 512,
+      "static_rows": 48640,
+      "x_sha256": "a0f8531abf679928854a791380f52c9c4551389e1069f1f1b59a6c76facc097a",
+      "gate_weight_sha256": "0c0195472afc921cd091996933634b0e0c0527b5ba0beb8727c29ef415cf8726",
+      "x_immutable": true,
+      "weight_immutable": true,
+      "parent_ms": 58.34808158874512,
+      "t16_ms": 26.89673614501953,
+      "speedup": 2.169336876941087,
+      "parent_samples": [
+        49.91993713378906,
+        53.22820281982422,
+        56.550167083740234,
+        60.14599609375,
+        63.39186477661133,
+        66.66110229492188
+      ],
+      "t16_samples": [
+        26.89321517944336,
+        26.83104705810547,
+        27.01763916015625,
+        27.032155990600586,
+        26.900257110595703,
+        26.813556671142578
+      ],
+      "drift": {
+        "max_abs": 0.0625,
+        "rms_abs": 0.0005238285819466587,
+        "max_rel": 1.6235515067819506e+26,
+        "bf16_floor_rms": null
+      }
+    }
+  ],
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 93153902236,
+    "total_allocated_bytes": 95251119308,
+    "total_freed_bytes": 95251119308,
+    "active_allocations": 0,
+    "peak_allocations": 1636
+  }
+}
