@@ -1644,7 +1644,8 @@ __global__ void gemma4_attention_decode_flash_kernel(
   const scalar_t* v_base = value + kv * head_dim + j_begin * v_stride;
   constexpr gemma4_pair2<scalar_t> kZeroPair = {
       static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
-  for (int64_t d0 = static_cast<int64_t>(tid) * 2; d0 < head_dim;
+  constexpr int kCompileHeadDim = kHalves * 256;
+  for (int64_t d0 = static_cast<int64_t>(tid) * 2; d0 < kCompileHeadDim;
        d0 += dim_step) {
     gemma4_pair2<scalar_t> pipe[3];
 #pragma unroll
