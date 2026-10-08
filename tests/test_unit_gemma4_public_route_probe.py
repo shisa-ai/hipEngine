@@ -76,6 +76,51 @@ def test_observe_counts_calls_not_only_selection(monkeypatch):
                           "reason": "capability match"}
 
 
+def test_observe_decode_launches_report_the_registered_variant(monkeypatch):
+    """Decode reaches the device through _launch_prefill, not the layer functions.
+
+    Without this hook the probe reports prefill launches only and looks like it
+    has proved that a decode scope was never reached.
+    """
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention
+
+    def launch(*args, **kwargs):
+        return "launched"
+    monkeypatch.setattr(attention, "_launch_prefill", launch)
+    monkeypatch.setattr(attention, "decode_selection", lambda library=None: 3)
+    with observe_attention_launches() as records:
+        wrapped = attention._launch_prefill
+        assert wrapped(tokens=1, keys=16384, head_dim=512, num_heads=16,
+                       num_kv_heads=2) == "launched"
+        assert wrapped(tokens=512, keys=16384, head_dim=512, num_heads=16,
+                       num_kv_heads=2) == "launched"
+    assert records == [{"variant": attention.DECODE_ATTENTION_FLASH,
+                        "reason": "registered decode variant", "tokens": 1,
+                        "keys": 16384, "head_dim": 512, "num_heads": 16,
+                        "num_kv_heads": 2}]
+    assert attention._launch_prefill is launch
+    assert summarize_attention_launches(records) == [
+        {"variant": attention.DECODE_ATTENTION_FLASH, "query_width": "singleton",
+         "invocations": 1},
+    ]
+
+
+@pytest.mark.parametrize("selection,constant", [
+    (1, "DECODE_ATTENTION_PLAIN"),
+    (2, "DECODE_ATTENTION_STAGED"),
+    (3, "DECODE_ATTENTION_FLASH"),
+])
+def test_observe_decode_launches_name_every_selection(monkeypatch, selection, constant):
+    """The reported name is the registered variant, not the raw selection id."""
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention
+
+    monkeypatch.setattr(attention, "_launch_prefill", lambda *a, **k: None)
+    monkeypatch.setattr(attention, "decode_selection", lambda library=None: selection)
+    with observe_attention_launches() as records:
+        attention._launch_prefill(tokens=1, keys=2048, head_dim=512)
+    assert records[0]["variant"] == getattr(attention, constant)
+
+
 def test_observer_restores_selector_after_failure(monkeypatch):
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer as layer
 

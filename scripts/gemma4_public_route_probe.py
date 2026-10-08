@@ -4,6 +4,16 @@
 Selection telemetry counts successful wrapper invocations, not merely resolution
 or generated-ID parity. GPU completion is checked separately with synchronize.
 This probe observes the product route; it does not override variant selection.
+
+Both phases are observed, and they are observed through different hooks because
+they reach the device differently. Prefill goes through
+``layer.select_prefill_attention`` and the layer's native launcher functions.
+Decode goes through the registered variants (``gemma4_flash`` and the staged
+split), which bypass those functions and instead all pass through
+``attention._launch_prefill`` -- so a probe that wraps only the native launchers
+reports prefill launches and no decode launches at all, which is exactly the
+shape of an answer that looks like "this scope is not reached" when the scope
+was reached and merely invisible.
 """
 from __future__ import annotations
 
@@ -66,9 +76,31 @@ def observe_attention_launches():
     layer.select_prefill_attention = observed
     for name, variant in native_launches.items():
         setattr(layer, name, observe_native(originals[name], variant))
+
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention
+
+    decode_names = {0: "block", 1: attention.DECODE_ATTENTION_PLAIN,
+                    2: attention.DECODE_ATTENTION_STAGED,
+                    3: attention.DECODE_ATTENTION_FLASH}
+    original_launch = attention._launch_prefill
+
+    def observe_decode(*args, **kwargs):
+        result = original_launch(*args, **kwargs)
+        if kwargs.get("tokens") == 1:
+            selection = int(attention.decode_selection(kwargs.get("library")))
+            records.append({
+                "variant": decode_names.get(selection, f"selection_{selection}"),
+                "reason": "registered decode variant",
+                **{name: kwargs.get(name) for name in
+                   ("tokens", "keys", "head_dim", "num_heads", "num_kv_heads")},
+            })
+        return result
+
+    attention._launch_prefill = observe_decode
     try:
         yield records
     finally:
+        attention._launch_prefill = original_launch
         layer.select_prefill_attention = original
         for name, launch in originals.items():
             setattr(layer, name, launch)
