@@ -94,6 +94,9 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_select,
     qwen35_router_select_cast_bf16,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
+    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
     lm_head_argmax_stage1_blocks,
@@ -3769,6 +3772,23 @@ def _qwen4_exp_q51_iu8_exact_enabled() -> bool:
     ) not in {"", "0", "false", "False"}
 
 
+# T16 gate/up admission (2026-10-08): per-weight T16 tile cache keyed by the
+# gate weight's raw device pointer. Populated by the integration helper (the
+# same GGUF read + repack_gguf_q4_k_tile16 path the natural-owner screen
+# validated); the runner branch falls back to the production iu8 chain on a
+# cache miss, so the default path is untouched.
+_T16_GATE_UP_TILES: dict[int, tuple[object, object]] = {}
+_T16_GATE_UP_ENV = "HIPENGINE_QWEN4_EXP_T16_GATE_UP"
+
+
+def _t16_gate_up_enabled() -> bool:
+    """Default-off T16 dual compensated gate/up route."""
+
+    return os.environ.get(
+        _T16_GATE_UP_ENV, "0"
+    ) not in {"", "0", "false", "False"}
+
+
 def _run_qwen4_exp_q51_wmma_down(
     *,
     input_ptr: int,
@@ -4426,108 +4446,167 @@ def run_qwen4_exp_moe(
                 and weights["expert_up"].spec.quant_key == "gguf_q4_k"
             )
             if q4_iu8_exact:
-                # Exact iu8-risk+repair route: GPU tile map with the static
-                # upper bound (no device read), risk-collecting iu8-WMMA
-                # gate/up, sparse exact repair reproducing the pair2 parent,
-                # then the combined-layout SiLU (bit-identical element-wise
-                # to the separate-layout SiLU used by the pair2 path).
-                tile_capacity = (
-                    scratch.group_tile_expert.nbytes // DType.INT64.itemsize
-                )
-                active = min(compact, experts)
-                static_tiles = active + (compact - active) // 16
-                if static_tiles > tile_capacity:
-                    raise RuntimeError(
-                        "Qwen4Exp grouped MoE tile capacity is invalid"
+                # T16 gate/up branch (2026-10-08 admission, env-gated, default
+                # off): the bit-lossless T16 repack decoded in registers, F16
+                # WMMA with compensated accumulate, no repair by construction.
+                # Tiles come from a module-level cache keyed by the gate
+                # weight's raw device pointer; a cache miss falls through to
+                # the production iu8-risk+repair chain, so the strict fallback
+                # is structural and the default path is untouched.
+                t16_tiles = None
+                if _t16_gate_up_enabled():
+                    gate_raw_ptr = int(
+                        weights["expert_gate"].allocation("raw").tensor.ptr
                     )
-                qwen35_moe_wmma_tile_map(
-                    scratch.group_expert_start.ptr,
-                    scratch.group_wmma_expert_start.ptr,
-                    scratch.group_tile_expert.ptr,
-                    scratch.group_wmma_total.ptr,
-                    experts,
-                    tile_capacity=static_tiles,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-                risk_count, risk_indices = scratch.ensure_group_risk_buffers(
-                    compact_rows=compact, out_features_total=2 * ffn
-                )
-                active_runtime.memset(
-                    risk_count.ptr, 0, DType.INT32.itemsize
-                )
-                risk_capacity = compact * 2 * ffn
-                iu8_gate_up_variant = (
-                    "selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out"
-                    if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES", "3") == "2"
-                    else "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out")
-                iu8_risk_gate_up = resolve(
-                    backend=backend, layer="moe_linear", quant="gguf_q4_k",
-                    variant=iu8_gate_up_variant,
-                )
-                sparse_exact_repair = resolve(
-                    backend=backend, layer="moe_linear", quant="gguf_q4_k",
-                    variant="selected_dual_sparse_exact_repair_bf16",
-                )
-                iu8_risk_gate_up(
-                    scratch.expert_down.ptr,
-                    scratch.group_expert_start.ptr,
-                    scratch.group_wmma_expert_start.ptr,
-                    scratch.group_tile_expert.ptr,
-                    weights["expert_gate"].allocation("raw").tensor.ptr,
-                    weights["expert_up"].allocation("raw").tensor.ptr,
-                    scratch.group_gate_up.ptr,
-                    risk_count.ptr,
-                    risk_indices.ptr,
-                    risk_capacity,
-                    _qwen4_exp_q4_iu8_risk_multiplier(),
-                    compact,
-                    hidden,
-                    ffn,
-                    ffn,
-                    experts,
-                    static_tiles * 16,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-                sparse_exact_repair(
-                    scratch.expert_down.ptr,
-                    scratch.group_expert_start.ptr,
-                    weights["expert_gate"].allocation("raw").tensor.ptr,
-                    weights["expert_up"].allocation("raw").tensor.ptr,
-                    scratch.group_gate_up.ptr,
-                    risk_count.ptr,
-                    risk_indices.ptr,
-                    risk_capacity,
-                    compact,
-                    hidden,
-                    ffn,
-                    ffn,
-                    experts,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-                _observe_qwen4_exp_risk_queue(
-                    runtime=active_runtime,
-                    stream=stream,
-                    risk_count=risk_count,
-                    route="q4_iu8_exact",
-                    role="expert_gate_up",
-                    layer=weights["expert_gate"].spec.slot_path,
-                    rows=rows,
-                    compact_rows=compact,
-                    out_features_total=2 * ffn,
-                    experts=experts,
-                    risk_capacity=risk_capacity,
-                )
-                silu_mul_dual_out_bf16(
-                    scratch.group_gate_up.ptr,
-                    scratch.expert_intermediate.ptr,
-                    rows=compact,
-                    features=ffn,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
+                    t16_tiles = _T16_GATE_UP_TILES.get(gate_raw_ptr)
+                if t16_tiles is not None:
+                    tile_capacity = (
+                        scratch.group_tile_expert.nbytes // DType.INT64.itemsize
+                    )
+                    active = min(compact, experts)
+                    static_tiles = active + (compact - active) // 16
+                    if static_tiles > tile_capacity:
+                        raise RuntimeError(
+                            "Qwen4Exp grouped MoE tile capacity is invalid"
+                        )
+                    qwen35_moe_wmma_tile_map(
+                        scratch.group_expert_start.ptr,
+                        scratch.group_wmma_expert_start.ptr,
+                        scratch.group_tile_expert.ptr,
+                        scratch.group_wmma_total.ptr,
+                        experts,
+                        tile_capacity=static_tiles,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+                    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
+                        scratch.expert_down.ptr,
+                        scratch.group_expert_start.ptr,
+                        scratch.group_wmma_expert_start.ptr,
+                        scratch.group_tile_expert.ptr,
+                        t16_tiles[0].ptr,
+                        t16_tiles[1].ptr,
+                        scratch.group_gate_up.ptr,
+                        compact,
+                        hidden,
+                        ffn,
+                        ffn,
+                        experts,
+                        static_tiles * 16,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+                    silu_mul_dual_out_bf16(
+                        scratch.group_gate_up.ptr,
+                        scratch.expert_intermediate.ptr,
+                        rows=compact,
+                        features=ffn,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+                else:
+                    # Exact iu8-risk+repair route: GPU tile map with the static
+                    # upper bound (no device read), risk-collecting iu8-WMMA
+                    # gate/up, sparse exact repair reproducing the pair2 parent,
+                    # then the combined-layout SiLU (bit-identical element-wise
+                    # to the separate-layout SiLU used by the pair2 path).
+                    tile_capacity = (
+                        scratch.group_tile_expert.nbytes // DType.INT64.itemsize
+                    )
+                    active = min(compact, experts)
+                    static_tiles = active + (compact - active) // 16
+                    if static_tiles > tile_capacity:
+                        raise RuntimeError(
+                            "Qwen4Exp grouped MoE tile capacity is invalid"
+                        )
+                    qwen35_moe_wmma_tile_map(
+                        scratch.group_expert_start.ptr,
+                        scratch.group_wmma_expert_start.ptr,
+                        scratch.group_tile_expert.ptr,
+                        scratch.group_wmma_total.ptr,
+                        experts,
+                        tile_capacity=static_tiles,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+                    risk_count, risk_indices = scratch.ensure_group_risk_buffers(
+                        compact_rows=compact, out_features_total=2 * ffn
+                    )
+                    active_runtime.memset(
+                        risk_count.ptr, 0, DType.INT32.itemsize
+                    )
+                    risk_capacity = compact * 2 * ffn
+                    iu8_gate_up_variant = (
+                        "selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out"
+                        if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES", "3") == "2"
+                        else "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out")
+                    iu8_risk_gate_up = resolve(
+                        backend=backend, layer="moe_linear", quant="gguf_q4_k",
+                        variant=iu8_gate_up_variant,
+                    )
+                    sparse_exact_repair = resolve(
+                        backend=backend, layer="moe_linear", quant="gguf_q4_k",
+                        variant="selected_dual_sparse_exact_repair_bf16",
+                    )
+                    iu8_risk_gate_up(
+                        scratch.expert_down.ptr,
+                        scratch.group_expert_start.ptr,
+                        scratch.group_wmma_expert_start.ptr,
+                        scratch.group_tile_expert.ptr,
+                        weights["expert_gate"].allocation("raw").tensor.ptr,
+                        weights["expert_up"].allocation("raw").tensor.ptr,
+                        scratch.group_gate_up.ptr,
+                        risk_count.ptr,
+                        risk_indices.ptr,
+                        risk_capacity,
+                        _qwen4_exp_q4_iu8_risk_multiplier(),
+                        compact,
+                        hidden,
+                        ffn,
+                        ffn,
+                        experts,
+                        static_tiles * 16,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+                    sparse_exact_repair(
+                        scratch.expert_down.ptr,
+                        scratch.group_expert_start.ptr,
+                        weights["expert_gate"].allocation("raw").tensor.ptr,
+                        weights["expert_up"].allocation("raw").tensor.ptr,
+                        scratch.group_gate_up.ptr,
+                        risk_count.ptr,
+                        risk_indices.ptr,
+                        risk_capacity,
+                        compact,
+                        hidden,
+                        ffn,
+                        ffn,
+                        experts,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+                    _observe_qwen4_exp_risk_queue(
+                        runtime=active_runtime,
+                        stream=stream,
+                        risk_count=risk_count,
+                        route="q4_iu8_exact",
+                        role="expert_gate_up",
+                        layer=weights["expert_gate"].spec.slot_path,
+                        rows=rows,
+                        compact_rows=compact,
+                        out_features_total=2 * ffn,
+                        experts=experts,
+                        risk_capacity=risk_capacity,
+                    )
+                    silu_mul_dual_out_bf16(
+                        scratch.group_gate_up.ptr,
+                        scratch.expert_intermediate.ptr,
+                        rows=compact,
+                        features=ffn,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
             else:
                 expert_grid_mode = os.environ.get(
                     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
