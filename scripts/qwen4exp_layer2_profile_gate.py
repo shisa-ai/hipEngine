@@ -1251,7 +1251,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         if candidate_spec.requires_dispatch_count:
             from hipengine.kernels.registry import KernelKey
             counter = dispatch_stack.enter_context(count_candidate_dispatch(
-                key=KernelKey(*candidate_spec.candidate_key),
+                key=KernelKey(*candidate_spec.candidate_key) if candidate_spec.candidate_key is not None else None,
                 direct_target=candidate_spec.direct_dispatch_target,
                 direct_reference=candidate_spec.direct_dispatch_reference,
                 shape_positions=candidate_spec.dispatch_shape_positions))
