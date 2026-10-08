@@ -369,6 +369,23 @@ class Qwen4ExpResidentWeights:
             raise RuntimeError("Qwen4Exp resident weights are closed")
         return self.device_weights[slot_path]
 
+    def swap_weight(self, slot_path: str, weight: Any) -> None:
+        """Replace one resident weight object in place.
+
+        The T16 tile-residency path uses this to publish a weight carrying
+        the ``t16`` allocation stage (the frozen-replacement pattern from
+        ``attach_t16_allocation``). The slot must already exist; the caller
+        owns proving the new weight matches the slot's spec.
+        """
+
+        if self.closed:
+            raise RuntimeError("Qwen4Exp resident weights are closed")
+        if slot_path not in self.device_weights:
+            raise KeyError(f"unknown resident weight slot: {slot_path}")
+        merged = dict(self.device_weights)
+        merged[slot_path] = weight
+        self.device_weights = MappingProxyType(merged)
+
     def close(self) -> None:
         if self.closed:
             return
@@ -378,6 +395,59 @@ class Qwen4ExpResidentWeights:
             allocation.free(runtime=self.runtime)
         self.device_weights = MappingProxyType({})
         self.closed = True
+
+
+def materialize_qwen4_exp_t16_stages(
+    resident: "Qwen4ExpResidentWeights",
+    *,
+    read_tensor: Any,
+    slots: Sequence[str],
+    runtime: HipRuntime | None = None,
+    free_raw: bool = False,
+) -> dict[str, int]:
+    """Populate the ``t16`` allocation stages for the requested slots.
+
+    The load-path half of the T16 tile-residency design
+    (docs/QWEN4EXP-T16-RESIDENCY.md): for each requested routed-expert slot,
+    read the raw tensor bytes through ``read_tensor(name)``, repack through
+    the production T16 layout for the slot's quant (Q4_K or Q5_1; other
+    quants are skipped), upload the tiles, attach them as the binding's
+    ``t16`` stage, and publish the new weight via ``swap_weight``.
+
+    ``free_raw`` defaults to **False**: the raw stage stays resident so the
+    production chains keep their strict fallback. The net-zero full-window
+    phase (detaching the raw the tiles replace) is a separate, explicit
+    step the X-7-admitted routes will turn on - never a silent default.
+    """
+
+    from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+    from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16
+
+    populated: dict[str, int] = {}
+    for slot in slots:
+        weight = resident.weight(slot)
+        quant = getattr(weight.spec, "quant_key", "")
+        if quant == "gguf_q4_k":
+            repack = repack_gguf_q4_k_tile16
+        elif quant == "gguf_q5_1":
+            repack = repack_gguf_q5_1_tile16
+        else:
+            continue
+        raw = read_tensor(weight.spec.source.name)
+        tiles = np.ascontiguousarray(repack(raw).tiles)
+        t16 = load_host_array_to_device_as_dtype(
+            f"{slot}.t16",
+            tiles,
+            "int8",
+            source_dtype="int8",
+            runtime=runtime,
+        )
+        new_weight = attach_t16_allocation(weight, t16)
+        if free_raw:
+            new_weight = detach_raw_allocation(new_weight, runtime=runtime)
+        resident.swap_weight(slot, new_weight)
+        populated[slot] = int(t16.buffer.nbytes)
+    return populated
 
 
 def materialize_qwen4_exp_weights(
