@@ -86,6 +86,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_count,
     qwen35_moe_group_prefix,
+    qwen35_moe_group_prefix_active,
     qwen35_moe_group_scatter_gather_lowp,
     qwen35_moe_group_scatter,
     qwen35_moe_mmq32_tile_map,
@@ -97,6 +98,9 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+    gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
@@ -2036,6 +2040,8 @@ class Qwen4ExpMoEScratch:
     group_wmma_total: DeviceBuffer
     group_gate_up: DeviceBuffer
     group_lane_to_row: DeviceBuffer
+    group_active_experts: DeviceBuffer
+    group_active_count: DeviceBuffer
     runtime: HipRuntime
     closed: bool = False
     q5_1_mmq_ds4_workspace: DeviceBuffer | None = None
@@ -2092,6 +2098,8 @@ class Qwen4ExpMoEScratch:
             DType.INT64.itemsize,
             compact * 2 * ffn * DType.BF16.itemsize,
             compact * DType.INT64.itemsize,
+            experts * DType.INT64.itemsize,
+            DType.INT64.itemsize,
         )
         buffers: list[DeviceBuffer] = []
         try:
@@ -2136,6 +2144,8 @@ class Qwen4ExpMoEScratch:
                 self.group_wmma_total,
                 self.group_gate_up,
                 self.group_lane_to_row,
+                self.group_active_experts,
+                self.group_active_count,
             )
         ):
             free(buffer, runtime=self.runtime)
@@ -3790,6 +3800,25 @@ _T16_GATE_UP_TILES: dict[int, tuple[object, object]] = {}
 _T16_GATE_UP_ENV = "HIPENGINE_QWEN4_EXP_T16_GATE_UP"
 
 
+# T16 Q5_1 down route (2026-10-09 down-leg build, step 4): the same
+# env-gated pattern as the gate/up T16 route. The A/B harness populates
+# the tile cache (repack_gguf_q5_1_tile16 on the GGUF down weights,
+# uploaded and keyed by the resident down weight's raw device pointer);
+# the runner branch falls back to the production down chain on a cache
+# miss, so the default path is untouched and the strict fallback is
+# structural.
+_T16_DOWN_TILES: dict[int, object] = {}
+_T16_DOWN_ENV = "HIPENGINE_QWEN4_EXP_T16_DOWN"
+
+
+def _t16_down_enabled() -> bool:
+    """Default-off T16 Q5_1 expert-major down route."""
+
+    return os.environ.get(
+        _T16_DOWN_ENV, "0"
+    ) not in {"", "0", "false", "False"}
+
+
 def _t16_gate_up_enabled() -> bool:
     """Default-off T16 dual compensated gate/up route."""
 
@@ -4285,6 +4314,23 @@ def run_qwen4_exp_moe(
         and os.environ.get("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN", "1")
         not in {"", "0", "false", "False"}
     )
+    # T16 down route (down-leg build step 4): env-gated, tile-cache-keyed.
+    # A cache miss falls through to the chain below, so the default path is
+    # untouched.
+    t16_down = (
+        _t16_down_enabled()
+        and weights["expert_down"].spec.quant_key == "gguf_q5_1"
+        and rows >= 2
+        and ffn % 32 == 0
+        and hidden % 16 == 0
+    )
+    t16_down_tiles = None
+    if t16_down:
+        t16_down_raw_ptr = int(
+            weights["expert_down"].allocation("raw").tensor.ptr
+        )
+        t16_down_tiles = _T16_DOWN_TILES.get(t16_down_raw_ptr)
+        t16_down = t16_down_tiles is not None
     exact_grouped_q4_gate = (
         not production_grouped_moe
         and rows >= 2
@@ -4346,6 +4392,20 @@ def run_qwen4_exp_moe(
             stream=stream,
             runtime=active_runtime,
         )
+        if t16_down:
+            # The expert-major down kernel consumes a device-resident list of
+            # nonempty experts; this extra single-block launch is charged to
+            # the T16 down route. The standard prefix above still feeds every
+            # other consumer of the grouped map.
+            qwen35_moe_group_prefix_active(
+                scratch.group_counts.ptr,
+                scratch.group_expert_start.ptr,
+                scratch.group_active_experts.ptr,
+                scratch.group_active_count.ptr,
+                experts,
+                stream=stream,
+                runtime=active_runtime,
+            )
         active_runtime.memset(
             scratch.group_scatter_offsets.ptr,
             0,
@@ -4878,7 +4938,37 @@ def run_qwen4_exp_moe(
                 and ffn % 128 == 0
                 and _qwen4_exp_q5_1_mmq_layer_allowed(weights)
             )
-            if q5_mmq:
+            if t16_down:
+                # T16 Q5_1 expert-major down (down-leg build step 4):
+                # F16 WMMA over the bit-lossless Q5_1 tiles with the
+                # compensated accumulate. Changes arithmetic vs the
+                # production down chain; the binding correctness authority
+                # is the layer2 production gate, and the env flag
+                # plus the tile-cache key keep the default path untouched.
+                down_input_ptr = (
+                    scratch.expert_intermediate.ptr
+                    if (
+                        exact_grouped_q4_gate
+                        or production_grouped_moe
+                        or q4_k_mmq_prefill
+                    )
+                    else scratch.expert_gate.ptr
+                )
+                gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out(
+                    down_input_ptr,
+                    scratch.group_expert_start.ptr,
+                    scratch.group_active_experts.ptr,
+                    scratch.group_active_count.ptr,
+                    t16_down_tiles.ptr,
+                    scratch.expert_down.ptr,
+                    compact,
+                    ffn,
+                    hidden,
+                    experts,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            elif q5_mmq:
                 down_input_ptr = (
                     scratch.expert_intermediate.ptr
                     if (
