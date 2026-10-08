@@ -1646,13 +1646,13 @@ __global__ void gemma4_attention_decode_flash_kernel(
       static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
   for (int64_t d0 = static_cast<int64_t>(tid) * 2; d0 < head_dim;
        d0 += dim_step) {
-    gemma4_pair2<scalar_t> pipe[2];
-    pipe[0] = 0 < slice_keys
-        ? gemma4_load_v<2>(v_base + 0 * v_stride + d0)
-        : kZeroPair;
-    pipe[1] = 1 < slice_keys
-        ? gemma4_load_v<2>(v_base + 1 * v_stride + d0)
-        : kZeroPair;
+    gemma4_pair2<scalar_t> pipe[3];
+#pragma unroll
+    for (int n = 0; n < 3; ++n) {
+      pipe[n] = n < slice_keys
+          ? gemma4_load_v<2>(v_base + static_cast<int64_t>(n) * v_stride + d0)
+          : kZeroPair;
+    }
     float acc[kQ][2];
 #pragma unroll
     for (int q = 0; q < kQ; ++q) {
@@ -1662,8 +1662,9 @@ __global__ void gemma4_attention_decode_flash_kernel(
     for (int64_t jj = 0; jj < slice_keys; ++jj) {
       const gemma4_pair2<scalar_t> v_cur = pipe[0];
       pipe[0] = pipe[1];
+      pipe[1] = pipe[2];
       const int64_t jn = jj + 2;
-      pipe[1] = jn < slice_keys
+      pipe[2] = jn < slice_keys
           ? gemma4_load_v<2>(v_base + jn * v_stride + d0)
           : kZeroPair;
       const float vlo = gemma4_attn_to_float(v_cur.lo);
