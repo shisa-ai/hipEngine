@@ -1668,6 +1668,7 @@ def _make_expert_major_comp_wrapper(quant: str):
             out_features,
             num_experts,
             stream=stream,
+            quant=quant,
             library=library,
             runtime=runtime,
         )
@@ -1810,12 +1811,13 @@ def _launch_expert_major_comp(
     out_features: int,
     num_experts: int,
     *,
+    quant: str = "",
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
 ) -> None:
     _check_expert_major_common(
-        compact_rows, in_features, out_features, num_experts
+        compact_rows, in_features, out_features, num_experts, quant=quant
     )
     library = library or build_gguf_k_t16_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
@@ -1856,14 +1858,17 @@ def _check_expert_major_common(
     in_features: int,
     out_features: int,
     num_experts: int,
+    quant: str = "",
 ) -> None:
     _check_positive(compact_rows, "compact_rows")
     _check_positive(in_features, "in_features")
     _check_positive(out_features, "out_features")
     _check_positive(num_experts, "num_experts")
-    if in_features % _QK_K != 0:
+    # Q5_1 blocks hold 32 values; the Q4_K/Q5_K/Q6_K K-family blocks hold 256.
+    block = 32 if quant == "gguf_q5_1_t16" else _QK_K
+    if in_features % block != 0:
         raise ValueError(
-            f"in_features must be divisible by GGUF K-family block size {_QK_K}"
+            f"in_features must be divisible by the {quant} block size {block}"
         )
     if out_features % 16 != 0:
         raise ValueError("out_features must be a multiple of 16")
