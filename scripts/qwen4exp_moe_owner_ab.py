@@ -81,6 +81,7 @@ ROUTES = {
             "selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "selected_dual_wmma_prefill_compact_bf16_bf16_out",
+            "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out",
         ],
         # The iu8-risk owners are the same kernel at two template heights, so
         # each has to see a row map built at its own height or its launcher
@@ -150,9 +151,36 @@ def main() -> int:
 
     from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_selected_prefill as gu
     from hipengine.kernels.hip_gfx1100.quant import qwen4_exp_q5_1 as dn
+    t16mod = None
+    t16_gate = None
+    t16_up = None
 
     if route["quant"] == "gguf_q4_k":
         gu.build_gguf_q4_k_selected_prefill(load=True)
+        # T16 arm (2026-10-08): repack the synthesized raw weights into the
+        # bit-lossless T16 layout and upload the tile buffers. The values are
+        # memset patterns (the harness times the main kernel, not outputs),
+        # but the layout is the exact production T16 repack.
+        from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_t16_selected_prefill as t16mod
+        from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+        t16mod.build_gguf_q4_k_t16_selected_prefill(load=True)
+        bytes_per_row = (route["in_features"] // 32) * 144
+        raw_gate = np.full(
+            (EXPERTS, route["out_features"], bytes_per_row), 0x3C, dtype=np.uint8
+        )
+        raw_up = np.full(
+            (EXPERTS, route["out_features"], bytes_per_row), 0x5A, dtype=np.uint8
+        )
+        tiles_gate = repack_gguf_q4_k_tile16(raw_gate).tiles
+        tiles_up = repack_gguf_q4_k_tile16(raw_up).tiles
+        t16_gate = malloc(int(tiles_gate.nbytes))
+        t16_up = malloc(int(tiles_up.nbytes))
+        copy_host_to_device(
+            t16_gate, host_array_ptr(tiles_gate), int(tiles_gate.nbytes)
+        )
+        copy_host_to_device(
+            t16_up, host_array_ptr(tiles_up), int(tiles_up.nbytes)
+        )
     dn.build_qwen4_exp_q5_1(load=True)
 
     rows_list = [int(v) for v in args.rows.split(",") if v.strip()]
@@ -238,6 +266,16 @@ def main() -> int:
 
         if route["quant"] == "gguf_q4_k":
 
+            def t16_compact32() -> None:
+                compact_dev, padded_dev, tile_dev, padded_rows = maps_by_tile[
+                    owner_tiles.get("gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out",
+                                    args.tile_rows)]
+                t16mod.gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
+                    x.ptr, compact_dev.ptr, padded_dev.ptr, tile_dev.ptr,
+                    t16_gate.ptr, t16_up.ptr, out_dual.ptr,
+                    rows, in_features, out_features, out_features, EXPERTS, padded_rows,
+                )
+
             def wmma() -> None:
                 compact_dev, padded_dev, tile_dev, padded_rows = maps_by_tile[
                     owner_tiles.get("selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
@@ -280,6 +318,7 @@ def main() -> int:
                 "selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out": j32,
                 "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": grouped,
                 "selected_dual_wmma_prefill_compact_bf16_bf16_out": f16_compact,
+                "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out": t16_compact32,
             }
             primary = "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"
         else:
