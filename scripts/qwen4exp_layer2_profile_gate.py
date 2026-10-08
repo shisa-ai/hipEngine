@@ -283,6 +283,26 @@ CANDIDATES = {
         ),
         count_registered_dispatch=True,
     ),
+    "t16_gate_up": CandidateSpec(
+        name="t16_gate_up",
+        classification="T1",
+        mechanism=(
+            "the T16 expert-major compensated gate/up route (bit-lossless repack "
+            "decoded in registers, F16 WMMA with compensated F32 accumulate, "
+            "no repair by construction) replacing the iu8-risk+repair chain "
+            "for the layers whose tile cache is resident"
+        ),
+        environment={
+            "HIPENGINE_QWEN4_EXP_T16_GATE_UP": "1",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-t16-gate-up",
+        candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                       "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out"),
+        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                      "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
+        count_registered_dispatch=True,
+    ),
     "f16_compact_down": CandidateSpec(
         name="f16_compact_down",
         classification="T1",
@@ -1087,6 +1107,22 @@ def _make_generator(args: argparse.Namespace, profile: str, quant: str | None = 
     return resolved.construct_generator(factory), resolved, index
 
 
+def _post_construct_hook(generator, args) -> dict:
+    """Candidate-specific post-construction setup (the T16 tile cache).
+
+    The t16_gate_up candidate needs the module tile cache populated after
+    generator construction and before any measured row; the bounded populate
+    fills what fits in the UMA slack and reports the window honestly.
+    """
+
+    if args.candidate != "t16_gate_up":
+        return {}
+    from scripts.qwen4exp_t16_populate_tiles import populate_t16_gate_up_tiles_bounded
+
+    cache = populate_t16_gate_up_tiles_bounded(generator.runner, args.model_root)
+    return {"t16_cache_layers": sorted(cache)}
+
+
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if not args.model_root.is_dir():
         raise GateError(f"model root does not exist: {args.model_root}")
@@ -1196,6 +1232,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     candidate_generator, candidate_profile, _ = _make_generator(
         args, candidate_spec.base_profile, candidate_spec.quant
     )
+    t16_hook = _post_construct_hook(candidate_generator, args)
+    if t16_hook:
+        print(json.dumps({"t16_populate": t16_hook}), flush=True)
     bound_environment = {
         key: os.environ.get(key) for key in candidate_spec.environment
     }
