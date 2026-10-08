@@ -11071,7 +11071,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 62,
-        "referrers": 514,
+        "referrers": 516,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -11102,7 +11102,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/vibevoice/registered.py",
-      "evidence_hash": "dbfe2ceca53a"
+      "evidence_hash": "becc20df2555"
     },
     {
       "kind": "kernel",

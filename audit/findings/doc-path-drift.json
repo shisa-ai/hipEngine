@@ -1,7 +1,7 @@
 {
   "kind": "doc-path-drift",
   "meta": {
-    "paths_checked": 1816,
+    "paths_checked": 1817,
     "skipped_as_illustrative": 1443,
     "exempt": [
       "docs/campaigns/",
@@ -6235,9 +6235,9 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/TESTING.md:78:kernels/cpu_reference",
+      "key": "docs/TESTING.md:99:kernels/cpu_reference",
       "title": "names `kernels/cpu_reference`, which is actually at `hipengine/kernels/cpu_reference`",
-      "location": "docs/TESTING.md:78",
+      "location": "docs/TESTING.md:99",
       "evidence": {
         "fix": "Change `kernels/cpu_reference` to `hipengine/kernels/cpu_reference`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -6253,7 +6253,7 @@
       "hints": {
         "anchor": "docs/TESTING.md",
         "refs": [
-          "docs/TESTING.md:78:kernels/cpu_reference"
+          "docs/TESTING.md:99:kernels/cpu_reference"
         ],
         "tokens": [
           "actually",
@@ -6264,8 +6264,8 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/TESTING.md:78:kernels/cpu_reference",
-      "evidence_hash": "91587ba12afe"
+      "id": "doc-path-drift/docs/TESTING.md:99:kernels/cpu_reference",
+      "evidence_hash": "fdbe8ec79b5a"
     },
     {
       "kind": "doc-path-drift",
