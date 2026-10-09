@@ -1,6 +1,28 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-06**
+Last updated: **2026-10-09**
+
+## Gemma 4 on Radeon Pro W7900 — October 9
+
+Gemma 4 26B-A4B `UD-Q4_K_XL`, host **epyc / Radeon Pro W7900**, production
+profile, BF16 KV, 128 greedy outputs, one warmup and three samples per prompt
+length, measured through `scripts/gemma4_campaign_bench.py` with public-path
+parity true on every row.
+
+| Prompt tokens | Prefill tok/s | Decode tok/s |
+| ---: | ---: | ---: |
+| 512 | 1253.2 | 70.38 |
+| 8192 | 1194.3 | 69.22 |
+| 32768 | 1086.4 | 53.86 |
+| 65536 | 970.8 | 41.67 |
+
+Multi-row prefill attention runs the WMMA flash kernels and one-token decode
+runs the key-sliced flash route. Against the same tree with the previous
+prefill attention, prefill is 1.18x, 1.22x and 1.26x at 8192, 32768 and 65536
+and decode is level. The prefill change passed the routing-scoped production
+envelope on this hardware (18 cases, 1,134 rows: median row KL 2.5e-6, top-1
+agreement 98.94%). No llama.cpp row was re-measured for this table.
+[Artifact](results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json).
 
 ## Gemma 4 staged sliding prefill — October 6
 

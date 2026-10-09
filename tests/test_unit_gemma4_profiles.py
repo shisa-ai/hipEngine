@@ -201,6 +201,54 @@ def test_binders_pin_the_route_pin(monkeypatch: pytest.MonkeyPatch) -> None:
     assert os.environ[MOE_PREFILL_ENV] == "auto"
 
 
+def test_production_requests_wmma_prefill_attention_and_strict_requests_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The multi-row prefill request is a production selection per geometry.
+
+    Strict declares the plain kernel as each scope's rollback key and binds no
+    request, so its prefill stays on the layer's own route chain.
+    """
+
+    from types import SimpleNamespace
+
+    _registered()
+    monkeypatch.delenv(MOE_PREFILL_ENV, raising=False)
+    bound = {}
+    for profile in (ExecutionProfile.PRODUCTION, ExecutionProfile.STRICT):
+        resolved = resolve_runtime_profile(
+            model=GEMMA4_GGUF_MODEL,
+            backend=GEMMA4_GGUF_BACKEND,
+            quant=GEMMA4_GGUF_QUANT,
+            profile=profile,
+        )
+        rows = _by_scope(resolved)
+        generator = SimpleNamespace(
+            prefill_attention_variants=None,
+            decode_attention_variants=None,
+            exact_prefill_attention_variants=None,
+        )
+        resolved.binder(generator, resolved)
+        bound[profile] = (rows, generator)
+
+    rows, generator = bound[ExecutionProfile.PRODUCTION]
+    sliding = rows[("prefill_attention", "sliding_head_dim_256")]
+    full = rows[("prefill_attention", "full_head_dim_512")]
+    assert sliding["selected_variant"] == "gemma4_wmma_flash"
+    assert full["selected_variant"] == "gemma4_wmma_flash_full"
+    assert sliding["strict_fallback_variant"] == full["strict_fallback_variant"] == "gemma4_plain"
+    # Request order is the selector's match order: sliding first, then full.
+    assert generator.prefill_attention_variants == ("gemma4_wmma_flash", "gemma4_wmma_flash_full")
+    # The decode scope is still declared, which is what keeps decode steps off
+    # the prefill request.
+    assert generator.decode_attention_variants == ("gemma4_flash",)
+
+    rows, generator = bound[ExecutionProfile.STRICT]
+    assert rows[("prefill_attention", "sliding_head_dim_256")]["selected_variant"] == "gemma4_plain"
+    assert rows[("prefill_attention", "full_head_dim_512")]["selected_variant"] == "gemma4_plain"
+    assert generator.prefill_attention_variants is None
+
+
 def test_batch_invariant_is_not_registered_and_falls_back_to_strict() -> None:
     _registered()
     resolved = resolve_runtime_profile(

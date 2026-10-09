@@ -483,7 +483,10 @@ class Gemma4DecodeGraphSession:
             # layer starts at the base when the frozen key is below it.
             key_begin = max(0, self._frozen_key_begin(attention, bucket) - base)
             keys = (frozen_write - base) + 1 - key_begin
-            if runner.prefill_attention_variants is not None:
+            # Mirrors the runner: a plan with a decode scope routes its decode
+            # steps through that scope, not through the prefill request.
+            if (runner.prefill_attention_variants is not None
+                    and getattr(runner, "decode_attention_variants", None) is None):
                 selected = select_prefill_attention(
                     requested_variant=runner.prefill_attention_variants,
                     tokens=1, keys=keys, head_dim=attention.head_dim,

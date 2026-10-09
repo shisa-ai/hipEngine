@@ -1,0 +1,380 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_wmma_prefill_promotion",
+ "date": "2026-10-09",
+ "performance_claim": true,
+ "question": "Do the WMMA prefill attention candidates pass the EXECUTION-PROFILES section 2.11 envelope on gfx1100, and what do they change through the public path?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit_packet": "7bd79f704",
+ "hipengine_commit_rows": "521fc1be0 plus this change",
+ "candidate_variants": [
+  "gemma4_wmma_flash",
+  "gemma4_wmma_flash_full"
+ ],
+ "packet": {
+  "command": "scripts/gemma4_wmma_promotion_packet.py --artifact <gguf> --directory <dir>",
+  "rows_per_case": 64,
+  "cases": 18,
+  "bars": {
+   "kl_median": 0.001,
+   "kl_p90": 0.02,
+   "damage_line_kl": 0.05,
+   "flip_damage_rate_global": 0.03,
+   "flip_damage_rate_category": 0.08,
+   "top1_global": 0.96,
+   "top1_scope": 0.94
+  },
+  "global": {
+   "rows": 1134,
+   "kl_median": 2.498246446631081e-06,
+   "kl_p90": 0.005785464278377308,
+   "flip_damage_rate": 0.006172839506172839,
+   "damage_line_kl": 0.05,
+   "top1_rate": 0.9894179894179894,
+   "thresholds": {
+    "kl_median": 0.001,
+    "kl_p90": 0.02,
+    "flip_damage_rate": 0.03,
+    "top1_rate": 0.96
+   },
+   "failed": [],
+   "passed": true
+  },
+  "routing_flip_rate_diagnostic": 0.8395061728395061,
+  "routing_identical_kl_max_diagnostic": 0.022883836281333773,
+  "passed": true,
+  "promotion_eligible": true,
+  "elapsed_s": 492.0,
+  "case_rows": [
+   {
+    "id": "code_merge_intervals",
+    "category": "code",
+    "split": "canonical",
+    "prompt_tokens": 513,
+    "routing_identical_rows": 8,
+    "routing_flip_rows": 55,
+    "flip_rate_diagnostic": 0.873015873015873,
+    "routing_identical_kl_max": 0.0014375625823310344,
+    "flipped_kl_max": 0.07958900737575193,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "code_topological_sort",
+    "category": "code",
+    "split": "canonical",
+    "prompt_tokens": 1031,
+    "routing_identical_rows": 14,
+    "routing_flip_rows": 49,
+    "flip_rate_diagnostic": 0.7777777777777778,
+    "routing_identical_kl_max": 0.0007148009718767235,
+    "flipped_kl_max": 0.0014547078658426892,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "code_lru_cache",
+    "category": "code",
+    "split": "canonical",
+    "prompt_tokens": 2053,
+    "routing_identical_rows": 13,
+    "routing_flip_rows": 50,
+    "flip_rate_diagnostic": 0.7936507936507936,
+    "routing_identical_kl_max": 0.005522167884787439,
+    "flipped_kl_max": 0.01119958712388088,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "code_markdown_table",
+    "category": "code",
+    "split": "canonical",
+    "prompt_tokens": 4093,
+    "routing_identical_rows": 7,
+    "routing_flip_rows": 56,
+    "flip_rate_diagnostic": 0.8888888888888888,
+    "routing_identical_kl_max": 0.002247359218112841,
+    "flipped_kl_max": 0.01228145094077378,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "general_en_plan",
+    "category": "general_en",
+    "split": "canonical",
+    "prompt_tokens": 8191,
+    "routing_identical_rows": 10,
+    "routing_flip_rows": 53,
+    "flip_rate_diagnostic": 0.8412698412698413,
+    "routing_identical_kl_max": 0.0037467283744802076,
+    "flipped_kl_max": 0.03397576140258031,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "general_en_explain",
+    "category": "general_en",
+    "split": "canonical",
+    "prompt_tokens": 513,
+    "routing_identical_rows": 14,
+    "routing_flip_rows": 49,
+    "flip_rate_diagnostic": 0.7777777777777778,
+    "routing_identical_kl_max": 0.007670597177859041,
+    "flipped_kl_max": 0.013974415864714713,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "general_ja_plan",
+    "category": "general_ja",
+    "split": "canonical",
+    "prompt_tokens": 1031,
+    "routing_identical_rows": 14,
+    "routing_flip_rows": 49,
+    "flip_rate_diagnostic": 0.7777777777777778,
+    "routing_identical_kl_max": 0.011196405264422064,
+    "flipped_kl_max": 0.02287019296307108,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "general_ja_explain",
+    "category": "general_ja",
+    "split": "canonical",
+    "prompt_tokens": 2053,
+    "routing_identical_rows": 7,
+    "routing_flip_rows": 56,
+    "flip_rate_diagnostic": 0.8888888888888888,
+    "routing_identical_kl_max": 0.003951726354674325,
+    "flipped_kl_max": 0.05953334910874257,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "mixed_ja_en_translate",
+    "category": "mixed_ja_en",
+    "split": "canonical",
+    "prompt_tokens": 4093,
+    "routing_identical_rows": 8,
+    "routing_flip_rows": 55,
+    "flip_rate_diagnostic": 0.873015873015873,
+    "routing_identical_kl_max": 0.003060856078084036,
+    "flipped_kl_max": 0.16457070928434092,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "mixed_ja_en_review",
+    "category": "mixed_ja_en",
+    "split": "canonical",
+    "prompt_tokens": 8191,
+    "routing_identical_rows": 5,
+    "routing_flip_rows": 58,
+    "flip_rate_diagnostic": 0.9206349206349206,
+    "routing_identical_kl_max": 0.0016515935709439274,
+    "flipped_kl_max": 0.0328983921571497,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_code_rate_limiter",
+    "category": "code",
+    "split": "heldout",
+    "prompt_tokens": 513,
+    "routing_identical_rows": 16,
+    "routing_flip_rows": 47,
+    "flip_rate_diagnostic": 0.746031746031746,
+    "routing_identical_kl_max": 0.0052008334365748615,
+    "flipped_kl_max": 0.011750592499819919,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_code_interval_schedule",
+    "category": "code",
+    "split": "heldout",
+    "prompt_tokens": 1031,
+    "routing_identical_rows": 9,
+    "routing_flip_rows": 54,
+    "flip_rate_diagnostic": 0.8571428571428571,
+    "routing_identical_kl_max": 0.007579711416026226,
+    "flipped_kl_max": 0.01321621185999322,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_general_en_incident",
+    "category": "general_en",
+    "split": "heldout",
+    "prompt_tokens": 2053,
+    "routing_identical_rows": 11,
+    "routing_flip_rows": 52,
+    "flip_rate_diagnostic": 0.8253968253968254,
+    "routing_identical_kl_max": 0.020048633482753958,
+    "flipped_kl_max": 0.0378960610913515,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_general_en_quant",
+    "category": "general_en",
+    "split": "heldout",
+    "prompt_tokens": 4093,
+    "routing_identical_rows": 8,
+    "routing_flip_rows": 55,
+    "flip_rate_diagnostic": 0.873015873015873,
+    "routing_identical_kl_max": 0.006055157269664383,
+    "flipped_kl_max": 0.02095418960167821,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_general_ja_migration",
+    "category": "general_ja",
+    "split": "heldout",
+    "prompt_tokens": 8191,
+    "routing_identical_rows": 9,
+    "routing_flip_rows": 54,
+    "flip_rate_diagnostic": 0.8571428571428571,
+    "routing_identical_kl_max": 0.01721151104909916,
+    "flipped_kl_max": 0.1969435042380822,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_general_ja_speculative",
+    "category": "general_ja",
+    "split": "heldout",
+    "prompt_tokens": 513,
+    "routing_identical_rows": 7,
+    "routing_flip_rows": 56,
+    "flip_rate_diagnostic": 0.8888888888888888,
+    "routing_identical_kl_max": 0.022883836281333773,
+    "flipped_kl_max": 0.05723228507106558,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_mixed_summary",
+    "category": "mixed_ja_en",
+    "split": "heldout",
+    "prompt_tokens": 1031,
+    "routing_identical_rows": 9,
+    "routing_flip_rows": 54,
+    "flip_rate_diagnostic": 0.8571428571428571,
+    "routing_identical_kl_max": 0.005643886436052846,
+    "flipped_kl_max": 0.5506188390366449,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_mixed_review",
+    "category": "mixed_ja_en",
+    "split": "heldout",
+    "prompt_tokens": 2053,
+    "routing_identical_rows": 13,
+    "routing_flip_rows": 50,
+    "flip_rate_diagnostic": 0.7936507936507936,
+    "routing_identical_kl_max": 0.004649146203738166,
+    "flipped_kl_max": 0.04112352522882487,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   }
+  ]
+ },
+ "public_path_rows": {
+  "protocol": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --context P+256 --warmup 1 --samples 3, production profile",
+  "before": {
+   "512": {
+    "prefill_tps": 1249.6,
+    "decode_tps": 70.22,
+    "public_path_parity": true
+   },
+   "8192": {
+    "prefill_tps": 1014.9,
+    "decode_tps": 69.12,
+    "public_path_parity": true
+   },
+   "32768": {
+    "prefill_tps": 892.0,
+    "decode_tps": 54.07,
+    "public_path_parity": true
+   },
+   "65536": {
+    "prefill_tps": 772.8,
+    "decode_tps": 41.75,
+    "public_path_parity": true
+   }
+  },
+  "after": {
+   "512": {
+    "prefill_tps": 1253.2,
+    "decode_tps": 70.38,
+    "public_path_parity": true
+   },
+   "8192": {
+    "prefill_tps": 1194.3,
+    "decode_tps": 69.22,
+    "public_path_parity": true
+   },
+   "32768": {
+    "prefill_tps": 1086.4,
+    "decode_tps": 53.86,
+    "public_path_parity": true
+   },
+   "65536": {
+    "prefill_tps": 970.8,
+    "decode_tps": 41.67,
+    "public_path_parity": true
+   }
+  }
+ },
+ "decode_route_check": "teacher-forced captures before and after observe the same decode routes (selection 3, flash, identical launch counts at keys 1,025-2,047, 4,097-8,191 and 15,857-16,383)",
+ "teacher_forced_before_vs_after": {
+  "keys_1025_2047": {
+   "rows": 1023,
+   "kl_median": 1.8e-07,
+   "kl_p99": 0.00017,
+   "kl_max": 3.87,
+   "top1_flips": 0
+  },
+  "keys_4097_8191": {
+   "rows": 4095,
+   "kl_median": 5e-08,
+   "kl_p99": 0.00016,
+   "kl_max": 15.35,
+   "top1_flips": 1
+  },
+  "keys_15857_16383": {
+   "rows": 527,
+   "kl_median": 5e-08,
+   "kl_p99": 0.00014,
+   "kl_max": 0.0045,
+   "top1_flips": 0
+  }
+ },
+ "limits": "One host, one artifact. The packet ran with the candidates requested explicitly before the default changed; the public-path rows and captures ran with the default changed. Single-chain captures carry isolated routing-flip rows, which section 2.11 budgets by rate."
+}

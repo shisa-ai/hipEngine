@@ -1050,6 +1050,46 @@ def test_the_runner_disables_the_prefill_preference_for_a_decode_step(
         runner.close()
 
 
+@pytest.mark.parametrize(
+    ("decode_phase", "decode_scope", "expected"),
+    [
+        # A prefill block takes the request whatever else the plan declares.
+        (False, ("gemma4_flash",), ("gemma4_wmma_flash", "gemma4_wmma_flash_full")),
+        (False, None, ("gemma4_wmma_flash", "gemma4_wmma_flash_full")),
+        # A decode step belongs to the decode scope when the plan has one.
+        (True, ("gemma4_flash",), None),
+        # Without a decode scope the prefill request keeps its one-token routing.
+        (True, None, ("gemma4_wmma_flash", "gemma4_wmma_flash_full")),
+    ],
+)
+def test_the_runner_keeps_the_prefill_request_off_a_scoped_decode_step(
+    monkeypatch: pytest.MonkeyPatch, decode_phase, decode_scope, expected,
+) -> None:
+    """A plan's decode scope owns decode steps; the prefill request owns prefill."""
+
+    runner, config, captured, _dummy_buffer, rope = _forwarding_runner(monkeypatch)
+    try:
+        runner.prefill_attention_variants = ("gemma4_wmma_flash", "gemma4_wmma_flash_full")
+        runner.decode_attention_variants = decode_scope
+        runner._launch_block(
+            [1, 2, 3, 4],
+            tables={rope: (_dummy_buffer(1), _dummy_buffer(2))},
+            masks={64: _dummy_buffer(3), None: _dummy_buffer(4)},
+            kv_write_offset=100,
+            key_begin_at=None,
+            needs_logits=False,
+            decode_phase=decode_phase,
+        )
+        assert captured, "the layer was never called"
+        assert all(kwargs["prefill_attention_variants"] == expected for kwargs in captured)
+        assert all(
+            kwargs["decode_attention_variants"] == (decode_scope if decode_phase else None)
+            for kwargs in captured
+        )
+    finally:
+        runner.close()
+
+
 def test_the_selector_declines_a_one_row_call() -> None:
     """The phase boundary is the scope, not the row count alone.
 
