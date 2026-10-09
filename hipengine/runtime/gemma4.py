@@ -2406,8 +2406,15 @@ class Gemma4Runner:
                         else int(attention.sliding_window)
                     )
                 ),
+                # The prefill request serves prefill blocks. A plan that also
+                # declares a decode scope owns its decode steps through that
+                # scope, so a decode step forwards no prefill request and the
+                # layer's decode selector decides; a plan without one keeps the
+                # prefill request's own one-token routing.
                 prefill_attention_variants=(
-                    ("gemma4_plain",) if verification else self.prefill_attention_variants
+                    ("gemma4_plain",) if verification
+                    else None if decode_phase and self.decode_attention_variants is not None
+                    else self.prefill_attention_variants
                 ),
                 decode_attention_variants=(
                     None

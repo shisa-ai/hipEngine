@@ -73,24 +73,34 @@ gone. Removal should be its own unit, separate from the fusion that stranded it.
 ## Gemma 4 WMMA attention candidates were promoted to the production prefill default (updated 2026-10-07)
 
 Production routes multi-row prefill to `gemma4_wmma_flash` (sliding) and
-`gemma4_wmma_flash_full` (head_dim 512). The promotion passed the section 2.11
-router-routing-scoped envelope (EXECUTION-PROFILES, 2026-10-07 lead decision):
-median row KL 3.8e-6, p90 6.0e-3, flip-damage 1.3% against a 3% budget, top-1
-98.4%, tasks non-inferior on all 18 packet cases with repeats and isolation
-green. Single-token decode requests `gemma4_flash` for the untrimmed global step
-past the resident-logit bound and otherwise resolves to the strict-parity staged
-singleton (the appended request entry); `gemma4_staged` is the decode scope's
-rollback lever. Strict requests `gemma4_plain` for every scope. The profile
-remains the rollback lever: `HIPENGINE_EXECUTION_PROFILE=strict`
-selects plain attention.
+`gemma4_wmma_flash_full` (head_dim 512) on both gfx1151 and gfx1100. Each
+backend's plan passed the section 2.11 router-routing-scoped envelope
+(EXECUTION-PROFILES, 2026-10-07 lead decision) on its own hardware: on the
+8060S median row KL 3.8e-6, p90 6.0e-3, flip-damage 1.3% against a 3% budget,
+top-1 98.4%; on the W7900 median 2.5e-6, p90 5.8e-3, flip-damage 0.62%, top-1
+98.94%; tasks non-inferior on all 18 packet cases with repeats and isolation
+green on both.
 
-`gemma4_wmma_flash` and `gemma4_wmma_flash_full` remain registered for explicit
-evaluation. They are not production defaults: the multicategory teacher-chain
-packet found KL failures, including chains on which the older full-attention
-parent also fails. Precision controls that preserve only strict scores or
-replace only the probability/value arithmetic also fail the frozen bars.
-The staged repair reproduces the two saved failing chains bitwise. Full packet
-and public-route evidence belong to
+Single-token decode differs by plan. The gfx1151 plan appends `gemma4_staged`
+to the prefill request, so a one-token block resolves to the strict-parity
+staged singleton. The gfx1100 plan declares a decode scope, and the runner
+forwards no prefill request on a decode step when one exists: the layer's
+decode selector serves it, with `gemma4_flash` for the untrimmed global step
+past the resident-logit bound and `gemma4_staged` as that scope's rollback
+lever. Strict requests `gemma4_plain` on gfx1151; the gfx1100 strict plan
+declares it as each scope's rollback key and forwards no prefill request, so
+strict prefill there stays on the layer's own route chain. Unifying the two
+backends' decode routing and binding plain for gfx1100 strict are the open
+cleanups here. The profile remains the rollback lever:
+`HIPENGINE_EXECUTION_PROFILE=strict` selects plain attention.
+
+Before the section 2.11 envelope the WMMA candidates were held out of the
+default: the multicategory teacher-chain packet found KL failures against the
+earlier mean/tail bars, including chains on which the older full-attention
+parent also fails, and precision controls that preserve only strict scores or
+replace only the probability/value arithmetic also failed those bars. The
+staged repair reproduces the two saved failing chains bitwise. That packet and
+its public-route evidence belong to
 `worklog/entries/20261003T040334.761582Z-lhl-gemma4-staged-exact-repair-c2e87f.md`.
 
 The 2026-09-29 single-chain result in

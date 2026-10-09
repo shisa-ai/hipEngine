@@ -30,6 +30,12 @@ which the native exact kernel serves by walking all presented keys from column
 at its native/exact attention call site, so the tiled and aotriton prefills and
 the profile-selected prefill variants are unchanged.
 
+A third scope pair is ``prefill_attention`` / ``sliding_head_dim_256`` and
+``full_head_dim_512``: ``production`` requests ``gemma4_wmma_flash`` and
+``gemma4_wmma_flash_full`` for multi-row prefill blocks under the
+EXECUTION-PROFILES section 2.11 envelope. Decode steps do not take this
+request: the plan's decode scope owns them.
+
 ``strict`` pins ``HIPENGINE_GEMMA4_MOE_PREFILL=grouped``, the exact arm
 ``gemma4_experts.py::_prefill_route_flags`` documents as the rollback lever,
 measured with the same probe: the MMQ owner disappears and the grouped exact
@@ -56,6 +62,14 @@ the tree cannot execute:
   observed 3x3 resolve calls were failed probes, not three owners. The
   fallback that does run is declared by ``linear/moe_selected_q8_0``.
 
+- ``prefill_attention`` / both geometries (B5): ``production`` requests the
+  WMMA flash candidates for multi-row prefill blocks. ``strict`` declares
+  ``gemma4_plain`` as each scope's rollback key but forwards no request, so a
+  strict prefill block is still served by the layer's own route chain (tiled,
+  AOTriton, or the native kernel), as it was before the scope existed. Binding
+  the plain kernel for strict changes which kernel strict prefill runs and is a
+  separate change with its own measurement.
+
 ``batch_invariant`` is deliberately not registered: the composition gate has
 not run for this model, so it falls back to strict fail-closed.
 
@@ -77,6 +91,7 @@ from hipengine.execution_profiles import (
     register_runtime_profile_plan,
     registered_runtime_profile_keys,
 )
+from hipengine.generation import gemma4_gguf_profiles as _gguf_profiles
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     DECODE_ATTENTION_LAYER as _DECODE_ATTENTION_LAYER,
     DECODE_ATTENTION_PLAIN as _DECODE_ATTENTION_PLAIN,
@@ -131,6 +146,22 @@ EXACT_PREFILL_ATTENTION_SCOPE = "sliding_multi_row"
 EXACT_PREFILL_ATTENTION_PLAIN = _EXACT_PREFILL_ATTENTION_PLAIN
 EXACT_PREFILL_ATTENTION_STAGED = _EXACT_PREFILL_ATTENTION_STAGED
 EXACT_PREFILL_ATTENTION_QUANT = _EXACT_PREFILL_ATTENTION_QUANT
+
+# Multi-row prefill attention: ``production`` requests the WMMA flash candidates,
+# one per head geometry, under the EXECUTION-PROFILES section 2.11 envelope. The
+# names, scopes and registration are ``gemma4_gguf_profiles``' own, so the two
+# backends' plans cannot drift apart. The request serves prefill blocks only:
+# this plan declares a decode scope above, and the runner forwards no prefill
+# request on a decode step when one exists.
+PREFILL_ATTENTION_LAYER = _gguf_profiles.PREFILL_ATTENTION_LAYER
+PREFILL_ATTENTION_SCOPE = _gguf_profiles.PREFILL_ATTENTION_SCOPE
+PREFILL_ATTENTION_SCOPE_FULL = _gguf_profiles.PREFILL_ATTENTION_SCOPE_FULL
+PREFILL_ATTENTION_PLAIN = _gguf_profiles.PREFILL_ATTENTION_PLAIN
+PREFILL_ATTENTION_WMMA_FLASH = _gguf_profiles.PREFILL_ATTENTION_WMMA_FLASH
+PREFILL_ATTENTION_WMMA_FLASH_FULL = _gguf_profiles.PREFILL_ATTENTION_WMMA_FLASH_FULL
+PREFILL_ATTENTION_EVIDENCE = (
+    "benchmarks/results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json"
+)
 
 _KV_POLICY = "paged_bf16"
 _GRAPH_POLICY = "serial_eager"
@@ -261,6 +292,23 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             strict_fallback_variant=EXACT_PREFILL_ATTENTION_PLAIN,
             registry_quant=EXACT_PREFILL_ATTENTION_QUANT,
         ),
+        # Section 2.11 packet on W7900, 18 cases and 1,134 rows: median row KL
+        # 2.5e-6 against 1e-3, p90 5.8e-3 against 2e-2, rows above the 5e-2
+        # damage line 0.62% against 3%, top-1 98.94% against 96%.
+        _selection(
+            layer=PREFILL_ATTENTION_LAYER, scope=PREFILL_ATTENTION_SCOPE,
+            selected_variant=PREFILL_ATTENTION_WMMA_FLASH,
+            strict_fallback_variant=PREFILL_ATTENTION_PLAIN,
+            registry_quant=GEMMA4_GGUF_QUANT,
+            evidence_artifact=PREFILL_ATTENTION_EVIDENCE,
+        ),
+        _selection(
+            layer=PREFILL_ATTENTION_LAYER, scope=PREFILL_ATTENTION_SCOPE_FULL,
+            selected_variant=PREFILL_ATTENTION_WMMA_FLASH_FULL,
+            strict_fallback_variant=PREFILL_ATTENTION_PLAIN,
+            registry_quant=GEMMA4_GGUF_QUANT,
+            evidence_artifact=PREFILL_ATTENTION_EVIDENCE,
+        ),
         _selection(
             layer="moe_linear", scope="gate_up_q4_k",
             selected_variant=_T16_FUSED_WMMA, strict_fallback_variant=_T16_DECODE,
@@ -340,6 +388,20 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             selected_variant=EXACT_PREFILL_ATTENTION_PLAIN,
             registry_quant=EXACT_PREFILL_ATTENTION_QUANT,
         ),
+        # Declared so each production prefill-attention scope has its rollback
+        # key. The binder forwards no request for an all-plain set, so strict
+        # prefill is still served by the layer's own route chain (blocker B5 in
+        # the module docstring).
+        _selection(
+            layer=PREFILL_ATTENTION_LAYER, scope=PREFILL_ATTENTION_SCOPE,
+            selected_variant=PREFILL_ATTENTION_PLAIN,
+            registry_quant=GEMMA4_GGUF_QUANT,
+        ),
+        _selection(
+            layer=PREFILL_ATTENTION_LAYER, scope=PREFILL_ATTENTION_SCOPE_FULL,
+            selected_variant=PREFILL_ATTENTION_PLAIN,
+            registry_quant=GEMMA4_GGUF_QUANT,
+        ),
         # The T16-converted gate_up scope: grouped has no T16 owner, so the
         # strict arm resolves this scope through the exact selected owner
         # (also production's declared fallback; the raw grouped arm still
@@ -399,6 +461,23 @@ def _binder(route: str):
         if exact_prefill_variants:
             try:
                 generator.exact_prefill_attention_variants = exact_prefill_variants
+            except AttributeError:
+                # A construction stub that only carries environment bindings.
+                pass
+        # The multi-row prefill request: the plan's non-plain selections in
+        # scope order (sliding, then full). An all-plain plan forwards nothing,
+        # which leaves prefill on the layer's own route chain.
+        prefill_variants = tuple(
+            str(selection["selected_variant"])
+            for scope in (PREFILL_ATTENTION_SCOPE, PREFILL_ATTENTION_SCOPE_FULL)
+            for selection in resolved.manifest["selections"]
+            if selection["layer"] == PREFILL_ATTENTION_LAYER
+            and selection["scope"] == scope
+            and selection["selected_variant"] != PREFILL_ATTENTION_PLAIN
+        )
+        if prefill_variants:
+            try:
+                generator.prefill_attention_variants = prefill_variants
             except AttributeError:
                 # A construction stub that only carries environment bindings.
                 pass
@@ -496,6 +575,7 @@ def register_gemma4_gguf_profiles() -> bool:
 
     _register_decode_attention_variants()
     _register_exact_prefill_attention_variants()
+    _gguf_profiles.register_gemma4_gguf_profiles()
     if _already_registered():
         return False
     register_runtime_profile_plan(
@@ -552,6 +632,7 @@ def gemma4_gguf_profiles_registered() -> bool:
 # device.
 _register_decode_attention_variants()
 _register_exact_prefill_attention_variants()
+_gguf_profiles.register_gemma4_gguf_profiles()
 
 
 __all__ = [
