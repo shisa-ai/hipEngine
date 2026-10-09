@@ -1992,7 +1992,7 @@ hashes across engines).
 
 | Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512 | **1415.8** | 890.9 | **1.59x** | 34.55 | **35.98** | 0.96x |
+| 512 | **1415.8** | 890.9 | **1.59x** | **37.75** | **35.98** | **1.05x** |
 | 1024 | **1484.6** | 1158.7 | **1.28x** | **33.67** | 33.45 | **1.01x** |
 | 2048 | **1356.2** | 1136.5 | **1.19x** | **36.36** | 30.01 | **1.21x** |
 | 4096 | **1313.3** | 1116.8 | **1.18x** | **36.43** | 29.13 | **1.25x** |
@@ -2003,14 +2003,17 @@ hashes across engines).
 | 131072 | **505.2** | 388.7 | **1.30x** | **12.42** | 11.45 | **1.08x** |
 
 hipEngine leads prefill at eight of nine depths (up to 1.59x) and decode at
-eight of nine (up to 1.26x); at 131072 it leads both phases (505.2/12.42 vs
+nine of nine (up to 1.26x); at 131072 it leads both phases (505.2/12.42 vs
 388.7/11.45 tok/s). The mid-depth prefill band 8192-32768 that trailed at
-0.88-0.97x on the 2026-10-07 build now stands at 0.97-1.13x, and 512-token
-decode improved from 0.93x to 0.96x. llama.cpp's own repeatability gate
+0.88-0.97x on the 2026-10-07 build now stands at 0.97-1.13x. 512-token decode
+was the one trailing cell on the 2026-10-08 build (0.96x): the step was
+launch-bound, not kernel-bound (~505 launches/step, ~11 of 29.7 ms), and
+replaying the step from a whole-step HIP graph takes it to 37.75 tok/s =
+1.05x ([512 decode-graph row](results/2026-10-09-gemma4-gfx1151-512-decode-graph.json)). llama.cpp's own repeatability gate
 rejected its 8192 and 32768 rows in its run (its greedy continuation is not
 repeatable there); those comparator numbers are retained as best-available
 evidence with the rejection recorded, and the 16384 row passes with five
-identical samples. The remaining honest gap is 512-token decode (4%) and the
+identical samples. The remaining honest gap is the
 8192 prefill row (0.97x against a rejected comparator row).
 Correctness: prompt hashes match across engines at every depth; hipEngine
 repeats, public-path parity and finite logits pass on every row.
