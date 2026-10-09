@@ -4,6 +4,19 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Staged PV singleton unroll rollback lever (added 2026-10-09)
+
+`HIPENGINE_GEMMA4_PV_UNROLL` (default 32) pins the staged singleton P*V
+decode walk's in-flight V window; `8` restores the prior width. The chain
+per (row, dimension) is one ascending-key FMA sequence at every width, so
+either side is bit-identical -- the lever exists to A/B the widths and to
+roll back if the wider window regresses on an unmeasured shape.
+
+Removal condition: once the restored-state 262015 decode record and the
+paired ladder carry the width-32 numbers and one release cycle passes
+without a rollback, fold the selection to the constant and delete this
+entry together with the env read.
+
 ## Router full-block SGEMM rollback lever (added 2026-10-08)
 
 `HIPENGINE_GEMMA4_ROUTER_SGEMM` (default on) pins the Gemma 4 router
