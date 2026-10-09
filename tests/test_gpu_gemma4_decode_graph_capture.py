@@ -123,3 +123,46 @@ def test_gemma4_decode_graph_replay_matches_launched_decode():
                     "the launched path"
                 ),
             )
+
+def test_gemma4_decode_graph_deep_positions_fall_back_and_stay_exact():
+    """Buckets that reach the decode split route replay the launched step.
+
+    At 1024 prompt tokens the decode steps sit at 1024+ keys, where the
+    split route's host-computed slice geometry would be baked into a
+    capture (measured: ~10 percent relative logit divergence, 52/128
+    steps). Those steps must take the launched path instead and stay
+    bit-identical to it.
+    """
+
+    import hipengine
+
+    from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
+
+    llm = hipengine.LLM(model=str(_TARGET))
+    runner = llm._get_text_generator()._ensure_runner()
+    vocab = int(runner.weights.config.vocab_size or 0)
+
+    rng = np.random.default_rng(20261009)
+    prompt = [int(t) for t in rng.integers(0, vocab, size=1024)]
+    decode = [int(t) for t in rng.integers(0, vocab, size=8)]
+
+    runner.reset()
+    runner.forward(prompt)
+    expected = [runner.forward([token]) for token in decode]
+
+    runner.reset()
+    runner.forward(prompt)
+    with Gemma4DecodeGraphSession(runner) as session:
+        replayed = [session.step(token) for token in decode]
+        assert session.launched_fallbacks == len(decode), (
+            "every step at 1024+ keys must take the launched fallback, not a "
+            "capture whose baked split geometry diverges on replay"
+        )
+        assert session.captures == 0
+
+    for step, (want, got) in enumerate(zip(expected, replayed, strict=True)):
+        np.testing.assert_array_equal(
+            got,
+            want,
+            err_msg=f"deep decode step {step}: fallback logits differ from launched",
+        )

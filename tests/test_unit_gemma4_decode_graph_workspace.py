@@ -6,6 +6,10 @@ import pytest
 
 from hipengine.core.memory import DeviceBuffer
 from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    PREFILL_ATTENTION_STAGED,
+    select_prefill_attention,
+)
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import staged_workspace_bytes
 from hipengine.runtime import gemma4_decode_graph as graph
 
@@ -59,11 +63,20 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
 
     def launch(*args, **kwargs):
         assert capturing
+        # Mirror the reservation the real ``_capture`` performs before
+        # recording: the same ``select_prefill_attention`` decision, the same
+        # need, so the in-capture re-buffer is a cache hit and never a
+        # malloc. Staged no longer admits at shallow keys, so a staged
+        # request and a plain request reserve the same geometry here.
         for geometry in geometries:
             keys = bucket.end - session._frozen_key_begin(geometry, bucket)
-            if variant == "gemma4_staged":
+            selected = select_prefill_attention(
+                requested_variant=runner.prefill_attention_variants,
+                tokens=1, keys=keys, head_dim=geometry.head_dim,
+                num_heads=geometry.num_heads, num_kv_heads=geometry.num_kv_heads)
+            if selected.variant == PREFILL_ATTENTION_STAGED:
                 need = staged_workspace_bytes(1, geometry.num_heads, keys)
-            else:
+            elif selected.is_strict:
                 global_scores = attention._resident_attention_shared_bytes(
                     head_dim=geometry.head_dim, keys=keys) > 65536
                 slices = 1 if global_scores else attention.decode_slices(keys, geometry.head_dim)
@@ -74,11 +87,21 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
                     tokens=1, head_dim=geometry.head_dim, num_heads=geometry.num_heads,
                     num_kv_heads=geometry.num_kv_heads):
                     need = max(need, geometry.num_heads * geometry.head_dim * attention.flash_slices(keys) * 4)
+            else:
+                continue
             owner.buffer(need, stream=kwargs["stream"], runtime=runtime)
 
     runner._launch_block = launch
     session._capture(bucket, {}, {}, ("test",), token=1)
     assert session._captures == 1
     assert owner._current[0] is warmed
-    if variant == "gemma4_staged" or position > 1024:
+    if position > 1024:
+        # Deep keys select a route with real workspace (staged or the
+        # global-scores/split family), reserved on the capture stream before
+        # recording.
         assert owner._current[7] is not warmed
+    else:
+        # Shallow decode keys select the plain strict route with one slice
+        # and a small shared-scores buffer, so nothing is reserved on the
+        # capture stream and the recorded launches read the resident buffer.
+        assert 7 not in owner._current
