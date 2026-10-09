@@ -729,7 +729,7 @@ __global__ void gemma4_attention_staged_pv_kernel(
 // is the only difference between the variants: the tile, the grid, the slice and
 // the ascending-key chain are the same in all of them.
 // ---------------------------------------------------------------------------
-template <typename scalar_t, int kResidentRows, bool kExactRows>
+template <typename scalar_t, int kResidentRows, bool kExactRows, int kPvUnroll>
 __global__ void gemma4_attention_staged_pv_singleton_kernel(
     const float* __restrict__ weights,
     const float* __restrict__ denominator,
@@ -794,23 +794,18 @@ __global__ void gemma4_attention_staged_pv_singleton_kernel(
     }
     __syncthreads();
 
-    // Eight keys' V loads in flight per thread: the per-(row, dimension)
+    // `kPvUnroll` keys' V loads in flight per thread: the per-(row, dimension)
     // accumulation stays one ascending-key FMA chain -- keys in ascending
     // order within the window, zero weights skipped per key -- while the loads
     // overlap each other's latency instead of serializing behind the FMA that
     // consumes them. The tile remainder keeps the original single-key walk.
     int k = 0;
-    for (; k + 8 <= tile; k += 8) {
-      const float vs[8] = {
-          gemma4_staged_to_float(v_base[(j0 + k) * v_stride + d]),
-          gemma4_staged_to_float(v_base[(j0 + k + 1) * v_stride + d]),
-          gemma4_staged_to_float(v_base[(j0 + k + 2) * v_stride + d]),
-          gemma4_staged_to_float(v_base[(j0 + k + 3) * v_stride + d]),
-          gemma4_staged_to_float(v_base[(j0 + k + 4) * v_stride + d]),
-          gemma4_staged_to_float(v_base[(j0 + k + 5) * v_stride + d]),
-          gemma4_staged_to_float(v_base[(j0 + k + 6) * v_stride + d]),
-          gemma4_staged_to_float(v_base[(j0 + k + 7) * v_stride + d]),
-      };
+    for (; k + kPvUnroll <= tile; k += kPvUnroll) {
+      float vs[kPvUnroll];
+#pragma unroll
+      for (int u = 0; u < kPvUnroll; ++u) {
+        vs[u] = gemma4_staged_to_float(v_base[(j0 + k + u) * v_stride + d]);
+      }
 #pragma unroll
       for (int r = 0; r < kResidentRows; ++r) {
         // Dead for an exact variant, whose group has no row past its end.
@@ -818,7 +813,7 @@ __global__ void gemma4_attention_staged_pv_singleton_kernel(
           continue;
         }
 #pragma unroll
-        for (int u = 0; u < 8; ++u) {
+        for (int u = 0; u < kPvUnroll; ++u) {
           const float weight = w_s[r * kStagedPvTileKeys + k + u];
           if (weight == 0.0f) {
             continue;
@@ -1110,6 +1105,22 @@ int launch_gemma4_attention_staged_pv(
 // One singleton variant: the kernel for one resident row count, on the shape's
 // grid. The grid carries the row group and the dimension slice packed into Z, and
 // the shared footprint is the tile of the rows this variant holds.
+// One unroll instantiation of the singleton launch. The kernel body is
+// identical across widths -- only the in-flight V window changes.
+template <typename scalar_t, int kResidentRows, bool kExactRows, int kPvUnrollV>
+static hipError_t launch_singleton_pv(
+    const dim3& grid, size_t shared_bytes, hipStream_t stream,
+    const float* weights, const float* denominator, const scalar_t* value,
+    scalar_t* out, int64_t num_heads, int64_t num_kv_heads, int64_t head_dim,
+    int64_t keys, int64_t window, int64_t row_offset) {
+  gemma4_attention_staged_pv_singleton_kernel<
+      scalar_t, kResidentRows, kExactRows, kPvUnrollV>
+      <<<grid, dim3(kStagedSingletonThreads), shared_bytes, stream>>>(
+          weights, denominator, value, out, num_heads, num_kv_heads, head_dim,
+          keys, window, row_offset);
+  return hipGetLastError();
+}
+
 template <typename scalar_t, int kResidentRows, bool kExactRows>
 int launch_gemma4_attention_staged_pv_singleton_rows(
     const float* weights,
@@ -1131,11 +1142,38 @@ int launch_gemma4_attention_staged_pv_singleton_rows(
   const dim3 grid(static_cast<unsigned int>(tokens),
                   static_cast<unsigned int>(num_kv_heads),
                   static_cast<unsigned int>(row_groups * dim_slices));
-  gemma4_attention_staged_pv_singleton_kernel<scalar_t, kResidentRows, kExactRows>
-      <<<grid, dim3(kStagedSingletonThreads), shared_bytes, stream>>>(
-          weights, denominator, value, out, num_heads, num_kv_heads, head_dim,
-          keys, window, row_offset);
-  return static_cast<int>(hipGetLastError());
+  // The in-flight V window width. 32 keys per window measured 0.74x
+  // (sliding, head_dim 256) and 0.66x (global, head_dim 512) of the
+  // shipped width-8 walk at 262144 keys, bit-identical on both
+  // geometries -- the per-thread dependent chain is latency-exposed and
+  // the wider window hides it. HIPENGINE_GEMMA4_PV_UNROLL pins 8/16/32
+  // for A/B without a rebuild.
+  int pv_unroll = 32;
+  {
+    const char* env = getenv("HIPENGINE_GEMMA4_PV_UNROLL");
+    if (env) {
+      const int parsed = atoi(env);
+      if (parsed == 8 || parsed == 16 || parsed == 32) {
+        pv_unroll = parsed;
+      }
+    }
+  }
+  const int unroll = pv_unroll;
+  hipError_t err;
+  if (unroll == 16) {
+    err = launch_singleton_pv<scalar_t, kResidentRows, kExactRows, 16>(
+        grid, shared_bytes, stream, weights, denominator, value, out,
+        num_heads, num_kv_heads, head_dim, keys, window, row_offset);
+  } else if (unroll == 32) {
+    err = launch_singleton_pv<scalar_t, kResidentRows, kExactRows, 32>(
+        grid, shared_bytes, stream, weights, denominator, value, out,
+        num_heads, num_kv_heads, head_dim, keys, window, row_offset);
+  } else {
+    err = launch_singleton_pv<scalar_t, kResidentRows, kExactRows, 8>(
+        grid, shared_bytes, stream, weights, denominator, value, out,
+        num_heads, num_kv_heads, head_dim, keys, window, row_offset);
+  }
+  return static_cast<int>(err);
 }
 
 // The single-token PV launch. `rows_per_head == 1` leaves no second row to pair
