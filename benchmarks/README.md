@@ -2018,7 +2018,36 @@ repeats, public-path parity and finite logits pass on every row.
 [Commands, samples, identities and rejections](results/2026-10-08-gemma4-gfx1151-depth-ladder-paired.json).
 [2026-10-07 ladder, prior build](results/2026-10-07-gemma4-gfx1151-depth-ladder-paired.json).
 
+#### Full-depth 256Ki endpoint (2026-10-09)
+
+On **zbook / Radeon 8060S (gfx1151)**, both engines ran the same
+`UD-Q4_K_XL` artifact with BF16 K/V, greedy decoding and 128 output tokens
+at 262,015 prompt tokens + 128 outputs = 262,143 of the 262,144-token
+context (llama.cpp marks the exact boundary truncated). Both engines
+received the same prompt IDs (`ca711237…f276144`, sha256-identical to the
+2026-10-06 endpoint, so the comparator rows pair directly).
+
+| Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 262,015 | **328.8 tok/s** | 227.9 tok/s | **1.44x** | **10.21 tok/s** | 7.21 tok/s | **1.42x** |
+
+hipEngine leads both phases at the full context: the promoted route (WMMA
+prefill, Q8_0-K/Q4_K-K T16 four-wave, Q5_1 T16 expert down tiles, the
+router full-block SGEMM tier, and the staged PV singleton decode window at
+32 keys) measures 328.8 tok/s prefill and 10.21 tok/s decode. The hip side
+ran the full prefill once and decoded from the saved cross-process KV
+state on the same tree; the restored decode's 128 greedy IDs equal the
+mint-time decode exactly. llama.cpp rows are the 2026-10-06 endpoint's
+unchanged (pinned `17252c769`, full uncached prefill, repeatable IDs).
+The 2026-10-06 endpoint on the pre-campaign route measured 57.15 / 5.51
+tok/s (0.25x / 0.76x), so this campaign's promoted path moved the full
+context from trailing on both phases to leading both.
+
+[Artifact](results/2026-10-09-gemma4-gfx1151-256ki-paired.json).
+[2026-10-06 endpoint, prior route](results/2026-10-06-gemma4-gfx1151-256ki-paired.json).
+
 #### Full-depth 256Ki endpoint (2026-10-06)
+
 
 On **zbook / Radeon 8060S (gfx1151)**, both engines ran the same
 `UD-Q4_K_XL` artifact with BF16 K/V, one uncached prompt, greedy decoding and
