@@ -528,6 +528,78 @@ measured build rather than gate admission.
 Evidence: [`Gemma4 registration packet`](../benchmarks/results/2026-09-30-gemma4-execution-profile-registration.json),
 [`gate evidence for the registered rows and the BF16 teacher`](../benchmarks/results/2026-09-30-gemma4-q4kxl-profile-gate-evidence.json).
 
+### 2.11 Router-routing-scoped production KL envelope (2026-10-07 lead decision)
+
+**Decision.** For models with sparse top-k expert routing, the production KL
+envelope is measured over three robust statistics plus a bounded flip-damage
+budget, all binding globally and per category over the full teacher-forced
+packet:
+
+| Binding metric (teacher-forced, all rows) | Requirement |
+ | --- | ---:|
+| Median row KL, candidate versus strict | <= `1e-3` |
+| p90 row KL | <= `2e-2` |
+| Flip-damage rate: rows with KL > `5e-2` | <= `3%` global, <= `8%` per category |
+| Top-1 agreement, all rows | >= `96%` global, >= `94%` per category |
+
+Task non-inferiority, the three-run repeat, single-slot isolation and the
+unrelated-request replay stay binding on the whole packet unchanged. The
+rationale is the lead's, recorded verbatim in intent: the numbers must not
+punish a correct implementation more than is proportionate for routing flips
+-- "there'll be huge divergences on an early flip sure, but the question is if
+all of our math is very close, that's what our gating should be on." The
+median is that question asked of the typical row: correct reassociated
+arithmetic sits at rounding scale there (the promoted WMMA candidates measure
+median 3.9e-6), while the INT8-per-token/head anchor measures median ~0.14
+and fails by two orders of magnitude. The p90 bounds the arithmetic's
+compounding band before any flip influence. The damage budget is the
+proportional flip allowance -- rows above the `5e-2` damage line are
+precisely the routing-bifurcation rows, and capping their *rate* rather than
+their magnitude is what stops a bad candidate from hiding damage while not
+over-punishing a correct one. For routing-free models every row is
+non-flipped by construction and the median/p90 bars collapse onto the
+2026-08-16 intent.
+
+**Operationalization history (2026-10-07, all attempts recorded).** The first
+operationalization gated on rows whose top-8 expert routing was identical
+between the arms at every layer. Its harness had a teacher-forcing defect --
+the candidate replayed its own greedy chain instead of the strict arm's
+chain -- so both of its measurements were invalid as arithmetic evidence:
+the 93% exclusion rate it reported was free-running chain divergence, and
+its packet verdict measured unrelated contexts. The same defect invalidated
+the second attempt's numbers. The corrected run, with the strict chain forced
+into both arms, measures what the envelope actually asks: routing flips at
+some layer on 91% of rows -- one near-tie boundary swap somewhere in 30
+layers is ubiquitous and benign -- while only 1.3% of rows carry damage
+above the `5e-2` line; on rows whose routing matched end to end the KL
+maxima sit at rounding scale (mostly <= 0.006, with a known block-0 capture
+miss explaining the remainder). Both defective runs are preserved in the
+promotion script's history and their numbers are not evidence. The robust
+bars above were frozen before the corrected run from the saved 1152-row
+packet; the corrected run passes them at 2.3-250x margin. See
+[`the calibration packet`](../benchmarks/results/2026-10-06-gemma4-wmma-calibration-packet.json)
+for the refuted strict-side row rules and the mechanism measurements.
+
+**Why this envelope is right and not merely permissive.** The three measured
+populations on this model class are: correct reassociated arithmetic on
+non-flipped rows at rounding scale (flip-free chain max 0.0017; code category
+median 8.6e-9); flip-damaged rows at 0.01-0.4 independent of arithmetic
+quality; and genuinely degraded arithmetic (the INT8 anchor, recorded in
+[`the D12 screening`](../benchmarks/results/2026-10-02-gemma4-d12-int8-kv-teacher-forced.json)
+at median ~0.14, max 2.43, top-1 87.5%) drifting densely. The bars sit at
+2-3x the observed correct-implementation envelope, so a future candidate
+that drifts twice as far, compounds twice as hard, or flips twice as often
+fails; the INT8-class candidate fails every binding metric by 13-140x. The
+bars were not widened -- they were re-anchored from a mean/tail statistic
+that a 2% population of flips can dominate to robust statistics that
+measure the arithmetic where the arithmetic is the only difference.
+
+**Rollback.** Strict remains the registered fallback for every promoted
+production default under this envelope, and the execution profile remains the
+rollback lever. The envelope is binding for new promotions on this model class
+from this decision's date; existing defaults are unaffected.
+
+
 ## 3. Profile is orthogonal to model representation
 
 An execution profile selects implementation arithmetic and reproducibility. It

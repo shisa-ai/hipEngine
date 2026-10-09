@@ -4,6 +4,50 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Staged PV singleton unroll rollback lever (added 2026-10-09)
+
+`HIPENGINE_GEMMA4_PV_UNROLL` (default 32) pins the staged singleton P*V
+decode walk's in-flight V window; `8` restores the prior width. The chain
+per (row, dimension) is one ascending-key FMA sequence at every width, so
+either side is bit-identical -- the lever exists to A/B the widths and to
+roll back if the wider window regresses on an unmeasured shape.
+
+Removal condition: once the restored-state 262015 decode record and the
+paired ladder carry the width-32 numbers and one release cycle passes
+without a rollback, fold the selection to the constant and delete this
+entry together with the env read.
+
+## Router full-block SGEMM rollback lever (added 2026-10-08)
+
+`HIPENGINE_GEMMA4_ROUTER_SGEMM` (default on) pins the Gemma 4 router
+logits projection back to the backend's declared tile schedule when set to
+`0`, in `laguna_router_logits` (`hipengine/kernels/hip_gfx1100/gemma4/
+gemma4_router.py`). Full 1024-row prefill blocks otherwise route through the
+F32 rocBLAS SGEMM tier on every backend (1.68x the tile on gfx1151), a
+reordering-class change gated under the section 2.11 router-routing-scoped
+envelope rather than the superseded absolute-kl_max reading.
+
+Removal condition: once the section 2.11 packet for the router candidate
+is recorded and one release cycle passes without a rollback, delete the env
+check and this entry together. The declared tile schedule stays: it is the
+sub-1024-block path and the strict-arm owner for gate captures.
+
+## Q5_1T16 down-prefill rollback lever (added 2026-10-08)
+
+`HIPENGINE_GEMMA4_Q5_1_DOWN_T16` (default on) rolls the Gemma 4 expert down
+prefill from the Q5_1T16 tile route back to the raw-block grouped WMMA
+kernel, in `_gemma4_project_experts_down_wmma_t16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`). The tile leaf is
+bit-identical to the raw-block leaf, so the lever exists only to A/B the two
+owners inside one process on the shared-memory iGPU, where mid-band session
+variance (~10 percent) is larger than the expected step-level delta.
+
+Removal condition: once the tile route has been measured through a published
+paired ladder (in-process A/B plus the standard verify) and one release cycle
+passes without a rollback, delete the env check and this entry together. The
+raw-block WMMA owner itself stays: it is the fallback for weights that carry
+no tile allocation, and the strict compensated variant resolves through it.
+
 ## The split dense GeGLU wrapper lost its only caller when gate/up fused (found 2026-09-29)
 
 The dense MLP's gate and up projections are fused into one resident weight
@@ -26,17 +70,18 @@ returns only the definition, the package export, and this entry, and the Gemma 4
 unit tier plus one public `LLM.generate()` request pass after the wrapper is
 gone. Removal should be its own unit, separate from the fusion that stranded it.
 
-## Gemma 4 WMMA attention candidates are explicit evaluation paths (updated 2026-10-03)
+## Gemma 4 WMMA attention candidates were promoted to the production prefill default (updated 2026-10-07)
 
-Production requests `gemma4_staged` for both the sliding multi-row prefill and
-the one-token global decode past the resident-logit bound; strict requests
-`gemma4_plain` for both scopes. Staged attention preserves the strict score
-tree, 256-lane softmax denominator, and ascending-key FP32 P*V chain, with
-scores in global workspace and bounded LDS. `gemma4_flash` is registered for the
-decode scope but is **not** selected: it reassociates across key slices, and its
-teacher-forced gate reads mean KL 1.11e-2 against a 1e-3 limit, max 1.61 against
-5e-2, and 7 top-1 flips in 527 rows, so the exact chain stays the production
-route. The profile is the rollback lever: `HIPENGINE_EXECUTION_PROFILE=strict`
+Production routes multi-row prefill to `gemma4_wmma_flash` (sliding) and
+`gemma4_wmma_flash_full` (head_dim 512). The promotion passed the section 2.11
+router-routing-scoped envelope (EXECUTION-PROFILES, 2026-10-07 lead decision):
+median row KL 3.8e-6, p90 6.0e-3, flip-damage 1.3% against a 3% budget, top-1
+98.4%, tasks non-inferior on all 18 packet cases with repeats and isolation
+green. Single-token decode requests `gemma4_flash` for the untrimmed global step
+past the resident-logit bound and otherwise resolves to the strict-parity staged
+singleton (the appended request entry); `gemma4_staged` is the decode scope's
+rollback lever. Strict requests `gemma4_plain` for every scope. The profile
+remains the rollback lever: `HIPENGINE_EXECUTION_PROFILE=strict`
 selects plain attention.
 
 `gemma4_wmma_flash` and `gemma4_wmma_flash_full` remain registered for explicit
@@ -54,11 +99,28 @@ is historical evidence, not coverage of the failing categories or a performance
 claim for staged attention. Its original kernel-speed artifacts likewise measure
 WMMA, not the staged default.
 
-Removal condition: delete the WMMA wrappers, HIP sources and explicit routing
-branches once their remaining arithmetic-evaluation work is closed. Preserve
-strict plain attention as the registered fallback and parity oracle. Do not
-remove the execution-profile selection itself; it is a product API, not a
-candidate-only flag.
+**Diagnostic timing (2026-10-04; interpretation corrected 2026-10-05).**
+The same-process A/B in
+`benchmarks/results/2026-10-04-gemma4-gfx1151-prefill-attention-variant-ab.json`
+measures staged/WMMA prefill at 93.3/477.8 tok/s at 131072 tokens (5.121x).
+The candidate remains an arithmetic evaluation path, not a production default.
+The stage trace at 32768 attributes 59.5% of attention time to scores, 37.8%
+to P*V and 2.7% to softmax.
+
+The trace's `LDS_Block_Size=0` does not account for dynamically allocated
+shared memory. The staged source already loads Q into shared memory and stages
+weights for grouped-head V reuse. Scores use one warp per key, not one thread
+per score. The hypothetical 101 TB unstaged read calculation is not measured
+traffic. WMMA also changes arithmetic, so its speedup cannot be attributed to
+staging alone. Arithmetic-preserving reuse changes still require strict
+parent-parity validation; only the reassociated-arithmetic promotion packet
+can be avoided. See the correction and implementation in
+`worklog/entries/20261005T152628.367992Z-lhl-gemma4-score-reuse-e96b93.md`.
+
+Removal condition: none. The candidates are the shipped prefill default; the
+staged decode entry and the strict plain fallback stay registered, and the
+execution-profile selection is a product API, not a candidate-only flag. A
+revert is a profile decision, not a file deletion.
 
 ## Gemma flash decode keeps a fallback the current scope cannot reach (found 2026-10-08)
 

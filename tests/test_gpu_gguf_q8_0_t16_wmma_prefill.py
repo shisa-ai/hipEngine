@@ -129,6 +129,29 @@ def test_lcp3_four_wave_policy_is_defaultable_explicit_and_shape_scoped(
         out_features=8192,
         default=True,
     )
+    # The Gemma 4 expert gate/up width (2 x 704) is the one measured sub-2048
+    # width the schedule covers: 1408 is a whole multiple of the 128-column
+    # tile, and the 2026-10-07 A/B on the 8060S measured +13.2% over nwave.
+    assert _four_wave_prefill_applies(
+        tile_m=32,
+        tile_n=32,
+        out_features=1408,
+        default=True,
+    )
+    # No other sub-2048 width gains eligibility: the policy change is pinned
+    # to the measured shape.
+    assert not _four_wave_prefill_applies(
+        tile_m=32,
+        tile_n=32,
+        out_features=1536,
+        default=True,
+    )
+    assert not _four_wave_prefill_applies(
+        tile_m=32,
+        tile_n=32,
+        out_features=512,
+        default=True,
+    )
     with q8_t16_two_wave_prefill_session(False):
         assert not _four_wave_prefill_applies(
             tile_m=32,

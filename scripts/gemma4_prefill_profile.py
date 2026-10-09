@@ -47,8 +47,14 @@ def main() -> int:
         print(f"ERROR: device0 is {device!r}, expected {args.expect_gpu!r}", file=sys.stderr)
         return 2
 
-    llm = hipengine.LLM(model=str(args.artifact))
+    llm = hipengine.LLM(model=str(args.artifact), max_sequence_length=int(args.context))
     generator = llm._get_text_generator()
+    # The factory argument is what sizes the runner's KV cache: the generator can
+    # be wrapped, and assigning context_length on the wrapper shadows the inner
+    # field and leaves the runner at its default. Setting it as well keeps the
+    # two from disagreeing about the capacity this profile ran at, and is not
+    # what sizes the runner -- `--context 33024` with `--tokens 32768` raised
+    # "exceeds capacity 8192" while only the assignment was present.
     generator.context_length = int(args.context)
     runner = generator._ensure_runner()
 

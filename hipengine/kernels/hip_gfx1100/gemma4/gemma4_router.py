@@ -436,46 +436,22 @@ def gemma4_router_topk_bf16(
     mode = resolve_laguna_router_logits_mode(
         backend if backend is not None else "hip_gfx1100"
     )
-    if mode != "token_tile_4":
-        # The backend names a tiled schedule, so run exactly that one at the
-        # binding's default width.
-        logits_kernel = {
-            "token_tile_8": qwen35_router_logits_bf16_f32w_token_tile_8,
-            "token_tile_16": qwen35_router_logits_bf16_f32w_token_tile_16,
-        }[mode]
-        logits_kernel(
-            prescaled.ptr,
-            proj_ptr,
-            logits.ptr,
-            tokens,
-            hidden_size,
-            num_experts,
-            threads=512,
-            stream=stream,
-        )
-    elif tokens >= _ROUTER_SGEMM_MIN_TOKENS:
-        # The backend declares the baseline schedule (gfx1100 declares no tiled
-        # mode), so the projection is size-tiered by measurement. A full
-        # 1024-row block routes through the F32 SGEMM (see
-        # ``_ROUTER_SGEMM_MIN_TOKENS``); narrower blocks take token_tile_16 at
-        # 128 threads rather than the generic bf16_f32w entry point, which
-        # defaults to threads=512 with a four-token tile. At this shape (hidden
-        # 2816) that leaves threads 352..511 with no K range at all, so 31% of
-        # every block idles behind a nine-round barrier tree for 64 FLOPs of
-        # work per useful thread. Measured on the production shape: 0.2309 ms
-        # -> 0.0666 ms per launch (1.60 -> 5.43 TFLOP/s), 3.5x, and both land
-        # within 4e-06 of a float64 reference. Smaller token counts keep the
-        # untiled path -- see ``_TOKEN_TILE_16_MIN_TOKENS`` -- and the width is
-        # not the binding's default of 256 -- see ``_TOKEN_TILE_16_THREADS``.
-        # Neither choice is bit-identical to what it replaces: the tiling and
-        # the width both change the reduction, so the teacher-forced gate gates
-        # this.
-        #
-        # Full prefill block: F32 weights through rocBLAS SGEMM. The cast is
-        # a bit-exact bf16 -> f32 of the prescaled row; only the accumulation
-        # order changes versus the tile (maxabs 4.7e-05 against a float64
-        # reference, tile 3.8e-06), and the F32 weights survive -- the P8
-        # row's downcast proposal would have lost precision to go fast.
+    # Rollback lever for the full-block SGEMM tier (default on):
+    # HIPENGINE_GEMMA4_ROUTER_SGEMM=0 pins the declared tile schedule.
+    import os as _os
+    sgemm_enabled = _os.environ.get("HIPENGINE_GEMMA4_ROUTER_SGEMM", "1") != "0"
+    if tokens >= _ROUTER_SGEMM_MIN_TOKENS and sgemm_enabled:
+        # A full 1024-row block routes through the F32 SGEMM on every
+        # backend, ahead of any declared tile schedule: on gfx1151 the
+        # declared ``token_tile_8`` mode would otherwise bypass the tier
+        # (tile 0.946 ms vs SGEMM 0.564 ms per launch at the same
+        # geometry, interleaved). The cast is a bit-exact bf16 -> f32 of
+        # the prescaled row; only the accumulation order changes versus
+        # the tile, so a near-tie top-8 routing decision can flip. The
+        # binding production gate for that class is the section 2.11
+        # router-routing-scoped envelope: on the 2048/1024 teacher-forced
+        # chain vs a frozen tile8 baseline, median KL ~1e-6, p99 8e-5,
+        # flip-damage 1/1023 rows (0.098% vs the 3% budget), top-1 100%.
         prescaled_f32 = scratch.buffer("prescaled_f32")
         bf16_to_f32(
             prescaled.ptr,
@@ -490,6 +466,24 @@ def gemma4_router_topk_bf16(
             rows=tokens,
             in_features=hidden_size,
             out_features=num_experts,
+            stream=stream,
+        )
+    elif mode != "token_tile_4":
+        # The backend names a tiled schedule, so run exactly that one at the
+        # binding's default width (also the pinned arm when the SGEMM tier
+        # is rolled back).
+        logits_kernel = {
+            "token_tile_8": qwen35_router_logits_bf16_f32w_token_tile_8,
+            "token_tile_16": qwen35_router_logits_bf16_f32w_token_tile_16,
+        }[mode]
+        logits_kernel(
+            prescaled.ptr,
+            proj_ptr,
+            logits.ptr,
+            tokens,
+            hidden_size,
+            num_experts,
+            threads=512,
             stream=stream,
         )
     elif tokens >= _TOKEN_TILE_16_MIN_TOKENS:
