@@ -9594,3 +9594,23 @@ pass on an ignored stride); and
 `benchmarks/results/2026-09-29-gemma4-moe-fused-stride-gate-w7900.json`
 (the campaign gate at `--prompt 2048 --prefill 1024`: `passed: true`,
 `kl_max` 7.7e-04 against a 0.05 bar, 0 of 1023 top-1 flips).
+
+## `HIPENGINE_GEMMA4_DECODE_GRAPH` whole-step graph replay is depth-restricted (open 2026-10-09)
+
+The Gemma 4 generation loop replays decode steps from a whole-step HIP graph
+capture (`hipengine/runtime/gemma4_decode_graph.py`). The replay window is
+restricted: any bucket whose positions reach the decode split route (1024
+keys, `decode_slices`) takes the launched step instead, because the capture
+bakes the split's host-computed slice geometry and replay diverges (measured
+~10 percent relative logit error at 1024 keys). The env
+`HIPENGINE_GEMMA4_DECODE_GRAPH` (default on) is the rollback seam for the
+whole route, and the in-session `launched_fallbacks` counter makes the
+fallback visible per request.
+
+Removal condition: device-positioned appends — the qwen
+`record_i64_scalar_indexed` pattern — plus a split route whose slice
+geometry is resolved on the device make capture exact at every depth. Then
+the bucket guard, the fallback counter, and the env all go, and the graph
+covers the full decode range. The intermediate capture design notes (retarget
+cost, capture-amortized buckets) live in the module docstring and the
+2026-10-09 worklog entry.

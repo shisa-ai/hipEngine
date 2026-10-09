@@ -17,13 +17,29 @@ def test_graph_capture_extent_never_exceeds_cache_and_replay_resets_metadata(mon
     session = object.__new__(graph.Gemma4DecodeGraphSession)
     session._runner_ref = lambda: runner
     session._stream, session._exec, session._key = 2, 7, ('reused',)
+    session._appends = ()
+    session._captures = 0
+    session._launched_fallbacks = 0
+    launched = []
+    runner.forward = lambda tokens, **kw: launched.append(tokens) or (1, 0)
     runner._stage_block_content = lambda tokens, **kw: (staged.append(kw) or ({}, {}))
     runner._collect_block = lambda *a, **kw: (runner._last_logits_rows, runner._normalized_hidden_rows)
     session._capture_key = lambda *a: ('reused',)
     session._retarget_appends = lambda pos: None
     monkeypatch.setattr(graph, 'get_hip_runtime', lambda: SimpleNamespace(graph_launch=lambda *a: None))
     assert session.step(1) == (1, 0)
-    assert position < staged[0]['keys_extent'] <= capacity
+    # Buckets whose replay window reaches the decode split route (1024 keys)
+    # take the launched step instead of a capture that would bake the split
+    # geometry; every other bucket stages and replays.
+    start = (position // 64) * 64
+    bucket_end = min(start + 64, capacity)
+    if bucket_end >= 1024:
+        assert not staged
+        assert launched == [[1]]
+        assert session.launched_fallbacks == 1
+    else:
+        assert position < staged[0]['keys_extent'] <= capacity
+        assert not launched
 
 
 def test_cached_mtp_drafter_rebinds_before_reading_hidden_or_shared_kv():

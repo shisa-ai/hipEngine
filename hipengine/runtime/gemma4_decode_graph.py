@@ -85,6 +85,13 @@ from hipengine.core.memory import MemcpyKind
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import KEY_TILE
 from hipengine.runtime.gemma4 import Gemma4Runner
 
+#: The decode split route (``decode_slices``) engages host-computed slice
+#: geometry at 1024 keys and is not graph-safe: a capture bakes the split
+#: constants and replay diverges (measured: ~10 percent relative logit
+#: error at 1024 keys, 52/128 steps). Buckets whose replay window can reach
+#: the split route fall back to the launched path instead.
+_SPLIT_ROUTE_MIN_KEYS = 1024
+
 #: Positions per capture window. Small enough that a bucket crossing costs a
 #: recapture only once per ``width`` steps, large enough that the frozen
 #: ``key_begin`` walks at most ``width`` keys past the true sliding window.
@@ -162,6 +169,7 @@ class Gemma4DecodeGraphSession:
         self._bucket: _Bucket | None = None
         self._appends: tuple[_CaptureAppend, ...] = ()
         self._captures = 0
+        self._launched_fallbacks = 0
 
     # --- public API -------------------------------------------------------
 
@@ -191,6 +199,17 @@ class Gemma4DecodeGraphSession:
 
         return self._captures
 
+    @property
+    def launched_fallbacks(self) -> int:
+        """Steps replayed through the launched path instead of the graph.
+
+        Every step whose capture window reaches the decode split route takes
+        this path (see ``_SPLIT_ROUTE_MIN_KEYS``); zero means every step in
+        the window replayed from a captured graph.
+        """
+
+        return self._launched_fallbacks
+
     def step(self, token: int, *, apply_softcap: bool = True) -> np.ndarray:
         """Run one decode step for ``token`` and return its logits.
 
@@ -199,6 +218,23 @@ class Gemma4DecodeGraphSession:
         graph instead of 780 host-side submissions.
         """
 
+        result = self._step(token, apply_softcap=apply_softcap, collect_argmax=False)
+        return result  # type: ignore[return-value]  # np.ndarray by _collect_block
+
+    def step_argmax(self, token: int, *, apply_softcap: bool = True) -> int:
+        """Run one decode step for ``token`` and return the greedy token.
+
+        Mirrors ``runner.forward_argmax([token])``: identical launches, the
+        collect phase argmaxes on the device and brings home 16 bytes instead
+        of the full-vocab logits. The returned token equals
+        ``int(np.argmax(step(...)))`` exactly, by the same
+        ``_collect_block_argmax`` contract the launched route uses.
+        """
+
+        result = self._step(token, apply_softcap=apply_softcap, collect_argmax=True)
+        return result  # type: ignore[return-value]  # int by _collect_block_argmax
+
+    def _step(self, token: int, *, apply_softcap: bool, collect_argmax: bool) -> np.ndarray | int:
         runner = self._runner
         if runner.uses_int8_kv:
             # The direct INT8 consumer validates its live counts, row positions
@@ -226,6 +262,15 @@ class Gemma4DecodeGraphSession:
 
         bucket = _Bucket.for_position(position)
         bucket = _Bucket(bucket.start, min(bucket.end, runner.capacity))
+        if bucket.end >= _SPLIT_ROUTE_MIN_KEYS:
+            # A replay of this window reaches the decode split route, whose
+            # host-computed slice geometry a capture would bake in. Fall back
+            # to the launched step, which re-selects the route every position;
+            # the graph stays exact everywhere it runs.
+            self._launched_fallbacks += 1
+            if collect_argmax:
+                return runner.forward_argmax([int(token)], apply_softcap=apply_softcap)
+            return runner.forward([int(token)], apply_softcap=apply_softcap)
         tables, masks = runner._stage_block_content(
             [int(token)], stream=self._stream, keys_extent=bucket.end,
             key_begin_at=lambda attention: self._frozen_key_begin(attention, bucket),
@@ -239,6 +284,13 @@ class Gemma4DecodeGraphSession:
         get_hip_runtime().graph_launch(self._exec, self._stream)
         runner._last_logits_rows = 1
         runner._normalized_hidden_rows = 0
+        if collect_argmax:
+            return runner._collect_block_argmax(
+                [int(token)],
+                apply_softcap=apply_softcap,
+                needs_logits=True,
+                stream=self._stream,
+            )
         return runner._collect_block(
             [int(token)],
             apply_softcap=apply_softcap,

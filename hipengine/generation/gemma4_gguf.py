@@ -12,6 +12,7 @@ temperature or top-p fails loudly instead of quietly returning greedy output.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -40,6 +41,21 @@ from hipengine.tokenization.gguf import Gemma4GGUFTokenizer
 
 _GEMMA4_QUANT = "gguf_q4_k_m"
 _GEMMA4_DEFAULT_CONTEXT = 8_192
+
+
+def _gemma4_decode_graph_enabled() -> bool:
+    """Whether the whole-step decode graph replays Gemma 4 decode steps.
+
+    The graph replaces the ~500 per-step host submissions with one
+    ``hipGraphLaunch``; on the shallow-to-mid depths where the launched step
+    leaves the device idle between kernels it measures 1.09-1.16x launched
+    decode. Depth windows that reach the decode split route are not
+    capture-exact, so the session itself falls back to the launched step
+    there and the graph stays a pure win on the default path. Set
+    ``HIPENGINE_GEMMA4_DECODE_GRAPH=0`` to restore the launched decode.
+    """
+
+    return os.environ.get("HIPENGINE_GEMMA4_DECODE_GRAPH", "1") != "0"
 
 
 def _resolve_kv_storage(request: GenerationRequest) -> tuple[str, str, str]:
@@ -97,6 +113,8 @@ class Gemma4GGUFGenerator:
     _load_seconds: float | None = field(default=None, init=False, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
+    _decode_graph_session: Any | None = field(default=None, init=False, repr=False)
+    _decode_graph_runner: Any | None = field(default=None, init=False, repr=False)
     _speculative_provider: Any | None = field(default=None, init=False, repr=False)
     _speculative_max_logits_rows: int = field(default=0, init=False, repr=False)
 
@@ -232,6 +250,7 @@ class Gemma4GGUFGenerator:
                     )
                 started = time.perf_counter()
                 runner.reset()
+                graph_session = self._decode_graph_session_for(runner)
                 # Greedy-only generator (D10): the device argmax route brings
                 # home the token directly; identical tokens to
                 # np.argmax(forward(...)), pinned by the argmax battery and the
@@ -261,7 +280,15 @@ class Gemma4GGUFGenerator:
                         eos_id = token_id
                         break
                     if step + 1 < request.max_tokens:
-                        token_id = runner.forward_argmax([token_id])
+                        if graph_session is not None and step >= 1:
+                            # The decode graph replays the step's launches.
+                            # Iteration 0 stays launched: the capture needs one
+                            # normal single-token step first so every kernel it
+                            # records is already loaded, and after a reset the
+                            # first step is that warm step.
+                            token_id = graph_session.step_argmax(token_id)
+                        else:
+                            token_id = runner.forward_argmax([token_id])
                 outputs.append(
                     GenerationOutput(
                         text=self.tokenizer.decode(generated, skip_special=False),
@@ -289,9 +316,44 @@ class Gemma4GGUFGenerator:
             if self._runner is not None:
                 self._runner.close()
                 self._runner = None
+            if self._decode_graph_session is not None:
+                self._decode_graph_session.close()
+                self._decode_graph_session = None
+                self._decode_graph_runner = None
             if self._weights is not None:
                 self._weights.free()
                 self._weights = None
+
+    def _decode_graph_session_for(self, runner: "Gemma4Runner"):
+        """The runner's whole-step decode graph session, or None to stay launched.
+
+        One session per generator, keyed to the runner instance it captured
+        (a KV-storage change rebuilds the runner, so the stale session is
+        closed first). Returns None when the graph is disabled by env or when
+        the runner's INT8 KV storage cannot be captured — the launched decode
+        the runner already runs is the whole step in that case.
+        """
+
+        if not _gemma4_decode_graph_enabled():
+            return None
+        if self._decode_graph_runner is not runner:
+            if self._decode_graph_session is not None:
+                self._decode_graph_session.close()
+            self._decode_graph_session = None
+            self._decode_graph_runner = None
+        if getattr(runner, "uses_int8_kv", False):
+            # INT8 KV storage needs a checked device-to-host readback per
+            # step, which a graph capture cannot hold. The launched path runs
+            # the requested storage exactly; refusing capture here keeps the
+            # explicit storage request loud instead of silently downgrading
+            # it.
+            return None
+        if self._decode_graph_session is None:
+            from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
+
+            self._decode_graph_session = Gemma4DecodeGraphSession(runner)
+            self._decode_graph_runner = runner
+        return self._decode_graph_session
 
     def _resolve_prefill_attention_variants(self) -> tuple[str, ...] | None:
         """The prefill-attention variants the execution profile selects, if any.
