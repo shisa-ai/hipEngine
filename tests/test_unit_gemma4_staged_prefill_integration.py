@@ -109,7 +109,13 @@ def test_staged_plan_serves_the_sliding_prefill_geometry(keys: int) -> None:
     assert not plan.pv_singleton
     # The score and softmax stages keep the strict 256-lane shapes.
     assert plan.threads == staged.THREADS == 256
-    assert plan.score_grid == (plan.rows, staged.staged_score_chunks(keys))
+    # One score CTA holds every query head of a KV head, up to
+    # SCORE_ROWS_PER_BLOCK of them, so the grid counts (token, KV head) groups.
+    groups = -(-(SLIDING["num_heads"] // SLIDING["num_kv_heads"]) // staged.SCORE_ROWS_PER_BLOCK)
+    assert plan.score_grid == (
+        SLIDING_CHUNK_ROWS * SLIDING["num_kv_heads"] * groups,
+        staged.staged_score_chunks(keys),
+    )
 
 
 def test_staged_plan_serves_the_global_prefill_geometry() -> None:

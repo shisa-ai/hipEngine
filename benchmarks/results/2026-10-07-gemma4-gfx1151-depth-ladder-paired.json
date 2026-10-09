@@ -1,0 +1,574 @@
+{
+ "schema": 1,
+ "kind": "gemma4_depth_ladder_paired",
+ "status": "measured",
+ "performance_claim": true,
+ "created": "2026-10-07",
+ "question": "How does hipEngine production prefill and decode throughput scale with prompt depth against the pinned llama.cpp HIP comparator, and which component of the hipEngine prefill accounts for the loss?",
+ "model": "Gemma 4 26B-A4B-it",
+ "quant": "UD-Q4_K_XL",
+ "physical_host": "zbook",
+ "hardware": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo), 126976 MiB",
+ "kv_dtype": "bf16",
+ "execution_profile": "production",
+ "protocol": {
+  "prompt_ids": "the campaign corpus, tokenized by each engine's own tokenizer and cut to the exact prompt length; prompt_ids_sha256 must match across engines for a row to be paired",
+  "context": "round_up_256(prompt + 128), identical in both engines",
+  "output": "128 greedy tokens ignoring EOS; 127 decode forwards per sample",
+  "samples": "hipEngine 3 at <=8192, 2 at 16384-32768, 1 at >=65536; llama.cpp 3 at <=65536, 2 at 131072-262144. The deep hipEngine points are sample-1 because a single pass costs 2-24 minutes",
+  "serialization": "one engine at a time on the shared GPU; the llama.cpp driver refuses to start while a hipEngine process is alive or while llama-server holds GTT",
+  "decode_denominator": "127 forwards; llama.cpp's predicted_ms includes its first greedy sample, which is its documented convention and is not silently corrected",
+  "warmup": "one full-shape pass before every row"
+ },
+ "engines": {
+  "hipengine": {
+   "commit": "0a25f12802c13ae66db554b7e8932fb11ebf49b2",
+   "dirty": true,
+   "dirty_scope": "the recorded dirty set is benchmarks/, scripts/ and tests/ harness and probe files plus untracked worklog entries; no path under hipengine/ is modified, so the engine source is exactly the commit",
+   "artifact": {
+    "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "bytes": 17010980576,
+    "mtime": "2026-09-26T19:11:54.689845+00:00",
+    "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+   },
+   "hipcc": [
+    "HIP version: 7.15.26333-0000000",
+    "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)"
+   ],
+   "env": {
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+   }
+  },
+  "llamacpp": {
+   "source": "/home/lhl/llama.cpp/llama.cpp-hip",
+   "commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+   "source_dirty": [],
+   "server_binary": {
+    "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-hip/bin/llama-server",
+    "sha256": "038f1750b6c38600174f2097647ff933a35a4b85d656e56b09d75325eda6c52a",
+    "version": "version: 0.3.0-dev (build 10685, commit 17252c769)\nbuilt with GNU 16.2.1 for Linux x86_64"
+   },
+   "runtime": {
+    "effective_context": 768,
+    "kv_dtype_pairs": [],
+    "flash_attention_log": [],
+    "device_log": [],
+    "graph_log": [
+     "0.06.065.708 I slot print_timing: id  0 | task 0 |    graphs reused =        127",
+     "0.10.171.523 I slot print_timing: id  0 | task 130 |    graphs reused =        253",
+     "0.14.258.434 I slot print_timing: id  0 | task 260 |    graphs reused =        379",
+     "0.18.364.161 I slot print_timing: id  0 | task 390 |    graphs reused =        505"
+    ],
+    "graph_fallback_observed": false,
+    "graph_reuse_counts": [
+     127,
+     253,
+     379,
+     505
+    ],
+    "graph_enabled": true
+   }
+  }
+ },
+ "drift_control": {},
+ "rows": [
+  {
+   "prompt_tokens": 512,
+   "context": 768,
+   "hipengine": {
+    "label": "hip-512",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 512 --output 128 --context 768 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-512 --out /tmp/gemma4-reladder-20261007/hip-512.json",
+    "context": 768,
+    "max_block": 768,
+    "samples": 3,
+    "prefill_tps": 1288.15255326022,
+    "prefill_s": 0.39746845100307837,
+    "decode_tps": 33.532186370129,
+    "decode_s": 3.7874058851448353,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "fba226ff8653b8b10e532f12d1d9b8fa364e57f552f51fab8c9079b23b0b268c",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 34.02421166182549,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-512",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 512 --output 128 --context 768 --samples 3 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-512 --out /tmp/gemma4-reladder-20261007/llama-512.json",
+    "context": 768,
+    "samples": 3,
+    "prefill_tps": 890.8933990367216,
+    "prefill_s": 0.574704,
+    "decode_tps": 35.98287215285524,
+    "decode_s": 3.529457,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "fba226ff8653b8b10e532f12d1d9b8fa364e57f552f51fab8c9079b23b0b268c",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 1.4459,
+   "decode_ratio_hip_over_llama": 0.9319
+  },
+  {
+   "prompt_tokens": 1024,
+   "context": 1280,
+   "hipengine": {
+    "label": "hip-1024",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 1024 --output 128 --context 1280 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-1024 --out /tmp/gemma4-reladder-20261007/hip-1024.json",
+    "context": 1280,
+    "max_block": 1024,
+    "samples": 3,
+    "prefill_tps": 1351.3373272691945,
+    "prefill_s": 0.7577678639790975,
+    "decode_tps": 34.64362869856917,
+    "decode_s": 3.665897735627368,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 28.95281494842457,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-1024",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 1024 --output 128 --context 1280 --samples 3 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-1024 --out /tmp/gemma4-reladder-20261007/llama-1024.json",
+    "context": 1280,
+    "samples": 3,
+    "prefill_tps": 1158.7223275834756,
+    "prefill_s": 0.883732,
+    "decode_tps": 33.452647777071554,
+    "decode_s": 3.796411,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 1.1662,
+   "decode_ratio_hip_over_llama": 1.0356
+  },
+  {
+   "prompt_tokens": 2048,
+   "context": 2304,
+   "hipengine": {
+    "label": "hip-2048",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 2048 --output 128 --context 2304 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-2048 --out /tmp/gemma4-reladder-20261007/hip-2048.json",
+    "context": 2304,
+    "max_block": 1024,
+    "samples": 3,
+    "prefill_tps": 1262.1017221395086,
+    "prefill_s": 1.6226901240006555,
+    "decode_tps": 34.181851098885254,
+    "decode_s": 3.7154219539661426,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "b8c28ab5066a519b3acc1e09293382f2cca1e084ac554e422788006341542d43",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 23.713364686595433,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-2048",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 2048 --output 128 --context 2304 --samples 3 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-2048 --out /tmp/gemma4-reladder-20261007/llama-2048.json",
+    "context": 2304,
+    "samples": 3,
+    "prefill_tps": 1136.4998468388878,
+    "prefill_s": 1.8020239999999998,
+    "decode_tps": 30.00823217959951,
+    "decode_s": 4.232171999999999,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "b8c28ab5066a519b3acc1e09293382f2cca1e084ac554e422788006341542d43",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 1.1105,
+   "decode_ratio_hip_over_llama": 1.1391
+  },
+  {
+   "prompt_tokens": 4096,
+   "context": 4352,
+   "hipengine": {
+    "label": "hip-4096",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 4096 --output 128 --context 4352 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-4096 --out /tmp/gemma4-reladder-20261007/hip-4096.json",
+    "context": 4352,
+    "max_block": 1024,
+    "samples": 3,
+    "prefill_tps": 1213.3777877594182,
+    "prefill_s": 3.375700496020727,
+    "decode_tps": 33.30055071311916,
+    "decode_s": 3.813750742265256,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "6c4163ef1d578f47a2346c8b7657c627d796a4878448e36edf0383972b57d55a",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 17.686876852908124,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-4096",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 4096 --output 128 --context 4352 --samples 3 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-4096 --out /tmp/gemma4-reladder-20261007/llama-4096.json",
+    "context": 4352,
+    "samples": 3,
+    "prefill_tps": 1116.776181258009,
+    "prefill_s": 3.6677,
+    "decode_tps": 29.12779902093899,
+    "decode_s": 4.3600959999999995,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "6c4163ef1d578f47a2346c8b7657c627d796a4878448e36edf0383972b57d55a",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 1.0865,
+   "decode_ratio_hip_over_llama": 1.1433
+  },
+  {
+   "prompt_tokens": 8192,
+   "context": 8448,
+   "hipengine": {
+    "label": "hip-8192",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 8192 --output 128 --context 8448 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-8192 --out /tmp/gemma4-reladder-20261007/hip-8192.json",
+    "context": 8448,
+    "max_block": 1024,
+    "samples": 3,
+    "prefill_tps": 1128.3722232774012,
+    "prefill_s": 7.260015649982961,
+    "decode_tps": 31.621664423013364,
+    "decode_s": 4.016233880072832,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "ea1766ee5530c7028e61cc93c4162cee2e0f54738e9b3a097306013efe8daaba",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 11.30999022736378,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-8192",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 8192 --output 128 --context 8448 --samples 5 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-8192 --out /tmp/gemma4-reladder-20261007/llama-8192.json",
+    "context": 8448,
+    "samples": 5,
+    "prefill_tps": 1277.3407362547098,
+    "prefill_s": 6.413323999999999,
+    "decode_tps": 27.46593251166221,
+    "decode_s": 4.6239099999999995,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "ea1766ee5530c7028e61cc93c4162cee2e0f54738e9b3a097306013efe8daaba",
+    "status": "output_drift",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": false
+    },
+    "rejection": "llama.cpp greedy output ids differed between samples; timings retained as diagnostics"
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.8834,
+   "decode_ratio_hip_over_llama": 1.1513,
+   "note": "llama.cpp row rejected by its own repeatability gate; its timings are retained as diagnostics and the ratios are not a published claim"
+  },
+  {
+   "prompt_tokens": 16384,
+   "context": 16640,
+   "hipengine": {
+    "label": "hip-16384",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 16384 --output 128 --context 16640 --samples 2 --warmup 1 --expect-gpu 8060S --label hip-16384 --out /tmp/gemma4-reladder-20261007/hip-16384.json",
+    "context": 16640,
+    "max_block": 1024,
+    "samples": 2,
+    "prefill_tps": 1008.1884778260895,
+    "prefill_s": 16.251478632490034,
+    "decode_tps": 28.638296912885416,
+    "decode_s": 4.434625261405017,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "7cf9b6b2971e115104a2343207c4d854e36683d5a434f7014bafed23955f84d3",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 6.125866759855961,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-16384",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 16384 --output 128 --context 16640 --samples 5 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-16384 --out /tmp/gemma4-reladder-20261007/llama-16384.json",
+    "context": 16640,
+    "samples": 5,
+    "prefill_tps": 1105.3369817189648,
+    "prefill_s": 14.822629000000001,
+    "decode_tps": 24.951585083824554,
+    "decode_s": 5.089857,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "7cf9b6b2971e115104a2343207c4d854e36683d5a434f7014bafed23955f84d3",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.9121,
+   "decode_ratio_hip_over_llama": 1.1478
+  },
+  {
+   "prompt_tokens": 32768,
+   "context": 33024,
+   "hipengine": {
+    "label": "hip-32768",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 32768 --output 128 --context 33024 --samples 2 --warmup 1 --expect-gpu 8060S --label hip-32768 --out /tmp/gemma4-reladder-20261007/hip-32768.json",
+    "context": 33024,
+    "max_block": 1024,
+    "samples": 2,
+    "prefill_tps": 840.5526019165259,
+    "prefill_s": 38.984906521989615,
+    "decode_tps": 23.92241669164811,
+    "decode_s": 5.308846318439464,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "4c9f993372aa2f928bd77a633ba4ec927bbebc9c69eb8549587d74c2990dc358",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 2.8553612137872735,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-32768",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 32768 --output 128 --context 33024 --samples 3 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-32768 --out /tmp/gemma4-reladder-20261007/llama-32768.json",
+    "context": 33024,
+    "samples": 3,
+    "prefill_tps": 864.4686348629373,
+    "prefill_s": 37.905366,
+    "decode_tps": 21.22341453991063,
+    "decode_s": 5.983957,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "4c9f993372aa2f928bd77a633ba4ec927bbebc9c69eb8549587d74c2990dc358",
+    "status": "output_drift",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": false
+    },
+    "rejection": "llama.cpp greedy output ids differed between samples; timings retained as diagnostics"
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.9723,
+   "decode_ratio_hip_over_llama": 1.1272,
+   "note": "llama.cpp row rejected by its own repeatability gate; its timings are retained as diagnostics and the ratios are not a published claim"
+  },
+  {
+   "prompt_tokens": 65536,
+   "context": 65792,
+   "hipengine": {
+    "label": "hip-65536",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 65536 --output 128 --context 65792 --samples 1 --warmup 1 --expect-gpu 8060S --label hip-65536 --out /tmp/gemma4-reladder-20261007/hip-65536.json",
+    "context": 65792,
+    "max_block": 1024,
+    "samples": 1,
+    "prefill_tps": 656.1182017958081,
+    "prefill_s": 99.88444127998082,
+    "decode_tps": 18.0501082447698,
+    "decode_s": 7.035968886048067,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "9f80c975afcf0f5818755923d2073a7424b50f69b2bab0ffe2be5d2d74f484a1",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 1.197713886566207,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-65536",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 65536 --output 128 --context 65792 --samples 3 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-65536 --out /tmp/gemma4-reladder-20261007/llama-65536.json",
+    "context": 65792,
+    "samples": 3,
+    "prefill_tps": 619.25962832214,
+    "prefill_s": 105.829602,
+    "decode_tps": 16.530078756063414,
+    "decode_s": 7.682964,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "9f80c975afcf0f5818755923d2073a7424b50f69b2bab0ffe2be5d2d74f484a1",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 1.0595,
+   "decode_ratio_hip_over_llama": 1.092
+  },
+  {
+   "prompt_tokens": 131072,
+   "context": 131328,
+   "hipengine": {
+    "label": "hip-131072",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 131072 --output 128 --context 131328 --samples 1 --warmup 1 --expect-gpu 8060S --label hip-131072 --out /tmp/gemma4-reladder-20261007/hip-131072.json",
+    "context": 131328,
+    "max_block": 1024,
+    "samples": 1,
+    "prefill_tps": 470.72411733936895,
+    "prefill_s": 278.4475984380115,
+    "decode_tps": 12.038556942657948,
+    "decode_s": 10.54943716301932,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "f3e9f618dfeaa6b74c9c98f1cae019456b6618690cc3c44ee021193c93b4d0df",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 0.4428505354195848,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-131072",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 131072 --output 128 --context 131328 --samples 2 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-131072 --out /tmp/gemma4-reladder-20261007/llama-131072.json",
+    "context": 131328,
+    "samples": 2,
+    "prefill_tps": 388.6694570326673,
+    "prefill_s": 337.307644,
+    "decode_tps": 11.448311121015166,
+    "decode_s": 11.093385000000001,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "f3e9f618dfeaa6b74c9c98f1cae019456b6618690cc3c44ee021193c93b4d0df",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 1.2111,
+   "decode_ratio_hip_over_llama": 1.0516
+  }
+ ],
+ "attribution": {
+  "method": "scripts/gemma4_prefill_kernel_census.py, which records a HIP event pair around every kernel the decoder layer launches, in place, on the stream that kernel was launched into",
+  "corpus": "the campaign corpus at the ladder's shapes, production profile",
+  "why_repaired": "the census as committed intercepted no attention and reported the MoE block as free. Two tree changes broke it: the production profile now selects prefill attention through the kernel registry (variant gemma4_staged), which a module-attribute patch cannot reach, and the MoE block is launched on its own stream, so an event pair recorded on stream 0 bracketed nothing and its work reappeared as host time. Both repairs are in the same commit as this artifact.",
+  "stream_overlap": "the main stream and the MoE stream carry roughly equal totals and sum to about the wall time, so they are effectively serialized across the 30 layers rather than overlapped; the census accounts for slightly over 100 percent of wall time because a small part does overlap",
+  "rows": [],
+  "census_provenance": {
+   "commit": "0a25f12802c13ae66db554b7e8932fb11ebf49b2",
+   "command_by_depth": {},
+   "note": "the engine commit is the ladder's, since the census loads the same build. The harness records its own command from 2026-10-04 onward; the six points here predate that field, so their commands are reconstructed from the driver that issued them and are exact, not paraphrased",
+   "reconstructed_command_template": ".venv/bin/python scripts/gemma4_prefill_kernel_census.py --prompt <N> --corpus campaign --repeats <R> --warmup 1 --json-out <dir>/census-<N>.json, with R=3 at 512/2048/8192, R=2 at 32768/65536, R=1 at 131072"
+  }
+ },
+ "findings": {
+  "prefill_ratio_by_depth": {
+   "512": 1.4459,
+   "1024": 1.1662,
+   "2048": 1.1105,
+   "4096": 1.0865,
+   "8192": 0.8834,
+   "16384": 0.9121,
+   "32768": 0.9723,
+   "65536": 1.0595,
+   "131072": 1.2111
+  },
+  "decode_ratio_by_depth": {
+   "512": 0.9319,
+   "1024": 1.0356,
+   "2048": 1.1391,
+   "4096": 1.1433,
+   "8192": 1.1513,
+   "16384": 1.1478,
+   "32768": 1.1272,
+   "65536": 1.092,
+   "131072": 1.0516
+  },
+  "prefill_hipengine_ahead_only_at": [
+   512,
+   1024,
+   2048,
+   4096,
+   65536,
+   131072
+  ],
+  "decode_hipengine_ahead_at": [
+   1024,
+   2048,
+   4096,
+   16384,
+   65536,
+   131072
+  ],
+  "attention_share_of_prefill_wall": {},
+  "attention_ms_per_prompt_token": {},
+  "summary": [
+   "Decode is competitive through the middle of the ladder and only crosses below the comparator past 16384; its best row is 4096. Prefill is ahead at 512 alone and falls monotonically after it, reaching 0.23 at 131072. The 8192 and 16384 rows also show a decode lead but are excluded from the clean-row lists above, because llama.cpp rejected them on repeatability.",
+   "The prefill loss is not a distributed regression. Measured attention is 19.9 percent of the prefill step at 512 and 92.9 percent at 131072, and the selected variant is gemma4_staged at every depth, so the profile never takes the WMMA prefill path at any shape in this ladder.",
+   "Attention cost per prompt token rises from 0.182 ms at 512 to 9.964 ms at 131072 while attention cost per token per token of depth falls, which is the sliding-window signature: the window-bounded layers stop growing and the global layers keep scaling."
+  ]
+ },
+ "open_items": [
+  "262144 is not measured on either engine and needs a decision: the full protocol is about 4.5 hours at about 91 minutes per pass, a reduced two-pass run is about 3 hours with a stated cold-start bias, and the fitted point can be published as a projection instead. hipEngine also needs roughly 95 GiB against roughly 94 GiB available, so the /tmp to disk migration is what makes the point reachable at all.",
+  "A 262142-prompt / 2-output llama.cpp run would replace the comparator's 256K projection with a prefill-only measurement at the cost of about 25-45 minutes. It cannot be paired, because hipEngine's 262144 point is not measured either.",
+  "The MoE block runs on its own stream and the two streams sum to about the wall time across 30 layers, so the side stream is not currently buying overlap. That is a separate question from depth and is not investigated here."
+ ],
+ "limitations": [
+  "262144 is not measured on either engine. hipEngine needs about 95 GiB against about 94 GiB available at this protocol and about 91 minutes per pass; llama.cpp cannot serve it at all, because it caps the slot context at the model's training context (262144) and a 262144-token prompt leaves no room for a sampled token.",
+  "The hipEngine 262144 figure quoted elsewhere in this campaign is a fit to the measured points, not a row in this artifact.",
+  "llama.cpp 8192 and 16384 are rejected by that harness's own repeatability gate: its greedy output ids differ between samples. Their timings are retained as diagnostics and no ratio from them is a published claim.",
+  "Absolute rates are comparable only within this session. llama.cpp's 512 prefill reads 806 tok/s here against 902 tok/s in the 2026-10-03 depth checkpoint on the same binary, so cross-session absolute comparisons are not paired.",
+  "hipEngine's own drift control is not protocol-matched (warmup 0 against the ladder's warmup 1), so its delta measures cold start. The session drift bound comes from the two protocol-matched 512 passes instead."
+ ],
+ "decisions": []
+}

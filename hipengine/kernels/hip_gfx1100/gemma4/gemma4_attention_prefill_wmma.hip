@@ -115,6 +115,16 @@ __device__ __forceinline__ uint16_t float_to_bf16_bits(float value) {
 // mantissa bits than BF16 and the exponent rebias is lossless, so no value this
 // kernel stages is rounded by the conversion. Splitting each 32-bit word into
 // two FP32 bit patterns is a mask and a shift; the pair pack is the compiler's.
+//
+// A BF16 magnitude beyond FP16's range is clamped to the largest finite FP16
+// value rather than cast to infinity. The kernel stages V for every key of a
+// batch, including keys the keep-mask hides, and a masked key's weight is
+// exactly zero -- but 0 * inf is NaN in the tensor core, so an out-of-range
+// masked V would poison the whole accumulator while the strict kernel, which
+// never touches masked keys, stays finite. Clamping bounds the operand to
+// values the FP16 pipeline can represent; every in-range value is unchanged.
+constexpr float kFp16Max = 65504.0f;
+
 __device__ __forceinline__ half8_t bf16x8_to_half8(uint4 raw) {
   half8_t out;
   const uint32_t words[4] = {raw.x, raw.y, raw.z, raw.w};
@@ -122,8 +132,8 @@ __device__ __forceinline__ half8_t bf16x8_to_half8(uint4 raw) {
   for (int i = 0; i < 4; ++i) {
     const float lo = __uint_as_float((words[i] & 0xFFFFU) << 16);
     const float hi = __uint_as_float(words[i] & 0xFFFF0000U);
-    out[2 * i] = static_cast<half_t>(lo);
-    out[2 * i + 1] = static_cast<half_t>(hi);
+    out[2 * i] = static_cast<half_t>(fminf(fmaxf(lo, -kFp16Max), kFp16Max));
+    out[2 * i + 1] = static_cast<half_t>(fminf(fmaxf(hi, -kFp16Max), kFp16Max));
   }
   return out;
 }

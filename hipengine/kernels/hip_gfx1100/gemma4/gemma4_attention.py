@@ -191,9 +191,10 @@ _DECODE_LDS_FLOATS = 256 * 2 + 16
 class Gemma4AttentionScratch:
     """Split workspace owned by one caller on one runtime/device.
 
-    Streams have separate buffers. Growth doubles capacity and retains old
-    allocations until close synchronizes every used stream, so queued kernels
-    keep valid pointers. Construction is host-only.
+    Streams have separate buffers. Growth doubles capacity and retires the
+    superseded buffer behind a stream event: queued kernels keep valid
+    pointers until the device passes the event, and the old allocation is
+    freed then instead of living until close. Construction is host-only.
     """
 
     def __init__(self) -> None:
@@ -203,6 +204,9 @@ class Gemma4AttentionScratch:
         self._named: dict[tuple[int, str], DeviceBuffer] = {}
         self._u32: dict[tuple[int, str], tuple[int, int]] = {}
         self._owned: list[DeviceBuffer] = []
+        # Superseded buffers waiting for their stream to pass the event that
+        # was recorded after their last queued user: (event, stream, buffer).
+        self._pending: list[tuple[int, int, DeviceBuffer]] = []
         self._closed = False
 
     def buffer(self, nbytes: int, *, stream: int, runtime: HipRuntime) -> DeviceBuffer:
@@ -215,15 +219,44 @@ class Gemma4AttentionScratch:
         device = runtime.current_device()
         if self._device is not None and device != self._device:
             raise ValueError("attention scratch cannot change device")
+        self._reap_pending(runtime)
         previous = self._current.get(stream)
         if previous is not None and previous.nbytes >= nbytes:
             return previous
         capacity = max(nbytes, 2 * previous.nbytes) if previous else nbytes
         buffer = malloc(capacity, runtime=runtime)
+        if previous is not None:
+            self._retire(previous, stream=stream, runtime=runtime)
         self._runtime, self._device = runtime, device
         self._owned.append(buffer)
         self._current[stream] = buffer
         return buffer
+
+    def _retire(self, buffer: DeviceBuffer, *, stream: int, runtime: HipRuntime) -> None:
+        """Park a superseded buffer behind a stream event.
+
+        Its last users are the launches already queued on its stream. An event
+        recorded after those completes exactly when they do, so the buffer can
+        be freed as soon as the device passes the event instead of living until
+        close -- the chain a deep prefill used to hold for its whole run.
+        """
+        event = runtime.event_create()
+        runtime.event_record(event, stream)
+        self._owned.remove(buffer)
+        self._pending.append((event, stream, buffer))
+
+    def _reap_pending(self, runtime: HipRuntime) -> None:
+        """Free retired buffers whose streams have passed their event."""
+        if not self._pending:
+            return
+        still: list[tuple[int, int, DeviceBuffer]] = []
+        for event, stream, buffer in self._pending:
+            if runtime.event_query(event):
+                free(buffer, runtime=runtime)
+                runtime.event_destroy(event)
+            else:
+                still.append((event, stream, buffer))
+        self._pending = still
 
     def named_buffer(
         self, name: str, nbytes: int, *, stream: int, runtime: HipRuntime
@@ -246,11 +279,14 @@ class Gemma4AttentionScratch:
         if self._device is not None and device != self._device:
             raise ValueError("attention scratch cannot change device")
         key = (stream, name)
+        self._reap_pending(runtime)
         previous = self._named.get(key)
         if previous is not None and previous.nbytes >= nbytes:
             return previous
         capacity = max(nbytes, 2 * previous.nbytes) if previous else nbytes
         buffer = malloc(capacity, runtime=runtime)
+        if previous is not None:
+            self._retire(previous, stream=stream, runtime=runtime)
         self._runtime, self._device = runtime, device
         self._owned.append(buffer)
         self._named[key] = buffer
@@ -290,6 +326,12 @@ class Gemma4AttentionScratch:
                 self._runtime.stream_synchronize(stream)
             for stream, _ in self._named:
                 self._runtime.stream_synchronize(stream)
+            for _, stream, _ in self._pending:
+                self._runtime.stream_synchronize(stream)
+            while self._pending:
+                event, _, buffer = self._pending.pop()
+                free(buffer, runtime=self._runtime)
+                self._runtime.event_destroy(event)
             while self._owned:
                 free(self._owned[-1], runtime=self._runtime)
                 self._owned.pop()
@@ -1486,8 +1528,14 @@ def _select_prefill_attention(
             requested_variant=requested_variant,
             reason="strict",
         )
-    if (tokens is not None and tokens <= 1 and _strict_decode_preferred(keys)
-            and PREFILL_ATTENTION_STAGED not in requests):
+    # The measured decode crossover applies to every request set: the strict
+    # decode kernel is faster than the staged singleton below
+    # `_STRICT_DECODE_WINS_UNTIL_KEYS` even when staged is requested (A/B at
+    # 512 keys, 2026-10-07: strict decode 34.64 vs singleton 32.33 tok/s,
+    # identical token IDs, promoted-build prefill on both arms). Above the
+    # crossover the singleton wins, so a staged entry in the request set
+    # serves one-token blocks there.
+    if (tokens is not None and tokens <= 1 and _strict_decode_preferred(keys)):
         return PrefillAttentionSelection(
             variant=PREFILL_ATTENTION_PLAIN,
             launcher=gemma4_attention_prefill_bf16,
@@ -1499,8 +1547,22 @@ def _select_prefill_attention(
                 else f"decode: a {tokens}-token block routes to the decode kernel"
             ),
         )
+    # A one-token block is a decode step. The 2026-10-07 promotion pairs the
+    # WMMA prefill candidates with the strict-parity staged singleton for
+    # decode: when the request set offers staged alongside the WMMA entries,
+    # a decode step skips the WMMA decode shapes and resolves to staged, which
+    # is bit-exact to the strict family and the measured decode path. An
+    # explicit WMMA-only request still takes the WMMA decode shape -- the
+    # request is the product surface, and it runs or names its miss.
+    ordered = requests
+    if (tokens is not None and tokens <= 1
+            and PREFILL_ATTENTION_STAGED in requests):
+        ordered = tuple(
+            v for v in requests
+            if v not in (PREFILL_ATTENTION_WMMA_FLASH, PREFILL_ATTENTION_WMMA_FLASH_FULL)
+        )
     refusals: list[str] = []
-    for request in requests:
+    for request in ordered:
         if request == PREFILL_ATTENTION_PLAIN:
             return PrefillAttentionSelection(
                 variant=PREFILL_ATTENTION_PLAIN,

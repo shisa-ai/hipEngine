@@ -4,8 +4,9 @@ The strict family (:mod:`hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention`)
 holds one FP32 logit per live key in shared memory, so its footprint grows with
 the context and its launch refuses above 15,616 keys at head_dim 512. This
 candidate computes the same arithmetic in three kernels over a caller-owned
-global workspace, with a shared footprint that is a constant 8 KB and does not
-mention ``keys``.
+global workspace, with a shared footprint constant in ``keys`` (the score
+stage's query-row tile is the largest term and is bounded by the launcher's
+budget check).
 
 The arithmetic is the strict family's, not an approximation of it, and
 ``tests/test_gpu_gemma4_attention_staged.py`` asserts the outputs match the
@@ -13,6 +14,14 @@ shipped strict wrapper bitwise on identical device buffers.
 ``gemma4_attention_staged.hip`` states the three stages, the exactness argument,
 the workspace layout and the launch shape; this module states the host side of
 the same contract.
+
+The score stage holds up to :data:`SCORE_ROWS_PER_BLOCK` query heads of the
+same KV head in one CTA, stages their Q rows and reuses each decoded K vector
+in registers for every resident row, so a bigger group amortizes the decode
+over more strict trees. A ratio that does not fill the tile leaves its
+remainder rows in the last group. Each head retains the strict warp-key
+reduction tree; the per-row workspace, softmax and P*V arithmetic are
+unchanged.
 
 The PV stage has two work decompositions, and the plan reports which one a
 launch selected. A single query token -- the shape with the fewest independent
@@ -102,6 +111,7 @@ _ARGTYPES_STAGED = (
 # `test_staged_workspace_bytes_matches_the_kernel_export` compares them against
 # the kernel's exports on a device.
 THREADS = 256
+SCORE_ROWS_PER_BLOCK = 8
 SCORE_CHUNK_KEYS = 1024
 MAX_ROWS_PER_BLOCK = 8
 PV_TILE_KEYS = 256
@@ -293,7 +303,8 @@ class StagedAttentionPlan:
 
     @property
     def score_grid(self) -> tuple[int, int]:
-        return (self.rows, self.chunks)
+        groups = -(-self.rows_per_head // SCORE_ROWS_PER_BLOCK)
+        return (self.tokens * self.num_kv_heads * groups, self.chunks)
 
     @property
     def softmax_grid(self) -> tuple[int, int]:
@@ -388,7 +399,9 @@ def _staged_workspace_layout(tokens: int, num_heads: int, keys: int) -> StagedWo
 def _staged_launch_shape(tokens: int, num_heads: int, keys: int) -> int:
     """Validate the dimensions that drive this launch's grids; return the rows.
 
-    The score launch is ``(rows, chunks)`` CTAs; PV is
+    The score launch pairs query heads within each KV head and uses
+    ``(tokens * num_kv_heads * ceil(GQA / 2), chunks)`` CTAs; its X dimension
+    is no larger than the validated workspace row count. PV uses
     ``(tokens, num_kv_heads, row_groups)`` CTAs. X allows ``MAX_GRID_X`` CTAs;
     Y/Z allow ``MAX_GRID_DIM``. KV heads and
     row groups are checked by the full planner, which knows those dimensions.
@@ -425,9 +438,9 @@ def _staged_launch_shape(tokens: int, num_heads: int, keys: int) -> int:
 
 
 def staged_score_lds_bytes(head_dim: int) -> int:
-    """Shared bytes the score stage reserves: the query row and eight warp maxima."""
+    """Shared bytes for the score stage's query-row tile and warp maxima."""
 
-    return (int(head_dim) + (THREADS // 32)) * 4
+    return SCORE_ROWS_PER_BLOCK * (int(head_dim) + (THREADS // 32)) * 4
 
 
 def staged_softmax_lds_bytes() -> int:
@@ -555,8 +568,9 @@ def staged_workspace_buffer(
     Split out from the launcher so the ownership contract is testable without a
     device: ``scratch`` is the strict family's
     :class:`~hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention.Gemma4AttentionScratch`,
-    which keeps one buffer per stream, doubles on growth, and frees only after
-    every used stream is quiescent.
+    which keeps one buffer per stream, doubles on growth, retires the superseded
+    buffer behind a stream event, and frees it once the device passes that
+    event.
     """
 
     return scratch.buffer(plan.workspace_bytes, stream=stream, runtime=runtime)
@@ -724,8 +738,9 @@ def gemma4_attention_staged_bf16(
     strict wrapper for ``window``/``row_offset``: the trim they license is the
     same one, and it only drops columns whose weight is zero.
 
-    The output is bit-identical to the strict wrapper's for the same inputs,
-    including its ``tokens == 1`` decode routing. Pass ``scratch=`` to own the
+    The output is bit-identical to the monolithic strict block parent for the
+    same inputs, including singleton queries. The adaptive decode wrapper may
+    select implementations with a different arithmetic contract. Pass ``scratch=`` to own the
     workspace across calls; without it the launcher allocates and frees a
     temporary one. Returns the :class:`StagedAttentionPlan` it launched, so the
     decomposition that ran is observable rather than inferred.

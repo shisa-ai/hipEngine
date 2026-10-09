@@ -174,9 +174,13 @@ def test_the_shared_owner_reuses_its_peak_allocation_across_shapes(
                         f"{label}/{arm}: a reused buffer must not allocate"
                     )
                 else:
-                    assert owned > previous_owned, (
-                        f"{label}/{arm}: a new buffer must come from an allocation"
+                    # A superseded buffer is retired behind a stream event, so
+                    # the owned count does not grow with it; the replacement is
+                    # a larger allocation and the stream's only owned buffer.
+                    assert buffer.nbytes > previous_buffer.nbytes, (
+                        f"{label}/{arm}: a new buffer must come from a larger allocation"
                     )
+                    assert owned == 1
                 assert buffer.nbytes >= plan.workspace_bytes
                 previous_buffer, previous_owned = buffer, owned
                 if label == "large":

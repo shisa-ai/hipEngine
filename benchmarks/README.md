@@ -2049,6 +2049,123 @@ numeric 128K row is carried forward. Evidence:
 
 ### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
 
+#### Paired depth ladder on the promoted build (2026-10-08)
+
+On zbook/Radeon 8060S, both engines ran identical prompt IDs, BF16 KV, greedy
+128-output requests ignoring EOS, context rounded to 256 tokens above
+prompt+128, one full-shape warmup per engine per depth, one engine at a time.
+hipEngine runs the promoted default: `gemma4_wmma_flash`/
+`gemma4_wmma_flash_full` prefill with the strict-parity staged singleton for
+decode, Q8_0-K/Q4_K-K T16 tile prefill (four-wave) and the Q5_1 T16 expert
+`down` tiles; llama.cpp HIP is pinned at `17252c769` (the 2026-10-07
+comparator rows are reused unchanged; the assembler re-validated prompt
+hashes across engines).
+
+| Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | **1415.8** | 890.9 | **1.59x** | 34.55 | **35.98** | 0.96x |
+| 1024 | **1484.6** | 1158.7 | **1.28x** | **33.67** | 33.45 | **1.01x** |
+| 2048 | **1356.2** | 1136.5 | **1.19x** | **36.36** | 30.01 | **1.21x** |
+| 4096 | **1313.3** | 1116.8 | **1.18x** | **36.43** | 29.13 | **1.25x** |
+| 8192 | 1244.7 | **1277.3** | 0.97x | **34.74** | 27.47 | **1.26x** |
+| 16384 | **1135.0** | 1105.3 | **1.03x** | **31.47** | 24.95 | **1.26x** |
+| 32768 | **975.6** | 864.5 | **1.13x** | **26.26** | 21.22 | **1.24x** |
+| 65536 | **767.4** | 619.3 | **1.24x** | **19.49** | 16.53 | **1.18x** |
+| 131072 | **505.2** | 388.7 | **1.30x** | **12.42** | 11.45 | **1.08x** |
+
+hipEngine leads prefill at eight of nine depths (up to 1.59x) and decode at
+eight of nine (up to 1.26x); at 131072 it leads both phases (505.2/12.42 vs
+388.7/11.45 tok/s). The mid-depth prefill band 8192-32768 that trailed at
+0.88-0.97x on the 2026-10-07 build now stands at 0.97-1.13x, and 512-token
+decode improved from 0.93x to 0.96x. llama.cpp's own repeatability gate
+rejected its 8192 and 32768 rows in its run (its greedy continuation is not
+repeatable there); those comparator numbers are retained as best-available
+evidence with the rejection recorded, and the 16384 row passes with five
+identical samples. The remaining honest gap is 512-token decode (4%) and the
+8192 prefill row (0.97x against a rejected comparator row).
+Correctness: prompt hashes match across engines at every depth; hipEngine
+repeats, public-path parity and finite logits pass on every row.
+
+[Commands, samples, identities and rejections](results/2026-10-08-gemma4-gfx1151-depth-ladder-paired.json).
+[2026-10-07 ladder, prior build](results/2026-10-07-gemma4-gfx1151-depth-ladder-paired.json).
+
+#### Full-depth 256Ki endpoint (2026-10-09)
+
+On **zbook / Radeon 8060S (gfx1151)**, both engines ran the same
+`UD-Q4_K_XL` artifact with BF16 K/V, greedy decoding and 128 output tokens
+at 262,015 prompt tokens + 128 outputs = 262,143 of the 262,144-token
+context (llama.cpp marks the exact boundary truncated). Both engines
+received the same prompt IDs (`ca711237…f276144`, sha256-identical to the
+2026-10-06 endpoint, so the comparator rows pair directly).
+
+| Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 262,015 | **328.8 tok/s** | 227.9 tok/s | **1.44x** | **10.21 tok/s** | 7.21 tok/s | **1.42x** |
+
+hipEngine leads both phases at the full context: the promoted route (WMMA
+prefill, Q8_0-K/Q4_K-K T16 four-wave, Q5_1 T16 expert down tiles, the
+router full-block SGEMM tier, and the staged PV singleton decode window at
+32 keys) measures 328.8 tok/s prefill and 10.21 tok/s decode. The hip side
+ran the full prefill once and decoded from the saved cross-process KV
+state on the same tree; the restored decode's 128 greedy IDs equal the
+mint-time decode exactly. llama.cpp rows are the 2026-10-06 endpoint's
+unchanged (pinned `17252c769`, full uncached prefill, repeatable IDs).
+The 2026-10-06 endpoint on the pre-campaign route measured 57.15 / 5.51
+tok/s (0.25x / 0.76x), so this campaign's promoted path moved the full
+context from trailing on both phases to leading both.
+
+[Artifact](results/2026-10-09-gemma4-gfx1151-256ki-paired.json).
+[2026-10-06 endpoint, prior route](results/2026-10-06-gemma4-gfx1151-256ki-paired.json).
+
+#### Full-depth 256Ki endpoint (2026-10-06)
+
+
+On **zbook / Radeon 8060S (gfx1151)**, both engines ran the same
+`UD-Q4_K_XL` artifact with BF16 K/V, one uncached prompt, greedy decoding and
+128 output tokens. The valid endpoint uses **262,015 prompt tokens + 128 outputs
+= 262,143 of the 262,144-token context**, because llama.cpp marks a request
+truncated when the final generated token exactly reaches the context boundary.
+Both engines received the same prompt IDs (`ca711237…f276144`); each had one
+full-shape warmup and two measured requests.
+
+| Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 262,015 | 57.15 tok/s | **227.86 tok/s** | 0.251x | 5.51 tok/s | **7.21 tok/s** | 0.764x |
+
+At this depth, llama.cpp is **3.99x faster in prefill** and **1.31x faster in
+decode**. hipEngine's production route completed the full prompt with finite
+logits, repeated instrumented IDs, and public-path parity; llama.cpp completed
+full uncached prefill with repeatable output IDs and graph reuse. The 262,016 +
+128 exact-boundary attempt is excluded because llama.cpp reported `truncated`.
+The capacity rehearsal measured a 113.05 GiB tracked peak, while this endpoint
+is the full-depth execution result. This is a two-sample endpoint, not a full
+variance study or an HTTP serving-throughput claim.
+
+[Commands, prompt identity, source revisions and correctness checks](results/2026-10-06-gemma4-gfx1151-256ki-paired.json).
+
+#### Paired-head score reuse (2026-10-05)
+
+On **zbook / Radeon 8060S (gfx1151)**, the production staged-attention path
+shares each K-vector load across two query heads of the same KV head. A
+same-process public-generation A/B uses identical prompts and weights, BF16
+KV, context 33024, one greedy output token, one warmup per arm/shape and two
+samples per arm in alternating order. The table reports synchronized request
+wall time, including prefill and first-token sampling, not decode throughput.
+
+| Prompt tokens | Original score path | Paired-head reuse | Wall reduction |
+| ---: | ---: | ---: | ---: |
+| 512 | 0.4635 s | 0.4540 s | 2.05% |
+| 8192 | 14.5560 s | 13.6907 s | 5.94% |
+| 32768 | 114.1847 s | 104.5852 s | 8.41% |
+
+The change is on the default path. All compared output IDs match; 249 scoped
+CPU/GPU checks include BF16/F32 parent parity, independent long-key oracle,
+mask/window edges and workspace ownership. A separate eight-output public
+request confirms the unmodified default route. The 32K baseline samples vary
+from 110.84 to 117.53 s; two samples do not establish a general performance
+bound. No new 128K/256K, decode-rate, gfx1100 or llama.cpp result is claimed.
+[Commands, samples, library hashes and correctness checks](results/2026-10-05-gemma4-gfx1151-staged-score-reuse.json).
+
 #### End-to-end comparison checkpoint (2026-10-03)
 
 On zbook/Radeon 8060S, hipEngine and llama.cpp HIP receive identical prompt

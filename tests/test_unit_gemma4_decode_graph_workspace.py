@@ -35,7 +35,9 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
         return 100
 
     runtime = SimpleNamespace(current_device=lambda: 0, stream_begin_capture=begin,
-                              stream_end_capture=end, graph_instantiate=lambda _: 200)
+                              stream_end_capture=end, graph_instantiate=lambda _: 200,
+                              event_create=lambda: 1, event_record=lambda *a: None,
+                              event_query=lambda *a: False, event_destroy=lambda *a: None)
     monkeypatch.setattr(attention, "malloc", allocate)
     monkeypatch.setattr(attention, "build_gemma4_attention", lambda **kwargs: object())
     monkeypatch.setattr(attention, "split_workspace_bytes", lambda t, h, d, k, s, **kw: t * h * k * 4)
@@ -74,7 +76,10 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
         for geometry in geometries:
             keys = bucket.end - session._frozen_key_begin(geometry, bucket)
             need = 0
-            if variant == "gemma4_staged":
+            # A one-token staged request below the measured decode crossover
+            # resolves to the strict decode kernel, which owns no global
+            # scores, so only a block past it needs the staged workspace.
+            if variant == "gemma4_staged" and not attention._strict_decode_preferred(keys):
                 need = staged_workspace_bytes(1, geometry.num_heads, keys)
             # The incumbent sizing, mirroring the reservation's own expression:
             # the split weights plus, when the admission can pick flash, the
@@ -108,5 +113,9 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
         assert flash_requests, "the capture did not ask for the launcher's slice count"
         assert requested_slices not in (attention.flash_slices(k) for k in flash_requests)
         assert owner._current[7].nbytes >= max(flash_needs)
-    if variant == "gemma4_staged" or position > 1024:
+    # Below 1,024 keys neither route owns a workspace: the split does not
+    # engage and a staged request resolves to the strict decode kernel.
+    if position > 1024:
         assert owner._current[7] is not warmed
+    else:
+        assert 7 not in owner._current

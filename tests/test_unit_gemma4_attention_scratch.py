@@ -11,6 +11,10 @@ class Runtime:
         self.next_ptr = 4096
         self.device = 0
         self.fail = False
+        self.synced = set()
+        self.event_stream = {}
+        self.last_event = {}
+        self.next_event = 100
 
     def current_device(self):
         return self.device
@@ -29,24 +33,75 @@ class Runtime:
 
     def stream_synchronize(self, stream):
         self.events.append(("sync", stream))
+        self.synced.add(stream)
+
+    def event_create(self):
+        self.next_event += 1
+        return self.next_event
+
+    def event_record(self, event, stream=0):
+        self.events.append(("record", event, stream))
+        self.event_stream[event] = stream
+        self.last_event[stream] = event
+
+    def event_query(self, event):
+        if self.event_stream[event] in self.synced:
+            return True
+        # The device is modeled as at most one retirement behind the host on a
+        # stream: an event completes once a later one is recorded behind it.
+        return self.last_event.get(self.event_stream[event]) != event
+
+    def event_destroy(self, event):
+        self.events.append(("destroy", event))
+        del self.event_stream[event]
 
 
-def test_scratch_growth_is_bounded_and_freed_after_stream_completion():
+def test_scratch_growth_is_bounded_and_frees_superseded_buffers_as_the_device_moves_on():
     runtime = Runtime()
     scratch = attention.Gemma4AttentionScratch()
     for size in range(1, 514):
         assert scratch.buffer(size, stream=7, runtime=runtime).nbytes >= size
-    assert sum(runtime.live.values()) < 4 * 513
-    assert not any(event[0] in ("free", "sync") for event in runtime.events)
+    # The doubling chain no longer accumulates for the run's whole life:
+    # superseded buffers are retired behind stream events and reaped once the
+    # device passes them, so frees happen during the run and, after the stream
+    # quiets, only the current buffer is left -- not the sum of every
+    # superseded allocation, which is what the retain-until-close chain held.
+    assert any(event[0] == "free" for event in runtime.events)
+    runtime.stream_synchronize(7)
+    current = scratch.buffer(513, stream=7, runtime=runtime)
+    assert list(runtime.live) == [current.ptr]
     scratch.close()
     assert runtime.live == {}
-    first_free = next(i for i, event in enumerate(runtime.events) if event[0] == "free")
-    assert ("sync", 7) in runtime.events[:first_free]
     before = list(runtime.events)
     scratch.close()
     assert runtime.events == before
     with pytest.raises(RuntimeError, match="closed"):
         scratch.buffer(1, stream=7, runtime=runtime)
+
+
+def test_scratch_retires_behind_an_event_and_reaps_after_the_stream_passes_it():
+    runtime = Runtime()
+    scratch = attention.Gemma4AttentionScratch()
+    first = scratch.buffer(100, stream=7, runtime=runtime)
+    assert scratch.buffer(100, stream=7, runtime=runtime) is first
+    second = scratch.buffer(200, stream=7, runtime=runtime)
+    assert second is not first
+    # Parked, not freed: queued kernels may still hold the superseded buffer.
+    assert first.ptr in runtime.live
+    assert not any(event[0] == "free" for event in runtime.events)
+    # A later retirement on the same stream models the device moving past the
+    # first event, so the next call reaps the first retired buffer only.
+    third = scratch.buffer(400, stream=7, runtime=runtime)
+    assert not any(event[0] == "free" for event in runtime.events)
+    assert scratch.buffer(400, stream=7, runtime=runtime) is third
+    assert ("free", first.ptr) in runtime.events
+    assert set(runtime.live) == {second.ptr, third.ptr}
+    # Once the stream is synchronized the last retired buffer goes too.
+    runtime.stream_synchronize(7)
+    assert scratch.buffer(300, stream=7, runtime=runtime) is third
+    assert set(runtime.live) == {third.ptr}
+    scratch.close()
+    assert runtime.live == {}
 
 
 def test_scratch_reuses_capacity_but_isolates_owners_and_streams():

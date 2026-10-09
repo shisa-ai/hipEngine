@@ -839,6 +839,12 @@ def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int, *, va
         stream_begin_capture=begin,
         stream_end_capture=end,
         graph_instantiate=lambda _: 200,
+        # A reservation that outgrows a warmed buffer retires it behind a
+        # stream event.
+        event_create=lambda: 1,
+        event_record=lambda *a: None,
+        event_query=lambda *a: False,
+        event_destroy=lambda *a: None,
     )
     monkeypatch.setattr(attention, "malloc", allocate)
     monkeypatch.setattr(attention, "build_gemma4_attention", lambda **kwargs: object())

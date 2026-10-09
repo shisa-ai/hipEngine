@@ -1,0 +1,69 @@
+{
+ "schema": 1,
+ "kind": "gemma4_256ki_paired_depth_endpoint",
+ "status": "measured",
+ "performance_claim": true,
+ "created": "2026-10-09",
+ "question": "What are the matched near-256Ki Gemma 4 prefill and decode rates for hipEngine and llama.cpp?",
+ "model": "Gemma 4 26B-A4B-it",
+ "quant": "UD-Q4_K_XL",
+ "physical_host": "zbook",
+ "hardware": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo), 126976 MiB unified memory",
+ "kv_dtype": "bf16",
+ "execution_profile": "production for hipEngine (WMMA prefill, Q8T16 four-wave, Q5_1T16 down tiles, router SGEMM tier, PV singleton width 32); llama.cpp shipped HIP graph path, rows reused from 2026-10-06 unchanged",
+ "protocol": {
+  "prompt_tokens": 262015,
+  "prompt_ids_sha256": "ca711237090038354917518ebb65a3883a812d174a5babc02630a9ff6f276144",
+  "prompt_identity": "same frozen campaign prompt IDs; sha256 equals the 2026-10-06 endpoint's, so the comparator rows pair directly",
+  "output_tokens": 128,
+  "context": 262144,
+  "hipengine_side": "scripts/gemma4_kv_restore_bench.py on the 2026-10-09 tree: mode save ran the full prefill once (prefill_s from the artifact) and mode restore decoded 128 tokens from the saved state on the same tree; restored greedy IDs equal the mint-time decode exactly (128/128)",
+  "comparator_side": "llama.cpp HIP 17252c769 rows reused unchanged from the 2026-10-06 endpoint artifact; its own correctness (full uncached prefill, repeat IDs) passed there"
+ },
+ "engines": {
+  "hipengine": {
+   "source_commit": "739c44699876c8d7f83a8f4e16f264247d7f2b9d",
+   "command_save": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_kv_restore_bench.py --prompt 262015 --context 262144 --mode save --state /tmp/multiloop-beat-llamacpp/kvstate_262015.bin --out /tmp/multiloop-beat-llamacpp/kvsave_262015.json",
+   "command_restore": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_kv_restore_bench.py --prompt 262015 --context 262144 --mode restore --state /tmp/multiloop-beat-llamacpp/kvstate_262015.bin --out /tmp/multiloop-beat-llamacpp/kvrestore_262015_pv32.json",
+   "prefill_tps": 328.79031436621176,
+   "prefill_s": 796.9060782860033,
+   "decode_tps": 10.209449414903911,
+   "decode_s": 12.439456315303687,
+   "correctness": {
+    "restored_ids_equal_mint_ids": true,
+    "generated_tokens": 128,
+    "identity": {
+     "prompt_ids_sha256": "ca711237090038354917518ebb65a3883a812d174a5babc02630a9ff6f276144",
+     "artifact_head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+     "context": 262144,
+     "output_tokens": 128
+    }
+   }
+  },
+  "llamacpp": {
+   "source_commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+   "binary_sha256": "038f1750b6c38600174f2097647ff933a35a4b85d656e56b09d75325eda6c52a",
+   "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 262015 --output 128 --context 262144 --samples 2 --warmup 1 --kv bf16 --request-timeout 7200 --idle-limit-mib 256 --label llama-256ki-20261005-corrected --out /tmp/gemma4-256ki-paired-20261005/llama-262015.json",
+   "artifact": "/tmp/gemma4-256ki-paired-20261005/llama-262015.json",
+   "server_context": 262144,
+   "graph_enabled": true,
+   "graph_reuse_counts": [
+    127,
+    253,
+    379
+   ],
+   "prefill_tps": 227.8623037120393,
+   "prefill_s": 1149.8831315,
+   "decode_tps": 7.21053860597344,
+   "decode_s": 17.613135,
+   "correctness": {
+    "full_uncached_prefill": true,
+    "repeat_output_ids_equal": true
+   }
+  }
+ },
+ "comparison": {
+  "prefill_hip_over_llama": 1.442934215137753,
+  "decode_hip_over_llama": 1.4159066295610814
+ }
+}

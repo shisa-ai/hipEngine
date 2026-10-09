@@ -1,0 +1,90 @@
+{
+ "schema": 1,
+ "kind": "gemma4_midband_prefill_census",
+ "performance_claim": false,
+ "created": "2026-10-07",
+ "question": "What owns the 8192-32768 prefill deficit (0.88-0.97x vs llama.cpp) on the promoted WMMA build?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV, zbook / Radeon 8060S (gfx1151)",
+ "answer": "The MoE expert GEMM kernels, not attention. The WMMA promotion cut attention to 19.1% of the 8192 step and 35.4% at 32768; the three expert-quant GEMM kernels own 46-61% of every mid-band prefill step, and the router adds 8-10%.",
+ "method": "rocprofv3 kernel trace of scripts/gemma4_prefill_profile.py (warmup + one repeat per run; per-prefill = total/2), require-cached build, kernel families aggregated by name",
+ "per_prefill": {
+  "8192": {
+   "wall_s": 6.58,
+   "kernel_time_s": 7.02,
+   "shares": {
+    "expert_dense_gemm": 61.2,
+    "attention_wmma": 19.1,
+    "router": 10.4,
+    "elementwise": 4.1,
+    "moe_glue": 3.6,
+    "other": 1.5
+   },
+   "top_kernels": [
+    [
+     "gguf_q8_0_t16_prefill_wmma_nwave_kernel",
+     23.7
+    ],
+    [
+     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel",
+     18.2
+    ],
+    [
+     "q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel",
+     14.9
+    ],
+    [
+     "gemma4_attention_prefill_wmma_kernel",
+     10.6
+    ],
+    [
+     "qwen35_router_logits_token_tile_kernel",
+     9.8
+    ],
+    [
+     "gemma4_attention_prefill_wmma_full_kernel",
+     8.5
+    ]
+   ]
+  },
+  "32768": {
+   "wall_s": 33.83,
+   "kernel_time_s": 35.03,
+   "shares": {
+    "expert_dense_gemm": 48.9,
+    "attention_wmma": 35.4,
+    "router": 8.4,
+    "elementwise": 3.4,
+    "moe_glue": 2.9,
+    "other": 1.2
+   },
+   "top_kernels": [
+    [
+     "gemma4_attention_prefill_wmma_full_kernel",
+     26.3
+    ],
+    [
+     "gguf_q8_0_t16_prefill_wmma_nwave_kernel",
+     19.1
+    ],
+    [
+     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel",
+     14.8
+    ],
+    [
+     "q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel",
+     12.2
+    ],
+    [
+     "gemma4_attention_prefill_wmma_kernel",
+     9.1
+    ],
+    [
+     "qwen35_router_logits_token_tile_kernel",
+     7.9
+    ]
+   ]
+  }
+ },
+ "interpretation": "Attention tuning cannot close a 12% total gap at 8192 (19% share). The expert GEMMs (q8_0 gate_up t16 nwave, q4_k selected-dual compact32, q5_1 grouped wmma) are the fix target -- shared qwen35-lineage kernels whose tile variants were tuned on gfx1100 -- plus the qwen35 router tile kernel at 8-10%. Existing in-tree probes: gemma4_t16_leaf_ab.py, gemma4_q8_t16_4wave_microbench.py, gemma4_mmq_k_width_leaf_bench.py, gemma4_router_tile_ab.sh, gemma4_router_variant_flip_probe.py.",
+ "raw_traces": "/tmp/multiloop-beat-llamacpp/census8k-wmma, census32k-wmma"
+}
