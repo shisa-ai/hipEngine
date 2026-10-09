@@ -117,6 +117,10 @@ def main() -> int:
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--rows", type=int, default=64)
     parser.add_argument("--candidate-variants", default="gemma4_wmma_flash,gemma4_wmma_flash_full")
+    parser.add_argument("--candidate-kind", choices=("wmma", "router"), default="wmma",
+                        help="router: both arms on the production attention default, "
+                             "differing only in HIPENGINE_GEMMA4_ROUTER_SGEMM "
+                             "(strict=0 tile, candidate=1 SGEMM full-block tier)")
     args = parser.parse_args(argv := None)
     if args.rows < 1:
         parser.error("rows must be positive")
@@ -130,10 +134,19 @@ def main() -> int:
     generator = llm._get_text_generator()
     reader = GGUFReader(str(args.artifact))
     candidate_variants = tuple(args.candidate_variants.split(","))
-    strict = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows,
-                          prefill_attention_variants=("gemma4_plain",))
-    candidate = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows,
-                             prefill_attention_variants=candidate_variants)
+    import os
+    if args.candidate_kind == "router":
+        # Both arms share the production attention default; the only
+        # difference is the router full-block tier, pinned through the env
+        # seam read per call in ``laguna_router_logits``.
+        strict = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows)
+        candidate = strict
+        os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "0"
+    else:
+        strict = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows,
+                              prefill_attention_variants=("gemma4_plain",))
+        candidate = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows,
+                                 prefill_attention_variants=candidate_variants)
 
     cases = []
     for split, filename in (("canonical", "mtpbench-code-general-ja.jsonl"),
@@ -154,6 +167,7 @@ def main() -> int:
                   "flip_damage_rate_category": DAMAGE_RATE_CATEGORY,
                   "top1_global": TOP1_GLOBAL, "top1_scope": TOP1_SCOPE},
         "candidate_variants": candidate_variants,
+        "candidate_kind": args.candidate_kind,
         "rows": int(args.rows),
         "sources": {"evaluator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
         "cases": [],
@@ -195,7 +209,11 @@ def main() -> int:
                 return own_chain, np.stack(logits_rows), step_captures
 
             chain, strict_logits, strict_caps = forced_capture(strict)
+            if args.candidate_kind == "router":
+                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "1"
             _, candidate_logits, candidate_caps = forced_capture(candidate, forced_chain=chain)
+            if args.candidate_kind == "router":
+                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "0"
             if np.asarray(ids).size and strict_logits.shape != candidate_logits.shape:
                 raise RuntimeError("arm shape mismatch")
 
@@ -217,11 +235,17 @@ def main() -> int:
             # Repeatability and isolation, the production packet's controls.
             repeat_ok = True
             for _ in range(2):
+                if args.candidate_kind == "router":
+                    os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "1"
                 _, again, _ = forced_capture(candidate, forced_chain=chain)
                 repeat_ok = repeat_ok and bool(np.array_equal(candidate_logits, again))
             poison = padded_chat(generator, "Reply with the word unrelated.", 777, 900001 + index)
+            if args.candidate_kind == "router":
+                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "1"
             greedy_output(candidate, poison, 4)
             _, isolated_logits, _ = forced_capture(candidate, forced_chain=chain)
+            if args.candidate_kind == "router":
+                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "0"
             isolation_ok = bool(np.array_equal(candidate_logits, isolated_logits))
 
             # Task non-inferiority on the identical task prompts.
@@ -240,8 +264,12 @@ def main() -> int:
             task_ids = padded_chat(generator, task_prompt, depth, 300001 + index)
             strict_text = generator.tokenizer.decode(greedy_output(
                 strict, task_ids, 32, stop_ids=generator.tokenizer.stop_token_ids))
+            if args.candidate_kind == "router":
+                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "1"
             candidate_text = generator.tokenizer.decode(greedy_output(
                 candidate, task_ids, 32, stop_ids=generator.tokenizer.stop_token_ids))
+            if args.candidate_kind == "router":
+                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "0"
             task_b = check_task_answer(strict_text, answer)
             task_c = check_task_answer(candidate_text, answer)
 

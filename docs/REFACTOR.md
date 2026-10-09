@@ -4,6 +4,21 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Router full-block SGEMM rollback lever (added 2026-10-08)
+
+`HIPENGINE_GEMMA4_ROUTER_SGEMM` (default on) pins the Gemma 4 router
+logits projection back to the backend's declared tile schedule when set to
+`0`, in `laguna_router_logits` (`hipengine/kernels/hip_gfx1100/gemma4/
+gemma4_router.py`). Full 1024-row prefill blocks otherwise route through the
+F32 rocBLAS SGEMM tier on every backend (1.68x the tile on gfx1151), a
+reordering-class change gated under the section 2.11 router-routing-scoped
+envelope rather than the superseded absolute-kl_max reading.
+
+Removal condition: once the section 2.11 packet for the router candidate
+is recorded and one release cycle passes without a rollback, delete the env
+check and this entry together. The declared tile schedule stays: it is the
+sub-1024-block path and the strict-arm owner for gate captures.
+
 ## Q5_1T16 down-prefill rollback lever (added 2026-10-08)
 
 `HIPENGINE_GEMMA4_Q5_1_DOWN_T16` (default on) rolls the Gemma 4 expert down
