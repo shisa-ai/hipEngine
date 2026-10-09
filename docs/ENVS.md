@@ -377,6 +377,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_Q8_T16_PAIR_COL8` | unset | Diagnostic | Col8 pair-helper variant for Q8T16 decode (batch-route gate provenance key). |
 | `HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES` | `(5120,1024)` | Rollback seam | Shape-explicit Q8T16 rowtile admission set for the UD verifier. |
 | `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE` / `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE` | unset | Diagnostic | Select the two-/four-wave Q8T16 wide WMMA prefill session variants (shape-scoped). |
+| `HIPENGINE_GEMMA4_ROUTER_SGEMM` | `1` | Rollback seam | Routes full 1024-row prefill blocks of the Gemma 4 router logits through the F32 rocBLAS SGEMM tier on every backend; `0` pins the declared tile schedule (section 2.11 envelope, reordering-class). |
 | `HIPENGINE_GEMMA4_Q5_1_DOWN_T16` | `1` | Rollback seam | Routes the Gemma 4 Q5_1 expert down prefill through the Q5_1T16 tile leaf; `0` restores the raw-block grouped WMMA owner (same output, either way). |
 | `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE` | unset | Kernel R&D | Dense Q4_K WMMA prefill tile override (A/B harness writes `64x16`-style values). |
 | `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE` | `64x16` | Kernel R&D | Dense Q6_K WMMA prefill tile override. |
