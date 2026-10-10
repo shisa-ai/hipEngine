@@ -1090,6 +1090,134 @@ def test_the_runner_keeps_the_prefill_request_off_a_scoped_decode_step(
         runner.close()
 
 
+class _StageRuntime:
+    """Records the stream and event calls the pipelined staging makes."""
+
+    UPLOAD_STREAM = 0x5750
+
+    def __init__(self) -> None:
+        self.log: list[tuple] = []
+        self._events = 0
+
+    def stream_create(self, *, nonblocking: bool = True, priority=None) -> int:
+        self.log.append(("stream_create", nonblocking))
+        return self.UPLOAD_STREAM
+
+    def stream_synchronize(self, stream: int) -> None:
+        self.log.append(("stream_synchronize", stream))
+
+    def stream_destroy(self, stream: int) -> None:
+        self.log.append(("stream_destroy", stream))
+
+    def event_create(self, *, flags: int = 0) -> int:
+        self._events += 1
+        return 0xE000 + self._events
+
+    def event_record(self, event: int, stream: int = 0) -> None:
+        self.log.append(("event_record", event, stream))
+
+    def event_synchronize(self, event: int) -> None:
+        self.log.append(("event_synchronize", event))
+
+    def event_destroy(self, event: int) -> None:
+        self.log.append(("event_destroy", event))
+
+
+def _staged_blocks(monkeypatch: pytest.MonkeyPatch, slots):
+    """Run one four-row block per entry of ``slots`` and return what was recorded."""
+
+    import hipengine.core.hip as hip
+    from hipengine.runtime import gemma4 as gemma4_module
+
+    runner, config, captured, _dummy_buffer, rope = _forwarding_runner(monkeypatch)
+    runtime = _StageRuntime()
+    monkeypatch.setattr(hip, "get_hip_runtime", lambda: runtime)
+
+    def upload(buffer, host_ptr, nbytes=None, *, stream=0, runtime=None):
+        runtime_log.append(("upload", buffer.ptr, stream))
+
+    runtime_log = runtime.log
+    monkeypatch.setattr(gemma4_module, "enqueue_host_to_device", upload)
+    monkeypatch.setattr(runner, "_prepare_sliding_caches", lambda *a, **k: None)
+    block_logs = []
+    try:
+        for slot in slots:
+            mark = len(runtime.log)
+            runner._prefill_stage_slot = slot
+            runner._forward_block_inner([1, 2, 3, 4], needs_logits=False)
+            block_logs.append(runtime.log[mark:])
+        token_buffer = runner._token_ids.ptr
+    finally:
+        runner._prefill_stage_slot = None
+        runner.close()
+    return runtime, block_logs, token_buffer
+
+
+def test_pipelined_prefill_stages_off_the_compute_stream_in_two_slots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each block's tables and masks go through the upload stream into its slot.
+
+    A slot is rewritten only after the block that last read it has passed its
+    event, and that wait comes before the first upload into the slot.
+    """
+
+    runtime, blocks, token_buffer = _staged_blocks(monkeypatch, [0, 1, 0, 1])
+    upload_stream = _StageRuntime.UPLOAD_STREAM
+
+    staged = []
+    for log in blocks:
+        uploads = [entry for entry in log if entry[0] == "upload"]
+        # Token ids stay on the compute stream; everything else is staged.
+        assert [u[2] for u in uploads if u[1] == token_buffer] == [0]
+        content = [u for u in uploads if u[1] != token_buffer]
+        assert content and all(u[2] == upload_stream for u in content)
+        staged.append({u[1] for u in content})
+        # The uploads are drained before the block's launches are queued, and
+        # the block's event is recorded on the compute stream after them.
+        names = [entry[0] for entry in log]
+        assert names.index("stream_synchronize") > max(
+            i for i, entry in enumerate(log) if entry[0] == "upload" and entry[1] != token_buffer
+        )
+        assert log[-1][0] == "event_record" and log[-1][2] == 0
+
+    # Two slots: blocks 0 and 2 reuse one set of buffers and blocks 1 and 3 the
+    # other, and the sets never overlap. A mask that grew with the position is
+    # a new allocation inside its own slot, so reuse is an overlap, not equality.
+    assert staged[0] & staged[2] and staged[1] & staged[3]
+    assert (staged[0] | staged[2]).isdisjoint(staged[1] | staged[3])
+
+    # The first use of each slot waits for nothing.
+    assert all(entry[0] != "event_synchronize" for entry in blocks[0] + blocks[1])
+    # Block 2 reuses slot 0: it waits on block 0's event before its first upload.
+    event0 = blocks[0][-1][1]
+    event1 = blocks[1][-1][1]
+    assert event0 != event1
+    for log, event in ((blocks[2], event0), (blocks[3], event1)):
+        waits = [i for i, entry in enumerate(log) if entry == ("event_synchronize", event)]
+        first_staged = min(
+            i for i, entry in enumerate(log) if entry[0] == "upload" and entry[1] != token_buffer
+        )
+        assert waits and waits[0] < first_staged
+    # One upload stream for the runner, destroyed with the slot events at close.
+    assert sum(1 for entry in runtime.log if entry[0] == "stream_create") == 1
+    assert ("stream_destroy", upload_stream) in runtime.log
+    assert {entry[1] for entry in runtime.log if entry[0] == "event_destroy"} == {event0, event1}
+
+
+def test_a_single_block_keeps_its_staging_on_the_compute_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a slot nothing changes: one staging set, enqueued on stream 0."""
+
+    runtime, blocks, token_buffer = _staged_blocks(monkeypatch, [None, None])
+
+    for log in blocks:
+        assert all(entry[0] == "upload" and entry[2] == 0 for entry in log)
+    assert {u[1] for u in blocks[0]} & ({u[1] for u in blocks[1]} - {token_buffer})
+    assert not any(entry[0].startswith(("stream_", "event_")) for entry in runtime.log)
+
+
 def test_the_selector_declines_a_one_row_call() -> None:
     """The phase boundary is the scope, not the row count alone.
 

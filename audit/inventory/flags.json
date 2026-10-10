@@ -10497,7 +10497,7 @@
           "hipengine/runtime/gguf_linear.py:1787",
           "hipengine/runtime/gguf_linear.py:3114",
           "hipengine/runtime/gemma4.py:867",
-          "hipengine/runtime/gemma4.py:1819"
+          "hipengine/runtime/gemma4.py:1827"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -10518,7 +10518,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_WMMA_PREFILL",
-      "evidence_hash": "1b1cebfc4628"
+      "evidence_hash": "feaba70188b0"
     },
     {
       "kind": "flag",

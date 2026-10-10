@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11543,
-    "current": 4311,
+    "entries": 11544,
+    "current": 4312,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1404,
@@ -43877,14 +43877,14 @@
         "written": "2026-09-26",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 66,
+        "continuation_entries": 67,
         "open_text": "- Cut instructions per weight element in both expert kernels. The cheapest\n  bit-exact step is hoisting the staged activations into registers outside the\n  output-tile loop (8 shared loads per weight element become 8 per k), which by\n  instruction count is worth ~1.5x on kernels that are ~97% of prefill.\n- Beyond that the remaining wins change arithmetic (int8 dot products, larger\n  output tiles) and therefore need the production execution-profile gate rather\n  than bit-exactness.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "66 later entries by the same worker share this topic prefix"
+        "67 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T213133.282176Z-lhl-gemma4-prefill-attribution-sweep-memo-3724ef.md",
@@ -43903,7 +43903,7 @@
         ]
       },
       "id": "worklog/20260926T213133.282176Z-lhl-gemma4-prefill-attribution-sweep-memo-3724ef",
-      "evidence_hash": "de8bfcdca7b0"
+      "evidence_hash": "8cc91f5f9012"
     },
     {
       "kind": "worklog",
@@ -43917,14 +43917,14 @@
         "written": "2026-09-26",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 65,
+        "continuation_entries": 66,
         "open_text": "Wire Gemma 4's gate/up projection to the in-tree int8-dp4a MMQ dual kernel; the\nspike in the following entry measures 5.6x at this geometry and records the recipe.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "65 later entries by the same worker share this topic prefix"
+        "66 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T213604.731742Z-lhl-gemma4-prefill-fp32-exhausted-mmq-route-380fbe.md",
@@ -43945,7 +43945,7 @@
         ]
       },
       "id": "worklog/20260926T213604.731742Z-lhl-gemma4-prefill-fp32-exhausted-mmq-route-380fbe",
-      "evidence_hash": "3fbdcb3af9fc"
+      "evidence_hash": "9c86c0aa310f"
     },
     {
       "kind": "worklog",
@@ -44200,14 +44200,14 @@
         "written": "2026-09-27",
         "age_days": 13,
         "open_by": "status",
-        "continuation_entries": 60,
+        "continuation_entries": 61,
         "open_text": "- Sweep the prefill attention kernel's tile in both directions, then profile\n  again to confirm the line moved. `gemma4_attention_prefill_kernel` is 15.0% of\n  the prefill at 512 tokens and grows with length, and its tile is currently a\n  fixed constant with no selection logic.\n- Then layer 29, which is one launch and one missing fast kernel for 5.5%.\n- Decode needs its own profile before any tuning; the matmul levers are closed.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "60 later entries by the same worker share this topic prefix"
+        "61 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260927T154851.180637Z-lhl-gemma4-prefill-next-unit-9b8480.md",
@@ -44223,7 +44223,7 @@
         ]
       },
       "id": "worklog/20260927T154851.180637Z-lhl-gemma4-prefill-next-unit-9b8480",
-      "evidence_hash": "c77d3eb70e32"
+      "evidence_hash": "d85595ec12d8"
     },
     {
       "kind": "worklog",
@@ -45096,14 +45096,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 36,
+        "continuation_entries": 37,
         "open_text": "1. **Owner of `gguf_k_gemv.py`**: trace where a `str` reaches `_check_launch`'s `runtime`\n   parameter. The reproduction is one node and needs no GPU-specific setup.\n2. The token-tiled online-softmax prefill attention kernel remains the highest-value\n   action on this branch's objective.\n3. Decode's block-count lever is unchanged and still open (`20260928T065154`).",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "36 later entries by the same worker share this topic prefix"
+        "37 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T072243.240504Z-lhl-gemma4-prefill-attention-d9d1d2.md",
@@ -45124,7 +45124,7 @@
         ]
       },
       "id": "worklog/20260928T072243.240504Z-lhl-gemma4-prefill-attention-d9d1d2",
-      "evidence_hash": "9db349b6317d"
+      "evidence_hash": "bd8301b1b09f"
     },
     {
       "kind": "worklog",
@@ -45138,14 +45138,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 35,
+        "continuation_entries": 36,
         "open_text": "1. **Owner of `gguf_k_gemv.py`**: trace where a `str` reaches `_check_launch`'s `runtime`\n   parameter. The reproduction is one node\n   (`tests/test_unit_gguf_linear_dispatch.py::test_exact_q8_prefill_widens_columns_at_measured_row_thresholds`)\n   and needs no GPU-specific setup.\n2. The token-tiled online-softmax prefill attention kernel remains the highest-value\n   action on the objective.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "35 later entries by the same worker share this topic prefix"
+        "36 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T072327.600685Z-lhl-gemma4-prefill-attention-456b7f.md",
@@ -45163,7 +45163,7 @@
         ]
       },
       "id": "worklog/20260928T072327.600685Z-lhl-gemma4-prefill-attention-456b7f",
-      "evidence_hash": "fa2ea9d2a7a6"
+      "evidence_hash": "b45d17e8712c"
     },
     {
       "kind": "worklog",
@@ -45298,14 +45298,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 23,
+        "continuation_entries": 24,
         "open_text": "1. **Fix the harness first**: clear the sticky error between launches (`hipGetLastError()` after\n   each) and assert that the strict kernel's output is nonzero before comparing. **A comparison\n   test must fail loudly when the reference itself did not run.**\n2. Then locate the kernel defect, starting with `partial` reuse across tile iterations.\n3. The measurement environment is live and the baseline reproduces (`20260928T074257`), so once\n   the kernel is correct the comparison is immediate.\n4. The strict/production split (`20260928T074031`, corrected by `20260928T074104`) is unchanged\n   and ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "23 later entries by the same worker share this topic prefix"
+        "24 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T074435.541878Z-lhl-gemma4-prefill-attention-2366ce.md",
@@ -45328,7 +45328,7 @@
         ]
       },
       "id": "worklog/20260928T074435.541878Z-lhl-gemma4-prefill-attention-2366ce",
-      "evidence_hash": "e60e9c8f5e9a"
+      "evidence_hash": "a7f2f3caafb5"
     },
     {
       "kind": "worklog",
@@ -45342,14 +45342,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 17,
+        "continuation_entries": 18,
         "open_text": "1. **Collect a kernel trace for the prefill kernel alone and read `VGPR_Count`,\n   `LDS_Block_Size`, `Scratch_Size`.** Those three settle occupancy and would confirm or refute\n   the reasoning behind the key-tiled variant.\n2. **The 3.4%-of-issue figure is still derived.** Treat it as an upper bound until counters\n   land.\n3. **The superlinearity (2.05x time for 1.14x keys) remains unexplained** and is the most\n   informative open question.\n4. The committed key-tiled variant (2.40-2.46x at 8192/15872 keys) still needs registering and a\n   tolerance test in the suite.\n5. **Decode**: the FFN stre",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "17 later entries by the same worker share this topic prefix"
+        "18 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T075058.232578Z-lhl-gemma4-prefill-attention-37ac3b.md",
@@ -45372,7 +45372,7 @@
         ]
       },
       "id": "worklog/20260928T075058.232578Z-lhl-gemma4-prefill-attention-37ac3b",
-      "evidence_hash": "4f08d99a7efb"
+      "evidence_hash": "9227e2c56cb8"
     },
     {
       "kind": "worklog",
@@ -45425,14 +45425,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 16,
+        "continuation_entries": 17,
         "open_text": "1. **The pass-1 `#pragma unroll 2` that does not apply.** It is the one piece of\n   attention the neutral pass-3 result does not cover, the compiler says so\n   itself, and pass 1 is the shuffle-reduction chain the kernel's own comment\n   calls the whole cost of the block-tree version.\n2. **The GEMM rate, now that it is known to be uniform.** Both families sit at\n   about 5 TFLOP/s; the expert route is the larger block and the one with the\n   measured headroom, since the same part reaches 135 GB/s on the dense family's\n   weights. Whether that is a tile-shape limit or a dequant-instruction limi",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "16 later entries by the same worker share this topic prefix"
+        "17 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T080550.751446Z-lhl-gemma4-prefill-operating-point-1a6631.md",
@@ -45450,7 +45450,7 @@
         ]
       },
       "id": "worklog/20260928T080550.751446Z-lhl-gemma4-prefill-operating-point-1a6631",
-      "evidence_hash": "391db1761188"
+      "evidence_hash": "741e5299dff9"
     },
     {
       "kind": "worklog",
@@ -45833,14 +45833,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 15,
+        "continuation_entries": 16,
         "open_text": "1. **Pass 3's V load is the attention target**, on the asymmetry above rather\n   than on tiling.\n2. **The dense Q8_0 family is 213.3 ms per prefill against llama.cpp's 105.6.**\n   The remaining structural difference is tile shape: llama.cpp's RDNA3.5 MMQ\n   config is `nthreads=256, I=128, J=128` against our 32-thread block and\n   `64x32` tile. `TN=4` is the reachable step and is not in `_ALLOWED_TILES`;\n   `TN=8` needs 8 float8 accumulators plus 8 half16 activations, which do not\n   fit at `TM>=1`.\n3. **Decode has not been touched this session** and is an explicit objective\n   item: 28.06 tok/",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "15 later entries by the same worker share this topic prefix"
+        "16 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T084557.407676Z-lhl-gemma4-prefill-leads-closed-4fd247.md",
@@ -45860,7 +45860,7 @@
         ]
       },
       "id": "worklog/20260928T084557.407676Z-lhl-gemma4-prefill-leads-closed-4fd247",
-      "evidence_hash": "1e84ca5e2760"
+      "evidence_hash": "fa872e5c7041"
     },
     {
       "kind": "worklog",
@@ -46447,14 +46447,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 14,
+        "continuation_entries": 15,
         "open_text": "1. **Read the ISA for pass 1's shuffle chains.** `#pragma unroll 2` was written to\n   interleave two independent chains; whether it does is a disassembly question,\n   and the warning cannot answer it.\n2. **The tiled variant already exists** (`gemma4_attention_prefill_tiled_kernel`,\n   launched by `hipengine_gemma4_attention_prefill_tiled_bf16`) and is **not wired\n   into dispatch**. Its stated purpose is a context-independent shared footprint\n   for long context, not speed, so it is not obviously the answer at 512 tokens --\n   but it is one bench run away from being measured, and it is the onl",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "14 later entries by the same worker share this topic prefix"
+        "15 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T093930.651378Z-lhl-gemma4-prefill-attention-ablation-6ab7b5.md",
@@ -46473,7 +46473,7 @@
         ]
       },
       "id": "worklog/20260928T093930.651378Z-lhl-gemma4-prefill-attention-ablation-6ab7b5",
-      "evidence_hash": "83f4b0e2ebfb"
+      "evidence_hash": "cf7dcbd76af3"
     },
     {
       "kind": "worklog",
@@ -46778,14 +46778,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 13,
+        "continuation_entries": 14,
         "open_text": "**Give prefill attention tensor-core QK and PV.** This is the campaign's largest\nremaining term and it is not a tuning problem. The kernel is issue- or\nlatency-bound, and that is already measured three ways rather than argued: a\n`--dtype f32` probe that doubles every byte moved at identical arithmetic costs\n7.8 percent on the sliding layers and 14.2 percent on the full ones, so it is not\npaying for bytes; the tiled variant is a wash against the untiled one at this\nshape (150.65 against 150.5 ms over six geometries); and it runs at 464 GFLOP/s\non the 256d layers against an fp32 FMA ceiling near",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "13 later entries by the same worker share this topic prefix"
+        "14 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T115240.106458Z-lhl-gemma4-prefill-census-refresh-ef4af9.md",
@@ -46805,7 +46805,7 @@
         ]
       },
       "id": "worklog/20260928T115240.106458Z-lhl-gemma4-prefill-census-refresh-ef4af9",
-      "evidence_hash": "b2ed2a638f50"
+      "evidence_hash": "7f3cc6ce42a9"
     },
     {
       "kind": "worklog",
@@ -46862,14 +46862,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "dependency",
-        "continuation_entries": 12,
+        "continuation_entries": 13,
         "open_text": "- **Point the scalar lever at the expert gate/up MMQ32 kernel, not at attention.**\n  It is the largest scalar consumer in the prefill and the largest kernel term at\n  the verify shape. The WMMA rows are the existence proof that the overhead is not\n  inherent: a kernel doing comparable work at this shape issues scalar instructions\n  at a twentieth of the rate.\n- The tree already has a measured 1.13x on this kernel's body from the T16 resident\n  layout, recorded as a decision and not yet landed. Combining that with a scalar\n  reduction is the natural unit, and the `SQ_INSTS_SALU` count is the me",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'not yet landed'",
-        "12 later entries by the same worker share this topic prefix"
+        "13 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T122000.000000Z-lhl-gemma4-prefill-scalar-census-9b3d5e.md",
@@ -46890,7 +46890,7 @@
         ]
       },
       "id": "worklog/20260928T122000.000000Z-lhl-gemma4-prefill-scalar-census-9b3d5e",
-      "evidence_hash": "c1d2fd60d873"
+      "evidence_hash": "420f85b9ca3d"
     },
     {
       "kind": "worklog",
@@ -46904,14 +46904,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 10,
+        "continuation_entries": 11,
         "open_text": "- **Re-derive the prefill attribution with the phase split built into the harness, not\n  applied afterwards by hand.** Two entries in a row have now reported a production\n  figure that mixed phases; the census scripts in `scripts/` should separate prefill\n  from decode themselves so the mistake is not available. That is a small, bounded\n  unit and it protects every later measurement.\n- **The next target is the scalar stream in the two expert MMQ kernels, not their\n  traffic.** Both instruments agree on the kernel; only the scalar one has an\n  experiment behind it that moved. The Q5_1 down proj",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "10 later entries by the same worker share this topic prefix"
+        "11 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T123600.000000Z-lhl-gemma4-prefill-traffic-correction-2d9f8b.md",
@@ -46925,7 +46925,7 @@
         ]
       },
       "id": "worklog/20260928T123600.000000Z-lhl-gemma4-prefill-traffic-correction-2d9f8b",
-      "evidence_hash": "a95597045f20"
+      "evidence_hash": "1194ef6c58ea"
     },
     {
       "kind": "worklog",
@@ -47061,14 +47061,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 9,
+        "continuation_entries": 10,
         "open_text": "- **The next unit is compute efficiency in the expert MMQ prefill route, not traffic.**\n  The two named kernels are\n  `gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel` (gate/up,\n  29,080 MB of fetches) and `q5_1_mmq_ds4_selected_prefill_kernel` (down, 37,535 MB).\n  Both have microbench harnesses already: `scripts/gguf_q5_1_down_mmq_microbench.py`\n  and `scripts/gemma4_expert_mmq_wrapper_split.py`.\n- **Get the DRAM counter before quoting any prefill traffic number.**\n  `rocprofv3 --pmc FETCH_SIZE` cannot answer a bandwidth question; the L2-to-DRAM\n  read counter can. Until",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "9 later entries by the same worker share this topic prefix"
+        "10 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T135000.000000Z-lhl-gemma4-prefill-floor-4b1c8d.md",
@@ -47085,7 +47085,7 @@
         ]
       },
       "id": "worklog/20260928T135000.000000Z-lhl-gemma4-prefill-floor-4b1c8d",
-      "evidence_hash": "65c6be052058"
+      "evidence_hash": "340a678d1066"
     },
     {
       "kind": "worklog",
@@ -47682,14 +47682,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 8,
+        "continuation_entries": 9,
         "open_text": "- **Test the scaling prediction.** If the 36.2 ms is host dispatch it is roughly constant in\n  prompt length while kernel time is not, so its share should rise from 5.3 percent at 512\n  tokens. The dense probe already runs at 1024; comparing the unaccounted share at the two\n  lengths is nearly free and would confirm or kill the mechanism.\n- **Then attack the launch count or the dispatch path.** 206 dense launches in one 512-token\n  step, at 0.176 ms of idle each. The levers are fewer launches (a fused or batched\n  dispatch), a cheaper per-launch path, or graph capture -- and the choice depends",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "8 later entries by the same worker share this topic prefix"
+        "9 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T184000.000000Z-lhl-gemma4-prefill-dispatch-gap-1a7c4e.md",
@@ -47708,7 +47708,7 @@
         ]
       },
       "id": "worklog/20260928T184000.000000Z-lhl-gemma4-prefill-dispatch-gap-1a7c4e",
-      "evidence_hash": "59e5b3bbc277"
+      "evidence_hash": "a2fad4a7a574"
     },
     {
       "kind": "worklog",
@@ -47762,14 +47762,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 7,
+        "continuation_entries": 8,
         "open_text": "- **Test whether the dense funnel includes work the isolated harness does not.** Count the\n  kernels per `launch_gguf_linear` call in the trace, or time the funnel with packing\n  disabled. If the funnel launches more than one kernel per call, the \"in-situ penalty\" is\n  the extra kernel and the dense kernel's rate was never in question.\n- **The MoE plumbing is 51.6 ms and no term in the budget counted it.** Router logits at\n  14.7 ms over 26 layers is 0.57 ms per layer for a projection the size of a small dense\n  layer, and group compact plus gather is another 21 ms of pure index work. **This i",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "7 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T192000.000000Z-lhl-gemma4-prefill-kernel-timeline-3b9e5f.md",
@@ -47788,7 +47788,7 @@
         ]
       },
       "id": "worklog/20260928T192000.000000Z-lhl-gemma4-prefill-kernel-timeline-3b9e5f",
-      "evidence_hash": "18f23e3703e1"
+      "evidence_hash": "284c116f0955"
     },
     {
       "kind": "worklog",
@@ -48952,14 +48952,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 6,
         "open_text": "**The objective is not met at 2048 and 4096 and this entry should be the first\nthing the next unit reads.** The work is to explain why a pure weight read\nstream reaches 223 GB/s at the lm head and 127 GB/s at the dense projections,\nand it is a profiling task before it is a kernel task.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T224201.718243Z-lhl-gemma4-prefill-residual-audit-af6ed7.md",
@@ -48977,7 +48977,7 @@
         ]
       },
       "id": "worklog/20260928T224201.718243Z-lhl-gemma4-prefill-residual-audit-af6ed7",
-      "evidence_hash": "282b946e5880"
+      "evidence_hash": "f0a0fd801e0f"
     },
     {
       "kind": "worklog",
@@ -49894,14 +49894,14 @@
         "written": "2026-09-29",
         "age_days": 11,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "- **Attention is the lever that grows.** 130.82 ms at 512 and 499 ms at 1024, against llama.cpp\n  being flat (1012.98 at 512, 1067.14 at 2048). The objective is stated at 512, where attention\n  is 19.6 percent, but any longer-prompt claim is decided by attention alone.\n  `20260929T073000` established what its time *is*: not traffic (f32 against bf16 is 1.07), not\n  compute (557 GFLOP/s), 25 percent load-and-dot, 75 percent per-key loop machinery.\n- **Settle the expert reuse question directly** before building anything on it. The census's\n  268.7 ms across two projections at the artifact's geom",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260929T083000.000000Z-lhl-gemma4-prefill-census-and-expert-split-2b8d4e.md",
@@ -49920,7 +49920,7 @@
         ]
       },
       "id": "worklog/20260929T083000.000000Z-lhl-gemma4-prefill-census-and-expert-split-2b8d4e",
-      "evidence_hash": "20fe62fd1506"
+      "evidence_hash": "aaea209127a5"
     },
     {
       "kind": "worklog",
@@ -52655,7 +52655,7 @@
         "written": "2026-10-04",
         "age_days": 6,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "- 262144 is still unmeasured on both engines and still needs the sizing decision\n  and the `/tmp` to disk migration (frees 27 GiB, needs root).\n- A 262142-prompt llama.cpp run would replace the comparator's 256K projection\n  with a prefill-only measurement (~25-45 min); it cannot be paired.",
         "paths_missing": [],
         "flags_unread": []
@@ -52663,7 +52663,7 @@
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
         "Next also names a dependency: 'cannot be'",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261004T212906.001083Z-lhl-gemma4-prefill-gap-fix-12b034.md",
@@ -52682,7 +52682,7 @@
         ]
       },
       "id": "worklog/20261004T212906.001083Z-lhl-gemma4-prefill-gap-fix-12b034",
-      "evidence_hash": "fb3802e0f317"
+      "evidence_hash": "f756cd0b30b9"
     },
     {
       "kind": "worklog",
