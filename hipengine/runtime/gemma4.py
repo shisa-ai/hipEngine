@@ -1332,6 +1332,7 @@ class Gemma4Runner:
         them too, including the replaced allocations growth deliberately kept.
         """
 
+        self._prefill_stage_release()
         for scratch in self._scratches:
             scratch.free()
         if self._int8_kv is not None:
@@ -1807,34 +1808,43 @@ class Gemma4Runner:
         logits = None
         last_start = min(((rows - 1) // self.max_block) * self.max_block, rows - wanted)
         block_starts = [*range(0, last_start, self.max_block), last_start]
-        for start in block_starts:
-            # Only this loop's last block's logits are returned; every earlier
-            # block's copy is overwritten on the next iteration, so its final
-            # norm, projection and device-to-host copy are unread.
-            last = start == last_start
-            end = rows if last else min(start + self.max_block, last_start)
-            block = tokens[start:end]
-            # A full block opts into the dense WMMA prefill; a partial block or a
-            # verify block stays on the strict route. An explicitly set
-            # HIPENGINE_GGUF_WMMA_PREFILL wins outright inside the session.
-            with _gemma4_block_wmma_session(
-                not verification and len(block) == self.max_block
-            ):
-                logits = self._forward_block(
-                    block,
-                    apply_softcap=apply_softcap,
-                    needs_logits=last,
-                    return_hidden=return_hidden,
-                    logits_rows=wanted if last else 1,
-                    capture_layers=capture_layers,
-                    verification=verification,
-                    # The semantic phase of *this call*, not of the block: a
-                    # single-token forward is an incremental decode step, and a
-                    # prompt chunked into blocks is prefill even when its final
-                    # chunk is one row. The decode-attention preference is
-                    # forwarded only for the former.
-                    decode_phase=rows == 1,
+        # A prompt of several blocks stages each block's content off the compute
+        # stream, alternating two staging slots; see ``_prefill_stage_begin``.
+        pipelined = len(block_starts) > 1
+        try:
+            for index, start in enumerate(block_starts):
+                self._prefill_stage_slot = (
+                    index % self._PREFILL_STAGE_SLOTS if pipelined else None
                 )
+                # Only this loop's last block's logits are returned; every earlier
+                # block's copy is overwritten on the next iteration, so its final
+                # norm, projection and device-to-host copy are unread.
+                last = start == last_start
+                end = rows if last else min(start + self.max_block, last_start)
+                block = tokens[start:end]
+                # A full block opts into the dense WMMA prefill; a partial block or a
+                # verify block stays on the strict route. An explicitly set
+                # HIPENGINE_GGUF_WMMA_PREFILL wins outright inside the session.
+                with _gemma4_block_wmma_session(
+                    not verification and len(block) == self.max_block
+                ):
+                    logits = self._forward_block(
+                        block,
+                        apply_softcap=apply_softcap,
+                        needs_logits=last,
+                        return_hidden=return_hidden,
+                        logits_rows=wanted if last else 1,
+                        capture_layers=capture_layers,
+                        verification=verification,
+                        # The semantic phase of *this call*, not of the block: a
+                        # single-token forward is an incremental decode step, and a
+                        # prompt chunked into blocks is prefill even when its final
+                        # chunk is one row. The decode-attention preference is
+                        # forwarded only for the former.
+                        decode_phase=rows == 1,
+                    )
+        finally:
+            self._prefill_stage_slot = None
         assert logits is not None
         return logits
 
@@ -1864,16 +1874,23 @@ class Gemma4Runner:
         rows = len(tokens)
         token = -1
         last_start = ((rows - 1) // self.max_block) * self.max_block
-        for start in range(0, rows, self.max_block):
-            block = tokens[start : start + self.max_block]
-            with _gemma4_block_wmma_session(len(block) == self.max_block):
-                token = self._forward_block(
-                    block,
-                    apply_softcap=apply_softcap,
-                    needs_logits=start == last_start,
-                    collect_argmax=True,
-                    decode_phase=rows == 1,
+        pipelined = rows > self.max_block
+        try:
+            for index, start in enumerate(range(0, rows, self.max_block)):
+                self._prefill_stage_slot = (
+                    index % self._PREFILL_STAGE_SLOTS if pipelined else None
                 )
+                block = tokens[start : start + self.max_block]
+                with _gemma4_block_wmma_session(len(block) == self.max_block):
+                    token = self._forward_block(
+                        block,
+                        apply_softcap=apply_softcap,
+                        needs_logits=start == last_start,
+                        collect_argmax=True,
+                        decode_phase=rows == 1,
+                    )
+        finally:
+            self._prefill_stage_slot = None
         assert token is not None
         return int(token)
 
@@ -2001,7 +2018,8 @@ class Gemma4Runner:
                 f"logits_rows {projected} is outside 1..{rows}, this block's rows"
             )
 
-        tables, masks = self._stage_block_content(tokens, stream=0)
+        stage_slot = getattr(self, "_prefill_stage_slot", None)
+        tables, masks = self._stage_block_content(tokens, stream=0, slot=stage_slot)
         # Rebase any bounded sliding-layer cache before the launches that read
         # it. The mask was staged from absolute positions, so it is unaffected;
         # only the per-layer cache slot a block lands in moves.
@@ -2021,6 +2039,8 @@ class Gemma4Runner:
             verification=verification,
             decode_phase=decode_phase,
         )
+        if stage_slot is not None:
+            self._prefill_stage_end(stage_slot, stream=0)
         if collect_argmax:
             return self._collect_block_argmax(
                 tokens,
@@ -2097,11 +2117,17 @@ class Gemma4Runner:
         stream: int,
         keys_extent: int | None = None,
         key_begin_at: Callable[[Gemma4AttentionGeometry], int] | None = None,
+        slot: int | None = None,
     ) -> tuple[
         dict[Gemma4RopeConfig, tuple[DeviceBuffer, DeviceBuffer]],
         dict[int | None, DeviceBuffer],
     ]:
         """Compute this block's position-dependent content and enqueue uploads.
+
+        ``slot`` selects one of the pipelined prefill staging slots: the rope
+        tables and masks then land in that slot's own buffers through the
+        upload stream instead of behind ``stream``'s queue. ``None`` keeps the
+        single staging set on ``stream``.
 
         Token ids, the rope tables for this block's positions and the keep-mask
         change every block, but each lands in a reusable staging buffer whose
@@ -2130,6 +2156,8 @@ class Gemma4Runner:
             self._token_ids, host_array_ptr(ids), ids.nbytes, stream=stream
         )
 
+        upload_stream = stream if slot is None else self._prefill_stage_begin(slot)
+        suffix = "" if slot is None else f"@{slot}"
         positions = np.arange(start, start + rows, dtype=np.int64)
         # Tables depend only on the rope contract and this block's positions,
         # the mask only on the sliding window and this block's range, so each
@@ -2163,14 +2191,14 @@ class Gemma4Runner:
                 # overwritten these reusable device buffers since the prefill.
                 staged = (
                     self._stage_upload(
-                        f"cos{attention.rope}",
+                        f"cos{attention.rope}{suffix}",
                         np.ascontiguousarray(cos, dtype=np.float32),
-                        stream=stream,
+                        stream=upload_stream,
                     ),
                     self._stage_upload(
-                        f"sin{attention.rope}",
+                        f"sin{attention.rope}{suffix}",
                         np.ascontiguousarray(sin, dtype=np.float32),
-                        stream=stream,
+                        stream=upload_stream,
                     ),
                 )
                 tables[attention.rope] = staged
@@ -2180,14 +2208,78 @@ class Gemma4Runner:
                 # layer's base, so the mask's column 0 and the kernel's key
                 # pointer address the same key without any clamp.
                 masks[attention.sliding_window] = self._stage_upload(
-                    f"mask{attention.sliding_window}",
+                    f"mask{attention.sliding_window}{suffix}",
                     _keep_mask(
                         attention, start, rows, extent,
                         key_begin=None if key_begin_at is None else key_begin_at(attention),
                     ),
-                    stream=stream,
+                    stream=upload_stream,
                 )
+        if slot is not None:
+            # The uploads ran on their own stream, so nothing orders them ahead
+            # of the launches that read them except this drain. That stream
+            # carries only these copies, so the drain waits for them alone.
+            from hipengine.core.hip import get_hip_runtime
+
+            get_hip_runtime().stream_synchronize(upload_stream)
         return tables, masks
+
+    # Two slots: the block being launched and the one still running ahead of it.
+    _PREFILL_STAGE_SLOTS = 2
+
+    def _prefill_stage_begin(self, slot: int) -> int:
+        """Return the upload stream once ``slot``'s previous readers are done.
+
+        An upload of megabytes from pageable host memory does not return until
+        the stream it is enqueued on has drained. On the compute stream that
+        made every block of a long prompt wait for the whole previous block
+        before its first launch could be queued, and the device then ran dry
+        while the host queued it: 6.0 of 8.1 host seconds over three 8192-token
+        prefills on a W7900, and about 35 ms of idle device per 1024-token
+        block. Staging through a second stream removes the wait, which leaves
+        only one thing to order: a slot's buffers must not be rewritten while a
+        queued block still reads them. Each block records an event when its
+        launches are queued, and the block that reuses the slot two blocks
+        later waits on that event first. By then the block in between is fully
+        queued, so the device has work for the whole wait.
+        """
+
+        from hipengine.core.hip import get_hip_runtime
+
+        runtime = get_hip_runtime()
+        state = self.__dict__.setdefault("_prefill_stage", {"stream": 0, "events": {}})
+        if not state["stream"]:
+            state["stream"] = runtime.stream_create(nonblocking=True)
+        pending = state["events"].get(slot)
+        if pending is not None and pending[1]:
+            runtime.event_synchronize(pending[0])
+        return int(state["stream"])
+
+    def _prefill_stage_end(self, slot: int, *, stream: int) -> None:
+        """Mark on ``stream`` the point after which ``slot`` may be rewritten."""
+
+        from hipengine.core.hip import get_hip_runtime
+
+        runtime = get_hip_runtime()
+        state = self.__dict__.setdefault("_prefill_stage", {"stream": 0, "events": {}})
+        pending = state["events"].get(slot)
+        event = runtime.event_create() if pending is None else pending[0]
+        runtime.event_record(event, stream)
+        state["events"][slot] = (event, True)
+
+    def _prefill_stage_release(self) -> None:
+        """Destroy the upload stream and the slot events, once."""
+
+        state = self.__dict__.pop("_prefill_stage", None)
+        if not state:
+            return
+        from hipengine.core.hip import get_hip_runtime
+
+        runtime = get_hip_runtime()
+        for event, _recorded in state["events"].values():
+            runtime.event_destroy(event)
+        if state["stream"]:
+            runtime.stream_destroy(state["stream"])
 
     def _prepare_sliding_caches(
         self, start: int, rows: int, *, stream: int
