@@ -9599,18 +9599,37 @@ pass on an ignored stride); and
 
 The Gemma 4 generation loop replays decode steps from a whole-step HIP graph
 capture (`hipengine/runtime/gemma4_decode_graph.py`). The replay window is
-restricted: any bucket whose positions reach the decode split route (1024
-keys, `decode_slices`) takes the launched step instead, because the capture
-bakes the split's host-computed slice geometry and replay diverges (measured
-~10 percent relative logit error at 1024 keys). The env
-`HIPENGINE_GEMMA4_DECODE_GRAPH` (default on) is the rollback seam for the
-whole route, and the in-session `launched_fallbacks` counter makes the
-fallback visible per request.
+restricted: any bucket whose positions reach the flash-decoding route (from
+1024 keys) takes the launched step instead. Flash partitions the key range as
+a function of the live key count (`flash_slices(keys)` slices,
+`keys*slice/slices` boundaries), so a capture bakes the bucket-frozen
+partitioning and replay diverges (measured: mathematically equal, not
+bit-equal; ~1e-7 per attention amplified to 5-26 percent logit deltas; layer
+probe in worklog 20261010T010705). The split and class routes are
+partition-order-invariant under frozen supersets and replay bit-exact.
 
-Removal condition: device-positioned appends — the qwen
-`record_i64_scalar_indexed` pattern — plus a split route whose slice
-geometry is resolved on the device make capture exact at every depth. Then
-the bucket guard, the fallback counter, and the env all go, and the graph
-covers the full decode range. The intermediate capture design notes (retarget
-cost, capture-amortized buckets) live in the module docstring and the
-2026-10-09 worklog entry.
+A 2026-10-10 attempt extended capture to 1024-2399 keys by re-routing the
+launched path to the split below a 2400-key crossover, and was reverted the
+same day on natural-token campaign-bench measurements: the crossover measured
+on random-token prompts (split +3.7/+3.1 percent at 1024/2048 keys) does not
+transfer to natural text, where flash wins at every depth (split -3.3 percent
+at 2048 keys, and the 53 sliding layers at 1024 keys cost the deep
+device-bound steps -7 percent decode: 27.81 vs 29.92 tok/s at 32768); and
+the mid-depth graph prize measured the same way (+11.8 percent at 2048) is
+absent on natural tokens (graph+flash 34.95 vs launched flash 35.10 tok/s).
+Random-token prompts drive pathological MoE expert routing and invalidate
+route/prize measurements; crossover and prize numbers must come from the
+campaign corpus. The route change itself passed the section 2.11 envelope
+(1152-row teacher-forced packet, median KL 2.9e-6, flip-damage 1.2 percent,
+top-1 98.7 percent) — arithmetic quality was never the blocker; speed was.
+
+Removal condition: device-resolved flash geometry — the phase kernel derives
+`flash_slices(live)` per block from a staged device slot (live count plus the
+frozen/live key-begin delta), so the replay partitions exactly as the
+launched path does at every position. That is the only route to a mid-depth
+or deep graph prize worth the capture: it keeps the launched flash route (the
+measured winner at every depth on natural tokens) and makes its replay
+bit-exact. Then the bucket guard, the fallback counter, and the env all go,
+and the graph covers the full decode range. The intermediate capture design
+notes (retarget cost, capture-amortized buckets) live in the module docstring
+and the 2026-10-09 worklog entry.
