@@ -128,10 +128,12 @@ def test_gemma4_decode_graph_deep_positions_fall_back_and_stay_exact():
     """Buckets that reach the decode split route replay the launched step.
 
     At 1024 prompt tokens the decode steps sit at 1024+ keys, where the
-    split route's host-computed slice geometry would be baked into a
-    capture (measured: ~10 percent relative logit divergence, 52/128
-    steps). Those steps must take the launched path instead and stay
-    bit-identical to it.
+    decode attention routes to flash-decoding. Flash partitions the key
+    range as a function of the live key count, so a capture bakes the
+    bucket-frozen partitioning and replay diverges (measured: layer probe
+    in worklog 20261010T010705; the earlier split-geometry attribution was
+    wrong -- the split and class routes replay bit-exact). Those steps must
+    take the launched path instead and stay bit-identical to it.
     """
 
     import hipengine
