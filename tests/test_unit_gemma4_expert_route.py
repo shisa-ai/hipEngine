@@ -2335,6 +2335,79 @@ def test_the_expert_block_counts_the_ladder_route_when_the_mmq_leaves_decline(
     )
 
 
+@pytest.mark.parametrize(
+    ("mode", "lever", "lanes", "expected_down"),
+    [
+        # The unpinned default with at least 16 lanes per expert: WMMA down.
+        ("auto", None, 64, "down_wmma"),
+        ("auto", "1", 64, "down_wmma"),
+        # The lever restores the ladder's exact grouped owner.
+        ("auto", "0", 64, "grouped_prefill"),
+        # A pinned exact mode never takes it, whatever the lever says.
+        ("grouped", "1", 64, "grouped_prefill"),
+        # Too few lanes for a tile plan: the ladder serves the block.
+        ("auto", None, 8, "grouped_prefill"),
+    ],
+)
+def test_the_unpinned_default_runs_the_down_through_wmma(
+    monkeypatch: pytest.MonkeyPatch, mode, lever, lanes, expected_down,
+) -> None:
+    """The default down projection is the WMMA owner behind its own lever."""
+
+    import hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts as experts
+
+    def no_op(*args, **kwargs) -> None:
+        return None
+
+    plans: list[int] = []
+
+    def tile_plan(scratch, expert_start_ptr, lane_count, **kwargs) -> int:
+        plans.append(lane_count)
+        return lane_count
+
+    def wmma_down(*args, **kwargs) -> bool:
+        experts._record_moe_route("down_wmma")
+        return True
+
+    for name in (
+        "_zero", "qwen35_moe_group_compact_active", "qwen35_moe_gather_packed_hidden_lowp",
+        "gemma4_gelu_tanh_mul_bf16", "gemma4_moe_lane_to_row_i32",
+        "gemma4_moe_weighted_accumulate_bf16",
+    ):
+        monkeypatch.setattr(experts, name, no_op)
+    monkeypatch.setattr(experts, "_build_wmma_tile_plan", tile_plan)
+    monkeypatch.setattr(experts, "_fused_wmma_owner", lambda *a, **k: None)
+    monkeypatch.setattr(experts, "gemma4_project_experts_gate_up_mmq", lambda *a, **k: False)
+    monkeypatch.setattr(experts, "gemma4_project_experts_down_mmq", lambda *a, **k: False)
+    monkeypatch.setattr(experts, "gemma4_project_experts_grouped", lambda *a, **k: False)
+    monkeypatch.setattr(experts, "gemma4_project_experts_grouped_dual", lambda *a, **k: False)
+    monkeypatch.setattr(experts, "_gemma4_project_experts_down_wmma_t16", lambda *a, **k: False)
+    monkeypatch.setattr(experts, "gemma4_project_experts_wmma", wmma_down)
+    monkeypatch.setattr(experts, "gemma4_project_experts_rows", lambda *a, **k: "grouped_prefill")
+    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", mode)
+    if lever is None:
+        monkeypatch.delenv("HIPENGINE_GEMMA4_MOE_DOWN_WMMA", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_WMMA", lever)
+
+    scratch = _AccountingScratch(
+        tokens=lanes, top_k=1, hidden_size=256, intermediate=64, num_experts=4
+    )
+    before = gemma4_moe_expert_route_counts()
+    experts.gemma4_experts_forward_bf16(
+        0x1000, 0x2000, 0x3000, SimpleNamespace(), SimpleNamespace(), 0x4000,
+        scratch=scratch, rows=lanes,
+    )
+    delta = _route_delta(before, gemma4_moe_expert_route_counts())
+    assert delta.get(expected_down, 0) >= 1, delta
+    if expected_down == "down_wmma":
+        assert plans == [lanes], "the down builds its own tile plan when the gate/up built none"
+        assert delta == {"grouped_prefill": 1, "down_wmma": 1}, delta
+    else:
+        assert "down_wmma" not in delta
+        assert not plans
+
+
 @pytest.mark.parametrize("enabled", [True, False])
 def test_auto_t16_uses_default_mmq_family_and_honors_rollback(monkeypatch, enabled):
     """A tiled allocation must not pin the one-plane diagnostic MMQ owner."""

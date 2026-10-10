@@ -33,7 +33,7 @@ from hipengine.generation.gemma4_profiles import (
 # The measured default path (resolve-spy trace, mode=auto, shipped artifact).
 _MMQ32 = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 _T16_FUSED_WMMA = "selected_dual_wmma_prefill_fused_bf16_bf16_out"
-_GROUPED_DOWN_PRODUCTION = "selected_grouped_prefill_staged_out4_bf16_bf16_out"
+_GROUPED_DOWN_PRODUCTION = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
 _GROUPED_DUAL = "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
 _GROUPED_DOWN_Q5_1 = "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
 # The T16-converted gate_up scope's exact owner: grouped registers no T16

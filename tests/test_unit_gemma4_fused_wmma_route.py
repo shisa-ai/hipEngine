@@ -21,7 +21,22 @@ def test_fused_wmma_capability_and_geometry(monkeypatch, rows):
     assert experts._fused_wmma_owner(10, rows * 8, 2816, 704, 128) is None
 
 
-def test_forward_uses_fused_gate_up_and_exact_down_on_the_requested_stream(monkeypatch):
+@pytest.mark.parametrize(
+    ("lever", "down"), [(None, "wmma_down"), ("1", "wmma_down"), ("0", "exact_down")]
+)
+def test_forward_uses_fused_gate_up_and_the_selected_down_on_the_requested_stream(
+    monkeypatch, lever, down,
+):
+    """The fused gate/up shares its tile plan with the default WMMA down.
+
+    ``HIPENGINE_GEMMA4_MOE_DOWN_WMMA=0`` restores the exact ladder down, which
+    must then run without the WMMA owner being touched.
+    """
+
+    if lever is None:
+        monkeypatch.delenv("HIPENGINE_GEMMA4_MOE_DOWN_WMMA", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_WMMA", lever)
     events = []
     buffers = {}
     def buffer(name):
@@ -46,10 +61,20 @@ def test_forward_uses_fused_gate_up_and_exact_down_on_the_requested_stream(monke
     monkeypatch.setattr(experts, "qwen35_moe_group_compact_active", record("compact"))
     monkeypatch.setattr(experts, "qwen35_moe_gather_packed_hidden_lowp", record("gather"))
     monkeypatch.setattr(experts, "gemma4_gelu_tanh_mul_bf16", record("gelu"))
-    monkeypatch.setattr(experts, "gemma4_project_experts_wmma", forbidden)
-    monkeypatch.setattr(experts, "gemma4_project_experts_rows", record("exact_down"))
+    # The tile-form leaf declines this stub weight, so the raw-block WMMA owner
+    # is the one that reports the down.
+    monkeypatch.setattr(experts, "_gemma4_project_experts_down_wmma_t16", lambda *a, **k: False)
+    monkeypatch.setattr(
+        experts, "gemma4_project_experts_wmma",
+        record("wmma_down", True) if down == "wmma_down" else forbidden,
+    )
+    monkeypatch.setattr(
+        experts, "gemma4_project_experts_rows",
+        record("exact_down") if down == "exact_down" else forbidden,
+    )
     monkeypatch.setattr(experts, "gemma4_moe_lane_to_row_i32", record("lanes"))
     monkeypatch.setattr(experts, "gemma4_moe_weighted_accumulate_bf16", record("combine"))
     experts.gemma4_experts_forward_bf16(10, 20, 30, weight, 40, 50,
                                       scratch=scratch, rows=512, stream=7)
-    assert events == ["compact", "map", "gather", "fused", "gelu", "exact_down", "lanes", "combine"]
+    # One tile plan, built for the gate/up and reused by the WMMA down.
+    assert events == ["compact", "map", "gather", "fused", "gelu", down, "lanes", "combine"]

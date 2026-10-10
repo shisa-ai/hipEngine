@@ -44,6 +44,13 @@ from scripts.gemma4_production_quality import (
 from scripts.gemma4_router_margin_diagnostic import router_scores, top8
 from scripts.gemma4_teacher_forced_gate import row_kl_divergence
 
+# Candidate kinds that are one env lever read per call: strict arm "0",
+# candidate arm "1", on a single shared runner.
+_LEVER_KINDS = {
+    "router": "HIPENGINE_GEMMA4_ROUTER_SGEMM",
+    "down_wmma": "HIPENGINE_GEMMA4_MOE_DOWN_WMMA",
+}
+
 # The binding bars, per EXECUTION-PROFILES section 2.11 (2026-10-07 lead decision):
 # robust statistics over all rows plus a bounded flip-damage budget.
 MEDIAN_KL = 1e-3
@@ -117,10 +124,13 @@ def main() -> int:
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--rows", type=int, default=64)
     parser.add_argument("--candidate-variants", default="gemma4_wmma_flash,gemma4_wmma_flash_full")
-    parser.add_argument("--candidate-kind", choices=("wmma", "router"), default="wmma",
-                        help="router: both arms on the production attention default, "
-                             "differing only in HIPENGINE_GEMMA4_ROUTER_SGEMM "
-                             "(strict=0 tile, candidate=1 SGEMM full-block tier)")
+    parser.add_argument("--candidate-kind", choices=("wmma", *sorted(_LEVER_KINDS)),
+                        default="wmma",
+                        help="router / down_wmma: both arms on the default attention, "
+                             "differing only in one env lever (strict=0, candidate=1): "
+                             "HIPENGINE_GEMMA4_ROUTER_SGEMM (tile vs SGEMM full-block "
+                             "tier) or HIPENGINE_GEMMA4_MOE_DOWN_WMMA (exact grouped "
+                             "expert down vs the WMMA owner)")
     args = parser.parse_args(argv := None)
     if args.rows < 1:
         parser.error("rows must be positive")
@@ -135,13 +145,20 @@ def main() -> int:
     reader = GGUFReader(str(args.artifact))
     candidate_variants = tuple(args.candidate_variants.split(","))
     import os
-    if args.candidate_kind == "router":
-        # Both arms share the production attention default; the only
-        # difference is the router full-block tier, pinned through the env
-        # seam read per call in ``laguna_router_logits``.
+    lever = _LEVER_KINDS.get(args.candidate_kind)
+
+    def set_lever_arm(*, candidate: bool) -> None:
+        """Select the strict (0) or candidate (1) side of an env-lever kind."""
+
+        if lever is not None:
+            os.environ[lever] = "1" if candidate else "0"
+
+    if lever is not None:
+        # Both arms share one runner on the default attention; the only
+        # difference is the lever, which its call site reads per call.
         strict = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows)
         candidate = strict
-        os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "0"
+        set_lever_arm(candidate=False)
     else:
         strict = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows,
                               prefill_attention_variants=("gemma4_plain",))
@@ -209,11 +226,9 @@ def main() -> int:
                 return own_chain, np.stack(logits_rows), step_captures
 
             chain, strict_logits, strict_caps = forced_capture(strict)
-            if args.candidate_kind == "router":
-                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "1"
+            set_lever_arm(candidate=True)
             _, candidate_logits, candidate_caps = forced_capture(candidate, forced_chain=chain)
-            if args.candidate_kind == "router":
-                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "0"
+            set_lever_arm(candidate=False)
             if np.asarray(ids).size and strict_logits.shape != candidate_logits.shape:
                 raise RuntimeError("arm shape mismatch")
 
@@ -235,17 +250,14 @@ def main() -> int:
             # Repeatability and isolation, the production packet's controls.
             repeat_ok = True
             for _ in range(2):
-                if args.candidate_kind == "router":
-                    os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "1"
+                set_lever_arm(candidate=True)
                 _, again, _ = forced_capture(candidate, forced_chain=chain)
                 repeat_ok = repeat_ok and bool(np.array_equal(candidate_logits, again))
             poison = padded_chat(generator, "Reply with the word unrelated.", 777, 900001 + index)
-            if args.candidate_kind == "router":
-                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "1"
+            set_lever_arm(candidate=True)
             greedy_output(candidate, poison, 4)
             _, isolated_logits, _ = forced_capture(candidate, forced_chain=chain)
-            if args.candidate_kind == "router":
-                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "0"
+            set_lever_arm(candidate=False)
             isolation_ok = bool(np.array_equal(candidate_logits, isolated_logits))
 
             # Task non-inferiority on the identical task prompts.
@@ -264,12 +276,10 @@ def main() -> int:
             task_ids = padded_chat(generator, task_prompt, depth, 300001 + index)
             strict_text = generator.tokenizer.decode(greedy_output(
                 strict, task_ids, 32, stop_ids=generator.tokenizer.stop_token_ids))
-            if args.candidate_kind == "router":
-                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "1"
+            set_lever_arm(candidate=True)
             candidate_text = generator.tokenizer.decode(greedy_output(
                 candidate, task_ids, 32, stop_ids=generator.tokenizer.stop_token_ids))
-            if args.candidate_kind == "router":
-                os.environ["HIPENGINE_GEMMA4_ROUTER_SGEMM"] = "0"
+            set_lever_arm(candidate=False)
             task_b = check_task_answer(strict_text, answer)
             task_c = check_task_answer(candidate_text, answer)
 
