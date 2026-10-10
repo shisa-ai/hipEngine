@@ -9620,13 +9620,16 @@ the split was refuted on natural tokens the same day (worklog
 byte-identical (a null slot reproduces the scalar partitioning exactly) and
 needs no execution-profile gate.
 
-Removal condition: the class-global kernel (resident row above the 64 KiB
-LDS budget, keys > 15328 for head_dim 512) and the staged singleton deep
-variant are the remaining unvalidated capture routes; once they are shown
-to replay bit-identically, correctness no longer bounds the window at all
-and the guard becomes purely the measured engagement threshold (or goes if
-the capture cost falls below the device-bound crossover). Then the bucket
-guard, the fallback counter, and the env all go, and the graph covers the
-full decode range. The intermediate capture design notes (retarget cost,
-capture-amortized buckets) live in the module docstring and the 2026-10-09
-worklog entry.
+Removal condition: correctness no longer bounds the window -- the
+class-global kernel (resident row above the 64 KiB LDS budget, keys > 15328
+for head_dim 512) and the staged singleton deep variant were probed at
+16384 and 32768 prompt depths on 2026-10-10 and replay bit-identically,
+like every other route, so the guard is purely the measured engagement
+threshold. It goes when the capture cost falls below the device-bound
+crossover (today flat-to-negative from 2560 keys: the per-bucket capture
+cost plus the frozen superset walk outweighs the launch-gap savings on
+device-bound steps), or if the deep steps become launch-bound again. Then
+the bucket guard, the fallback counter, and the env all go, and the graph
+covers the full decode range. The intermediate capture design notes
+(retarget cost, capture-amortized buckets) live in the module docstring
+and the 2026-10-09 worklog entry.

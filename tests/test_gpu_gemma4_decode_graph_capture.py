@@ -124,6 +124,54 @@ def test_gemma4_decode_graph_replay_matches_launched_decode():
                 ),
             )
 
+def test_gemma4_decode_graph_class_global_replay_is_exact(monkeypatch):
+    """Every deep route replays bit-identically; only the prize bounds capture.
+
+    The global-logits class kernel (keys past the 64 KiB LDS budget) and the
+    staged singleton beyond it were the last capture routes without a
+    replay-exactness measurement (2026-10-10 probe at 16384 and 32768 prompt
+    depths: bit-exact, all steps). This test pins the class-global one at
+    16384 with the engagement bound lifted, so the guard's correctness
+    component can never silently regress: capture below the engagement
+    bound is a measured perf choice, not a correctness restriction.
+    """
+
+    import hipengine
+
+    from hipengine.runtime import gemma4_decode_graph
+    from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
+
+    monkeypatch.setattr(gemma4_decode_graph, "_CAPTURE_MAX_KEYS", 1 << 30)
+    llm = hipengine.LLM(model=str(_TARGET), max_sequence_length=16384 + 512)
+    runner = llm._get_text_generator()._ensure_runner()
+    vocab = int(runner.weights.config.vocab_size or 0)
+
+    rng = np.random.default_rng(20261010)
+    prompt = [int(t) for t in rng.integers(0, vocab, size=16384)]
+    decode = [int(t) for t in rng.integers(0, vocab, size=8)]
+
+    runner.reset()
+    runner.forward(prompt)
+    expected = [runner.forward([token]) for token in decode]
+
+    runner.reset()
+    runner.forward(prompt)
+    with Gemma4DecodeGraphSession(runner) as session:
+        replayed = [session.step(token) for token in decode]
+        assert session.captures > 0
+        assert session.launched_fallbacks == 0
+
+    for step, (want, got) in enumerate(zip(expected, replayed, strict=True)):
+        np.testing.assert_array_equal(
+            got,
+            want,
+            err_msg=(
+                f"class-global decode step {step}: replayed logits differ "
+                "from launched"
+            ),
+        )
+
+
 def test_gemma4_decode_graph_deep_positions_capture_and_stay_exact():
     """The flash band captures; the unvalidated deep routes fall back.
 
