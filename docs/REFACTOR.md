@@ -9595,41 +9595,38 @@ pass on an ignored stride); and
 (the campaign gate at `--prompt 2048 --prefill 1024`: `passed: true`,
 `kl_max` 7.7e-04 against a 0.05 bar, 0 of 1023 top-1 flips).
 
-## `HIPENGINE_GEMMA4_DECODE_GRAPH` whole-step graph replay is depth-restricted (open 2026-10-09)
+## `HIPENGINE_GEMMA4_DECODE_GRAPH` whole-step graph replay is prize-bounded, not correctness-bounded (open 2026-10-10)
 
 The Gemma 4 generation loop replays decode steps from a whole-step HIP graph
-capture (`hipengine/runtime/gemma4_decode_graph.py`). The replay window is
-restricted: any bucket whose positions reach the flash-decoding route (from
-1024 keys) takes the launched step instead. Flash partitions the key range as
-a function of the live key count (`flash_slices(keys)` slices,
-`keys*slice/slices` boundaries), so a capture bakes the bucket-frozen
-partitioning and replay diverges (measured: mathematically equal, not
-bit-equal; ~1e-7 per attention amplified to 5-26 percent logit deltas; layer
-probe in worklog 20261010T010705). The split and class routes are
-partition-order-invariant under frozen supersets and replay bit-exact.
+capture (`hipengine/runtime/gemma4_decode_graph.py`). Since 2026-10-10 the
+flash phase kernel re-derives its slice partitioning per block from a staged
+device live-extent slot (`[delta, live]`, staged per replay per geometry),
+so every route a decode step takes below 15328 keys — flash, the two-phase
+split, the class kernel — replays bit-identically to the launched path; the
+capture window is bounded only by the measured launch-bound prize
+(`_CAPTURE_MAX_KEYS` = 2176 keys: +15.4 percent decode at 1024 prompt
+tokens, +2.2 percent at 2048, flat-to-negative from 2560 where the step is
+device-bound). The env `HIPENGINE_GEMMA4_DECODE_GRAPH` (default on) is the
+rollback seam for the whole route, and the in-session `launched_fallbacks`
+counter makes the fallback visible per request.
 
-A 2026-10-10 attempt extended capture to 1024-2399 keys by re-routing the
-launched path to the split below a 2400-key crossover, and was reverted the
-same day on natural-token campaign-bench measurements: the crossover measured
-on random-token prompts (split +3.7/+3.1 percent at 1024/2048 keys) does not
-transfer to natural text, where flash wins at every depth (split -3.3 percent
-at 2048 keys, and the 53 sliding layers at 1024 keys cost the deep
-device-bound steps -7 percent decode: 27.81 vs 29.92 tok/s at 32768); and
-the mid-depth graph prize measured the same way (+11.8 percent at 2048) is
-absent on natural tokens (graph+flash 34.95 vs launched flash 35.10 tok/s).
-Random-token prompts drive pathological MoE expert routing and invalidate
-route/prize measurements; crossover and prize numbers must come from the
-campaign corpus. The route change itself passed the section 2.11 envelope
-(1152-row teacher-forced packet, median KL 2.9e-6, flip-damage 1.2 percent,
-top-1 98.7 percent) — arithmetic quality was never the blocker; speed was.
+History: the 2026-10-09 restriction blamed the split's host-computed slice
+geometry and blocked capture from 1024 keys; the 2026-10-10 layer probe
+(worklog 20261010T010705) attributed the replay divergence to flash's
+live-key-count partitioning (the split and class routes always replayd
+bit-exact), and a route-crossover attempt to re-route the launched path to
+the split was refuted on natural tokens the same day (worklog
+20261010T024452). The device-resolved slot keeps the launched path
+byte-identical (a null slot reproduces the scalar partitioning exactly) and
+needs no execution-profile gate.
 
-Removal condition: device-resolved flash geometry — the phase kernel derives
-`flash_slices(live)` per block from a staged device slot (live count plus the
-frozen/live key-begin delta), so the replay partitions exactly as the
-launched path does at every position. That is the only route to a mid-depth
-or deep graph prize worth the capture: it keeps the launched flash route (the
-measured winner at every depth on natural tokens) and makes its replay
-bit-exact. Then the bucket guard, the fallback counter, and the env all go,
-and the graph covers the full decode range. The intermediate capture design
-notes (retarget cost, capture-amortized buckets) live in the module docstring
-and the 2026-10-09 worklog entry.
+Removal condition: the class-global kernel (resident row above the 64 KiB
+LDS budget, keys > 15328 for head_dim 512) and the staged singleton deep
+variant are the remaining unvalidated capture routes; once they are shown
+to replay bit-identically, correctness no longer bounds the window at all
+and the guard becomes purely the measured engagement threshold (or goes if
+the capture cost falls below the device-bound crossover). Then the bucket
+guard, the fallback counter, and the env all go, and the graph covers the
+full decode range. The intermediate capture design notes (retarget cost,
+capture-amortized buckets) live in the module docstring and the 2026-10-09
+worklog entry.

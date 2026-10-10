@@ -1,0 +1,138 @@
+{
+ "schema": 1,
+ "kind": "gemma4_decode_graph_middepth_rows",
+ "status": "measured",
+ "performance_claim": true,
+ "created": "2026-10-10",
+ "question": "Does the whole-step decode graph replay the 1024-2175-key band bit-identically and faster than the launched path, once the flash kernel re-derives its slice partitioning from a staged device live-extent slot?",
+ "model": "Gemma 4 26B-A4B-it",
+ "quant": "UD-Q4_K_XL",
+ "physical_host": "zbook",
+ "hardware": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo), 126976 MiB",
+ "kv_dtype": "bf16",
+ "execution_profile": "production",
+ "protocol": {
+  "prompt_ids": "the campaign corpus, tokenized by each engine's own tokenizer",
+  "context": "prompt + 512",
+  "output": "128 greedy tokens ignoring EOS; 127 decode forwards per sample",
+  "samples": "3 per arm",
+  "warmup": "one full-shape pass per arm",
+  "serialization": "one arm at a time on the shared GPU",
+  "arms": "HIPENGINE_GEMMA4_DECODE_GRAPH=1 (capture window 2176 keys) vs =0 (launched)"
+ },
+ "rows": [
+  {
+   "prompt_tokens": 1024,
+   "graph": true,
+   "decode_tps": 38.814161226702055,
+   "decode_tps_stdev": 0.03141086659912651,
+   "prefill_tps": 1502.6806509957603,
+   "correctness": {
+    "instrumented_finite_logits": true,
+    "public_finite_logits": null,
+    "all_replays_and_public_ids_equal": true
+   }
+  },
+  {
+   "prompt_tokens": 1024,
+   "graph": false,
+   "decode_tps": 33.631190802394094,
+   "decode_tps_stdev": 2.614323541518855,
+   "prefill_tps": 1499.517395455486,
+   "correctness": {
+    "instrumented_finite_logits": true,
+    "public_finite_logits": null,
+    "all_replays_and_public_ids_equal": true
+   }
+  },
+  {
+   "prompt_tokens": 2048,
+   "graph": true,
+   "decode_tps": 37.73949359959903,
+   "decode_tps_stdev": 0.08663316771233065,
+   "prefill_tps": 1369.3405743122255,
+   "correctness": {
+    "instrumented_finite_logits": true,
+    "public_finite_logits": null,
+    "all_replays_and_public_ids_equal": true
+   }
+  },
+  {
+   "prompt_tokens": 2048,
+   "graph": false,
+   "decode_tps": 36.90710573372976,
+   "decode_tps_stdev": 2.3585701723169676,
+   "prefill_tps": 1379.9128169372514,
+   "correctness": {
+    "instrumented_finite_logits": true,
+    "public_finite_logits": null,
+    "all_replays_and_public_ids_equal": true
+   }
+  }
+ ],
+ "engagement_sweep": [
+  {
+   "prompt_tokens": 2560,
+   "graph": true,
+   "decode_tps": 37.39503734291069
+  },
+  {
+   "prompt_tokens": 2560,
+   "graph": false,
+   "decode_tps": 37.68241316885691
+  },
+  {
+   "prompt_tokens": 3072,
+   "graph": true,
+   "decode_tps": 36.906476657243786
+  },
+  {
+   "prompt_tokens": 3072,
+   "graph": false,
+   "decode_tps": 37.39522152074286
+  },
+  {
+   "prompt_tokens": 4096,
+   "graph": true,
+   "decode_tps": 36.77957907259521
+  },
+  {
+   "prompt_tokens": 4096,
+   "graph": false,
+   "decode_tps": 37.14557283308321
+  },
+  {
+   "prompt_tokens": 8192,
+   "graph": true,
+   "decode_tps": 35.737157084060904
+  },
+  {
+   "prompt_tokens": 8192,
+   "graph": false,
+   "decode_tps": 36.16822728729654
+  }
+ ],
+ "regression": {
+  "prompt_tokens": 512,
+  "decode_tps": 37.65803244615589,
+  "published": 37.7505
+ },
+ "primary": {
+  "prompt_tokens": 32768,
+  "decode_tps": 29.92749994064544,
+  "prefill_tps": 994.7193366030637
+ },
+ "correctness_gate": {
+  "kernel_contract": "slot over a frozen superset equals the scalar launch at the live extent, byte-for-byte (tests/test_gpu_gemma4_flash_decode.py, 6/6)",
+  "session_replay": "8-step 1024-prompt graph replay vs launched: maxabs 0.0 at every step",
+  "user_surface": "LLM.generate greedy IDs 128/128 identical graph-on vs graph-off at 1024 and 2048",
+  "gates": "test_gpu_gemma4_decode_graph_capture 2/2; related bundle 264 pass"
+ },
+ "findings": {
+  "1024_gain": "+15.4 percent decode (38.81 vs 33.63 tok/s)",
+  "2048_gain": "+2.2 percent (37.74 vs 36.91)",
+  "crossover": "flat-to-negative from 2560 keys; the capture window is set at 2176 keys (bucket end), the last measured-positive band",
+  "launched_path": "byte-for-byte unchanged (null slot reproduces the scalar partitioning); no execution-profile gate applies"
+ },
+ "decisions": []
+}
