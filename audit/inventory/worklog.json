@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11541,
-    "current": 4309,
+    "entries": 11542,
+    "current": 4310,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1404,
@@ -44745,14 +44745,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 14,
+        "continuation_entries": 15,
         "open_text": "Build the per-expert view and compare each route's gate/up and down products\nagainst `launch_gguf_linear` for one expert and one lane. That names the wrong\nroute in one measurement. If the view turns out to be awkward to construct, the\nfallback is a numpy reference: the blocks are quantized, but one expert's row is\nsmall enough to dequantize by hand.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "14 later entries by the same worker share this topic prefix"
+        "15 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T055459.268456Z-lhl-gemma4-expert-route-oracle-needed-daf68f.md",
@@ -44769,7 +44769,7 @@
         ]
       },
       "id": "worklog/20260928T055459.268456Z-lhl-gemma4-expert-route-oracle-needed-daf68f",
-      "evidence_hash": "a2edb11be5c6"
+      "evidence_hash": "300ad50f57b6"
     },
     {
       "kind": "worklog",
@@ -45386,14 +45386,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 13,
+        "continuation_entries": 14,
         "open_text": "1. Extend the probe to the MMQ entry points (`gemma4_project_experts_gate_up_mmq`\n   and `_down_mmq`), since those are the decode default and their isolated\n   ceiling is unmeasured.\n2. Treat the expert GEMV as a kernel problem. The access pattern is the first\n   suspect: `selected_pack8` beats `selected` by 1.25x on identical shapes, and\n   the per-row read of 8 scattered expert matrices has little to coalesce across.\n3. Do not spend effort on launch-count reduction for the expert family. The\n   isolated result excludes starvation as the cause.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "13 later entries by the same worker share this topic prefix"
+        "14 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T075802.559471Z-lhl-gemma4-expert-gemv-bandwidth-c4d1b8.md",
@@ -45411,7 +45411,7 @@
         ]
       },
       "id": "worklog/20260928T075802.559471Z-lhl-gemma4-expert-gemv-bandwidth-c4d1b8",
-      "evidence_hash": "8cba64135ffe"
+      "evidence_hash": "b3bb17f7124c"
     },
     {
       "kind": "worklog",
@@ -45464,14 +45464,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 12,
+        "continuation_entries": 13,
         "open_text": "1. **The down kernel's 2x.** It is 18.1 percent of the step and the only measured\n   route running at half a sibling's rate on the same rows. The structural\n   difference is rank-1-per-thread with no LDS against a tiled kernel with LDS;\n   the next step is to separate the tile shape from the staging, most cheaply by\n   giving the down a 32-row tile in the same style as the gate_up.\n2. **Whether the gate_up's own ceiling is the tile or the dequant.** It is flat in\n   rows from 32 to 64, so it is not row-bound, and 54.4 GB/s is under half of what\n   the dense family reaches; the `mmq32` body deq",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "12 later entries by the same worker share this topic prefix"
+        "13 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T081118.644190Z-lhl-gemma4-expert-down-mmq-outlier-31796e.md",
@@ -45492,7 +45492,7 @@
         ]
       },
       "id": "worklog/20260928T081118.644190Z-lhl-gemma4-expert-down-mmq-outlier-31796e",
-      "evidence_hash": "75f4e78e54c4"
+      "evidence_hash": "f8306aaf29af"
     },
     {
       "kind": "worklog",
@@ -45506,14 +45506,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 11,
+        "continuation_entries": 12,
         "open_text": "1. Measure `pack8_selected` as a decode route against the MMQ default, using the\n   same single-variable A/B that settled the grouped question in `ba97b2cd6`.\n   That is the decision this entry sets up, and it is the objective's kind of\n   measurement.\n2. If it wins, the work is in the planner: nothing on the runtime path builds the\n   packed expert layout today.\n3. The device-to-host read in the MMQ gate/up path is worth its own look\n   regardless of which route wins, since it is a synchronisation in a\n   latency-sensitive step.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "11 later entries by the same worker share this topic prefix"
+        "12 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T081147.903518Z-lhl-gemma4-expert-gemv-bandwidth-e5a2c7.md",
@@ -45532,7 +45532,7 @@
         ]
       },
       "id": "worklog/20260928T081147.903518Z-lhl-gemma4-expert-gemv-bandwidth-e5a2c7",
-      "evidence_hash": "b5f4c3343f93"
+      "evidence_hash": "87e70d3deb42"
     },
     {
       "kind": "worklog",
@@ -45628,14 +45628,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 10,
+        "continuation_entries": 11,
         "open_text": "1. This is cleanup debt of exactly the kind `docs/REFACTOR.md` tracks: a\n   documented dispatch order with no caller. Either wire `rows` in as the decode\n   route's entry point, or delete it and let the route-specific calls stand as the\n   real contract. Deciding which is the prerequisite for the A/B, because\n   \"measure pack8 against MMQ\" means different work in each case.\n2. Then run `pack8_selected` as a decode route against the MMQ default with the\n   single-variable A/B that settled the grouped question in `ba97b2cd6`.\n3. The `copy_device_to_host` in the MMQ gate/up path remains worth its",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "10 later entries by the same worker share this topic prefix"
+        "11 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T082433.771204Z-lhl-gemma4-expert-route-dispatch-f6b9d3.md",
@@ -45654,7 +45654,7 @@
         ]
       },
       "id": "worklog/20260928T082433.771204Z-lhl-gemma4-expert-route-dispatch-f6b9d3",
-      "evidence_hash": "0a4de8be741d"
+      "evidence_hash": "1131f711c82b"
     },
     {
       "kind": "worklog",
@@ -45753,14 +45753,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 9,
+        "continuation_entries": 10,
         "open_text": "1. The pack8 question is closed. Do not re-open it without new evidence that the\n   route-level regression has changed; the recorded artifact is the reference.\n2. The expert-family lever remains what `22d80e1c7` found: the kernels reach\n   17-21% of peak in isolation, so the 5.9x headroom on gate/up is the target, and\n   the access pattern is the first suspect. That is a kernel problem and it is not\n   solved by choosing a different weight layout.\n3. `20260928T082433`'s suggestion to decide the `rows` dispatcher's fate first is\n   still right, but as cleanup rather than as a prerequisite for a",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "9 later entries by the same worker share this topic prefix"
+        "10 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T083619.552837Z-lhl-gemma4-expert-route-dispatch-a7c4e1.md",
@@ -45779,7 +45779,7 @@
         ]
       },
       "id": "worklog/20260928T083619.552837Z-lhl-gemma4-expert-route-dispatch-a7c4e1",
-      "evidence_hash": "28d8087c81eb"
+      "evidence_hash": "b6dcc3e651d6"
     },
     {
       "kind": "worklog",
@@ -47177,14 +47177,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 6,
         "open_text": "- **The expert block is 41.84 percent of the step and is latency-bound, not saturated\n  on either axis.** The lever is more independent work in flight per weight byte, and\n  the only shape knob that has been tested is `ROWS_PER_PASS`: rows=64 takes 5.267 ms\n  against rows=32's 2.925, which is 10 percent better per row but needs two passes\n  above 32 rows. A row tile above 32 with the accumulator pressure that implies is the\n  open question the constant's own comment raises.\n- **Do not chase the readback or the packs.** Together they are 1.73 percent, and the\n  readback is 0.18 percent. They we",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T144500.000000Z-lhl-gemma4-expert-block-decomposition-2a9f1b.md",
@@ -47200,7 +47200,7 @@
         ]
       },
       "id": "worklog/20260928T144500.000000Z-lhl-gemma4-expert-block-decomposition-2a9f1b",
-      "evidence_hash": "4be5e840a836"
+      "evidence_hash": "02db72e1655a"
     },
     {
       "kind": "worklog",
@@ -49109,14 +49109,14 @@
         "written": "2026-09-28",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 4,
+        "continuation_entries": 5,
         "open_text": "- **Test a row tile above 32.** It is the named open question, the traffic cost is measured\n  free, and the only real cost is accumulator pressure. `ROWS_PER_PASS` is a constant at\n  `gguf_q5_1_mmq_selected_prefill.hip:88`.\n- **Explain the 2.34 against 2.95 in-situ gap.** It is 21 percent, larger than anything tested\n  here, and the uniform-versus-routed row distribution is the obvious difference.\n- **Do not port the pre-aligned layout to Q5_1, and do not unroll the row loop.** Both are\n  measured flat and the reasons are in this entry.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "4 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T233500.000000Z-lhl-gemma4-expert-mmq-three-washes-8d1f5b.md",
@@ -49134,7 +49134,7 @@
         ]
       },
       "id": "worklog/20260928T233500.000000Z-lhl-gemma4-expert-mmq-three-washes-8d1f5b",
-      "evidence_hash": "e91090c401c5"
+      "evidence_hash": "7ebceb1f2b94"
     },
     {
       "kind": "worklog",
@@ -49225,14 +49225,14 @@
         "written": "2026-09-29",
         "age_days": 11,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "- **Coalesce the weight read.** It is worth up to 1.31x on the two kernels that are 260.4 of the\n  expert block's 287.7 ms. The layouts exist; the port does not.\n- **Measure in place with `gemma4_expert_mmq_wrapper_split.py`.** The microbench reproduces the\n  same ceiling, so it cannot show the win.\n- **Do not re-test distribution, occupancy, planes, unrolling or K width.** All five are\n  eliminated, and this entry says why: none of them is the limit.\n- **Correct the record wherever the 49 GB/s figure is quoted as 19 percent of peak.** It is\n  77 percent of peak in the units the memory system ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260929T003000.000000Z-lhl-gemma4-expert-mmq-is-line-bound-5b8c2d.md",
@@ -49250,7 +49250,7 @@
         ]
       },
       "id": "worklog/20260929T003000.000000Z-lhl-gemma4-expert-mmq-is-line-bound-5b8c2d",
-      "evidence_hash": "feedbafb5799"
+      "evidence_hash": "9eb772738329"
     },
     {
       "kind": "worklog",
@@ -49934,14 +49934,14 @@
         "written": "2026-09-29",
         "age_days": 11,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "- **The 30.32 ms of expert glue is still unaccounted for.** The readback and the activation pack\n  together are 3.9 ms of it. The tile map, the gelu, the lane-to-row accumulation and the\n  scatter are the remaining candidates, and none is priced.\n- **The down kernel's strided weight rows are the best-supported stall explanation**, and the\n  cheap way to test it is a measurement that changes only the access pattern, not the layout --\n  a variant where a warp cooperatively reads one thread's row, or one where `out_col` is\n  remapped so a warp's lanes share a row.\n- **Do not treat the expert bloc",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260929T090000.000000Z-lhl-gemma4-expert-glue-readback-refuted-7c4a1e.md",
@@ -49962,7 +49962,7 @@
         ]
       },
       "id": "worklog/20260929T090000.000000Z-lhl-gemma4-expert-glue-readback-refuted-7c4a1e",
-      "evidence_hash": "7ae26fd1a7f9"
+      "evidence_hash": "806ffa196e43"
     },
     {
       "kind": "worklog",
@@ -50055,14 +50055,14 @@
         "written": "2026-09-29",
         "age_days": 11,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "- **Read the launch geometry of `qwen35_moe_group_compact_active` and\n  `qwen35_moe_gather_packed_hidden_lowp`.** 21.9 ms between them, on tens of kilobytes of input,\n  is the cheapest unexplained time in the prefill.\n- **Do not assume a bandwidth or occupancy story before reading the geometry** -- the same\n  sequence produced a retracted claim on this block once already.\n- The down projection's tile layout (`20260929T093000`) remains valid but is now the *second*\n  candidate by cost of implementation.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260929T103000.000000Z-lhl-gemma4-expert-glue-fully-priced-2f7e91.md",
@@ -50081,7 +50081,7 @@
         ]
       },
       "id": "worklog/20260929T103000.000000Z-lhl-gemma4-expert-glue-fully-priced-2f7e91",
-      "evidence_hash": "d74a940498fd"
+      "evidence_hash": "32c5ebc0c937"
     },
     {
       "kind": "worklog",

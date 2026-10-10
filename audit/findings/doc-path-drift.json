@@ -5573,9 +5573,9 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:1012:runtime/qwen35_gguf_nextn.py",
+      "key": "docs/REFACTOR.md:1030:runtime/qwen35_gguf_nextn.py",
       "title": "names `runtime/qwen35_gguf_nextn.py`, which is actually at `hipengine/runtime/qwen35_gguf_nextn.py`",
-      "location": "docs/REFACTOR.md:1012",
+      "location": "docs/REFACTOR.md:1030",
       "evidence": {
         "fix": "Change `runtime/qwen35_gguf_nextn.py` to `hipengine/runtime/qwen35_gguf_nextn.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5591,7 +5591,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:1012:runtime/qwen35_gguf_nextn.py"
+          "docs/REFACTOR.md:1030:runtime/qwen35_gguf_nextn.py"
         ],
         "tokens": [
           "actually",
@@ -5602,14 +5602,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:1012:runtime/qwen35_gguf_nextn.py",
-      "evidence_hash": "2a7745f1938b"
+      "id": "doc-path-drift/docs/REFACTOR.md:1030:runtime/qwen35_gguf_nextn.py",
+      "evidence_hash": "d510bcdd722b"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:1139:kernels/hip_gfx1100/vibevoice/q4.py",
+      "key": "docs/REFACTOR.md:1157:kernels/hip_gfx1100/vibevoice/q4.py",
       "title": "names `kernels/hip_gfx1100/vibevoice/q4.py`, which is actually at `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`",
-      "location": "docs/REFACTOR.md:1139",
+      "location": "docs/REFACTOR.md:1157",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100/vibevoice/q4.py` to `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5625,7 +5625,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:1139:kernels/hip_gfx1100/vibevoice/q4.py"
+          "docs/REFACTOR.md:1157:kernels/hip_gfx1100/vibevoice/q4.py"
         ],
         "tokens": [
           "actually",
@@ -5637,14 +5637,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:1139:kernels/hip_gfx1100/vibevoice/q4.py",
-      "evidence_hash": "e3218db016f7"
+      "id": "doc-path-drift/docs/REFACTOR.md:1157:kernels/hip_gfx1100/vibevoice/q4.py",
+      "evidence_hash": "66ac5ea45ba4"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:2577:server/api.py",
+      "key": "docs/REFACTOR.md:2595:server/api.py",
       "title": "names `server/api.py`, which is actually at `hipengine/server/api.py`",
-      "location": "docs/REFACTOR.md:2577",
+      "location": "docs/REFACTOR.md:2595",
       "evidence": {
         "fix": "Change `server/api.py` to `hipengine/server/api.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5660,7 +5660,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:2577:server/api.py"
+          "docs/REFACTOR.md:2595:server/api.py"
         ],
         "tokens": [
           "actually",
@@ -5671,14 +5671,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:2577:server/api.py",
-      "evidence_hash": "58f2fb805773"
+      "id": "doc-path-drift/docs/REFACTOR.md:2595:server/api.py",
+      "evidence_hash": "fb065c6ce6be"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:2583:hip_gfx1151/__init__.py",
+      "key": "docs/REFACTOR.md:2601:hip_gfx1151/__init__.py",
       "title": "names `hip_gfx1151/__init__.py`, which is actually at `hipengine/kernels/hip_gfx1151/__init__.py`",
-      "location": "docs/REFACTOR.md:2583",
+      "location": "docs/REFACTOR.md:2601",
       "evidence": {
         "fix": "Change `hip_gfx1151/__init__.py` to `hipengine/kernels/hip_gfx1151/__init__.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5694,7 +5694,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:2583:hip_gfx1151/__init__.py"
+          "docs/REFACTOR.md:2601:hip_gfx1151/__init__.py"
         ],
         "tokens": [
           "__init__",
@@ -5706,14 +5706,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:2583:hip_gfx1151/__init__.py",
-      "evidence_hash": "7f2b915e30e3"
+      "id": "doc-path-drift/docs/REFACTOR.md:2601:hip_gfx1151/__init__.py",
+      "evidence_hash": "58cf39120bcd"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:2615:kernels/cpu_reference",
+      "key": "docs/REFACTOR.md:2633:kernels/cpu_reference",
       "title": "names `kernels/cpu_reference`, which is actually at `hipengine/kernels/cpu_reference`",
-      "location": "docs/REFACTOR.md:2615",
+      "location": "docs/REFACTOR.md:2633",
       "evidence": {
         "fix": "Change `kernels/cpu_reference` to `hipengine/kernels/cpu_reference`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5729,7 +5729,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:2615:kernels/cpu_reference"
+          "docs/REFACTOR.md:2633:kernels/cpu_reference"
         ],
         "tokens": [
           "actually",
@@ -5740,50 +5740,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:2615:kernels/cpu_reference",
-      "evidence_hash": "e9279ea05ff7"
+      "id": "doc-path-drift/docs/REFACTOR.md:2633:kernels/cpu_reference",
+      "evidence_hash": "6a34cb5a83be"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:64:gemma4/__init__.py",
-      "title": "names `gemma4/__init__.py`, which is actually at `hipengine/kernels/hip_gfx1100/gemma4/__init__.py`",
-      "location": "docs/REFACTOR.md:64",
-      "evidence": {
-        "fix": "Change `gemma4/__init__.py` to `hipengine/kernels/hip_gfx1100/gemma4/__init__.py`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "gemma4/__init__.py",
-        "doc": "docs/REFACTOR.md",
-        "actual": [
-          "hipengine/kernels/hip_gfx1100/gemma4/__init__.py"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "docs/REFACTOR.md",
-        "refs": [
-          "docs/REFACTOR.md:64:gemma4/__init__.py"
-        ],
-        "tokens": [
-          "__init__",
-          "actually",
-          "gemma4",
-          "hip_gfx1100",
-          "hipengine",
-          "kernels",
-          "names",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/docs/REFACTOR.md:64:gemma4/__init__.py",
-      "evidence_hash": "49955f81d723"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7196:runtime/qwen35_gguf_mtp.py",
+      "key": "docs/REFACTOR.md:7214:runtime/qwen35_gguf_mtp.py",
       "title": "names `runtime/qwen35_gguf_mtp.py`, which is actually at `hipengine/runtime/qwen35_gguf_mtp.py`",
-      "location": "docs/REFACTOR.md:7196",
+      "location": "docs/REFACTOR.md:7214",
       "evidence": {
         "fix": "Change `runtime/qwen35_gguf_mtp.py` to `hipengine/runtime/qwen35_gguf_mtp.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5799,7 +5763,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7196:runtime/qwen35_gguf_mtp.py"
+          "docs/REFACTOR.md:7214:runtime/qwen35_gguf_mtp.py"
         ],
         "tokens": [
           "actually",
@@ -5810,14 +5774,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7196:runtime/qwen35_gguf_mtp.py",
-      "evidence_hash": "9a2b555201d0"
+      "id": "doc-path-drift/docs/REFACTOR.md:7214:runtime/qwen35_gguf_mtp.py",
+      "evidence_hash": "33d350c60bfa"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8092:kernels/hip_gfx1100/timesfm",
+      "key": "docs/REFACTOR.md:8110:kernels/hip_gfx1100/timesfm",
       "title": "names `kernels/hip_gfx1100/timesfm`, which is actually at `hipengine/kernels/hip_gfx1100/timesfm`",
-      "location": "docs/REFACTOR.md:8092",
+      "location": "docs/REFACTOR.md:8110",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100/timesfm` to `hipengine/kernels/hip_gfx1100/timesfm`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5833,7 +5797,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8092:kernels/hip_gfx1100/timesfm"
+          "docs/REFACTOR.md:8110:kernels/hip_gfx1100/timesfm"
         ],
         "tokens": [
           "actually",
@@ -5845,14 +5809,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8092:kernels/hip_gfx1100/timesfm",
-      "evidence_hash": "0b31bf44ca0b"
+      "id": "doc-path-drift/docs/REFACTOR.md:8110:kernels/hip_gfx1100/timesfm",
+      "evidence_hash": "6f47eb4217ce"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8093:kernels/hip_gfx1100/timesfm3",
+      "key": "docs/REFACTOR.md:8111:kernels/hip_gfx1100/timesfm3",
       "title": "names `kernels/hip_gfx1100/timesfm3`, which is actually at `hipengine/kernels/hip_gfx1100/timesfm3`",
-      "location": "docs/REFACTOR.md:8093",
+      "location": "docs/REFACTOR.md:8111",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100/timesfm3` to `hipengine/kernels/hip_gfx1100/timesfm3`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5868,7 +5832,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8093:kernels/hip_gfx1100/timesfm3"
+          "docs/REFACTOR.md:8111:kernels/hip_gfx1100/timesfm3"
         ],
         "tokens": [
           "actually",
@@ -5880,14 +5844,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8093:kernels/hip_gfx1100/timesfm3",
-      "evidence_hash": "2ce297df810c"
+      "id": "doc-path-drift/docs/REFACTOR.md:8111:kernels/hip_gfx1100/timesfm3",
+      "evidence_hash": "660ab4ae44e1"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8216:runtime/qwen35_gguf_runner.py",
+      "key": "docs/REFACTOR.md:8234:runtime/qwen35_gguf_runner.py",
       "title": "names `runtime/qwen35_gguf_runner.py`, which is actually at `hipengine/runtime/qwen35_gguf_runner.py`",
-      "location": "docs/REFACTOR.md:8216",
+      "location": "docs/REFACTOR.md:8234",
       "evidence": {
         "fix": "Change `runtime/qwen35_gguf_runner.py` to `hipengine/runtime/qwen35_gguf_runner.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5903,7 +5867,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8216:runtime/qwen35_gguf_runner.py"
+          "docs/REFACTOR.md:8234:runtime/qwen35_gguf_runner.py"
         ],
         "tokens": [
           "actually",
@@ -5914,14 +5878,50 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8216:runtime/qwen35_gguf_runner.py",
-      "evidence_hash": "85e9cdf55033"
+      "id": "doc-path-drift/docs/REFACTOR.md:8234:runtime/qwen35_gguf_runner.py",
+      "evidence_hash": "9498a0a01a1a"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8312:final-decode-campaign-2026-09-11/plainks-trace.csv",
+      "key": "docs/REFACTOR.md:82:gemma4/__init__.py",
+      "title": "names `gemma4/__init__.py`, which is actually at `hipengine/kernels/hip_gfx1100/gemma4/__init__.py`",
+      "location": "docs/REFACTOR.md:82",
+      "evidence": {
+        "fix": "Change `gemma4/__init__.py` to `hipengine/kernels/hip_gfx1100/gemma4/__init__.py`.",
+        "why": "documented path does not exist, but the file is present elsewhere",
+        "target": "gemma4/__init__.py",
+        "doc": "docs/REFACTOR.md",
+        "actual": [
+          "hipengine/kernels/hip_gfx1100/gemma4/__init__.py"
+        ]
+      },
+      "signals": [
+        "documented path does not exist, but the file is present elsewhere"
+      ],
+      "hints": {
+        "anchor": "docs/REFACTOR.md",
+        "refs": [
+          "docs/REFACTOR.md:82:gemma4/__init__.py"
+        ],
+        "tokens": [
+          "__init__",
+          "actually",
+          "gemma4",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "names",
+          "which"
+        ]
+      },
+      "id": "doc-path-drift/docs/REFACTOR.md:82:gemma4/__init__.py",
+      "evidence_hash": "b737fa810b4c"
+    },
+    {
+      "kind": "doc-path-drift",
+      "key": "docs/REFACTOR.md:8330:final-decode-campaign-2026-09-11/plainks-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/plainks-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/plainks-trace.csv`",
-      "location": "docs/REFACTOR.md:8312",
+      "location": "docs/REFACTOR.md:8330",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/plainks-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/plainks-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5937,7 +5937,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8312:final-decode-campaign-2026-09-11/plainks-trace.csv"
+          "docs/REFACTOR.md:8330:final-decode-campaign-2026-09-11/plainks-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -5954,14 +5954,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8312:final-decode-campaign-2026-09-11/plainks-trace.csv",
-      "evidence_hash": "85f35bc361ea"
+      "id": "doc-path-drift/docs/REFACTOR.md:8330:final-decode-campaign-2026-09-11/plainks-trace.csv",
+      "evidence_hash": "c0c387ad1285"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8313:final-decode-campaign-2026-09-11/plainkm-trace.csv",
+      "key": "docs/REFACTOR.md:8331:final-decode-campaign-2026-09-11/plainkm-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/plainkm-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/plainkm-trace.csv`",
-      "location": "docs/REFACTOR.md:8313",
+      "location": "docs/REFACTOR.md:8331",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/plainkm-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/plainkm-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -5977,7 +5977,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8313:final-decode-campaign-2026-09-11/plainkm-trace.csv"
+          "docs/REFACTOR.md:8331:final-decode-campaign-2026-09-11/plainkm-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -5994,14 +5994,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8313:final-decode-campaign-2026-09-11/plainkm-trace.csv",
-      "evidence_hash": "82f26c6d2e05"
+      "id": "doc-path-drift/docs/REFACTOR.md:8331:final-decode-campaign-2026-09-11/plainkm-trace.csv",
+      "evidence_hash": "e7a29f4d295b"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8314:2026-09-11-q5-local32-decode-study/trace-unrouted.csv",
+      "key": "docs/REFACTOR.md:8332:2026-09-11-q5-local32-decode-study/trace-unrouted.csv",
       "title": "names `2026-09-11-q5-local32-decode-study/trace-unrouted.csv`, which is actually at `benchmarks/results/2026-09-11-q5-local32-decode-study/trace-unrouted.csv`",
-      "location": "docs/REFACTOR.md:8314",
+      "location": "docs/REFACTOR.md:8332",
       "evidence": {
         "fix": "Change `2026-09-11-q5-local32-decode-study/trace-unrouted.csv` to `benchmarks/results/2026-09-11-q5-local32-decode-study/trace-unrouted.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -6017,7 +6017,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8314:2026-09-11-q5-local32-decode-study/trace-unrouted.csv"
+          "docs/REFACTOR.md:8332:2026-09-11-q5-local32-decode-study/trace-unrouted.csv"
         ],
         "tokens": [
           "2026",
@@ -6034,14 +6034,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8314:2026-09-11-q5-local32-decode-study/trace-unrouted.csv",
-      "evidence_hash": "e6db6a94f303"
+      "id": "doc-path-drift/docs/REFACTOR.md:8332:2026-09-11-q5-local32-decode-study/trace-unrouted.csv",
+      "evidence_hash": "65edb71b3158"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8315:final-decode-campaign-2026-09-11/ud-k_m-trace.csv",
+      "key": "docs/REFACTOR.md:8333:final-decode-campaign-2026-09-11/ud-k_m-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/ud-k_m-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/ud-k_m-trace.csv`",
-      "location": "docs/REFACTOR.md:8315",
+      "location": "docs/REFACTOR.md:8333",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/ud-k_m-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/ud-k_m-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -6057,7 +6057,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8315:final-decode-campaign-2026-09-11/ud-k_m-trace.csv"
+          "docs/REFACTOR.md:8333:final-decode-campaign-2026-09-11/ud-k_m-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -6074,14 +6074,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8315:final-decode-campaign-2026-09-11/ud-k_m-trace.csv",
-      "evidence_hash": "06a477b1e3b4"
+      "id": "doc-path-drift/docs/REFACTOR.md:8333:final-decode-campaign-2026-09-11/ud-k_m-trace.csv",
+      "evidence_hash": "e949a86a62c0"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8316:2026-09-11-q5-local32-decode-study/trace-routed.csv",
+      "key": "docs/REFACTOR.md:8334:2026-09-11-q5-local32-decode-study/trace-routed.csv",
       "title": "names `2026-09-11-q5-local32-decode-study/trace-routed.csv`, which is actually at `benchmarks/results/2026-09-11-q5-local32-decode-study/trace-routed.csv`",
-      "location": "docs/REFACTOR.md:8316",
+      "location": "docs/REFACTOR.md:8334",
       "evidence": {
         "fix": "Change `2026-09-11-q5-local32-decode-study/trace-routed.csv` to `benchmarks/results/2026-09-11-q5-local32-decode-study/trace-routed.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -6097,7 +6097,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8316:2026-09-11-q5-local32-decode-study/trace-routed.csv"
+          "docs/REFACTOR.md:8334:2026-09-11-q5-local32-decode-study/trace-routed.csv"
         ],
         "tokens": [
           "2026",
@@ -6114,14 +6114,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8316:2026-09-11-q5-local32-decode-study/trace-routed.csv",
-      "evidence_hash": "ab673d0d5c43"
+      "id": "doc-path-drift/docs/REFACTOR.md:8334:2026-09-11-q5-local32-decode-study/trace-routed.csv",
+      "evidence_hash": "b541710b0ef7"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8317:final-decode-campaign-2026-09-11/wudkm-trace.csv",
+      "key": "docs/REFACTOR.md:8335:final-decode-campaign-2026-09-11/wudkm-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/wudkm-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/wudkm-trace.csv`",
-      "location": "docs/REFACTOR.md:8317",
+      "location": "docs/REFACTOR.md:8335",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/wudkm-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/wudkm-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -6137,7 +6137,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8317:final-decode-campaign-2026-09-11/wudkm-trace.csv"
+          "docs/REFACTOR.md:8335:final-decode-campaign-2026-09-11/wudkm-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -6154,14 +6154,14 @@
           "wudkm"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8317:final-decode-campaign-2026-09-11/wudkm-trace.csv",
-      "evidence_hash": "19e8bcb6d604"
+      "id": "doc-path-drift/docs/REFACTOR.md:8335:final-decode-campaign-2026-09-11/wudkm-trace.csv",
+      "evidence_hash": "3b61c01d7a73"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8318:final-decode-campaign-2026-09-11/wudks-trace.csv",
+      "key": "docs/REFACTOR.md:8336:final-decode-campaign-2026-09-11/wudks-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/wudks-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/wudks-trace.csv`",
-      "location": "docs/REFACTOR.md:8318",
+      "location": "docs/REFACTOR.md:8336",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/wudks-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/wudks-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -6177,7 +6177,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8318:final-decode-campaign-2026-09-11/wudks-trace.csv"
+          "docs/REFACTOR.md:8336:final-decode-campaign-2026-09-11/wudks-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -6194,14 +6194,14 @@
           "wudks"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8318:final-decode-campaign-2026-09-11/wudks-trace.csv",
-      "evidence_hash": "80824adf4aec"
+      "id": "doc-path-drift/docs/REFACTOR.md:8336:final-decode-campaign-2026-09-11/wudks-trace.csv",
+      "evidence_hash": "9042ed39463e"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8860:kernels/hip_gfx1100/vibevoice/registered.py",
+      "key": "docs/REFACTOR.md:8878:kernels/hip_gfx1100/vibevoice/registered.py",
       "title": "names `kernels/hip_gfx1100/vibevoice/registered.py`, which is actually at `hipengine/kernels/hip_gfx1100/vibevoice/registered.py`",
-      "location": "docs/REFACTOR.md:8860",
+      "location": "docs/REFACTOR.md:8878",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100/vibevoice/registered.py` to `hipengine/kernels/hip_gfx1100/vibevoice/registered.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -6217,7 +6217,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8860:kernels/hip_gfx1100/vibevoice/registered.py"
+          "docs/REFACTOR.md:8878:kernels/hip_gfx1100/vibevoice/registered.py"
         ],
         "tokens": [
           "actually",
@@ -6230,8 +6230,8 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8860:kernels/hip_gfx1100/vibevoice/registered.py",
-      "evidence_hash": "1f68273a9904"
+      "id": "doc-path-drift/docs/REFACTOR.md:8878:kernels/hip_gfx1100/vibevoice/registered.py",
+      "evidence_hash": "85529582888c"
     },
     {
       "kind": "doc-path-drift",

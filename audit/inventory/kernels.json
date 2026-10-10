@@ -371,7 +371,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 1164,
-        "referrers": 302,
+        "referrers": 301,
         "runtime_referrers": [
           "hipengine/generation/laguna_dflash.py",
           "hipengine/generation/laguna_gguf.py",
@@ -401,7 +401,7 @@
         ]
       },
       "id": "kernel/cpu_reference/laguna.py",
-      "evidence_hash": "8ade988506ee"
+      "evidence_hash": "4fdf0fb16999"
     },
     {
       "kind": "kernel",
@@ -4071,7 +4071,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 2990,
+        "lines": 3015,
         "referrers": 43,
         "runtime_referrers": [
           "hipengine/generation/gemma4_profiles.py",
@@ -4099,7 +4099,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_experts.py",
-      "evidence_hash": "227b33f2f086"
+      "evidence_hash": "85f18b899a5a"
     },
     {
       "kind": "kernel",
@@ -5226,7 +5226,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 635,
-        "referrers": 15,
+        "referrers": 14,
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/laguna_moe.py"
@@ -5256,7 +5256,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/moe/laguna_router.hip",
-      "evidence_hash": "81a38c65ed23"
+      "evidence_hash": "34d558bd9038"
     },
     {
       "kind": "kernel",
@@ -5267,7 +5267,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 401,
-        "referrers": 15,
+        "referrers": 14,
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
           "hipengine/runtime/laguna_moe.py"
@@ -5294,7 +5294,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/moe/laguna_router.py",
-      "evidence_hash": "7cf26320edd1"
+      "evidence_hash": "47d029773bc9"
     },
     {
       "kind": "kernel",

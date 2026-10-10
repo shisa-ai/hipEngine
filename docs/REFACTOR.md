@@ -4,6 +4,24 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Gemma 4 expert down WMMA rollback lever (added 2026-10-10)
+
+`HIPENGINE_GEMMA4_MOE_DOWN_WMMA` (default on) makes the unpinned Gemma 4 MoE
+prefill run the expert down projection through the grouped WMMA owner, in its
+Q5_1T16 tile form where the tensor carries the tiles, in
+`gemma4_experts_forward_bf16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`). `0` restores the
+exact grouped owner; a pinned `HIPENGINE_GEMMA4_MOE_PREFILL` mode is unaffected.
+The exact staged owner it replaces was 60% of W7900 prefill kernel time. The
+route reads BF16 activations and reassociates against the exact owner, so it is
+a production-profile route gated under the section 2.11 envelope; it is not the
+int8 MMQ down, whose lever and failure record are separate.
+
+Removal condition: once a llama.cpp-paired W7900 ladder carries the route's
+numbers and one release cycle passes without a rollback, delete the env check
+and this entry together. The exact grouped owner stays as the strict plan's
+owner and the pinned `grouped` mode.
+
 ## Staged PV singleton unroll rollback lever (added 2026-10-09)
 
 `HIPENGINE_GEMMA4_PV_UNROLL` (default 32) pins the staged singleton P*V
@@ -9438,7 +9456,9 @@ path, and its correctness tests stay in place. Evidence:
 
 ## Gemma 4 expert down MMQ: exact automatic default after continuation failure (open 2026-10-03)
 
-Automatic selection uses the registered exact down owner. The existing one-plane
+Automatic selection does not use the MMQ down; since 2026-10-10 it runs the
+grouped WMMA owner (see the WMMA rollback lever entry at the top of this
+ledger), and before that the registered exact down owner. The existing one-plane
 MMQ route failed nine of ten generated-history screens; three-plane feedback
 failed seven. The exact-down control matched all 610 paired strict logits.
 Explicit `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1` and pinned `mmq` selection remain

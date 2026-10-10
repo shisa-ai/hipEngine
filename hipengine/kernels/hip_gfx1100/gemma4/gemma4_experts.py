@@ -288,6 +288,27 @@ def gemma4_moe_down_mmq_enabled() -> bool:
     )
 
 
+_GEMMA4_MOE_DOWN_WMMA_ENV = "HIPENGINE_GEMMA4_MOE_DOWN_WMMA"
+
+
+def gemma4_moe_down_wmma_enabled() -> bool:
+    """Whether the unpinned default runs the expert down through a WMMA owner.
+
+    Default on. The WMMA owner reads the BF16 activations directly -- it is not
+    the int8 MMQ down, whose generated-history failure is recorded above -- and
+    reassociates against the exact grouped owner, so it is a production-profile
+    route. ``HIPENGINE_GEMMA4_MOE_DOWN_WMMA=0`` restores the exact grouped owner
+    for the unpinned default; a pinned ``HIPENGINE_GEMMA4_MOE_PREFILL`` mode is
+    unaffected either way. Removal condition: ``docs/REFACTOR.md``.
+    """
+
+    import os
+
+    return os.environ.get(_GEMMA4_MOE_DOWN_WMMA_ENV, "1").strip().lower() not in (
+        _MMQ_DISABLING_VALUES
+    )
+
+
 def gemma4_moe_gate_up_mmq_enabled() -> bool:
     """Whether the fused MMQ gate/up route may be selected.
 
@@ -668,7 +689,12 @@ def gemma4_experts_forward_bf16(
     # 4.0 against 32.5 TFLOP/s -- and the MMQ gate_up already writes bf16, which
     # is exactly what the WMMA down reads. So the down keeps the WMMA owner on
     # this route and only the gate_up uses the int8 leaf.
-    down_wmma = gate_up_wmma or use_mmq
+    # The unpinned default takes it too: the exact staged down is 60% of
+    # W7900 prefill kernel time (18 ms a call at 8192 tokens), and the WMMA
+    # owner behind its own lever replaces it. A pinned exact mode is untouched.
+    down_wmma = gate_up_wmma or use_mmq or (
+        not pinned and gemma4_moe_down_wmma_enabled()
+    )
     mmq_rows = 0
     if use_mmq and fused_wmma_leaf is None:
         # The grouped int8 MMQ leaf reads Gemma's fused ``ffn_gate_up_exps``
@@ -855,8 +881,7 @@ def gemma4_experts_forward_bf16(
     # buffers, which is why this has to happen after the gate_up rather than
     # alongside the MMQ plan above.
     if (
-        use_mmq
-        and down_wmma
+        down_wmma
         and not wmma_rows
         and lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts
     ):

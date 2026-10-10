@@ -12,10 +12,11 @@ Q4_K gate/up prefill, with narrow calls retaining their selected decode route
 and the exact selected T16 owner as the strict fallback. Other quant layouts
 keep their grouped int8 gate/up owners; dense prefill uses ``wmma_prefill`` and
 decode uses the pack8/selected GEMVs. The expert down projection defaults to the
-exact staged owner after an observed generated-history failure of the lossy MMQ
-down path, and explicit MMQ controls remain available for diagnostics. The
-binder pins ``HIPENGINE_GEMMA4_MOE_PREFILL=auto``; the manifest names the wide
-Q4 owner, its strict selected-row fallback, and the staged down owner.
+grouped WMMA owner, which reads the BF16 activations directly; the int8 MMQ down
+stays off by default after its observed generated-history failure, and explicit
+MMQ controls remain available for diagnostics. The binder pins
+``HIPENGINE_GEMMA4_MOE_PREFILL=auto``; the manifest names the wide Q4 owner, its
+strict selected-row fallback, and the WMMA down owner.
 
 Two scopes are not projections. ``decode_attention`` /
 ``global_head_dim_512``: ``production`` prefers the staged singleton attention
@@ -180,7 +181,11 @@ _Q4_K_T16 = "gguf_q4_k_t16_v1"
 _T16_FUSED_WMMA = "selected_dual_wmma_prefill_fused_bf16_bf16_out"
 _MMQ32 = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 _GROUPED_DUAL = "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
-_GROUPED_DOWN_PRODUCTION = "selected_grouped_prefill_staged_out4_bf16_bf16_out"
+# The unpinned default's Q5_1 expert down owner: the grouped WMMA kernel, which
+# the route runs through its bit-identical Q5_1T16 tile form when the tensor
+# carries the tiles. ``HIPENGINE_GEMMA4_MOE_DOWN_WMMA=0`` restores the exact
+# staged grouped owner the default ran before.
+_GROUPED_DOWN_PRODUCTION = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
 # The T16-converted gate_up scope's exact owner (registered at moe_linear;
 # the dense-key ``selected_gemv`` chain lands on the same function).
 _T16_DECODE = "selected_t16_gemv_decode_bf16_bf16_out"
