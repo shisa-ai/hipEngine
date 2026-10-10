@@ -589,7 +589,8 @@ int launch_gemma4_attention_decode(
     hipStream_t stream,
     int64_t keys,
     float* split_workspace,
-    int split_slices);
+    int split_slices,
+    const int* live_extent);
 
 template <typename scalar_t>
 int launch_gemma4_attention_prefill(
@@ -622,7 +623,7 @@ int launch_gemma4_attention_prefill(
   if (tokens > 1) {
     const int batched_rc = launch_gemma4_attention_decode<scalar_t>(
         query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads,
-        head_dim, scale, stream, keys, nullptr, 0);
+        head_dim, scale, stream, keys, nullptr, 0, nullptr);
     if (batched_rc >= 0) {
       return batched_rc;
     }
@@ -1499,15 +1500,47 @@ __global__ void gemma4_attention_decode_flash_kernel(
     float scale,
     int64_t tokens,
     int64_t keys,
-    int slices) {
+    int slices,
+    const int* __restrict__ live_extent) {
   constexpr int kWarpLanes = 32;
   constexpr int kOwn = 8;    // tree lanes per warp lane
   constexpr int kHalfDim = 256;  // dims one 256-lane half covers (kHalves * 256 == head_dim)
   const int64_t slice = static_cast<int64_t>(blockIdx.x) % slices;
   const int64_t kv = (static_cast<int64_t>(blockIdx.x) / slices) % num_kv_heads;
   const int64_t token = static_cast<int64_t>(blockIdx.x) / (slices * num_kv_heads);
-  const int64_t j_begin = keys * slice / slices;
-  const int64_t j_end = keys * (slice + 1) / slices;
+  // The slice partitioning is a function of the LIVE key count: flash_slices
+  // derives the slice count and the boundaries from it, so replaying a
+  // captured launch against a frozen bucket extent would partition the range
+  // differently than the launched path does at each position. When a
+  // live_extent slot is supplied (a whole-step graph capture), each block
+  // re-derives the live partitioning on the device: n mirrors Python's
+  // flash_slices(live) exactly, the boundaries are delta + live*s/n, and
+  // blocks at s >= n are dead (empty slice, l == 0, skipped by the combine).
+  // A null slot keeps the launched arithmetic byte-for-byte: j = keys*s/n
+  // with n == slices, exactly what the scalar path computed.
+  int64_t j_begin;
+  int64_t j_end;
+  if (live_extent != nullptr) {
+    const int64_t delta = static_cast<int64_t>(live_extent[0]);
+    const int64_t live = static_cast<int64_t>(live_extent[1]);
+    int64_t n = 4;
+    if (live > 128) {
+      n = (live + 31) / 32;
+      if (n > 64) {
+        n = 64;
+      }
+    }
+    if (live <= 0 || slice >= n) {
+      j_begin = 0;
+      j_end = 0;
+    } else {
+      j_begin = delta + live * slice / n;
+      j_end = delta + live * (slice + 1) / n;
+    }
+  } else {
+    j_begin = keys * slice / slices;
+    j_end = keys * (slice + 1) / slices;
+  }
   const int64_t slice_keys = j_end - j_begin;
 
   extern __shared__ float smem[];
@@ -1772,7 +1805,8 @@ int gemma4_decode_flash_launch_impl(
     int64_t keys,
     hipStream_t stream,
     float* workspace,
-    int slices) {
+    int slices,
+    const int* live_extent) {
   if (tokens < 1 || slices < 2 || slices > keys || num_kv_heads <= 0 ||
       num_heads != num_kv_heads * kQ || workspace == nullptr ||
       head_dim != kHalves * 256) {
@@ -1791,7 +1825,7 @@ int gemma4_decode_flash_launch_impl(
   gemma4_attention_decode_flash_kernel<scalar_t, kQ, kHalves>
       <<<dim3(grid), dim3(kFlashThreads), shared_bytes, stream>>>(
           query, key, value, keep_mask, workspace, num_heads, num_kv_heads,
-          head_dim, scale, tokens, keys, slices);
+          head_dim, scale, tokens, keys, slices, live_extent);
   int rc = static_cast<int>(hipGetLastError());
   if (rc != 0) {
     return rc;
@@ -1821,7 +1855,8 @@ int gemma4_decode_flash_launch(
     int64_t keys,
     hipStream_t stream,
     float* workspace,
-    int slices) {
+    int slices,
+    const int* live_extent) {
   if (num_kv_heads <= 0 || num_heads % num_kv_heads != 0) {
     return -1;
   }
@@ -1829,12 +1864,12 @@ int gemma4_decode_flash_launch(
   if (head_dim == 256 && ratio == 2) {
     return gemma4_decode_flash_launch_impl<scalar_t, 2, 1>(
         query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim,
-        scale, tokens, keys, stream, workspace, slices);
+        scale, tokens, keys, stream, workspace, slices, live_extent);
   }
   if (head_dim == 512 && ratio == 8) {
     return gemma4_decode_flash_launch_impl<scalar_t, 8, 2>(
         query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim,
-        scale, tokens, keys, stream, workspace, slices);
+        scale, tokens, keys, stream, workspace, slices, live_extent);
   }
   return -1;
 }
@@ -1854,7 +1889,8 @@ int launch_gemma4_attention_decode(
     hipStream_t stream,
     int64_t keys,
     float* split_workspace,
-    int split_slices) {
+    int split_slices,
+    const int* live_extent) {
   if (tokens <= 0 || keys <= 0 || num_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -1883,7 +1919,7 @@ int launch_gemma4_attention_decode(
     // caller sized as max(split, flash).
     const int flash_rc = gemma4_decode_flash_launch<scalar_t>(
         query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim,
-        scale, tokens, keys, stream, split_workspace, -split_slices);
+        scale, tokens, keys, stream, split_workspace, -split_slices, live_extent);
     if (flash_rc >= 0) {
       gemma4_decode_selection() = 3;  // flash-decoding
       return flash_rc;
@@ -2114,10 +2150,11 @@ extern "C" int hipengine_gemma4_attention_decode_bf16(
     hipStream_t stream,
     int64_t keys,
     float* split_workspace,
-    int split_slices) {
+    int split_slices,
+    const int* live_extent) {
   return launch_gemma4_attention_decode<uint16_t>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys, split_workspace, split_slices);
+      stream, keys, split_workspace, split_slices, live_extent);
 }
 
 extern "C" int hipengine_gemma4_attention_decode_f32(
@@ -2134,8 +2171,9 @@ extern "C" int hipengine_gemma4_attention_decode_f32(
     hipStream_t stream,
     int64_t keys,
     float* split_workspace,
-    int split_slices) {
+    int split_slices,
+    const int* live_extent) {
   return launch_gemma4_attention_decode<float>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys, split_workspace, split_slices);
+      stream, keys, split_workspace, split_slices, live_extent);
 }

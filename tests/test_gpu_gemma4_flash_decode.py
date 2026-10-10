@@ -338,3 +338,120 @@ def _flash_ab(
             free(workspace)
         for buffer in buffers:
             free(buffer)
+
+@pytest.mark.parametrize("geom", _GEOMETRIES)
+@pytest.mark.parametrize("keys,extent", [(1024, 1088), (2055, 2112), (4096, 4160)])
+def test_flash_live_extent_slot_matches_scalar_partitioning(
+    attention_library, geom, keys, extent
+):
+    """The capture-time live-extent slot must reproduce the launched flash exactly.
+
+    A whole-step graph capture bakes the frozen bucket extent as ``keys`` and
+    the frozen slice count, but stages ``[delta, live]`` per replay. This test
+    pins the kernel contract that makes that exact: launching over the frozen
+    superset with the slot (delta, live) equals launching the launched path's
+    scalar launch at the live extent, byte for byte, for both geometries --
+    including the tail lanes the frozen mask keeps out.
+    """
+
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        _SYMBOL_DECODE_F32,
+        flash_slices,
+        flash_workspace_bytes,
+    )
+    from tests.test_gpu_gemma4_attention_decode_parity import _raw_launch
+
+    num_heads = geom["num_heads"]
+    num_kv_heads = geom["num_kv_heads"]
+    head_dim = geom["head_dim"]
+    delta = extent - keys if keys < extent else 0
+    rng = np.random.default_rng(20261010)
+    query = np.ascontiguousarray(rng.standard_normal((1, num_heads, head_dim)) * 0.7, dtype=np.float32)
+    key = np.ascontiguousarray(rng.standard_normal((extent, num_kv_heads, head_dim)) * 0.7, dtype=np.float32)
+    value = np.ascontiguousarray(rng.standard_normal((extent, num_kv_heads, head_dim)) * 0.7, dtype=np.float32)
+    # The frozen mask keeps exactly the live window [delta, delta + keys);
+    # every other lane is masked out, as the graph session stages it.
+    mask = np.zeros((1, extent), dtype=np.uint8)
+    mask[0, delta:delta + keys] = 1
+    out_live = np.zeros((1, num_heads, head_dim), dtype=np.float32)
+    out_slot = np.zeros((1, num_heads, head_dim), dtype=np.float32)
+    key_live = key[delta:]
+    value_live = value[delta:]
+    mask_live = mask[:, delta:]
+
+    buffers = []
+    slot = None
+    workspace_frozen = None
+    try:
+        # The launched scalar reference: live arrays, live mask, flash without
+        # a slot. This is the exact launch the captured step must reproduce;
+        # the class kernel is a different decomposition and only ever matches
+        # to float precision, which is not this test's contract.
+        live_arrays = [query, key_live, value_live, mask_live, out_live]
+        for array in live_arrays:
+            buffer = malloc(array.nbytes)
+            buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        workspace_live = malloc(
+            flash_workspace_bytes(1, num_heads, head_dim, flash_slices(keys), library=attention_library)
+        )
+        _raw_launch(
+            attention_library, _SYMBOL_DECODE_F32, buffers[:5],
+            tokens=1, keys=keys, num_heads=num_heads, num_kv_heads=num_kv_heads,
+            head_dim=head_dim, scale=1.0,
+            split_workspace=workspace_live.ptr,
+            split_slices=-flash_slices(keys),
+        )
+        copy_device_to_host(host_array_ptr(out_live), buffers[4], out_live.nbytes)
+        free(workspace_live)
+
+        # The captured shape: frozen arrays, frozen mask stride, frozen slice
+        # count, live-extent slot carrying (delta, keys).
+        frozen_arrays = [query, key, value, mask, out_slot]
+        frozen_buffers = []
+        for array in frozen_arrays:
+            buffer = malloc(array.nbytes)
+            frozen_buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        slot_host = np.ascontiguousarray(np.array([delta, keys], dtype=np.int32))
+        slot = malloc(slot_host.nbytes)
+        copy_host_to_device(slot, host_array_ptr(slot_host), slot_host.nbytes)
+        frozen_slices = flash_slices(extent)
+        workspace_frozen = malloc(
+            flash_workspace_bytes(1, num_heads, head_dim, frozen_slices, library=attention_library)
+        )
+        _raw_launch(
+            attention_library, _SYMBOL_DECODE_F32, frozen_buffers,
+            tokens=1, keys=extent, num_heads=num_heads, num_kv_heads=num_kv_heads,
+            head_dim=head_dim, scale=1.0,
+            split_workspace=workspace_frozen.ptr,
+            split_slices=-frozen_slices,
+            live_extent=slot.ptr,
+        )
+        copy_device_to_host(host_array_ptr(out_slot), frozen_buffers[4], out_slot.nbytes)
+
+        np.testing.assert_array_equal(
+            out_live,
+            out_slot,
+            err_msg=(
+                f"flash live-extent slot differs from the scalar launch at "
+                f"live={keys}, frozen={extent} ({head_dim=})"
+            ),
+        )
+    finally:
+        for buffer in buffers:
+            free(buffer)
+        for buffer in frozen_buffers:
+            free(buffer)
+        if slot is not None:
+            free(slot)
+        if workspace_frozen is not None:
+            free(workspace_frozen)
+        # workspace_live is freed in the arm above; buffers holds the rest.

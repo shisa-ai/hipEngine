@@ -1993,8 +1993,8 @@ hashes across engines).
 | Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 512 | **1415.8** | 890.9 | **1.59x** | **37.75** | **35.98** | **1.05x** |
-| 1024 | **1484.6** | 1158.7 | **1.28x** | **33.67** | 33.45 | **1.01x** |
-| 2048 | **1356.2** | 1136.5 | **1.19x** | **36.36** | 30.01 | **1.21x** |
+| 1024 | **1484.6** | 1158.7 | **1.28x** | **38.81** | 33.45 | **1.16x** |
+| 2048 | **1356.2** | 1136.5 | **1.19x** | **37.74** | 30.01 | **1.26x** |
 | 4096 | **1313.3** | 1116.8 | **1.18x** | **36.43** | 29.13 | **1.25x** |
 | 8192 | 1244.7 | **1277.3** | 0.97x | **34.74** | 27.47 | **1.26x** |
 | 16384 | **1135.0** | 1105.3 | **1.03x** | **31.47** | 24.95 | **1.26x** |
@@ -2009,7 +2009,14 @@ nine of nine (up to 1.26x); at 131072 it leads both phases (505.2/12.42 vs
 was the one trailing cell on the 2026-10-08 build (0.96x): the step was
 launch-bound, not kernel-bound (~505 launches/step, ~11 of 29.7 ms), and
 replaying the step from a whole-step HIP graph takes it to 37.75 tok/s =
-1.05x ([512 decode-graph row](results/2026-10-09-gemma4-gfx1151-512-decode-graph.json)). llama.cpp's own repeatability gate
+1.05x ([512 decode-graph row](results/2026-10-09-gemma4-gfx1151-512-decode-graph.json)).
+The same graph now captures the 1024 and 2048 rows: the flash-decoding kernel
+re-derives its key partitioning per block from a staged device live-extent
+slot, so replay is bit-identical to the launched path while removing its
+launch gaps — 1024-token decode moves from 33.67 to 38.81 tok/s (1.16x) and
+2048 from 36.36 to 37.74 (1.26x), with greedy IDs identical to the launched
+path and deeper device-bound steps keeping the launched fallback
+([mid-depth decode-graph rows](results/2026-10-10-gemma4-gfx1151-decode-graph-middepth.json)). llama.cpp's own repeatability gate
 rejected its 8192 and 32768 rows in its run (its greedy continuation is not
 repeatable there); those comparator numbers are retained as best-available
 evidence with the rejection recorded, and the 16384 row passes with five

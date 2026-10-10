@@ -52,7 +52,9 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
     runner = SimpleNamespace(position=position, prefill_attention_variants=(variant,),
                              weights=SimpleNamespace(layers=[None, None],
                                                      config=SimpleNamespace(geometry=lambda i: geometries[i])),
-                             _scratches=[SimpleNamespace(attention=owner), SimpleNamespace(attention=owner)])
+                             _scratches=[SimpleNamespace(attention=owner), SimpleNamespace(attention=owner)],
+                             _stage_upload=lambda name, arr, stream=0: DeviceBuffer(ptr=7000, nbytes=8),
+                             _staging_buffer=lambda name, nbytes: DeviceBuffer(ptr=7000, nbytes=nbytes))
     session = object.__new__(graph.Gemma4DecodeGraphSession)
     session._runner_ref = lambda: runner
     session._stream, session._captures = 7, 0

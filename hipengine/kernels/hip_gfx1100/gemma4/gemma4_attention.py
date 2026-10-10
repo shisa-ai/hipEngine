@@ -71,10 +71,12 @@ _ARGTYPES_COMMON = (
 )
 
 # Prefill adds the sliding walk's window and this block's start in the mask's
-# column frame; decode adds the two-phase split's scratch pointer and slice
-# count instead. The two tails are independent, so they cannot share one base.
+# column frame; decode adds the two-phase split's scratch pointer, the slice
+# count, and the flash route's optional live-extent slot (a device int32 pair
+# [delta, live]; null keeps the launched scalar partitioning byte-for-byte).
+# The tails are independent, so they cannot share one base.
 _ARGTYPES_PREFILL = _ARGTYPES_COMMON + (ctypes.c_int64, ctypes.c_int64)
-_ARGTYPES_DECODE = _ARGTYPES_COMMON + (ctypes.c_void_p, ctypes.c_int)
+_ARGTYPES_DECODE = _ARGTYPES_COMMON + (ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p)
 
 _DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
 _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
@@ -372,6 +374,12 @@ def decode_selection(library: ctypes.CDLL | None = None) -> int:
     library = library or build_gemma4_attention(load=True)
     fn = signed_kernel_fn(library, _SYMBOL_DECODE_SELECTION, (), ctypes.c_int)
     return int(fn())
+
+
+# Live-extent slots registered by a whole-step graph capture, keyed by
+# (head_dim, num_kv_heads); None outside a capture. The decode graph session
+# owns registration and clears it when the capture ends.
+_capture_live_slots: dict | None = None
 
 
 def flash_slices(keys: int) -> int:
@@ -782,6 +790,17 @@ def _launch_prefill(
             num_kv_heads=num_kv_heads,
         )
         request = -flash_slices(key_count) if flash else slices
+        # A whole-step graph capture cannot bake the live key count into the
+        # flash partitioning (it changes every position within a bucket), so
+        # the session registers a per-geometry device slot holding
+        # [delta, live] and stages it per replay. Inside a capture the slot is
+        # passed instead, and each block re-derives the partitioning on the
+        # device exactly as this launch would with the live count; outside a
+        # capture the slot stays null and the arithmetic is byte-for-byte the
+        # scalar path's.
+        live_extent = None
+        if flash and _capture_live_slots is not None:
+            live_extent = _capture_live_slots.get((head_dim, num_kv_heads))
         workspace = 0
         needs_workspace = slices > 1 or global_logits
         temporary = Gemma4AttentionScratch() if needs_workspace and scratch is None else None
@@ -819,6 +838,7 @@ def _launch_prefill(
                 key_count,
                 ctypes.c_void_p(workspace),
                 ctypes.c_int(request),
+                ctypes.c_void_p(live_extent),
             )
             _check_launch(runtime, err)
         finally:
