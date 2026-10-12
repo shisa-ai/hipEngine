@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next (Qwen4Exp) Optimization Status
 
-- **Status date:** 2026-10-09 (refreshed; the pre-2026-10-09 narrative below is
+- **Status date:** 2026-10-12 (refreshed; the pre-2026-10-09 narrative below is
   preserved as history where later sections do not supersede it)
 - **Model / quant:** unsloth `Qwen3.8-Flash-Next` `UD-Q4_K_XL`, fingerprint
   `fb1f2fbf73d588c9…`, 111.3 GB, four shards
