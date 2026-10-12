@@ -146,3 +146,46 @@ def test_parser_exposes_the_validity_arguments(module, monkeypatch):
         "warmups", "context", "batch", "ubatch", "threads", "kv_dtype",
         "profile", "source_tree",
     } <= captured["opts"]
+
+
+def test_gufo_role_patterns_map_the_struct_named_kernels(module):
+    """gufo v0.12.0 names kernels by struct; families follow the shared
+    vocabulary where the name separates them, and the fused routed GEMM is
+    one family by design (gate/up/down are not name-separable)."""
+    assert module._role_for("DenseF16GEMMKernel<256,128,2,8,1,1,false,true>", "gufo") == "gemm_plain"
+    assert module._role_for("RoutedF16GEMMKernel<7,128,48,2,false>", "gufo") == "moe_routed"
+    assert module._role_for("RoutedScatterKernel", "gufo") == "moe_routed"
+    assert module._role_for("RouterTopKKernel", "gufo") == "moe_routed"
+    assert module._role_for("HcCombineMoeF16Kernel", "gufo") == "hyper_connection"
+    assert module._role_for("HcMixEpilogueF16Kernel", "gufo") == "hyper_connection"
+    assert module._role_for("GdnRowSplitKernel", "gufo") == "attention"
+    assert module._role_for("QwenTiledAttentionKernel", "gufo") == "attention"
+    assert module._role_for("BatchedFusedRMSNormQuantizeQ8_1Kernel", "gufo") == "quantize_pack"
+    assert module._role_for("EmbedKernel", "gufo") == "ple_embed"
+    assert module._role_for("RmsNormKernel", "gufo") == "elementwise_norm"
+    assert module._role_for("SomethingEntirelyNew", "gufo") == "other"
+    # The llamacpp rules still match case-insensitively.
+    assert module._role_for("mul_mat_q_routed") == "moe_routed"
+
+
+def test_parser_exposes_the_engine_argument(module, monkeypatch):
+    import argparse
+    import sys as _sys
+
+    captured = {}
+
+    def fake_parse(self, argv=None, namespace=None):
+        captured["opts"] = {
+            action.dest for action in self._actions if action.dest != "help"
+        }
+        raise SystemExit(0)
+
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", fake_parse)
+    monkeypatch.setattr(_sys, "argv", ["prog"])
+    try:
+        module.main()
+    except SystemExit:
+        pass
+    finally:
+        monkeypatch.setattr(argparse.ArgumentParser, "parse_args", real_parse := argparse.ArgumentParser.parse_args)
+    assert "engine" in captured["opts"]

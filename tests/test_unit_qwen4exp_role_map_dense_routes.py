@@ -194,3 +194,42 @@ def test_comparison_loader_leaves_no_unmapped_dense_route(tmp_path: Path) -> Non
     assert result["unmapped_over_floor"] == []
     assert result["by_family_ms"]["dense_projection"] == 9600.0
     assert result["by_family_ms"]["expert_gate_up"] == 3414.0
+
+
+class TestGufoDialect:
+    """gufo's struct-named kernels: rules run on the kernel-name head, never
+    on the demangled parameter list, and the fused routed GEMM is one family."""
+
+    def test_parameter_types_do_not_steal_dense_gemm_into_attention(self):
+        from scripts.qwen4exp_comparator_role_map import map_gufo
+
+        # The traced symbol is the full demangled signature; a later
+        # parameter type like AttentionSupportParams must not match the
+        # attention rule for a dense GEMM kernel.
+        signature = (
+            "void gufo::models::qwen38_flash_next::rocm::"
+            "(anonymous namespace)::DenseF16GEMMKernel<256, 128, 2, 8, 1, 2, "
+            "false, true, false, false, false, false>"
+            "(void const*, __half const*, float*, "
+            "gufo::models::qwen38_flash_next::rocm::AttentionSupportParams)"
+        )
+        assert map_gufo(signature, ("1", "1", "1")) == "dense_projection"
+
+    def test_routed_gemm_is_one_fused_family(self):
+        from scripts.qwen4exp_comparator_role_map import map_gufo
+
+        assert map_gufo(
+            "void gufo::models::qwen38_flash_next::rocm::"
+            "(anonymous namespace)::RoutedF16GEMMKernel<7,128,48,2,false>"
+            "(void const*, __half const*, float*)",
+            ("1", "1", "1"),
+        ) == "expert_fused"
+        assert map_gufo("RoutedScatterKernel", ("1", "1", "1")) == "expert_fused"
+        assert map_gufo("RouterTopKKernel", ("1", "1", "1")) == "moe_reduce"
+        assert map_gufo("HcCombineMoeF16Kernel", ("1", "1", "1")) == "hyper_connection"
+        assert map_gufo("GdnRowSplitKernel", ("1", "1", "1")) == "gdn"
+
+    def test_expert_fused_is_a_reported_family(self):
+        from scripts.qwen4exp_comparator_role_map import FAMILIES
+
+        assert "expert_fused" in FAMILIES

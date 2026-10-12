@@ -1,0 +1,175 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_cross_engine_code_p4096_attribution",
+ "performance_claim": false,
+ "measurement_class": "diagnostic_profiled_not_performance",
+ "case": "code-p4096",
+ "basis": "One request-delimited 4096-token canonical prefill per engine under rocprofv3 --kernel-trace, attributed by the shared role map. hipEngine: profile_gap warmup+measured merged in one burst (gap below the 250 ms threshold); the divisor is exactly 2 because both halves are the identical code-p4096 prefill, and the halved kernel sum is 0.998 of the measured wall (12205.9 ms). halo-box and gufo: one matched burst each (kernel sum 0.917x / 0.947x of reported prompt_ms); the gufo warmup used a different-category case so the measured prompt could not be a continuation-cache restore.",
+ "engines": {
+  "hipengine-production": {
+   "families_ms": {
+    "dense_projection": {
+     "ms": 3045.1,
+     "share_pct": 24.99,
+     "dispatches": 1282
+    },
+    "expert_gate_up": {
+     "ms": 2654.6,
+     "share_pct": 21.79,
+     "dispatches": 192
+    },
+    "expert_down": {
+     "ms": 1966.5,
+     "share_pct": 16.14,
+     "dispatches": 192
+    },
+    "moe_reduce": {
+     "ms": 712.1,
+     "share_pct": 5.84,
+     "dispatches": 854
+    },
+    "hyper_connection": {
+     "ms": 1581.0,
+     "share_pct": 12.97,
+     "dispatches": 384
+    },
+    "gdn": {
+     "ms": 593.5,
+     "share_pct": 4.87,
+     "dispatches": 216
+    },
+    "qsa_attention": {
+     "ms": 1151.9,
+     "share_pct": 9.45,
+     "dispatches": 168
+    },
+    "ple": {
+     "ms": 9.2,
+     "share_pct": 0.08,
+     "dispatches": 8
+    },
+    "indexer": {
+     "ms": 17.5,
+     "share_pct": 0.14,
+     "dispatches": 48
+    },
+    "elementwise_norm": {
+     "ms": 297.1,
+     "share_pct": 2.44,
+     "dispatches": 1983
+    },
+    "other": {
+     "ms": 157.0,
+     "share_pct": 1.29,
+     "dispatches": 31
+    }
+   },
+   "burst_kernel_ms": 24370.8,
+   "divisor": 2,
+   "measured_wall_ms": 12205.9,
+   "halved_over_wall": 0.9983
+  },
+  "halobox-master-6aa81b88e": {
+   "families_ms": {
+    "dense_projection": {
+     "ms": 982.4,
+     "share_pct": 35.61
+    },
+    "elementwise_norm": {
+     "ms": 90.7,
+     "share_pct": 3.29
+    },
+    "expert_down": {
+     "ms": 388.2,
+     "share_pct": 14.07
+    },
+    "expert_gate_up": {
+     "ms": 650.4,
+     "share_pct": 23.57
+    },
+    "gdn": {
+     "ms": 0.7,
+     "share_pct": 0.03
+    },
+    "hyper_connection": {
+     "ms": 255.9,
+     "share_pct": 9.28
+    },
+    "indexer": {
+     "ms": 5.9,
+     "share_pct": 0.22
+    },
+    "moe_reduce": {
+     "ms": 110.9,
+     "share_pct": 4.02
+    },
+    "other": {
+     "ms": 139.3,
+     "share_pct": 5.05
+    },
+    "qsa_attention": {
+     "ms": 134.5,
+     "share_pct": 4.87
+    }
+   },
+   "burst_kernel_ms": 2758.9,
+   "matched_ratio": [
+    0.9174
+   ]
+  },
+  "gufo-v0.12.0": {
+   "families_ms": {
+    "dense_projection": {
+     "ms": 841.0,
+     "share_pct": 35.44
+    },
+    "elementwise_norm": {
+     "ms": 8.5,
+     "share_pct": 0.36
+    },
+    "expert_fused": {
+     "ms": 812.3,
+     "share_pct": 34.23
+    },
+    "gdn": {
+     "ms": 208.2,
+     "share_pct": 8.78
+    },
+    "hyper_connection": {
+     "ms": 325.0,
+     "share_pct": 13.7
+    },
+    "moe_reduce": {
+     "ms": 6.1,
+     "share_pct": 0.26
+    },
+    "other": {
+     "ms": 43.2,
+     "share_pct": 1.82
+    },
+    "ple": {
+     "ms": 7.4,
+     "share_pct": 0.31
+    },
+    "qsa_attention": {
+     "ms": 112.5,
+     "share_pct": 4.74
+    },
+    "quantize_pack": {
+     "ms": 8.6,
+     "share_pct": 0.36
+    }
+   },
+   "burst_kernel_ms": 2372.8,
+   "matched_ratio": [
+    0.9467
+   ],
+   "expert_note": "expert_fused: gufo's RoutedF16GEMMKernel covers routed gate/up/down in one fused launch; it is never split against hipEngine's expert_gate_up + expert_down."
+  }
+ },
+ "caveats": [
+  "Family buckets are kernel-name rules; cross-engine rows are like-for-like only where the names separate the same work (the 2026-09-15 correction still applies).",
+  "halo-box GDN time may be folded into its attention/other rows by the llama.cpp name rules; gufo and hipEngine GDN are name-separable.",
+  "Profiled walls run 4-6% slower than the unprofiled pass-1 rows; these are attribution splits, not rates."
+ ]
+}

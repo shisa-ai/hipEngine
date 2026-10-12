@@ -60,6 +60,10 @@ FAMILIES = (
     "dense_projection",
     "expert_gate_up",
     "expert_down",
+    # gufo's RoutedF16GEMMKernel fuses gate/up/down in one launch; the name
+    # cannot separate them, so routed expert time is reported as one family
+    # and stays zero for every other dialect.
+    "expert_fused",
     "moe_reduce",
     "hyper_connection",
     "gdn",
@@ -338,10 +342,63 @@ def map_hipengine(name: str, grid: tuple[str, str, str]) -> str:
     return "other"
 
 
+def _gufo_kernel_head(name: str) -> str:
+    """The kernel symbol without its demangled parameter list.
+
+    gufo's kernels are C++ templates whose traced symbol is the full demangled
+    signature; parameter types (``AttentionSupportParams``, ``RoPEParams``)
+    appear inside it and would otherwise match family rules that were written
+    for the kernel name alone. The parameter list starts at the paren that
+    follows a type keyword; the ``(anonymous namespace)::`` qualifier ahead of
+    the kernel name does not match that shape and survives the cut.
+    """
+    return re.split(r"\((?:void\b|__half\b|float\b|const\b|unsigned\b|int\b|bool\b|char\b)", name, maxsplit=1)[0]
+
+
+def map_gufo(name: str, grid: tuple[str, str, str]) -> str:
+    """gufo's struct-named kernels, in the shared taxonomy.
+
+    RoutedF16GEMMKernel fuses gather, the quantized-weight GEMM and the scatter
+    for gate/up/down in one launch (the 2026-10-04 trace: 192 launches, 4 per
+    layer across 48 layers), so routed expert time is reported as one family,
+    ``expert_fused``; it is never split into expert_gate_up versus expert_down,
+    which the name cannot separate. hyper-connection, GDN, attention, PLE and
+    the quantized dense GEMMs are name-separable and map directly. Rules run
+    on the kernel-name head, not the demangled parameter list.
+    """
+    head = _gufo_kernel_head(name)
+    if re.search(r"RoutedF16GEMM|RoutedPadBounds|RoutedScatter", head):
+        return "expert_fused"
+    if re.search(r"RouterTopK|SpeculativeSegment|GatherArgmax", head):
+        return "moe_reduce"
+    if re.search(r"HcCombine|HcMix", head):
+        return "hyper_connection"
+    if re.search(r"Gdn|SSM|Ssm|RestoreGdnState", head):
+        return "gdn"
+    if re.search(
+        r"Attention|TiledAttention|PrepareAttention|KvPrefix|QwenDecodeSplitK|RoPE", head
+    ):
+        return "qsa_attention"
+    if re.search(r"Embed|PleGate|PleInject", head):
+        return "ple"
+    if re.search(r"Quantize|Dequantize|UnpackQG|PackTiled", head):
+        return "quantize_pack"
+    if re.search(
+        r"DenseF16GEMM|W8A8BlockedWmma|WKQuantA8Blocked|GEMV|Gemm|BlockGemm|FusedQKV", head
+    ):
+        return "dense_projection"
+    if re.search(
+        r"RmsNorm|ResidualAdd|Silu|SwiGLU|Zero|WriteKVCache|WriteBatchedKVCache|Norm|Mtp", head
+    ):
+        return "elementwise_norm"
+    return "other"
+
+
 MAPPERS: dict[str, Callable[[str, tuple[str, str, str]], str]] = {
     "llamacpp": map_llamacpp,
     "mmb": map_mmb,
     "hipengine": map_hipengine,
+    "gufo": map_gufo,
 }
 
 
