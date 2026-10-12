@@ -18,7 +18,15 @@ The pass-1 p4096 prefill attribution is the prioritization signal:
 | Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
 | Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
 
-The first real-model histogram attempt is **blocked by scope mismatch**, not
+The production owner is now identified in `hipengine/runtime/qwen4_exp_runner.py`:
+Q4 prefill takes the grouped path, builds `group_counts`/`group_expert_start`,
+executes `qwen35_moe_group_scatter_gather_lowp`, then selects one of the
+`qwen35_moe_mmq32_tile_map`, exact grouped Q4, or T16/WMMA branches. The
+capture wrapper's `moe_linear` pair2 keys were therefore the wrong observation
+point. The correct instrumentation point is the grouped scheduler's
+`group_expert_start` and `group_wmma_total`/`group_tile_expert` buffers, before
+the selected grouped Q4/T16 owner launch.
+
 by model loading. `scripts/qwen4exp_routing_capture.py` wraps only the Q4/Q5_1
 pair-prefill `KernelKey` variants, while the production `code-p4096` run took a
 different registered owner (the capture produced zero records and preserved
