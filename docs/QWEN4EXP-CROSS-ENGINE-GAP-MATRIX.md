@@ -18,7 +18,16 @@ The pass-1 p4096 prefill attribution is the prioritization signal:
 | Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
 | Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
 
-The production owner is now identified in `hipengine/runtime/qwen4_exp_runner.py`:
+The grouped instrumentation then captured **1,152 production prefix records**
+for `code-p4096` (the wrapper's old `records` assertion still failed because
+that assertion only recognizes pair2 records; the grouped data is valid). The
+compact summary is
+`benchmarks/results/2026-10-12-qwen4exp-cross-engine-gap-routing-code-p4096-grouped-summary.json`.
+Across the grouped records, the mean nonempty-expert bucket was 16.04 routed
+lanes, with per-record totals of 5,120 lanes and count-aware maxima reaching
+512. This is the real production histogram needed for the tile-policy replay;
+it is not itself a performance claim.
+
 Q4 prefill takes the grouped path, builds `group_counts`/`group_expert_start`,
 executes `qwen35_moe_group_scatter_gather_lowp`, then selects one of the
 `qwen35_moe_mmq32_tile_map`, exact grouped Q4, or T16/WMMA branches. The
