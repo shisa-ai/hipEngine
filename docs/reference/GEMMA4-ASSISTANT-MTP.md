@@ -1,18 +1,21 @@
 ---
 status: current
-owns: The `gemma4-assistant` MTP head's complete forward specification — per-layer step order, KV binding, attention scale, and the list of what is still unimplemented. Read before writing the head's forward or its draft/verify loop.
+owns: The `gemma4-assistant` MTP head's forward specification (per-layer step order, KV binding, attention scale), where it is implemented, how a caller reaches it, what it measures, and its open defects. Read before changing the head's forward or its draft/verify loop.
 ---
 # Gemma 4 assistant head (MTP)
 
 The Gemma 4 26B-A4B MTP head is a **separate GGUF artifact with its own
 architecture string**, not tensors inside the target. This document is the
 resolved specification: the algorithm, the hyperparameters, the tensor layout,
-and the one design question that was open — which KV the head's four blocks
-attend against. It exists so the port is mechanical rather than a re-derivation.
+and which KV the head's four blocks attend against. The sections after the
+specification describe the implementation, how to reach it, what it measures,
+and what is still open.
 
-Nothing here is implemented. `hipengine/generation/gemma4_gguf.py` declares
-`supports_speculative_mtp = False`, and that declaration is what the work has to
-make true, not a gate that blocks the work.
+The head is implemented and reachable through the public API for greedy
+requests on `hip_gfx1100` and `hip_gfx1151`. Two things in this document are
+not as the code's own docstrings describe them, and both are under
+"Open defects": the verify pass is not arithmetically identical to one-token
+decode, and sampled (temperature above zero) requests are refused.
 
 ## The artifact
 
@@ -208,47 +211,112 @@ the same ones, and a port can build each head block's rope from the backbone's
 The equality is also the check: if the two ever disagree, one of them is wrong,
 and it is cheaper to notice that here than in an acceptance-rate number.
 
-## What is implemented
+## Implementation
 
-`hipengine/loading/gemma4_assistant_gguf.py` (311 lines, landed in b42a56c20):
-the config decoder, `expected_gemma4_assistant_shapes`, the required-tensor-name
-list, `validate_gemma4_assistant_tensor_map`, and `build_gemma4_assistant_tensor_map`.
-It follows `hipengine/loading/qwen35_gguf_nextn.py` as the template.
+| Piece | Where |
+| --- | --- |
+| Config decoder, expected shapes, tensor-map validation | `hipengine/loading/gemma4_assistant_gguf.py` |
+| Device residency for all 49 tensors (461.8 MB file, 440.5 MB on device) | `hipengine/loading/gemma4_assistant_device.py` |
+| Target/head pairing checks before either is loaded | `hipengine/loading/gemma4_mtp_gguf.py` |
+| The head's forward and the drafter that chains it | `hipengine/runtime/gemma4_assistant.py` (`Gemma4AssistantHead`, `Gemma4MtpDrafter`) |
+| Draft/verify loop, telemetry, provider registration | `hipengine/generation/gemma4_mtp.py` (provider `gemma4_mtp`) |
+| Generator hook that attaches a provider | `hipengine/generation/gemma4_gguf.py` (`attach_speculative_provider`) |
 
-`hipengine/loading/gemma4_assistant_device.py` (landed in 8bb1c31c1): the
-device-residency half. `plan_gemma4_assistant_device_specs` plans all 49
-tensors, `materialize_gemma4_assistant_device_weights` uploads them
-all-or-nothing, and `load_gemma4_assistant_device_weights` does both from a
-path. Every tensor is reachable by a forward slot (`blocks.2.attn_q`,
-`nextn_pre_projection`), so the forward does not build GGUF names. The real
-461.8 MB head loads to 440.5 MB of device allocations, 23 raw Q8_0 blocks and 26
-dense F32, with the planned total equal to the artifact's own tensor bytes.
+The head reads backbone layers 28 and 29 through the runner, uses the backbone's
+embedding table for its input and its own for the logits, and builds its rope
+tables from the backbone layers it reads, as specified above.
 
-## What is not
+### The cycle
 
-1. **The forward.** Four dense blocks at width 1024 with the step order above.
-   Every primitive exists in this engine; nothing here needs a new kernel. The
-   head's blocks are not `gemma4_layer_forward_bf16` -- that does pre-norm with a
-   KV write and a `1/sqrt(head_dim)` scale, where this does post-norm with a
-   shared-KV read and scale 1.0 -- so the forward composes
-   `launch_gguf_linear`, `gemma4_rmsnorm_f32w_bf16`, the rope tables and the
-   attention kernel directly. It also needs the *backbone's* embedding table for
-   its input and its own for the logits, and the backbone's layer-28/29 rope
-   tables, both of which the backbone runner has to expose.
-2. **The KV read path.** Exposing backbone layer 28/29 K and V to the head and
-   making the draft step's position agree with them.
-3. **The draft/verify loop.** Draft k tokens with the head, verify the whole
-   prefix in one target forward, accept the longest matching run.
-4. **The adapter registration.** `register_gguf_mtp2_adapter(key, factory)` in
-   `hipengine/generation/qwen35_gguf_mtp2_registry.py` already has `dense_nextn`
-   and `moe_nextn` for qwen35; the head is a `dense_nextn` shape. Then
-   `supports_speculative_mtp` in `hipengine/generation/gemma4_gguf.py` can
-   become true.
-5. **An acceptance-rate measurement.** `benchmarks/README.md` records MTP decode
-   at 25.34 against 12.27 tok/s per request, **2.07x**, for a different model on
-   this host. That is the number to compare against and the reason to expect a
-   decode win, but this head's acceptance rate on Gemma 4 is unmeasured, and a
-   fast head with low acceptance buys little.
+One cycle drafts up to `candidate_budget` tokens with the head, then verifies
+them in one backbone forward of `[token, *drafts]` that returns
+`len(drafts) + 1` logit rows (`Gemma4Runner.forward(..., logits_rows=...,
+verification=True)`). It accepts the longest run of drafts that match the
+verify rows' argmax and commits one more token from the row after the last
+accepted draft, so a cycle commits between 1 and `candidate_budget + 1` tokens.
+The backbone is rewound to the committed position and the next cycle's seed
+hidden row is taken from the verify pass.
+
+- `drafts[0]` predicts the token after `token`, not `token` itself.
+- The last cycle leaves one row of headroom so a request never emits more than
+  `max_tokens`.
+- `candidate_budget` is 1 to 8.
+- Requests with `temperature != 0` or `top_k` outside `{0, 1}` are refused with
+  an error naming the limitation.
+
+### Reaching it
+
+```python
+llm = hipengine.LLM(
+    model="<target>.gguf",
+    speculative_provider="gemma4_mtp",
+    draft_model="<mtp head>.gguf",
+    speculative_candidate_budget=4,
+)
+outputs = llm.generate_speculative_mtp_detailed([prompt], sampling_params)
+```
+
+`LLM.generate()` stays autoregressive unless the request sets
+`speculative_mtp=True`; without an attached provider that request raises
+instead of returning plain text. Server routing of the flag is described in
+`docs/API.md`. `scripts/gemma4_mtp_probe.py` compares plain and MTP generation
+through this API over prompt suites and writes a paired artifact.
+
+## What it measures
+
+Radeon Pro W7900 (`hip_gfx1100`), target `UD-Q4_K_XL`, head `Q8_0`, production
+profile, BF16 KV, 18 prompts from the two suites under `benchmarks/prompts/`
+(code, English, Japanese, mixed), two samples each, 128 greedy tokens. Rates
+are whole-call tokens per second including the prefill of a short prompt, plain
+call first, measured 2026-10-13 with `scripts/gemma4_mtp_probe.py`.
+
+| `candidate_budget` | Plain tok/s | MTP tok/s | Ratio | Code | English | Japanese | Mixed |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 | 74.3 | 94.2 | 1.27x | 1.33x | 1.24x | 1.23x | 1.25x |
+| 4 | 74.0 | 103.3 | 1.40x | 1.51x | 1.34x | 1.28x | 1.40x |
+| 6 | 74.2 | 102.2 | 1.38x | 1.50x | 1.32x | 1.21x | 1.43x |
+| 8 | 73.7 | 72.8 | 0.99x | 1.07x | 0.97x | 0.85x | 1.01x |
+
+A budget of 4 is the best measured setting on this device. Artifact:
+`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-status.json`. The head has not
+been measured on `hip_gfx1151` on the current tree.
+
+## Open defects
+
+1. **The verify pass is not the arithmetic of one-token decode.** The provider's
+   docstring and its telemetry field
+   `verify_equivalence: bit_identical_to_target_ar_greedy` state that a verify
+   row equals the single-token forward for that position. It does not. After
+   the same prefill, forwarding K tokens one at a time and forwarding them as
+   one K-row block with `verification=True` gives no bitwise-equal row in either
+   the production or the strict profile (prompts of 120, 600 and 1100 tokens, K
+   of 3 and 7; row KL from 5.8e-8 to 3.7e-2 in production). The first row of the
+   block already differs after layer 0, so the cause is how a multi-row block
+   is computed rather than context; the operator that introduces it has not
+   been isolated. In the table above, MTP output is token-identical to plain
+   greedy on 11 of 18 prompts and diverges on the same 7 at every budget; under
+   the strict profile at budget 4 it is identical on 14 of 18. Each MTP output
+   is still a greedy continuation under the block arithmetic. Either the verify
+   block has to run row-invariant arithmetic, or the equivalence claim has to
+   be replaced by the production envelope in `docs/EXECUTION-PROFILES.md` with
+   its own measurement. The telemetry label is wrong until one of those lands.
+2. **A budget of 8 gives no speedup** where 6 gives 1.38x. The acceptance and
+   cycle-length telemetry was not examined for that row, so whether the cost is
+   in the nine-row verify block or in acceptance is unmeasured.
+3. **Sampled requests are refused.** `hipengine/speculative/sampling.py`
+   already implements exact speculative sampling (accept with `min(1, p/q)`,
+   resample the residual on rejection), and `hipengine/generation/mtp_sampled_accept.py`
+   applies it for the Qwen MTP route. The Gemma provider does not call it. Two
+   pieces are missing: a sampled accept walk over the verify rows in
+   `hipengine/generation/gemma4_mtp.py`, and a drafter that samples from the
+   head's distribution and reports the probability it drew with, since a
+   drafter that always offers its top token has `q = 1` and is accepted only
+   with probability `p`. llama.cpp added the same pair of changes for its MTP
+   and simple draft routes (`ggml-org/llama.cpp` pull request 27694). Its
+   RTX 5090 tables report mean accepted length up about 6% to 12% over
+   temperatures 0.5 to 1.0 for the five configurations read here (two MTP, three
+   draft-model), and no change at temperature 0, where both arms emit the same
+   tokens.
 
 ## References
 

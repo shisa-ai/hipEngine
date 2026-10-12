@@ -1,0 +1,194 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_mtp_status",
+ "date": "2026-10-13",
+ "performance_claim": true,
+ "question": "What does Gemma 4 assistant-head MTP deliver on a W7900 today, and does it still reproduce plain greedy decoding?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL target, mtp-gemma-4-26B-A4B-it-Q8_0 assistant head, BF16 KV",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit": "2ce5220b7",
+ "command": "scripts/gemma4_mtp_probe.py --artifact <target> --draft <head> --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --suite benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --tokens 128 --budget B --samples 2, HIPENGINE_EXECUTION_PROFILE=production",
+ "timing_scope": "whole public call including prefill of short prompts, 128 greedy tokens; plain call first, then MTP",
+ "by_candidate_budget": {
+  "2": {
+   "rows": 36,
+   "prompts": 18,
+   "plain_tok_s_mean": 74.3,
+   "mtp_tok_s_mean": 94.2,
+   "ratio_mean": 1.269,
+   "ratio_by_category": {
+    "code": 1.33,
+    "general_en": 1.24,
+    "general_ja": 1.23,
+    "mixed_ja_en": 1.25
+   },
+   "prompts_token_identical_to_plain": 11,
+   "prompts_diverging": [
+    "code_merge_intervals",
+    "general_en_explain",
+    "general_en_plan",
+    "general_ja_plan",
+    "heldout_general_ja_migration",
+    "heldout_general_ja_speculative",
+    "heldout_mixed_summary"
+   ]
+  },
+  "4": {
+   "rows": 36,
+   "prompts": 18,
+   "plain_tok_s_mean": 74.0,
+   "mtp_tok_s_mean": 103.3,
+   "ratio_mean": 1.397,
+   "ratio_by_category": {
+    "code": 1.51,
+    "general_en": 1.34,
+    "general_ja": 1.28,
+    "mixed_ja_en": 1.4
+   },
+   "prompts_token_identical_to_plain": 11,
+   "prompts_diverging": [
+    "code_merge_intervals",
+    "general_en_explain",
+    "general_en_plan",
+    "general_ja_plan",
+    "heldout_general_ja_migration",
+    "heldout_general_ja_speculative",
+    "heldout_mixed_summary"
+   ]
+  },
+  "6": {
+   "rows": 36,
+   "prompts": 18,
+   "plain_tok_s_mean": 74.2,
+   "mtp_tok_s_mean": 102.2,
+   "ratio_mean": 1.379,
+   "ratio_by_category": {
+    "code": 1.5,
+    "general_en": 1.32,
+    "general_ja": 1.21,
+    "mixed_ja_en": 1.43
+   },
+   "prompts_token_identical_to_plain": 11,
+   "prompts_diverging": [
+    "code_merge_intervals",
+    "general_en_explain",
+    "general_en_plan",
+    "general_ja_plan",
+    "heldout_general_ja_migration",
+    "heldout_general_ja_speculative",
+    "heldout_mixed_summary"
+   ]
+  },
+  "8": {
+   "rows": 36,
+   "prompts": 18,
+   "plain_tok_s_mean": 73.7,
+   "mtp_tok_s_mean": 72.8,
+   "ratio_mean": 0.988,
+   "ratio_by_category": {
+    "code": 1.07,
+    "general_en": 0.97,
+    "general_ja": 0.85,
+    "mixed_ja_en": 1.01
+   },
+   "prompts_token_identical_to_plain": 11,
+   "prompts_diverging": [
+    "code_merge_intervals",
+    "general_en_explain",
+    "general_en_plan",
+    "general_ja_plan",
+    "heldout_general_ja_migration",
+    "heldout_general_ja_speculative",
+    "heldout_mixed_summary"
+   ]
+  }
+ },
+ "strict_profile_budget_4": {
+  "prompts": 18,
+  "prompts_token_identical_to_plain": 14
+ },
+ "row_invariance": {
+  "method": "one process; after the same prefill, K tokens forwarded one at a time against one forward of the K-token block with logits_rows=K and verification=True; prompts of 120, 600 and 1100 tokens, K of 3 and 7",
+  "result": "no row is bitwise equal in the production or the strict profile; max row KL 5.8e-8 to 3.7e-2 (production); no argmax flip in these 30 rows",
+  "first_differing_layer": 0,
+  "reading": "the first row of the block already differs from the one-token step after layer 0 in both profiles, so the difference is in how a multi-row block is computed, not in context. Which operator introduces it was not isolated."
+ },
+ "finding": "MTP is 1.27x to 1.40x plain greedy at budgets 2 to 6 and gives nothing at 8. Its output is not token-identical to plain greedy on 7 of 18 prompts, the same prompts at every budget, although its telemetry reports verify_equivalence bit_identical_to_target_ar_greedy.",
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 2,
+  "collected_at": "2026-10-12T18:45:47.573430+00:00",
+  "host_name": "epyc",
+  "repo_root": "/home/lhl/hipEngine-gemma4",
+  "hipengine_commit": "2ce5220b7dfba4878dcb68bc4bf6030a76fa9f35",
+  "git_branch": "gemma4",
+  "staged_dirty": false,
+  "unstaged_dirty": false,
+  "untracked_dirty": true,
+  "untracked_count": 43,
+  "dirty": true,
+  "configured_backend": "auto",
+  "resolved_backend": "hip_gfx1100",
+  "target_arch": "gfx1100",
+  "device_name": "AMD Radeon Pro W7900",
+  "model_path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-sampled-v1",
+   "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+   "size_bytes": 17010980576,
+   "sampled_bytes": 3145728,
+   "sample_offsets": [
+    0,
+    8504966000,
+    17009932000
+   ],
+   "exists": true,
+   "path_type": "file"
+  },
+  "quant": null,
+  "kv_dtype": "bf16",
+  "command": [
+   "/home/lhl/hipEngine-gemma4/.venv/bin/python",
+   "scripts/gemma4_mtp_probe.py",
+   "--artifact",
+   "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+   "--draft",
+   "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+   "--suite",
+   "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+   "--suite",
+   "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+   "--tokens",
+   "128",
+   "--budget",
+   "8",
+   "--samples",
+   "2",
+   "--json",
+   "/mnt/nvme1/gemma4-eval/mtp-1013/probe-b8.json"
+  ],
+  "environment": {
+   "HIPENGINE_BACKEND": null,
+   "HIPENGINE_HIP_ARCH": null,
+   "GPU_MAX_HW_QUEUES": null,
+   "HIPENGINE_BUILD_CACHE_ROOT": null,
+   "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+   "HIP_VISIBLE_DEVICES": null,
+   "ROCR_VISIBLE_DEVICES": "0",
+   "CUDA_VISIBLE_DEVICES": null,
+   "GPU_DEVICE_ORDINAL": null
+  },
+  "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+  "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+  "build_profile": null,
+  "timing_protocol": "plain-first whole public call including prefill; emitted tokens",
+  "warmups": 1,
+  "repetitions": 2,
+  "profiler": null
+ }
+}
