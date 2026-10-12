@@ -434,10 +434,15 @@ def _post_json(host: str, port: int, path: str, payload: Mapping[str, Any], time
     return parsed
 
 
-def _wait_for_health(host: str, port: int, timeout: float) -> None:
+def _wait_for_health(host: str, port: int, timeout: float, process: subprocess.Popen[Any] | None = None) -> None:
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
     while time.monotonic() < deadline:
+        if process is not None and process.poll() is not None:
+            raise RuntimeError(
+                f"server exited with code {process.returncode} before becoming healthy; "
+                "inspect the server log for the rejected arguments"
+            )
         try:
             with urllib.request.urlopen(f"http://{host}:{port}/health", timeout=2.0) as response:
                 if response.status < 500:
@@ -602,7 +607,7 @@ def run_llamacpp(args: argparse.Namespace) -> dict[str, Any]:
     with log_path.open("wb") as server_log:
         process = subprocess.Popen(command, stdout=server_log, stderr=subprocess.STDOUT, env=os.environ.copy())
         try:
-            _wait_for_health(args.host, args.port, args.startup_timeout)
+            _wait_for_health(args.host, args.port, args.startup_timeout, process=process)
             for warmup in range(args.warmups):
                 for case in _measurement_order(cases, warmup):
                     started = time.perf_counter()
@@ -911,7 +916,7 @@ def run_openai(args: argparse.Namespace) -> dict[str, Any]:
             cwd=server_cwd,
         )
         try:
-            _wait_for_health(args.host, args.port, args.startup_timeout)
+            _wait_for_health(args.host, args.port, args.startup_timeout, process=process)
             for warmup in range(args.warmups):
                 for case in _measurement_order(qualified_cases, warmup):
                     started = time.perf_counter()

@@ -262,7 +262,14 @@ def _server_artifact(
     battery = load_battery()
     tokenizer = _load_tokenizer(args.model_root)
     records = _battery_prompt_records(tokenizer, battery)
-    command = [str(args.server_bin.resolve()), *args.server_arg]
+    command = [
+        str(args.server_bin.resolve()),
+        *args.server_arg,
+        "--host",
+        str(args.host),
+        "--port",
+        str(args.port),
+    ]
     artifact: dict[str, Any] = {
         "schema": 1,
         "kind": "cross_engine_quality_run",
@@ -293,31 +300,36 @@ def _llamacpp_probs(response: Mapping[str, Any]) -> list[list[list[float]]] | No
     """Per-position top-k logprobs from a llama.cpp /completion response.
 
     Returns [[ [token_id, logprob], ... ] per position] when the server emits
-    them, else None. Parsing is deliberately tolerant across fork schemas.
+    them, else None. Parsing is deliberately tolerant across fork schemas:
+    current llama.cpp serves `completion_probabilities[].top_logprobs` with
+    `logprob` fields; older forks served `probs[].top_probs` with `prob`.
     """
-    probs = response.get("probs")
-    if not isinstance(probs, list):
-        return None
-    positions: list[list[list[float]]] = []
-    for entry in probs:
-        if not isinstance(entry, Mapping):
-            return None
-        top = entry.get("top_probs")
-        if not isinstance(top, list):
-            return None
-        positions.append(
-            [
+    for container_key, entry_key in (("completion_probabilities", "top_logprobs"), ("probs", "top_probs")):
+        container = response.get(container_key)
+        if not isinstance(container, list):
+            continue
+        positions: list[list[list[float]]] = []
+        for entry in container:
+            if not isinstance(entry, Mapping):
+                return None
+            top = entry.get(entry_key)
+            if not isinstance(top, list):
+                return None
+            positions.append(
                 [
-                    int(item["id"]),
-                    float(item["logprob"])
-                    if "logprob" in item
-                    else float(np.log(max(float(item["prob"]), 1e-38))),
+                    [
+                        int(item["id"]),
+                        float(item["logprob"])
+                        if "logprob" in item
+                        else float(np.log(max(float(item["prob"]), 1e-38))),
+                    ]
+                    for item in top
+                    if isinstance(item, Mapping) and "id" in item and ("prob" in item or "logprob" in item)
                 ]
-                for item in top
-                if isinstance(item, Mapping) and "id" in item and ("prob" in item or "logprob" in item)
-            ]
-        )
-    return positions or None
+            )
+        if positions:
+            return positions
+    return None
 
 
 def run_llamacpp(args: argparse.Namespace) -> dict[str, Any]:
@@ -328,7 +340,7 @@ def run_llamacpp(args: argparse.Namespace) -> dict[str, Any]:
     with (args.server_log).open("wb") as server_log:
         process = subprocess.Popen(command, stdout=server_log, stderr=subprocess.STDOUT, env=os.environ.copy())
         try:
-            _wait_for_health(args.host, args.port, args.startup_timeout)
+            _wait_for_health(args.host, args.port, args.startup_timeout, process=process)
             for record in records:
                 runs: list[dict[str, Any]] = []
                 for repetition in range(int(args.repeats)):
@@ -417,7 +429,7 @@ def _openai_completion_run(args: argparse.Namespace, adapter: str) -> dict[str, 
             cwd=args.server_cwd.resolve() if args.server_cwd else None,
         )
         try:
-            _wait_for_health(args.host, args.port, args.startup_timeout)
+            _wait_for_health(args.host, args.port, args.startup_timeout, process=process)
             for record in qualified:
                 runs: list[dict[str, Any]] = []
                 for repetition in range(int(args.repeats)):
@@ -505,24 +517,30 @@ def _first_divergence(reference: Sequence[int], candidate: Sequence[int]) -> int
 
 
 def _truncated_kl(reference: Sequence[Sequence[float]], candidate: Sequence[Sequence[float]]) -> float:
-    """KL over the union of two top-k lists, renormalized in float64."""
-    weights: dict[int, tuple[float, float]] = {}
+    """KL over the union of two top-k lists, renormalized in float64.
+
+    A token absent from one side's list carries that side's epsilon floor, not
+    exp(0): absent tail mass is unknown, and assigning it the full weight of a
+    present token would explode the divergence whenever the lists differ.
+    """
+    epsilon = 1e-12
+    reference_p: dict[int, float] = {}
+    candidate_p: dict[int, float] = {}
     for token_id, logprob in reference:
-        weights.setdefault(int(token_id), (0.0, 0.0))
-        left = weights[int(token_id)]
-        weights[int(token_id)] = (float(logprob), left[1])
+        reference_p[int(token_id)] = max(float(np.exp(float(logprob))), epsilon)
     for token_id, logprob in candidate:
-        weights.setdefault(int(token_id), (0.0, 0.0))
-        right = weights[int(token_id)]
-        weights[int(token_id)] = (right[0], float(logprob))
-    reference_mass = sum(np.exp(value[0]) for value in weights.values())
-    candidate_mass = sum(np.exp(value[1]) for value in weights.values())
+        candidate_p[int(token_id)] = max(float(np.exp(float(logprob))), epsilon)
+    for token_id in set(reference_p) | set(candidate_p):
+        reference_p.setdefault(token_id, epsilon)
+        candidate_p.setdefault(token_id, epsilon)
+    reference_mass = sum(reference_p.values())
+    candidate_mass = sum(candidate_p.values())
     divergence = 0.0
-    for left_logprob, right_logprob in weights.values():
-        p = np.exp(left_logprob) / reference_mass
-        q = np.exp(right_logprob) / candidate_mass
+    for token_id in reference_p:
+        p = reference_p[token_id] / reference_mass
+        q = candidate_p[token_id] / candidate_mass
         if q > 0.0:
-            divergence += float(q * (np.log(q) - np.log(p)) if p > 0.0 else q * 0.0)
+            divergence += float(q * (np.log(q) - np.log(p)))
     return divergence
 
 
