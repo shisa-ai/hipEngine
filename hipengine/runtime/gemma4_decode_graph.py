@@ -103,6 +103,35 @@ from hipengine.core.memory import MemcpyKind
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import KEY_TILE
 from hipengine.runtime.gemma4 import GEMMA4_SLIDING_BUCKET_WIDTH, Gemma4Runner
 
+#: The decode-graph capture window, from the measured launch-bound prize:
+#: replaying the whole step from a captured graph wins at 1024 prompt tokens
+#: (+15.4 percent decode, 38.81 vs 33.63 tok/s) and 2048 (+2.2 percent,
+#: 37.74 vs 36.91) and is flat-to-negative from 2560 on, where the step is
+#: device-bound and the per-bucket capture cost (~10.5 ms per 64 positions)
+#: plus the staged-mask superset walk outweighs the launch-gap savings
+#: (2026-10-10 sweep, 3 samples per arm, campaign corpus). Correctness is not
+#: the bound: every route below 15328 keys replays bit-exactly since the
+#: live-extent slot landed (flash), and the split and class routes always did;
+#: the class-global kernel and the staged singleton above 15328 keys remain
+#: unvalidated for capture, so the guard never admits them either way.
+_CAPTURE_MAX_KEYS = 2176
+
+#: Backend-package attribute that replaces ``_CAPTURE_MAX_KEYS`` for that
+#: backend. The window is a measured launch-bound prize, so it is a property of
+#: the hardware the step runs on: a backend whose launched step leaves no gap
+#: to recover declares a smaller window, or ``0`` to keep every step launched.
+CAPTURE_MAX_KEYS_CAPABILITY = "GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS"
+
+
+def _capture_max_keys(backend: str | None) -> int:
+    """The capture window for ``backend``: its declared value, else the default."""
+
+    if backend is None:
+        return _CAPTURE_MAX_KEYS
+    from hipengine.kernels.backends import backend_package_capability
+
+    return int(backend_package_capability(backend, CAPTURE_MAX_KEYS_CAPABILITY, _CAPTURE_MAX_KEYS))
+
 #: Positions per capture window. Small enough that a bucket crossing costs a
 #: recapture only once per ``width`` steps, large enough that the frozen
 #: ``key_begin`` walks at most ``width`` keys past the true sliding window.
@@ -217,6 +246,7 @@ class Gemma4DecodeGraphSession:
         self._bucket: _Bucket | None = None
         self._appends: tuple[_CaptureAppend, ...] = ()
         self._captures = 0
+        self._launched_fallbacks = 0
 
     # --- public API -------------------------------------------------------
 
@@ -246,6 +276,17 @@ class Gemma4DecodeGraphSession:
 
         return self._captures
 
+    @property
+    def launched_fallbacks(self) -> int:
+        """Steps replayed through the launched path instead of the graph.
+
+        Every step whose capture window reaches the decode split route takes
+        this path (see ``_capture_max_keys``); zero means every step in
+        the window replayed from a captured graph.
+        """
+
+        return self._launched_fallbacks
+
     def step(self, token: int, *, apply_softcap: bool = True) -> np.ndarray:
         """Run one decode step for ``token`` and return its logits.
 
@@ -254,6 +295,23 @@ class Gemma4DecodeGraphSession:
         graph instead of 780 host-side submissions.
         """
 
+        result = self._step(token, apply_softcap=apply_softcap, collect_argmax=False)
+        return result  # type: ignore[return-value]  # np.ndarray by _collect_block
+
+    def step_argmax(self, token: int, *, apply_softcap: bool = True) -> int:
+        """Run one decode step for ``token`` and return the greedy token.
+
+        Mirrors ``runner.forward_argmax([token])``: identical launches, the
+        collect phase argmaxes on the device and brings home 16 bytes instead
+        of the full-vocab logits. The returned token equals
+        ``int(np.argmax(step(...)))`` exactly, by the same
+        ``_collect_block_argmax`` contract the launched route uses.
+        """
+
+        result = self._step(token, apply_softcap=apply_softcap, collect_argmax=True)
+        return result  # type: ignore[return-value]  # int by _collect_block_argmax
+
+    def _step(self, token: int, *, apply_softcap: bool, collect_argmax: bool) -> np.ndarray | int:
         runner = self._runner
         if runner.uses_int8_kv:
             # The direct INT8 consumer validates its live counts, row positions
@@ -279,7 +337,19 @@ class Gemma4DecodeGraphSession:
         if position + 1 > runner.capacity:
             raise ValueError(f"one token from position {position} exceeds capacity {runner.capacity}")
 
-        # Rebase the bounded sliding caches before freezing the bucket. The
+        bucket = _context_end_bucket(position, runner.capacity)
+        if bucket.end >= _capture_max_keys(getattr(runner.weights, "backend", None)):
+            # A replay of this window is exact (every route below 15328 keys
+            # replays bit-identically), but past the backend's window (2176
+            # keys unless it declares another) the step is device-bound and the capture cost plus the frozen superset walk
+            # outweigh the launch-gap savings -- measured flat-to-negative
+            # from 2560 on. Fall back to the launched step, which re-selects
+            # the exact live shape every position.
+            self._launched_fallbacks += 1
+            if collect_argmax:
+                return runner.forward_argmax([int(token)], apply_softcap=apply_softcap)
+            return runner.forward([int(token)], apply_softcap=apply_softcap)
+        # Rebase the bounded sliding caches before staging against the bucket. The
         # capture bakes cache-relative slots and the replay targets
         # ``position - base``, so it must see the base the replay will run
         # with; a base change is part of the capture key, so a rebase
@@ -288,11 +358,11 @@ class Gemma4DecodeGraphSession:
         # recorded into the graph.
         if getattr(runner, "_bounded_sliding", False):
             runner._prepare_sliding_caches(position, 1, stream=self._stream)
-        bucket = _context_end_bucket(position, runner.capacity)
         tables, masks = runner._stage_block_content(
             [int(token)], stream=self._stream, keys_extent=bucket.end,
             key_begin_at=lambda attention: self._frozen_key_begin(attention, bucket),
         )
+        self._stage_live_extents(bucket, tables)
         key = self._capture_key(bucket, tables, masks)
         if key != self._key or self._exec == 0:
             self._capture(bucket, tables, masks, key, token=int(token))
@@ -302,6 +372,13 @@ class Gemma4DecodeGraphSession:
         get_hip_runtime().graph_launch(self._exec, self._stream)
         runner._last_logits_rows = 1
         runner._normalized_hidden_rows = 0
+        if collect_argmax:
+            return runner._collect_block_argmax(
+                [int(token)],
+                apply_softcap=apply_softcap,
+                needs_logits=True,
+                stream=self._stream,
+            )
         return runner._collect_block(
             [int(token)],
             apply_softcap=apply_softcap,
@@ -342,6 +419,54 @@ class Gemma4DecodeGraphSession:
         # start; freezing one below it walks a superset, which the staged mask
         # then bounds. Never above, which would skip live keys.
         return max(0, bucket.start - int(window))
+
+    def _live_extent_slot(self, attention) -> int:
+        """Stable device pointer holding this geometry's ``[delta, live]`` pair.
+
+        The flash route's slice partitioning is a function of the live key
+        count (see ``gemma4_attention._capture_live_slots``), so a captured
+        flash launch reads its extent from this slot instead of a baked
+        scalar. The buffer is a reusable named staging upload, so the pointer
+        baked at capture time stays valid for every replay.
+        """
+
+        runner = self._runner
+        name = f"live-extent-{attention.head_dim}-{attention.num_kv_heads}"
+        # Allocation only, never an upload: this runs inside ``_capture``, and
+        # the step's ``_stage_live_extents`` has already staged this buffer's
+        # content for the replay that follows. Uploading zeros here would
+        # clobber that pair on the stream order and the first replay would
+        # read live == 0 (every slice dead, NaN output).
+        return runner._staging_buffer(name, 2 * np.dtype(np.int32).itemsize).ptr
+
+    def _stage_live_extents(self, bucket: _Bucket, tables: dict) -> None:
+        """Upload every geometry's live-extent pair for this replay position.
+
+        One pair per distinct geometry, staged ahead of the graph launch on
+        the session stream exactly like the keep-mask. ``delta`` is the live
+        read range's first key relative to the frozen ``key_begin`` the
+        captured launches walk from; ``live`` is the live key count the
+        launched path would pass as ``keys`` at this position.
+        """
+
+        runner = self._runner
+        position = runner.position
+        seen = set()
+        for index in range(len(runner.weights.layers)):
+            attention = runner.weights.config.geometry(index)
+            identity = (attention.head_dim, attention.num_kv_heads)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            window = attention.sliding_window
+            live_begin = 0 if window is None else max(0, position + 1 - int(window))
+            frozen_begin = self._frozen_key_begin(attention, bucket)
+            pair = np.array(
+                [live_begin - frozen_begin, position + 1 - live_begin],
+                dtype=np.int32,
+            )
+            name = f"live-extent-{attention.head_dim}-{attention.num_kv_heads}"
+            runner._stage_upload(name, pair, stream=self._stream)
 
     def _capture_key(
         self,
@@ -582,6 +707,29 @@ class Gemma4DecodeGraphSession:
                 runner._scratches[index].attention.buffer(
                     need, stream=self._stream, runtime=runtime
                 )
+        # A reservation above that grew a buffer retired the old one behind a
+        # stream event, which ``buffer`` would poll from inside the recording;
+        # an event query is refused while the stream captures. Settle them now.
+        for index in range(len(runner.weights.layers)):
+            settle = getattr(runner._scratches[index].attention, "settle", None)
+            if settle is not None:
+                settle(runtime)
+        # Register the live-extent slots the flash launches read during the
+        # recording: each block re-derives the live partitioning from the slot
+        # on the device, so the captured launch is exact at every replay
+        # position instead of baking the frozen bucket partitioning. Cleared
+        # in the finally below so launches outside a capture keep the scalar
+        # path.
+        import hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention as _attn
+        live_slots: dict = {}
+        seen_geometries = set()
+        for index in range(len(runner.weights.layers)):
+            attention = runner.weights.config.geometry(index)
+            identity = (attention.head_dim, attention.num_kv_heads)
+            if identity not in seen_geometries:
+                seen_geometries.add(identity)
+                live_slots[identity] = self._live_extent_slot(attention)
+        _attn._capture_live_slots = live_slots
         # Global capture mode: see ``launch`` above.
         runtime.stream_begin_capture(self._stream, mode=0)
         try:
@@ -597,6 +745,8 @@ class Gemma4DecodeGraphSession:
             except Exception:
                 pass
             raise
+        finally:
+            _attn._capture_live_slots = None
         if graph == 0:
             raise RuntimeError("stream capture produced no graph")
         self._finalize_capture(graph, frozen_write=frozen_write, bucket=bucket, key=key)

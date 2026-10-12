@@ -59,6 +59,21 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _default_capture_window(monkeypatch):
+    """Capture inside the default window whatever the device's backend declares.
+
+    A backend may declare a smaller engagement window, or none, where a replay
+    does not pay; these tests pin that a replay is exact, which does not depend
+    on whether it pays.
+    """
+
+    from hipengine.runtime import gemma4_decode_graph
+
+    default = gemma4_decode_graph._CAPTURE_MAX_KEYS
+    monkeypatch.setattr(gemma4_decode_graph, "_capture_max_keys", lambda backend: default)
+
+
 @pytest.fixture
 def gemma4_llm():
     """A loaded public ``LLM`` whose device owner is always closed."""
@@ -128,5 +143,113 @@ def test_gemma4_decode_graph_replay_matches_launched_decode(gemma4_llm):
                     f"sequence at prompt {start}: step {step} "
                     f"(position {start + step}): replayed logits differ from "
                     "the launched path"
+                ),
+            )
+
+def test_gemma4_decode_graph_class_global_replay_is_exact(monkeypatch):
+    """Every deep route replays bit-identically; only the prize bounds capture.
+
+    The global-logits class kernel (keys past the 64 KiB LDS budget) and the
+    staged singleton beyond it were the last capture routes without a
+    replay-exactness measurement (2026-10-10 probe at 16384 and 32768 prompt
+    depths: bit-exact, all steps). This test pins the class-global one at
+    16384 with the engagement bound lifted, so the guard's correctness
+    component can never silently regress: capture below the engagement
+    bound is a measured perf choice, not a correctness restriction.
+    """
+
+    import hipengine
+
+    from hipengine.runtime import gemma4_decode_graph
+    from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
+
+    monkeypatch.setattr(gemma4_decode_graph, "_capture_max_keys", lambda backend: 1 << 30)
+    llm = hipengine.LLM(model=str(_TARGET), max_sequence_length=16384 + 512)
+    runner = llm._get_text_generator()._ensure_runner()
+    vocab = int(runner.weights.config.vocab_size or 0)
+
+    rng = np.random.default_rng(20261010)
+    prompt = [int(t) for t in rng.integers(0, vocab, size=16384)]
+    decode = [int(t) for t in rng.integers(0, vocab, size=8)]
+
+    runner.reset()
+    runner.forward(prompt)
+    expected = [runner.forward([token]) for token in decode]
+
+    runner.reset()
+    runner.forward(prompt)
+    with Gemma4DecodeGraphSession(runner) as session:
+        replayed = [session.step(token) for token in decode]
+        assert session.captures > 0
+        assert session.launched_fallbacks == 0
+
+    for step, (want, got) in enumerate(zip(expected, replayed, strict=True)):
+        np.testing.assert_array_equal(
+            got,
+            want,
+            err_msg=(
+                f"class-global decode step {step}: replayed logits differ "
+                "from launched"
+            ),
+        )
+
+
+def test_gemma4_decode_graph_deep_positions_capture_and_stay_exact():
+    """The flash band captures; the unvalidated deep routes fall back.
+
+    Since the live-extent slot landed (2026-10-10), the flash phase kernel
+    re-derives its slice partitioning per block from a staged device pair,
+    so every route a decode step takes below 15328 keys -- flash, the split,
+    or the class kernel -- replays bit-identically to the launched path. The
+    capture window is bounded by the measured launch-bound prize
+    (``_CAPTURE_MAX_KEYS``, 2176 keys): at 1024 and 2048 prompt tokens the
+    steps capture; at 4096 the step is device-bound, the capture cost
+    outweighs the launch-gap savings, and the steps must take the launched
+    fallback and stay bit-identical to it.
+    """
+
+    import hipengine
+
+    from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
+
+    # One runner sized for the largest case: a second loaded model would not
+    # fit next to the first on the device.
+    llm = hipengine.LLM(model=str(_TARGET), max_sequence_length=4096 + 512)
+    runner = llm._get_text_generator()._ensure_runner()
+    vocab = int(runner.weights.config.vocab_size or 0)
+
+    rng = np.random.default_rng(20261009)
+    for prompt_len, expect_fallback in ((1024, False), (2048, False), (4096, True)):
+        prompt = [int(t) for t in rng.integers(0, vocab, size=prompt_len)]
+        decode = [int(t) for t in rng.integers(0, vocab, size=8)]
+
+        runner.reset()
+        runner.forward(prompt)
+        expected = [runner.forward([token]) for token in decode]
+
+        runner.reset()
+        runner.forward(prompt)
+        with Gemma4DecodeGraphSession(runner) as session:
+            replayed = [session.step(token) for token in decode]
+            if expect_fallback:
+                assert session.launched_fallbacks == len(decode), (
+                    "every step past the capture window must take the launched "
+                    "fallback: replay there is exact but costs more than it saves"
+                )
+                assert session.captures == 0
+            else:
+                assert session.launched_fallbacks == 0, (
+                    "steps inside the capture window route to flash, split or "
+                    "class -- all replay-exact -- and must replay from a capture"
+                )
+                assert session.captures > 0
+
+        for step, (want, got) in enumerate(zip(expected, replayed, strict=True)):
+            np.testing.assert_array_equal(
+                got,
+                want,
+                err_msg=(
+                    f"deep decode step {step} at prompt {prompt_len}: "
+                    "replayed logits differ from launched"
                 ),
             )

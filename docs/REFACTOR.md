@@ -4,6 +4,25 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## gfx1100 has no kernel-registration refresh hook (found 2026-10-12)
+
+`load_backend_kernel_package` refills registrations a test's registry isolation
+removed by calling the backend package's `register_backend_kernels(replace=False)`.
+`hipengine/kernels/hip_gfx1151/__init__.py` exports that hook;
+`hipengine/kernels/hip_gfx1100/__init__.py` does not, because its kernels
+register when their modules are first imported. Under pytest on gfx1100 a
+second model load in one process therefore fails with
+`MissingRuntimeProfilePlanError` once an earlier test's teardown has restored
+the collection-time registry. `tests/test_gpu_gemma4_decode_graph_capture.py`
+is the file that shows it: each of its three tests passes when run as its own
+pytest invocation, and the second and third fail after the first in one
+invocation. Product loads are unaffected; nothing clears the registry outside
+tests.
+
+Removal condition: `hip_gfx1100` exports `register_backend_kernels`, and
+`pytest tests/test_gpu_gemma4_decode_graph_capture.py` passes in one invocation
+on a gfx1100 device.
+
 ## Q8_0 T16 f16w tiles are found through a pointer table (added 2026-10-10)
 
 The two-wave and four-wave Q8_0 T16 WMMA prefill launches read a pre-converted half weight operand
@@ -9687,3 +9706,52 @@ pass on an ignored stride); and
 `benchmarks/results/2026-09-29-gemma4-moe-fused-stride-gate-w7900.json`
 (the campaign gate at `--prompt 2048 --prefill 1024`: `passed: true`,
 `kl_max` 7.7e-04 against a 0.05 bar, 0 of 1023 top-1 flips).
+
+## `HIPENGINE_GEMMA4_DECODE_GRAPH` whole-step graph replay is prize-bounded, not correctness-bounded (open 2026-10-10)
+
+The Gemma 4 generation loop replays decode steps from a whole-step HIP graph
+capture (`hipengine/runtime/gemma4_decode_graph.py`). Since 2026-10-10 the
+flash phase kernel re-derives its slice partitioning per block from a staged
+device live-extent slot (`[delta, live]`, staged per replay per geometry),
+so every route a decode step takes below 15328 keys — flash, the two-phase
+split, the class kernel — replays bit-identically to the launched path; the
+capture window is bounded only by the measured launch-bound prize
+(`_CAPTURE_MAX_KEYS` = 2176 keys: +15.4 percent decode at 1024 prompt
+tokens, +2.2 percent at 2048, flat-to-negative from 2560 where the step is
+device-bound). The env `HIPENGINE_GEMMA4_DECODE_GRAPH` (default on) is the
+rollback seam for the whole route, and the in-session `launched_fallbacks`
+counter makes the fallback visible per request.
+
+History: the 2026-10-09 restriction blamed the split's host-computed slice
+geometry and blocked capture from 1024 keys; the 2026-10-10 layer probe
+(worklog 20261010T010705) attributed the replay divergence to flash's
+live-key-count partitioning (the split and class routes always replayd
+bit-exact), and a route-crossover attempt to re-route the launched path to
+the split was refuted on natural tokens the same day (worklog
+20261010T024452). The device-resolved slot keeps the launched path
+byte-identical (a null slot reproduces the scalar partitioning exactly) and
+needs no execution-profile gate.
+
+The window is per backend: a backend package may declare
+`GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS`, and `_capture_max_keys` reads it. The
+2176-key default and the gains above are Radeon 8060S measurements.
+`hip_gfx1100` declares `0`: on a W7900 (2026-10-12, graph on against off at the
+default window) decode was 0.989x at 256 prompt tokens, 1.000x at 512, 0.994x
+at 1024, 0.934x at 1536 and 0.927x at 2048 with equal generated ids, so its
+decode steps stay launched. Replay exactness on that device is still pinned by
+`tests/test_gpu_gemma4_decode_graph_capture.py`, which captures inside the
+default window whatever the backend declares.
+
+Removal condition: correctness no longer bounds the window -- the
+class-global kernel (resident row above the 64 KiB LDS budget, keys > 15328
+for head_dim 512) and the staged singleton deep variant were probed at
+16384 and 32768 prompt depths on 2026-10-10 and replay bit-identically,
+like every other route, so the guard is purely the measured engagement
+threshold. It goes when the capture cost falls below the device-bound
+crossover (today flat-to-negative from 2560 keys: the per-bucket capture
+cost plus the frozen superset walk outweighs the launch-gap savings on
+device-bound steps), or if the deep steps become launch-bound again. Then
+the bucket guard, the fallback counter, and the env all go, and the graph
+covers the full decode range. The intermediate capture design notes
+(retarget cost, capture-amortized buckets) live in the module docstring
+and the 2026-10-09 worklog entry.

@@ -195,6 +195,15 @@ GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
         "min_replay_steps_by_physical_rows": {1: 128},
     },
 }
+# Gemma 4 whole-step decode-graph capture window, in keys; 0 keeps every decode
+# step launched. Measured on a W7900 (Gemma 4 26B-A4B UD-Q4_K_XL, production,
+# BF16 KV, 128 outputs, scripts/gemma4_campaign_bench.py with
+# HIPENGINE_GEMMA4_DECODE_GRAPH=1 against =0 at the default 2176-key window,
+# 2026-10-12): replaying the graph is 0.989x launched decode at 256 prompt
+# tokens, 1.000x at 512, 0.994x at 1024, 0.934x at 1536 and 0.927x at 2048,
+# with equal generated ids. There is no depth where it gains here, so the
+# window is empty. To re-measure, raise this value and rerun that A/B.
+GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS = 0
 # LCP-5A's clean peer-aligned semantic/decode contract and 512/4K floors admit
 # the llama.cpp-HIP-shaped normalized-Q/K wave32 recurrence on gfx1100.  The
 # compact producer/consumer retains those bits while materializing shared Q/K
@@ -1503,6 +1512,7 @@ __all__ = [
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
+    "GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",

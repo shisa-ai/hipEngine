@@ -25,6 +25,18 @@ from scripts.gemma4_campaign_bench import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _launched_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the decode loop on per-token forwards.
+
+    The default replays decode steps from a captured HIP graph, which needs a
+    real runner and device. These tests drive the loop with a fake runner, so
+    they pin the launched loop the graph falls back to.
+    """
+
+    monkeypatch.setenv("HIPENGINE_GEMMA4_DECODE_GRAPH", "0")
+
+
 class _FakeRunner:
     """Stands in for Gemma4Runner: records calls, returns scripted tokens."""
 

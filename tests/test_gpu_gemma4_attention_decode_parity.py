@@ -165,7 +165,8 @@ def attention_library():
 
 
 def _raw_launch(library, symbol, buffers, *, tokens, keys, num_heads, num_kv_heads,
-                head_dim, scale, split_workspace=0, split_slices=1):
+                head_dim, scale, split_workspace=0, split_slices=1, live_extent=0,
+                stream=0):
     from hipengine.core.ctypes_cache import signed_kernel_fn
     from hipengine.core.hip import HIP_SUCCESS
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
@@ -184,18 +185,21 @@ def _raw_launch(library, symbol, buffers, *, tokens, keys, num_heads, num_kv_hea
         num_kv_heads,
         head_dim,
         ctypes.c_float(scale),
-        0,
+        stream,
         keys,
     ]
     if decode:
         # split_slices <= 1 keeps the single-kernel path; the pointer is only
-        # dereferenced when the split actually runs.
-        args += [ctypes.c_void_p(split_workspace), ctypes.c_int(split_slices)]
+        # dereferenced when the split actually runs. The live-extent slot is
+        # the flash route's optional device pair; null keeps the scalar
+        # partitioning these parity tests pin.
+        args += [ctypes.c_void_p(split_workspace), ctypes.c_int(split_slices),
+                 ctypes.c_void_p(live_extent)]
     else:
         # Prefill's tail is (window, row_offset) instead of decode's
-        # (split_workspace, split_slices). window 0 makes first_kept 0, so the
-        # prefill symbol visits every key exactly as decode's keep_mask does --
-        # which is the parity these tests assert.
+        # (split_workspace, split_slices, live_extent). window 0 makes
+        # first_kept 0, so the prefill symbol visits every key exactly as
+        # decode's keep_mask does -- which is the parity these tests assert.
         args += [0, 0]
     err = fn(*args)
     assert int(err) == HIP_SUCCESS, f"{symbol} returned {err}"

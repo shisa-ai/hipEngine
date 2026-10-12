@@ -1,0 +1,63 @@
+{
+ "schema": 1,
+ "kind": "gemma4_256ki_paired_depth_endpoint",
+ "status": "measured",
+ "performance_claim": true,
+ "created": "2026-10-10",
+ "question": "Does the 256Ki endpoint hold on the final tree (whole-step decode graph in its launch-bound band, device-resolved flash geometry, deep routes validated), and what are the paired rates against the pinned llama.cpp rows?",
+ "model": "Gemma 4 26B-A4B-it",
+ "quant": "UD_Q4_K_XL",
+ "physical_host": "zbook",
+ "hardware": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo), 126976 MiB unified memory",
+ "kv_dtype": "bf16",
+ "execution_profile": "production for hipEngine; llama.cpp shipped HIP graph path",
+ "protocol": {
+  "prompt_tokens": 262015,
+  "output_tokens": 128,
+  "context": 262144,
+  "occupied_tokens": 262143,
+  "prompt_ids_sha256": "ca711237090038354917518ebb65a3883a812d174a5babc02630a9ff6f276144",
+  "prompt_identity": "same frozen campaign prompt IDs; sha256 equals the 2026-10-06 endpoint's, so the comparator rows pair directly",
+  "hipengine_side": "scripts/gemma4_kv_restore_bench.py on the 2026-10-10 tree (engine commit 07cd0aa20): mode save ran the full prefill once (prefill_s) and decoded 128 tokens fresh; mode restore reloaded the saved state and decoded 128 tokens",
+  "comparator_side": "llama.cpp HIP 17252c769 rows reused unchanged from the 2026-10-06 endpoint artifact (prefill 227.86, decode 7.21 tok/s); its own correctness (full uncached prefill, repeat IDs) passed there"
+ },
+ "engines": {
+  "hipengine": {
+   "source_commit": "07cd0aa20b4e3fb92704f5f923bfa06524d5a2d5",
+   "prefill_tps": 335.9850255708556,
+   "prefill_s": 779.841302614077,
+   "fresh_decode_tps": 10.159617824106393,
+   "restored_decode_tps": 10.281772124563718,
+   "restore_s": 10.458052579080686,
+   "save_s": 29.825108285062015,
+   "id_exactness": "restored greedy IDs equal the fresh decode exactly (128/128)",
+   "generated_token_ids_head": [
+    1610,
+    532,
+    6647,
+    573,
+    24744,
+    236761,
+    49660,
+    30445
+   ]
+  },
+  "llamacpp": {
+   "commit": "17252c769a63c1cb650ce98ae309cf0de0da7778",
+   "prefill_tps": 227.86,
+   "decode_tps": 7.21,
+   "source": "2026-10-06 endpoint artifact, reused"
+  }
+ },
+ "comparison": {
+  "prefill_hip_over_llama": 1.4745239426439727,
+  "decode_hip_over_llama": 1.426043290508144,
+  "prompt_hash_match": true,
+  "same_context": true
+ },
+ "findings": [
+  "The 256Ki endpoint holds and improves on the final tree: prefill 336.0 tok/s (published 328.8) and restored-state decode 10.28 tok/s (published 10.21).",
+  "Decode at 262015 keys runs the staged singleton and class-global routes on the launched path (the decode-graph engagement window is 2176 keys, measured); the flash live-extent change is null outside captures, so the deep arithmetic is the shipped staged/class chain unchanged -- 128/128 greedy IDs equal the pre-flash-fix sweep arm and the fresh-vs-restored gates here."
+ ],
+ "decisions": []
+}

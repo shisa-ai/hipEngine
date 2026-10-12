@@ -283,16 +283,36 @@ def run_instrumented(
     generated: list[int] = [int(token_id)]
 
     decode_s = 0.0
-    for _ in range(1, max_tokens):
-        step_start = clock()
-        logits = runner.forward([generated[-1]])
-        if not np.all(np.isfinite(logits)):
-            raise ValueError("decode must return finite logits")
-        token_id = runner.next_token(logits)
-        timed_sync()
-        step_end = clock()
-        decode_s += step_end - step_start
-        generated.append(int(token_id))
+    graph_session = None
+    if (
+        os.environ.get("HIPENGINE_GEMMA4_DECODE_GRAPH", "1") != "0"
+        and not runner.uses_int8_kv
+    ):
+        # Mirror ``Gemma4GGUFGenerator.generate_detailed``: the production
+        # decode loop replays the whole-step graph from its second per-token
+        # forward, so the instrumented path measures the same route. The
+        # first decode forward stays launched -- the capture needs one normal
+        # single-token step so every kernel it records is already loaded.
+        from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
+
+        graph_session = Gemma4DecodeGraphSession(runner)
+    try:
+        for i in range(1, max_tokens):
+            step_start = clock()
+            if graph_session is not None and i >= 2:
+                logits = graph_session.step(generated[-1])
+            else:
+                logits = runner.forward([generated[-1]])
+            if not np.all(np.isfinite(logits)):
+                raise ValueError("decode must return finite logits")
+            token_id = runner.next_token(logits)
+            timed_sync()
+            step_end = clock()
+            decode_s += step_end - step_start
+            generated.append(int(token_id))
+    finally:
+        if graph_session is not None:
+            graph_session.close()
 
     wall_s = clock() - t0
     if len(generated) != max_tokens:

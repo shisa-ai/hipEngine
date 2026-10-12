@@ -34,10 +34,20 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
         capturing = False
         return 100
 
+    settled: list[bool] = []
+
+    def event_query(*args):
+        assert not capturing, "a retirement event was queried inside graph capture"
+        return bool(settled)
+
+    # HIP refuses an event query while the stream captures, so a buffer the
+    # reservation retired has to be settled before recording starts.
     runtime = SimpleNamespace(current_device=lambda: 0, stream_begin_capture=begin,
                               stream_end_capture=end, graph_instantiate=lambda _: 200,
                               event_create=lambda: 1, event_record=lambda *a: None,
-                              event_query=lambda *a: False, event_destroy=lambda *a: None)
+                              event_query=event_query, event_destroy=lambda *a: None,
+                              device_synchronize=lambda: settled.append(True),
+                              free=lambda *a, **kw: None)
     monkeypatch.setattr(attention, "malloc", allocate)
     monkeypatch.setattr(attention, "build_gemma4_attention", lambda **kwargs: object())
     monkeypatch.setattr(attention, "split_workspace_bytes", lambda t, h, d, k, s, **kw: t * h * k * 4)
@@ -62,7 +72,9 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
     runner = SimpleNamespace(position=position, prefill_attention_variants=(variant,),
                              weights=SimpleNamespace(layers=[None, None],
                                                      config=SimpleNamespace(geometry=lambda i: geometries[i])),
-                             _scratches=[SimpleNamespace(attention=owner), SimpleNamespace(attention=owner)])
+                             _scratches=[SimpleNamespace(attention=owner), SimpleNamespace(attention=owner)],
+                             _stage_upload=lambda name, arr, stream=0: DeviceBuffer(ptr=7000, nbytes=8),
+                             _staging_buffer=lambda name, nbytes: DeviceBuffer(ptr=7000, nbytes=nbytes))
     session = object.__new__(graph.Gemma4DecodeGraphSession)
     session._runner_ref = lambda: runner
     session._stream, session._captures = 7, 0
@@ -73,6 +85,11 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
 
     def launch(*args, **kwargs):
         assert capturing
+        # Mirror the reservation the real ``_capture`` performs before
+        # recording: the same ``select_prefill_attention`` decision, the same
+        # need, so the in-capture re-buffer is a cache hit and never a
+        # malloc. Staged no longer admits at shallow keys, so a staged
+        # request and a plain request reserve the same geometry here.
         for geometry in geometries:
             keys = bucket.end - session._frozen_key_begin(geometry, bucket)
             need = 0

@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11545,
-    "current": 4313,
+    "entries": 11552,
+    "current": 4320,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1404,
@@ -42144,14 +42144,14 @@
         "written": "2026-09-23",
         "age_days": 19,
         "open_by": "status",
-        "continuation_entries": 39,
+        "continuation_entries": 40,
         "open_text": "1. Build the arena-with-guards experiment above, so the over-read faults at the\n   buffer that caused it.\n2. Fix the over-read, then re-run 20+ decode steps clean.\n3. Only then is the generation adapter's end-to-end path validated.\n4. Then the real artifact at\n   `/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as blocked \u2014 the entry says the unit is blocked",
-        "39 later entries by the same worker share this topic prefix"
+        "40 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T020151.588610Z-lhl-gemma4-decode-fault-b43475.md",
@@ -42168,7 +42168,7 @@
         ]
       },
       "id": "worklog/20260923T020151.588610Z-lhl-gemma4-decode-fault-b43475",
-      "evidence_hash": "5ad22308aec3"
+      "evidence_hash": "716201ab4ce1"
     },
     {
       "kind": "worklog",
@@ -42182,14 +42182,14 @@
         "written": "2026-09-23",
         "age_days": 19,
         "open_by": "status",
-        "continuation_entries": 38,
+        "continuation_entries": 39,
         "open_text": "The experiment the blocker entry already named, now with a narrowed target:\nallocate the scratch buffers through one large arena with a guard region after\neach, so an over-read faults deterministically at the buffer that caused it.\n`Gemma4LayerScratch` takes its buffers from a list it owns, so the arena can be\nintroduced there without touching the kernels.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "38 later entries by the same worker share this topic prefix"
+        "39 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39.md",
@@ -42209,7 +42209,7 @@
         ]
       },
       "id": "worklog/20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39",
-      "evidence_hash": "456b3059288e"
+      "evidence_hash": "a581de521f9f"
     },
     {
       "kind": "worklog",
@@ -42223,14 +42223,14 @@
         "written": "2026-09-23",
         "age_days": 19,
         "open_by": "status",
-        "continuation_entries": 37,
+        "continuation_entries": 38,
         "open_text": "- Call the router logits and router select kernels standalone on GGUF weights and\n  probe a memcpy afterwards. They are the only steps in\n  `gemma4_experts_forward_bf16` without individual coverage, and they are the\n  remaining suspects for the composition-level hang.\n- Until that lands, the Gemma 4 GPU path cannot complete a request: `LLM.generate()`\n  reaches the runner, and the first expert forward wedges the device.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "37 later entries by the same worker share this topic prefix"
+        "38 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T034607.312889Z-lhl-gemma4-decode-fault-78560a.md",
@@ -42248,7 +42248,7 @@
         ]
       },
       "id": "worklog/20260923T034607.312889Z-lhl-gemma4-decode-fault-78560a",
-      "evidence_hash": "0caa950d0f08"
+      "evidence_hash": "836b3c572b1e"
     },
     {
       "kind": "worklog",
@@ -44084,14 +44084,14 @@
         "written": "2026-09-27",
         "age_days": 15,
         "open_by": "dependency",
-        "continuation_entries": 35,
+        "continuation_entries": 36,
         "open_text": "- Decode throughput has to come from the single-token path. In measured order\n  the unblocked candidates are the q4_k decode re-route (blocked on a missing\n  Q5_1 compact down kernel, which is a kernel to write rather than a gate to\n  clear) and launch-count reduction on the dense route (410 launches per step).\n- The q4_k decode GEMV is 23% of decode at KV~129 and the campaign's routing\n  probe already showed the production path resolves to the kernel it measured,\n  so the remaining work there is the missing compact down kernel.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'blocked on'",
-        "35 later entries by the same worker share this topic prefix"
+        "36 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260927T022313.554398Z-lhl-gemma4-decode-mtp-capability-bb0ccf.md",
@@ -44110,7 +44110,7 @@
         ]
       },
       "id": "worklog/20260927T022313.554398Z-lhl-gemma4-decode-mtp-capability-bb0ccf",
-      "evidence_hash": "feede75cb3ed"
+      "evidence_hash": "2535af4af502"
     },
     {
       "kind": "worklog",
@@ -44283,14 +44283,14 @@
         "written": "2026-09-27",
         "age_days": 15,
         "open_by": "status",
-        "continuation_entries": 33,
+        "continuation_entries": 34,
         "open_text": "- Profile `gguf_q8_0_pack8_gemv` at the decode shape directly: at 44.7 us per\n  launch and 26.0% of decode, it is the largest addressable single kernel after\n  the Q4_K MoE gate/up.\n- The Q4_K gate/up at 28.0% remains the largest line overall and needs its own\n  decode-shape look; the prefill route work does not transfer to it.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "33 later entries by the same worker share this topic prefix"
+        "34 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260927T160840.284441Z-lhl-gemma4-decode-pack-launches-5a144c.md",
@@ -44308,7 +44308,7 @@
         ]
       },
       "id": "worklog/20260927T160840.284441Z-lhl-gemma4-decode-pack-launches-5a144c",
-      "evidence_hash": "6759e6234574"
+      "evidence_hash": "725223f0d0db"
     },
     {
       "kind": "worklog",
@@ -44434,14 +44434,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 12,
+        "continuation_entries": 13,
         "open_text": "Write `gemma4_attention_flash.hip` per the structure above, register it as\n`gemma4_flash`, and validate against `gemma4_plain` on the existing geometry\nsuites, which already cover both head widths, both GQA ratios, several window\nvalues, and the narrowed-walk case.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "12 later entries by the same worker share this topic prefix"
+        "13 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T052435.076972Z-lhl-gemma4-flash-attention-port-structure-806cca.md",
@@ -44457,7 +44457,7 @@
         ]
       },
       "id": "worklog/20260928T052435.076972Z-lhl-gemma4-flash-attention-port-structure-806cca",
-      "evidence_hash": "39d7d74bbbba"
+      "evidence_hash": "a9ffffcdcb94"
     },
     {
       "kind": "worklog",
@@ -44942,14 +44942,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 26,
+        "continuation_entries": 27,
         "open_text": "1. A GPU test for the adapter: draft and verify against the fixture, and check\n   the accepted prefix matches a token-by-token decode of the same tokens.\n2. The two `Gemma4Runner` cold hooks (`speculative_capability`,\n   `execute_target_frontier`) so the engine can reach the adapter.\n3. The objective's remaining items: the prefill gap (1.73x) and the llama.cpp\n   baseline provenance gap noted in `20260928T0630xx`'s audit.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "26 later entries by the same worker share this topic prefix"
+        "27 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T063050.231301Z-lhl-gemma4-decode-route-ablation-6cc9ff.md",
@@ -44968,7 +44968,7 @@
         ]
       },
       "id": "worklog/20260928T063050.231301Z-lhl-gemma4-decode-route-ablation-6cc9ff",
-      "evidence_hash": "8d547fcc3863"
+      "evidence_hash": "e4c53aa01129"
     },
     {
       "kind": "worklog",
@@ -44982,14 +44982,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 25,
+        "continuation_entries": 26,
         "open_text": "1. Hook `gemma4_project_experts_down_mmq`, and give both MMQ hooks byte\n   accounting that matches their real signatures.\n2. Re-derive `spy_selected`'s accounting against the real signature and check the\n   result against a hand-computed expert-matrix size, since its comment and its\n   unpacking disagree.\n3. Re-read the budget against the current default, then pick the lever. The\n   per-family bandwidth spread in the old census -- expert GEMV at 96 GB/s\n   against dense at 135 GB/s on the same host -- is the first place to look.\n4. The engine-side MTP integration is deliberately not started. T",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "25 later entries by the same worker share this topic prefix"
+        "26 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T064512.884201Z-lhl-gemma4-decode-traffic-census-9f2b71.md",
@@ -45008,7 +45008,7 @@
         ]
       },
       "id": "worklog/20260928T064512.884201Z-lhl-gemma4-decode-traffic-census-9f2b71",
-      "evidence_hash": "e9e6639dfece"
+      "evidence_hash": "d1adab5649de"
     },
     {
       "kind": "worklog",
@@ -45022,14 +45022,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 24,
+        "continuation_entries": 25,
         "open_text": "1. Report decode against **41.92** when measuring on gfx1151, and keep 80.20 for\n   the gfx1100 campaign. Do not carry one host's target into the other's rows.\n2. The budget from `20260927T225558` is unchanged and is the lever list: 3219.6\n   MB/step against a 43.88 ms instrumented step, of which dense GEMV is 13.78 ms\n   at 135 GB/s, expert GEMV is 14.04 ms at 96 GB/s, and the host floor is 8.12 ms.\n   Note that the dense GEMV already runs at exactly the 135 GB/s that llama.cpp\n   achieves overall, so the expert family is the family furthest from the\n   reference, not the dense one.\n3. Fix th",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "24 later entries by the same worker share this topic prefix"
+        "25 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T070233.410552Z-lhl-gemma4-decode-target-provenance-b8c4e2.md",
@@ -45045,7 +45045,7 @@
         ]
       },
       "id": "worklog/20260928T070233.410552Z-lhl-gemma4-decode-target-provenance-b8c4e2",
-      "evidence_hash": "c193c0df7e86"
+      "evidence_hash": "8128aff024e9"
     },
     {
       "kind": "worklog",
@@ -45059,14 +45059,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 23,
+        "continuation_entries": 24,
         "open_text": "1. Give `spy_mmq` byte accounting for `gemma4_project_experts_gate_up_mmq`, whose\n   trailing arguments are `expert_start, compact_rows, num_experts, in_features,\n   intermediate`, so `compact_rows, in_features, intermediate = a[3], a[5], a[6]`.\n2. Hook `gemma4_project_experts_down_mmq`, identical but ending `out_features`.\n3. Reconcile the byte formula against a hand-computed expert-matrix size before\n   trusting any total, using the arithmetic recorded above as the starting point.\n4. Fix the stale comment above `spy_selected`.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "23 later entries by the same worker share this topic prefix"
+        "24 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T071452.117403Z-lhl-gemma4-decode-traffic-census-5d7e04.md",
@@ -45082,7 +45082,7 @@
         ]
       },
       "id": "worklog/20260928T071452.117403Z-lhl-gemma4-decode-traffic-census-5d7e04",
-      "evidence_hash": "a3f3e3edf44e"
+      "evidence_hash": "1870761da4b0"
     },
     {
       "kind": "worklog",
@@ -45177,14 +45177,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 21,
+        "continuation_entries": 22,
         "open_text": "1. Resolve the expert contradiction before any work is planned around the expert path.\n   The cheapest discriminator is running `--json` output for both output lengths and\n   checking whether the `no_experts` delta is stable, rather than only its difference.\n2. The dense Q8 GEMV path at ~43% remains the decode target, with `lm_head` at 10.7%.\n3. The token-tiled online-softmax prefill attention kernel is unaffected.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "21 later entries by the same worker share this topic prefix"
+        "22 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T072536.059160Z-lhl-gemma4-decode-route-ablation-315cf3.md",
@@ -45202,7 +45202,7 @@
         ]
       },
       "id": "worklog/20260928T072536.059160Z-lhl-gemma4-decode-route-ablation-315cf3",
-      "evidence_hash": "afb638c0bc5d"
+      "evidence_hash": "26dd14832213"
     },
     {
       "kind": "worklog",
@@ -45216,14 +45216,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 19,
+        "continuation_entries": 20,
         "open_text": "1. Split the census's accounting by row count so the `--prompt 8` prefill rows do\n   not enter the per-decode-step averages, then re-check the expert share against\n   the 862.4 MB floor.\n2. Give `spy_mmq` and the unhooked `gemma4_project_experts_down_mmq` byte\n   accounting, per `20260928T071452`.\n3. Re-quote the reference at **114 GB/s** and llama.cpp at 45% of the isolated\n   GEMV rate. The lever is unchanged -- achieved bandwidth -- but the headroom\n   above the reference is smaller than 135 GB/s implied, and the expert family\n   remains the one furthest from it.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "19 later entries by the same worker share this topic prefix"
+        "20 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T072641.228915Z-lhl-gemma4-decode-traffic-floor-a3f8c1.md",
@@ -45243,7 +45243,7 @@
         ]
       },
       "id": "worklog/20260928T072641.228915Z-lhl-gemma4-decode-traffic-floor-a3f8c1",
-      "evidence_hash": "9579b9103740"
+      "evidence_hash": "d957d5c4494c"
     },
     {
       "kind": "worklog",
@@ -45257,14 +45257,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 11,
+        "continuation_entries": 12,
         "open_text": "1. **Read the decode executor** and determine whether the two feed-forward branches are\n   overlapped. One read answers it.\n2. If they are serial, express the branch split and measure the decode step.\n3. **Prefill**: the two-variant plan (`20260928T074031`, corrected by `20260928T074104`) is\n   settled and unwritten.\n4. The MTP provider brief is complete; steps 1 and 2 must land together.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "11 later entries by the same worker share this topic prefix"
+        "12 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T074136.347566Z-lhl-gemma4-decode-bandwidth-960ff1.md",
@@ -45284,7 +45284,7 @@
         ]
       },
       "id": "worklog/20260928T074136.347566Z-lhl-gemma4-decode-bandwidth-960ff1",
-      "evidence_hash": "1213ca497073"
+      "evidence_hash": "db9028b2cc2c"
     },
     {
       "kind": "worklog",
@@ -45874,14 +45874,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 9,
+        "continuation_entries": 10,
         "open_text": "1. **The MoE gate_up at 75 GB/s is the one decode path not near the memory\n   ceiling.** 0.534 GB per token in 7.09 ms; at the dense path's 199 GB/s it is\n   2.7 ms. Worth finding out why a grouped MMQ with one launch per layer and 8\n   experts per token moves bytes at a third of the rate of the dense GEMV next\n   to it.\n2. **Decode is 19 percent launch gap.** Fusing the MoE bookkeeping family, which\n   is ~700 launches per token across five kernels, is the lever; none of the\n   individual kernels is expensive.\n3. Attention decode is 2.51 ms of 28.90 and is not the problem.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "9 later entries by the same worker share this topic prefix"
+        "10 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T084824.023313Z-lhl-gemma4-decode-attribution-f47a3a.md",
@@ -45904,7 +45904,7 @@
         ]
       },
       "id": "worklog/20260928T084824.023313Z-lhl-gemma4-decode-attribution-f47a3a",
-      "evidence_hash": "8d478e440885"
+      "evidence_hash": "f8e1b2e8cde1"
     },
     {
       "kind": "worklog",
@@ -45961,14 +45961,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 8,
+        "continuation_entries": 9,
         "open_text": "1. Read the objective's decode bar as **41.9 tok/s, parity with same-host\n   llama.cpp**. Current 27.31 is 1.53x from it.\n2. The prefill lever from `20260928T025924` is the larger untouched item and is\n   named: a query-tiled prefill attention kernel, R = 4, keeping the per-(query,\n   key) reduction order so the logits stay bit-identical. Bit-identity is the\n   gate. Attention is 38.0% of the 2048-token step at about 1.4% of fp32 rate.\n3. Before proposing any measurement on this branch, check `docs/REFACTOR.md` and\n   `benchmarks/results/` first. Three entries this session were written against",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "8 later entries by the same worker share this topic prefix"
+        "9 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T085207.334890Z-lhl-gemma4-decode-target-provenance-2c9a4f.md",
@@ -45986,7 +45986,7 @@
         ]
       },
       "id": "worklog/20260928T085207.334890Z-lhl-gemma4-decode-target-provenance-2c9a4f",
-      "evidence_hash": "c932a91c42e2"
+      "evidence_hash": "c9e841e11e4c"
     },
     {
       "kind": "worklog",
@@ -46241,14 +46241,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 8,
+        "continuation_entries": 9,
         "open_text": "1. Decide the 512-wide tiling before writing the kernel, or scope the port to the\n   25 sliding 256-wide layers first, where the design fits as-is and where 130.5\n   of the 164.7 ms lives.\n2. Then write the kernel with the QSA mapping, gemma4's mask semantics, and no\n   gather; register as `gemma4_flash`; validate against `gemma4_plain` on the\n   existing geometry suites; measure with `scripts/gemma4_attention_prefill_bench.py`\n   before any default flip.\n3. Bit-identity against `gemma4_plain` remains the gate, and it is the hard part:\n   the QSA accumulation order is per-row serial over keys ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "8 later entries by the same worker share this topic prefix"
+        "9 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T091438.221065Z-lhl-gemma4-flash-attention-port-c8f2a0.md",
@@ -46269,7 +46269,7 @@
         ]
       },
       "id": "worklog/20260928T091438.221065Z-lhl-gemma4-flash-attention-port-c8f2a0",
-      "evidence_hash": "054ef6ecbfb0"
+      "evidence_hash": "724582eef8ab"
     },
     {
       "kind": "worklog",
@@ -46283,14 +46283,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 7,
+        "continuation_entries": 8,
         "open_text": "1. **Establish what the 13.98 ms of unattributed decode is.** It is 39 percent\n   of the token and no unit has accounted for it. One traced decode with a\n   per-kernel rollup, summed against 35.6 ms, would say whether it is launch\n   overhead, a kernel the attribution missed, or host time.\n2. **Then the MTP provider**, which is the only lever that moves the floor.\n   `20260926T191119` has the drafter's state and what the registration needs.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "7 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T091614.355742Z-lhl-gemma4-decode-floor-a85859.md",
@@ -46313,7 +46313,7 @@
         ]
       },
       "id": "worklog/20260928T091614.355742Z-lhl-gemma4-decode-floor-a85859",
-      "evidence_hash": "d54f45241501"
+      "evidence_hash": "e7584f4e57a3"
     },
     {
       "kind": "worklog",
@@ -46369,14 +46369,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 7,
+        "continuation_entries": 8,
         "open_text": "1. A port is only accepted against `gemma4_plain` bit-for-bit, so the tree above\n   is the acceptance criterion and should be written as a unit test on a small\n   geometry before the kernel exists.\n2. Scope the first attempt to the 25 sliding 256-wide layers: the QSA tiling fits\n   at 52.4 KiB there, and 130.5 of the 164.7 ms lives in those layers. The five\n   512-wide layers need the tiling decision from `20260928T091438` first.\n3. The 512-wide leaf difference (property 2) means the two widths cannot share one\n   unrolled body without care, which is the same conclusion the LDS budget forces.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "7 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T093102.774318Z-lhl-gemma4-flash-attention-port-d4e7b2.md",
@@ -46393,7 +46393,7 @@
         ]
       },
       "id": "worklog/20260928T093102.774318Z-lhl-gemma4-flash-attention-port-d4e7b2",
-      "evidence_hash": "6be150e3007d"
+      "evidence_hash": "56282bb960ea"
     },
     {
       "kind": "worklog",
@@ -46530,14 +46530,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 6,
+        "continuation_entries": 7,
         "open_text": "1. When writing the port, make the key-to-lane mapping independent of the walk\n   start, so the window bound keeps shipping without a numerical gate. Treat that\n   as a design constraint, not a cleanup.\n2. Add the `gemma4_flash` vs `gemma4_plain` exact-equality test alongside the\n   existing geometry cases; the suite's own idiom is the template.\n3. The tree test proposed in `20260928T093102` should assert the tree order\n   directly rather than only through an end-to-end comparison, so a violation\n   names which stage moved.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "6 later entries by the same worker share this topic prefix"
+        "7 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T094719.663522Z-lhl-gemma4-flash-attention-port-e1a8c3.md",
@@ -46558,7 +46558,7 @@
         ]
       },
       "id": "worklog/20260928T094719.663522Z-lhl-gemma4-flash-attention-port-e1a8c3",
-      "evidence_hash": "a52b542580bb"
+      "evidence_hash": "0b7e4463c966"
     },
     {
       "kind": "worklog",
@@ -50695,14 +50695,14 @@
         "written": "2026-09-29",
         "age_days": 13,
         "open_by": "status",
-        "continuation_entries": 6,
+        "continuation_entries": 7,
         "open_text": "- **Decode is the objective's largest remaining term** and is now measured: 28.0 against a 56\n  target. The 2026-09-25 profile and the `decode-route-*` artifacts are the prior work to build on.\n- **Re-run the decode A/B correctly** if the T16 layout's decode effect matters: revert to\n  `eeb1a2a6f` for the two files rather than stashing.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "6 later entries by the same worker share this topic prefix"
+        "7 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260929T203000.000000Z-lhl-gemma4-decode-baseline-and-a-failed-ab-f7c3d1.md",
@@ -50718,7 +50718,7 @@
         ]
       },
       "id": "worklog/20260929T203000.000000Z-lhl-gemma4-decode-baseline-and-a-failed-ab-f7c3d1",
-      "evidence_hash": "d87d384a7ad1"
+      "evidence_hash": "07184d514cfa"
     },
     {
       "kind": "worklog",
@@ -50969,14 +50969,14 @@
         "written": "2026-09-29",
         "age_days": 13,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 6,
         "open_text": "- **Re-trace decode per-kernel on gfx1151 at context 8192** before writing any attention kernel:\n  the 52.6 percent share is inherited from a different GPU and a different context, and the whole\n  case for rewriting attention rests on it.\n- **The host floor is the cheaper lever** and is bounded and measurable on its own.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260929T213000.000000Z-lhl-gemma4-decode-cost-map-host-floor-9-66ms-f2a8b4.md",
@@ -50997,7 +50997,7 @@
         ]
       },
       "id": "worklog/20260929T213000.000000Z-lhl-gemma4-decode-cost-map-host-floor-9-66ms-f2a8b4",
-      "evidence_hash": "b7101f62a92a"
+      "evidence_hash": "cbfe3632d515"
     },
     {
       "kind": "worklog",
@@ -51215,14 +51215,14 @@
         "written": "2026-09-29",
         "age_days": 13,
         "open_by": "status",
-        "continuation_entries": 4,
+        "continuation_entries": 5,
         "open_text": "- **Establish whether gemma4's decode step is capture-compatible**: constant shapes across\n  decode steps, no host round-trips inside the step. That is the precondition, and it is cheap to\n  check by inspection.\n- **Then extend the existing capture path to `Gemma4GGUFGenerator`** rather than writing a second\n  one. The `GraphBucketCache` key is already the right shape (batch/specdecode), and the flag is\n  already on by default.\n- **Re-derive the MoE GEMV term on gfx1151** (6.22 ms is an inherited gfx1100 number) before\n  touching it, for the reason `20260929T223000` exists.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "4 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260929T233000.000000Z-lhl-gemma4-decode-graph-capture-is-qwen35-only-a4b7f2.md",
@@ -51240,7 +51240,7 @@
         ]
       },
       "id": "worklog/20260929T233000.000000Z-lhl-gemma4-decode-graph-capture-is-qwen35-only-a4b7f2",
-      "evidence_hash": "e82cd135ff74"
+      "evidence_hash": "083c3ea1774f"
     },
     {
       "kind": "worklog",
@@ -51254,14 +51254,14 @@
         "written": "2026-09-30",
         "age_days": 12,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "- **Attempt a capture of one gemma4 decode step and see what refuses.** That is the cheapest way\n  to find the remaining blockers, and the failure mode is informative rather than destructive.\n- **Check for mid-step host round-trips** -- the unexamined half of the precondition.\n- The host floor remains the largest measured decode term (9.66 ms, 27 percent) and the target of\n  this line of work.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260930T003000.000000Z-lhl-gemma4-decode-capture-precondition-looks-met-b6e4a1.md",
@@ -51278,7 +51278,7 @@
         ]
       },
       "id": "worklog/20260930T003000.000000Z-lhl-gemma4-decode-capture-precondition-looks-met-b6e4a1",
-      "evidence_hash": "28ff5c29ce2e"
+      "evidence_hash": "ab26a772f013"
     },
     {
       "kind": "worklog",
@@ -52770,14 +52770,14 @@
         "written": "2026-10-05",
         "age_days": 7,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "- Investigate staged live origins and slice counts for graph replay; attribute the growing 8K prefill gap using the actual campaign prompt. Complete the remaining context ladder and speculative controls.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261005T195136.296757Z-lhl-gemma4-graph-range-geometry-b2a071.md",
@@ -52793,7 +52793,7 @@
         ]
       },
       "id": "worklog/20261005T195136.296757Z-lhl-gemma4-graph-range-geometry-b2a071",
-      "evidence_hash": "aaa9a0bec81f"
+      "evidence_hash": "43473b28cf0c"
     },
     {
       "kind": "worklog",

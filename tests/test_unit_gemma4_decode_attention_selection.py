@@ -834,17 +834,25 @@ def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int, *, va
         capturing = False
         return 100
 
+    settled: list[bool] = []
+
+    def event_query(*args):
+        assert not capturing, "a retirement event was queried inside graph capture"
+        return bool(settled)
+
     runtime = SimpleNamespace(
         current_device=lambda: 0,
         stream_begin_capture=begin,
         stream_end_capture=end,
         graph_instantiate=lambda _: 200,
         # A reservation that outgrows a warmed buffer retires it behind a
-        # stream event.
+        # stream event, which HIP refuses to query while the stream captures.
         event_create=lambda: 1,
         event_record=lambda *a: None,
-        event_query=lambda *a: False,
+        event_query=event_query,
+        device_synchronize=lambda: settled.append(True),
         event_destroy=lambda *a: None,
+        free=lambda *a, **kw: None,
     )
     monkeypatch.setattr(attention, "malloc", allocate)
     monkeypatch.setattr(attention, "build_gemma4_attention", lambda **kwargs: object())
@@ -879,6 +887,7 @@ def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int, *, va
             config=SimpleNamespace(geometry=lambda index: geometry),
         ),
         _scratches=[SimpleNamespace(attention=owner)],
+        _staging_buffer=lambda name, nbytes: SimpleNamespace(ptr=0, nbytes=nbytes),
     )
     session = object.__new__(graph.Gemma4DecodeGraphSession)
     session._runner_ref = lambda: runner

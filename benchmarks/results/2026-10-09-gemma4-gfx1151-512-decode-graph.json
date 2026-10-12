@@ -1,0 +1,68 @@
+{
+ "schema": 1,
+ "kind": "gemma4_512_decode_graph_row",
+ "status": "measured",
+ "performance_claim": true,
+ "created": "2026-10-09",
+ "question": "Does replaying the Gemma 4 decode step from the whole-step HIP graph close the one trailing ladder depth (512-token decode at 0.96x of llama.cpp)?",
+ "model": "Gemma 4 26B-A4B-it",
+ "quant": "UD-Q4_K_XL",
+ "physical_host": "zbook",
+ "hardware": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo), 126976 MiB unified memory",
+ "kv_dtype": "bf16",
+ "execution_profile": "production for hipEngine (whole-step decode graph replay from the second per-token forward, default on; launched fallback for replay windows reaching the decode split route at 1024 keys); llama.cpp shipped HIP graph path, rows reused from 2026-10-08 unchanged",
+ "protocol": {
+  "prompt_tokens": 512,
+  "prompt_ids_sha256": "fba226ff8653b8b10e532f12d1d9b8fa364e57f552f51fab8c9079b23b0b268c",
+  "prompt_identity": "same frozen campaign prompt IDs as the 2026-10-08 ladder's 512 row, so the comparator row pairs directly",
+  "output_tokens": 128,
+  "context": 33280,
+  "samples": 3,
+  "warmups": 1,
+  "eos": "ignored (fixed-length row)",
+  "hipengine_side": "scripts/gemma4_campaign_bench.py instrumented path drives the production route: graph replay from decode forward 2, launched step 0 as the capture warm",
+  "comparator_side": "llama.cpp HIP 17252c769 decode row reused unchanged from the 2026-10-08 paired ladder artifact"
+ },
+ "engines": {
+  "hipengine": {
+   "source_commit": "e33fbf2a24b1d85a51e1a9f6a92eb5d24fb0d8b1",
+   "source_note": "measured on the working tree that became this commit (bench recorded the parent c0236a7b7 with dirty=true); the tree bytes equal the committed unit",
+   "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --context 33280 --samples 3 --warmup 1 --expect-gpu 8060S --label 512-graph2 --out /tmp/multiloop-beat-llamacpp/512_graph2.json",
+   "prefill_tps": 1416.6,
+   "prefill_s": 0.36069,
+   "decode_tps": 37.7505,
+   "decode_tps_min": 37.72463,
+   "decode_tps_max": 37.84634,
+   "decode_s": 3.3642,
+   "samples": 3,
+   "decode_tps_stdev": 0.064,
+   "correctness": {
+    "instrumented_finite_logits": true,
+    "all_replays_and_public_ids_equal": true,
+    "production_ab_ids_equal": "128/128 greedy IDs identical between HIPENGINE_GEMMA4_DECODE_GRAPH=0 and default through hipengine.LLM.generate",
+    "deep_fallback": "1024-prompt session steps all take the launched fallback (0 captures) and are bit-identical to launched; 2048-prompt production run: 0 captures, 62 fallbacks, clean output"
+   }
+  },
+  "llamacpp": {
+   "source_commit": "17252c769",
+   "decode_tps": 35.98,
+   "note": "row reused unchanged from benchmarks/results/2026-10-08-gemma4-gfx1151-depth-ladder-paired.json"
+  }
+ },
+ "result": {
+  "hipengine_decode_tps": 37.7505,
+  "llamacpp_decode_tps": 35.98,
+  "ratio": 1.0491,
+  "prior_row": {
+   "hipengine_decode_tps": 34.5539,
+   "ratio": 0.9603,
+   "note": "2026-10-08 ladder row, fully launched decode"
+  },
+  "interpretation": "The 512-token decode deficit was host-side launch overhead (~505 kernel launches per step, ~11 of 29.7 ms; rocprofv3 census 2026-10-09), not kernel time. Replaying the step's launches from a whole-step HIP graph removes the submission gaps; replay is bit-identical by construction and the guard excludes split-route windows where capture would bake host-computed slice geometry (measured ~10 percent relative logit divergence pre-guard). Every ladder depth now leads llama.cpp in decode."
+ },
+ "mechanism": {
+  "census": "rocprofv3 kernel trace at restored 512-token state: ~505 launches/step, device kernel time ~18.7 ms vs ~29.7 ms wall",
+  "graph": "hipengine/runtime/gemma4_decode_graph.py whole-step capture (BUCKET_WIDTH 64), production wiring in hipengine/generation/gemma4_gguf.py",
+  "rollback": "HIPENGINE_GEMMA4_DECODE_GRAPH=0 restores fully launched decode"
+ }
+}

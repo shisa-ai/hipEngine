@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-10**
+Last updated: **2026-10-12**
 
 ## Gemma 4 on Radeon Pro W7900 — October 10
 
@@ -25,10 +25,13 @@ routing-scoped production envelope on this hardware over 18 cases and 1,134
 rows. The dense Q8_0 projections' weight operand is held pre-converted to f16
 when 3.3 GB of device memory can be spared with 2 GiB left free (1.16x at 512,
 1.07x at 65536, bit-identical output). One-token decode runs the key-sliced
-flash route. Artifacts:
+flash route with every step launched: replaying decode from a captured HIP
+graph, which the Radeon 8060S build uses below 2176 keys, measured 0.93x at
+1536 and 2048 prompt tokens on this device and no gain below that. Artifacts:
 [expert down](results/2026-10-10-gemma4-gfx1100-expert-down-wmma-promotion.json),
 [prefill attention](results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json),
-[dense f16 weights](results/2026-10-10-gemma4-gfx1100-dense-f16w-prefill.json).
+[dense f16 weights](results/2026-10-10-gemma4-gfx1100-dense-f16w-prefill.json),
+[decode graph on this device](results/2026-10-12-gemma4-gfx1100-origin-merge-validation.json).
 
 ## Gemma 4 staged sliding prefill — October 6
 
@@ -2091,9 +2094,9 @@ hashes across engines).
 
 | Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512 | **1415.8** | 890.9 | **1.59x** | 34.55 | **35.98** | 0.96x |
-| 1024 | **1484.6** | 1158.7 | **1.28x** | **33.67** | 33.45 | **1.01x** |
-| 2048 | **1356.2** | 1136.5 | **1.19x** | **36.36** | 30.01 | **1.21x** |
+| 512 | **1415.8** | 890.9 | **1.59x** | **37.75** | **35.98** | **1.05x** |
+| 1024 | **1484.6** | 1158.7 | **1.28x** | **38.81** | 33.45 | **1.16x** |
+| 2048 | **1356.2** | 1136.5 | **1.19x** | **37.74** | 30.01 | **1.26x** |
 | 4096 | **1313.3** | 1116.8 | **1.18x** | **36.43** | 29.13 | **1.25x** |
 | 8192 | 1244.7 | **1277.3** | 0.97x | **34.74** | 27.47 | **1.26x** |
 | 16384 | **1135.0** | 1105.3 | **1.03x** | **31.47** | 24.95 | **1.26x** |
@@ -2102,20 +2105,48 @@ hashes across engines).
 | 131072 | **505.2** | 388.7 | **1.30x** | **12.42** | 11.45 | **1.08x** |
 
 hipEngine leads prefill at eight of nine depths (up to 1.59x) and decode at
-eight of nine (up to 1.26x); at 131072 it leads both phases (505.2/12.42 vs
+nine of nine (up to 1.26x); at 131072 it leads both phases (505.2/12.42 vs
 388.7/11.45 tok/s). The mid-depth prefill band 8192-32768 that trailed at
-0.88-0.97x on the 2026-10-07 build now stands at 0.97-1.13x, and 512-token
-decode improved from 0.93x to 0.96x. llama.cpp's own repeatability gate
+0.88-0.97x on the 2026-10-07 build now stands at 0.97-1.13x. 512-token decode
+was the one trailing cell on the 2026-10-08 build (0.96x): the step was
+launch-bound, not kernel-bound (~505 launches/step, ~11 of 29.7 ms), and
+replaying the step from a whole-step HIP graph takes it to 37.75 tok/s =
+1.05x ([512 decode-graph row](results/2026-10-09-gemma4-gfx1151-512-decode-graph.json)).
+The same graph now captures the 1024 and 2048 rows: the flash-decoding kernel
+re-derives its key partitioning per block from a staged device live-extent
+slot, so replay is bit-identical to the launched path while removing its
+launch gaps — 1024-token decode moves from 33.67 to 38.81 tok/s (1.16x) and
+2048 from 36.36 to 37.74 (1.26x), with greedy IDs identical to the launched
+path and deeper device-bound steps keeping the launched fallback
+([mid-depth decode-graph rows](results/2026-10-10-gemma4-gfx1151-decode-graph-middepth.json)). llama.cpp's own repeatability gate
 rejected its 8192 and 32768 rows in its run (its greedy continuation is not
 repeatable there); those comparator numbers are retained as best-available
 evidence with the rejection recorded, and the 16384 row passes with five
-identical samples. The remaining honest gap is 512-token decode (4%) and the
+identical samples. The remaining honest gap is the
 8192 prefill row (0.97x against a rejected comparator row).
 Correctness: prompt hashes match across engines at every depth; hipEngine
 repeats, public-path parity and finite logits pass on every row.
 
 [Commands, samples, identities and rejections](results/2026-10-08-gemma4-gfx1151-depth-ladder-paired.json).
 [2026-10-07 ladder, prior build](results/2026-10-07-gemma4-gfx1151-depth-ladder-paired.json).
+
+#### Full-depth 256Ki endpoint on the final tree (2026-10-10)
+
+The endpoint re-measured on the campaign's final tree (whole-step decode
+graph in its measured launch-bound band, device-resolved flash geometry,
+deep capture routes validated): hipEngine **336.0 prefill / 10.28 decode
+tok/s** against the pinned llama.cpp rows (227.9 / 7.21, unchanged from the
+2026-10-06 endpoint, prompt-hash-identical) — **1.48x / 1.43x**, both
+phases lead at the full context. The hip side ran the full prefill once
+and decoded both fresh and from the reloaded cross-process KV state on the
+same tree; the restored decode's 128 greedy IDs equal the fresh decode
+exactly.
+
+| Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 262,015 | **336.0 tok/s** | 227.9 tok/s | **1.48x** | **10.28 tok/s** | 7.21 tok/s | **1.43x** |
+
+[Artifact](results/2026-10-10-gemma4-gfx1151-256ki-final.json).
 
 #### Full-depth 256Ki endpoint (2026-10-09)
 

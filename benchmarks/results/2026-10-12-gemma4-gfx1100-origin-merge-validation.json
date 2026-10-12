@@ -1,0 +1,131 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_origin_merge_validation",
+ "date": "2026-10-12",
+ "performance_claim": true,
+ "question": "After merging origin/gemma4 (whole-step decode graph on by default, flash live-extent slot), does gfx1100 regress, and does the decode graph pay on a W7900?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "merged_origin_commit": "094b5ef99",
+ "local_parent_commit": "72e010479",
+ "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --context P+256 --warmup 1 --samples 3 --expect-gpu W7900, HIPENGINE_EXECUTION_PROFILE=production; decode-graph arms set HIPENGINE_GEMMA4_DECODE_GRAPH=1 or 0 with the 2176-key default window",
+ "merged_vs_pre_merge": [
+  {
+   "prompt_tokens": 512,
+   "prefill_tps": [
+    3756.1,
+    3748.5
+   ],
+   "decode_tps": [
+    70.86,
+    70.38
+   ],
+   "public_ids_equal": true
+  },
+  {
+   "prompt_tokens": 8192,
+   "prefill_tps": [
+    3363.9,
+    3337.0
+   ],
+   "decode_tps": [
+    71.09,
+    70.51
+   ],
+   "public_ids_equal": true
+  },
+  {
+   "prompt_tokens": 32768,
+   "prefill_tps": [
+    2635.3,
+    2612.1
+   ],
+   "decode_tps": [
+    53.69,
+    53.71
+   ],
+   "public_ids_equal": true
+  },
+  {
+   "prompt_tokens": 65536,
+   "prefill_tps": [
+    2073.2,
+    2073.2
+   ],
+   "decode_tps": [
+    41.63,
+    41.46
+   ],
+   "public_ids_equal": true
+  }
+ ],
+ "merged_vs_pre_merge_note": "pairs are [pre-merge 72e010479 measured 2026-10-10, merged tree measured 2026-10-12 with the graph engaged at the default window]; public_path_parity true on every row",
+ "decode_graph_on_vs_off": [
+  {
+   "prompt_tokens": 256,
+   "decode_tps_off": 76.45,
+   "decode_tps_on": 75.46,
+   "ratio": 0.987,
+   "note": "medians of the three logged samples"
+  },
+  {
+   "prompt_tokens": 512,
+   "decode_tps_off": 70.36,
+   "decode_tps_on": 70.38,
+   "ratio": 1.0,
+   "public_ids_equal": true
+  },
+  {
+   "prompt_tokens": 1024,
+   "decode_tps_off": 76.6,
+   "decode_tps_on": 76.14,
+   "ratio": 0.994,
+   "public_ids_equal": true
+  },
+  {
+   "prompt_tokens": 1536,
+   "decode_tps_off": 74.44,
+   "decode_tps_on": 69.51,
+   "ratio": 0.934,
+   "note": "medians of the three logged samples"
+  },
+  {
+   "prompt_tokens": 2048,
+   "decode_tps_off": 74.57,
+   "decode_tps_on": 69.08,
+   "ratio": 0.926,
+   "public_ids_equal": true
+  },
+  {
+   "prompt_tokens": 2048,
+   "decode_tps_off": 74.56,
+   "decode_tps_on": 69.1,
+   "ratio": 0.927,
+   "note": "repeat; medians of the three logged samples"
+  }
+ ],
+ "decision": "hip_gfx1100 declares GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS = 0, so its decode steps stay launched; other backends keep the 2176-key default",
+ "after_decision": [
+  {
+   "prompt_tokens": 512,
+   "prefill_tps": 3705.6,
+   "decode_tps": 70.36,
+   "public_ids_equal_to_graph_off": true
+  },
+  {
+   "prompt_tokens": 2048,
+   "prefill_tps": 3652.5,
+   "decode_tps": 73.95,
+   "public_ids_equal_to_graph_off": true
+  }
+ ],
+ "correctness": {
+  "replay_exactness_on_w7900": "tests/test_gpu_gemma4_decode_graph_capture.py: replay logits byte-equal to launched at 60-131 keys, at 1024 and 2048 prompt tokens, and at 16384 with the window lifted; each test run as its own pytest invocation",
+  "slice_count_coupling": "flash_request_slices equals flash_slices for every key count up to 2176 on both packings (first divergence at 97,793 keys, global packing)"
+ },
+ "not_run": "nothing in this unit ran on gfx1151"
+}
