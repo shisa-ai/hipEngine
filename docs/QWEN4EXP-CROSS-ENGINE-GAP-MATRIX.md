@@ -18,7 +18,16 @@ The pass-1 p4096 prefill attribution is the prioritization signal:
 | Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
 | Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
 
-## Routed-tile comparison from source
+The first real-model histogram attempt is **blocked by scope mismatch**, not
+by model loading. `scripts/qwen4exp_routing_capture.py` wraps only the Q4/Q5_1
+pair-prefill `KernelKey` variants, while the production `code-p4096` run took a
+different registered owner (the capture produced zero records and preserved
+exact before/after logits/state). The blocked artifact is
+`benchmarks/results/2026-10-12-qwen4exp-cross-engine-gap-routing-code-p4096.json`.
+The next implementation task is to instrument the actual production routed
+owner/tile-map path, then capture its count histogram without changing route
+selection.
+
 
 The two implementations are not using the same tile policy:
 
