@@ -702,6 +702,10 @@ def openai_completions_payload(adapter: str, text: str, transitions: int) -> dic
         "temperature": 0.0,
     }
     if adapter == "gufo":
+        # gufo v0.12.0 accepts ignore_eos on /v1/completions, which makes the
+        # decode leg exactly the requested 128 transitions like the llamacpp
+        # leg instead of stopping at an early EOS.
+        payload["ignore_eos"] = True
         return payload
     if adapter == "kyojin":
         # The AR protocol launches kyojin with --draft-policy off, so no
@@ -721,6 +725,9 @@ def openai_completions_payload(adapter: str, text: str, transitions: int) -> dic
     raise ValueError(f"unknown OpenAI-completions adapter: {adapter!r}")
 
 
+OPENAI_OPTIONAL_FIELDS = ("temperature", "ignore_eos", "top_k", "top_p", "min_p")
+
+
 def _post_openai_completion(
     host: str,
     port: int,
@@ -730,13 +737,15 @@ def _post_openai_completion(
     try:
         return _post_json(host, port, OPENAI_COMPLETIONS_PATH, payload, timeout)
     except urllib.error.HTTPError as exc:
-        # gufo rejects unknown request fields; its server default sampling is
-        # already greedy (temperature 0.0), so a rejected optional field falls
-        # back to the minimal payload rather than failing the case.
+        # Engines reject unknown request fields with 400s; optional fields
+        # (sampling switches, ignore_eos) fall back to the minimal payload
+        # rather than failing the case. Server-side defaults are greedy for
+        # the pinned engines, so dropping an explicitly rejected optional
+        # field does not change the greedy protocol.
         if exc.code != 400:
             raise
         body = exc.read().decode("utf-8", errors="replace")
-        if "'temperature'" not in body and "temperature" not in body:
+        if not any(field in body for field in OPENAI_OPTIONAL_FIELDS):
             raise
         minimal = {key: value for key, value in payload.items() if key in ("prompt", "max_tokens")}
         return _post_json(host, port, OPENAI_COMPLETIONS_PATH, minimal, timeout)
@@ -1389,7 +1398,9 @@ def _hipengine_host_profile(
     }
 
 
-def compare_engine_artifacts(paths: Sequence[Path]) -> dict[str, Any]:
+def compare_engine_artifacts(
+    paths: Sequence[Path], *, allow_case_intersection: bool = False
+) -> dict[str, Any]:
     if len(paths) < 2:
         raise ValueError("compare mode requires at least two engine artifacts")
     engines: dict[str, dict[str, Any]] = {}
@@ -1410,9 +1421,51 @@ def compare_engine_artifacts(paths: Sequence[Path]) -> dict[str, Any]:
         {str(row["case_id"]) for row in payload["samples"]}
         for payload in engines.values()
     ]
-    if not case_sets[0] or any(case_set != case_sets[0] for case_set in case_sets[1:]):
+    if not case_sets[0]:
+        raise ValueError("engine artifacts contain no cases")
+    excluded_cases: dict[str, Any] = {}
+    if all(case_set == case_sets[0] for case_set in case_sets[1:]):
+        case_ids = case_sets[0]
+    elif allow_case_intersection:
+        case_ids = set.intersection(*case_sets)
+        universe = set.union(*case_sets)
+        if not case_ids:
+            raise ValueError("engine artifacts share no common case")
+        for engine, payload, case_set in zip(engines, engines.values(), case_sets, strict=True):
+            unmeasured = sorted(universe - case_set)
+            if not unmeasured:
+                continue
+            # Provenance gate: an engine that did not measure a compared-suite
+            # case must declare it disqualified with its reason. An engine that
+            # did measure a case outside the intersection needs no declaration
+            # (a peer excluded it); its aggregate is instead recomputed below.
+            declared = {
+                str(row.get("case_id"))
+                for row in payload.get("disqualified_cases", [])
+                if isinstance(row, Mapping)
+            }
+            undeclared = [case_id for case_id in unmeasured if case_id not in declared]
+            if undeclared:
+                raise ValueError(
+                    f"engine {engine!r} is missing cases {undeclared} that its artifact "
+                    "does not declare as disqualified; refusing a silent drop"
+                )
+            excluded_cases[engine] = [
+                {
+                    "case_id": case_id,
+                    "reason": next(
+                        (
+                            str(row.get("reason"))
+                            for row in payload.get("disqualified_cases", [])
+                            if isinstance(row, Mapping) and str(row.get("case_id")) == case_id
+                        ),
+                        "undeclared",
+                    ),
+                }
+                for case_id in unmeasured
+            ]
+    else:
         raise ValueError("engine artifacts do not contain identical non-empty case sets")
-    case_ids = case_sets[0]
     correctness: dict[str, Any] = {}
     for case_id in sorted(case_ids):
         hashes: dict[str, list[str]] = {}
@@ -1429,10 +1482,31 @@ def compare_engine_artifacts(paths: Sequence[Path]) -> dict[str, Any]:
             "engine_hashes": hashes,
         }
 
+    engine_summaries: dict[str, Any] = {}
+    for engine, payload, case_set in zip(engines, engines.values(), case_sets, strict=True):
+        if case_set != case_ids:
+            # This engine measured cases outside the comparison set, so its
+            # artifact aggregate spans a different basis than the comparison;
+            # recompute over the compared cases only.
+            compared_rows = [
+                row for row in payload["samples"] if str(row["case_id"]) in case_ids
+            ]
+            engine_summaries[engine] = {
+                "summary_basis": "compared_case_intersection",
+                "summary": summarize_samples(compared_rows),
+            }
+        else:
+            engine_summaries[engine] = {
+                "summary_basis": "engine_artifact",
+                "summary": payload["summary"],
+            }
+
     return {
         "schema": 1,
         "kind": "qwen4exp_canonical_ar_comparison",
         "fixture_sha256": next(iter(fixture_hashes)),
+        "compared_case_ids": sorted(case_ids),
+        "excluded_cases": excluded_cases,
         "engine_artifacts": {
             engine: {"path": str(path.resolve()), "sha256": sha256_path(path)}
             for engine, path in zip(engines, paths, strict=True)
@@ -1441,7 +1515,7 @@ def compare_engine_artifacts(paths: Sequence[Path]) -> dict[str, Any]:
             engine: {
                 "source": payload.get("source"),
                 "profile": payload.get("profile"),
-                "summary": payload["summary"],
+                **engine_summaries[engine],
             }
             for engine, payload in engines.items()
         },
@@ -1558,6 +1632,14 @@ def build_parser() -> argparse.ArgumentParser:
     compare_parser = subparsers.add_parser("compare", help="Join completed engine artifacts")
     compare_parser.add_argument("artifacts", nargs="+", type=Path)
     compare_parser.add_argument("--output", type=Path, required=True)
+    compare_parser.add_argument(
+        "--allow-case-intersection", action="store_true",
+        help=(
+            "Compare over the intersection of case sets. Every excluded case must be "
+            "declared in that artifact's disqualified_cases with its reason; otherwise "
+            "the comparison refuses the silent drop."
+        ),
+    )
     return parser
 
 
@@ -1605,7 +1687,9 @@ def main() -> int:
             raise SystemExit("server binary must exist")
         artifact = run_openai(args)
     else:
-        artifact = compare_engine_artifacts(args.artifacts)
+        artifact = compare_engine_artifacts(
+            args.artifacts, allow_case_intersection=bool(args.allow_case_intersection)
+        )
         _write_json(args.output, artifact)
     print(json.dumps({"kind": artifact["kind"], "status": artifact.get("status", "completed"), "output": str(args.output)}, indent=2))
     return 0
