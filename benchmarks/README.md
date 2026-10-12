@@ -2028,6 +2028,24 @@ repeats, public-path parity and finite logits pass on every row.
 [Commands, samples, identities and rejections](results/2026-10-08-gemma4-gfx1151-depth-ladder-paired.json).
 [2026-10-07 ladder, prior build](results/2026-10-07-gemma4-gfx1151-depth-ladder-paired.json).
 
+#### Full-depth 256Ki endpoint on the final tree (2026-10-10)
+
+The endpoint re-measured on the campaign's final tree (whole-step decode
+graph in its measured launch-bound band, device-resolved flash geometry,
+deep capture routes validated): hipEngine **336.0 prefill / 10.28 decode
+tok/s** against the pinned llama.cpp rows (227.9 / 7.21, unchanged from the
+2026-10-06 endpoint, prompt-hash-identical) — **1.48x / 1.43x**, both
+phases lead at the full context. The hip side ran the full prefill once
+and decoded both fresh and from the reloaded cross-process KV state on the
+same tree; the restored decode's 128 greedy IDs equal the fresh decode
+exactly.
+
+| Prompt tokens | hipEngine prefill | llama.cpp prefill | hip/llama | hipEngine decode | llama.cpp decode | hip/llama |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 262,015 | **336.0 tok/s** | 227.9 tok/s | **1.48x** | **10.28 tok/s** | 7.21 tok/s | **1.43x** |
+
+[Artifact](results/2026-10-10-gemma4-gfx1151-256ki-final.json).
+
 #### Full-depth 256Ki endpoint (2026-10-09)
 
 On **zbook / Radeon 8060S (gfx1151)**, both engines ran the same
