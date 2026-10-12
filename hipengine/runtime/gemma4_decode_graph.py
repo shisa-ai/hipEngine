@@ -582,6 +582,7 @@ class Gemma4DecodeGraphSession:
             build_gemma4_attention,
             decode_slices,
             flash_admits,
+            flash_decode_engages,
             flash_request_slices,
             flash_workspace_bytes,
             select_prefill_attention,
@@ -632,6 +633,7 @@ class Gemma4DecodeGraphSession:
             # second needs the staged library loaded because that is where it
             # falls back. Ask the layer's own selector so the reservation
             # matches the launch the capture records.
+            decode_route = None
             if getattr(runner, "decode_attention_variants", None) is not None:
                 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
                     _EXACT_DECODE_STAGED,
@@ -663,7 +665,12 @@ class Gemma4DecodeGraphSession:
                         stream=self._stream, runtime=runtime,
                     )
             slices = decode_slices(keys, attention.head_dim)
-            if slices > 1:
+            # The same expression the launcher uses: a plan that prefers flash
+            # takes it on a short row too, below the split policy's count.
+            if flash_decode_engages(
+                keys=keys, head_dim=attention.head_dim,
+                prefer_flash=decode_route == DECODE_ATTENTION_FLASH,
+            ):
                 need = split_workspace_bytes(
                     1,
                     attention.num_heads,

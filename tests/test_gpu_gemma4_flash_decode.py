@@ -113,7 +113,7 @@ def test_flash_selected_for_admitted_geometry(attention_library, geom, keys):
 @pytest.mark.parametrize("geom", _GEOMETRIES)
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
 @pytest.mark.parametrize("mask_mode", ["keep", "holes", "window"])
-@pytest.mark.parametrize("keys", [1024, 2055, 4096])
+@pytest.mark.parametrize("keys", [256, 513, 1023, 1024, 2055, 4096])
 def test_flash_matches_single_kernel_to_float_precision(
     attention_library, geom, dtype, mask_mode, keys
 ):
@@ -487,3 +487,61 @@ def test_request_count_is_the_policy_count_wherever_a_graph_captures(attention_l
         assert flash_request_slices(keys=keys, library=attention_library, **geom) == flash_slices(
             keys
         ), keys
+
+
+@pytest.mark.parametrize("geom", _GEOMETRIES)
+@pytest.mark.parametrize(("keys", "flash_selection"), [(255, 1), (256, 3), (700, 3), (1023, 3)])
+def test_flash_variant_takes_a_short_row_from_the_preferred_entry(
+    attention_library, geom, keys, flash_selection
+):
+    """The registered ``gemma4_flash`` launcher runs the key-sliced kernel on a
+    row below the split policy's 1024 keys, from its preferred entry; the plain
+    launcher keeps the single class kernel there; the two agree to one bf16
+    quantum of head."""
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        decode_selection,
+        gemma4_attention_decode_flash_bf16,
+        gemma4_attention_prefill_bf16,
+    )
+
+    num_heads, num_kv_heads, head_dim = geom["num_heads"], geom["num_kv_heads"], geom["head_dim"]
+    rng = np.random.default_rng(20261012 + keys)
+    arrays = [
+        _bf16_bits(rng.standard_normal((1, num_heads, head_dim)) * 0.7),
+        _bf16_bits(rng.standard_normal((keys, num_kv_heads, head_dim)) * 0.7),
+        _bf16_bits(rng.standard_normal((keys, num_kv_heads, head_dim)) * 0.7),
+        np.ones((1, keys), dtype=np.uint8),
+        np.zeros((1, num_heads, head_dim), dtype=np.uint16),
+    ]
+    arrays = [np.ascontiguousarray(array) for array in arrays]
+    buffers = []
+    outputs, selections = [], []
+    try:
+        for array in arrays:
+            buffer = malloc(array.nbytes)
+            buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        for launcher in (gemma4_attention_prefill_bf16, gemma4_attention_decode_flash_bf16):
+            launcher(
+                *(b.ptr for b in buffers),
+                tokens=1, num_heads=num_heads, num_kv_heads=num_kv_heads,
+                head_dim=head_dim, scale=1.0, keys=keys, library=attention_library,
+            )
+            selections.append(decode_selection(attention_library))
+            out = np.empty_like(arrays[-1])
+            copy_device_to_host(host_array_ptr(out), buffers[-1], out.nbytes)
+            outputs.append(_as_float(out, "bf16"))
+    finally:
+        for buffer in buffers:
+            free(buffer)
+
+    assert selections == [1, flash_selection]
+    assert np.any(outputs[0])
+    np.testing.assert_allclose(outputs[1], outputs[0], rtol=6e-3, atol=6e-3)

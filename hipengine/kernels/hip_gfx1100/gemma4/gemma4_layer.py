@@ -51,6 +51,8 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     EXACT_PREFILL_ATTENTION_STAGED,
     Gemma4AttentionScratch,
     aotriton_prefill_admits,
+    flash_admits,
+    flash_decode_short_row,
     gemma4_attention_prefill_aotriton,
     gemma4_attention_prefill_bf16,
     gemma4_attention_resident_overflows,
@@ -727,6 +729,27 @@ def _select_exact_decode_attention(
         return keep_native()
     if int(tokens) != 1:
         return keep_native()
+    if (
+        DECODE_ATTENTION_FLASH in decode_attention_variants
+        and keys is not None
+        and int(key_begin) == 0
+        and flash_admits(
+            tokens=1, head_dim=int(head_dim), num_heads=int(num_heads),
+            num_kv_heads=int(num_kv_heads),
+        )
+        and not gemma4_attention_resident_overflows(head_dim=int(head_dim), keys=int(keys))
+        and flash_decode_short_row(keys=int(keys), head_dim=int(head_dim))
+    ):
+        # The short-row arm of the same preference, for either packing: below
+        # the split policy's 1024 keys the native launch is the single class
+        # kernel, whose serial key walk the key-sliced route overtakes from
+        # ``FLASH_DECODE_PREFERRED_MIN_KEYS`` keys. From 1024 keys the native launch
+        # already asks for flash, so this changes nothing there. A sliding
+        # layer has not started trimming at these counts (``key_begin == 0``).
+        flash = _resolve_decode_attention_launcher(
+            backend=resolved_backend, variant=DECODE_ATTENTION_FLASH
+        )
+        return flash, DECODE_ATTENTION_FLASH
     if int(head_dim) != 512:
         return keep_native()
     if int(num_kv_heads) <= 0 or int(num_heads) % int(num_kv_heads):
