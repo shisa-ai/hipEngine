@@ -70,6 +70,7 @@ the external-forks review apply to each of them.
 | --- | --- | --- | --- |
 | **hipEngine** default at `42ce71156` | 239.5 / 253.4 / 241.9 at p512 / 1K / 4K | 17.70 / 17.18 / 16.24 | Measured here, canonical fixture ([source](../benchmarks/results/2026-09-17-qwen4exp-shipped-default-baseline/README.md)) |
 | **hipEngine** default after the F16 activation staging and the full-attention context promotions | p4096 category mean **255.066** | not re-measured | Measured here (`20260928T155352`); p512/1K not refreshed |
+| **Pass 1 (2026-10-12), current releases, normative cross-engine protocol** | hipEngine **305.1 / 328.9 / 334.4**; halo-box master `6aa81b88e` **759.3 / 1109.1 / 1446.4**; gufo `v0.12.0` **1095.0 / 1482.2 / 1736.4** | 20.6-28.6 across engines | Measured here, same file, same fixture, plus G0-G4 gates and per-operator attribution ([source](../benchmarks/results/2026-10-12-qwen4exp-cross-engine-pass1/README.md)); p4096 gap 4.33x / 5.19x, **not uniform** across families (attention 10.2x, dense 3.6x) |
 | pwilkin `strix-halo` `40a9f4d01`, f16 KV | 339.2 / 858.9 / **1061.9** | — | Measured here, same fixture ([source](../benchmarks/results/2026-09-15-flashnext-engine-comparison/README.md)) |
 | halo-box `69946438a`, f16 KV | 451.6 / 620.7 / 660.6 | — | Measured here, same fixture |
 | upstream llama.cpp `6011c34ce`, f16 KV | 321.3 / 415.1 / 459.0 | — | Measured here, same fixture |
@@ -149,6 +150,14 @@ the post-unroll MoE capture; `elementwise_norm` and the remainder are omitted,
 so the rows do not sum exactly to the post-unroll total.
 
 ### 1.2.1 Verified same-file comparison and the dense-scope result — 2026-10-04 UTC
+
+**Refreshed 2026-10-12 by cross-engine pass 1** ([source](../benchmarks/results/2026-10-12-qwen4exp-cross-engine-pass1/README.md)):
+current releases (halo-box master `6aa81b88e`, gufo `v0.12.0`), the normative
+protocol (`docs/CROSS-ENGINE-PROTOCOL.md`), the G0-G4 gates, and a fresh
+per-operator attribution — where the gap is **not uniform** (attention 10.2x,
+dense 3.6x after the Oct-08 dense promotions, GDN 2.9x). The rows below are
+the 2026-10-04 snapshot at gufo `98641a6`/hipEngine pre-Oct-08-promotions and
+are kept as history.
 
 **THE UNIFORMITY CLAIM BELOW IS REFUTED AT THE HARDWARE LEVEL (`20261004T`).** The
 family ratios are a wall-time reading; a prefill-only `rocprofv3` capture
