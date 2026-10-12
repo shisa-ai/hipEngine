@@ -1,0 +1,57 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_qsa_head_tile_microbench",
+ "performance_claim": false,
+ "question": "What is K/V amortization worth on the shipped QSA wave-row kernel? The three registered variants differ only in how many query heads share one selected K/V load.",
+ "geometry": {
+  "rows": 256,
+  "selected_stride": 2051,
+  "selected_counts": 2050,
+  "query_heads": 24,
+  "kv_heads": 2,
+  "head_dim": 256,
+  "block_size": 256,
+  "query_heads_per_kv_head": 12,
+  "note": "Synthetic K/V contents; geometry, counts and access pattern are representative, the values are not."
+ },
+ "variants": {
+  "heads_1_page256": {
+   "heads": 1,
+   "head_group_blocks_per_row": 24,
+   "median_ms": 14.188556000590324,
+   "min_ms": 14.175481999700423,
+   "max_ms": 14.195529998687562,
+   "repetitions": 3,
+   "kv_read_gb_per_launch": 12.8974848,
+   "effective_kv_gb_per_s": 909.0061595741942,
+   "output_ptr": 140054754230272,
+   "speedup_vs_heads_4": 0.4037821045048634
+  },
+  "heads_2_head_pair": {
+   "heads": 2,
+   "head_group_blocks_per_row": 12,
+   "median_ms": 6.235996996110771,
+   "min_ms": 6.110771995736286,
+   "max_ms": 6.2396639987127855,
+   "repetitions": 3,
+   "kv_read_gb_per_launch": 6.4487424,
+   "effective_kv_gb_per_s": 1034.115700187462,
+   "output_ptr": 140054745841664,
+   "speedup_vs_heads_4": 0.9187119566248269
+  },
+  "heads_4_head_quad": {
+   "heads": 4,
+   "head_group_blocks_per_row": 6,
+   "median_ms": 5.729085001803469,
+   "min_ms": 5.705501993361395,
+   "max_ms": 5.73412400262896,
+   "repetitions": 3,
+   "kv_read_gb_per_launch": 3.2243712,
+   "effective_kv_gb_per_s": 562.8073591131908,
+   "output_ptr": 140054737453056,
+   "speedup_vs_heads_4": 1.0
+  }
+ },
+ "bit_identical_across_variants": true,
+ "reading": "A speedup at HEADS=1 or 2 over HEADS=4 means the kernel is K/V-traffic limited and the shipped quad tile is leaving reuse on the table; a flat result means the cost is the scalar FMA issue rate and only tensor cores or a different reduction structure can move it."
+}
