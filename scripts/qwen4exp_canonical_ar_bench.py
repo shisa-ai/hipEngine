@@ -677,6 +677,314 @@ def run_llamacpp(args: argparse.Namespace) -> dict[str, Any]:
     return artifact
 
 
+OPENAI_ADAPTERS = ("gufo", "kyojin")
+OPENAI_COMPLETIONS_PATH = "/v1/completions"
+
+
+def _openai_case_text(tokenizer: Any, case: Mapping[str, Any]) -> tuple[str, bool]:
+    """Detokenize a canonical case and verify the tokenizer round-trip.
+
+    Text-driven engines receive the raw detokenized prompt with no chat
+    template. A case whose re-tokenization does not reproduce the fixture ids
+    is disqualified for that engine and recorded; it is never silently
+    re-aligned.
+    """
+    token_ids = [int(token_id) for token_id in case["prompt_token_ids"]]
+    text = tokenizer.decode(token_ids)
+    retokenized = tokenizer.encode(text, add_special_tokens=False)
+    return text, retokenized == token_ids
+
+
+def openai_completions_payload(adapter: str, text: str, transitions: int) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "prompt": text,
+        "max_tokens": transitions + 1,
+        "temperature": 0.0,
+    }
+    if adapter == "gufo":
+        return payload
+    if adapter == "kyojin":
+        # The AR protocol launches kyojin with --draft-policy off, so no
+        # speculative request switch is sent here. cache_prompt False matches
+        # the llamacpp leg's cold-prompt discipline; return_token_ids gives
+        # exact output ids without a text round-trip.
+        payload.update(
+            {
+                "top_k": 1,
+                "top_p": 1.0,
+                "min_p": 0.0,
+                "cache_prompt": False,
+                "return_token_ids": True,
+            }
+        )
+        return payload
+    raise ValueError(f"unknown OpenAI-completions adapter: {adapter!r}")
+
+
+def _post_openai_completion(
+    host: str,
+    port: int,
+    payload: Mapping[str, Any],
+    timeout: float,
+) -> dict[str, Any]:
+    try:
+        return _post_json(host, port, OPENAI_COMPLETIONS_PATH, payload, timeout)
+    except urllib.error.HTTPError as exc:
+        # gufo rejects unknown request fields; its server default sampling is
+        # already greedy (temperature 0.0), so a rejected optional field falls
+        # back to the minimal payload rather than failing the case.
+        if exc.code != 400:
+            raise
+        body = exc.read().decode("utf-8", errors="replace")
+        if "'temperature'" not in body and "temperature" not in body:
+            raise
+        minimal = {key: value for key, value in payload.items() if key in ("prompt", "max_tokens")}
+        return _post_json(host, port, OPENAI_COMPLETIONS_PATH, minimal, timeout)
+
+
+def openai_response_sample(
+    *,
+    adapter: str,
+    tokenizer: Any,
+    case: Mapping[str, Any],
+    response: Mapping[str, Any],
+    client_wall_s: float,
+    repetition: int,
+    expected_transitions: int,
+) -> dict[str, Any]:
+    timings = response.get("timings")
+    if not isinstance(timings, Mapping):
+        raise ValueError(f"{adapter} response omitted timings")
+    prompt_tokens = int(case["prompt_tokens"])
+    prompt_n = int(timings.get("prompt_n") or 0)
+    usage = response.get("usage")
+    if prompt_n == 0 and isinstance(usage, Mapping):
+        prompt_n = int(usage.get("prompt_tokens") or 0)
+    if prompt_n != prompt_tokens:
+        raise ValueError(
+            f"{adapter} evaluated {prompt_n} prompt tokens; expected {prompt_tokens}"
+        )
+    prompt_ms = float(timings.get("prompt_ms") or 0.0)
+    predicted_ms = float(timings.get("predicted_ms") or 0.0)
+    predicted_n = int(timings.get("predicted_n") or 0)
+    cached_n = int(timings.get("cache_n") or 0)
+    if prompt_ms <= 0.0:
+        raise ValueError(f"{adapter} response prompt_ms must be positive")
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ValueError(f"{adapter} response omitted choices")
+    choice = choices[0]
+    if not isinstance(choice, Mapping):
+        raise ValueError(f"{adapter} response choice must be an object")
+    ids_source = "text_retokenized"
+    raw_ids = response.get("token_ids")
+    if not isinstance(raw_ids, list):
+        raw_ids = choice.get("token_ids")
+    if isinstance(raw_ids, list) and raw_ids:
+        normalized_ids = [int(token_id) for token_id in raw_ids]
+        ids_source = "return_token_ids"
+    else:
+        text = choice.get("text")
+        if not isinstance(text, str) or not text:
+            raise ValueError(f"{adapter} response omitted completion text")
+        normalized_ids = tokenizer.encode(text, add_special_tokens=False)
+    transitions_actual = max(len(normalized_ids) - 1, 0)
+    if transitions_actual:
+        decode_tok_s = 1000.0 * transitions_actual / predicted_ms if predicted_ms > 0.0 else 0.0
+    else:
+        decode_tok_s = 0.0
+    return {
+        "case_id": str(case["id"]),
+        "category": str(case["category"]),
+        "prompt_tokens": prompt_tokens,
+        "prompt_token_ids_sha256": str(case["prompt_token_ids_sha256"]),
+        "repetition": int(repetition),
+        "prefill_ms": prompt_ms,
+        "prefill_tok_s": 1000.0 * prompt_tokens / prompt_ms,
+        "decode_ms": predicted_ms,
+        "decode_transitions": transitions_actual,
+        "decode_tok_s": decode_tok_s,
+        "client_wall_s": float(client_wall_s),
+        "output_token_count": len(normalized_ids),
+        "output_token_ids": normalized_ids,
+        "output_token_ids_sha256": token_ids_sha256(normalized_ids),
+        "output_ids_source": ids_source,
+        "cached_prompt_tokens": cached_n,
+        "native_predicted_n": predicted_n,
+        "native_predicted_per_second": timings.get("predicted_per_second"),
+        "finish_reason": choice.get("finish_reason"),
+        "decode_truncated": transitions_actual < int(expected_transitions),
+    }
+
+
+def run_openai(args: argparse.Namespace) -> dict[str, Any]:
+    fixture, fixture_sha256 = load_fixture(args.fixture)
+    cases = fixture["cases"]
+    transitions = int(fixture["decode_transitions"])
+    adapter = str(args.adapter)
+    if adapter not in OPENAI_ADAPTERS:
+        raise SystemExit(f"unsupported OpenAI-completions adapter: {adapter!r}")
+
+    from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
+    from hipengine.tokenization.gguf import Qwen4ExpGGUFTokenizer
+
+    first_part = discover_gguf_files(args.model_root)[0]
+    index = load_gguf_index(first_part)
+    tokenizer = Qwen4ExpGGUFTokenizer.from_gguf_info(index)
+
+    case_texts: dict[str, str] = {}
+    disqualified: list[dict[str, Any]] = []
+    for case in cases:
+        text, exact_round_trip = _openai_case_text(tokenizer, case)
+        if exact_round_trip:
+            case_texts[str(case["id"])] = text
+        else:
+            disqualified.append(
+                {"case_id": str(case["id"]), "reason": "detokenize/retokenize round-trip mismatch"}
+            )
+    qualified_cases = [case for case in cases if str(case["id"]) in case_texts]
+    if not qualified_cases:
+        raise SystemExit("no canonical case survived tokenizer round-trip verification")
+
+    server_bin = args.server_bin.resolve()
+    log_path = args.server_log.resolve()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    command = [str(server_bin), *args.server_arg]
+    artifact: dict[str, Any] = {
+        "schema": 1,
+        "kind": "qwen4exp_canonical_ar_engine_run",
+        "engine": args.engine_label,
+        "surface": "openai_completions",
+        "adapter": adapter,
+        "status": "running",
+        "host": _host_metadata(),
+        "fixture": str(args.fixture.resolve()),
+        "fixture_sha256": fixture_sha256,
+        "model": str(args.model_root.resolve()),
+        "server_binary": str(server_bin),
+        "server_binary_sha256": sha256_path(server_bin),
+        "source": _git_metadata(args.source_root),
+        "command": command,
+        "protocol": {
+            "warmups_per_case": int(args.warmups),
+            "measured_repetitions": int(args.repetitions),
+            "decode_transitions": transitions,
+            "visible_output_tokens": transitions + 1,
+            "temperature": 0.0,
+            "input_modality": "detokenized_raw_text",
+            "chat_template": False,
+            "prompt_cache": "cache_prompt=false where supported; measured rows must report cache_n=0",
+            "tokenizer_round_trip_verified_cases": len(qualified_cases),
+            "timing_boundary": (
+                "engine-reported timings.prompt_ms for exact prefill; decode is the "
+                "engine-reported predicted_ms over the actual generated tokens, so an "
+                "early EOS truncates the decode leg (recorded per row) and the decode "
+                "leg is not comparable to the ignore_eos llamacpp leg"
+            ),
+            "output_ids": (
+                "return_token_ids where the engine returns ids; otherwise the completion "
+                "text re-tokenized with the fixture tokenizer (recorded per row as "
+                "output_ids_source)"
+            ),
+        },
+        "disqualified_cases": disqualified,
+        "warmups": [],
+        "samples": [],
+    }
+    _write_json(args.output, artifact)
+    server_cwd = args.server_cwd.resolve() if args.server_cwd else None
+    with log_path.open("wb") as server_log:
+        process = subprocess.Popen(
+            command,
+            stdout=server_log,
+            stderr=subprocess.STDOUT,
+            env=os.environ.copy(),
+            cwd=server_cwd,
+        )
+        try:
+            _wait_for_health(args.host, args.port, args.startup_timeout)
+            for warmup in range(args.warmups):
+                for case in _measurement_order(qualified_cases, warmup):
+                    started = time.perf_counter()
+                    response = _post_openai_completion(
+                        args.host,
+                        args.port,
+                        openai_completions_payload(adapter, case_texts[str(case["id"])], transitions),
+                        args.request_timeout,
+                    )
+                    row = openai_response_sample(
+                        adapter=adapter,
+                        tokenizer=tokenizer,
+                        case=case,
+                        response=response,
+                        client_wall_s=time.perf_counter() - started,
+                        repetition=warmup,
+                        expected_transitions=transitions,
+                    )
+                    artifact["warmups"].append(
+                        {
+                            "case_id": row["case_id"],
+                            "repetition": warmup,
+                            "output_token_ids_sha256": row["output_token_ids_sha256"],
+                        }
+                    )
+                    print(
+                        f"[warmup] {args.engine_label} {row['case_id']} "
+                        f"pp={row['prefill_tok_s']:.3f} tg={row['decode_tok_s']:.3f}",
+                        flush=True,
+                    )
+            for repetition in range(args.repetitions):
+                for case in _measurement_order(qualified_cases, repetition):
+                    started = time.perf_counter()
+                    response = _post_openai_completion(
+                        args.host,
+                        args.port,
+                        openai_completions_payload(adapter, case_texts[str(case["id"])], transitions),
+                        args.request_timeout,
+                    )
+                    row = openai_response_sample(
+                        adapter=adapter,
+                        tokenizer=tokenizer,
+                        case=case,
+                        response=response,
+                        client_wall_s=time.perf_counter() - started,
+                        repetition=repetition,
+                        expected_transitions=transitions,
+                    )
+                    if int(row["cached_prompt_tokens"]) != 0:
+                        raise ValueError(
+                            f"{adapter} served case {row['case_id']} from the prompt cache "
+                            f"(cache_n={row['cached_prompt_tokens']}); the measured prefill "
+                            "is not a cold prompt evaluation"
+                        )
+                    artifact["samples"].append(row)
+                    artifact["summary"] = summarize_samples(artifact["samples"])
+                    _write_json(args.output, artifact)
+                    print(
+                        f"[measure {repetition}] {args.engine_label} {row['case_id']} "
+                        f"pp={row['prefill_tok_s']:.3f} tg={row['decode_tok_s']:.3f}",
+                        flush=True,
+                    )
+            artifact["status"] = "completed"
+        except Exception as exc:
+            artifact["status"] = "failed"
+            artifact["error"] = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            _terminate(process)
+            server_log.flush()
+            artifact["server_returncode"] = process.returncode
+            artifact["server_log"] = str(log_path)
+            artifact["server_log_sha256"] = sha256_path(log_path)
+            _write_json(args.output, artifact)
+    artifact["server_returncode"] = process.returncode
+    artifact["server_log"] = str(log_path)
+    artifact["server_log_sha256"] = sha256_path(log_path)
+    artifact["summary"] = summarize_samples(artifact["samples"])
+    _write_json(args.output, artifact)
+    return artifact
+
+
 def _proc_kib_fields(path: Path) -> dict[str, int]:
     fields: dict[str, int] = {}
     for line in path.read_text().splitlines():
@@ -1227,6 +1535,26 @@ def build_parser() -> argparse.ArgumentParser:
     llama_parser.add_argument("--startup-timeout", type=float, default=1800.0)
     llama_parser.add_argument("--request-timeout", type=float, default=1800.0)
 
+    openai_parser = subparsers.add_parser(
+        "openai", help="Run an OpenAI-completions server (gufo, kyojin) on the canonical fixture"
+    )
+    openai_parser.add_argument("--adapter", choices=OPENAI_ADAPTERS, required=True)
+    openai_parser.add_argument("--server-bin", type=Path, required=True)
+    openai_parser.add_argument("--server-arg", action="append", default=[])
+    openai_parser.add_argument("--server-cwd", type=Path)
+    openai_parser.add_argument("--model-root", type=Path, required=True, help="GGUF root supplying the fixture tokenizer")
+    openai_parser.add_argument("--engine-label", required=True)
+    openai_parser.add_argument("--source-root", type=Path)
+    openai_parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
+    openai_parser.add_argument("--output", type=Path, required=True)
+    openai_parser.add_argument("--server-log", type=Path, required=True)
+    openai_parser.add_argument("--host", default="127.0.0.1")
+    openai_parser.add_argument("--port", type=int, default=18080)
+    openai_parser.add_argument("--warmups", type=int, default=1)
+    openai_parser.add_argument("--repetitions", type=int, default=3)
+    openai_parser.add_argument("--startup-timeout", type=float, default=1800.0)
+    openai_parser.add_argument("--request-timeout", type=float, default=1800.0)
+
     compare_parser = subparsers.add_parser("compare", help="Join completed engine artifacts")
     compare_parser.add_argument("artifacts", nargs="+", type=Path)
     compare_parser.add_argument("--output", type=Path, required=True)
@@ -1272,6 +1600,10 @@ def main() -> int:
         if not args.server_bin.is_file() or not args.model.is_file():
             raise SystemExit("server binary and model first part must exist")
         artifact = run_llamacpp(args)
+    elif args.mode == "openai":
+        if not args.server_bin.is_file():
+            raise SystemExit("server binary must exist")
+        artifact = run_openai(args)
     else:
         artifact = compare_engine_artifacts(args.artifacts)
         _write_json(args.output, artifact)

@@ -433,3 +433,137 @@ def test_host_profile_resets_first_and_attributes_the_decode_loop() -> None:
     assert shares == sorted(shares, reverse=True)
     # The loop itself has to appear; `step` is what the attribution is about.
     assert any("_loop" in entry["function"] for entry in profile["entries"])
+
+
+class _StubTokenizer:
+    """Deterministic stand-in for the GGUF tokenizer used by the openai adapter."""
+
+    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        return [ord(character) for character in text]
+
+    def decode(self, token_ids: Any) -> str:
+        return "".join(chr(int(token_id)) for token_id in token_ids)
+
+
+def _openai_case() -> dict[str, Any]:
+    return {
+        "id": "code-p512",
+        "category": "code",
+        "prompt_tokens": 5,
+        "prompt_token_ids": [104, 101, 108, 108, 111],  # decodes to "hello"
+        "prompt_token_ids_sha256": "0" * 64,
+    }
+
+
+def _gufo_style_response() -> dict[str, Any]:
+    return {
+        "choices": [{"text": "ok!", "index": 0, "finish_reason": "length"}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+        "timings": {
+            "prompt_n": 5,
+            "prompt_ms": 40.0,
+            "predicted_n": 3,
+            "predicted_ms": 60.0,
+            "cache_n": 0,
+            "predicted_per_second": 50.0,
+        },
+    }
+
+
+def test_openai_completions_payload_per_adapter() -> None:
+    module = _load_script()
+    gufo = module.openai_completions_payload("gufo", "text", 128)
+    assert gufo == {"prompt": "text", "max_tokens": 129, "temperature": 0.0}
+    kyojin = module.openai_completions_payload("kyojin", "text", 128)
+    assert kyojin["cache_prompt"] is False
+    assert kyojin["return_token_ids"] is True
+    assert kyojin["max_tokens"] == 129
+    assert kyojin["temperature"] == 0.0
+    with pytest.raises(ValueError):
+        module.openai_completions_payload("unknown", "text", 128)
+
+
+def test_openai_response_sample_retokenizes_text_output() -> None:
+    module = _load_script()
+    row = module.openai_response_sample(
+        adapter="gufo",
+        tokenizer=_StubTokenizer(),
+        case=_openai_case(),
+        response=_gufo_style_response(),
+        client_wall_s=0.5,
+        repetition=0,
+        expected_transitions=128,
+    )
+    assert row["output_ids_source"] == "text_retokenized"
+    assert row["output_token_ids"] == [111, 107, 33]
+    assert row["prefill_tok_s"] == pytest.approx(1000.0 * 5 / 40.0)
+    assert row["decode_transitions"] == 2
+    assert row["decode_tok_s"] == pytest.approx(1000.0 * 2 / 60.0)
+    assert row["decode_truncated"] is True
+    assert row["cached_prompt_tokens"] == 0
+    assert row["prompt_token_ids_sha256"] == "0" * 64
+
+
+def test_openai_response_sample_prefers_returned_token_ids() -> None:
+    module = _load_script()
+    response = _gufo_style_response()
+    response["token_ids"] = [10, 11, 12, 13]
+    row = module.openai_response_sample(
+        adapter="kyojin",
+        tokenizer=_StubTokenizer(),
+        case=_openai_case(),
+        response=response,
+        client_wall_s=0.5,
+        repetition=0,
+        expected_transitions=3,
+    )
+    assert row["output_ids_source"] == "return_token_ids"
+    assert row["output_token_ids"] == [10, 11, 12, 13]
+    assert row["decode_transitions"] == 3
+    assert row["decode_truncated"] is False
+
+
+def test_openai_response_sample_rejects_prompt_token_mismatch() -> None:
+    module = _load_script()
+    response = _gufo_style_response()
+    response["timings"]["prompt_n"] = 6
+    with pytest.raises(ValueError, match="evaluated 6 prompt tokens"):
+        module.openai_response_sample(
+            adapter="gufo",
+            tokenizer=_StubTokenizer(),
+            case=_openai_case(),
+            response=response,
+            client_wall_s=0.5,
+            repetition=0,
+            expected_transitions=128,
+        )
+
+
+def test_openai_response_sample_falls_back_to_usage_prompt_tokens() -> None:
+    module = _load_script()
+    response = _gufo_style_response()
+    del response["timings"]["prompt_n"]
+    row = module.openai_response_sample(
+        adapter="gufo",
+        tokenizer=_StubTokenizer(),
+        case=_openai_case(),
+        response=response,
+        client_wall_s=0.5,
+        repetition=0,
+        expected_transitions=128,
+    )
+    assert row["prompt_tokens"] == 5
+
+
+def test_openai_case_text_flags_round_trip_mismatch() -> None:
+    module = _load_script()
+
+    class _LossyTokenizer(_StubTokenizer):
+        def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+            return [byte + 1 for byte in text.encode("utf-8")]  # different id space than decode
+
+    exact_text, exact = module._openai_case_text(_StubTokenizer(), _openai_case())
+    assert exact is True
+    assert exact_text == "hello"
+    _, mismatch = module._openai_case_text(_LossyTokenizer(), _openai_case())
+    assert mismatch is False
