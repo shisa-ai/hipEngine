@@ -18,7 +18,13 @@ The pass-1 p4096 prefill attribution is the prioritization signal:
 | Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
 | Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
 
-The grouped instrumentation then captured **1,152 production prefix records**
+The replay has an important comparability caveat: gufo's width 16..80 objective
+is a column-tile policy in its MMQ routed GEMM, while hipEngine's grouped Q4
+prefill map uses expert-row tiles (`qwen35_moe_mmq32_tile_map` and related
+owners). The width-16 result is therefore a policy hypothesis, not proof that
+hipEngine should switch a tile dimension. The next valid comparison must report
+both dimensions and their padding/launch counts on the same bucket histogram.
+
 for `code-p4096` (the wrapper's old `records` assertion still failed because
 that assertion only recognizes pair2 records; the grouped data is valid). The
 compact summary is
