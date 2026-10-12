@@ -9,6 +9,18 @@ from hipengine.generation.gemma4_gguf import Gemma4GGUFGenerator
 from hipengine.generation.registry import GenerationRequest
 
 
+@pytest.fixture(autouse=True)
+def _launched_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the decode loop on per-token forwards.
+
+    The default replays decode steps from a captured HIP graph, which needs a
+    real runner and device. These tests drive the loop with a fake runner, so
+    they pin the launched loop the graph falls back to.
+    """
+
+    monkeypatch.setenv("HIPENGINE_GEMMA4_DECODE_GRAPH", "0")
+
+
 def _request(**kwargs):
     values = dict(prompts=((1, 2),), max_tokens=3, temperature=0, top_p=1, ignore_eos=False)
     values.update(kwargs)

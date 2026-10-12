@@ -84,8 +84,8 @@
     "samples": 3,
     "prefill_tps": 1415.8221200580479,
     "prefill_s": 0.3616273490479216,
-    "decode_tps": 34.55387907420713,
-    "decode_s": 3.675419472507201,
+    "decode_tps": 37.750477848929705,
+    "decode_s": 3.3641958257649094,
     "decode_forwards_per_sample": 127,
     "prompt_ids_sha256": "fba226ff8653b8b10e532f12d1d9b8fa364e57f552f51fab8c9079b23b0b268c",
     "status": "ok",
@@ -96,7 +96,10 @@
     },
     "public_path_parity": true,
     "public_tps_including_prefill": 35.107843493673585,
-    "public_generated_equals_expected": true
+    "public_generated_equals_expected": true,
+    "decode_tps_stdev": 0.0641232059399947,
+    "decode_graph": true,
+    "note": "decode re-measured 2026-10-09 with whole-step graph replay (source e33fbf2a2); prefill cell unchanged from the 2026-10-08 run; see benchmarks/results/2026-10-09-gemma4-gfx1151-512-decode-graph.json"
    },
    "llamacpp": {
     "label": "llama-512",
