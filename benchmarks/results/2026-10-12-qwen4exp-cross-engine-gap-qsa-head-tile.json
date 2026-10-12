@@ -1,0 +1,57 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_qsa_head_tile_microbench",
+ "performance_claim": false,
+ "question": "What is K/V amortization worth on the shipped QSA wave-row kernel? The three registered variants differ only in how many query heads share one selected K/V load.",
+ "geometry": {
+  "rows": 32,
+  "selected_stride": 257,
+  "selected_counts": 256,
+  "query_heads": 24,
+  "kv_heads": 2,
+  "head_dim": 256,
+  "block_size": 256,
+  "query_heads_per_kv_head": 12,
+  "note": "Synthetic K/V contents; geometry, counts and access pattern are representative, the values are not."
+ },
+ "variants": {
+  "heads_1_page256": {
+   "heads": 1,
+   "head_group_blocks_per_row": 24,
+   "median_ms": 0.37046600482426584,
+   "min_ms": 0.3686220006784424,
+   "max_ms": 0.37780899583594874,
+   "repetitions": 3,
+   "kv_read_gb_per_launch": 0.201326592,
+   "effective_kv_gb_per_s": 543.4414747326174,
+   "output_ptr": 140715349590016,
+   "speedup_vs_heads_4": 0.7135229746922704
+  },
+  "heads_2_head_pair": {
+   "heads": 2,
+   "head_group_blocks_per_row": 12,
+   "median_ms": 0.19025700021302328,
+   "min_ms": 0.18690100114326924,
+   "max_ms": 0.21086600463604555,
+   "repetitions": 3,
+   "kv_read_gb_per_launch": 0.100663296,
+   "effective_kv_gb_per_s": 529.0911550549587,
+   "output_ptr": 140715212406784,
+   "speedup_vs_heads_4": 1.3893628381011187
+  },
+  "heads_4_head_quad": {
+   "heads": 4,
+   "head_group_blocks_per_row": 6,
+   "median_ms": 0.26433600578457117,
+   "min_ms": 0.26389599952381104,
+   "max_ms": 0.2651780014275573,
+   "repetitions": 3,
+   "kv_read_gb_per_launch": 0.050331648,
+   "effective_kv_gb_per_s": 190.40784039469574,
+   "output_ptr": 140715213193216,
+   "speedup_vs_heads_4": 1.0
+  }
+ },
+ "bit_identical_across_variants": true,
+ "reading": "A speedup at HEADS=1 or 2 over HEADS=4 means the kernel is K/V-traffic limited and the shipped quad tile is leaving reuse on the table; a flat result means the cost is the scalar FMA issue rate and only tensor cores or a different reduction structure can move it."
+}
