@@ -1,0 +1,504 @@
+{
+  "schema": 1,
+  "kind": "cross_engine_quality_run",
+  "engine": "gufo-v0.12.0",
+  "surface": "openai_completions_gufo",
+  "status": "completed",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.2.9-2-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "source": {
+    "path": "/home/lhl/comparators-20261012/gufo-src",
+    "head": "88090afb2da10f9f1258ec08ddba0b57315305ac",
+    "tracked_clean": true
+  },
+  "battery": {
+    "suites": [
+      {
+        "path": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a"
+      },
+      {
+        "path": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+        "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+      }
+    ],
+    "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+    "steps": 32
+  },
+  "server_binary": "/home/lhl/comparators-20261012/gufo-src/build/release/gufo",
+  "server_binary_sha256": "8bfd5076dafaec6caafc5bef2b5c9b1640d115ad8f817f7f5ccfd086992875c9",
+  "command": [
+    "/home/lhl/comparators-20261012/gufo-src/build/release/gufo",
+    "serve",
+    "llm",
+    "-m",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "-c",
+    "4352",
+    "--cache-ram-bytes",
+    "1",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18087"
+  ],
+  "protocol": {
+    "steps": 32,
+    "repeats": 2,
+    "temperature": 0.0,
+    "chat_template": false,
+    "ignore_eos": true,
+    "free_trajectory": "fixed 32 greedy steps; EOS is fed back and not a stop",
+    "ids_basis": "text_retokenized",
+    "topk_logprobs": null
+  },
+  "prompts": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 36,
+      "prompt_token_ids_sha256": "5d7a5dc98e1981dd885e89ca8aa899b57cb380691baae9820ef09d2f03015be3",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "1e6402b8af17b84f9a15bbd9a088aad11e7071a899adf5ac8eee3f0d20f4bbab",
+          "text": "<think>\nThe user wants a Python function that merges overlapping closed integer intervals, plus a compact pytest-style test block. They want only code returned.\n\nLet me",
+          "client_wall_s": 1.3273633899989363
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "1e6402b8af17b84f9a15bbd9a088aad11e7071a899adf5ac8eee3f0d20f4bbab",
+          "text": "<think>\nThe user wants a Python function that merges overlapping closed integer intervals, plus a compact pytest-style test block. They want only code returned.\n\nLet me",
+          "client_wall_s": 1.209935063001467
+        }
+      ]
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 47,
+      "prompt_token_ids_sha256": "6fd2fdf71879197d3fcd83e5296428912a347cea02737508d29a91f365265a2d",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "104436e5827582eb7f0a09c3650b4b5e5979d347aba21c1318192f4da25c5b31",
+          "text": "<think>\nThe user wants a Python function for topological sort that:\n1. Takes nodes and edges as parameters\n2. Returns a valid topological ordering",
+          "client_wall_s": 1.2387736870005028
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "104436e5827582eb7f0a09c3650b4b5e5979d347aba21c1318192f4da25c5b31",
+          "text": "<think>\nThe user wants a Python function for topological sort that:\n1. Takes nodes and edges as parameters\n2. Returns a valid topological ordering",
+          "client_wall_s": 1.2312973919997603
+        }
+      ]
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 44,
+      "prompt_token_ids_sha256": "b04ad8a5bb7153a7fdddab1583983aa566419673142052f517d8f002cc79b1bb",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "9da5156a756243081e1789e733423a04a047a9cbda97cdc98f39907ae5c92fbc",
+          "text": "<think>\nThe user wants a Python LRUCache implementation with O(1) get and put operations, plus three focused tests. They want only code returned.",
+          "client_wall_s": 1.2433003839996672
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "9da5156a756243081e1789e733423a04a047a9cbda97cdc98f39907ae5c92fbc",
+          "text": "<think>\nThe user wants a Python LRUCache implementation with O(1) get and put operations, plus three focused tests. They want only code returned.",
+          "client_wall_s": 1.227782814999955
+        }
+      ]
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 49,
+      "prompt_token_ids_sha256": "97db014c3a00a0a8d93cb2fae85158166f8e60f089b2a940e658dae2d19ad2f4",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "1a00137bde53c981cb28cab9a41b57720ba059d4de41d6928b1e288a7b8bf83e",
+          "text": "[/code_markdown_table]\n\n<think>\nThe user wants me to write a Python function that converts a list of dictionaries into a GitHub-flavored markdown table.",
+          "client_wall_s": 1.2482290560001275
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "1a00137bde53c981cb28cab9a41b57720ba059d4de41d6928b1e288a7b8bf83e",
+          "text": "[/code_markdown_table]\n\n<think>\nThe user wants me to write a Python function that converts a list of dictionaries into a GitHub-flavored markdown table.",
+          "client_wall_s": 1.2255192659995373
+        }
+      ]
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 36,
+      "prompt_token_ids_sha256": "adfcfad2b3d02ba63aa867a806b20cda65b95af6cf1edde59932b4190e5264da",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "559798c5c56f7d3eb991830943912803ff80a8eaccdfaa3403e0e5d3008c846d",
+          "text": "<think>\nThe user wants a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. They want risks, sequencing, and validation steps.",
+          "client_wall_s": 1.2319848730003287
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "559798c5c56f7d3eb991830943912803ff80a8eaccdfaa3403e0e5d3008c846d",
+          "text": "<think>\nThe user wants a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. They want risks, sequencing, and validation steps.",
+          "client_wall_s": 1.21872476200042
+        }
+      ]
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 37,
+      "prompt_token_ids_sha256": "1f1f2739426cc1b9b0adaee848b5fbfa981050e1ae8d08dc5027c5d38a2c2dc9",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "adc2a352db707c98c7e4af6565a3eaaaaf82b7e3e246eb4bd0ba90031ff8a46a",
+          "text": "assistant:\n\n<think>\nThe user wants a technical explanation of why transformer inference is memory-bandwidth limited on local GPUs. They want concrete examples of what changes throughput",
+          "client_wall_s": 1.243220263000694
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "adc2a352db707c98c7e4af6565a3eaaaaf82b7e3e246eb4bd0ba90031ff8a46a",
+          "text": "assistant:\n\n<think>\nThe user wants a technical explanation of why transformer inference is memory-bandwidth limited on local GPUs. They want concrete examples of what changes throughput",
+          "client_wall_s": 1.226255919000323
+        }
+      ]
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 42,
+      "prompt_token_ids_sha256": "86fa16eb1c59ebdde9905075cfa2e59ce6d6d0f1db7daaef36978368e0cb3a12",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "8be85bdfe0204fc58009d5d9ec310da1e67b0c08bd01226e77a0dcf503d6f7fe",
+          "text": "assistant:\n\n<think>\nThe user is asking me to create a practical plan in Japanese for migrating a small-scale internal Python tool to a production environment. They want",
+          "client_wall_s": 1.2312808309998218
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "8be85bdfe0204fc58009d5d9ec310da1e67b0c08bd01226e77a0dcf503d6f7fe",
+          "text": "assistant:\n\n<think>\nThe user is asking me to create a practical plan in Japanese for migrating a small-scale internal Python tool to a production environment. They want",
+          "client_wall_s": 1.2182557619998988
+        }
+      ]
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 42,
+      "prompt_token_ids_sha256": "1a9fa8ca66adf5260c54982371ac85da4cf09843238b1c598417651aee8a9abd",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "5b21e7b878004e2ebba3aa607758081bc4373267a01eeda60cdf29dce0b7c63b",
+          "text": "assistant:\n\n<think>\nThe user is asking me to explain in Japanese why LLM inference speed on local GPUs is often constrained by memory bandwidth. This is a",
+          "client_wall_s": 1.2294304279985226
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "5b21e7b878004e2ebba3aa607758081bc4373267a01eeda60cdf29dce0b7c63b",
+          "text": "assistant:\n\n<think>\nThe user is asking me to explain in Japanese why LLM inference speed on local GPUs is often constrained by memory bandwidth. This is a",
+          "client_wall_s": 1.22007933399982
+        }
+      ]
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 63,
+      "prompt_token_ids_sha256": "e1adaa02cbe335c0417c93464f2066fa019a8512dbd1b961cd4e17b041255bda",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "3badf5025255c1bf02ec39c4e6b9666dcace34bf5baba6d238dbd323e6ed0318",
+          "text": "<think>\nThe user wants me to:\n1. Summarize a Japanese note in English\n2. Provide a short Japanese reply\n\nThe Japanese note says",
+          "client_wall_s": 1.276433929000632
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "3badf5025255c1bf02ec39c4e6b9666dcace34bf5baba6d238dbd323e6ed0318",
+          "text": "<think>\nThe user wants me to:\n1. Summarize a Japanese note in English\n2. Provide a short Japanese reply\n\nThe Japanese note says",
+          "client_wall_s": 1.2517209899997397
+        }
+      ]
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 70,
+      "prompt_token_ids_sha256": "a45e5358ba9c9ce21a148427d0b7a78702e98b49ed04479811808a22ca7df577",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "2375e2b12408550b5c214961d4e37da53cc995bfbc511cd9e2d69142148ab3c6",
+          "text": "assistant:\n\n<think>\nThe user wants me to review a bilingual (Japanese/English) release note for clarity. They want my response in English bullets, but",
+          "client_wall_s": 1.2873509720011498
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "2375e2b12408550b5c214961d4e37da53cc995bfbc511cd9e2d69142148ab3c6",
+          "text": "assistant:\n\n<think>\nThe user wants me to review a bilingual (Japanese/English) release note for clarity. They want my response in English bullets, but",
+          "client_wall_s": 1.272775311001169
+        }
+      ]
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 55,
+      "prompt_token_ids_sha256": "9f3c9469bc9403804066aad198611515ac19b5dd433308477cafdfb273ce78d8",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "d64d16fb78bb437c455bed812ad4eec30ecfcae56d2e7b26dd2089481026bbca",
+          "text": "assistant\n<think>\nThe user wants a Python SlidingWindowRateLimiter with:\n1. `allow(key, timestamp)` method\n2. O(",
+          "client_wall_s": 1.261407242000132
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "d64d16fb78bb437c455bed812ad4eec30ecfcae56d2e7b26dd2089481026bbca",
+          "text": "assistant\n<think>\nThe user wants a Python SlidingWindowRateLimiter with:\n1. `allow(key, timestamp)` method\n2. O(",
+          "client_wall_s": 1.2453429980014334
+        }
+      ]
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 51,
+      "prompt_token_ids_sha256": "ce6a9956b15e7a40b44bd0ec14edee4f517dca02e1057a157b4f856d7b3071e2",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "42d95f95effe4c3a0e652a564c690d0f4bea33280edd140a45bcec40082a4aaf",
+          "text": "assistant:\n```python\nfrom typing import List, Tuple\n\nInterval = Tuple[int, int]\n\n\ndef max_non_overlapping(intervals: List[Interval",
+          "client_wall_s": 1.2473058119994676
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "42d95f95effe4c3a0e652a564c690d0f4bea33280edd140a45bcec40082a4aaf",
+          "text": "assistant:\n```python\nfrom typing import List, Tuple\n\nInterval = Tuple[int, int]\n\n\ndef max_non_overlapping(intervals: List[Interval",
+          "client_wall_s": 1.2360190149993286
+        }
+      ]
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 45,
+      "prompt_token_ids_sha256": "84184ae076f75f4df901d486a2941a839dcb2b66c5c5aed9b70c0bc205715154",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "544cce8082f954d04dbed3a0a35f3368bace614680b3e4761cc5d20b6a7c3c2e",
+          "text": "<think>\nThe user is asking for a concise incident-response checklist for a specific scenario: a production API where p99 latency doubled after a deploy. They want",
+          "client_wall_s": 1.2524884909998946
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "544cce8082f954d04dbed3a0a35f3368bace614680b3e4761cc5d20b6a7c3c2e",
+          "text": "<think>\nThe user is asking for a concise incident-response checklist for a specific scenario: a production API where p99 latency doubled after a deploy. They want",
+          "client_wall_s": 1.2366698069999984
+        }
+      ]
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 54,
+      "prompt_token_ids_sha256": "c7f22c05d019f92c805826a7d8859d126f5d41abfaa6b5b8b4b24ed87e1b6f8e",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "47ba8fc2dd932d19436b53c9df211d0548bcee7a4bb8ae9762bfb8bd6b00381a",
+          "text": "assistant:\n\n<think>\nThe user is asking about practical accuracy and throughput tradeoffs among three quantization/inference modes on consumer GPUs: weight-only INT4 (",
+          "client_wall_s": 1.2546453590002784
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "47ba8fc2dd932d19436b53c9df211d0548bcee7a4bb8ae9762bfb8bd6b00381a",
+          "text": "assistant:\n\n<think>\nThe user is asking about practical accuracy and throughput tradeoffs among three quantization/inference modes on consumer GPUs: weight-only INT4 (",
+          "client_wall_s": 1.2404577870001958
+        }
+      ]
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 54,
+      "prompt_token_ids_sha256": "d2e0bada5316a62b25dfc3440537fa9fd5927d3b9d47c61d6c410c275b1209bf",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "413701fceacd553246dd189237055e11b62d1e3d09e0d57a25ae6d5c5ad4ce30",
+          "text": "<think>\nThe user is asking me to create a concise migration plan in Japanese for transitioning an internal REST API from synchronous processing to an asynchronous job-based architecture. They",
+          "client_wall_s": 1.2459540050003852
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "413701fceacd553246dd189237055e11b62d1e3d09e0d57a25ae6d5c5ad4ce30",
+          "text": "<think>\nThe user is asking me to create a concise migration plan in Japanese for transitioning an internal REST API from synchronous processing to an asynchronous job-based architecture. They",
+          "client_wall_s": 1.233052747000329
+        }
+      ]
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 47,
+      "prompt_token_ids_sha256": "f796b4abd802449ac4794f8f4a0128ac9e1b3d1cfae8b0b0d3ec79f5ecd39ca4",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "d2973a524940e7564748adee3f172879e14381afe47735c657b924a38b8b3976",
+          "text": "assistant:\n\n<think>\nThe user is asking me to explain in Japanese, technically, why speculative decoding doesn't always lead to speedup. They want me to",
+          "client_wall_s": 1.2409717119990091
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "d2973a524940e7564748adee3f172879e14381afe47735c657b924a38b8b3976",
+          "text": "assistant:\n\n<think>\nThe user is asking me to explain in Japanese, technically, why speculative decoding doesn't always lead to speedup. They want me to",
+          "client_wall_s": 1.2325538799996139
+        }
+      ]
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 51,
+      "prompt_token_ids_sha256": "e4dad705f604f0205624286ec7c15cdaef21ebf9fd6bc64f91d6c2dd3ed17125",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "6e5c47f7a7bb89c9bd9326f22f4fae9b330ac2d3c912f9ca71aa7d06f5c806c7",
+          "text": "<think>\nThe user wants me to:\n1. Summarize an English operations note in Japanese\n2. Give one short mitigation in English\n\nThe note",
+          "client_wall_s": 1.2639193270006217
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "6e5c47f7a7bb89c9bd9326f22f4fae9b330ac2d3c912f9ca71aa7d06f5c806c7",
+          "text": "<think>\nThe user wants me to:\n1. Summarize an English operations note in Japanese\n2. Give one short mitigation in English\n\nThe note",
+          "client_wall_s": 1.2512129560000176
+        }
+      ]
+    },
+    {
+      "id": "heldout_mixed_review",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 55,
+      "prompt_token_ids_sha256": "1ca7d8f813a1604c45edb77670d6ca01aa91d7412f9a808fab936beb5121c4c2",
+      "round_trip": true,
+      "runs": [
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "f17938c7166c656e66dfd1eb23ea7999cbf52d7c14ea96fd8740bd51df54da59",
+          "text": "assistant: <think>\n\n</think>\n\n- p99 latency が閾値を超えているため、即時の確認が必要です。\n- error rate の上昇も同時に",
+          "client_wall_s": 1.266546468999877
+        },
+        {
+          "ids": [],
+          "ids_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text_sha256": "f17938c7166c656e66dfd1eb23ea7999cbf52d7c14ea96fd8740bd51df54da59",
+          "text": "assistant: <think>\n\n</think>\n\n- p99 latency が閾値を超えているため、即時の確認が必要です。\n- error rate の上昇も同時に",
+          "client_wall_s": 1.2553155570003582
+        }
+      ]
+    }
+  ],
+  "disqualified_prompts": [],
+  "server_returncode": 0,
+  "server_log": "benchmarks/results/2026-10-12-qwen4exp-cross-engine-pass1/raw/quality-gufo-server.log"
+}

@@ -1,0 +1,711 @@
+{
+  "schema": 1,
+  "kind": "cross_engine_quality_score",
+  "teacher": {
+    "engine": "hipengine-strict-teacher",
+    "profile": "strict",
+    "battery": {
+      "suites": [
+        {
+          "path": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a"
+        },
+        {
+          "path": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+        }
+      ],
+      "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+      "steps": 32
+    }
+  },
+  "engines": [
+    {
+      "engine": "hipengine-production",
+      "surface": "hipengine_in_process",
+      "g0_conformance": {
+        "battery_suites_match": true,
+        "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+        "identity_present": true
+      },
+      "g1_greedy_identity": {
+        "prompt_count": 18,
+        "exact_count": 15,
+        "first_divergences": {
+          "general_ja_plan": 0,
+          "heldout_code_rate_limiter": 1,
+          "heldout_mixed_review": 4
+        },
+        "per_prompt": {
+          "code_lru_cache": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_markdown_table": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_merge_intervals": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_topological_sort": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_plan": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_plan": {
+            "exact": false,
+            "first_divergence": 0,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_interval_schedule": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_rate_limiter": {
+            "exact": false,
+            "first_divergence": 1,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_incident": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_quant": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_migration": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_speculative": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_review": {
+            "exact": false,
+            "first_divergence": 4,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_summary": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_review": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_translate": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          }
+        }
+      },
+      "g2_distribution": {
+        "available": true,
+        "prompt_count": 18,
+        "top1_agreement_mean": 1.0,
+        "mean_kl": 0.005229626265873588,
+        "max_kl": 0.621704566765035,
+        "per_prompt": [
+          {
+            "id": "code_lru_cache",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0027903511561895708,
+            "max_kl": 0.08458497427280745
+          },
+          {
+            "id": "code_markdown_table",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0019650260409902064,
+            "max_kl": 0.024014234592793327
+          },
+          {
+            "id": "code_merge_intervals",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0009650474899813456,
+            "max_kl": 0.016092664908617445
+          },
+          {
+            "id": "code_topological_sort",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0010344472052756938,
+            "max_kl": 0.030439438686697077
+          },
+          {
+            "id": "general_en_explain",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0024824221309933643,
+            "max_kl": 0.06443047128084826
+          },
+          {
+            "id": "general_en_plan",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 9.915454986385884e-05,
+            "max_kl": 0.0019124147043653812
+          },
+          {
+            "id": "general_ja_explain",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0019201020153490128,
+            "max_kl": 0.035514760676979604
+          },
+          {
+            "id": "general_ja_plan",
+            "aligned_positions": 0,
+            "top1_agreement": null,
+            "mean_kl": null
+          },
+          {
+            "id": "heldout_code_interval_schedule",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0025246441032793455,
+            "max_kl": 0.07210321896595004
+          },
+          {
+            "id": "heldout_code_rate_limiter",
+            "aligned_positions": 1,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.00039810182371484464,
+            "max_kl": 0.00039810182371484464
+          },
+          {
+            "id": "heldout_general_en_incident",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0006870667380824114,
+            "max_kl": 0.01526118663816054
+          },
+          {
+            "id": "heldout_general_en_quant",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.05593880114164923,
+            "max_kl": 0.621704566765035
+          },
+          {
+            "id": "heldout_general_ja_migration",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.00032945177035808855,
+            "max_kl": 0.004558655882153919
+          },
+          {
+            "id": "heldout_general_ja_speculative",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0017325445259026655,
+            "max_kl": 0.04854484022790123
+          },
+          {
+            "id": "heldout_mixed_review",
+            "aligned_positions": 4,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0009260961614954234,
+            "max_kl": 0.001843707415865291
+          },
+          {
+            "id": "heldout_mixed_summary",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.009339447481003725,
+            "max_kl": 0.29747319681442996
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0036182396381961527,
+            "max_kl": 0.10774018733279668
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0021527025475260564,
+            "max_kl": 0.05489856873879552
+          }
+        ]
+      },
+      "g3_determinism": {
+        "prompt_count": 18,
+        "all_repeats_exact": true
+      },
+      "g4_task_battery": {
+        "prompt_count": 18,
+        "strict_exact_count": 15,
+        "verdict": "characterized"
+      }
+    },
+    {
+      "engine": "halobox-master-6aa81b88e",
+      "surface": "llamacpp_completion_server",
+      "g0_conformance": {
+        "battery_suites_match": true,
+        "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+        "identity_present": true
+      },
+      "g1_greedy_identity": {
+        "prompt_count": 18,
+        "exact_count": 11,
+        "first_divergences": {
+          "code_markdown_table": 19,
+          "general_ja_explain": 0,
+          "general_ja_plan": 0,
+          "heldout_code_interval_schedule": 0,
+          "heldout_code_rate_limiter": 1,
+          "heldout_general_en_quant": 3,
+          "heldout_mixed_review": 2
+        },
+        "per_prompt": {
+          "code_lru_cache": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_markdown_table": {
+            "exact": false,
+            "first_divergence": 19,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_merge_intervals": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_topological_sort": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_plan": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_explain": {
+            "exact": false,
+            "first_divergence": 0,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_plan": {
+            "exact": false,
+            "first_divergence": 0,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_interval_schedule": {
+            "exact": false,
+            "first_divergence": 0,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_rate_limiter": {
+            "exact": false,
+            "first_divergence": 1,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_incident": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_quant": {
+            "exact": false,
+            "first_divergence": 3,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_migration": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_speculative": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_review": {
+            "exact": false,
+            "first_divergence": 2,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_summary": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_review": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_translate": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          }
+        }
+      },
+      "g2_distribution": {
+        "available": true,
+        "prompt_count": 18,
+        "top1_agreement_mean": 1.0,
+        "mean_kl": 0.2410082019271636,
+        "max_kl": 3.851954764012005,
+        "per_prompt": [
+          {
+            "id": "code_lru_cache",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.009369845197084878,
+            "max_kl": 0.20642634848908947
+          },
+          {
+            "id": "code_markdown_table",
+            "aligned_positions": 19,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.06937921089958687,
+            "max_kl": 0.691673425354707
+          },
+          {
+            "id": "code_merge_intervals",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.017323268027109585,
+            "max_kl": 0.49509231636276674
+          },
+          {
+            "id": "code_topological_sort",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.006253719132054559,
+            "max_kl": 0.15219714190857372
+          },
+          {
+            "id": "general_en_explain",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.022978366482868464,
+            "max_kl": 0.32801197819756894
+          },
+          {
+            "id": "general_en_plan",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.006285976218011407,
+            "max_kl": 0.18131650824099219
+          },
+          {
+            "id": "general_ja_explain",
+            "aligned_positions": 0,
+            "top1_agreement": null,
+            "mean_kl": null
+          },
+          {
+            "id": "general_ja_plan",
+            "aligned_positions": 0,
+            "top1_agreement": null,
+            "mean_kl": null
+          },
+          {
+            "id": "heldout_code_interval_schedule",
+            "aligned_positions": 0,
+            "top1_agreement": null,
+            "mean_kl": null
+          },
+          {
+            "id": "heldout_code_rate_limiter",
+            "aligned_positions": 1,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.10107706187325377,
+            "max_kl": 0.10107706187325377
+          },
+          {
+            "id": "heldout_general_en_incident",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.009358087362829974,
+            "max_kl": 0.24220517064976088
+          },
+          {
+            "id": "heldout_general_en_quant",
+            "aligned_positions": 3,
+            "top1_agreement": 1.0,
+            "mean_kl": 1.2948015484295465,
+            "max_kl": 3.594899520524997
+          },
+          {
+            "id": "heldout_general_ja_migration",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.00447832069930793,
+            "max_kl": 0.10525394176934792
+          },
+          {
+            "id": "heldout_general_ja_speculative",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.012892825796922611,
+            "max_kl": 0.2071869127931925
+          },
+          {
+            "id": "heldout_mixed_review",
+            "aligned_positions": 2,
+            "top1_agreement": 1.0,
+            "mean_kl": 1.9267397926093512,
+            "max_kl": 3.851954764012005
+          },
+          {
+            "id": "heldout_mixed_summary",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.10331159247796938,
+            "max_kl": 3.206437525699643
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.021733058631825047,
+            "max_kl": 0.6154908957309296
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.009140355069731237,
+            "max_kl": 0.22682214800195222
+          }
+        ]
+      },
+      "g3_determinism": {
+        "prompt_count": 18,
+        "all_repeats_exact": true
+      },
+      "g4_task_battery": {
+        "prompt_count": 18,
+        "strict_exact_count": 11,
+        "verdict": "characterized"
+      }
+    },
+    {
+      "engine": "gufo-v0.12.0",
+      "surface": "openai_completions_gufo",
+      "g0_conformance": {
+        "battery_suites_match": true,
+        "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+        "identity_present": true
+      },
+      "g1_greedy_identity": {
+        "prompt_count": 18,
+        "exact_count": 13,
+        "first_divergences": {
+          "code_markdown_table": 82,
+          "general_ja_explain": 52,
+          "heldout_code_interval_schedule": 0,
+          "heldout_general_en_quant": 10,
+          "heldout_mixed_review": 56
+        },
+        "per_prompt": {
+          "code_lru_cache": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "code_markdown_table": {
+            "exact": false,
+            "first_divergence": 82,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "code_merge_intervals": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "code_topological_sort": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "general_en_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "general_en_plan": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "general_ja_explain": {
+            "exact": false,
+            "first_divergence": 52,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "general_ja_plan": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "heldout_code_interval_schedule": {
+            "exact": false,
+            "first_divergence": 0,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "heldout_code_rate_limiter": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "heldout_general_en_incident": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "heldout_general_en_quant": {
+            "exact": false,
+            "first_divergence": 10,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "heldout_general_ja_migration": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "heldout_general_ja_speculative": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "heldout_mixed_review": {
+            "exact": false,
+            "first_divergence": 56,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "heldout_mixed_summary": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "mixed_ja_en_review": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          },
+          "mixed_ja_en_translate": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "decoded_text",
+            "deterministic": true
+          }
+        }
+      },
+      "g2_distribution": {
+        "available": false,
+        "reason": "engine exposes no logprobs"
+      },
+      "g3_determinism": {
+        "prompt_count": 18,
+        "all_repeats_exact": true
+      },
+      "g4_task_battery": {
+        "prompt_count": 18,
+        "strict_exact_count": 13,
+        "verdict": "characterized"
+      }
+    }
+  ]
+}

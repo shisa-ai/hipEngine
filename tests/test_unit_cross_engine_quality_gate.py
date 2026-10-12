@@ -198,7 +198,18 @@ def test_engine_gate_verdicts_missing_prompt_requires_declared_reason() -> None:
 
 def test_llamacpp_probs_parses_logprob_and_prob_fields() -> None:
     module = _load_script()
-    response = {
+    current_schema = {
+        "completion_probabilities": [
+            {
+                "id": 5,
+                "logprob": -0.25,
+                "top_logprobs": [{"id": 5, "logprob": -1.0}, {"id": 6, "prob": 0.1}],
+            }
+        ]
+    }
+    parsed = module._llamacpp_probs(current_schema)
+    assert parsed == [[[5, -1.0], [6, pytest.approx(float(np.log(0.1)), abs=1e-9)]]]
+    old_schema = {
         "probs": [
             {
                 "id": 5,
@@ -207,6 +218,19 @@ def test_llamacpp_probs_parses_logprob_and_prob_fields() -> None:
             }
         ]
     }
-    parsed = module._llamacpp_probs(response)
-    assert parsed == [[[5, -1.0], [6, pytest.approx(float(np.log(0.1)), abs=1e-9)]]]
+    assert module._llamacpp_probs(old_schema) == parsed
     assert module._llamacpp_probs({"tokens": []}) is None
+
+
+def test_truncated_kl_treats_absent_tokens_as_epsilon_not_full_mass() -> None:
+    module = _load_script()
+    # The engine's list omits the teacher's token 2 (29% of the teacher's
+    # truncated mass). The honest divergence is the cost of removing that
+    # mass: -log(p1) with p1 = 0.905/(0.905+0.368) = 0.711, i.e. ~0.341 - not
+    # an explosion, and not zero.
+    teacher = [[1, -0.1], [2, -1.0]]
+    engine = [[1, -0.1]]
+    kl = module._truncated_kl(teacher, engine)
+    assert kl == pytest.approx(0.3412, abs=2e-3), kl
+    disjoint = module._truncated_kl([[1, -0.1]], [[2, -0.1]])
+    assert disjoint > 1.0
