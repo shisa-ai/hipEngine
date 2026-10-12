@@ -170,6 +170,24 @@ measured prefill, which do not enter the prefill wall. Source:
 | pwilkin `strix-halo` `40a9f4d01`, f16 | 339.2 | 858.9 | **1061.9** |
 | halo-box `strix-llama.cpp` `69946438a`, f16 | 451.6 | 620.7 | 660.6 |
 | upstream llama.cpp `6011c34ce`, f16 | 321.3 | 415.1 | 459.0 |
+| **hipEngine production** (pass 1, 2026-10-12, tree `c4b160668`) | **305.1** | **328.9** | **334.4** |
+| **halo-box `strix-llama.cpp`** master `6aa81b88e` (pass 1, 2026-10-12, f16) | **759.3** | **1109.1** | **1446.4** |
+| **gufo** `v0.12.0` (pass 1, 2026-10-12) | **1095.0** | **1482.2** | **1736.4** |
+
+**2026-10-12 pass 1** (kernel `7.2.9-2-cachyos`, power profile restored and
+verified per block): the first cross-engine run at current releases under the
+normative [`docs/CROSS-ENGINE-PROTOCOL.md`](CROSS-ENGINE-PROTOCOL.md) — same
+file, same fixture, engine-reported prefill walls, plus the G0-G4 quality
+gates and the per-operator `rocprofv3` attribution. The comparison runs on the
+11-case intersection (gufo's `general_ja-p1024` is disqualified with the
+recorded BPE merge-boundary reason); the p4096 gap is 4.33x (halo-box, which
+more than doubled its own Sept 13 pin via its October PRs) and 5.19x (gufo).
+Gates vs the strict teacher: production 15/18 strict-exact (its documented
+envelope number), halo-box 11/18 (top-1 1.00, mean top-20 KL 0.241), gufo
+13/18 text-basis (no logprob surface, G2 N/A). The attribution table is not
+uniform across families: attention 10.2x, experts 5.7x, hyper-connection 4.9x,
+dense 3.6x, GDN 2.9x. Source:
+[`benchmarks/results/2026-10-12-qwen4exp-cross-engine-pass1/README.md`](../benchmarks/results/2026-10-12-qwen4exp-cross-engine-pass1/README.md).
 
 The refreshed row uses the same fixture and rate aggregation as the comparator
 summary (median per case, then equal-weight mean). Its prefill wall excludes
