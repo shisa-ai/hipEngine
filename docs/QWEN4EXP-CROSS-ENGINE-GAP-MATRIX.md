@@ -18,7 +18,29 @@ The pass-1 p4096 prefill attribution is the prioritization signal:
 | Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
 | Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
 
-## Existing in-tree experiments
+## Routed-tile comparison from source
+
+The two implementations are not using the same tile policy:
+
+- gufo's executor computes a tile width by minimizing a cost over widths
+  16..80 in steps of 16, using the observed per-expert counts and a fixed
+  panel penalty (`executor.cpp:1395-1405`, `qfn_mmq.hip.cpp:42-62`). Its
+  routed tile map is built from the actual host-side counts and uploaded before
+  the expert launches (`executor.cpp:1659-1705`).
+- hipEngine's Qwen4Exp executor also computes a count-aware tile width through
+  `qwen35_moe_mmq*_tile_map` and `qwen35_moe_group_*` metadata, and has separate
+  48/64/128-row maps plus a fused F16 gate/up path for selected large shapes
+  (`runtime/qwen4_exp_runner.py`, the routed dispatch around its tile-map and
+  grouped-scatter calls). It is therefore already structurally similar, but
+  the tile objective, map ownership, and fused-route admission differ.
+- The local screen confirms why the objective matters: tile16 beats tile32 by
+  about 2.2x on both balanced and sparse 256-row synthetic distributions.
+
+The next comparison must capture the actual per-expert count histogram and
+selected tile map from both engines for `code-p4096`, then replay that histogram
+through each implementation. Comparing only nominal tile widths would miss the
+padding and active-expert effects.
+
 
 The repository already has focused experiments that can serve as the hipEngine
 side of the comparison:
