@@ -1,0 +1,60 @@
+# Qwen4Exp cross-engine gap matrix
+
+Status: 2026-10-12. Scope: the same `Qwen3.8-Flash-Next` `UD-Q4_K_XL`
+GGUF on gfx1151. This is an investigation plan, not a claim that an external
+engine's arithmetic is acceptable for hipEngine production.
+
+The pass-1 p4096 prefill attribution is the prioritization signal:
+
+| Family | hipEngine / gufo kernel-time ratio | Current evidence | First controlled experiment |
+| --- | ---: | --- | --- |
+| QSA attention | 10.2x | External engines use specialized fused/indexed attention paths; exact kernel and arithmetic differences still need source-to-source mapping. | Same Q/K/V/index tensors through each attention stage; split projection, index selection, top-k, gather, and attention reduction. |
+| Routed experts | 5.7x | gufo uses grouped expert gather, one fused routed gate/up path with a SwiGLU epilogue, and batched expert execution; its family bucket includes fused work. | Compare identical routed IDs and activations for separate gate/up/down, paired gate/up, grouped rows, and fused gate/up+activation. |
+| Hyper-connection | 4.9x | gufo has shape-specific vector and projection paths; hipEngine has qualified GR owners but not a cross-engine same-operand decomposition. | Compare HC mix, branch projection, combine, and the K=320 down shape separately at rows 1/8/64/4096. |
+| Dense projections | 3.6x | hipEngine narrowed this gap with the checked dense Q8 DPP promotion; external builds use mature GGML HIP MMQ/BLAS dispatch. | Replay the same Q8/Q4 weights and activations across candidate kernels, including launch geometry and input quantization. |
+| GDN | 2.9x | External attribution taxonomy may fold some work into other families; no direct equivalence is established. | Compare projection, recurrent update, state movement, and output projection with identical state and chunk boundaries. |
+| Router/reduce | diagnostic | gufo's fused expert path changes launch and reduction ownership; direct ratios are not comparable yet. | Attribute routing, ID-map construction, weighted reduction, and residual combine separately. |
+| Launch scheduling | cross-cutting | gufo and halo-box run fewer/fused launches in several families; hipEngine's dispatch gaps are material in decode. | Request-delimited launch census and host/device timeline for identical p4096 and 128 decode workloads. |
+| Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
+| Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
+
+## Concrete mechanisms found in gufo
+
+The gufo Qwen3.8 Flash-Next ROCm implementation currently exposes these
+candidate mechanisms in `src/models/qwen38_flash_next/kernels/rocm/mmq/`:
+
+- A three-pass parallel deterministic expert-ID map builder (`mmid.hip.cpp`)
+  replacing a serial assignment-row loop while preserving the output contract.
+- Grouped expert row construction and gather/convert/GEMM/scatter for routed
+  projections, including per-expert row counts and active-expert batching.
+- A wave64 gate/up kernel that computes two output rows at once, shares input
+  loads, and applies the SwiGLU epilogue before writing routed slots
+  (`moe_wave64.hip.cpp`).
+- Reusable Q8_1 activation packing and a pre-quantized routed path, avoiding
+  repeated conversion when the caller already owns the required layout.
+- Shape-specific HC-down handling for the 320x10240 projection with paired
+  K-iterations and recursive token-shape dispatch (`qfn_mmq.hip.cpp`).
+- Runtime-selected routed tile columns based on the observed expert-count
+  distribution rather than one fixed tile width.
+
+These are candidates, not promotions. Each must be ported or reproduced in
+hipEngine's registry-based backend tree, tested against the CPU reference and
+strict fallback, and admitted only through the production profile gates.
+
+## Correctness review to run for every candidate
+
+1. Control and ownership: exact token IDs, routing IDs, KV/state hashes, and
+   batch-composition invariance where applicable.
+2. Numerical envelope: strict-teacher mean/p95/p99/max KL and top-1 by category,
+   transition, and scope; BF16-relative checks where required.
+3. Repeatability and isolation: repeated runs, fresh process, and candidate
+   off/on state teardown.
+4. End-to-end quality: the 18-prompt strict-exact battery, including the
+   prefill-to-c1 and prefill-last scopes that rejected prior MoE candidates.
+5. Canonical throughput: p512/p1024/p4096 prefill plus the separate 128-step
+   decode leg under the same host and residency protocol.
+
+A faster external implementation is evidence about a technique, not a quality
+waiver. Distribution differences must be reported separately from throughput;
+bit identity is diagnostic for production candidates unless the declared profile
+requires exact parity.
