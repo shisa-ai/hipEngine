@@ -473,7 +473,7 @@ def _gufo_style_response() -> dict[str, Any]:
 def test_openai_completions_payload_per_adapter() -> None:
     module = _load_script()
     gufo = module.openai_completions_payload("gufo", "text", 128)
-    assert gufo == {"prompt": "text", "max_tokens": 129, "temperature": 0.0}
+    assert gufo == {"prompt": "text", "max_tokens": 129, "temperature": 0.0, "ignore_eos": True}
     kyojin = module.openai_completions_payload("kyojin", "text", 128)
     assert kyojin["cache_prompt"] is False
     assert kyojin["return_token_ids"] is True
@@ -481,6 +481,19 @@ def test_openai_completions_payload_per_adapter() -> None:
     assert kyojin["temperature"] == 0.0
     with pytest.raises(ValueError):
         module.openai_completions_payload("unknown", "text", 128)
+
+
+def test_openai_optional_fields_are_stripped_by_the_400_fallback() -> None:
+    module = _load_script()
+    payload = module.openai_completions_payload("kyojin", "text", 128)
+    kept = {
+        key: value
+        for key, value in payload.items()
+        if key not in module.OPENAI_OPTIONAL_FIELDS
+    }
+    assert kept == {"prompt": "text", "max_tokens": 129, "cache_prompt": False, "return_token_ids": True}
+    assert not (set(kept) & set(module.OPENAI_OPTIONAL_FIELDS)), "kept keys must never be optional"
+    assert set(payload) - set(kept) <= set(module.OPENAI_OPTIONAL_FIELDS), "stripped keys must all be optional"
 
 
 def test_openai_response_sample_retokenizes_text_output() -> None:
@@ -567,3 +580,110 @@ def test_openai_case_text_flags_round_trip_mismatch() -> None:
     assert exact_text == "hello"
     _, mismatch = module._openai_case_text(_LossyTokenizer(), _openai_case())
     assert mismatch is False
+
+
+def _comparison_artifact(tmp_path: Path, engine: str, samples: list[dict[str, Any]], **extra: Any) -> Path:
+    path = tmp_path / f"{engine}.json"
+    payload: dict[str, Any] = {
+        "status": "completed",
+        "engine": engine,
+        "fixture_sha256": "f" * 64,
+        "samples": samples,
+        "summary": {},
+    }
+    payload.update(extra)
+    path.write_text(json.dumps(payload))
+    return path
+
+
+def _comparison_sample(case_id: str, digest: str = "a" * 64) -> dict[str, Any]:
+    return {
+        "case_id": case_id,
+        "category": "code",
+        "prompt_tokens": 512,
+        "prompt_token_ids_sha256": "0" * 64,
+        "repetition": 0,
+        "prefill_ms": 100.0,
+        "prefill_tok_s": 5120.0,
+        "decode_ms": 1000.0,
+        "decode_transitions": 128,
+        "decode_tok_s": 128.0,
+        "client_wall_s": 1.0,
+        "output_token_ids_sha256": digest,
+    }
+
+
+def test_compare_intersection_requires_declared_disqualification(tmp_path: Path) -> None:
+    module = _load_script()
+    paths = [
+        _comparison_artifact(
+            tmp_path, "one", [_comparison_sample("code-p512"), _comparison_sample("general_en-p512")]
+        ),
+        _comparison_artifact(
+            tmp_path,
+            "two",
+            [_comparison_sample("code-p512")],
+            disqualified_cases=[{"case_id": "general_en-p512", "reason": "round-trip mismatch"}],
+        ),
+    ]
+    with pytest.raises(ValueError, match="do not contain identical non-empty case sets"):
+        module.compare_engine_artifacts(paths)
+    with pytest.raises(ValueError, match="does not declare as disqualified"):
+        module.compare_engine_artifacts(
+            [
+                paths[0],
+                _comparison_artifact(tmp_path, "three", [_comparison_sample("code-p512")]),
+            ],
+            allow_case_intersection=True,
+        )
+
+
+def test_compare_intersection_excludes_declared_cases_with_reason(tmp_path: Path) -> None:
+    module = _load_script()
+    paths = [
+        _comparison_artifact(
+            tmp_path, "one", [_comparison_sample("code-p512"), _comparison_sample("general_en-p512")]
+        ),
+        _comparison_artifact(
+            tmp_path,
+            "two",
+            [_comparison_sample("code-p512")],
+            disqualified_cases=[{"case_id": "general_en-p512", "reason": "round-trip mismatch"}],
+        ),
+    ]
+    result = module.compare_engine_artifacts(paths, allow_case_intersection=True)
+    assert result["compared_case_ids"] == ["code-p512"]
+    assert result["excluded_cases"] == {
+        "two": [{"case_id": "general_en-p512", "reason": "round-trip mismatch"}]
+    }
+    assert result["cross_engine_outputs"]["case_count"] == 1
+    assert result["cross_engine_outputs"]["all_cases_exact"] is True
+    # "one" measured a case outside the intersection, so its aggregate is
+    # recomputed; "two" measured exactly the intersection and reuses its own.
+    assert result["engines"]["one"]["summary_basis"] == "compared_case_intersection"
+    assert result["engines"]["two"]["summary_basis"] == "engine_artifact"
+
+
+def test_compare_intersection_recomputes_summary_for_partial_engine(tmp_path: Path) -> None:
+    module = _load_script()
+    # The realistic pass-1 shape: "one" measures both cases, "two" measures
+    # one and declares the other disqualified. The comparison runs over the
+    # intersection and "one"'s aggregate is recomputed to that basis.
+    paths = [
+        _comparison_artifact(
+            tmp_path, "one", [_comparison_sample("code-p512"), _comparison_sample("general_en-p512", "b" * 64)]
+        ),
+        _comparison_artifact(
+            tmp_path,
+            "two",
+            [_comparison_sample("code-p512")],
+            disqualified_cases=[{"case_id": "general_en-p512", "reason": "round-trip mismatch"}],
+        ),
+    ]
+    result = module.compare_engine_artifacts(paths, allow_case_intersection=True)
+    assert result["engines"]["one"]["summary_basis"] == "compared_case_intersection"
+    assert result["engines"]["one"]["summary"]["sample_count"] == 1
+    assert result["engines"]["two"]["summary_basis"] == "engine_artifact"
+    # The excluded case never enters the correctness verdict.
+    assert result["cross_engine_outputs"]["all_cases_exact"] is True
+    assert result["cross_engine_outputs"]["case_count"] == 1
