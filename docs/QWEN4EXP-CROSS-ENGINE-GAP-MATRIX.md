@@ -18,7 +18,14 @@ The pass-1 p4096 prefill attribution is the prioritization signal:
 | Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
 | Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
 
-The replay has an important comparability caveat: gufo's width 16..80 objective
+The grouped capture also confirms the final tile-map distinction: the attempted
+MMQ32 wrapper recorded no map calls for this production case, while grouped
+prefix counts still captured exactly. The source branch selects the generic
+`qwen35_moe_wmma_tile_map` for the active owner in this shape (MMQ32 is only
+selected when `q4_k_mmq_prefill` is true). The captured histogram is therefore
+usable, but a direct hipEngine tile-map artifact still needs a wrapper around
+the generic WMMA map if we need exact launch/tile counts.
+
 is a column-tile policy in its MMQ routed GEMM, while hipEngine's grouped Q4
 prefill map uses expert-row tiles (`qwen35_moe_mmq32_tile_map` and related
 owners). The width-16 result is therefore a policy hypothesis, not proof that
