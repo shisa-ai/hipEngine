@@ -21,14 +21,14 @@
   },
   "ledger": {
     "source": "docs/REFACTOR.md",
-    "headings": 426
+    "headings": 427
   },
-  "generated": "2026-10-10T01:22:44+00:00",
-  "commit": "18c515d87",
+  "generated": "2026-10-12T08:16:19+00:00",
+  "commit": "edd7905e1",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 11544,
-    "current": 4312,
+    "entries": 11545,
+    "current": 4313,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1404,

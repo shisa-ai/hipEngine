@@ -4,6 +4,24 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Q8_0 T16 f16w tiles are found through a pointer table (added 2026-10-10)
+
+The two-wave and four-wave Q8_0 T16 WMMA prefill launches read a pre-converted half weight operand
+(`f16w`) when the weight's owner holds one: `Gemma4DeviceWeights.ensure_dense_f16w`
+builds it for every dense Q8_0 projection that carries T16 tiles, provided the
+device keeps 2 GiB free afterwards, and frees it with the weights. The launch
+wrapper finds it through `_F16W_TILES` in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py`, a table keyed
+by the tiles device pointer, because the registered
+`t16_wmma_prefill_bf16_bf16_out` signature carries the tiles pointer and no
+other weight operand. The output is bit-identical with or without it, so there
+is no flag; the memory rule is the only selector.
+
+Removal condition: give the linear dispatch's `t16` operand contract an
+optional second weight operand, pass the `f16w` allocation through
+`linear_weight_pointers`, and delete the table together with its
+register/unregister calls.
+
 ## Gemma 4 expert down WMMA rollback lever (added 2026-10-10)
 
 `HIPENGINE_GEMMA4_MOE_DOWN_WMMA` (default on) makes the unpinned Gemma 4 MoE

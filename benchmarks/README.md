@@ -12,19 +12,23 @@ for the same model and device; they were not re-measured.
 
 | Prompt tokens | Prefill tok/s | Decode tok/s | llama.cpp prefill | llama.cpp decode |
 | ---: | ---: | ---: | ---: | ---: |
-| 512 | 3164.7 | 70.75 | 3171.0 | 72.87 |
-| 8192 | 2936.1 | 70.20 | — | — |
-| 32768 | 2335.8 | 53.62 | 2464.7 | 54.2 |
-| 65536 | 1874.3 | 41.60 | 1790.2 | 45.8 |
+| 512 | 3756.1 | 70.86 | 3171.0 | 72.87 |
+| 8192 | 3363.9 | 71.09 | — | — |
+| 32768 | 2635.3 | 53.69 | 2464.7 | 54.2 |
+| 65536 | 2073.2 | 41.63 | 1790.2 | 45.8 |
 
-Two prefill changes account for the difference from the October 6 rows below.
-The expert down projection runs a WMMA kernel instead of an exact staged one
-(2.5x prefill at 512 and 8192, 1.9x at 65536), and multi-row prefill attention
-runs the WMMA flash kernels (1.2x from 8192 up). Each passed the routing-scoped
-production envelope on this hardware over 18 cases and 1,134 rows. One-token
-decode runs the key-sliced flash route. Artifacts:
+Three prefill changes account for most of the difference from the October 6
+rows below. The expert down projection runs a WMMA kernel instead of an exact
+staged one (2.5x prefill at 512 and 8192, 1.9x at 65536), and multi-row prefill
+attention runs the WMMA flash kernels (1.2x from 8192 up); each passed the
+routing-scoped production envelope on this hardware over 18 cases and 1,134
+rows. The dense Q8_0 projections' weight operand is held pre-converted to f16
+when 3.3 GB of device memory can be spared with 2 GiB left free (1.16x at 512,
+1.07x at 65536, bit-identical output). One-token decode runs the key-sliced
+flash route. Artifacts:
 [expert down](results/2026-10-10-gemma4-gfx1100-expert-down-wmma-promotion.json),
-[prefill attention](results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json).
+[prefill attention](results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json),
+[dense f16 weights](results/2026-10-10-gemma4-gfx1100-dense-f16w-prefill.json).
 
 ## Gemma 4 staged sliding prefill — October 6
 

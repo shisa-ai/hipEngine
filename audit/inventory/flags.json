@@ -8089,21 +8089,21 @@
       "kind": "flag",
       "key": "HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT",
       "title": "HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT",
-      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:654",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:800",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
           "hipengine": 10
         },
         "runtime_sites": [
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:654",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:669",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:670",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:671",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:672",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:673",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:674",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:675"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:800",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:815",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:816",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:817",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:818",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:819",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:820",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:821"
         ],
         "in_refactor_ledger": false,
         "in_envs_doc": false
@@ -8127,7 +8127,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT",
-      "evidence_hash": "f733ff29ef29"
+      "evidence_hash": "015a9505c985"
     },
     {
       "kind": "flag",
@@ -10496,8 +10496,8 @@
           "hipengine/runtime/gguf_linear.py:153",
           "hipengine/runtime/gguf_linear.py:1787",
           "hipengine/runtime/gguf_linear.py:3114",
-          "hipengine/runtime/gemma4.py:867",
-          "hipengine/runtime/gemma4.py:1827"
+          "hipengine/runtime/gemma4.py:970",
+          "hipengine/runtime/gemma4.py:1936"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -10518,7 +10518,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_WMMA_PREFILL",
-      "evidence_hash": "feaba70188b0"
+      "evidence_hash": "f05d644888ec"
     },
     {
       "kind": "flag",
@@ -12338,21 +12338,21 @@
       "kind": "flag",
       "key": "HIPENGINE_LAUNCH_Q8_T16_WMMA",
       "title": "HIPENGINE_LAUNCH_Q8_T16_WMMA",
-      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:613",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:671",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
           "hipengine": 8
         },
         "runtime_sites": [
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:613",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:628",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:629",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:630",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:631",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:632",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:633",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:634"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:671",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:686",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:687",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:688",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:689",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:690",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:691",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip:692"
         ],
         "in_refactor_ledger": false,
         "in_envs_doc": false
@@ -12375,7 +12375,7 @@
         ]
       },
       "id": "flag/HIPENGINE_LAUNCH_Q8_T16_WMMA",
-      "evidence_hash": "33cad327541c"
+      "evidence_hash": "d09a823cc008"
     },
     {
       "kind": "flag",
