@@ -119,8 +119,8 @@ Interpretation rules, fixed in advance:
 | Engine | Pin | Status |
 | --- | --- | --- |
 | hipEngine | this tree, branch `qwen3.8-flash-next` | current |
-| halo-box `strix-llama.cpp` | master `6aa81b88e` (2026-10-09, PR #117) | fresh clone, HIP build in progress |
-| gufo | tag `v0.12.0` (2026-10-11) | build in progress; fallback pin is prebuilt edge `98641a6` (binary `8ca63994…`, the 2026-10-04 comparison binary) |
+| halo-box `strix-llama.cpp` | master `6aa81b88e` (2026-10-09, PR #117), HIP build `0.5.0-dev` | built and verified 2026-10-12 |
+| gufo | tag `v0.12.0` (2026-10-11), commit `88090afb`, binary sha256 `8bfd5076…` | built and verified 2026-10-12 (Release/-O3, recorded libstdcxx preinclude shim); fallback pin is prebuilt edge `98641a6` (binary `8ca63994…`, the 2026-10-04 comparison binary) |
 | kyojin | main branch, `tools/qwen/serve.py` | blocked on disk: needs ~120 GiB (95 GiB EXL3 pack + ROCm-torch venv/SDK) on a 100%-full 473 GiB NVMe |
 
 Pass-2 refreshes (newer engine releases) re-run this protocol unchanged and add
