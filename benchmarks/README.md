@@ -10,7 +10,7 @@ production default or performance claim changed.
 
 [Protocol, test and artifact](results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/README.md).
 
-Last updated: **2026-10-08 UTC**
+Last updated: **2026-10-12 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -39,7 +39,33 @@ under 3%.
 · [GR-up K320 qualification](results/2026-10-08-qwen4exp-gr-k320-natural-owner/README.md)
 · [GDN tiled16_multi admission](results/2026-10-08-qwen4exp-gdn-multicolumn-admission/README.md).
 
-## Qwen3.8 Flash Next dense Q8 projection diagnostic
+## Cross-engine comparison on the same `UD-Q4_K_XL` GGUF file
+
+The latest apples-to-apples comparison uses the same four-shard
+`Qwen3.8-Flash-Next` `UD-Q4_K_XL` file, the committed 12-case exact-token
+fixture, one warmup, three measured repetitions, and the same Radeon 8060S /
+gfx1151 host. Prefill rates are tok/s; each column is the equal-weight mean of
+per-case medians.
+
+| Engine | p512 | p1024 | p4096 | Decode at p4096 |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine production | 305.1 | 328.9 | 334.4 | 20.6 |
+| halo-box `strix-llama.cpp` master `6aa81b88e` | 759.3 | 1109.1 | 1446.4 | 25.1 |
+| gufo `v0.12.0` | 1095.0 | 1482.2 | 1736.4 | 28.1 |
+
+At p4096, halo-box is 4.33x and gufo is 5.19x hipEngine's prefill rate.
+The 18-prompt quality battery reports 15/18 strict-exact for hipEngine,
+11/18 for halo-box, and 13/18 for gufo; halo-box's aligned top-20 mean KL is
+0.241 with top-1 agreement 1.00, while gufo does not expose logprobs for the
+G2 comparison. These are characterization results, not external-engine
+certifications. See the [full pass-1 artifact](results/2026-10-12-qwen4exp-cross-engine-pass1/README.md)
+and [canonical protocol](../docs/CROSS-ENGINE-PROTOCOL.md).
+
+Kyojin is recorded as an alternate engine/implementation only. It uses a
+different EXL3 model pack rather than the Q4 GGUF file, so it is not part of
+these apples-to-apples rows or ratios; its measurement remains blocked by the
+current disk-space constraint.
+
 
 On Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, a checked
 32-bit/full-four-row sibling of the current dense Q8 DPP owner was measured
