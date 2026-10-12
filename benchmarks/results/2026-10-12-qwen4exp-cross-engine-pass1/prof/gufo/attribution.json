@@ -1,0 +1,994 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_delimited_prefill_attribution",
+ "performance_claim": false,
+ "numerics_evaluated": false,
+ "why": "Absolute per-component milliseconds require the profiled window to hold exactly one prefill. The harness is asked for an idle gap between requests so each becomes its own burst; this script matches bursts to requests by duration and refuses a burst that does not look like a single prefill.",
+ "trace": "benchmarks/results/2026-10-12-qwen4exp-cross-engine-pass1/prof/gufo/trace/gfx1151/413448_kernel_trace.csv",
+ "report": "benchmarks/results/2026-10-12-qwen4exp-cross-engine-pass1/prof/gufo/report.json",
+ "label": "gufo-v0.12.0-code-p4096",
+ "measurement_class": "diagnostic_profiled_not_performance",
+ "dialect": "gufo",
+ "gap_ms": 250.0,
+ "bursts_in_trace": [
+  {
+   "index": 0,
+   "dispatches": 1,
+   "span_ms": 0.0,
+   "kernel_ms": 0.0,
+   "duty_pct": 100.0
+  },
+  {
+   "index": 1,
+   "dispatches": 26,
+   "span_ms": 575.4,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 2,
+   "dispatches": 32,
+   "span_ms": 621.4,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 3,
+   "dispatches": 26,
+   "span_ms": 694.8,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 4,
+   "dispatches": 28,
+   "span_ms": 580.3,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 5,
+   "dispatches": 26,
+   "span_ms": 579.0,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 6,
+   "dispatches": 26,
+   "span_ms": 561.8,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 7,
+   "dispatches": 26,
+   "span_ms": 544.3,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 8,
+   "dispatches": 28,
+   "span_ms": 560.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 9,
+   "dispatches": 26,
+   "span_ms": 595.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 10,
+   "dispatches": 26,
+   "span_ms": 558.9,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 11,
+   "dispatches": 26,
+   "span_ms": 611.8,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 12,
+   "dispatches": 28,
+   "span_ms": 519.8,
+   "kernel_ms": 0.2,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 13,
+   "dispatches": 26,
+   "span_ms": 562.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 14,
+   "dispatches": 26,
+   "span_ms": 546.7,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 15,
+   "dispatches": 26,
+   "span_ms": 543.9,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 16,
+   "dispatches": 28,
+   "span_ms": 559.7,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 17,
+   "dispatches": 26,
+   "span_ms": 553.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 18,
+   "dispatches": 26,
+   "span_ms": 547.7,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 19,
+   "dispatches": 26,
+   "span_ms": 563.0,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 20,
+   "dispatches": 28,
+   "span_ms": 551.5,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 21,
+   "dispatches": 26,
+   "span_ms": 657.0,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 22,
+   "dispatches": 20,
+   "span_ms": 232.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 23,
+   "dispatches": 6,
+   "span_ms": 154.9,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 24,
+   "dispatches": 26,
+   "span_ms": 596.8,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 25,
+   "dispatches": 28,
+   "span_ms": 621.9,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 26,
+   "dispatches": 26,
+   "span_ms": 557.6,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 27,
+   "dispatches": 26,
+   "span_ms": 578.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 28,
+   "dispatches": 26,
+   "span_ms": 586.4,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 29,
+   "dispatches": 28,
+   "span_ms": 596.7,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 30,
+   "dispatches": 26,
+   "span_ms": 608.6,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 31,
+   "dispatches": 26,
+   "span_ms": 665.7,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 32,
+   "dispatches": 20,
+   "span_ms": 246.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 33,
+   "dispatches": 6,
+   "span_ms": 174.2,
+   "kernel_ms": 0.0,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 34,
+   "dispatches": 28,
+   "span_ms": 621.2,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 35,
+   "dispatches": 20,
+   "span_ms": 238.3,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 36,
+   "dispatches": 6,
+   "span_ms": 231.4,
+   "kernel_ms": 0.0,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 37,
+   "dispatches": 20,
+   "span_ms": 273.7,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 38,
+   "dispatches": 6,
+   "span_ms": 177.8,
+   "kernel_ms": 0.0,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 39,
+   "dispatches": 20,
+   "span_ms": 255.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 40,
+   "dispatches": 6,
+   "span_ms": 200.7,
+   "kernel_ms": 0.0,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 41,
+   "dispatches": 28,
+   "span_ms": 661.4,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 42,
+   "dispatches": 20,
+   "span_ms": 215.7,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 43,
+   "dispatches": 6,
+   "span_ms": 196.2,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 44,
+   "dispatches": 26,
+   "span_ms": 595.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 45,
+   "dispatches": 26,
+   "span_ms": 658.5,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 46,
+   "dispatches": 28,
+   "span_ms": 721.2,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 47,
+   "dispatches": 20,
+   "span_ms": 254.9,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 48,
+   "dispatches": 6,
+   "span_ms": 178.6,
+   "kernel_ms": 0.0,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 49,
+   "dispatches": 26,
+   "span_ms": 653.0,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 50,
+   "dispatches": 26,
+   "span_ms": 663.9,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 51,
+   "dispatches": 28,
+   "span_ms": 637.3,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 52,
+   "dispatches": 26,
+   "span_ms": 675.5,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 53,
+   "dispatches": 26,
+   "span_ms": 644.2,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 54,
+   "dispatches": 26,
+   "span_ms": 597.7,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 55,
+   "dispatches": 28,
+   "span_ms": 618.1,
+   "kernel_ms": 0.1,
+   "duty_pct": 0.0
+  },
+  {
+   "index": 56,
+   "dispatches": 4,
+   "span_ms": 27.0,
+   "kernel_ms": 0.0,
+   "duty_pct": 0.1
+  },
+  {
+   "index": 57,
+   "dispatches": 243,
+   "span_ms": 47.8,
+   "kernel_ms": 11.4,
+   "duty_pct": 23.9
+  },
+  {
+   "index": 58,
+   "dispatches": 3204,
+   "span_ms": 2523.8,
+   "kernel_ms": 2372.9,
+   "duty_pct": 94.0
+  },
+  {
+   "index": 59,
+   "dispatches": 3277,
+   "span_ms": 2505.7,
+   "kernel_ms": 2377.2,
+   "duty_pct": 94.9
+  }
+ ],
+ "requests_examined": 1,
+ "requests_matched": 1,
+ "all_measured_requests_matched": true,
+ "matched_kernel_sum_over_prompt_ms": [
+  0.9467
+ ],
+ "per_family_median_ms": {
+  "dense_projection": {
+   "median_ms": 841.0,
+   "min_ms": 841.0,
+   "max_ms": 841.0,
+   "median_share_pct": 35.44
+  },
+  "elementwise_norm": {
+   "median_ms": 8.5,
+   "min_ms": 8.5,
+   "max_ms": 8.5,
+   "median_share_pct": 0.36
+  },
+  "expert_down": {
+   "median_ms": 0.0,
+   "min_ms": 0.0,
+   "max_ms": 0.0,
+   "median_share_pct": 0.0
+  },
+  "expert_fused": {
+   "median_ms": 812.3,
+   "min_ms": 812.3,
+   "max_ms": 812.3,
+   "median_share_pct": 34.23
+  },
+  "expert_gate_up": {
+   "median_ms": 0.0,
+   "min_ms": 0.0,
+   "max_ms": 0.0,
+   "median_share_pct": 0.0
+  },
+  "gdn": {
+   "median_ms": 208.2,
+   "min_ms": 208.2,
+   "max_ms": 208.2,
+   "median_share_pct": 8.78
+  },
+  "hyper_connection": {
+   "median_ms": 325.0,
+   "min_ms": 325.0,
+   "max_ms": 325.0,
+   "median_share_pct": 13.7
+  },
+  "indexer": {
+   "median_ms": 0.0,
+   "min_ms": 0.0,
+   "max_ms": 0.0,
+   "median_share_pct": 0.0
+  },
+  "moe_reduce": {
+   "median_ms": 6.1,
+   "min_ms": 6.1,
+   "max_ms": 6.1,
+   "median_share_pct": 0.26
+  },
+  "other": {
+   "median_ms": 43.2,
+   "min_ms": 43.2,
+   "max_ms": 43.2,
+   "median_share_pct": 1.82
+  },
+  "ple": {
+   "median_ms": 7.4,
+   "min_ms": 7.4,
+   "max_ms": 7.4,
+   "median_share_pct": 0.31
+  },
+  "qsa_attention": {
+   "median_ms": 112.5,
+   "min_ms": 112.5,
+   "max_ms": 112.5,
+   "median_share_pct": 4.74
+  },
+  "quantize_pack": {
+   "median_ms": 8.6,
+   "min_ms": 8.6,
+   "max_ms": 8.6,
+   "median_share_pct": 0.36
+  }
+ },
+ "records": [
+  {
+   "case_id": "code-p4096",
+   "rep": 0,
+   "prompt_ms": 2506.3833839999998,
+   "matched": true,
+   "burst_index": 58,
+   "burst_dispatch_count": 3204,
+   "kernel_sum_ms": 2372.9,
+   "kernel_sum_over_prompt_ms": 0.9467,
+   "unaccounted_ms": 133.483,
+   "by_family_ms": {
+    "dense_projection": 841.0,
+    "expert_gate_up": 0.0,
+    "expert_down": 0.0,
+    "expert_fused": 812.3,
+    "moe_reduce": 6.1,
+    "hyper_connection": 325.0,
+    "gdn": 208.2,
+    "qsa_attention": 112.5,
+    "ple": 7.4,
+    "indexer": 0.0,
+    "elementwise_norm": 8.5,
+    "quantize_pack": 8.6,
+    "other": 43.2
+   },
+   "by_family_share_pct": {
+    "dense_projection": 35.44,
+    "expert_gate_up": 0.0,
+    "expert_down": 0.0,
+    "expert_fused": 34.23,
+    "moe_reduce": 0.26,
+    "hyper_connection": 13.7,
+    "gdn": 8.78,
+    "qsa_attention": 4.74,
+    "ple": 0.31,
+    "indexer": 0.0,
+    "elementwise_norm": 0.36,
+    "quantize_pack": 0.36,
+    "other": 1.82
+   },
+   "kernels": [
+    {
+     "family": "expert_fused",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RoutedF16GEMMKernel<(gufo::models::qwen38_flash_next::rocm::WeightType)12, 128, 64, 2, true>(void const*, __half const*, int const*, int const*, int const*, int const*, float const*, float*, __half*, unsigned long, unsigned long, void const*)",
+     "ms": 354.76,
+     "dispatches": 67
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::DenseF16GEMMKernel<256, 128, 2, 8, 1, 2, false, true, false, false, false, false>(void const*, __half const*, float*, unsigned long, unsigned long, unsigned long, __half const*, __half*, void*, float const*, float*, gufo::models::qwen38_flash_next::rocm::AttentionProjectionOutput, unsigned int, unsigned long)",
+     "ms": 313.74,
+     "dispatches": 72
+    },
+    {
+     "family": "expert_fused",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RoutedF16GEMMKernel<(gufo::models::qwen38_flash_next::rocm::WeightType)7, 128, 48, 2, false>(void const*, __half const*, int const*, int const*, int const*, int const*, float const*, float*, __half*, unsigned long, unsigned long, void const*)",
+     "ms": 301.86,
+     "dispatches": 86
+    },
+    {
+     "family": "hyper_connection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::HcCombineMoeF16Kernel<true>(float*, __half const*, float const*, float const*, float const*, unsigned int, unsigned int, float const*, unsigned int, float const*, __half*, void*, unsigned int, float)",
+     "ms": 159.26,
+     "dispatches": 92
+    },
+    {
+     "family": "gdn",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::GdnRowSplitKernel(float const*, float const*, float const*, float*, float*, unsigned int, unsigned int, unsigned int, gufo::models::qwen38_flash_next::rocm::GdnCheckpoint)",
+     "ms": 138.69,
+     "dispatches": 72
+    },
+    {
+     "family": "hyper_connection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::HcCombineVec4Kernel<__half>(float*, float const*, float const*, unsigned int, float const*, __half*, void*, unsigned int, float)",
+     "ms": 117.97,
+     "dispatches": 96
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::DenseF16GEMMKernel<256, 128, 2, 8, 1, 5, false, false, false, false, false, true>(void const*, __half const*, float*, unsigned long, unsigned long, unsigned long, __half const*, __half*, void*, float const*, float*, gufo::models::qwen38_flash_next::rocm::AttentionProjectionOutput, unsigned int, unsigned long)",
+     "ms": 115.82,
+     "dispatches": 72
+    },
+    {
+     "family": "expert_fused",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RoutedF16GEMMKernel<(gufo::models::qwen38_flash_next::rocm::WeightType)12, 128, 128, 2, true>(void const*, __half const*, int const*, int const*, int const*, int const*, float const*, float*, __half*, unsigned long, unsigned long, void const*)",
+     "ms": 108.22,
+     "dispatches": 25
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::DenseF16GEMMKernel<256, 128, 1, 4, 2, 8, true, false, false, false, false, false>(void const*, __half const*, float*, unsigned long, unsigned long, unsigned long, __half const*, __half*, void*, float const*, float*, gufo::models::qwen38_flash_next::rocm::AttentionProjectionOutput, unsigned int, unsigned long)",
+     "ms": 99.41,
+     "dispatches": 188
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::W8A8BlockedWmmaGEMMKernel<64, 128, 4, 2, 4, true>(void const*, void const*, std::conditional<true, __half, float>::type*, unsigned long, unsigned long, unsigned long)",
+     "ms": 83.43,
+     "dispatches": 188
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::DenseF16GEMMKernel<256, 128, 1, 8, 1, 4, false, false, true, false, false, false>(void const*, __half const*, float*, unsigned long, unsigned long, unsigned long, __half const*, __half*, void*, float const*, float*, gufo::models::qwen38_flash_next::rocm::AttentionProjectionOutput, unsigned int, unsigned long)",
+     "ms": 80.35,
+     "dispatches": 24
+    },
+    {
+     "family": "qsa_attention",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::WmmaCausalAttentionKernel<4u, 16u, true, false>(float const*, float const*, __half const*, __half const*, unsigned int const*, unsigned int, float*, unsigned int, unsigned int, unsigned int)",
+     "ms": 71.75,
+     "dispatches": 12
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::hip::WKQuantA8BlockedWmmaGEMMKernel<128, 128, 2, 4, 1, (gufo::core::GgmlType)8, 64>(void const*, void const*, float*, unsigned long, unsigned long, unsigned long)",
+     "ms": 44.58,
+     "dispatches": 24
+    },
+    {
+     "family": "gdn",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::GdnEpilogueKernel<false>(float const*, float const*, unsigned int, float const*, float*, void*, __half*, unsigned int, unsigned int, float, gufo::models::qwen38_flash_next::rocm::GdnBatchItem const*, unsigned int, void*, unsigned int)",
+     "ms": 44.35,
+     "dispatches": 72
+    },
+    {
+     "family": "hyper_connection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::HcMixEpilogueF16Kernel<false>(__half const*, float const*, float const*, float*, __half*, void*, float*, unsigned int)",
+     "ms": 40.78,
+     "dispatches": 188
+    },
+    {
+     "family": "qsa_attention",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::WmmaCausalAttentionKernel<16u, 16u, false, false>(float const*, float const*, __half const*, __half const*, unsigned int const*, unsigned int, float*, unsigned int, unsigned int, unsigned int)",
+     "ms": 40.74,
+     "dispatches": 12
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::W8A8BlockedWmmaGEMMKernel<128, 128, 2, 4, 2, false>(void const*, void const*, std::conditional<false, __half, float>::type*, unsigned long, unsigned long, unsigned long)",
+     "ms": 37.91,
+     "dispatches": 192
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::DenseF16GEMMKernel<64, 64, 2, 2, 4, 1, false, false, false, true, false, false>(void const*, __half const*, float*, unsigned long, unsigned long, unsigned long, __half const*, __half*, void*, float const*, float*, gufo::models::qwen38_flash_next::rocm::AttentionProjectionOutput, unsigned int, unsigned long)",
+     "ms": 34.56,
+     "dispatches": 168
+    },
+    {
+     "family": "expert_fused",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RoutedF16GEMMKernel<(gufo::models::qwen38_flash_next::rocm::WeightType)8, 128, 48, 2, false>(void const*, __half const*, int const*, int const*, int const*, int const*, float const*, float*, __half*, unsigned long, unsigned long, void const*)",
+     "ms": 31.71,
+     "dispatches": 8
+    },
+    {
+     "family": "other",
+     "kernel": "Cijk_Alik_Bljk_BSS_BH_Bias_HA_S_UserArgs_MT32x32x64_MI16x16x1_SN_LDSB0_AFC1_AG0_AGGSUA0_AGNTAB0_AFEM1_AFEM1_ASEM1_BL1_BS1_CD1_1_CLR0_CLS0_CADS0_DTLA0_DTLB0_DTLM0_DTVA0_DTVB0_DTVMXSA0_DTVMXSB0_DTVSM0_DPLB0_EPS0_ELFLR0_EMLLn1_FDSI0_GRPM1_GRVWA8_GRVWB8_GSUAMB_GLS0_HPLR0_ISA1151_ICIW0_IU1_K1_LDSTI0_LBSPPA0_LBSPPB0_LBSPPMXSA0_LBSPPMXSB0_LBSPPM0_LPA0_LPB0_LPMXSA0_LPMXSB0_LPM0_LRVW16_LWPMn1_MIAV1_MIWT1_1_MXLIBL_MXSFNS_MO40_MGRIPM1_NTn1_NTA0_NTB0_NTC0_NTD0_NTE0_NTMXSA0_NTMXSB0_NTM0_NTWS0_NVn1_NVA0_NVB0_NVC0_NVD0_NVE0_NVMXSA0_NVMXSB0_NVM0_NVWS0_NEPBS0_NLCA1_NLCB1_ONLL1_PAP0_PGL0_PGR2_PLR3_PKA0_SGROB0_SIA3_SS1_SPO0_SRVW0_SSO0_SVW1_SK0_SKFTR0_SKFDPO0_SKWS0_SKXCCM0_SNLL0_SIP1_SGRO0_TDMI0_TDMIM0_TDMS0_TIN0_THn1_THA0_THB0_THC0_THD0_THE0_THMXSA0_THMXSB0_THM0_THWS0_TLDS0_TLDSM1_ULSGRO0_USL1_USLMX0_UDFMAC0_UIOFGRO0_UPLRP0_USFGROn1_USI0_VSn1_VWA1_VWB1_WSGRA1_WSGRB1_WS32_WG32_4_1_WGMXCC1",
+     "ms": 21.52,
+     "dispatches": 36
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::DenseF16GEMMKernel<256, 128, 1, 4, 2, 2, false, false, false, false, false, false>(void const*, __half const*, float*, unsigned long, unsigned long, unsigned long, __half const*, __half*, void*, float const*, float*, gufo::models::qwen38_flash_next::rocm::AttentionProjectionOutput, unsigned int, unsigned long)",
+     "ms": 21.35,
+     "dispatches": 96
+    },
+    {
+     "family": "gdn",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::GdnPrepKqKernel(float const*, float*, unsigned int, unsigned int, unsigned int, float)",
+     "ms": 13.44,
+     "dispatches": 72
+    },
+    {
+     "family": "gdn",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::SsmConvBoundaryKernel(float const*, float const*, float const*, float*, unsigned int, unsigned int, unsigned int)",
+     "ms": 11.4,
+     "dispatches": 72
+    },
+    {
+     "family": "expert_fused",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RoutedF16GEMMKernel<(gufo::models::qwen38_flash_next::rocm::WeightType)13, 128, 128, 2, true>(void const*, __half const*, int const*, int const*, int const*, int const*, float const*, float*, __half*, unsigned long, unsigned long, void const*)",
+     "ms": 10.36,
+     "dispatches": 2
+    },
+    {
+     "family": "quantize_pack",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::QuantizeQ8TiledVec4Kernel(float const*, void*, unsigned long, unsigned long)",
+     "ms": 8.55,
+     "dispatches": 28
+    },
+    {
+     "family": "elementwise_norm",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RmsNormCachedKernel<10u>(float const*, float const*, float*, unsigned int, unsigned int, float)",
+     "ms": 8.04,
+     "dispatches": 12
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::DenseF16GEMMKernel<256, 128, 1, 4, 2, 1, false, false, false, false, false, false>(void const*, __half const*, float*, unsigned long, unsigned long, unsigned long, __half const*, __half*, void*, float const*, float*, gufo::models::qwen38_flash_next::rocm::AttentionProjectionOutput, unsigned int, unsigned long)",
+     "ms": 6.25,
+     "dispatches": 4
+    },
+    {
+     "family": "other",
+     "kernel": "void qfn_mmq::mul_mat_vec_q8<1, false, 1, false, false>(void const*, void const*, qfn_mmq::block_q8_1 const*, float*, unsigned int, unsigned int, unsigned int, unsigned int)",
+     "ms": 6.19,
+     "dispatches": 4
+    },
+    {
+     "family": "moe_reduce",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RouterTopKKernel<512u>(float const*, unsigned int, int*, float*, unsigned int, unsigned int)",
+     "ms": 6.1,
+     "dispatches": 96
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::SelectScoreKernel(float const*, __half const*, float*, unsigned int, unsigned int const*, unsigned int, unsigned int, unsigned int, unsigned int)",
+     "ms": 4.31,
+     "dispatches": 45
+    },
+    {
+     "family": "hyper_connection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::HcMixEpilogueVec4Kernel<float>(float const*, float const*, float const*, float*, float*, unsigned int)",
+     "ms": 4.17,
+     "dispatches": 4
+    },
+    {
+     "family": "other",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::NarrowKernel<hip_bfloat16>(float const*, hip_bfloat16*, unsigned long)",
+     "ms": 3.83,
+     "dispatches": 24
+    },
+    {
+     "family": "ple",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::PleGateKernel(float const*, float const*, float const*, float*, unsigned int, unsigned int)",
+     "ms": 3.7,
+     "dispatches": 2
+    },
+    {
+     "family": "ple",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::PleInjectKernel(float*, float const*, float const*, unsigned long)",
+     "ms": 3.05,
+     "dispatches": 2
+    },
+    {
+     "family": "hyper_connection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::HcCombineMoeF16Kernel<false>(float*, __half const*, float const*, float const*, float const*, unsigned int, unsigned int, float const*, unsigned int, float const*, __half*, void*, unsigned int, float)",
+     "ms": 2.83,
+     "dispatches": 4
+    },
+    {
+     "family": "expert_fused",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RoutedF16GEMMKernel<(gufo::models::qwen38_flash_next::rocm::WeightType)12, 128, 16, 2, false>(void const*, __half const*, int const*, int const*, int const*, int const*, float const*, float*, __half*, unsigned long, unsigned long, void const*)",
+     "ms": 2.29,
+     "dispatches": 4
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::DenseF16GEMMKernel<256, 128, 1, 4, 2, 8, false, false, false, false, false, false>(void const*, __half const*, float*, unsigned long, unsigned long, unsigned long, __half const*, __half*, void*, float const*, float*, gufo::models::qwen38_flash_next::rocm::AttentionProjectionOutput, unsigned int, unsigned long)",
+     "ms": 2.03,
+     "dispatches": 4
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::PleConvKernel(float const*, float const*, float const*, float*, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+     "ms": 1.97,
+     "dispatches": 2
+    },
+    {
+     "family": "expert_fused",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RoutedF16GEMMKernel<(gufo::models::qwen38_flash_next::rocm::WeightType)8, 128, 16, 2, false>(void const*, __half const*, int const*, int const*, int const*, int const*, float const*, float*, __half*, unsigned long, unsigned long, void const*)",
+     "ms": 1.96,
+     "dispatches": 2
+    },
+    {
+     "family": "dense_projection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::W8A8BlockedWmmaGEMMKernel<64, 128, 4, 2, 4, false>(void const*, void const*, std::conditional<false, __half, float>::type*, unsigned long, unsigned long, unsigned long)",
+     "ms": 1.62,
+     "dispatches": 4
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::SwigluHalfKernel(float const*, float const*, __half*, unsigned long)",
+     "ms": 1.57,
+     "dispatches": 96
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::SelectMarkKernel(unsigned int*, float const*, unsigned int const*, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+     "ms": 1.13,
+     "dispatches": 45
+    },
+    {
+     "family": "other",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::NarrowKernel<__half>(float const*, __half*, unsigned long)",
+     "ms": 1.08,
+     "dispatches": 10
+    },
+    {
+     "family": "expert_fused",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RoutedPadBoundsKernel(unsigned int const*, int*, int*, int*, int*, unsigned int)",
+     "ms": 0.71,
+     "dispatches": 96
+    },
+    {
+     "family": "ple",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::EmbedKernel(void const*, gufo::models::qwen38_flash_next::rocm::WeightType, int const*, float*, unsigned int, unsigned int)",
+     "ms": 0.7,
+     "dispatches": 2
+    },
+    {
+     "family": "elementwise_norm",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RmsNormKernel(float const*, float const*, float*, unsigned int, unsigned int, float)",
+     "ms": 0.47,
+     "dispatches": 12
+    },
+    {
+     "family": "expert_fused",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RoutedScatterKernel(int const*, int const*, int*, int*, int*, unsigned int, unsigned int)",
+     "ms": 0.39,
+     "dispatches": 96
+    },
+    {
+     "family": "gdn",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::GdnPrepAbKernel(float const*, float const*, float const*, float*, unsigned long, unsigned int)",
+     "ms": 0.37,
+     "dispatches": 72
+    },
+    {
+     "family": "other",
+     "kernel": "__amd_rocclr_fillBufferUnAligned",
+     "ms": 0.35,
+     "dispatches": 98
+    },
+    {
+     "family": "other",
+     "kernel": "__amd_rocclr_copyBuffer",
+     "ms": 0.32,
+     "dispatches": 196
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::ExpertCountsKernel(int const*, unsigned int*, unsigned long)",
+     "ms": 0.2,
+     "dispatches": 96
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::PoolBlocksKernel(float const*, float const*, __half*, unsigned int const*, unsigned int const*, unsigned int, unsigned int, unsigned int, unsigned int, float, float, unsigned int, gufo::models::qwen::vision::DeviceRope const*)",
+     "ms": 0.19,
+     "dispatches": 12
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::HistoryShiftKernel(float const*, unsigned int, float const*, float*, unsigned int, unsigned int, unsigned int)",
+     "ms": 0.17,
+     "dispatches": 74
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RopeKernel(float*, unsigned int, unsigned int, unsigned int, unsigned int const*, float, gufo::models::qwen::vision::DeviceRope const*)",
+     "ms": 0.13,
+     "dispatches": 12
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::StoreRowsKernel(float const*, float*, unsigned int, unsigned int const*, unsigned int)",
+     "ms": 0.12,
+     "dispatches": 24
+    },
+    {
+     "family": "other",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::CopyKernel(float const*, float*, unsigned long)",
+     "ms": 0.1,
+     "dispatches": 74
+    },
+    {
+     "family": "other",
+     "kernel": "void qfn_mmq::qfn_q8_hc_down_kernel<1, false>(qfn_mmq::block_q8_0 const*, qfn_mmq::block_q8_1 const*, float*)",
+     "ms": 0.04,
+     "dispatches": 2
+    },
+    {
+     "family": "elementwise_norm",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::SiluScaleKernel(float*, float, unsigned long)",
+     "ms": 0.03,
+     "dispatches": 4
+    },
+    {
+     "family": "elementwise_norm",
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::SiluScaleQ8Kernel(float*, float, unsigned long, unsigned int, unsigned int, void*)",
+     "ms": 0.01,
+     "dispatches": 2
+    },
+    {
+     "family": "other",
+     "kernel": "qfn_mmq::quantize_q8_1(float const*, void*, long, long, long, long, long, unsigned int, HIP_vector_type<unsigned int, 3u>)",
+     "ms": 0.0,
+     "dispatches": 2
+    },
+    {
+     "family": "hyper_connection",
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::HcMixEpilogueKernel<4u>(float const*, float const*, float const*, float*, float*, unsigned int, unsigned int, void*)",
+     "ms": 0.0,
+     "dispatches": 2
+    }
+   ],
+   "unmapped_top": [
+    {
+     "kernel": "Cijk_Alik_Bljk_BSS_BH_Bias_HA_S_UserArgs_MT32x32x64_MI16x16x1_SN_LDSB0_AFC1_AG0_AGGSUA0_AGNTAB0_AFEM1_AFEM1_ASEM1_BL1_BS1_CD1_1_CLR0_CLS0_CADS0_DTLA0_DTLB0_DTLM0_DTVA0_DTVB0_DTVMXSA0_DTVMXSB0_DTVSM0_DPLB0_EPS0_ELFLR0_EMLLn1_FDSI0_GRPM1_GRVWA8_GRVWB8_GSUAMB_GLS0_HPLR0_ISA1151_ICIW0_IU1_K1_LDSTI0_LBSPPA0_LBSPPB0_LBSPPMXSA0_LBSPPMXSB0_LBSPPM0_LPA0_LPB0_LPMXSA0_LPMXSB0_LPM0_LRVW16_LWPMn1_MIAV1_MIWT1_1_MXLIBL_MXSFNS_MO40_MGRIPM1_NTn1_NTA0_NTB0_NTC0_NTD0_NTE0_NTMXSA0_NTMXSB0_NTM0_NTWS0_NVn1_NVA0_NVB0_NVC0_NVD0_NVE0_NVMXSA0_NVMXSB0_NVM0_NVWS0_NEPBS0_NLCA1_NLCB1_ONLL1_PAP0_PGL0_PGR2_PLR3_PKA0_SGROB0_SIA3_SS1_SPO0_SRVW0_SSO0_SVW1_SK0_SKFTR0_SKFDPO0_SKWS0_SKXCCM0_SNLL0_SIP1_SGRO0_TDMI0_TDMIM0_TDMS0_TIN0_THn1_THA0_THB0_THC0_THD0_THE0_THMXSA0_THMXSB0_THM0_THWS0_TLDS0_TLDSM1_ULSGRO0_USL1_USLMX0_UDFMAC0_UIOFGRO0_UPLRP0_USFGROn1_USI0_VSn1_VWA1_VWB1_WSGRA1_WSGRB1_WS32_WG32_4_1_WGMXCC1",
+     "ms": 21.52
+    },
+    {
+     "kernel": "void qfn_mmq::mul_mat_vec_q8<1, false, 1, false, false>(void const*, void const*, qfn_mmq::block_q8_1 const*, float*, unsigned int, unsigned int, unsigned int, unsigned int)",
+     "ms": 6.19
+    },
+    {
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::SelectScoreKernel(float const*, __half const*, float*, unsigned int, unsigned int const*, unsigned int, unsigned int, unsigned int, unsigned int)",
+     "ms": 4.31
+    },
+    {
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::NarrowKernel<hip_bfloat16>(float const*, hip_bfloat16*, unsigned long)",
+     "ms": 3.83
+    },
+    {
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::PleConvKernel(float const*, float const*, float const*, float*, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+     "ms": 1.97
+    },
+    {
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::SwigluHalfKernel(float const*, float const*, __half*, unsigned long)",
+     "ms": 1.57
+    },
+    {
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::SelectMarkKernel(unsigned int*, float const*, unsigned int const*, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+     "ms": 1.13
+    },
+    {
+     "kernel": "void gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::NarrowKernel<__half>(float const*, __half*, unsigned long)",
+     "ms": 1.08
+    },
+    {
+     "kernel": "__amd_rocclr_fillBufferUnAligned",
+     "ms": 0.35
+    },
+    {
+     "kernel": "__amd_rocclr_copyBuffer",
+     "ms": 0.32
+    },
+    {
+     "kernel": "gufo::models::qwen38_flash_next::rocm::ExpertCountsKernel(int const*, unsigned int*, unsigned long)",
+     "ms": 0.2
+    },
+    {
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::PoolBlocksKernel(float const*, float const*, __half*, unsigned int const*, unsigned int const*, unsigned int, unsigned int, unsigned int, unsigned int, float, float, unsigned int, gufo::models::qwen::vision::DeviceRope const*)",
+     "ms": 0.19
+    },
+    {
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::HistoryShiftKernel(float const*, unsigned int, float const*, float*, unsigned int, unsigned int, unsigned int)",
+     "ms": 0.17
+    },
+    {
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::RopeKernel(float*, unsigned int, unsigned int, unsigned int, unsigned int const*, float, gufo::models::qwen::vision::DeviceRope const*)",
+     "ms": 0.13
+    },
+    {
+     "kernel": "gufo::models::qwen38_flash_next::rocm::(anonymous namespace)::StoreRowsKernel(float const*, float*, unsigned int, unsigned int const*, unsigned int)",
+     "ms": 0.12
+    }
+   ]
+  }
+ ]
+}

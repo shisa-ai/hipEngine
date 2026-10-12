@@ -52,9 +52,29 @@ ROLE_PATTERNS: tuple[tuple[str, str], ...] = (
     ("gemm_plain", r"mul_mat|gemm|mmq|wmma|rocblas|Cijk"),
 )
 
+# gufo names its kernels by struct; the families follow the same coarse
+# vocabulary where the name separates them. RoutedF16GEMMKernel fuses gather,
+# the quantized-weight GEMM and scatter for gate/up/down in one launch (the
+# 2026-10-04 trace: 192 launches, 4 per layer across 48 layers), so routed
+# expert time is one family here and is never split into gate/up versus down.
+GUFO_ROLE_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("moe_routed", r"RoutedF16GEMM|RoutedPadBounds|RoutedScatter|RouterTopK|SpeculativeSegment|GatherArgmax"),
+    ("hyper_connection", r"HcCombine|HcMix"),
+    ("attention", r"Attention|TiledAttention|PrepareAttention|KvPrefix|QwenDecodeSplitK|Gdn|SSM|Ssm|RestoreGdnState"),
+    ("quantize_pack", r"Quantize|Dequantize|UnpackQG|PackTiled"),
+    ("elementwise_norm", r"RmsNorm|RoPE|ResidualAdd|Silu|SwiGLU|Zero|WriteKVCache|WriteBatchedKVCache|Norm|Mtp"),
+    ("gemm_plain", r"DenseF16GEMM|W8A8BlockedWmma|WKQuantA8Blocked|GEMV|Gemm|BlockGemm|FusedQKV"),
+    ("ple_embed", r"Embed|PleGate|PleInject"),
+)
 
-def _role_for(name: str) -> str:
+
+def _role_for(name: str, engine: str = "llamacpp") -> str:
     lowered = name.lower()
+    if engine == "gufo":
+        for role, pattern in GUFO_ROLE_PATTERNS:
+            if re.search(pattern, name):
+                return role
+        return "other"
     for role, pattern in ROLE_PATTERNS:
         if re.search(pattern, lowered):
             return role
@@ -114,10 +134,24 @@ def _wait_healthy(base: str, timeout: float) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=Path, required=True)
+    parser.add_argument("--engine", choices=("llamacpp", "gufo"), default="llamacpp")
     parser.add_argument("--label", required=True)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--case-id", action="append", default=None)
+    parser.add_argument(
+        "--warmup-case-id",
+        default=None,
+        help=(
+            "Canonical case used for the unmeasured warm-up request instead of "
+            "the measured case. gufo's RAM continuation cache can restore a "
+            "prompt identical to a prior request (v0.12.0 has no per-request "
+            "opt-out and --cache-ram-bytes does not disable retention), so the "
+            "warm-up must use a different-category case: the measured prompt "
+            "then shares no prefix with any warmed snapshot and the cold-prompt "
+            "guard can verify cache_n=0."
+        ),
+    )
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument(
         "--warmups",
@@ -204,14 +238,41 @@ def main() -> int:
     else:
         trace_root = args.trace_root.resolve()
     trace_root.mkdir(parents=True, exist_ok=True)
-    server_args = [
-        str(args.server), "-m", str(args.model),
-        "--host", "127.0.0.1", "--port", str(args.port),
-        "--parallel", "1", "--no-webui", "-ngl", "999", "-fa", "on",
-        "-ctk", args.kv_dtype, "-ctv", args.kv_dtype, "-c", str(args.context),
-        "-b", str(args.batch), "-ub", str(args.ubatch), "-t", str(args.threads),
-        *(args.server_arg or []),
-    ]
+    if args.engine == "gufo":
+        # gufo takes the GGUF first shard, sizes its own batches, and has no
+        # KV-dtype/batch/ubatch/thread flags; the continuation cache must be
+        # off for the cold-prompt protocol (v0.12.0 serves identical retries
+        # from memory otherwise, with zero prefill).
+        server_args = [
+            str(args.server), "serve", "llm", "-m", str(args.model),
+            "--host", "127.0.0.1", "--port", str(args.port),
+            "-c", str(args.context), "--cache-ram-bytes", "1",
+            *(args.server_arg or []),
+        ]
+        from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
+        from hipengine.tokenization.gguf import Qwen4ExpGGUFTokenizer
+
+        _index = load_gguf_index(discover_gguf_files(args.model)[0])
+        _tokenizer = Qwen4ExpGGUFTokenizer.from_gguf_info(_index)
+        case_texts: dict[str, str] = {}
+        for case in cases:
+            token_ids = [int(t) for t in case["prompt_token_ids"]]
+            text = _tokenizer.decode(token_ids)
+            if _tokenizer.encode(text, add_special_tokens=False) != token_ids:
+                raise SystemExit(
+                    f"case {case['id']} fails the detokenize/retokenize round-trip; "
+                    "gufo cannot be driven on it with exact ids"
+                )
+            case_texts[case["id"]] = text
+    else:
+        server_args = [
+            str(args.server), "-m", str(args.model),
+            "--host", "127.0.0.1", "--port", str(args.port),
+            "--parallel", "1", "--no-webui", "-ngl", "999", "-fa", "on",
+            "-ctk", args.kv_dtype, "-ctv", args.kv_dtype, "-c", str(args.context),
+            "-b", str(args.batch), "-ub", str(args.ubatch), "-t", str(args.threads),
+            *(args.server_arg or []),
+        ]
     profiler_args = [args.rocprof_bin, "--kernel-trace"]
     if args.marker_trace:
         profiler_args.append("--marker-trace")
@@ -221,6 +282,7 @@ def main() -> int:
     report: dict = {
         "schema": 1,
         "kind": "llamacpp_family_prefill_comparator",
+        "engine": args.engine,
         "label": args.label,
         "performance_claim": not args.profile,
         "measurement_class": (
@@ -271,28 +333,54 @@ def main() -> int:
             if args.inter_request_gap_ms > 0 and request_calls[0]:
                 time.sleep(args.inter_request_gap_ms / 1e3)
             request_calls[0] += 1
-            payload = json.dumps({
-                "prompt": [int(t) for t in case["prompt_token_ids"]],
-                "n_predict": 1, "temperature": 0.0, "top_k": 1,
-                "top_p": 1.0, "min_p": 0.0, "seed": 12345,
-                "ignore_eos": True, "cache_prompt": False,
-                "stream": False, "return_tokens": True,
-            }).encode()
-            request = urllib.request.Request(
-                base + "/completion", data=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            client_start = time.perf_counter()
-            with urllib.request.urlopen(request, timeout=args.request_timeout) as response:
-                body = json.loads(response.read())
-            timings = body.get("timings", {})
-            row = {
-                "prompt_ms": timings.get("prompt_ms"),
-                "prompt_tokens": timings.get("prompt_n"),
-                "prompt_tok_s": timings.get("prompt_per_second"),
-                "client_wall_ms": (time.perf_counter() - client_start) * 1e3,
-                "generated_token_id": (body.get("tokens") or [None])[0],
-            }
+            if args.engine == "gufo":
+                payload = json.dumps({
+                    "prompt": case_texts[case["id"]],
+                    "max_tokens": 1, "temperature": 0.0, "ignore_eos": True,
+                }).encode()
+                request = urllib.request.Request(
+                    base + "/v1/completions", data=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                client_start = time.perf_counter()
+                with urllib.request.urlopen(request, timeout=args.request_timeout) as response:
+                    body = json.loads(response.read())
+                timings = body.get("timings", {})
+                if int(timings.get("cache_n") or 0) != 0:
+                    raise SystemExit(
+                        f"{args.label}: gufo served {case['id']} from the prompt cache "
+                        f"(cache_n={timings.get('cache_n')}); cold-prompt protocol violated"
+                    )
+                row = {
+                    "prompt_ms": timings.get("prompt_ms"),
+                    "prompt_tokens": timings.get("prompt_n"),
+                    "prompt_tok_s": timings.get("prompt_per_second"),
+                    "client_wall_ms": (time.perf_counter() - client_start) * 1e3,
+                    "generated_token_id": (body.get("choices") or [{}])[0].get("text"),
+                }
+            else:
+                payload = json.dumps({
+                    "prompt": [int(t) for t in case["prompt_token_ids"]],
+                    "n_predict": 1, "temperature": 0.0, "top_k": 1,
+                    "top_p": 1.0, "min_p": 0.0, "seed": 12345,
+                    "ignore_eos": True, "cache_prompt": False,
+                    "stream": False, "return_tokens": True,
+                }).encode()
+                request = urllib.request.Request(
+                    base + "/completion", data=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                client_start = time.perf_counter()
+                with urllib.request.urlopen(request, timeout=args.request_timeout) as response:
+                    body = json.loads(response.read())
+                timings = body.get("timings", {})
+                row = {
+                    "prompt_ms": timings.get("prompt_ms"),
+                    "prompt_tokens": timings.get("prompt_n"),
+                    "prompt_tok_s": timings.get("prompt_per_second"),
+                    "client_wall_ms": (time.perf_counter() - client_start) * 1e3,
+                    "generated_token_id": (body.get("tokens") or [None])[0],
+                }
             if measured:
                 print(
                     f"{args.label} {case['id']} rep{rep}: "
@@ -301,9 +389,31 @@ def main() -> int:
                 )
             return row
 
+        warmup_case = None
+        if args.warmup_case_id is not None:
+            warmup_case = next(
+                (case for case in fixture["cases"] if case["id"] == args.warmup_case_id),
+                None,
+            )
+            if warmup_case is None:
+                raise SystemExit(f"warmup case not in fixture: {args.warmup_case_id}")
+            if warmup_case["category"] == cases[0]["category"] and warmup_case["id"] != cases[0]["id"]:
+                raise SystemExit(
+                    "the warmup case must come from a different category: a "
+                    "same-category warm-up can share a prompt prefix with the "
+                    "measured case"
+                )
+            if args.engine == "gufo":
+                warmup_ids = [int(t) for t in warmup_case["prompt_token_ids"]]
+                warmup_text = _tokenizer.decode(warmup_ids)
+                if _tokenizer.encode(warmup_text, add_special_tokens=False) != warmup_ids:
+                    raise SystemExit(
+                        f"warmup case {warmup_case['id']} fails the tokenizer round-trip"
+                    )
+                case_texts[warmup_case["id"]] = warmup_text
         for case in cases:
             for warmup in range(args.warmups):
-                row = _request(case, measured=False, rep=warmup)
+                row = _request(warmup_case or case, measured=False, rep=warmup)
                 print(
                     f"{args.label} {case['id']} warmup{warmup}: "
                     f"prompt_ms={row['prompt_ms']}",
@@ -382,7 +492,7 @@ def main() -> int:
                 if not name or not duration:
                     continue
                 ns = int(float(duration))
-                roles[_role_for(name)] += ns / 1e6
+                roles[_role_for(name, args.engine)] += ns / 1e6
                 kernels[name] += ns / 1e6
                 total_ns += ns
         report["role_ms"] = {k: round(v, 3) for k, v in sorted(roles.items(), key=lambda kv: -kv[1])}

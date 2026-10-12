@@ -165,3 +165,43 @@ Server logs and the prebuild diagnostic are kept in `raw/` locally but are
 not part of the committed evidence. Per-engine run artifacts (sample rows,
 identity blocks, disqualified-case records) are committed alongside
 `artifact.json` and `quality-score.json`.
+
+## Per-operator attribution (code-p4096, rocprofv3, request-delimited)
+
+One 4096-token canonical prefill per engine under `rocprofv3 --kernel-trace`,
+attributed by the shared role map
+([`attribution-summary.json`](attribution-summary.json); per-engine
+`prof/*/attribution.json` committed, raw traces kept locally only):
+
+| family (ms) | hipEngine | halo-box | gufo | hipEngine / gufo |
+| --- | ---: | ---: | ---: | ---: |
+| dense projections | **3045.1** | 982.4 | 841.0 | 3.6x |
+| routed experts (gate/up + down; gufo: one fused kernel) | **4621.1** | 1038.6 | 812.3 | 5.7x |
+| hyper-connection | 1581.0 | 255.9 | 325.0 | 4.9x |
+| QSA attention | 1151.9 | 134.5 | 112.5 | 10.2x |
+| GDN | 593.5 | 0.7* | 208.2 | 2.9x |
+| MoE router/reduce | 712.1 | 110.9 | 6.1 | - |
+| elementwise + norm + other | 480.8 | 236.0 | 67.7 | - |
+| **kernel total per prefill** | **12185.5** | **2758.9** | **2372.8** | **5.13x** |
+
+- Kernel-time ratios (4.42x vs halo-box, 5.13x vs gufo) agree with the
+  unprofiled pass-1 wall gaps (4.33x / 5.19x) within profiler overhead
+  (~4-6%), so the family split explains the gap rather than re-framing it.
+- **The gap is not uniform.** Attention is now the worst relative family
+  (10.2x) and GDN the best (2.9x); the dense gap narrowed to 3.6x after the
+  2026-10-08 dense promotions (the 2026-10-04 snapshot had dense at 6.93x).
+  Largest absolute items: dense 3045 ms and routed experts 4621 ms.
+- gufo's routed experts run in **one fused kernel** (gather + GEMM + scatter,
+  386 launches); hipEngine runs gate/up (192) and down (192) separately plus
+  repair/reduce passes under `moe_reduce` (854 launches) — the 5.7x expert
+  ratio compares fused against unfused families and is not a per-GEMM kernel
+  quality verdict.
+- \* halo-box's GDN may be folded into its attention/other rows by the
+  llama.cpp name rules; its 0.7 ms GDN row is a taxonomy artifact, not a
+  measurement of zero GDN work.
+- hipEngine's burst held its identical warmup + measured prefill (gap below
+  the 250 ms burst threshold); the divisor is exactly 2, validated by the
+  halved kernel sum landing at 0.998 of the measured wall (12205.9 ms).
+- gufo's warm-up used the `general_en-p4096` case so the measured prompt
+  could not be a continuation-cache restore (`cache_n=0` verified); the
+  matched-burst kernel sum is 0.947x its reported `prompt_ms`.
