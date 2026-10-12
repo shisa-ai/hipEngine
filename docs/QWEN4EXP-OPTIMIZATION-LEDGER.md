@@ -612,7 +612,8 @@ change.
 
 Read from source at gufo `fee9d2a`
 (`src/models/qwen38_flash_next/kernels/rocm/executor.cpp`, `kernels.hip.cpp`),
-halo-box PR #91 / #87 / #104 descriptions and pwilkin `40a9f4d01`:
+halo-box PR #91 / #87 / #104 descriptions, pwilkin `40a9f4d01`, and the
+`asf0/strix-llama.cpp` `rdna35-perf` branch (§2.1.1):
 
 | Block | gufo (prefill) | halo-box / pwilkin | hipEngine production default |
 | --- | --- | --- | --- |
@@ -631,6 +632,35 @@ AR) plus an FP64 attention-operator check; its own scalar-versus-bulk prefill
 comparison reports "same top-1; logit RMSE 0.18, not bit-identical". halo-box
 uses PPL and KLD against its own reference build. Neither is measured against a
 strict F32 teacher at our calibrated envelope.
+
+### 2.1.1 External branch review: `asf0/strix-llama.cpp` `rdna35-perf` — 2026-10-09 UTC
+
+A 10-commit ROCm/HIP-only branch on top of the halo-box `strix-llama.cpp`
+fork ([branch](https://github.com/asf0/strix-llama.cpp/tree/rdna35-perf)),
+reported on a Strix Halo Radeon 8060S — the same APU model as this campaign's
+host, but a different physical instance, so per the evidence policy it is an
+independent lane. Weights Q8_0, KV q8_0 (f16 checked separately), flash
+attention on, on three models: Qwen3.6 35B-A3B, Qwen3.8 27B dense, Qwen3.5
+2B dense. **None is our model or quant and none uses our protocol, so no rate
+in the report enters §1.1 or transfers to this campaign**; author-reported
+and unverified in this tree. The value is mechanism-level, and most of it
+maps onto rows this ledger has already measured closed:
+
+| Their change | Disposition against our rows |
+| --- | --- |
+| `fattn-rdna35`: a flash-attention kernel for RDNA3.5; their headline is that their PP lead over stock ROCm grows with depth (+38% → +88% at 8k → 128k on the MoE) because "stock ROCm flash attention falls off hard at depth" | Two parts. (1) The at-depth collapse is a claim about their stock-ROCm comparator, not about our kernels — but it names an axis our ledger does not price: **our full-attention family's depth scaling is unmeasured** (§4E is priced at fresh-context anchors, where full attention is 1.27% of prefill and every attention-arithmetic row shares a ~1.5% ceiling). (2) Their fix is a fresh FA kernel on the same hardware class. The existing long-context rows already demote attention work on the current path (QA-4/QA-7: 3.02% at 64K, and the step is host-dispatch-bound per `X-8`). **New only as a long-context-lane lead:** if a deep-context prefill claim is ever made, measure our own FA depth scaling first. No action on the current prefill campaign. |
+| Prefill GEMM tuning for the quantized matmuls | Same class as our promoted prefill work (dense Q8 checked/full-row DPP, §1.3.6; K320 GR-up, §1.3.7); their tuning targets their kernels. Nothing to adopt. |
+| MoE: routing helper, fused reduction + residual | Our equivalents are measured closed: the fusion rungs are bit-identical and wall-neutral, and the EG-1 / ED-1 owner comparisons measured the production defaults faster. Corroborates that the class exists in fast engines; no new work. |
+| MoE: grouped mat-vec for speculative-decoding verify batches | A relevant lead for §6: verifier-shaped grouped kernels are in our registered scope and FastKMS/DFlash are the references. Recorded for the MTP lane; no rate transfers. |
+| Gated DeltaNet: fused SiLU-gated output norm, and fused GDN decode | Prefill side is already priced inside GD-4's family accounting — conv 0.35% + norm 0.41% of prefill — and a fused norm/SiLU stage cannot exceed that ceiling. Decode side: GDN is 2.401 ms/step = 4.43% of decode kernel time under DE-7's split — a decode-lane lead only; DE-7 stays deferred pending a current complete-owner cost. |
+| Decode: plain mat-vec for rows longer than 4096 (closed their 27B decode gap to Vulkan) | A dispatch-shape threshold on their kernels. Our promoted decode GEMV lever was the `out_features <= 640` grid-starvation axis (DE-3, `pack8_gemv_wide_256`); a different axis, no action. |
+| **HIP graphs off by default on RDNA3.5 ("slower here")** | **Corroborates our own measurement, and it touches the queue.** We measured wider-than-MoE graphs negative and closed DE-6 on that basis (the submission path is already graph-replayed at ~37 kernels per launch; the launch host time is already overlapped). Their branch independently ships graphs OFF by default on the same APU model. Recorded because the **whole-step decode graph** is the committed bigger-seam build named in `docs/REFACTOR.md`'s cleanup-pass condition: its prior must weigh this. Their dispatch granularity differs from ours, so this is corroboration, not a verdict — but it is a second independent same-hardware data point against graph expansion on RDNA3.5. |
+| Misc: faster penalties sampler; host-side prefill for Qwen3.5/3.6 with a draft model; DFlash drafts read target features in place on the GPU | The sampler has our own micro lineage in `benchmarks/HISTORY.md`. Draft-assisted prefill and in-place DFlash target-feature reads are §6-adjacent mechanisms for the MTP lane. Recorded as leads; no rate transfers. |
+
+Their quality methodology (KLD against stock ROCm on wikitext-2, PPL at 32k,
+outputs "closer to stock ROCm than Vulkan's") is the halo-box convention §2.1
+already records for that ecosystem — not our calibrated strict-teacher gate;
+nothing to adopt.
 
 ### 2.2 What that means for us
 
