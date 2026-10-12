@@ -18,7 +18,27 @@ The pass-1 p4096 prefill attribution is the prioritization signal:
 | Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
 | Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
 
-## Concrete mechanisms found in gufo
+## Existing in-tree experiments
+
+The repository already has focused experiments that can serve as the hipEngine
+side of the comparison:
+
+- `scripts/qwen4exp_qsa_head_tile_microbench.py` isolates QSA K/V reuse across
+  heads 1/2/4 while requiring bit-identical outputs.
+- `scripts/qwen4exp_moe_main_kernel_cost.py`,
+  `scripts/qwen4exp_moe_gemv_decode_screen.py`, and
+  `scripts/qwen4exp_routing_distribution_capture.py` cover routed expert cost,
+  decode shapes, and routing distributions.
+- `scripts/qwen4exp_gr_operand_replay.py` and
+  `scripts/qwen4exp_gr_projection_screen.py` cover same-operand HC/GR shapes.
+- `scripts/qwen4exp_delimited_prefill_attribution.py` and
+  `scripts/qwen4exp_per_prefill_attribution.py` provide request-delimited
+  family attribution for the canonical workload.
+
+These experiments are not automatically cross-engine comparisons: external
+engines must receive equivalent operands or their source/kernel differences
+must be mapped to the same stage before a result is called explanatory.
+
 
 The gufo Qwen3.8 Flash-Next ROCm implementation currently exposes these
 candidate mechanisms in `src/models/qwen38_flash_next/kernels/rocm/mmq/`:
