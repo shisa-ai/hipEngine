@@ -1,0 +1,218 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_flash_decode_short_row",
+ "date": "2026-10-12",
+ "performance_claim": true,
+ "question": "Why is W7900 decode slower at 512 prompt tokens than at 256 or 1024, and does taking the key-sliced flash route below 1024 keys fix it within the production envelope?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit": "b37a4700c plus this change",
+ "profile_finding": {
+  "method": "one process, natural-token prompt cut to each depth, 62 timed forward_argmax steps per depth, second pass reported",
+  "median_step_ms_before_by_prompt_tokens": {
+   "64": 12.06,
+   "128": 12.26,
+   "192": 12.49,
+   "256": 12.72,
+   "320": 13.04,
+   "384": 13.27,
+   "448": 13.58,
+   "512": 13.85,
+   "576": 14.08,
+   "640": 14.33,
+   "704": 14.58,
+   "768": 14.92,
+   "832": 15.16,
+   "896": 15.37,
+   "960": 15.64,
+   "1024": 12.9,
+   "1088": 13.08,
+   "1280": 12.87,
+   "1536": 13.05,
+   "2048": 13.1
+  },
+  "reading": "the single class kernel's step time grows with the key count up to the 1024-key split policy, where the flash route takes over and the step drops back"
+ },
+ "change": "the gfx1100 production decode scope (gemma4_flash) takes the flash route for a one-token step on either packing from FLASH_DECODE_PREFERRED_MIN_KEYS = 256 keys; strict and plans without that scope keep the single kernel below 1024 keys",
+ "packet": {
+  "command": "scripts/gemma4_wmma_promotion_packet.py --artifact <gguf> --directory <dir> --candidate-kind flash_shallow --depths 257,385,513,641,769,897",
+  "arms": "strict: entry never below 1024 keys; candidate: 256",
+  "cases": 18,
+  "rows_per_case": 64,
+  "bars": {
+   "kl_median": 0.001,
+   "kl_p90": 0.02,
+   "damage_line_kl": 0.05,
+   "flip_damage_rate_global": 0.03,
+   "flip_damage_rate_category": 0.08,
+   "top1_global": 0.96,
+   "top1_scope": 0.94
+  },
+  "global": {
+   "rows": 1134,
+   "kl_median": 7.711889397912973e-07,
+   "kl_p90": 0.0019192534059575155,
+   "flip_damage_rate": 0.003527336860670194,
+   "damage_line_kl": 0.05,
+   "top1_rate": 0.9911816578483245,
+   "thresholds": {
+    "kl_median": 0.001,
+    "kl_p90": 0.02,
+    "flip_damage_rate": 0.03,
+    "top1_rate": 0.96
+   },
+   "failed": [],
+   "passed": true
+  },
+  "categories": {
+   "code": {
+    "rows": 378,
+    "kl_median": 3.7126262965605837e-09,
+    "kl_p90": 0.00036992189418121827,
+    "flip_damage_rate": 0.0026455026455026454,
+    "damage_line_kl": 0.05,
+    "top1_rate": 0.9947089947089947,
+    "thresholds": {
+     "kl_median": 0.001,
+     "kl_p90": 0.02,
+     "flip_damage_rate": 0.08,
+     "top1_rate": 0.94
+    },
+    "failed": [],
+    "passed": true
+   },
+   "general_en": {
+    "rows": 252,
+    "kl_median": 7.848904193549464e-06,
+    "kl_p90": 0.001407723854793728,
+    "flip_damage_rate": 0.0,
+    "damage_line_kl": 0.05,
+    "top1_rate": 0.9880952380952381,
+    "thresholds": {
+     "kl_median": 0.001,
+     "kl_p90": 0.02,
+     "flip_damage_rate": 0.08,
+     "top1_rate": 0.94
+    },
+    "failed": [],
+    "passed": true
+   },
+   "general_ja": {
+    "rows": 252,
+    "kl_median": 5.362344121547827e-06,
+    "kl_p90": 0.00472823730147856,
+    "flip_damage_rate": 0.003968253968253968,
+    "damage_line_kl": 0.05,
+    "top1_rate": 0.9880952380952381,
+    "thresholds": {
+     "kl_median": 0.001,
+     "kl_p90": 0.02,
+     "flip_damage_rate": 0.08,
+     "top1_rate": 0.94
+    },
+    "failed": [],
+    "passed": true
+   },
+   "mixed_ja_en": {
+    "rows": 252,
+    "kl_median": 1.0002902049200259e-05,
+    "kl_p90": 0.003127593079020059,
+    "flip_damage_rate": 0.007936507936507936,
+    "damage_line_kl": 0.05,
+    "top1_rate": 0.9920634920634921,
+    "thresholds": {
+     "kl_median": 0.001,
+     "kl_p90": 0.02,
+     "flip_damage_rate": 0.08,
+     "top1_rate": 0.94
+    },
+    "failed": [],
+    "passed": true
+   }
+  },
+  "routing_flip_rate_diagnostic": 0.7319223985890653,
+  "passed": true,
+  "promotion_eligible": true,
+  "elapsed_s": 148.7
+ },
+ "public_path": {
+  "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --context P+256 --warmup 1 --samples N --expect-gpu W7900, HIPENGINE_EXECUTION_PROFILE=production; the before arm sets FLASH_DECODE_PREFERRED_MIN_KEYS above 1024 in-process",
+  "rows": [
+   {
+    "prompt_tokens": 384,
+    "decode_tps_before": 72.62,
+    "decode_tps_after": 76.85,
+    "ratio": 1.058,
+    "decode_tps_after_min_max": [
+     74.35,
+     77.57
+    ],
+    "decode_tps_before_min_max": [
+     72.44,
+     73.17
+    ],
+    "prefill_tps_after": 3476.3,
+    "samples": 5,
+    "public_ids_equal": true,
+    "public_path_parity": true
+   },
+   {
+    "prompt_tokens": 512,
+    "decode_tps_before": 70.5,
+    "decode_tps_after": 76.51,
+    "ratio": 1.085,
+    "decode_tps_after_min_max": [
+     71.97,
+     77.11
+    ],
+    "decode_tps_before_min_max": [
+     69.63,
+     70.94
+    ],
+    "prefill_tps_after": 3651.5,
+    "samples": 5,
+    "public_ids_equal": true,
+    "public_path_parity": true
+   },
+   {
+    "prompt_tokens": 768,
+    "decode_tps_before": 66.12,
+    "decode_tps_after": 75.93,
+    "ratio": 1.148,
+    "decode_tps_after_min_max": [
+     73.22,
+     77.03
+    ],
+    "decode_tps_before_min_max": [
+     65.49,
+     66.23
+    ],
+    "prefill_tps_after": 3799.9,
+    "samples": 5,
+    "public_ids_equal": true,
+    "public_path_parity": true
+   },
+   {
+    "prompt_tokens": 1024,
+    "decode_tps_after": 76.36,
+    "prefill_tps_after": 3841.9,
+    "samples": 3,
+    "public_path_parity": true,
+    "note": "outside the changed band; no before arm in this run"
+   },
+   {
+    "prompt_tokens": 8192,
+    "decode_tps_after": 69.52,
+    "prefill_tps_after": 3320.6,
+    "samples": 3,
+    "public_path_parity": true,
+    "note": "outside the changed band; no before arm in this run"
+   }
+  ]
+ },
+ "open_observation": "about 2 to 20 percent of decode steps, varying run to run, take roughly 3.4 ms longer than the rest (near 16 ms against 12.6). The extra time is on the host side of the step, outside the HIP API calls. Python garbage collection, the HIP active-wait window and CPU migration were each tested and are not the cause. Not resolved."
+}

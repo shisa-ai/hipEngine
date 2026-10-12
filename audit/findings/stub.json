@@ -1860,9 +1860,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:665",
+      "key": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:701",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:665",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:701",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -1873,7 +1873,7 @@
       "hints": {
         "anchor": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py",
         "refs": [
-          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:665"
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:701"
         ],
         "tokens": [
           "notimplementederror",
@@ -1881,8 +1881,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:665",
-      "evidence_hash": "7e24a0c05180"
+      "id": "stub/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:701",
+      "evidence_hash": "193e19932961"
     },
     {
       "kind": "stub",

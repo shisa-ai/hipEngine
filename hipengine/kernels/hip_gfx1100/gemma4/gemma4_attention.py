@@ -376,6 +376,42 @@ def decode_slices(keys: int, head_dim: int) -> int:
     return slices
 
 
+#: Key count from which a decode step that *prefers* flash takes it. Without
+#: the preference the route starts where the split policy does (1024 keys).
+#: The single kernel walks its keys serially per head, so a step's attention
+#: time grows with the key count until the key-sliced route takes over;
+#: measured on a W7900 (Gemma 4 26B-A4B, 2026-10-12) the two cross near 192
+#: keys and flash is ahead from 256. A multiple of the decode-graph key tile,
+#: so a capture bucket never straddles it.
+FLASH_DECODE_PREFERRED_MIN_KEYS = 256
+
+
+def flash_decode_engages(*, keys: int, head_dim: int, prefer_flash: bool) -> bool:
+    """Whether an admitted one-token decode asks for the flash route at ``keys``.
+
+    One expression for the launcher and for the decode-graph capture's
+    workspace reservation, which must agree on the route a launch will take.
+    """
+
+    if decode_slices(keys, head_dim) > 1:
+        return True
+    return bool(prefer_flash) and int(keys) >= FLASH_DECODE_PREFERRED_MIN_KEYS
+
+
+def flash_decode_short_row(*, keys: int, head_dim: int) -> bool:
+    """Whether ``keys`` is a row only the flash *preference* moves to flash.
+
+    Below the split policy's count and at or past the preferred entry: the band
+    where a plan that selects the flash decode variant changes the route, and
+    one that does not keeps the single class kernel.
+    """
+
+    return (
+        decode_slices(keys, head_dim) == 1
+        and int(keys) >= FLASH_DECODE_PREFERRED_MIN_KEYS
+    )
+
+
 def decode_selection(library: ctypes.CDLL | None = None) -> int:
     """Which decode kernel the launcher last selected.
 
@@ -929,7 +965,9 @@ def _launch_prefill(
         )
         flash = (
             admitted
-            and decode_slices(key_count, head_dim) > 1
+            and flash_decode_engages(
+                keys=key_count, head_dim=head_dim, prefer_flash=prefer_flash
+            )
             and (prefer_flash or not global_logits)
         )
         slices = (
@@ -966,7 +1004,7 @@ def _launch_prefill(
         if flash and _capture_live_slots is not None:
             live_extent = _capture_live_slots.get((head_dim, num_kv_heads))
         workspace = 0
-        needs_workspace = slices > 1 or global_logits
+        needs_workspace = slices > 1 or global_logits or flash
         temporary = Gemma4AttentionScratch() if needs_workspace and scratch is None else None
         owner = scratch if scratch is not None else temporary
         try:
@@ -1205,6 +1243,17 @@ def gemma4_attention_decode_flash_bf16(
         slices=slices,
         library=library,
     ):
+        if not gemma4_attention_resident_overflows(head_dim=head_dim, keys=key_count):
+            # A short row the flash kernel cannot serve keeps the native
+            # launch; the staged singleton below is the long global row's
+            # chain and was verified only there.
+            return gemma4_attention_prefill_bf16(
+                query_ptr, key_ptr, value_ptr, keep_mask_ptr, out_ptr,
+                tokens=tokens, num_heads=num_heads, num_kv_heads=num_kv_heads,
+                head_dim=head_dim, scale=scale, keys=keys, stream=stream,
+                library=library, runtime=runtime, scratch=scratch,
+                window=window, row_offset=row_offset,
+            )
         # Deferred: gemma4_attention_staged imports this module's scratch type,
         # so a module-level import here would be circular.
         from .gemma4_attention_staged import gemma4_attention_staged_bf16

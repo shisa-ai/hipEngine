@@ -12,7 +12,7 @@ for the same model and device; they were not re-measured.
 
 | Prompt tokens | Prefill tok/s | Decode tok/s | llama.cpp prefill | llama.cpp decode |
 | ---: | ---: | ---: | ---: | ---: |
-| 512 | 3756.1 | 70.86 | 3171.0 | 72.87 |
+| 512 | 3756.1 | 76.51 | 3171.0 | 72.87 |
 | 8192 | 3363.9 | 71.09 | — | — |
 | 32768 | 2635.3 | 53.69 | 2464.7 | 54.2 |
 | 65536 | 2073.2 | 41.63 | 1790.2 | 45.8 |
@@ -27,11 +27,15 @@ when 3.3 GB of device memory can be spared with 2 GiB left free (1.16x at 512,
 1.07x at 65536, bit-identical output). One-token decode runs the key-sliced
 flash route with every step launched: replaying decode from a captured HIP
 graph, which the Radeon 8060S build uses below 2176 keys, measured 0.93x at
-1536 and 2048 prompt tokens on this device and no gain below that. Artifacts:
+1536 and 2048 prompt tokens on this device and no gain below that. The flash
+route starts at 256 keys; the 512 decode figure was measured after that change
+(70.50 before it in the same session) and the other rows before it, which it
+does not reach. Artifacts:
 [expert down](results/2026-10-10-gemma4-gfx1100-expert-down-wmma-promotion.json),
 [prefill attention](results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json),
 [dense f16 weights](results/2026-10-10-gemma4-gfx1100-dense-f16w-prefill.json),
-[decode graph on this device](results/2026-10-12-gemma4-gfx1100-origin-merge-validation.json).
+[decode graph on this device](results/2026-10-12-gemma4-gfx1100-origin-merge-validation.json),
+[short-row flash decode](results/2026-10-12-gemma4-gfx1100-flash-decode-short-row.json).
 
 ## Gemma 4 staged sliding prefill — October 6
 

@@ -944,3 +944,107 @@ def test_graph_preparation_preloads_the_staged_library_across_the_threshold(
     else:
         assert bucket.end <= LAST_RESIDENT_KEYS
         assert not builds, "the staged library was loaded below the resident bound"
+
+
+# --- the flash preference on a short row -----------------------------------
+
+# Gemma 4's sliding geometry: 16 query heads over 8 KV heads, head_dim 256.
+SLIDING = dict(
+    tokens=1, keys=512, num_heads=16, num_kv_heads=8, head_dim=256,
+    sliding_window=1024, key_begin=0,
+)
+
+
+def test_the_short_row_entry_is_a_whole_number_of_graph_key_tiles() -> None:
+    """A decode-graph bucket is cut at every key-tile multiple, so an entry on
+    one never falls inside a bucket and a capture and a launch agree on the
+    route at every position."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import KEY_TILE
+
+    assert attention.FLASH_DECODE_PREFERRED_MIN_KEYS % KEY_TILE == 0
+    assert 0 < attention.FLASH_DECODE_PREFERRED_MIN_KEYS < 1024
+
+
+@pytest.mark.parametrize(
+    ("keys", "prefer", "expected"),
+    [(1, True, False), (255, True, False), (256, True, True), (700, True, True),
+     (1023, True, True), (1024, True, True), (256, False, False), (1023, False, False),
+     (1024, False, True), (5000, False, True)],
+)
+def test_flash_engages_from_the_preferred_entry_only_with_the_preference(
+    keys, prefer, expected
+) -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import flash_decode_engages
+
+    assert flash_decode_engages(keys=keys, head_dim=256, prefer_flash=prefer) is expected
+
+
+@pytest.mark.parametrize("geometry", [SLIDING, {**GLOBAL, "keys": 512}], ids=["sliding", "global"])
+@pytest.mark.parametrize(
+    ("keys", "expected"),
+    [(1, "exact"), (255, "exact"), (256, DECODE_ATTENTION_FLASH), (513, DECODE_ATTENTION_FLASH),
+     (1023, DECODE_ATTENTION_FLASH), (1024, "exact"), (4096, "exact")],
+)
+def test_a_flash_plan_takes_the_short_row_on_either_packing(geometry, keys, expected) -> None:
+    """From 1024 keys the native launch asks for flash itself, so the selector
+    keeps it; below the entry the single kernel is ahead."""
+
+    launcher, route = _select_exact_decode_attention(
+        decode_attention_variants=(DECODE_ATTENTION_FLASH,), **{**geometry, "keys": keys}
+    )
+
+    assert route == expected
+    assert launcher is (
+        gemma4_attention_decode_flash_bf16 if expected == DECODE_ATTENTION_FLASH
+        else gemma4_attention_prefill_bf16
+    )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [dict(decode_attention_variants=(DECODE_ATTENTION_STAGED,)),
+     dict(decode_attention_variants=(DECODE_ATTENTION_PLAIN,)),
+     dict(tokens=2), dict(key_begin=1),
+     dict(num_kv_heads=4), dict(head_dim=128, num_heads=8, num_kv_heads=4)],
+    ids=["staged-plan", "plain-plan", "two-rows", "trimmed", "ratio-4", "other-head-dim"],
+)
+def test_a_short_row_outside_the_flash_scope_keeps_the_native_kernel(overrides) -> None:
+    base = dict(decode_attention_variants=(DECODE_ATTENTION_FLASH,), **SLIDING)
+    base.update(overrides)
+
+    launcher, route = _select_exact_decode_attention(**base)
+
+    assert route == "exact"
+    assert launcher is gemma4_attention_prefill_bf16
+
+
+def test_a_short_row_flash_cannot_serve_keeps_the_native_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The staged singleton is the long global row's chain; a short row that the
+    flash kernel refuses goes back to the native launch instead."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention_staged as staged
+
+    calls = []
+    monkeypatch.setattr(attention, "build_gemma4_attention", lambda **kw: object())
+    monkeypatch.setattr(attention, "flash_request_slices", lambda **kw: 0)
+    monkeypatch.setattr(
+        attention, "gemma4_attention_prefill_bf16",
+        lambda *a, **kw: calls.append(("native", kw["keys"])),
+    )
+    monkeypatch.setattr(
+        staged, "gemma4_attention_staged_bf16",
+        lambda *a, **kw: calls.append(("staged", kw["keys"])),
+    )
+
+    for keys in (512, FIRST_OVERFLOW_KEYS):
+        attention.gemma4_attention_decode_flash_bf16(
+            1, 2, 3, 4, 5, tokens=1, num_heads=16, num_kv_heads=2, head_dim=512,
+            scale=1.0, keys=keys,
+        )
+
+    assert calls == [("native", 512), ("staged", FIRST_OVERFLOW_KEYS)]

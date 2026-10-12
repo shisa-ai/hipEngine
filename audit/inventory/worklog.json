@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11552,
-    "current": 4320,
+    "entries": 11553,
+    "current": 4321,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1404,
@@ -44434,14 +44434,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 13,
+        "continuation_entries": 14,
         "open_text": "Write `gemma4_attention_flash.hip` per the structure above, register it as\n`gemma4_flash`, and validate against `gemma4_plain` on the existing geometry\nsuites, which already cover both head widths, both GQA ratios, several window\nvalues, and the narrowed-walk case.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "13 later entries by the same worker share this topic prefix"
+        "14 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T052435.076972Z-lhl-gemma4-flash-attention-port-structure-806cca.md",
@@ -44457,7 +44457,7 @@
         ]
       },
       "id": "worklog/20260928T052435.076972Z-lhl-gemma4-flash-attention-port-structure-806cca",
-      "evidence_hash": "a9ffffcdcb94"
+      "evidence_hash": "f8db44b8d4a9"
     },
     {
       "kind": "worklog",
@@ -46241,14 +46241,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 9,
+        "continuation_entries": 10,
         "open_text": "1. Decide the 512-wide tiling before writing the kernel, or scope the port to the\n   25 sliding 256-wide layers first, where the design fits as-is and where 130.5\n   of the 164.7 ms lives.\n2. Then write the kernel with the QSA mapping, gemma4's mask semantics, and no\n   gather; register as `gemma4_flash`; validate against `gemma4_plain` on the\n   existing geometry suites; measure with `scripts/gemma4_attention_prefill_bench.py`\n   before any default flip.\n3. Bit-identity against `gemma4_plain` remains the gate, and it is the hard part:\n   the QSA accumulation order is per-row serial over keys ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "9 later entries by the same worker share this topic prefix"
+        "10 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T091438.221065Z-lhl-gemma4-flash-attention-port-c8f2a0.md",
@@ -46269,7 +46269,7 @@
         ]
       },
       "id": "worklog/20260928T091438.221065Z-lhl-gemma4-flash-attention-port-c8f2a0",
-      "evidence_hash": "724582eef8ab"
+      "evidence_hash": "e2c1c2776d2a"
     },
     {
       "kind": "worklog",
@@ -46369,14 +46369,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 8,
+        "continuation_entries": 9,
         "open_text": "1. A port is only accepted against `gemma4_plain` bit-for-bit, so the tree above\n   is the acceptance criterion and should be written as a unit test on a small\n   geometry before the kernel exists.\n2. Scope the first attempt to the 25 sliding 256-wide layers: the QSA tiling fits\n   at 52.4 KiB there, and 130.5 of the 164.7 ms lives in those layers. The five\n   512-wide layers need the tiling decision from `20260928T091438` first.\n3. The 512-wide leaf difference (property 2) means the two widths cannot share one\n   unrolled body without care, which is the same conclusion the LDS budget forces.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "8 later entries by the same worker share this topic prefix"
+        "9 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T093102.774318Z-lhl-gemma4-flash-attention-port-d4e7b2.md",
@@ -46393,7 +46393,7 @@
         ]
       },
       "id": "worklog/20260928T093102.774318Z-lhl-gemma4-flash-attention-port-d4e7b2",
-      "evidence_hash": "56282bb960ea"
+      "evidence_hash": "88e5a8e1b1cd"
     },
     {
       "kind": "worklog",
@@ -46530,14 +46530,14 @@
         "written": "2026-09-28",
         "age_days": 14,
         "open_by": "status",
-        "continuation_entries": 7,
+        "continuation_entries": 8,
         "open_text": "1. When writing the port, make the key-to-lane mapping independent of the walk\n   start, so the window bound keeps shipping without a numerical gate. Treat that\n   as a design constraint, not a cleanup.\n2. Add the `gemma4_flash` vs `gemma4_plain` exact-equality test alongside the\n   existing geometry cases; the suite's own idiom is the template.\n3. The tree test proposed in `20260928T093102` should assert the tree order\n   directly rather than only through an end-to-end comparison, so a violation\n   names which stage moved.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "7 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T094719.663522Z-lhl-gemma4-flash-attention-port-e1a8c3.md",
@@ -46558,7 +46558,7 @@
         ]
       },
       "id": "worklog/20260928T094719.663522Z-lhl-gemma4-flash-attention-port-e1a8c3",
-      "evidence_hash": "0b7e4463c966"
+      "evidence_hash": "c88df3bd8db7"
     },
     {
       "kind": "worklog",

@@ -124,23 +124,35 @@ def main() -> int:
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--rows", type=int, default=64)
     parser.add_argument("--candidate-variants", default="gemma4_wmma_flash,gemma4_wmma_flash_full")
-    parser.add_argument("--candidate-kind", choices=("wmma", *sorted(_LEVER_KINDS)),
+    parser.add_argument("--depths", default=",".join(str(depth) for depth in DEPTHS),
+                        help="comma-separated prompt depths the cases cycle through; "
+                             "a scope that only exists in a key-count band names "
+                             "depths inside it")
+    parser.add_argument("--candidate-kind",
+                        choices=("wmma", "flash_shallow", *sorted(_LEVER_KINDS)),
                         default="wmma",
                         help="router / down_wmma: both arms on the default attention, "
                              "differing only in one env lever (strict=0, candidate=1): "
                              "HIPENGINE_GEMMA4_ROUTER_SGEMM (tile vs SGEMM full-block "
                              "tier) or HIPENGINE_GEMMA4_MOE_DOWN_WMMA (exact grouped "
-                             "expert down vs the WMMA owner)")
+                             "expert down vs the WMMA owner). flash_shallow: both "
+                             "arms on the production runner, differing only in "
+                             "FLASH_DECODE_PREFERRED_MIN_KEYS (strict: never below "
+                             "the split policy's 1024 keys; candidate: the shipped "
+                             "value)")
     args = parser.parse_args(argv := None)
     if args.rows < 1:
         parser.error("rows must be positive")
+    depths = tuple(int(depth) for depth in args.depths.split(","))
+    if not depths or min(depths) < 1:
+        parser.error("depths must be positive")
     args.directory.mkdir(parents=True, exist_ok=True)
 
     from scripts.gemma4_campaign_bench import _resolve_generator
     from hipengine.loading.gguf import GGUFReader
     from hipengine.runtime.gemma4 import Gemma4Runner
 
-    llm, production, loading = _resolve_generator(args.artifact, max(DEPTHS) + args.rows)
+    llm, production, loading = _resolve_generator(args.artifact, max(depths) + args.rows)
     generator = llm._get_text_generator()
     reader = GGUFReader(str(args.artifact))
     candidate_variants = tuple(args.candidate_variants.split(","))
@@ -152,17 +164,29 @@ def main() -> int:
 
         if lever is not None:
             os.environ[lever] = "1" if candidate else "0"
+        if args.candidate_kind == "flash_shallow":
+            flash_attention.FLASH_DECODE_PREFERRED_MIN_KEYS = (
+                shipped_flash_min_keys if candidate else 1 << 30
+            )
 
-    if lever is not None:
+    if args.candidate_kind == "flash_shallow":
+        # Both arms are the profile-bound production runner, whose decode scope
+        # carries the flash preference; only the entry key count differs.
+        from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as flash_attention
+
+        shipped_flash_min_keys = flash_attention.FLASH_DECODE_PREFERRED_MIN_KEYS
+        strict = candidate = production
+        set_lever_arm(candidate=False)
+    elif lever is not None:
         # Both arms share one runner on the default attention; the only
         # difference is the lever, which its call site reads per call.
-        strict = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows)
+        strict = Gemma4Runner(weights=production.weights, capacity=max(depths) + args.rows)
         candidate = strict
         set_lever_arm(candidate=False)
     else:
-        strict = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows,
+        strict = Gemma4Runner(weights=production.weights, capacity=max(depths) + args.rows,
                               prefill_attention_variants=("gemma4_plain",))
-        candidate = Gemma4Runner(weights=production.weights, capacity=max(DEPTHS) + args.rows,
+        candidate = Gemma4Runner(weights=production.weights, capacity=max(depths) + args.rows,
                                  prefill_attention_variants=candidate_variants)
 
     cases = []
@@ -194,7 +218,7 @@ def main() -> int:
     started = time.monotonic()
     try:
         for index, case in enumerate(cases):
-            depth = DEPTHS[index % len(DEPTHS)]
+            depth = depths[index % len(depths)]
             message = "\n".join(m["content"] for m in case["messages"])
             ids = padded_chat(generator, message, depth, 20261003 + index)
             name = case["id"]

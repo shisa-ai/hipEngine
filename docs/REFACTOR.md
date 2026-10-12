@@ -141,8 +141,9 @@ to the prefill request, so a one-token block resolves to the strict-parity
 staged singleton. The gfx1100 plan declares a decode scope, and the runner
 forwards no prefill request on a decode step when one exists: the layer's
 decode selector serves it, with `gemma4_flash` for the untrimmed global step
-past the resident-logit bound and `gemma4_staged` as that scope's rollback
-lever. Strict requests `gemma4_plain` on gfx1151; the gfx1100 strict plan
+past the resident-logit bound, and for a step on either packing from 256 keys
+up to the 1024 where the native launch asks for flash itself, and
+`gemma4_staged` as that scope's rollback lever. Strict requests `gemma4_plain` on gfx1151; the gfx1100 strict plan
 declares it as each scope's rollback key and forwards no prefill request, so
 strict prefill there stays on the layer's own route chain. Unifying the two
 backends' decode routing and binding plain for gfx1100 strict are the open
