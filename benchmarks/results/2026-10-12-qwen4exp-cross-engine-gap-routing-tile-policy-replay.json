@@ -1,0 +1,35 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_grouped_routing_tile_policy_replay",
+ "performance_claim": false,
+ "source_artifact": "benchmarks/results/2026-10-12-qwen4exp-cross-engine-gap-routing-code-p4096-grouped-summary.json",
+ "records": 1152,
+ "nonempty_buckets": 367662,
+ "gufo_cost_model": {
+  "candidate_widths": [
+   16,
+   32,
+   48,
+   64,
+   80
+  ],
+  "panel_penalty": 16,
+  "cost_by_width": {
+   "16": 18984192,
+   "32": 21387888,
+   "48": 25982208,
+   "64": 31152480,
+   "80": 36609408
+  },
+  "selected_width": 16,
+  "padded_rows_by_width": {
+   "16": 9492096,
+   "32": 14258592,
+   "48": 19486656,
+   "64": 24921984,
+   "80": 30507840
+  },
+  "minimum_padded_width": "16"
+ },
+ "interpretation": "Replay of the captured production bucket-count distribution through gufo\u2019s published count-aware width objective; no external kernel timing and no promotion."
+}
