@@ -1,0 +1,76 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_dense_f16w_prefill",
+ "date": "2026-10-10",
+ "performance_claim": true,
+ "question": "What does holding the dense Q8_0 projections' prefill weight operand pre-converted to f16 change through the public path, and is the output unchanged?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit": "edd7905e1 plus this change",
+ "baseline_commit": "edd7905e1 (512 baseline row measured at 18c515d87, whose single-block prefill path is the same)",
+ "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --context P+256 --warmup 1 --samples 3 --expect-gpu W7900, HIPENGINE_EXECUTION_PROFILE=production",
+ "memory": {
+  "dense_f16w_status": "resident: 125 projections, 3290890240 bytes",
+  "rule": "allocated only when the device keeps 2 GiB free afterwards; all or nothing"
+ },
+ "rows": [
+  {
+   "prompt_tokens": 512,
+   "prefill_tps_before": 3242.3,
+   "prefill_tps_after": 3756.1,
+   "ratio": 1.158,
+   "decode_tps_before": 71.14,
+   "decode_tps_after": 70.86,
+   "public_path_parity": true,
+   "public_ids_equal": true
+  },
+  {
+   "prompt_tokens": 8192,
+   "prefill_tps_before": 3038.1,
+   "prefill_tps_after": 3363.9,
+   "ratio": 1.107,
+   "decode_tps_before": 69.6,
+   "decode_tps_after": 71.09,
+   "public_path_parity": true,
+   "public_ids_equal": true
+  },
+  {
+   "prompt_tokens": 32768,
+   "prefill_tps_before": 2420.8,
+   "prefill_tps_after": 2635.3,
+   "ratio": 1.089,
+   "decode_tps_before": 53.92,
+   "decode_tps_after": 53.69,
+   "public_path_parity": true,
+   "public_ids_equal": true
+  },
+  {
+   "prompt_tokens": 65536,
+   "prefill_tps_before": 1946.4,
+   "prefill_tps_after": 2073.2,
+   "ratio": 1.065,
+   "decode_tps_before": 41.68,
+   "decode_tps_after": 41.63,
+   "public_path_parity": true,
+   "public_ids_equal": true
+  }
+ ],
+ "correctness": {
+  "kernel": "tests/test_gpu_gguf_q8_0_t16_wmma_prefill.py: f16w two-wave and four-wave launches byte-equal to the decoding launches over six shapes",
+  "teacher_forced": "captures at --prompt 1024, --prompt 8192 --prefill 4096 and --prompt 16384 --prefill 15856 are bitwise equal to the captures taken before the change (1,023 / 4,095 / 527 rows)"
+ },
+ "rerun_after_allocator_fix": {
+  "prompt_tokens": 8192,
+  "prefill_tps_samples": [
+   3363,
+   3348,
+   3333
+  ],
+  "decode_tps": 69.86,
+  "public_path_parity": true
+ }
+}

@@ -409,9 +409,112 @@ class Gemma4DeviceWeights:
         if self._freed:
             return
         self._freed = True
+        self._release_dense_f16w()
         for item in self._owned:
             item.free()
         self._owned.clear()
+
+    # Device memory that must stay free after the pre-converted dense weights
+    # are resident: headroom for the attention workspaces and staging buffers a
+    # runner grows on demand after construction.
+    DENSE_F16W_RESERVE_BYTES = 2 << 30
+
+    def ensure_dense_f16w(self) -> str:
+        """Hold the dense Q8_0 projections' prefill operand pre-converted, if it fits.
+
+        The multi-wave Q8_0 T16 prefill spends about half its time converting
+        int8 weights to the half operand it multiplies. Every dense projection
+        that carries T16 ``tiles`` gets a second, f16 copy of that operand
+        (``in * out * 2`` bytes, 3.3 GB over Gemma 4 26B-A4B's 1.645 G dense
+        elements), built on the device from the tiles with the kernel's own
+        expression and registered so the two-wave launch loads it instead. The
+        output is bit-identical either way.
+
+        This is a memory-for-speed trade the caller did not ask for, so it is
+        taken only when the device keeps ``DENSE_F16W_RESERVE_BYTES`` free
+        afterwards, and it is all or nothing. Called once a runner has
+        allocated its KV and scratch, so the context the user asked for is
+        never what gives way. Returns the outcome, also kept on
+        ``dense_f16w_status``; idempotent.
+        """
+
+        status = self.__dict__.get("dense_f16w_status")
+        if status is not None:
+            return status
+        self.__dict__["_dense_f16w"] = []
+        targets = []
+        for item in self._owned:
+            checker = getattr(item, "has_allocation", None)
+            spec = getattr(item, "spec", None)
+            if checker is None or spec is None or not checker("tiles"):
+                continue
+            if getattr(spec, "quant_key", None) != "gguf_q8_0":
+                continue
+            tiles = item.allocation("tiles")
+            shape = tuple(int(dim) for dim in tiles.tensor.shape)
+            if len(shape) != 3:
+                continue
+            targets.append((tiles.buffer.ptr, shape[1] * 32, shape[0] * 16))
+        if not targets:
+            return self._set_dense_f16w_status("none: no dense Q8_0 projection carries T16 tiles")
+
+        # The copies are filled by a kernel before this returns, so they come
+        # from the device allocator itself rather than this module's runner
+        # allocator, which a caller may have replaced.
+        from hipengine.core import memory as device_memory
+        from hipengine.core.hip import HipError, get_hip_runtime
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+            gguf_q8_0_t16_f16w_bytes,
+            gguf_q8_0_t16_tiles_to_f16w,
+            register_gguf_q8_0_t16_f16w,
+        )
+
+        runtime = get_hip_runtime()
+        need = sum(gguf_q8_0_t16_f16w_bytes(i, o) for _, i, o in targets)
+        free_bytes, _total = runtime.mem_get_info()
+        if free_bytes - need < self.DENSE_F16W_RESERVE_BYTES:
+            return self._set_dense_f16w_status(
+                f"skipped: insufficient memory, {need} bytes needed with "
+                f"{self.DENSE_F16W_RESERVE_BYTES} to stay free and {free_bytes} free"
+            )
+        try:
+            for tiles_ptr, in_features, out_features in targets:
+                buffer = device_memory.malloc(gguf_q8_0_t16_f16w_bytes(in_features, out_features))
+                self._dense_f16w.append((tiles_ptr, buffer))
+                gguf_q8_0_t16_tiles_to_f16w(
+                    tiles_ptr, buffer.ptr, in_features, out_features, runtime=runtime
+                )
+            # The conversions are queued on the default stream; they are
+            # complete before any launch that could read them is registered.
+            runtime.device_synchronize()
+        except HipError as error:
+            self._release_dense_f16w()
+            return self._set_dense_f16w_status(f"skipped: allocation failed ({error})")
+        for (tiles_ptr, buffer), (_, in_features, out_features) in zip(self._dense_f16w, targets):
+            register_gguf_q8_0_t16_f16w(tiles_ptr, buffer.ptr, in_features, out_features)
+        return self._set_dense_f16w_status(
+            f"resident: {len(targets)} projections, {need} bytes"
+        )
+
+    def _set_dense_f16w_status(self, status: str) -> str:
+        self.__dict__["dense_f16w_status"] = status
+        return status
+
+    def _release_dense_f16w(self) -> None:
+        """Unregister and free the pre-converted dense weights, if any."""
+
+        held = self.__dict__.get("_dense_f16w")
+        if not held:
+            return
+        from hipengine.core import memory as device_memory
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+            unregister_gguf_q8_0_t16_f16w,
+        )
+
+        for tiles_ptr, buffer in held:
+            unregister_gguf_q8_0_t16_f16w(tiles_ptr)
+            device_memory.free(buffer)
+        held.clear()
 
 
 def _tensor_values(reader: GGUFReader, spec: Gemma4GGUFWeightSpec) -> np.ndarray:
@@ -1190,6 +1293,12 @@ class Gemma4Runner:
             self._closed = True
             self._release_owned()
             raise
+        # Last, with this runner's KV and scratch already resident: the dense
+        # projections' pre-converted prefill operand, when the device has the
+        # memory to spare. A weights object that cannot express it is skipped.
+        ensure_dense_f16w = getattr(self.weights, "ensure_dense_f16w", None)
+        if ensure_dense_f16w is not None:
+            ensure_dense_f16w()
 
     def _validate_attention_shared_memory(self, config: Any) -> None:
         """Refuse a context the *selected* attention consumer cannot fit.

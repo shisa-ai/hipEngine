@@ -645,3 +645,155 @@ def test_p10_b4_q8_0_t16_wmma_prefill_runs_exported_bf16_symbol_on_w7900() -> No
         seed=9,
     )
     np.testing.assert_allclose(actual, reference, **_TOLERANCES[("bf16", "f32")])
+
+
+# --- pre-converted f16 weight tiles ----------------------------------------
+
+
+def _run_two_wave_and_f16w(*, rows: int, in_features: int, out_features: int, seed: int = 0):
+    """Raw BF16 outputs of the two-wave launch, the f16w launch, the registered
+    auto wrapper, and the f16w launch over zeroed weights."""
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_t16_prefill as q8_t16
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+        gguf_q8_0_t16_f16w_bytes,
+        gguf_q8_0_t16_f16w_for,
+        gguf_q8_0_t16_tiles_to_f16w,
+        gguf_q8_0_t16_wmma_prefill_2wave_f16w_bf16_bf16_out,
+        register_gguf_q8_0_t16_f16w,
+        unregister_gguf_q8_0_t16_f16w,
+    )
+
+    activation = _make_activation(rows, in_features, seed=seed)
+    qweight = make_q8_0_weight(out_features, in_features)
+    tiles = np.ascontiguousarray(repack_gguf_q8_0_tile16(qweight).tiles)
+    host_in = np.ascontiguousarray(_prepare_input(activation, "bf16"))
+    library = build_gguf_q8_0_t16_prefill(load=True)
+    runtime = get_hip_runtime()
+    f16w_bytes = gguf_q8_0_t16_f16w_bytes(in_features, out_features)
+    assert f16w_bytes == in_features * out_features * 2
+    outputs: dict[str, np.ndarray] = {}
+    bufs = []
+
+    def read(out_dev) -> np.ndarray:
+        runtime.device_synchronize()
+        host = np.zeros((rows, out_features), dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(host), out_dev, runtime=runtime)
+        return host
+
+    try:
+        x_dev = malloc(host_in.nbytes, runtime=runtime)
+        tiles_dev = malloc(tiles.nbytes, runtime=runtime)
+        out_dev = malloc(rows * out_features * 2, runtime=runtime)
+        f16w_dev = malloc(f16w_bytes, runtime=runtime)
+        zero_dev = malloc(f16w_bytes, runtime=runtime)
+        bufs.extend((x_dev, tiles_dev, out_dev, f16w_dev, zero_dev))
+        copy_host_to_device(x_dev, host_array_ptr(host_in), runtime=runtime)
+        copy_host_to_device(tiles_dev, host_array_ptr(tiles), runtime=runtime)
+        zeros = np.zeros(f16w_bytes // 2, dtype=np.uint16)
+        copy_host_to_device(zero_dev, host_array_ptr(zeros), runtime=runtime)
+        kwargs = {"library": library, "runtime": runtime}
+
+        gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out(
+            x_dev.ptr, tiles_dev.ptr, out_dev.ptr, rows, in_features, out_features,
+            tile_m=64, tile_n=32, **kwargs,
+        )
+        outputs["two_wave"] = read(out_dev)
+
+        gguf_q8_0_t16_tiles_to_f16w(
+            tiles_dev.ptr, f16w_dev.ptr, in_features, out_features, **kwargs
+        )
+        gguf_q8_0_t16_wmma_prefill_2wave_f16w_bf16_bf16_out(
+            x_dev.ptr, tiles_dev.ptr, f16w_dev.ptr, out_dev.ptr, rows, in_features,
+            out_features, **kwargs,
+        )
+        outputs["f16w"] = read(out_dev)
+
+        gguf_q8_0_t16_wmma_prefill_2wave_f16w_bf16_bf16_out(
+            x_dev.ptr, tiles_dev.ptr, zero_dev.ptr, out_dev.ptr, rows, in_features,
+            out_features, **kwargs,
+        )
+        outputs["zero_weights"] = read(out_dev)
+
+        # The four-wave schedule, which the gfx1151 registry binds, has the same
+        # pair of launches and reads the same f16w tiles.
+        q8_t16.gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out(
+            x_dev.ptr, tiles_dev.ptr, out_dev.ptr, rows, in_features, out_features,
+            tile_m=128, tile_n=32, **kwargs,
+        )
+        outputs["four_wave"] = read(out_dev)
+        q8_t16.gguf_q8_0_t16_wmma_prefill_4wave_f16w_bf16_bf16_out(
+            x_dev.ptr, tiles_dev.ptr, f16w_dev.ptr, out_dev.ptr, rows, in_features,
+            out_features, **kwargs,
+        )
+        outputs["four_wave_f16w"] = read(out_dev)
+        register_gguf_q8_0_t16_f16w(tiles_dev.ptr, zero_dev.ptr, in_features, out_features)
+        try:
+            q8_t16.gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out(
+                x_dev.ptr, tiles_dev.ptr, out_dev.ptr, rows, in_features, out_features,
+                tile_m=32, tile_n=32, **kwargs,
+            )
+            outputs["auto_4wave_registered_zero"] = read(out_dev)
+        finally:
+            unregister_gguf_q8_0_t16_f16w(tiles_dev.ptr)
+
+        # The registered auto wrapper under its own default, which is the
+        # two-wave schedule the gfx1100 registry binds: registered against the
+        # zeroed tiles so the route it took is visible, then unregistered.
+        register_gguf_q8_0_t16_f16w(tiles_dev.ptr, zero_dev.ptr, in_features, out_features)
+        try:
+            gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out(
+                x_dev.ptr, tiles_dev.ptr, out_dev.ptr, rows, in_features, out_features,
+                tile_m=32, tile_n=32, **kwargs,
+            )
+            outputs["auto_registered_zero"] = read(out_dev)
+            # A different shape for the same pointer is not a match.
+            assert gguf_q8_0_t16_f16w_for(tiles_dev.ptr, in_features, out_features + 16) is None
+        finally:
+            unregister_gguf_q8_0_t16_f16w(tiles_dev.ptr)
+        assert gguf_q8_0_t16_f16w_for(tiles_dev.ptr, in_features, out_features) is None
+        gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out(
+            x_dev.ptr, tiles_dev.ptr, out_dev.ptr, rows, in_features, out_features,
+            tile_m=32, tile_n=32, **kwargs,
+        )
+        outputs["auto_unregistered"] = read(out_dev)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+    return outputs
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("rows", "in_features", "out_features"),
+    [
+        (17, 256, 2048),    # one partial row tile
+        (33, 256, 2064),    # a column count that is not a whole 64-column block
+        (64, 96, 2112),     # three K blocks
+        (1024, 2816, 4224),  # Gemma 4 26B-A4B's fused dense gate|up
+        (512, 2112, 2816),   # ... and its dense down
+        (7, 32, 2048),      # one K block, fewer rows than a tile
+    ],
+)
+def test_f16w_wide_wave_prefill_is_bit_exact_to_the_decoding_launches(
+    rows: int, in_features: int, out_features: int,
+) -> None:
+    """Loading the pre-converted weights changes no output bit.
+
+    The same launch over zeroed weights writes all zeros, so the candidate
+    arm did read the f16w operand; and the registered auto wrapper takes that
+    route only while the weight's entry is registered for this shape.
+    """
+
+    outputs = _run_two_wave_and_f16w(rows=rows, in_features=in_features, out_features=out_features)
+
+    np.testing.assert_array_equal(outputs["f16w"], outputs["two_wave"])
+    assert np.any(outputs["two_wave"] & 0x7FFF)
+    assert not np.any(outputs["zero_weights"] & 0x7FFF)
+    assert not np.any(outputs["auto_registered_zero"] & 0x7FFF)
+    np.testing.assert_array_equal(outputs["auto_unregistered"], outputs["two_wave"])
+    np.testing.assert_array_equal(outputs["four_wave_f16w"], outputs["four_wave"])
+    assert np.any(outputs["four_wave"] & 0x7FFF)
+    # Every shape here is at least 2048 wide, where the four-wave default applies.
+    assert not np.any(outputs["auto_4wave_registered_zero"] & 0x7FFF)

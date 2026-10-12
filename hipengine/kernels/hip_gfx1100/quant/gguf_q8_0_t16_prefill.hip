@@ -291,10 +291,60 @@ __global__ void gguf_q8_0_t16_prefill_wmma_kernel(
   }
 }
 
+// Pre-converted half weights for the multi-wave prefill. One 16-half run per
+// (output tile, K tile, column): halves for K ``k_tile * 16 .. + 15`` of column
+// ``col`` of output tile ``out_tile``, laid out [out_tile][k_tile][col][k], so a
+// lane's WMMA operand is 32 contiguous bytes.
+__device__ inline int64_t q8_t16_f16w_index(
+    int64_t out_tile, int64_t k_tile, int64_t k_tiles_per_row, int col) {
+  return ((out_tile * k_tiles_per_row + k_tile) * T16_COLS + col) * K_TILE;
+}
+
+// Writes the f16w tiles from the resident T16 tiles with the prefill kernel's
+// own expression, ``half(d) * half(float(q))`` evaluated in half precision, so
+// a kernel that loads them sees the operand it would have decoded. One block
+// per (output tile, 32-wide K block); thread ``col`` owns one column.
+__global__ void q8_0_t16_tiles_to_f16w_kernel(
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ f16w,
+    int out_tiles,
+    int blocks_per_row) {
+  const int64_t block = static_cast<int64_t>(blockIdx.x);
+  const int64_t out_tile = block / blocks_per_row;
+  const int blk = static_cast<int>(block - out_tile * blocks_per_row);
+  if (out_tile >= out_tiles) return;
+  const int col = threadIdx.x;
+  const uint8_t* tile_ptr = q8_t16_tile_ptr(tiles, out_tile, blk, blocks_per_row);
+  const half_t d_h = static_cast<half_t>(fp16_bytes_to_float(
+      tile_ptr + Q8_0_T16_D_OFFSET + col * 2));
+  const uint8_t* qs_base = tile_ptr + Q8_0_T16_Q_OFFSET;
+#pragma unroll
+  for (int kt = 0; kt < K_TILES_PER_BLOCK; ++kt) {
+    half16_t run;
+#pragma unroll
+    for (int kk = 0; kk < 16; ++kk) {
+      const int8_t q = static_cast<int8_t>(qs_base[(kt * K_TILE + kk) * T16_COLS + col]);
+      run[kk] = d_h * static_cast<half_t>(static_cast<float>(q));
+    }
+    __builtin_memcpy(
+        f16w + q8_t16_f16w_index(
+                   out_tile, blk * K_TILES_PER_BLOCK + kt,
+                   static_cast<int64_t>(blocks_per_row) * K_TILES_PER_BLOCK, col),
+        &run, sizeof(run));
+  }
+}
+
 // GPF-5A diagnostic: pair two order-preserving 32-column waves in one block
 // and convert/load each activation tile once through bounded LDS. Each wave
 // keeps the production 32xTN accumulator and K traversal unchanged.
-template <int AWQ_TILE_N, int NUM_WAVES>
+//
+// ``F16W`` reads the weight operand from pre-converted half tiles instead of
+// decoding it: the int8-to-half conversion and the scale multiply are 32
+// scalar loads and 96 scalar ops per lane per K tile here, about half of this
+// kernel's time at Gemma 4's dense shapes. ``q8_0_t16_tiles_to_f16w_kernel``
+// writes exactly the halves this decode produces, K-contiguous per column, so
+// the operand is one 32-byte load and every WMMA input is bit-identical.
+template <int AWQ_TILE_N, int NUM_WAVES, bool F16W = false>
 __launch_bounds__(NUM_WAVES * 32, 8 / NUM_WAVES)
 __global__ void gguf_q8_0_t16_prefill_wmma_nwave_kernel(
     const uint16_t* __restrict__ x,
@@ -302,7 +352,8 @@ __global__ void gguf_q8_0_t16_prefill_wmma_nwave_kernel(
     uint16_t* __restrict__ out,
     int rows,
     int in_features,
-    int out_features) {
+    int out_features,
+    const uint16_t* __restrict__ f16w) {
   constexpr int WAVE_TILE_M = 32;
   constexpr int TM = WAVE_TILE_M / 16;
   constexpr int TN = AWQ_TILE_N / 16;
@@ -361,7 +412,14 @@ __global__ void gguf_q8_0_t16_prefill_wmma_nwave_kernel(
             : static_cast<half_t>(0.0f);
         const uint8_t* qs_base = tile_ptr + Q8_0_T16_Q_OFFSET;
         half16_t a_reg;
-        if (slab_in_range) {
+        if (F16W && slab_in_range) {
+          __builtin_memcpy(
+              &a_reg,
+              f16w + q8_t16_f16w_index(
+                         slab_base / T16_COLS, blk * K_TILES_PER_BLOCK + kt,
+                         blocks_per_row * K_TILES_PER_BLOCK, lane16),
+              sizeof(a_reg));
+        } else if (slab_in_range) {
 #pragma unroll
           for (int kk = 0; kk < 16; ++kk) {
             const int8_t q = static_cast<int8_t>(
@@ -538,13 +596,13 @@ int launch_gguf_q8_0_t16_prefill_wmma_2wave(
         (gguf_q8_0_t16_prefill_wmma_nwave_kernel<16, 2>),
         grid, block, 0, stream, x, tiles, out,
         static_cast<int>(rows), static_cast<int>(in_features),
-        static_cast<int>(out_features));
+        static_cast<int>(out_features), static_cast<const uint16_t*>(nullptr));
   } else {
     hipLaunchKernelGGL(
         (gguf_q8_0_t16_prefill_wmma_nwave_kernel<32, 2>),
         grid, block, 0, stream, x, tiles, out,
         static_cast<int>(rows), static_cast<int>(in_features),
-        static_cast<int>(out_features));
+        static_cast<int>(out_features), static_cast<const uint16_t*>(nullptr));
   }
   return static_cast<int>(hipGetLastError());
 }
@@ -575,13 +633,13 @@ int launch_gguf_q8_0_t16_prefill_wmma_4wave(
         (gguf_q8_0_t16_prefill_wmma_nwave_kernel<16, 4>),
         grid, block, 0, stream, x, tiles, out,
         static_cast<int>(rows), static_cast<int>(in_features),
-        static_cast<int>(out_features));
+        static_cast<int>(out_features), static_cast<const uint16_t*>(nullptr));
   } else {
     hipLaunchKernelGGL(
         (gguf_q8_0_t16_prefill_wmma_nwave_kernel<32, 4>),
         grid, block, 0, stream, x, tiles, out,
         static_cast<int>(rows), static_cast<int>(in_features),
-        static_cast<int>(out_features));
+        static_cast<int>(out_features), static_cast<const uint16_t*>(nullptr));
   }
   return static_cast<int>(hipGetLastError());
 }
@@ -635,6 +693,94 @@ int launch_gguf_q8_0_t16_prefill_wmma(
 }
 
 }  // namespace
+
+extern "C" int64_t hipengine_gguf_q8_0_t16_f16w_bytes(
+    int64_t in_features, int64_t out_features) {
+  if (in_features <= 0 || out_features <= 0 || (in_features % Q8_0_QK) != 0 ||
+      (out_features % T16_COLS) != 0) {
+    return -1;
+  }
+  return in_features * out_features * static_cast<int64_t>(sizeof(uint16_t));
+}
+
+extern "C" int hipengine_gguf_q8_0_t16_tiles_to_f16w(
+    const uint8_t* tiles,
+    uint16_t* f16w,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (tiles == nullptr || f16w == nullptr ||
+      hipengine_gguf_q8_0_t16_f16w_bytes(in_features, out_features) < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_tiles = out_features / T16_COLS;
+  const int64_t blocks_per_row = in_features / Q8_0_QK;
+  if (out_tiles * blocks_per_row > static_cast<int64_t>(INT32_MAX)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      q8_0_t16_tiles_to_f16w_kernel,
+      dim3(static_cast<unsigned int>(out_tiles * blocks_per_row)),
+      dim3(T16_COLS), 0, stream, tiles, f16w,
+      static_cast<int>(out_tiles), static_cast<int>(blocks_per_row));
+  return static_cast<int>(hipGetLastError());
+}
+
+// The two-wave schedule over pre-converted f16w tiles: the same grid, block and
+// accumulation as ``..._wmma_prefill_2wave_bf16_bf16_out`` at tile_n 32.
+extern "C" int hipengine_gguf_q8_0_t16_wmma_prefill_2wave_f16w_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    const uint16_t* f16w,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles == nullptr || f16w == nullptr || out == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % Q8_0_QK) != 0 || (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(64);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 63) / 64),
+      static_cast<unsigned int>((rows + 31) / 32));
+  hipLaunchKernelGGL(
+      (gguf_q8_0_t16_prefill_wmma_nwave_kernel<32, 2, true>),
+      grid, block, 0, stream, x, tiles, out,
+      static_cast<int>(rows), static_cast<int>(in_features),
+      static_cast<int>(out_features), f16w);
+  return static_cast<int>(hipGetLastError());
+}
+
+// The four-wave schedule over pre-converted f16w tiles: the same grid, block and
+// accumulation as ``..._wmma_prefill_4wave_bf16_bf16_out`` at tile_n 32.
+extern "C" int hipengine_gguf_q8_0_t16_wmma_prefill_4wave_f16w_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    const uint16_t* f16w,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles == nullptr || f16w == nullptr || out == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % Q8_0_QK) != 0 || (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 127) / 128),
+      static_cast<unsigned int>((rows + 31) / 32));
+  hipLaunchKernelGGL(
+      (gguf_q8_0_t16_prefill_wmma_nwave_kernel<32, 4, true>),
+      grid, block, 0, stream, x, tiles, out,
+      static_cast<int>(rows), static_cast<int>(in_features),
+      static_cast<int>(out_features), f16w);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out(
     const uint16_t* x,
