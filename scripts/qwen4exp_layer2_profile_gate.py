@@ -105,6 +105,9 @@ _F16_ROUTE_ARMS = {
     "recovery_plus_gdn_tiled_all_layers": {
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": _ALL_LAYERS,
     },
+    # Sensitivity control, not a route under review: the hyper-connection up
+    # projection with F32 operands and a different summation order only.
+    "recovery_plus_gr_staged_f32": {"HIPENGINE_QWEN4_EXP_GR_STAGED": "1"},
 }
 
 
