@@ -5,8 +5,8 @@ owns: Gemma 4 GGUF text inference, server usage, exercised coverage, and impleme
 # Gemma 4 text inference
 
 Gemma 4 GGUF text inference runs through `hipengine.LLM` and `hipengine serve`
-on the `hip_gfx1100` backend. The generator uses greedy decoding and BF16 KV
-storage. Server chat uses the GGUF artifact's embedded Gemma template and
+on the `hip_gfx1100` backend. The generator decodes greedily or samples, as the
+request asks, and uses BF16 KV storage. Server chat uses the GGUF artifact's embedded Gemma template and
 separates the thought channel into `reasoning_content`.
 
 ## Start a server
@@ -23,13 +23,18 @@ hipengine serve --model "$MODEL" --backend hip_gfx1100 \
   --served-model-name gemma4
 ```
 
-Request greedy chat completion:
+Request a greedy chat completion:
 
 ```bash
 curl http://127.0.0.1:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"gemma4","messages":[{"role":"user","content":"What is the capital of France?"}],"temperature":0,"max_tokens":96,"chat_template_kwargs":{"enable_thinking":true}}'
 ```
+
+A request that sets a temperature above zero samples. `temperature`, `top_k`,
+`top_p`, `min_p`, `repetition_penalty`, `presence_penalty`, `frequency_penalty`,
+`logit_bias` and `seed` are served; a request with the same seed returns the
+same text.
 
 `enable_thinking` selects the embedded template's thinking mode. With thinking
 enabled, the completion budget includes reasoning tokens as well as the answer;
@@ -41,10 +46,12 @@ does not imply token-by-token delivery during generation.
 
 ## Implementation limits
 
-- Sampling is greedy: use `temperature: 0`. Nontrivial sampling settings,
-  penalties, logit bias, multi-token stop sequences, structured constraints,
-  thinking budgets, and log probabilities are not implemented and fail with a
-  named error instead of silently changing the request.
+- Multi-token stop sequences, forced-token queues, structured constraints,
+  thinking budgets, `min_tokens`, and log probabilities are not implemented and
+  fail with a named error instead of silently changing the request.
+- A sampled request, or a greedy one with a penalty, a logit bias or suppressed
+  tokens, copies each step's logits row to the host and selects the token
+  there. A greedy request without them selects on the device.
 - KV storage is BF16. Other KV storage policies are not implemented for this
   generator.
 - Tool-call response parsing is not implemented. A server request containing
@@ -55,7 +62,9 @@ does not imply token-by-token delivery during generation.
   rows to bound per-layer global scratch. Other head geometries retain their
   shared-memory capability limit. Available GPU memory can impose a lower
   practical capacity; the default context is 8192.
-- This guide covers text inference, not image/audio input or speculative decode.
+- This guide covers text inference, not image or audio input. Speculative
+  decoding with the assistant head is described in
+  `docs/reference/GEMMA4-ASSISTANT-MTP.md`.
 
 ## Exercised coverage
 

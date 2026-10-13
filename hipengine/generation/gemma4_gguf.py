@@ -1,13 +1,17 @@
-"""Public greedy generation for Gemma 4 GGUF artifacts.
+"""Public generation for Gemma 4 GGUF artifacts.
 
 This is the adapter between ``LLM.generate()`` and
 :class:`hipengine.runtime.gemma4.Gemma4Runner`. It owns the request protocol -
 tokenization, the decode loop, stop conditions, and the output shape - and
 delegates every forward pass to the runner.
 
-Only the greedy path is implemented. ``_validate_request`` names each unimplemented
-sampling feature rather than silently ignoring it, so a request that asks for
-temperature or top-p fails loudly instead of quietly returning greedy output.
+A greedy request with no logit processors takes the device argmax and never
+brings a logits row to the host. A request with a temperature, top-k, top-p,
+min-p, a repetition, presence or frequency penalty, a logit bias or suppressed
+tokens copies each step's row home and draws from it through
+:class:`hipengine.generation.gemma4_sampling.Gemma4Sampler`. ``_validate_request``
+names every other sampler control rather than silently ignoring it, so a
+request that asks for one fails loudly instead of quietly dropping it.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.gemma4_sampling import Gemma4Sampler
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -261,11 +266,16 @@ class Gemma4GGUFGenerator:
                 started = time.perf_counter()
                 runner.reset()
                 graph_session = self._decode_graph_session_for(runner)
-                # Greedy-only generator (D10): the device argmax route brings
-                # home the token directly; identical tokens to
-                # np.argmax(forward(...)), pinned by the argmax battery and the
-                # campaign bench's public/instrumented path parity.
-                token_id = runner.forward_argmax(list(prompt_ids))
+                sampler = Gemma4Sampler(request, prompt_ids, row_index=row_index)
+                host_sampler = sampler.processes_logits
+                if host_sampler:
+                    token_id = sampler.select(runner.forward(list(prompt_ids)))
+                else:
+                    # The device argmax route (D10) brings home the token
+                    # directly; identical tokens to np.argmax(forward(...)),
+                    # pinned by the argmax battery and the campaign bench's
+                    # public/instrumented path parity.
+                    token_id = runner.forward_argmax(list(prompt_ids))
                 generated: list[int] = []
                 finish_reason = "length"
                 eos_id: int | None = None
@@ -290,12 +300,19 @@ class Gemma4GGUFGenerator:
                         eos_id = token_id
                         break
                     if step + 1 < request.max_tokens:
-                        if graph_session is not None and step >= 1:
-                            # The decode graph replays the step's launches.
-                            # Iteration 0 stays launched: the capture needs one
-                            # normal single-token step first so every kernel it
-                            # records is already loaded, and after a reset the
-                            # first step is that warm step.
+                        # The decode graph replays the step's launches.
+                        # Iteration 0 stays launched: the capture needs one
+                        # normal single-token step first so every kernel it
+                        # records is already loaded, and after a reset the
+                        # first step is that warm step.
+                        replay = graph_session is not None and step >= 1
+                        if host_sampler:
+                            token_id = sampler.select(
+                                graph_session.step(token_id)
+                                if replay
+                                else runner.forward([token_id])
+                            )
+                        elif replay:
                             token_id = graph_session.step_argmax(token_id)
                         else:
                             token_id = runner.forward_argmax([token_id])
@@ -309,7 +326,11 @@ class Gemma4GGUFGenerator:
                             length_limit=(
                                 request.max_tokens if finish_reason == "length" else None
                             ),
-                            sampler_mode="greedy",
+                            sampler_mode=(
+                                "greedy" if not host_sampler
+                                else "processed_argmax" if sampler.greedy
+                                else "host_logits_sample"
+                            ),
                             phase="decode",
                         ),
                     )
@@ -570,21 +591,8 @@ class Gemma4GGUFGenerator:
             yield GenerationStreamChunk.from_value(chunk)
 
     @staticmethod
-    def _validate_request(request: GenerationRequest, *, greedy_top_k: bool = False) -> None:
+    def _validate_request(request: GenerationRequest) -> None:
         blockers: list[str] = []
-        if request.temperature != 0.0:
-            blockers.append("temperature must be 0")
-        allowed_top_k = (0, 1) if greedy_top_k else (0,)
-        if request.top_p != 1.0 or request.top_k not in allowed_top_k or request.min_p != 0.0:
-            blockers.append("top-p/top-k/min-p sampling is not implemented")
-        if (
-            request.repetition_penalty != 1.0
-            or request.presence_penalty != 0.0
-            or request.frequency_penalty != 0.0
-        ):
-            blockers.append("logit penalties are not implemented")
-        if request.logit_bias or request.suppress_token_ids:
-            blockers.append("logit bias/suppression is not implemented")
         if request.stop_token_sequences:
             blockers.append("multi-token stop sequences are not implemented")
         if request.forced_tokens_pending or request.post_thinking_forced_tokens_pending:

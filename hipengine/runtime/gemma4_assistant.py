@@ -40,6 +40,7 @@ otherwise use different arithmetic. See
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -748,12 +749,24 @@ class Gemma4MtpDrafter:
         if self.max_drafts <= 0:
             raise ValueError("max_drafts must be positive")
 
-    def draft(self, token: int, *, hidden_row: int = -1) -> list[int]:
+    def draft(
+        self,
+        token: int,
+        *,
+        hidden_row: int = -1,
+        select: Callable[[np.ndarray], int] | None = None,
+    ) -> list[int]:
         """Propose up to ``max_drafts`` tokens to follow ``token``.
 
         ``token`` is the token the backbone just sampled, not the last token it
         processed: the head's first step is fed the sampled token together with
         the hidden row that produced it.
+
+        ``select`` chooses each drafted token from the head's logits row and is
+        called once per step, in order; the next step is conditioned on what it
+        returned. ``None`` takes the row's argmax. A sampling caller passes its
+        own draw and keeps the distribution it drew from, which the exact
+        speculative accept needs.
         """
 
         self.head.prime(self.runner.hidden_state(row=hidden_row))
@@ -764,7 +777,7 @@ class Gemma4MtpDrafter:
         drafts: list[int] = []
         for _ in range(self.max_drafts):
             logits, _h_next = self.head.forward(token, position=position, shared_kv=shared)
-            token = int(np.argmax(logits))
+            token = int(np.argmax(logits)) if select is None else int(select(logits))
             drafts.append(token)
         return drafts
 

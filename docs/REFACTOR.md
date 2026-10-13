@@ -4,6 +4,22 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## `Gemma4MTPTextProvider.draft_sampling` keeps a most-likely-token draft arm (open 2026-10-13)
+
+A sampled Gemma 4 MTP request draws each draft from the assistant head's
+distribution. `Gemma4MTPTextProvider.draft_sampling = False` makes it offer the
+head's most likely token instead; both are exact under the accept rule. The
+attribute is a class default of `True`, is read by no environment variable or
+request field, and is set only by `scripts/gemma4_mtp_probe.py --draft-law
+point_mass`, which is how the two were compared on the W7900 (acceptance 63.4%
+against 65.9% at temperature 1.0 with top-k 64;
+`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-sampled.json`).
+
+Remove the attribute, the probe option and the `else` branch in the provider's
+`propose` once the same comparison has been run on `hip_gfx1151` and the drawn
+draft is no worse there. If it is worse there, the choice becomes a backend
+capability rather than an attribute.
+
 ## gfx1100 has no kernel-registration refresh hook (found 2026-10-12)
 
 `load_backend_kernel_package` refills registrations a test's registry isolation

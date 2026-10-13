@@ -112,7 +112,7 @@ class _FakeDrafter:
     max_drafts: int = 4
     calls: int = 0
 
-    def draft(self, token: int, *, hidden_row: int = -1) -> list[int]:
+    def draft(self, token: int, *, hidden_row: int = -1, select=None) -> list[int]:
         del token, hidden_row
         self.calls += 1
         drafts = [
@@ -121,7 +121,16 @@ class _FakeDrafter:
         ]
         if self.wrong_at is not None and self.wrong_at < len(drafts):
             drafts[self.wrong_at] = (drafts[self.wrong_at] % (_VOCAB - 1)) + 1
-        return drafts
+        if select is None:
+            return drafts
+        # The provider chooses each draft from the head's logits row; a one-hot
+        # row makes it choose the token this fake intends.
+        chosen = []
+        for draft in drafts:
+            row = np.full((_VOCAB,), -1.0, dtype=np.float32)
+            row[draft] = 1.0
+            chosen.append(int(select(row)))
+        return chosen
 
 
 class _FakeTokenizer:
@@ -323,13 +332,132 @@ def test_default_stop_set_and_eos_override_match_plain_semantics() -> None:
 
 
 @pytest.mark.parametrize("options", [
-    {"logit_bias": {1: 1.0}}, {"suppress_token_ids": (1,)},
-    {"repetition_penalty": 1.1}, {"min_tokens": 1, "eos_token_id": 1},
-    {"stop_token_sequences": ((1, 2),)}, {"top_p": 0.9},
+    {"min_tokens": 1, "eos_token_id": 1},
+    {"stop_token_sequences": ((1, 2),)},
 ])
 def test_mtp_rejects_unsupported_request_controls(options) -> None:
     with pytest.raises(NotImplementedError):
         _run_cycle(budget=2, max_tokens=8, request_options=options)
+
+
+@pytest.mark.parametrize("options", [
+    {"top_p": 0.9}, {"top_k": 1}, {"min_p": 0.1},
+    {"logit_bias": {1: 0.25}}, {"suppress_token_ids": (0,)},
+])
+def test_greedy_mtp_serves_sampler_controls_that_leave_the_argmax_alone(options) -> None:
+    """These were refused; on this target none of them moves the greedy token."""
+
+    run = _run_cycle(budget=4, max_tokens=12, request_options=options)
+    assert run.tokens == _greedy_reference(len(_PROMPT), 12)
+
+
+class _SampledRunner(_FakeRunner):
+    """A target whose row at each position is a spread-out law, not a one-hot."""
+
+    @staticmethod
+    def _row(position: int) -> np.ndarray:
+        rng = np.random.default_rng(1000 + position)
+        row = np.full((_VOCAB,), -30.0, dtype=np.float32)
+        row[rng.choice(_VOCAB, size=5, replace=False)] = rng.normal(0.0, 1.2, size=5)
+        return row
+
+
+@dataclass
+class _SampledDrafter:
+    """A head whose row is the target's own, optionally perturbed."""
+
+    runner: _FakeRunner
+    noise: float = 0.0
+    max_drafts: int = 4
+    calls: int = 0
+
+    def draft(self, token: int, *, hidden_row: int = -1, select=None) -> list[int]:
+        del token, hidden_row
+        self.calls += 1
+        drafts = []
+        for index in range(self.max_drafts):
+            row = self.runner._row(self.runner.position + index).copy()
+            if self.noise:
+                live = row > -20.0
+                row[live] += np.random.default_rng(index + 7 * self.calls).normal(
+                    0.0, self.noise, size=int(live.sum())
+                )
+            drafts.append(int(np.argmax(row)) if select is None else int(select(row)))
+        return drafts
+
+
+def _run_sampled(*, seed: int, budget: int = 3, max_tokens: int = 7, noise: float = 0.0,
+                 draft_sampling: bool = True, temperature: float = 0.9, **options):
+    runner = _SampledRunner()
+    provider = Gemma4MTPTextProvider(
+        target_generator=_FakeGenerator(runner),
+        config=SpeculativeProviderConfig(
+            provider="gemma4_mtp", draft_model="/nonexistent/sidecar.gguf",
+            candidate_budget=budget,
+        ),
+        drafter=_SampledDrafter(runner=runner, noise=noise),
+    )
+    provider.draft_sampling = draft_sampling
+    request = GenerationRequest(
+        prompts=(_PROMPT,), max_tokens=max_tokens, temperature=temperature,
+        ignore_eos=True, seed=seed, **({"top_p": 1.0} | options),
+    )
+    return provider.generate_detailed(request)[0], provider
+
+
+def test_a_sampled_request_is_served_seeded_and_labelled() -> None:
+    first, provider = _run_sampled(seed=4)
+    again, _ = _run_sampled(seed=4)
+    assert first.generated_token_ids == again.generated_token_ids
+    assert len(first.generated_token_ids) == 7
+    assert first.finish_details.sampler_mode == "sampled_speculative_mtp"
+    diagnostics = first.telemetry.diagnostics
+    assert diagnostics["draft_law"] == "sampled"
+    seeds = {_run_sampled(seed=seed)[0].generated_token_ids for seed in range(12)}
+    assert len(seeds) > 1
+    # A head whose law is the target's is never rejected: p/q is one.
+    assert all(cycle.accepted == len(cycle.candidates) for cycle in provider.last_cycles)
+    assert diagnostics["draft_acceptance"] == 1.0
+
+
+def test_a_point_mass_draft_is_accepted_less_often_than_a_sampled_one() -> None:
+    def acceptance(draft_sampling: bool) -> float:
+        proposed = accepted = 0
+        for seed in range(150):
+            _, provider = _run_sampled(seed=seed, draft_sampling=draft_sampling)
+            proposed += sum(len(cycle.candidates) for cycle in provider.last_cycles)
+            accepted += sum(cycle.accepted for cycle in provider.last_cycles)
+        return accepted / proposed
+
+    assert acceptance(True) == 1.0
+    assert acceptance(False) < 0.9
+
+
+@pytest.mark.parametrize("draft_sampling", [True, False])
+@pytest.mark.parametrize("noise", [0.0, 1.5])
+def test_every_committed_position_follows_the_targets_own_law(draft_sampling, noise) -> None:
+    """Whatever the head proposes, each position is drawn from the target's row.
+
+    The fake target's row depends only on the position, so the token at each
+    position has a known law, and the frequencies over many seeds must match it
+    whether the token was an accepted draft, a residual draw or a bonus draw.
+    """
+
+    temperature, max_tokens, trials = 0.9, 6, 2500
+    counts = np.zeros((max_tokens, _VOCAB))
+    for seed in range(trials):
+        output, _ = _run_sampled(
+            seed=seed, noise=noise, draft_sampling=draft_sampling,
+            max_tokens=max_tokens, temperature=temperature,
+        )
+        for index, token in enumerate(output.generated_token_ids):
+            counts[index, token] += 1
+    for index in range(max_tokens):
+        row = _SampledRunner._row(len(_PROMPT) - 1 + index).astype(np.float64) / temperature
+        expected = np.exp(row - row.max())
+        expected /= expected.sum()
+        tolerance = 5.0 * np.sqrt(expected * (1.0 - expected) / trials) + 1e-6
+        assert np.all(np.abs(counts[index] / trials - expected) <= tolerance), index
 
 
 def test_a_rejected_draft_does_not_break_the_greedy_sequence() -> None:

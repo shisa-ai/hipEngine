@@ -21,21 +21,21 @@
   },
   "ledger": {
     "source": "docs/REFACTOR.md",
-    "headings": 429
+    "headings": 430
   },
-  "generated": "2026-10-13T09:27:36+00:00",
-  "commit": "abd264de2",
+  "generated": "2026-10-13T09:42:05+00:00",
+  "commit": "1bef18f19",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 11554,
-    "current": 4322,
+    "entries": 11556,
+    "current": 4324,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1404,
+    "rows": 1405,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1243
+      "status": 1244
     }
   }
 }

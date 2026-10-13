@@ -293,9 +293,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:191",
+      "key": "hipengine/generation/gemma4_gguf.py:196",
       "title": "unimplemented: raise NotImplementedError(\"Gemma 4 server tool-call parsing is not implemented\")",
-      "location": "hipengine/generation/gemma4_gguf.py:191",
+      "location": "hipengine/generation/gemma4_gguf.py:196",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -306,7 +306,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:191"
+          "hipengine/generation/gemma4_gguf.py:196"
         ],
         "tokens": [
           "call",
@@ -320,14 +320,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:191",
-      "evidence_hash": "a159b5cd8fa6"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:196",
+      "evidence_hash": "0f9e5eb4386a"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:546",
+      "key": "hipengine/generation/gemma4_gguf.py:567",
       "title": "unimplemented: raise NotImplementedError(\"Gemma 4 speculative provider is not configured\")",
-      "location": "hipengine/generation/gemma4_gguf.py:546",
+      "location": "hipengine/generation/gemma4_gguf.py:567",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -338,7 +338,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:546"
+          "hipengine/generation/gemma4_gguf.py:567"
         ],
         "tokens": [
           "configured",
@@ -350,14 +350,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:546",
-      "evidence_hash": "a4d90fb8668b"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:567",
+      "evidence_hash": "41c82abaea42"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:568",
+      "key": "hipengine/generation/gemma4_gguf.py:589",
       "title": "unimplemented: raise NotImplementedError(\"Gemma 4 speculative provider is not configured\")",
-      "location": "hipengine/generation/gemma4_gguf.py:568",
+      "location": "hipengine/generation/gemma4_gguf.py:589",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -368,7 +368,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:568"
+          "hipengine/generation/gemma4_gguf.py:589"
         ],
         "tokens": [
           "configured",
@@ -380,14 +380,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:568",
-      "evidence_hash": "f6ebbe62c052"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:589",
+      "evidence_hash": "03629a43e4cc"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:617",
+      "key": "hipengine/generation/gemma4_gguf.py:625",
       "title": "unimplemented: raise NotImplementedError(\"Gemma 4 basic runner: \" + \"; \".join(blockers))",
-      "location": "hipengine/generation/gemma4_gguf.py:617",
+      "location": "hipengine/generation/gemma4_gguf.py:625",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -398,7 +398,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:617"
+          "hipengine/generation/gemma4_gguf.py:625"
         ],
         "tokens": [
           "basic",
@@ -411,14 +411,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:617",
-      "evidence_hash": "8cebe984d3fc"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:625",
+      "evidence_hash": "389eca5d4036"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:76",
+      "key": "hipengine/generation/gemma4_gguf.py:81",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/generation/gemma4_gguf.py:76",
+      "location": "hipengine/generation/gemma4_gguf.py:81",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -429,7 +429,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:76"
+          "hipengine/generation/gemma4_gguf.py:81"
         ],
         "tokens": [
           "notimplementederror",
@@ -437,39 +437,13 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:76",
-      "evidence_hash": "8279d3538375"
-    },
-    {
-      "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:82",
-      "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/generation/gemma4_gguf.py:82",
-      "evidence": {
-        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
-        "why": "NotImplementedError in runtime code"
-      },
-      "signals": [
-        "NotImplementedError in runtime code"
-      ],
-      "hints": {
-        "anchor": "hipengine/generation/gemma4_gguf.py",
-        "refs": [
-          "hipengine/generation/gemma4_gguf.py:82"
-        ],
-        "tokens": [
-          "notimplementederror",
-          "raise",
-          "unimplemented"
-        ]
-      },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:82",
-      "evidence_hash": "475411bc809f"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:81",
+      "evidence_hash": "e2d087561c04"
     },
     {
       "kind": "stub",
       "key": "hipengine/generation/gemma4_gguf.py:87",
-      "title": "unimplemented: raise NotImplementedError(\"Gemma 4 INT8 KV storage implements fp16 or fp32 scales only\")",
+      "title": "unimplemented: raise NotImplementedError(",
       "location": "hipengine/generation/gemma4_gguf.py:87",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
@@ -484,6 +458,32 @@
           "hipengine/generation/gemma4_gguf.py:87"
         ],
         "tokens": [
+          "notimplementederror",
+          "raise",
+          "unimplemented"
+        ]
+      },
+      "id": "stub/hipengine/generation/gemma4_gguf.py:87",
+      "evidence_hash": "61c96ae821e3"
+    },
+    {
+      "kind": "stub",
+      "key": "hipengine/generation/gemma4_gguf.py:92",
+      "title": "unimplemented: raise NotImplementedError(\"Gemma 4 INT8 KV storage implements fp16 or fp32 scales only\")",
+      "location": "hipengine/generation/gemma4_gguf.py:92",
+      "evidence": {
+        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
+        "why": "NotImplementedError in runtime code"
+      },
+      "signals": [
+        "NotImplementedError in runtime code"
+      ],
+      "hints": {
+        "anchor": "hipengine/generation/gemma4_gguf.py",
+        "refs": [
+          "hipengine/generation/gemma4_gguf.py:92"
+        ],
+        "tokens": [
           "fp16",
           "fp32",
           "gemma",
@@ -496,14 +496,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:87",
-      "evidence_hash": "61c96ae821e3"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:92",
+      "evidence_hash": "3c01ab8f5eb6"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_mtp.py:202",
+      "key": "hipengine/generation/gemma4_mtp.py:227",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/generation/gemma4_mtp.py:202",
+      "location": "hipengine/generation/gemma4_mtp.py:227",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -514,7 +514,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_mtp.py",
         "refs": [
-          "hipengine/generation/gemma4_mtp.py:202"
+          "hipengine/generation/gemma4_mtp.py:227"
         ],
         "tokens": [
           "notimplementederror",
@@ -522,34 +522,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_mtp.py:202",
-      "evidence_hash": "4e062023dfe2"
-    },
-    {
-      "kind": "stub",
-      "key": "hipengine/generation/gemma4_mtp.py:206",
-      "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/generation/gemma4_mtp.py:206",
-      "evidence": {
-        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
-        "why": "NotImplementedError in runtime code"
-      },
-      "signals": [
-        "NotImplementedError in runtime code"
-      ],
-      "hints": {
-        "anchor": "hipengine/generation/gemma4_mtp.py",
-        "refs": [
-          "hipengine/generation/gemma4_mtp.py:206"
-        ],
-        "tokens": [
-          "notimplementederror",
-          "raise",
-          "unimplemented"
-        ]
-      },
-      "id": "stub/hipengine/generation/gemma4_mtp.py:206",
-      "evidence_hash": "21e58a3753f4"
+      "id": "stub/hipengine/generation/gemma4_mtp.py:227",
+      "evidence_hash": "a004a4cce7f6"
     },
     {
       "kind": "stub",

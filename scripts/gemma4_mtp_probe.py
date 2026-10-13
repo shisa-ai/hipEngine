@@ -1,10 +1,17 @@
-"""Compare Gemma 4 greedy AR and MTP through the public LLM API.
+"""Compare Gemma 4 plain decoding and MTP through the public LLM API.
 
 Rates count emitted tokens over the whole call, including prefill. This is not
 an isolated decode benchmark. Exit nonzero for missing token IDs, invalid
 lengths, runtime errors, or unequal outputs. The one exception is an MTP arm
 whose telemetry declares that it verifies within the production numerical
-envelope: it reports where it diverged instead of failing on it. A single prompt is diagnostic;
+envelope: it reports where it diverged instead of failing on it.
+
+``--temperature`` above zero compares sampled plain decoding with sampled MTP.
+The two arms then draw different tokens by design, so token identity is not
+checked; the row carries the MTP arm's draft acceptance and tokens per cycle
+instead. ``--draft-law point_mass`` makes the head offer its most likely token
+rather than a draw from its own distribution, which is the comparison arm for
+what a sampled draft gains. A single prompt is diagnostic;
 use category suites and heldouts before making a general speedup claim.
 """
 from __future__ import annotations
@@ -31,6 +38,21 @@ def verify_equivalence(spec) -> str | None:
     """The equivalence the MTP arm's own telemetry declares for its verify pass."""
     diagnostics = getattr(getattr(spec, "telemetry", None), "diagnostics", None) or {}
     return diagnostics.get("verify_equivalence")
+
+
+def cycle_summary(spec) -> dict:
+    """The MTP arm's acceptance and per-phase time, from its own telemetry."""
+    diagnostics = getattr(getattr(spec, "telemetry", None), "diagnostics", None) or {}
+    census = diagnostics.get("phase_census") or {}
+    return {
+        "draft_law": diagnostics.get("draft_law"),
+        "draft_acceptance": diagnostics.get("draft_acceptance"),
+        "tokens_per_cycle": diagnostics.get("tokens_per_cycle"),
+        "proposed_draft_tokens": diagnostics.get("proposed_draft_tokens"),
+        "accepted_draft_tokens": diagnostics.get("accepted_draft_tokens"),
+        "phase_ms": {name: (census.get(name) or {}).get("ms")
+                     for name in ("target_prefill", "proposal", "target_verify", "accept")},
+    }
 
 
 def first_divergence(left, right) -> int | None:
@@ -125,6 +147,13 @@ def main() -> int:
     ap.add_argument("--budget", type=int, default=2)
     ap.add_argument("--samples", type=int, default=1)
     ap.add_argument("--provider", default="gemma4_mtp")
+    ap.add_argument("--temperature", type=float, default=0.0)
+    ap.add_argument("--top-k", type=int, default=0)
+    ap.add_argument("--top-p", type=float, default=1.0)
+    ap.add_argument("--seed", type=int, default=0,
+                    help="base seed; each sample of a prompt adds its index")
+    ap.add_argument("--draft-law", choices=("sampled", "point_mass"), default="sampled",
+                    help="how a sampled request's drafts are proposed")
     ap.add_argument("--json", type=Path, help="write paired results and full model provenance")
     args = ap.parse_args()
     if args.tokens <= 0 or args.budget <= 0 or args.samples <= 0:
@@ -135,20 +164,28 @@ def main() -> int:
     llm = hipengine.LLM(model=args.artifact, speculative_provider=args.provider,
                         draft_model=args.draft, speculative_candidate_budget=args.budget)
     generator = llm._get_text_generator()
+    sampled = args.temperature > 0.0 and args.top_k != 1
+    if args.draft_law == "point_mass":
+        provider = getattr(generator, "_speculative_provider", None)
+        if provider is None or not hasattr(provider, "draft_sampling"):
+            ap.error("this provider has no point-mass draft arm")
+        provider.draft_sampling = False
     print(f"provider: {args.provider}; candidate_budget: {args.budget}")
     print("timing scope: whole public call including prefill; emitted-token denominator")
     results = []
     for case in cases:
         prompt = (generator.render_chat_prompt(case["messages"])
                   if "messages" in case else case["prompt"])
-        params = SamplingParams(max_tokens=args.tokens, temperature=0.0)
-        warmup = SamplingParams(max_tokens=min(8, args.tokens), temperature=0.0)
+        sampler = dict(temperature=args.temperature, top_k=args.top_k, top_p=args.top_p)
+        warmup = SamplingParams(max_tokens=min(8, args.tokens), seed=args.seed, **sampler)
         try:
             # Plain first deliberately leaves state for MTP to reset. Do not
             # reset the private runner here: that would hide request leakage.
             llm.generate([prompt], warmup)
             llm.generate_speculative_mtp_detailed([prompt], warmup)
             for sample in range(args.samples):
+                params = SamplingParams(max_tokens=args.tokens, seed=args.seed + sample,
+                                        **sampler)
                 started = time.perf_counter()
                 plain = llm.generate_detailed([prompt], params)
                 plain_s = time.perf_counter() - started
@@ -160,8 +197,10 @@ def main() -> int:
                 equivalence = verify_equivalence(spec[0])
                 row = compare_outputs(plain[0], spec[0], requested_tokens=args.tokens,
                                       plain_s=plain_s, spec_s=spec_s,
-                                      require_identical=equivalence != ENVELOPE_VERIFY)
+                                      require_identical=(
+                                          not sampled and equivalence != ENVELOPE_VERIFY))
                 row["verify_equivalence"] = equivalence
+                row.update(cycle_summary(spec[0]))
                 row.update(id=case["id"], category=case["category"], sample=sample,
                            source=case.get("source"), prompt=prompt)
                 results.append(row)
@@ -174,6 +213,9 @@ def main() -> int:
     passed = bool(results) and all(row["passed"] for row in results)
     report = {"schema": "hipengine.gemma4.mtp_probe.v1", "performance_claim": False,
               "passed": passed, "candidate_budget": args.budget, "results": results,
+              "sampler": {"temperature": args.temperature, "top_k": args.top_k,
+                          "top_p": args.top_p, "seed": args.seed,
+                          "draft_law": args.draft_law if sampled else "point_mass"},
               "limitations": ["Whole-call timing is not isolated decode throughput.",
                               "Token equality is a greedy self-consistency check, not a task-quality gate.",
                               "Plain-first ordering checks inherited state but is not order-balanced timing."]}
