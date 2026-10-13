@@ -388,6 +388,35 @@ CANDIDATES = {
                       "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
         count_registered_dispatch=True,
     ),
+    "fast_composition": CandidateSpec(
+        name="fast_composition",
+        classification="T2",
+        mechanism=(
+            "the complete fast execution profile composition applied to the "
+            "production plan: wide-tile routed F16 GEMMs for every grouped "
+            "routed-expert dispatch, the F16 dense wide route at layers 0-47 "
+            "(which carries the hyper-connection down projection), the "
+            "hyper-connection up projection on the wide route, the "
+            "small-matrix F16 WMMA GEMM for the indexer projections, and the "
+            "F16-operand router-logits producer"
+        ),
+        environment={
+            "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
+            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
+                str(layer) for layer in range(48)
+            ),
+            "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
+            "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
+            "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_f16_wmma_gemm",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-fast-composition",
+        candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                       "selected_routed_f16_dual_silu_wmma_prefill_bf16_bf16_out"),
+        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                      "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
+        count_registered_dispatch=True,
+    ),
     "mx1_full_route": CandidateSpec(
         name="mx1_full_route",
         classification="T1",
