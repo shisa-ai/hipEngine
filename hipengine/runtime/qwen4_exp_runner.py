@@ -6865,16 +6865,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         if self.prefill_chunk_size <= 0:
             raise ValueError("Qwen4Exp prefill_chunk_size must be positive")
         load_backend_kernel_package(self.backend)
-        self.gdn_bindings = {
-            layer: bind_qwen4_exp_gdn_layer(resident, layer)
-            for layer, kind in enumerate(self.config.layer_types)
-            if kind == "gdn"
-        }
-        self.qsa_bindings = {
-            layer: bind_qwen4_exp_qsa_layer(resident, layer)
-            for layer, kind in enumerate(self.config.layer_types)
-            if kind == "qsa"
-        }
+        self.rebind_resident_weights()
         self.state: Qwen4ExpDecodeState | None = None
         self.gdn_scratch: Qwen4ExpGDNLayerScratch | None = None
         self.qsa_scratch: Qwen4ExpQSALayerScratch | None = None
@@ -7158,6 +7149,26 @@ class Qwen4ExpGGUFResidentModelRunner:
         )
         self._q8_mmq_buffers = (workspace, risk_count, risk_indices)
         self._buffers.extend(self._q8_mmq_buffers)
+
+    def rebind_resident_weights(self) -> None:
+        """Bind every layer to the resident set's current weight objects.
+
+        The layer bindings hold weight objects, not slots, so a weight
+        published through ``swap_weight`` after construction (a new
+        allocation stage) is only dispatched once the layers are rebound.
+        """
+
+        resident = self.resident
+        self.gdn_bindings = {
+            layer: bind_qwen4_exp_gdn_layer(resident, layer)
+            for layer, kind in enumerate(self.config.layer_types)
+            if kind == "gdn"
+        }
+        self.qsa_bindings = {
+            layer: bind_qwen4_exp_qsa_layer(resident, layer)
+            for layer, kind in enumerate(self.config.layer_types)
+            if kind == "qsa"
+        }
 
     def configure_mmq_prefill_resources(self) -> None:
         """Allocate profile-selected MMQ resources after cold-path binding."""

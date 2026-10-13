@@ -84,6 +84,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64",
         "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
+        "HIPENGINE_QWEN4_EXP_T16_DOWN",
         NORM_F16_PUBLICATION_ENV,
     )
     for name in environment_names:
@@ -726,3 +727,90 @@ def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() ->
             )
             == parent
         ), rows
+
+
+_T16_DOWN_ENV = "HIPENGINE_QWEN4_EXP_T16_DOWN"
+_T16_DOWN_VARIANT = "selected_t16_expert_major_wmma_comp_bf16_bf16_out"
+_T16_DOWN_SCOPES = (
+    "prefill_rows_ge2_lt64_exact_grouped_q5_1_down",
+    "prefill_rows_ge64_lt512_exact_grouped_q5_1_down",
+    "prefill_rows_ge512_k640_exact_grouped_q5_1_down",
+)
+
+
+def test_fast_plan_overrides_only_the_routed_down_scopes() -> None:
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    strict = _selection_map(_resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl"))
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    fast = _resolve(ExecutionProfile.FAST, quant="gguf_ud_q4_k_xl")
+
+    assert fast.profile is ExecutionProfile.FAST
+    assert fast.source_profile is ExecutionProfile.FAST
+    assert fast.manifest["execution_profile"] == "fast"
+    assert fast.manifest_sha256 != production.manifest_sha256
+    assert fast.strict_manifest_sha256 == production.strict_manifest_sha256
+
+    production_rows = _selection_map(production)
+    fast_rows = _selection_map(fast)
+    assert set(fast_rows) == set(production_rows)
+    changed = {key for key in fast_rows if fast_rows[key] != production_rows[key]}
+    assert changed == {("moe_linear", scope) for scope in _T16_DOWN_SCOPES}
+    for key in changed:
+        assert fast_rows[key]["selected_variant"] == _T16_DOWN_VARIANT
+        assert fast_rows[key]["registry_quant"] == "gguf_q5_1"
+        assert (
+            fast_rows[key]["strict_fallback_variant"]
+            == strict[key]["selected_variant"]
+        )
+
+
+def test_fast_is_opt_in_and_registered_only_for_the_in_envelope_quant() -> None:
+    from hipengine.execution_profiles import resolve_default_execution_profile
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    for quant in QWEN4_EXP_QUANTS:
+        assert (
+            resolve_default_execution_profile(
+                model=QWEN4_EXP_MODEL, backend=QWEN4_EXP_BACKEND, quant=quant
+            )
+            is ExecutionProfile.PRODUCTION
+        )
+    unregistered = _resolve(ExecutionProfile.FAST, quant="gguf_q4_k_m")
+    assert unregistered.fell_back_to_strict
+    assert unregistered.source_profile is ExecutionProfile.STRICT
+
+
+def test_fast_binder_populates_tiles_before_publishing_the_route() -> None:
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    fast = _resolve(ExecutionProfile.FAST, quant="gguf_ud_q4_k_xl")
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    events: list[tuple[str, object]] = []
+
+    def populate(slots):
+        events.append(("populate", (tuple(slots), os.environ.get(_T16_DOWN_ENV))))
+        return {}
+
+    fast.binder(SimpleNamespace(populate_t16_resident_stages=populate), fast)
+    assert events == [("populate", (("expert_down",), None))]
+    assert os.environ[_T16_DOWN_ENV] == "1"
+
+    # A later production bind in the same process retracts the fast selector.
+    production.binder(SimpleNamespace(), production)
+    assert os.environ[_T16_DOWN_ENV] == "0"
+
+
+def test_production_binder_leaves_a_caller_set_t16_selector_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    monkeypatch.setenv(_T16_DOWN_ENV, "1")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        production.binder(SimpleNamespace(), production)
+    assert os.environ[_T16_DOWN_ENV] == "1"
+    assert not any(_T16_DOWN_ENV in str(w.message) for w in caught)

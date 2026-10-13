@@ -27,6 +27,9 @@ class ExecutionProfile(str, Enum):
     STRICT = "strict"
     PRODUCTION = "production"
     BATCH_INVARIANT = "batch_invariant"
+    # Opt-in throughput profile: reduced-precision operand routes that are not
+    # yet certified against the production envelope. Never a shipped default.
+    FAST = "fast"
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,10 +266,15 @@ def validate_variant_manifest(payload: Mapping[str, Any]) -> dict[str, Any]:
         if key in keys:
             raise ValueError(f"duplicate variant selection for layer/scope: {key!r}")
         keys.add(key)
-        if profile in {ExecutionProfile.PRODUCTION, ExecutionProfile.BATCH_INVARIANT}:
+        if profile in {
+            ExecutionProfile.PRODUCTION,
+            ExecutionProfile.BATCH_INVARIANT,
+            ExecutionProfile.FAST,
+        }:
             if item["strict_fallback_variant"] is None:
                 raise ValueError(
-                    "production and batch_invariant selections require a strict fallback"
+                    "production, batch_invariant, and fast selections require a "
+                    "strict fallback"
                 )
     selections.sort(key=lambda item: (item["layer"], item["scope"], item["selected_variant"]))
     return {
