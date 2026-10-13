@@ -155,6 +155,9 @@ __global__ void gated_mean_f32_kernel(
   }
 }
 
+// STORE_GATE false leaves gate_logits untouched, for callers that do not
+// read the gate afterwards; the mixed output is the same either way.
+template <bool STORE_GATE>
 __global__ void gated_mean_sigmoid_f32_kernel(
     const float* __restrict__ normalized,
     float* __restrict__ gate_logits,
@@ -170,7 +173,9 @@ __global__ void gated_mean_sigmoid_f32_kernel(
     for (int64_t branch = 0; branch < branches; ++branch) {
       const int64_t index = row * residual_width + branch * hidden + column;
       const float gate = 1.0f / (1.0f + expf(-gate_logits[index]));
-      gate_logits[index] = gate;
+      if constexpr (STORE_GATE) {
+        gate_logits[index] = gate;
+      }
       value += normalized[index] * gate;
     }
     output[row * hidden + column] = value / static_cast<float>(branches);
@@ -371,27 +376,31 @@ extern "C" int hipengine_qwen4_exp_gated_mean_f32(
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int hipengine_qwen4_exp_gated_mean_sigmoid_f32(
-    const void* normalized,
-    void* gate_logits,
-    void* output,
-    int64_t rows,
-    int64_t branches,
-    int64_t hidden,
-    hipStream_t stream) {
-  if (!normalized || !gate_logits || !output ||
-      rows <= 0 || branches <= 0 || hidden <= 0) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  constexpr int threads = 256;
-  const uint32_t column_tiles = static_cast<uint32_t>((hidden + threads - 1) / threads);
-  hipLaunchKernelGGL(
-      gated_mean_sigmoid_f32_kernel,
-      dim3(static_cast<uint32_t>(rows) * column_tiles), dim3(threads), 0, stream,
-      static_cast<const float*>(normalized), static_cast<float*>(gate_logits),
-      static_cast<float*>(output), branches, hidden);
-  return static_cast<int>(hipGetLastError());
+#define QWEN4_EXP_GATED_MEAN_SIGMOID_ENTRY(NAME, STORE_GATE) \
+extern "C" int NAME( \
+    const void* normalized, \
+    void* gate_logits, \
+    void* output, \
+    int64_t rows, \
+    int64_t branches, \
+    int64_t hidden, \
+    hipStream_t stream) { \
+  if (!normalized || !gate_logits || !output || \
+      rows <= 0 || branches <= 0 || hidden <= 0) { \
+    return static_cast<int>(hipErrorInvalidValue); \
+  } \
+  constexpr int threads = 256; \
+  const uint32_t column_tiles = static_cast<uint32_t>((hidden + threads - 1) / threads); \
+  hipLaunchKernelGGL( \
+      gated_mean_sigmoid_f32_kernel<STORE_GATE>, \
+      dim3(static_cast<uint32_t>(rows) * column_tiles), dim3(threads), 0, stream, \
+      static_cast<const float*>(normalized), static_cast<float*>(gate_logits), \
+      static_cast<float*>(output), branches, hidden); \
+  return static_cast<int>(hipGetLastError()); \
 }
+QWEN4_EXP_GATED_MEAN_SIGMOID_ENTRY(hipengine_qwen4_exp_gated_mean_sigmoid_f32, true)
+QWEN4_EXP_GATED_MEAN_SIGMOID_ENTRY(hipengine_qwen4_exp_gated_mean_sigmoid_no_gate_f32, false)
+#undef QWEN4_EXP_GATED_MEAN_SIGMOID_ENTRY
 
 extern "C" int hipengine_qwen4_exp_gr_write_bf16_f32(
     const void* residual,

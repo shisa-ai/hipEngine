@@ -348,15 +348,22 @@ def qwen4_exp_gated_mean_sigmoid_f32(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    store_gate: bool = True,
 ) -> None:
-    """Collapse normalized branches with sigmoid-transformed gate logits."""
+    """Collapse normalized branches with sigmoid-transformed gate logits.
+
+    ``store_gate=False`` leaves the logits buffer untouched for a caller that
+    does not read the gate afterwards; the output is bit-identical.
+    """
 
     _check_shape(rows, branches, hidden)
     library = library or build_qwen4_exp_gr(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
-        "hipengine_qwen4_exp_gated_mean_sigmoid_f32",
+        "hipengine_qwen4_exp_gated_mean_sigmoid_f32"
+        if store_gate
+        else "hipengine_qwen4_exp_gated_mean_sigmoid_no_gate_f32",
         _ARGS_MEAN,
         ctypes.c_int,
     )
