@@ -24,16 +24,23 @@ canonical 12-case protocol with one warmup and three repetitions, measured
 
 | Prompt length | Prefill tok/s | Decode (128) tok/s |
 | ---: | ---: | ---: |
-| 512 | **769.2** | 20.91 |
-| 1024 | **932.9** | 20.15 |
-| 4096 | **1108.4** | 20.57 |
+| 512 | **779.4** | 20.94 |
+| 1024 | **977.9** | 20.18 |
+| 4096 | **1190.3** | 20.59 |
+| 8192 | **1158.8** | 20.53 |
+| 16384 | **1133.1** | 20.43 |
+
+The 8192- and 16384-token rows come from a second 12-case fixture (1024 /
+8192 / 16384 tokens) run under the same protocol; its 1024-token cases are
+token-identical to the canonical ones and measured 978.7.
 
 The production plan runs the routed experts, the dense projections at every
 layer, the hyper-connection, indexer and router projections and the prefill
 attention on F16-operand matrix kernels with F32 accumulation, and the tiled
 GDN recurrence at every GDN layer; every route keeps a registered strict
-fallback. The plan it replaced measured 305.6 / 331.6 / 335.5 prefill on the
-same host and protocol the same day, with the same decode rates.
+fallback. The plan it replaced measured 305.6 / 331.6 / 335.5 prefill at
+512 / 1024 / 4096 tokens on the same host and protocol the same day, with the
+same decode rates.
 
 Against the `strict` teacher on the 18-prompt full-vocabulary gate (450
 teacher-forced rows): mean KL 6.5e-4, p95 3.5e-3, max 0.012, top-1 99.56%,
@@ -44,7 +51,8 @@ KL 0.049 (the replaced plan: 15/18 and 0.0052). On four prompts of about
 outside the calibrated limit of 1e-3; a control that only reorders one
 projection's F32 summation measures the same 2.1e-3, so that length is
 reported as a sensitivity measurement rather than a route verdict.
-[Rates, gates, battery and long-context isolation](results/2026-10-14-qwen4exp-production-f16-composition/README.md)
+[Current rates, ladder and kernel attribution](results/2026-10-14-qwen4exp-prefill-exact-kernels-and-ladder/README.md)
+· [gates, battery and long-context isolation](results/2026-10-14-qwen4exp-production-f16-composition/README.md)
 · [attention kernel](results/2026-10-14-qwen4exp-fast-qsa-wmma/README.md)
 · [GDN norm/gate kernel](results/2026-10-14-qwen4exp-gdn-norm-gate-waves/README.md)
 · [indexer and router GEMM](results/2026-10-13-qwen4exp-fast-indexer-f16-gemm/README.md)
@@ -64,12 +72,12 @@ per-case medians.
 
 | Engine | p512 | p1024 | p4096 | Decode at p4096 |
 | --- | ---: | ---: | ---: | ---: |
-| hipEngine production (2026-10-13) | 769.2 | 932.9 | 1108.4 | 20.6 |
+| hipEngine production (2026-10-13) | 779.4 | 977.9 | 1190.3 | 20.6 |
 | halo-box `strix-llama.cpp` master `6aa81b88e` (2026-10-12) | 759.3 | 1109.1 | 1446.4 | 25.1 |
 | gufo `v0.12.0` (2026-10-12) | 1095.0 | 1482.2 | 1736.4 | 28.1 |
 
-At p4096, halo-box is 1.30x and gufo is 1.57x hipEngine's prefill rate; at
-p512 hipEngine is level with halo-box. The external rows were measured a day
+At p4096, halo-box is 1.22x and gufo is 1.46x hipEngine's prefill rate; at
+p512 hipEngine is ahead of halo-box. The external rows were measured a day
 earlier on the same host and have not been rerun. The hipEngine column is the
 weighted rate per prompt length.
 The 18-prompt quality battery reports 14/18 strict-exact for hipEngine,

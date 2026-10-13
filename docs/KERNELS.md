@@ -625,6 +625,17 @@ the parent on any geometry. Correctness test:
 `tests/test_gpu_qwen4exp_qsa_score_tiled.py` (bitwise parity over ragged
 tiles and ReLU/zero edges, plus the CPU reference). It runs in every profile.
 
+## Qwen4Exp fused sigmoid gated mean without a gate store
+
+`fused/qwen4_exp_gr.hip` `gated_mean_sigmoid_f32_kernel<STORE_GATE>`: the
+`false` instantiation (`qwen4_exp_gated_mean_sigmoid_f32(store_gate=False)`)
+applies the sigmoid inside the gated-mean pass and leaves the logits buffer
+untouched. The wide hyper-connection up route uses it in place of
+`sigmoid_f32` followed by `gated_mean_f32`; no caller reads the gate after a
+hyper-connection read, and on that route `scratch.gate` holds logits. The
+mixed output is bit-identical to the pair. Correctness test:
+`tests/test_gpu_qwen4exp_gr_sigmoid_mean_no_gate.py`.
+
 ## Qwen4Exp GDN eight-wave norm/gate
 
 `linear_attn/qwen4_exp_gdn.hip` gains
