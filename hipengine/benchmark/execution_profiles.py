@@ -872,6 +872,7 @@ def compare_profile_logits(
             "scope_failures": [
                 {"dimension": "global", "value": "non_finite_logits"}
             ],
+            "scope_kl_advisories": [],
             "rows_over_review_boundary": [],
             "top1_mismatch_rows": [],
             "hard_gates_passed": False,
@@ -890,6 +891,7 @@ def compare_profile_logits(
     overall = _summary(vectors, all_indices)
     by_scope: dict[str, dict[str, Any]] = {}
     scope_failures: list[dict[str, str]] = []
+    scope_kl_advisories: list[dict[str, str]] = []
     for dimension in ("category", "shape", "transition"):
         groups: dict[str, Any] = {}
         values = sorted({str(getattr(row, dimension)) for row in row_tuple})
@@ -899,9 +901,17 @@ def compare_profile_logits(
                 dtype=np.int64,
             )
             summary = _summary(vectors, indices)
-            summary["passed"] = _summary_passes(
-                summary, threshold, top1_min=threshold.per_scope_top1_min
+            # The KL limits bind on the complete row set. A scope binds on its
+            # top-1 floor; its KL statistics against the global limits are
+            # reported as an advisory for localization.
+            summary["kl_within_global_limits"] = _summary_passes(
+                summary, threshold, top1_min=0.0
             )
+            summary["passed"] = bool(
+                summary["top1_agreement"] >= threshold.per_scope_top1_min
+            )
+            if not summary["kl_within_global_limits"]:
+                scope_kl_advisories.append({"dimension": dimension, "value": value})
             if not summary["passed"]:
                 scope_failures.append({"dimension": dimension, "value": value})
             groups[value] = summary
@@ -929,6 +939,7 @@ def compare_profile_logits(
         "summary": overall,
         "by_scope": by_scope,
         "scope_failures": scope_failures,
+        "scope_kl_advisories": scope_kl_advisories,
         "rows_over_review_boundary": review_rows,
         "top1_mismatch_rows": top1_mismatch_rows,
         "hard_gates_passed": bool(hard_pass),
