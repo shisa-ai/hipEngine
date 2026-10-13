@@ -81,6 +81,9 @@ _FAST_BINDER_ENV = {
     "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
         map(str, FAST_Q8_DENSE_WIDE_PREFILL_LAYERS)
     ),
+    # The tiled GDN recurrence at every GDN layer (production certifies it
+    # for layers 27-47 and runs the register-state recurrence below).
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(48))),
 }
 # Route selectors only the fast binder publishes; a later strict or
 # production bind in the same process retracts them to "0".

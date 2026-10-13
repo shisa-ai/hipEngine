@@ -609,6 +609,23 @@ relative-error bound, all four quants, every tile width, ragged buckets and
 non-tile-multiple output widths). Evidence:
 `benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md`.
 
+## Qwen4Exp GDN eight-wave norm/gate
+
+`linear_attn/qwen4_exp_gdn.hip` gains
+`qwen4_exp_gdn_core_norm_gate_waves_f32_kernel`, the per-head RMS norm,
+weight and sigmoid output gate that follows the column-warp and tiled GDN
+recurrences. The parent `qwen4_exp_gdn_core_norm_gate_f32_kernel` launches one
+32-thread workgroup per (token, value head): 196,608 workgroups for a
+4096-token chunk at 48 heads, about 10 ms per layer, nearly all of it launch
+overhead. The eight-wave kernel runs the same per-lane partial sums, the same
+wave reduction and the same epilogue with one (token, head) pair per wave,
+eight pairs per 256-thread workgroup, and reads the sum from lane 0 as the
+parent does. The result is **bit-identical** (T0), so all four internal
+launch sites use it in every profile. The parent stays reachable through
+`qwen4_exp_gdn_core_norm_gate_f32` as the strict reference. Parity test:
+`tests/test_gpu_qwen4exp_gdn_norm_gate_waves.py`. Evidence:
+`benchmarks/results/2026-10-14-qwen4exp-gdn-norm-gate-waves/README.md`.
+
 ## Qwen4Exp WMMA QSA prefill attention
 
 `attention/qwen4_exp_qsa_wmma.{hip,py}` registers

@@ -8886,18 +8886,21 @@ the exact grouped chains if the routed F16 GEMMs are promoted to
 
 ## Fast-profile routes the manifest does not enumerate
 
-The Qwen4Exp `fast` binder widens two routes through binder-owned
+The Qwen4Exp `fast` binder widens three routes through binder-owned
 environment values that have no manifest row: the F16 dense wide route's
 layer window (`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`, 0-47 under `fast`,
-13-47 under `production`) and the hyper-connection up projection on the wide
-route (`HIPENGINE_QWEN4_EXP_GR_WIDE`). The production plan has the same gap
+13-47 under `production`), the tiled GDN recurrence's layer window
+(`HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS`, every GDN layer under `fast`,
+27-47 under `production`; the manifest's GDN rows name the 27-47 scope), and
+the hyper-connection up projection on the wide route
+(`HIPENGINE_QWEN4_EXP_GR_WIDE`). The production plan has the same gap
 for its own 13-47 window: only the K10240/N320 tail leaf is a declared
 scope. The fast manifest hash therefore changes with the routed-expert and
 router selections but not with these two.
 
-Removal condition: add strict scopes for the dense wide layer window and the
-hyper-connection up projection, declare them in the production and fast
-plans, and have the binder publish the window from the manifest row the way
+Removal condition: add strict scopes for the dense wide layer window, the
+GDN recurrence below layer 27 and the hyper-connection up projection, declare
+them in the production and fast plans, and have the binder publish the window from the manifest row the way
 it already does for the router producer.
 
 ## The small-matrix F16 GEMM selector
