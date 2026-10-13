@@ -337,15 +337,19 @@ at mean KL `1.206e-3` (18 rows) and `mixed_ja_en` at mean `1.108e-3`, p95
 pass: 15 of 18 strict-exact task outputs with three deterministic
 divergences, the same count the arithmetic-recovery plan measured.
 
-The gate prompts are short, so the attention route's sparse window (contexts
-past the dense-equivalent limit) is exercised by its kernel test and by the
-4096-token throughput cases, not by a teacher-forced row. The plan it
+The default gate prompts are short. On four prompts of about 2,000 to 2,600
+tokens the plan measures mean/p95/max KL `2.10e-3/1.28e-2/2.06e-2` with top-1
+99/100, outside the envelope, and so does every comparison arm that is not
+bit-identical to `strict`, including an F32 summation-order change in a
+single projection (`2.09e-3/1.05e-2/4.81e-2`); see the long-context note in
+section 6.1. The plan it
 replaced, the arithmetic-recovery composition alone, measured mean/p95/p99/max
 KL `3.065e-4/1.785e-3/4.271e-3/7.771e-3` with a bit-identical `prefill_last`
 scope; it remains reachable by clearing the composition's selectors after the
 binder. On the canonical 12-case protocol the composition moves weighted
 prefill at p512/p1024/p4096 from `306.6/331.4/337.2` to
-`769.8/935.1/1104.8 tok/s` on the same host. Evidence:
+`769.2/932.9/1108.4 tok/s` on the same host. Evidence:
+[`rates, gates and long-context isolation`](../benchmarks/results/2026-10-14-qwen4exp-production-f16-composition/README.md),
 [`composition gate`](../benchmarks/results/2026-10-14-qwen4exp-fast-composition-gate-2/README.md),
 [`recovery gate`](../benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-gate/gate.json).
 
@@ -497,7 +501,22 @@ a per-row limit, so it holds in every scope whenever it holds globally. This
 is an owner decision dated 2026-10-13 UTC: a scope of 18 to 100 rows estimates a
 mean or a p95 far more noisily than the 450-row set does, and a candidate
 inside every global limit was being rejected on a scope mean 10-20% over a
-limit calibrated for the whole set. Rows with KL above `2e-2`
+limit calibrated for the whole set.
+
+**Long prompts are an open calibration item.** The envelope was calibrated
+on prompts of tens to hundreds of tokens. On 2,000-token-class prompts for
+`qwen4_exp_gguf` / `gguf_ud_q4_k_xl`, a round-off-class perturbation (one
+projection's F32 summation order) measured mean KL `2.09e-3` against
+`strict`, a complete F16-operand composition measured `2.10e-3`, and single
+F16 routes measured `1.6e-3` to `2.3e-3` without adding. The limits above
+therefore cannot be met by any non-bit-identical plan at that length and do
+not separate routes there. Until a long-context suite is calibrated, a
+long-prompt gate is reported alongside a round-off control measured on the
+same prompts and is diagnostic, not binding; the short-suite gate, top-1
+floors and task checks bind. Evidence:
+[`long-context isolation`](../benchmarks/results/2026-10-14-qwen4exp-production-f16-composition/README.md).
+
+Rows with KL above `2e-2`
 require explicit top-k overlap, strict logit-margin, finite-state, and
 applicable task diagnosis even when the absolute `5e-2` ceiling passes; they
 are never admitted automatically. Every applicable task/heldout check must pass

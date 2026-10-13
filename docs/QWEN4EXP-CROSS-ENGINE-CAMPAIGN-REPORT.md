@@ -83,7 +83,7 @@ Same host and protocol as the baseline table above:
 | Engine / profile | p512 | p1024 | p4096 | p4096 decode |
 | --- | ---: | ---: | ---: | ---: |
 | hipEngine `production` before the composition | 306.6 | 331.4 | 337.2 | 20.6 |
-| hipEngine `production` with the composition | 768.4 | 930.6 | 1101.8 | 20.6 |
+| hipEngine `production` with the composition | 769.2 | 932.9 | 1108.4 | 20.6 |
 | halo-box master `6aa81b88e` (2026-10-12) | 759.3 | 1109.1 | 1446.4 | 25.1 |
 | gufo `v0.12.0` (2026-10-12) | 1095.0 | 1482.2 | 1736.4 | 28.1 |
 
@@ -101,7 +101,7 @@ the pass-1 battery with aligned top-1 agreement 1.00 (halo-box 11/18, gufo
 13/18 under the same scoring), and on the full-vocabulary layer2 gate mean KL
 6.49e-04, max 0.012, top-1 99.56%, 15/18 strict-exact tasks.
 
-Remaining gap to gufo at p4096 is 1.58x in prefill rate and 1.36x in decode.
+Remaining gap to gufo at p4096 is 1.57x in prefill rate and 1.36x in decode.
 The largest remaining prefill items are the dense projections, the
 hyper-connection elementwise chain, and attention block scoring; decode has
 not been worked on. A new reduced-precision route lands in `fast` first and
