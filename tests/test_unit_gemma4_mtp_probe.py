@@ -83,3 +83,26 @@ def test_probe_main_fails_on_equal_text_with_different_ids(monkeypatch):
     monkeypatch.setattr(probe.os.path, "exists", lambda _: True)
     monkeypatch.setattr("sys.argv", ["probe", "--tokens", "2"])
     assert probe.main() == 1
+
+
+def test_an_envelope_arm_reports_its_divergence_instead_of_failing():
+    row = probe.compare_outputs(output((1, 2, 3)), output((1, 9, 3), text="other"),
+                                requested_tokens=3, plain_s=2, spec_s=1,
+                                require_identical=False)
+    assert row["passed"] and row["speedup"] == 2
+    assert not row["tokens_identical"] and row["first_divergence"] == 1
+    assert not row["identity_required"]
+
+
+def test_an_envelope_arm_still_fails_on_missing_ids_and_bad_lengths():
+    for spec in (output(None), output((1, 2, 3, 4))):
+        row = probe.compare_outputs(output((1, 2, 3)), spec, requested_tokens=3,
+                                    plain_s=2, spec_s=1, require_identical=False)
+        assert not row["passed"]
+
+
+def test_only_a_declared_envelope_relaxes_identity():
+    declared = SimpleNamespace(telemetry=SimpleNamespace(
+        diagnostics={"verify_equivalence": probe.ENVELOPE_VERIFY}))
+    assert probe.verify_equivalence(declared) == probe.ENVELOPE_VERIFY
+    assert probe.verify_equivalence(output((1,))) is None

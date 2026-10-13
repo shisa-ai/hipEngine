@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "kind": "gemma4_gfx1100_mtp_exact_verify",
+  "date": "2026-10-13",
+  "performance_claim": true,
+  "question": "Why is a Gemma 4 MTP verify block not the arithmetic of one-token decode, what does an exact verify cost, and how far apart are the two?",
+  "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL target, mtp-gemma-4-26B-A4B-it-Q8_0 assistant head, BF16 KV",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "host": "epyc"
+  },
+  "hipengine_commit": "abd264de2 plus this change",
+  "cause": {
+    "dense_projections": "a multi-row block took the WMMA prefill kernels; with them off, row 0 of layer 0 is bit-identical to the one-token step",
+    "attention": "the decode kernel partitions its reduction by the key count it is handed; first differing layers 2 to 4 at 600 and 1100 prompt tokens once dense was exact",
+    "router": "the fused one-token router reduces its projection in a different order from the multi-row chain; 1 to 8 differing bytes in the routing weights at the first differing (layer, row)"
+  },
+  "row_equality": {
+    "method": "after the same prefill, K tokens forwarded one at a time against one K-row forward with logits_rows=K, verification=True; prompts of 120, 600 and 1100 tokens; K of 3, 5, 7 and 9; 72 rows per arm",
+    "exact_verify": {
+      "production": "72 of 72 rows bitwise equal",
+      "strict": "72 of 72 rows bitwise equal"
+    },
+    "envelope_verify_production": {
+      "rows_bitwise_equal": 0,
+      "row_kl_min_of_per_config_max": 5.79e-08,
+      "row_kl_max": 0.0882,
+      "argmax_changes": 0
+    },
+    "envelope_verify_strict_profile_with_exact_off": {
+      "rows_bitwise_equal": 0,
+      "row_kl_max": 0.0166,
+      "argmax_changes": 0
+    }
+  },
+  "verify_block_ms_median": {
+    "method": "25 repetitions after a 600-token prompt, first 5 dropped, rewind between repetitions, production profile",
+    "rows": [
+      1,
+      3,
+      5,
+      7,
+      9
+    ],
+    "envelope": [
+      14.07,
+      23.86,
+      27.95,
+      32.68,
+      56.73
+    ],
+    "exact": [
+      13.91,
+      23.39,
+      33.48,
+      43.87,
+      66.4
+    ],
+    "one_token_decode_ms": 12.8
+  },
+  "public_path": {
+    "command": "scripts/gemma4_mtp_probe.py --artifact <target> --draft <head> --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --suite benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --tokens 128 --budget 4 --samples 2",
+    "timing_scope": "whole public call including prefill of short prompts, 128 greedy tokens; plain call first, then MTP; nothing else running",
+    "arms": {
+      "production_envelope_default": {
+        "plain_tok_s": 73.7,
+        "mtp_tok_s": 102.8,
+        "ratio": 1.395,
+        "prompts_token_identical": "11 of 18",
+        "ratio_by_category": {
+          "code": 1.53,
+          "general_en": 1.34,
+          "general_ja": 1.28,
+          "mixed_ja_en": 1.4
+        }
+      },
+      "production_exact_forced": {
+        "plain_tok_s": 73.5,
+        "mtp_tok_s": 88.5,
+        "ratio": 1.204,
+        "prompts_token_identical": "18 of 18",
+        "ratio_by_category": {
+          "code": 1.28,
+          "general_en": 1.18,
+          "general_ja": 1.11,
+          "mixed_ja_en": 1.21
+        },
+        "note": "forced by overriding the generator's verify_dense_exact property in a wrapper script; not a shipped setting"
+      },
+      "strict_exact_default": {
+        "plain_tok_s": 73.2,
+        "mtp_tok_s": 87.5,
+        "ratio": 1.194,
+        "prompts_token_identical": "18 of 18",
+        "ratio_by_category": {
+          "code": 1.27,
+          "general_en": 1.19,
+          "general_ja": 1.07,
+          "mixed_ja_en": 1.23
+        }
+      }
+    }
+  },
+  "decision": "The production profile keeps the envelope verify, the strict profile verifies exactly, and the provider's telemetry reports which one ran.",
+  "limitations": [
+    "Whole-call timing is not isolated decode throughput.",
+    "Row equality was checked to 1100 prompt tokens and nine rows, not at long context.",
+    "Not measured on hip_gfx1151."
+  ]
+}

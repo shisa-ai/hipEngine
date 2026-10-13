@@ -1,8 +1,10 @@
 """Compare Gemma 4 greedy AR and MTP through the public LLM API.
 
 Rates count emitted tokens over the whole call, including prefill. This is not
-an isolated decode benchmark. Exit nonzero for missing token IDs, unequal
-outputs, invalid lengths, or runtime errors. A single prompt is diagnostic;
+an isolated decode benchmark. Exit nonzero for missing token IDs, invalid
+lengths, runtime errors, or unequal outputs. The one exception is an MTP arm
+whose telemetry declares that it verifies within the production numerical
+envelope: it reports where it diverged instead of failing on it. A single prompt is diagnostic;
 use category suites and heldouts before making a general speedup claim.
 """
 from __future__ import annotations
@@ -22,10 +24,32 @@ MODEL_DIR = "/models/gguf/gemma-4-26B-A4B-it-GGUF"
 DEFAULT_ARTIFACT = f"{MODEL_DIR}/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
 DEFAULT_DRAFT = f"{MODEL_DIR}/mtp-gemma-4-26B-A4B-it-Q8_0.gguf"
 DEFAULT_PROMPT = "Explain in a few sentences why the sky is blue."
+ENVELOPE_VERIFY = "production_envelope_of_target_ar_greedy"
 
 
-def compare_outputs(plain, spec, *, requested_tokens: int, plain_s: float, spec_s: float) -> dict:
-    """Validate a paired result before publishing its rate ratio."""
+def verify_equivalence(spec) -> str | None:
+    """The equivalence the MTP arm's own telemetry declares for its verify pass."""
+    diagnostics = getattr(getattr(spec, "telemetry", None), "diagnostics", None) or {}
+    return diagnostics.get("verify_equivalence")
+
+
+def first_divergence(left, right) -> int | None:
+    """Index of the first differing token, or ``None`` when one is a prefix."""
+    for index, (a, b) in enumerate(zip(left or (), right or ())):
+        if a != b:
+            return index
+    return None
+
+
+def compare_outputs(plain, spec, *, requested_tokens: int, plain_s: float, spec_s: float,
+                    require_identical: bool = True) -> dict:
+    """Validate a paired result before publishing its rate ratio.
+
+    ``require_identical`` is the contract of an MTP arm whose verify pass is
+    bit-identical to one-token decode. An arm that verifies within the
+    production numerical envelope may commit a different token at a near tie,
+    so for it a divergence is recorded, with its position, and is not an error.
+    """
     ids = [getattr(value, "generated_token_ids", None) for value in (plain, spec)]
     reasons = [getattr(getattr(value, "finish_details", None), "reason", None)
                for value in (plain, spec)]
@@ -40,11 +64,13 @@ def compare_outputs(plain, spec, *, requested_tokens: int, plain_s: float, spec_
             errors.append(f"{name}: short output without EOS or stop")
     tokens_equal = all(tokens is not None for tokens in ids) and tuple(ids[0]) == tuple(ids[1])
     text_equal = plain.text == spec.text
-    if not tokens_equal:
-        errors.append("generated token IDs differ or are missing")
-    if not text_equal:
+    if any(tokens is None for tokens in ids):
+        errors.append("generated token IDs are missing")
+    elif require_identical and not tokens_equal:
+        errors.append("generated token IDs differ")
+    if require_identical and not text_equal:
         errors.append("decoded text differs")
-    if reasons[0] != reasons[1]:
+    if reasons[0] != reasons[1] and (require_identical or tokens_equal):
         errors.append("finish reasons differ")
     valid_time = all(math.isfinite(t) and t > 0 for t in (plain_s, spec_s))
     if not valid_time:
@@ -60,6 +86,8 @@ def compare_outputs(plain, spec, *, requested_tokens: int, plain_s: float, spec_
         "plain_tok_s": counts[0] / plain_s if valid_time and counts[0] is not None else None,
         "spec_tok_s": counts[1] / spec_s if valid_time and counts[1] is not None else None,
         "tokens_identical": tokens_equal, "text_identical": text_equal,
+        "identity_required": require_identical,
+        "first_divergence": first_divergence(ids[0], ids[1]),
         "fixed_length_complete": counts == [requested_tokens, requested_tokens],
         "speedup": plain_s / spec_s if not errors else None,
         "passed": not errors, "errors": errors,
@@ -129,8 +157,11 @@ def main() -> int:
                 spec_s = time.perf_counter() - started
                 if len(plain) != 1 or len(spec) != 1:
                     raise ValueError("one prompt must produce exactly one output per arm")
+                equivalence = verify_equivalence(spec[0])
                 row = compare_outputs(plain[0], spec[0], requested_tokens=args.tokens,
-                                      plain_s=plain_s, spec_s=spec_s)
+                                      plain_s=plain_s, spec_s=spec_s,
+                                      require_identical=equivalence != ENVELOPE_VERIFY)
+                row["verify_equivalence"] = equivalence
                 row.update(id=case["id"], category=case["category"], sample=sample,
                            source=case.get("source"), prompt=prompt)
                 results.append(row)

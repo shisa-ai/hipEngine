@@ -6,11 +6,11 @@
     "current": 4322,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1405,
+    "rows": 1404,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1244
+      "status": 1243
     }
   },
   "rows": [
@@ -46327,14 +46327,14 @@
         "written": "2026-09-28",
         "age_days": 15,
         "open_by": "status",
-        "continuation_entries": 6,
+        "continuation_entries": 7,
         "open_text": "1. **Find why `llm.generate` does not select the speculative route.** Read the\n   path from `LLM.generate` through the engine loop; the answer is a specific\n   branch, and the last attempt shows guessing at declarations does not find it.\n2. **Add a test that pins the route**, not just the provider: that a generator\n   with an attached provider and a greedy request reaches\n   `execution_path == \"gemma4_mtp_batched_exact_verify\"`.\n3. **Bit-exactness is the reason this can land enabled by default.** The cycle\n   reproduces plain greedy exactly, so promotion does not need the\n   arithmetic-change ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "6 later entries by the same worker share this topic prefix"
+        "7 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49.md",
@@ -46355,7 +46355,7 @@
         ]
       },
       "id": "worklog/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49",
-      "evidence_hash": "21505b5029e9"
+      "evidence_hash": "efcdccd992cd"
     },
     {
       "kind": "worklog",
@@ -52444,43 +52444,6 @@
     },
     {
       "kind": "worklog",
-      "key": "20261003T154601.437764Z-lhl-gemma4-repaired-branch-validation-2e2105",
-      "title": "Complete Gemma repaired-branch all-tier validation",
-      "location": "worklog/entries/20261003T154601.437764Z-lhl-gemma4-repaired-branch-validation-2e2105.md:8",
-      "evidence": {
-        "status": "checkpoint",
-        "worker": "lhl",
-        "topic": "gemma4-repaired-branch-validation",
-        "written": "2026-10-03",
-        "age_days": 10,
-        "open_by": "status",
-        "continuation_entries": 0,
-        "open_text": "- Finish backend edge-case corrections and review.\n- Localize the Maple failure without calling fresh passes a repair.\n- Complete final full-suite validation only after the known failures are resolved.\n- Resolve or explicitly report the measured INT8 quality failure separately.\n- Record final validation and push only after task closure.",
-        "paths_missing": [],
-        "flags_unread": []
-      },
-      "signals": [
-        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
-      ],
-      "hints": {
-        "anchor": "worklog/entries/20261003T154601.437764Z-lhl-gemma4-repaired-branch-validation-2e2105.md",
-        "refs": [],
-        "tokens": [
-          "all",
-          "branch",
-          "complete",
-          "gemma",
-          "repaired",
-          "tier",
-          "validation"
-        ]
-      },
-      "id": "worklog/20261003T154601.437764Z-lhl-gemma4-repaired-branch-validation-2e2105",
-      "evidence_hash": "17474012b046"
-    },
-    {
-      "kind": "worklog",
       "key": "20261003T172301.344614Z-lhl-gemma4-assistant-forward-artifact-guard-009bfc",
       "title": "the assistant-forward module resolves its artifact and guards every node",
       "location": "worklog/entries/20261003T172301.344614Z-lhl-gemma4-assistant-forward-artifact-guard-009bfc.md:8",
@@ -53310,14 +53273,14 @@
         "written": "2026-10-12",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "- Decide the verify contract: make the verify block row-invariant (then the\n  equality claim and the probe's pass condition hold again, at some cost to\n  the verify pass), or state production-envelope equivalence, measure it with\n  the section 2.11 packet, and change the telemetry label and the probe's pass\n  condition. The label is wrong until then.\n- Budget 8 loses the whole gain. Read the cycle telemetry for that row.\n- Sampled requests: `hipengine/speculative/sampling.py` has exact `min(1, p/q)`\n  acceptance with residual resampling and the Qwen MTP route uses it. Gemma\n  needs the accept ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261012T190026.866783Z-lhl-gemma4-mtp-status-820a2d.md",
@@ -53338,7 +53301,7 @@
         ]
       },
       "id": "worklog/20261012T190026.866783Z-lhl-gemma4-mtp-status-820a2d",
-      "evidence_hash": "4aeb8ea3eef6"
+      "evidence_hash": "f9a29f174a04"
     }
   ]
 }

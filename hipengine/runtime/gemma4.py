@@ -59,6 +59,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rope import gemma4_rope_cos_sin
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
     Gemma4LayerGeometry,
     Gemma4LayerKV,
+    Gemma4RowDecodeAttention,
     Gemma4LayerPointers,
     Gemma4LayerScratch,
     gemma4_layer_forward_bf16,
@@ -1043,6 +1044,12 @@ class Gemma4Runner:
     #: reads one row per verified position; the default of one row is what keeps
     #: a wide prefill from sizing its logits scratch for the whole block.
     max_logits_rows: int = 1
+    #: Whether a ``verification=True`` block runs its dense projections on the
+    #: row-exact schedule, which makes every verify row bit-identical to the
+    #: one-token decode step for that position. False runs them on the WMMA
+    #: prefill kernels: faster for a wide block, and equal to one-token decode
+    #: only within the production numerical envelope.
+    verify_dense_exact: bool = True
     #: The prefill-attention variants the execution profile requests, or ``None``
     #: for the layer's own automatic route selection. Verification passes the
     #: explicit strict variant rather than ``None`` so a verify block does not
@@ -1887,14 +1894,20 @@ class Gemma4Runner:
         it forwards a draft in one call and needs the target's own distribution
         at every drafted position, not just the last. ``k`` is bounded by
         ``max_logits_rows``, the constructor's bound on the projection buffers.
-        Each returned row is the same computation a single-token forward would
-        produce for that position: the mask is built from absolute positions, so
-        a row never depends on how many rows accompany it.
+        The mask is built from absolute positions, so a row never depends on
+        how many rows accompany it; whether its arithmetic equals a one-token
+        forward's is the ``verification`` contract below.
 
         ``verification=True`` keeps a batched speculative block on the strict
         attention arithmetic used by target decode rather than the production
         prompt-prefill variants. The strict variant is named explicitly so a
         verify block does not fall onto the layer's automatic tiled route.
+        With ``verify_dense_exact`` (the runner's default) its dense projections
+        also stay on the row-exact schedule, and every returned row is then
+        bit-identical to the one-token forward for that position. A runner built
+        with ``verify_dense_exact=False`` runs them on the WMMA prefill kernels
+        instead, and its rows match one-token decode within the production
+        numerical envelope rather than bit for bit.
 
         ``capture_layers`` appends the residual stream after each block, as a
         ``(rows, hidden)`` BF16 array, to the list it is given. It is a
@@ -2551,6 +2564,12 @@ class Gemma4Runner:
                 write_offset=kv_write_offset, rows=rows, stream=stream
             )
 
+        # The frozen-origin graph capture and INT8 storage have no per-row
+        # decode launch, and neither is how a verify block is run.
+        row_exact = (
+            verification and self.verify_dense_exact
+            and key_begin_at is None and int8_block is None
+        )
         for index, layer in enumerate(self.weights.layers):
             attention = config.geometry(index)
             cos_buf, sin_buf = tables[attention.rope]
@@ -2634,6 +2653,18 @@ class Gemma4Runner:
                     if verification or decode_phase
                     else self.exact_prefill_attention_variants
                 ),
+                # A verify block under ``verify_dense_exact`` keeps its dense
+                # projections off the WMMA prefill kernels and attends each
+                # row over that row's own decode range, so each row is the
+                # one-token decode computation.
+                dense_wmma_prefill=not (verification and self.verify_dense_exact),
+                row_decode_attention=(
+                    self._row_decode_attention(
+                        attention, kv_write_offset, rows, base
+                    )
+                    if row_exact and rows > 1
+                    else None
+                ),
                 stream=stream,
                 stream_moe=stream_moe,
             )
@@ -2696,6 +2727,40 @@ class Gemma4Runner:
             vocab,
             output_dtype="f32",
             stream=stream,
+        )
+
+    def _row_decode_attention(
+        self,
+        attention: Gemma4AttentionGeometry,
+        kv_write_offset: int,
+        rows: int,
+        base: int,
+    ) -> Gemma4RowDecodeAttention:
+        """The one-token attention arguments for each row of a block.
+
+        Row ``t`` gets the first key and window ``_launch_block`` passes when
+        that row is forwarded alone, and the variant requests of a decode step.
+        """
+
+        begins = []
+        windows = []
+        for row in range(rows):
+            position = int(kv_write_offset) + row
+            begin = max(0, _sliding_read_range(attention, position, 1) - base)
+            begins.append(begin)
+            windows.append(
+                position - base + 1 - begin
+                if attention.sliding_window is None
+                else int(attention.sliding_window)
+            )
+        return Gemma4RowDecodeAttention(
+            key_begins=tuple(begins),
+            windows=tuple(windows),
+            prefill_attention_variants=(
+                None if self.decode_attention_variants is not None
+                else self.prefill_attention_variants
+            ),
+            decode_attention_variants=self.decode_attention_variants,
         )
 
     def _collect_block(
