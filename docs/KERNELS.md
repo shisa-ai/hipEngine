@@ -611,6 +611,20 @@ relative-error bound, all four quants, every tile width, ragged buckets and
 non-tile-multiple output widths). Evidence:
 `benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md`.
 
+## Qwen4Exp tiled QSA block scoring
+
+`attention/qwen4_exp_qsa.hip` `qsa_score_h4_d128_tiled_f32_kernel` scores a
+16-query x 16-block tile per workgroup from operands staged in LDS, one
+thread per (query, block) pair, for four index heads of 128 dimensions and
+at least 16 queries. `qwen4_exp_qsa_score_f32` selects it inside the launcher;
+other geometries, and decode's single query, keep
+`qsa_score_f32_kernel` (one 32-thread workgroup per pair, four threads doing
+work). Each head's dot product and the four-term ReLU sum keep the parent's
+order, so the scores are bit-identical; `parent=True` on the wrapper launches
+the parent on any geometry. Correctness test:
+`tests/test_gpu_qwen4exp_qsa_score_tiled.py` (bitwise parity over ragged
+tiles and ReLU/zero edges, plus the CPU reference). It runs in every profile.
+
 ## Qwen4Exp GDN eight-wave norm/gate
 
 `linear_attn/qwen4_exp_gdn.hip` gains

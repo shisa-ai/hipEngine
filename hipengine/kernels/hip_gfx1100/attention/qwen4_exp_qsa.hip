@@ -1114,6 +1114,74 @@ __global__ void qsa_score_f32_kernel(
   }
 }
 
+// Tiled sibling of qsa_score_f32_kernel for four index heads of 128
+// dimensions: one workgroup scores a 16-query x 16-block tile from operands
+// staged in LDS, one thread per (query, block) pair. Each head's dot product
+// accumulates over dimensions in the parent's order, and the four ReLU terms
+// combine in the order of the parent's 32-lane tree with zero lanes above the
+// head count, so the scores are bit-identical to the parent's.
+__global__ __launch_bounds__(256) void qsa_score_h4_d128_tiled_f32_kernel(
+    const float* __restrict__ queries,
+    const float* __restrict__ pooled_keys,
+    float* __restrict__ scores,
+    int64_t query_count,
+    int64_t blocks) {
+  constexpr int kTile = 16;
+  constexpr int kHeads = 4;
+  constexpr int kDim = 128;
+  constexpr int kQueryWidth = kHeads * kDim;
+  __shared__ float query_tile[kTile * kQueryWidth];
+  __shared__ float key_tile[kTile * kDim];
+  const int64_t query_base = static_cast<int64_t>(blockIdx.y) * kTile;
+  const int64_t block_base = static_cast<int64_t>(blockIdx.x) * kTile;
+  const int tid = threadIdx.x;
+  for (int index = tid; index < kTile * kQueryWidth; index += 256) {
+    const int64_t query = query_base + index / kQueryWidth;
+    query_tile[index] = query < query_count
+        ? queries[query * kQueryWidth + index % kQueryWidth] : 0.0f;
+  }
+  for (int index = tid; index < kTile * kDim; index += 256) {
+    const int64_t block = block_base + index / kDim;
+    key_tile[index] = block < blocks
+        ? pooled_keys[block * kDim + index % kDim] : 0.0f;
+  }
+  __syncthreads();
+  const int local_query = tid / kTile;
+  const int local_block = tid % kTile;
+  const int64_t query = query_base + local_query;
+  const int64_t block = block_base + local_block;
+  if (query >= query_count || block >= blocks) {
+    return;
+  }
+  const float* q = query_tile + local_query * kQueryWidth;
+  const float* k = key_tile + local_block * kDim;
+  float dot0 = 0.0f;
+  float dot1 = 0.0f;
+  float dot2 = 0.0f;
+  float dot3 = 0.0f;
+  for (int dimension = 0; dimension < kDim; ++dimension) {
+    const float key = k[dimension];
+    dot0 += q[dimension] * key;
+    dot1 += q[kDim + dimension] * key;
+    dot2 += q[2 * kDim + dimension] * key;
+    dot3 += q[3 * kDim + dimension] * key;
+  }
+  float lane0 = 0.0f;
+  float lane1 = 0.0f;
+  float lane2 = 0.0f;
+  float lane3 = 0.0f;
+  lane0 += fmaxf(dot0, 0.0f);
+  lane1 += fmaxf(dot1, 0.0f);
+  lane2 += fmaxf(dot2, 0.0f);
+  lane3 += fmaxf(dot3, 0.0f);
+  // Tree strides 16, 8 and 4 add zero lanes; strides 2 and 1 follow.
+  lane0 += 0.0f; lane1 += 0.0f; lane2 += 0.0f; lane3 += 0.0f;
+  lane0 += lane2;
+  lane1 += lane3;
+  lane0 += lane1;
+  scores[query * blocks + block] = lane0 * rsqrtf(static_cast<float>(kDim));
+}
+
 __global__ __launch_bounds__(1024) void qsa_topk_expand_f32_i64_kernel(
     const float* __restrict__ score_rows,
     const int64_t* __restrict__ query_positions,
@@ -2071,6 +2139,39 @@ extern "C" int hipengine_qwen4_exp_qsa_pool_norm_rope_f32(
 }
 
 extern "C" int hipengine_qwen4_exp_qsa_score_f32(
+    const void* queries,
+    const void* pooled_keys,
+    void* scores,
+    int64_t query_count,
+    int64_t blocks,
+    int64_t heads,
+    int64_t index_dim,
+    hipStream_t stream) {
+  if (!queries || !pooled_keys || !scores || query_count <= 0 || blocks <= 0 ||
+      heads <= 0 || index_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (heads == 4 && index_dim == 128 && query_count >= 16) {
+    hipLaunchKernelGGL(
+        qsa_score_h4_d128_tiled_f32_kernel,
+        dim3(static_cast<uint32_t>((blocks + 15) / 16),
+             static_cast<uint32_t>((query_count + 15) / 16)),
+        dim3(256), 0, stream,
+        static_cast<const float*>(queries), static_cast<const float*>(pooled_keys),
+        static_cast<float*>(scores), query_count, blocks);
+    return static_cast<int>(hipGetLastError());
+  }
+  constexpr int threads = 32;
+  hipLaunchKernelGGL(
+      qsa_score_f32_kernel,
+      dim3(static_cast<uint32_t>(query_count * blocks)), dim3(threads), threads * sizeof(float), stream,
+      static_cast<const float*>(queries), static_cast<const float*>(pooled_keys),
+      static_cast<float*>(scores), blocks, heads, index_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+// The pair-per-workgroup parent on every geometry, for parity tests.
+extern "C" int hipengine_qwen4_exp_qsa_score_parent_f32(
     const void* queries,
     const void* pooled_keys,
     void* scores,

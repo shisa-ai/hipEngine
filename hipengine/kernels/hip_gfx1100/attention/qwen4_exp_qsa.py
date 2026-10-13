@@ -1107,8 +1107,14 @@ def qwen4_exp_qsa_score_f32(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    parent: bool = False,
 ) -> None:
-    """Compute ReLU-per-index-head QSA block scores."""
+    """Compute ReLU-per-index-head QSA block scores.
+
+    Four heads of 128 dimensions with at least 16 queries run the tiled
+    kernel, which is bit-identical to the pair-per-workgroup parent;
+    ``parent=True`` launches the parent on any geometry for parity tests.
+    """
 
     if query_count <= 0 or blocks <= 0 or heads <= 0 or index_dim <= 0:
         raise ValueError("query_count, blocks, heads, and index_dim must be positive")
@@ -1116,7 +1122,9 @@ def qwen4_exp_qsa_score_f32(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
-        "hipengine_qwen4_exp_qsa_score_f32",
+        "hipengine_qwen4_exp_qsa_score_parent_f32"
+        if parent
+        else "hipengine_qwen4_exp_qsa_score_f32",
         _ARGS_SCORE,
         ctypes.c_int,
     )
