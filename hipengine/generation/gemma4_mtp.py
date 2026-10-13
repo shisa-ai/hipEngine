@@ -16,6 +16,21 @@ numerical envelope, which is cheaper per cycle and can commit a different token
 where two candidates are nearly tied. The telemetry field
 ``verify_equivalence`` reports which of the two a generation ran.
 
+Acceptance is exact speculative sampling
+(:func:`hipengine.generation.gemma4_sampling.speculative_accept`): a drafted
+token ``x`` drawn from the head's law ``q`` is accepted with probability
+``min(1, p(x) / q(x))`` against the target row's law ``p``, and a rejection
+emits a draw from ``normalize(max(0, p - q))``, so every committed token is
+distributed as the target's own sampler would have drawn it. Both laws are the
+request's sampler pipeline (temperature, top-k, top-p, min-p, penalties, bias)
+applied to the respective logits row, with the head's narrowed to its most
+likely tokens, which the rule permits because it is exact for any draft law. A greedy request is the degenerate case:
+both laws are point masses, a draft is accepted exactly when it is the target
+row's argmax, and a rejection emits that argmax. A sampled request draws each
+draft from the head's law rather than offering its argmax, because a point-mass
+draft is accepted only with probability ``p(x)`` while a sampled one is accepted
+with ``min(1, p(x) / q(x))``, which is higher wherever the two laws agree.
+
 Two details that are easy to get wrong and are load-bearing:
 
 * ``drafts[0]`` predicts the token *after* ``token``, not ``token`` itself. The
@@ -42,6 +57,11 @@ from typing import Any
 import numpy as np
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.gemma4_sampling import (
+    Gemma4Distribution,
+    Gemma4Sampler,
+    speculative_accept,
+)
 from hipengine.generation.registry import (
     DecodeState,
     FinishDetails,
@@ -88,9 +108,14 @@ class Gemma4MTPCycle:
 
 
 class Gemma4MTPTextProvider:
-    """Greedy MTP with a batched verify over the backbone's own logits."""
+    """MTP with a batched verify and exact speculative accept on the backbone's logits."""
 
     provider_name = _PROVIDER
+    #: Whether a sampled request draws each draft from the head's law. False
+    #: offers the head's most likely token as a point-mass draft instead, which
+    #: is the comparison arm for the acceptance a sampled draft gains; both are
+    #: exact. A greedy request's draft is a point mass either way.
+    draft_sampling = True
 
     def __init__(
         self,
@@ -198,10 +223,6 @@ class Gemma4MTPTextProvider:
 
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         self._require_open()
-        if request.temperature != 0.0 or request.top_k not in (0, 1):
-            raise NotImplementedError(
-                "Gemma 4 MTP supports greedy generation only"
-            )
         if request.kv_storage not in {"auto", "bf16"}:
             raise NotImplementedError(
                 "Gemma 4 MTP requires BF16 shared KV; the assistant attention "
@@ -209,7 +230,7 @@ class Gemma4MTPTextProvider:
             )
         from hipengine.generation.gemma4_gguf import Gemma4GGUFGenerator
 
-        Gemma4GGUFGenerator._validate_request(request, greedy_top_k=True)
+        Gemma4GGUFGenerator._validate_request(request)
         return [self._generate_one(prompt, request) for prompt in request.prompts]
 
     def _generate_one(self, prompt: Any, request: GenerationRequest) -> GenerationOutput:
@@ -231,7 +252,7 @@ class Gemma4MTPTextProvider:
                 finish_details=FinishDetails(
                     reason="length",
                     length_limit=0,
-                    sampler_mode="greedy_speculative_mtp",
+                    sampler_mode=_sampler_mode(Gemma4Sampler(request, token_ids)),
                 ),
             )
 
@@ -267,7 +288,9 @@ class Gemma4MTPTextProvider:
         logits = runner.forward(token_ids)
         record("target_prefill", prefill_started)
 
-        token = int(np.argmax(logits))
+        sampler = Gemma4Sampler(request, token_ids)
+        sampled_drafts = self.draft_sampling and not sampler.greedy
+        token = sampler.select(logits)
         generated: list[int] = [token]
         # The prefill's own last row produced `token`.
         seed_row = -1
@@ -290,7 +313,31 @@ class Gemma4MTPTextProvider:
             start_position = int(runner.position)
 
             proposal_started = time.perf_counter()
-            drafts = drafter.draft(token, hidden_row=seed_row) if budget > 0 else []
+            draft_laws: list[Gemma4Distribution] = []
+
+            def propose(head_logits: np.ndarray) -> int:
+                # The law is the request's own sampler applied to the head's
+                # row, conditioned on the drafts before it. A sampled draft is
+                # drawn from it; otherwise its most likely token is offered as
+                # a point mass. The law kept is the one the token came from.
+                law = sampler.draft_distribution(head_logits)
+                if sampled_drafts:
+                    drafted = law.sample(sampler.draft_unit())
+                else:
+                    drafted = int(law.token_ids[int(np.argmax(law.probabilities))])
+                    law = Gemma4Distribution.point_mass(drafted)
+                draft_laws.append(law)
+                sampler.observe(drafted)
+                return drafted
+
+            drafts = (
+                drafter.draft(token, hidden_row=seed_row, select=propose)
+                if budget > 0 else []
+            )
+            # The drafts were observed only to condition the next draft's law;
+            # the accept walk observes the ones it keeps.
+            for drafted in reversed(drafts):
+                sampler.unobserve(drafted)
             record("proposal", proposal_started)
             if not drafts and budget > 0:
                 break
@@ -315,13 +362,23 @@ class Gemma4MTPTextProvider:
                 rows = rows.reshape(1, -1)
             record("target_verify", verify_started)
 
-            accepted = 0
-            for index, draft in enumerate(drafts):
-                if int(np.argmax(rows[index])) != draft:
-                    break
-                accepted += 1
+            accept_started = time.perf_counter()
+            observed = 0
 
-            token = int(np.argmax(rows[accepted]))
+            def target_law(index: int) -> Gemma4Distribution:
+                # Row ``index`` is asked for once ``drafts[:index]`` are
+                # accepted, so its law sees exactly the committed history.
+                nonlocal observed
+                while observed < index:
+                    sampler.observe(drafts[observed])
+                    observed += 1
+                return sampler.distribution(rows[index])
+
+            accepted, token = speculative_accept(
+                drafts, draft_laws, target_law, sampler.random_unit
+            )
+            sampler.observe(token)
+            record("accept", accept_started)
             committed = [*drafts[:accepted], token]
             for index, committed_token in enumerate(committed):
                 if committed_token in stop_ids:
@@ -356,7 +413,7 @@ class Gemma4MTPTextProvider:
                 prompt_tokens=len(token_ids),
                 generated_tokens=len(generated),
                 step_index=len(cycles),
-                sampler_mode="greedy_speculative_mtp",
+                sampler_mode=_sampler_mode(sampler),
                 execution_path=(
                     "gemma4_mtp_batched_exact_verify"
                     if verify_exact
@@ -384,9 +441,15 @@ class Gemma4MTPTextProvider:
                     }
                     for cycle in cycles
                 ],
-                "target_verify": "batched_exact" if verify_exact else "batched_wmma",
+                "target_verify": (
+                    "batched_exact" if verify_exact else "batched_wmma"
+                ),
                 "draft_rollback": "cursor_rewind",
-                "verify_equivalence": _VERIFY_EXACT if verify_exact else _VERIFY_ENVELOPE,
+                "accept_rule": "min(1, p/q) with residual resampling",
+                "draft_law": "sampled" if sampled_drafts else "point_mass",
+                "verify_equivalence": (
+                    _VERIFY_EXACT if verify_exact else _VERIFY_ENVELOPE
+                ),
                 "phase_census": {
                     "cycles": len(cycles),
                     "target_prefill": {
@@ -402,6 +465,10 @@ class Gemma4MTPTextProvider:
                         "rows": sum(len(cycle.candidates) + 1 for cycle in cycles),
                         "ms": phase_ms.get("target_verify", 0.0),
                     },
+                    "accept": {
+                        "calls": phase_calls.get("accept", 0),
+                        "ms": phase_ms.get("accept", 0.0),
+                    },
                 },
             },
         )
@@ -413,7 +480,7 @@ class Gemma4MTPTextProvider:
                 reason=reason,
                 eos_token_id=generated[-1] if reason == "stop" else None,
                 length_limit=request.max_tokens if reason == "length" else None,
-                sampler_mode="greedy_speculative_mtp",
+                sampler_mode=_sampler_mode(sampler),
             ),
         )
 
@@ -444,6 +511,10 @@ class Gemma4MTPTextProvider:
     def _require_open(self) -> None:
         if self.closed:
             raise RuntimeError("Gemma 4 MTP provider is closed")
+
+
+def _sampler_mode(sampler: Gemma4Sampler) -> str:
+    return "greedy_speculative_mtp" if sampler.greedy else "sampled_speculative_mtp"
 
 
 def make_gemma4_mtp_provider(**kwargs: Any) -> Gemma4MTPTextProvider:

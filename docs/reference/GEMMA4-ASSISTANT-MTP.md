@@ -11,11 +11,11 @@ and which KV the head's four blocks attend against. The sections after the
 specification describe the implementation, how to reach it, what it measures,
 and what is still open.
 
-The head is implemented and reachable through the public API for greedy
-requests on `hip_gfx1100` and `hip_gfx1151`. Whether its output is
-token-identical to plain greedy decoding depends on the execution profile; see
-"The verify contract". Sampled (temperature above zero) requests are refused;
-see "Open defects".
+The head is implemented and reachable through the public API for greedy and
+sampled requests on `hip_gfx1100` and `hip_gfx1151`. Whether a greedy request's
+output is token-identical to plain greedy decoding depends on the execution
+profile; see "The verify contract". A sampled request's tokens follow the
+target's own sampling distribution; see "Acceptance".
 
 ## The artifact
 
@@ -220,6 +220,7 @@ and it is cheaper to notice that here than in an acceptance-rate number.
 | Target/head pairing checks before either is loaded | `hipengine/loading/gemma4_mtp_gguf.py` |
 | The head's forward and the drafter that chains it | `hipengine/runtime/gemma4_assistant.py` (`Gemma4AssistantHead`, `Gemma4MtpDrafter`) |
 | Draft/verify loop, telemetry, provider registration | `hipengine/generation/gemma4_mtp.py` (provider `gemma4_mtp`) |
+| The request's sampler law and the exact speculative accept | `hipengine/generation/gemma4_sampling.py` (`Gemma4Sampler`, `speculative_accept`) |
 | Generator hook that attaches a provider | `hipengine/generation/gemma4_gguf.py` (`attach_speculative_provider`) |
 
 The head reads backbone layers 28 and 29 through the runner, uses the backbone's
@@ -231,11 +232,42 @@ tables from the backbone layers it reads, as specified above.
 One cycle drafts up to `candidate_budget` tokens with the head, then verifies
 them in one backbone forward of `[token, *drafts]` that returns
 `len(drafts) + 1` logit rows (`Gemma4Runner.forward(..., logits_rows=...,
-verification=True)`). It accepts the longest run of drafts that match the
-verify rows' argmax and commits one more token from the row after the last
-accepted draft, so a cycle commits between 1 and `candidate_budget + 1` tokens.
-The backbone is rewound to the committed position and the next cycle's seed
-hidden row is taken from the verify pass.
+verification=True)`). It walks the drafts in order, accepting each against its
+verify row until one is rejected, and commits one more token from the row where
+the walk stopped, so a cycle commits between 1 and `candidate_budget + 1`
+tokens. The backbone is rewound to the committed position and the next cycle's
+seed hidden row is taken from the verify pass.
+
+### Acceptance
+
+Acceptance is exact speculative sampling (Leviathan et al., "Fast Inference
+from Transformers via Speculative Decoding", 2022). Write `p` for the
+distribution the request's sampler would draw from at a position given the
+target's verify row, and `q` for the distribution the draft was drawn from. A
+drafted token `x` is accepted with probability `min(1, p(x) / q(x))`. A
+rejection commits a draw from `normalize(max(0, p - q))`, and a cycle whose
+drafts are all accepted commits a draw from `p` at the next row. The committed
+token is then distributed as `p` whatever `q` was, so sampled MTP changes the
+speed of a sampled request and not its distribution.
+
+- **A greedy request** makes both distributions a single token. A draft is
+  accepted exactly when it is the verify row's argmax, and a rejection commits
+  that argmax.
+- **A sampled request** applies its sampler pipeline (temperature, top-k, top-p,
+  min-p, repetition, presence and frequency penalties, logit bias, suppressed
+  tokens) to each verify row to get `p`, with the history penalties seeing the
+  drafts accepted before that row. Each draft is drawn from the same pipeline
+  applied to the head's logits, narrowed to its 64 most likely tokens. Drawing
+  the draft, rather than offering the head's most likely token, is what raises
+  acceptance: a single-token draft is accepted with probability `p(x)`, a drawn
+  one with `min(1, p(x) / q(x))`, which is 1 wherever the head is no more
+  confident than the target.
+- The request's seed fixes both the accept draws and the draft draws, on
+  separate streams, so the same seed returns the same tokens.
+
+`Gemma4MTPTextProvider.draft_sampling = False` makes a sampled request offer the
+head's most likely token instead of drawing one. It exists to measure what a
+drawn draft gains and is still exact.
 
 ### The verify contract
 
@@ -280,8 +312,9 @@ the multi-row attention; the provider requires BF16 KV.
 - The last cycle leaves one row of headroom so a request never emits more than
   `max_tokens`.
 - `candidate_budget` is 1 to 8.
-- Requests with `temperature != 0` or `top_k` outside `{0, 1}` are refused with
-  an error naming the limitation.
+- Multi-token stop sequences, forced-token queues, structured constraints,
+  thinking budgets, `min_tokens` and log probabilities are refused with an error
+  naming the limitation, as they are on the plain route.
 
 ### Reaching it
 
@@ -299,7 +332,8 @@ outputs = llm.generate_speculative_mtp_detailed([prompt], sampling_params)
 `speculative_mtp=True`; without an attached provider that request raises
 instead of returning plain text. Server routing of the flag is described in
 `docs/API.md`. `scripts/gemma4_mtp_probe.py` compares plain and MTP generation
-through this API over prompt suites and writes a paired artifact.
+through this API over prompt suites and writes a paired artifact; with
+`--temperature` above zero it compares sampled plain decoding with sampled MTP.
 
 ## What it measures
 
@@ -341,26 +375,43 @@ a 600-token prompt, production profile:
 A one-token decode step takes 12.8 ms in the same run. Artifact:
 `benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-exact-verify.json`.
 
+### Sampled requests
+
+Same device, prompts and timing scope, production profile, a budget of 4. Plain
+is the sampled plain route on the same seeds, averaged over the two runs of each
+row; each ratio is against the plain rate of its own run. The two MTP columns
+differ only in how a draft is proposed. Acceptance is accepted drafts over proposed
+drafts.
+
+| Sampler | Plain tok/s | MTP, most-likely draft | MTP, drawn draft | Acceptance, most-likely to drawn |
+| --- | ---: | ---: | ---: | ---: |
+| greedy | 73.7 | 102.8 (1.40x) | same | 72.9% |
+| temperature 0.5 | 69.4 | 87.6 (1.26x) | 87.8 (1.27x) | 68.9% to 68.8% |
+| temperature 0.8 | 70.1 | 85.8 (1.23x) | 87.0 (1.24x) | 65.4% to 66.3% |
+| temperature 1.0, top-k 64, top-p 0.95 | 70.2 | 85.7 (1.22x) | 87.5 (1.25x) | 63.4% to 65.9% |
+
+Sampled MTP is 1.24x to 1.27x sampled plain decoding. Drawing the draft adds up
+to 2.5 points of acceptance and up to 2% of throughput over offering the head's
+most likely token, and nothing at temperature 0.5. A sampled plain request is
+about 5% slower than a greedy one because each step's logits row is brought to
+the host and sampled there. Artifact:
+`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-sampled.json`.
+
 ## Open defects
 
 1. **A budget of 8 gives no speedup** where 6 gives 1.38x. A budget of 8 makes a
    nine-row verify block, and the block's time jumps from 32.7 ms at seven rows
    to 56.7 ms at nine. Which kernel changes route above eight rows has not been
    identified.
-2. **Sampled requests are refused.** `hipengine/speculative/sampling.py`
-   already implements exact speculative sampling (accept with `min(1, p/q)`,
-   resample the residual on rejection), and `hipengine/generation/mtp_sampled_accept.py`
-   applies it for the Qwen MTP route. The Gemma provider does not call it. Two
-   pieces are missing: a sampled accept walk over the verify rows in
-   `hipengine/generation/gemma4_mtp.py`, and a drafter that samples from the
-   head's distribution and reports the probability it drew with, since a
-   drafter that always offers its top token has `q = 1` and is accepted only
-   with probability `p`. llama.cpp added the same pair of changes for its MTP
-   and simple draft routes (`ggml-org/llama.cpp` pull request 27694). Its
-   RTX 5090 tables report mean accepted length up about 6% to 12% over
-   temperatures 0.5 to 1.0 for the five configurations read here (two MTP, three
-   draft-model), and no change at temperature 0, where both arms emit the same
-   tokens.
+2. **Sampling runs on the host.** Each sampled step copies a 262,144-entry
+   logits row to the host. With a top-k the law costs about 0.4 ms a row; a
+   whole-vocabulary law about 0.5 ms; a request with a history penalty about
+   1.6 ms, because the penalized row is rebuilt in double precision. A device
+   sampler would remove the copy and that cost.
+3. **A sampled request on `hip_gfx1151` has not been run.** Its decode graph
+   replays the step and returns the logits row for the host sampler
+   (`Gemma4DecodeGraphSession.step`), which this change calls but which was
+   exercised only on `hip_gfx1100`, where the graph is not used.
 
 ## References
 

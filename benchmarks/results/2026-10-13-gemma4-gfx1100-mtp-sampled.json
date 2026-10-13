@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "kind": "gemma4_gfx1100_mtp_sampled",
+  "date": "2026-10-13",
+  "performance_claim": true,
+  "question": "What does Gemma 4 MTP deliver for a sampled request, and what does drawing the draft from the head's distribution add over offering its most likely token?",
+  "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL target, mtp-gemma-4-26B-A4B-it-Q8_0 assistant head, BF16 KV",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "host": "epyc"
+  },
+  "hipengine_commit": "1bef18f19 plus this change",
+  "command": "scripts/gemma4_mtp_probe.py --artifact <target> --draft <head> --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --suite benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --tokens 128 --samples 2 --budget 4 --temperature T [--top-k 64 --top-p 0.95] --draft-law {sampled,point_mass}, HIPENGINE_EXECUTION_PROFILE=production",
+  "timing_scope": "whole public call including prefill of short prompts, 128 tokens; plain call first, then MTP; seeds 0 and 1 per prompt; nothing else running",
+  "accept_rule": "min(1, p/q) with residual resampling; p and q are the request's sampler pipeline on the target verify row and on the head's row, the head's narrowed to its 64 most likely tokens",
+  "arms": {
+    "temperature_0.5": {
+      "point_mass_draft": {
+        "rows": 36,
+        "plain_tok_s": 69.6,
+        "mtp_tok_s": 87.6,
+        "ratio": 1.259,
+        "accepted_draft_tokens": 3336,
+        "proposed_draft_tokens": 4842,
+        "draft_acceptance": 0.689,
+        "tokens_per_cycle": 3.73,
+        "ms_per_committed_token": {
+          "proposal": 3.05,
+          "target_verify": 6.69,
+          "accept": 0.85
+        }
+      },
+      "sampled_draft": {
+        "rows": 36,
+        "plain_tok_s": 69.2,
+        "mtp_tok_s": 87.8,
+        "ratio": 1.268,
+        "accepted_draft_tokens": 3336,
+        "proposed_draft_tokens": 4852,
+        "draft_acceptance": 0.688,
+        "tokens_per_cycle": 3.73,
+        "ms_per_committed_token": {
+          "proposal": 3.06,
+          "target_verify": 6.67,
+          "accept": 0.84
+        }
+      }
+    },
+    "temperature_0.8": {
+      "point_mass_draft": {
+        "rows": 36,
+        "plain_tok_s": 70.0,
+        "mtp_tok_s": 85.8,
+        "ratio": 1.226,
+        "accepted_draft_tokens": 3288,
+        "proposed_draft_tokens": 5031,
+        "draft_acceptance": 0.654,
+        "tokens_per_cycle": 3.59,
+        "ms_per_committed_token": {
+          "proposal": 3.18,
+          "target_verify": 6.98,
+          "accept": 0.67
+        }
+      },
+      "sampled_draft": {
+        "rows": 36,
+        "plain_tok_s": 70.2,
+        "mtp_tok_s": 87.0,
+        "ratio": 1.239,
+        "accepted_draft_tokens": 3303,
+        "proposed_draft_tokens": 4979,
+        "draft_acceptance": 0.663,
+        "tokens_per_cycle": 3.63,
+        "ms_per_committed_token": {
+          "proposal": 3.12,
+          "target_verify": 6.87,
+          "accept": 0.69
+        }
+      }
+    },
+    "temperature_1.0_top_k_64_top_p_0.95": {
+      "point_mass_draft": {
+        "rows": 36,
+        "plain_tok_s": 70.1,
+        "mtp_tok_s": 85.7,
+        "ratio": 1.222,
+        "accepted_draft_tokens": 3260,
+        "proposed_draft_tokens": 5141,
+        "draft_acceptance": 0.634,
+        "tokens_per_cycle": 3.51,
+        "ms_per_committed_token": {
+          "proposal": 3.24,
+          "target_verify": 7.09,
+          "accept": 0.51
+        }
+      },
+      "sampled_draft": {
+        "rows": 36,
+        "plain_tok_s": 70.3,
+        "mtp_tok_s": 87.5,
+        "ratio": 1.246,
+        "accepted_draft_tokens": 3297,
+        "proposed_draft_tokens": 5005,
+        "draft_acceptance": 0.659,
+        "tokens_per_cycle": 3.61,
+        "ms_per_committed_token": {
+          "proposal": 3.18,
+          "target_verify": 6.91,
+          "accept": 0.51
+        }
+      }
+    }
+  },
+  "greedy_same_tree": {
+    "plain_tok_s": 73.7,
+    "mtp_tok_s": 102.8,
+    "ratio": 1.395,
+    "accepted_draft_tokens": 3382,
+    "proposed_draft_tokens": 4638,
+    "draft_acceptance": 0.729,
+    "prompts_token_identical_to_plain": "11 of 18",
+    "note": "the greedy request through the same accept walk; equal to the rate before the walk was unified"
+  },
+  "host_sampler_ms_per_row": {
+    "method": "50 repetitions on a synthetic soft-capped 262,144-entry row, host only",
+    "top_k_64": 0.44,
+    "whole_vocabulary": 0.52,
+    "top_p_only": 1.83,
+    "top_k_64_with_repetition_penalty": 1.62,
+    "shared_host_sampler_top_k_40_for_comparison": 8.74
+  },
+  "earlier_run_superseded": "a first run with a slower whole-vocabulary sampler measured 64 to 65 tok/s plain and 75.5 to 76.1 tok/s for sampled-draft MTP at temperatures 0.5 and 0.8; the sampler was then changed and all six arms rerun",
+  "limitations": [
+    "Whole-call timing is not isolated decode throughput.",
+    "Two seeds per prompt; acceptance differences of a point are within what a different seed pair could move.",
+    "The distribution of committed tokens was checked against the target law on a synthetic target in unit tests, not on the model.",
+    "Not measured on hip_gfx1151."
+  ]
+}
