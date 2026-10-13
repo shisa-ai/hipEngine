@@ -83,6 +83,48 @@ __global__ void weighted_lanes_sum_out_kernel(
   out[token * features + col] = float_to_scalar<scalar_t>(acc);
 }
 
+// BF16 weighted lane sum, eight columns per thread: one 16-byte load per lane
+// and routed row, and the lane map and weights read once per eight outputs.
+// Each output keeps the scalar kernel's FMA chain over the lanes in order, so
+// the bits are unchanged. Requires features % 8 == 0 and 16-byte aligned rows.
+__global__ void weighted_lanes_sum_out_bf16_vec8_kernel(
+    const uint16_t* __restrict__ values,
+    const float* __restrict__ weights,
+    const int64_t* __restrict__ lane_to_row,
+    uint16_t* __restrict__ out,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t features) {
+  const int64_t token = blockIdx.y;
+  const int64_t col =
+      (static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x) * 8;
+  if (token >= tokens || col >= features) return;
+  float acc[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  const int64_t lane_base = token * top_k;
+  for (int64_t k = 0; k < top_k; ++k) {
+    const int64_t row = lane_to_row[lane_base + k];
+    const float weight = weights[row];
+    const uint4 packed =
+        *reinterpret_cast<const uint4*>(values + row * features + col);
+    const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
+#pragma unroll
+    for (int c = 0; c < 8; ++c) {
+      const uint16_t bits =
+          static_cast<uint16_t>(words[c >> 1] >> ((c & 1) * 16));
+      acc[c] = fmaf(scalar_to_float<uint16_t>(bits), weight, acc[c]);
+    }
+  }
+  uint32_t result[4];
+#pragma unroll
+  for (int c = 0; c < 8; c += 2) {
+    result[c >> 1] =
+        static_cast<uint32_t>(float_to_scalar<uint16_t>(acc[c])) |
+        (static_cast<uint32_t>(float_to_scalar<uint16_t>(acc[c + 1])) << 16);
+  }
+  *reinterpret_cast<uint4*>(out + token * features + col) =
+      make_uint4(result[0], result[1], result[2], result[3]);
+}
+
 template <typename scalar_t>
 __global__ void weighted_lanes_sum_shared_add_out_kernel(
     const scalar_t* __restrict__ values,
@@ -781,6 +823,17 @@ extern "C" int hipengine_weighted_lanes_sum_out_bf16_f32w(
   hipError_t err = hipGetLastError();
   if (err != hipSuccess) {
     return static_cast<int>(err);
+  }
+  if ((features % 8) == 0 && (reinterpret_cast<uintptr_t>(values) % 16) == 0 &&
+      (reinterpret_cast<uintptr_t>(out) % 16) == 0) {
+    constexpr int vec_threads = 64;
+    hipLaunchKernelGGL(
+        weighted_lanes_sum_out_bf16_vec8_kernel,
+        dim3(static_cast<unsigned int>((features / 8 + vec_threads - 1) / vec_threads),
+             static_cast<unsigned int>(tokens)),
+        dim3(vec_threads), 0, stream, values, weights, lane_to_row, out,
+        tokens, top_k, features);
+    return static_cast<int>(hipGetLastError());
   }
   hipLaunchKernelGGL(
       (weighted_lanes_sum_out_kernel<uint16_t>),
