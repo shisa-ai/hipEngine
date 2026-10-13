@@ -542,10 +542,12 @@ def test_binder_does_not_report_its_own_previous_bind_as_a_conflict(
 
 
 def test_production_binds_the_certified_q8_dense_wide_prefill_scope() -> None:
-    """UD-Q4_K_XL binds dense-wide layers 13-47; lower layers stay exact.
+    """UD-Q4_K_XL binds the dense-wide route at every layer.
 
-    The 12-case certificate is recorded in
-    benchmarks/results/2026-10-04-qwen4exp-dense-wide-13-47-frontier/.
+    Layers 13-47 were certified on their own in
+    benchmarks/results/2026-10-04-qwen4exp-dense-wide-13-47-frontier/; the
+    complete F16 route composition, which extends the window to layer 0, is
+    gated in benchmarks/results/2026-10-14-qwen4exp-fast-composition-gate-2/.
     The previous f16 WMMA scope stays disabled rather than competing with
     dense-wide on the same shapes.
     """
@@ -560,7 +562,7 @@ def test_production_binds_the_certified_q8_dense_wide_prefill_scope() -> None:
     assert PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS == tuple(range(13, 48))
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(
-        str(n) for n in range(13, 48)
+        str(n) for n in range(48)
     )
     assert os.environ[NORM_F16_PUBLICATION_ENV] == "1"
     # The f16 WMMA dense route is retired at this scope for this quant; the
@@ -635,7 +637,7 @@ def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
 
 
 def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() -> None:
-    """A caller that names no profile must still get the wide kernel at 13-47.
+    """A caller that names no profile must still get the wide kernel at 0-47.
 
     Promotion is only real if the shipped default reaches the route, and that
     guarantee is split across three places: the default profile resolution, the
@@ -644,9 +646,8 @@ def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() ->
     production plan, the binding, or the route's claim on the f16 parent --
     fails here rather than silently reverting prefill to the exact chain.
 
-    The two scopes the default must leave alone are checked in the same place:
-    below the certified window, and every row count the sub-256-row owner
-    covers.
+    The scope the default must leave alone is checked in the same place:
+    every row count the sub-256-row owner covers.
     """
 
     from hipengine.execution_profiles import resolve_default_execution_profile
@@ -702,22 +703,10 @@ def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() ->
             )
         )
 
-    for layer in (13, 16, 47):
+    for layer in (0, 12, 13, 16, 47):
         assert _q8_dense_wide_dispatch(
             parent, rows=1024, in_features=2560, out_features=640, weight=weight(layer)
         ) == GGUFLinearDispatch(candidate, "raw"), layer
-
-    for layer in (0, 12):
-        assert (
-            _q8_dense_wide_dispatch(
-                parent,
-                rows=1024,
-                in_features=2560,
-                out_features=640,
-                weight=weight(layer),
-            )
-            == parent
-        ), layer
 
     for rows in (1, 256):
         assert (
@@ -751,31 +740,38 @@ _ROUTED_SCOPES = {
 }
 
 
-def test_fast_plan_overrides_only_the_routed_expert_scopes() -> None:
+def test_production_plan_carries_the_f16_route_composition() -> None:
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     strict = _selection_map(_resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl"))
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    assert not production.fell_back_to_strict
+
+    rows = _selection_map(production)
+    assert set(rows) == set(strict)
+    for key, variant in _ROUTED_SCOPES.items():
+        assert rows[key]["selected_variant"] == variant
+        assert rows[key]["strict_fallback_variant"] == strict[key]["selected_variant"]
+        assert rows[key]["selected_variant"] != strict[key]["selected_variant"]
+
+    # The composition is certified for this quant only.
+    other = _selection_map(_resolve(ExecutionProfile.PRODUCTION, quant="gguf_q4_k_m"))
+    assert not {row["selected_variant"] for row in other.values()} & set(
+        _ROUTED_SCOPES.values()
+    )
+
+
+def test_fast_carries_the_production_plan_until_a_route_lands_in_it() -> None:
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
     production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
     fast = _resolve(ExecutionProfile.FAST, quant="gguf_ud_q4_k_xl")
 
     assert fast.profile is ExecutionProfile.FAST
     assert fast.source_profile is ExecutionProfile.FAST
     assert fast.manifest["execution_profile"] == "fast"
-    assert fast.manifest_sha256 != production.manifest_sha256
     assert fast.strict_manifest_sha256 == production.strict_manifest_sha256
-
-    production_rows = _selection_map(production)
-    fast_rows = _selection_map(fast)
-    assert set(fast_rows) == set(production_rows)
-    changed = {key for key in fast_rows if fast_rows[key] != production_rows[key]}
-    assert changed == set(_ROUTED_SCOPES)
-    for key in changed:
-        assert fast_rows[key]["selected_variant"] == _ROUTED_SCOPES[key]
-        assert fast_rows[key]["registry_quant"] == production_rows[key]["registry_quant"]
-        assert (
-            fast_rows[key]["strict_fallback_variant"]
-            == strict[key]["selected_variant"]
-        )
+    assert _selection_map(fast) == _selection_map(production)
 
 
 def test_fast_is_opt_in_and_registered_only_for_the_in_envelope_quant() -> None:
@@ -795,52 +791,54 @@ def test_fast_is_opt_in_and_registered_only_for_the_in_envelope_quant() -> None:
     assert unregistered.source_profile is ExecutionProfile.STRICT
 
 
-def test_fast_binder_publishes_the_routed_selector_and_production_retracts_it() -> None:
+def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -> None:
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
-    fast = _resolve(ExecutionProfile.FAST, quant="gguf_ud_q4_k_xl")
     production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
-
-    fast.binder(SimpleNamespace(), fast)
-    assert os.environ[_ROUTED_F16_ENV] == "1"
+    other = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_q4_k_m")
+    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
+    selectors = (
+        _ROUTED_F16_ENV,
+        "HIPENGINE_QWEN4_EXP_GR_WIDE",
+        "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM",
+        "HIPENGINE_QWEN4_EXP_QSA_WMMA",
+    )
     all_layers = ",".join(map(str, range(48)))
+
+    production.binder(SimpleNamespace(), production)
+    for key in selectors:
+        assert os.environ[key] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == all_layers
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == all_layers
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "1"
     assert (
         os.environ["HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"]
         == "f32_hidden_f16_wmma_gemm"
     )
 
-    # A later production bind in the same process restores its own routes.
-    production.binder(SimpleNamespace(), production)
-    assert os.environ[_ROUTED_F16_ENV] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(
-        map(str, range(13, 48))
-    )
+    # A later bind without the composition restores its own routes.
+    other.binder(SimpleNamespace(), other)
+    for key in selectors:
+        assert os.environ[key] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ",".join(
         map(str, range(27, 48))
     )
-    assert (
-        os.environ["HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"]
-        == "f32_hidden_token_tile4_dpp_exact"
-    )
+
+    production.binder(SimpleNamespace(), production)
+    strict.binder(SimpleNamespace(), strict)
+    for key in selectors:
+        assert os.environ[key] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ""
 
 
-def test_production_binder_leaves_a_caller_set_routed_selector_alone(
+def test_strict_binder_leaves_a_caller_set_routed_selector_alone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
-    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
     monkeypatch.setenv(_ROUTED_F16_ENV, "1")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        production.binder(SimpleNamespace(), production)
+        strict.binder(SimpleNamespace(), strict)
     assert os.environ[_ROUTED_F16_ENV] == "1"
     assert not any(_ROUTED_F16_ENV in str(w.message) for w in caught)

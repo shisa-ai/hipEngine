@@ -14,8 +14,10 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.dtype import DType
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
+from hipengine.kvcache import KVLiveSpans
 
 _SOURCE = Path(__file__).with_name("qwen4_exp_qsa_wmma.hip")
 _FAMILY = "qwen4_exp_qsa_wmma"
@@ -107,7 +109,7 @@ def _call(symbol: str, argtypes, args, library, runtime) -> None:
 def qwen4_exp_qsa_wmma_gather_kv_f16(
     key_cache_ptr: int,
     value_cache_ptr: int,
-    block_table_ptr: int,
+    spans: KVLiveSpans,
     k_out_ptr: int,
     v_out_ptr: int,
     *,
@@ -121,15 +123,19 @@ def qwen4_exp_qsa_wmma_gather_kv_f16(
     """Gather positions [first_position, context_len) of the paged BF16 K/V
     caches into contiguous F16 rows of 512 elements at their position."""
 
+    if spans.spans_mode != "uniform" or spans.storage_dtype != DType.BF16:
+        raise ValueError("QSA WMMA gather requires uniform BF16 KVLiveSpans")
     if block_size <= 0 or first_position < 0 or context_len <= first_position:
         raise ValueError("QSA WMMA gather needs a non-empty position range")
+    if context_len > spans.base_offsets.shape[-1] * block_size:
+        raise ValueError("QSA WMMA gather range exceeds the span page table")
     _call(
         _SYMBOL_GATHER,
         [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 3 + [ctypes.c_void_p] * 3,
         (
             ctypes.c_void_p(key_cache_ptr),
             ctypes.c_void_p(value_cache_ptr),
-            ctypes.c_void_p(block_table_ptr),
+            ctypes.c_void_p(spans.base_offsets.ptr),
             ctypes.c_int64(block_size),
             ctypes.c_int64(first_position),
             ctypes.c_int64(context_len),

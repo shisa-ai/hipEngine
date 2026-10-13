@@ -92,13 +92,11 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
         ],
     })
     _bind(generator, profile, production=True)
-    # The UD quant is the arithmetic-recovery profile, which closes the runner's
-    # colwarps gate (GDN_COLWARPS_PREFILL is a recovery flag). The tile16 variant is
-    # read only inside that gate, so binding a route here would name something that
-    # can never dispatch. The multi-column route is bound on the profiles that keep
-    # the gate open instead - see the q4_k_m case below.
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == ""
+    # Every production quant keeps the runner's colwarps gate open and names
+    # the multi-column route the gate reads.
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
+        "qwen4exp_gdn_tiled16_multi_prefill")
     profile.manifest["selections"] = [
         {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
         for r in _strict_selections(recovery=True)

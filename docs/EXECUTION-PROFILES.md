@@ -35,13 +35,15 @@ contract rather than a universal serving requirement.
 | `strict` | Oracle, debugging, regression localization, parent/reference parity | Uses the registered reference arithmetic for the selected model/quant/KV policy. Fused kernels must match their declared strict fallback contract. | Same request, seed, shape, and schedule are bit-stable on retained fixtures. | Not by itself a promise about sampler scheduling or every dynamic server composition; use `batch_invariant` for that public guarantee. |
 | `production` | Normal deployment and performance work | Exact control/state ownership with tightly bounded same-quant implementation drift. Width- and shape-specific arithmetic is allowed. | Same request, seed, resolved variant manifest, and execution schedule are deterministic. | Cross-width generated-ID equality is diagnostic, not a promotion requirement. Same-width neighbor data must never contaminate a request. |
 | `batch_invariant` | RL, evaluations, debugging, reproducible serving | May use any independently validated stable arithmetic, but must preserve the request result across supported batch compositions. The first implementation may alias strict routes. | Fixed-seed repeats are deterministic. | Same fixed-seed request result across physical slots, neighbor prompts, supported widths, admission order, cancellation of peers, and compaction. |
-| `fast` | Opt-in throughput on combinations that register a plan | Exact control/state ownership. Reduced-precision operand routes (F16 operands, F32 accumulate, no exact repair) that have not been certified against the production envelope. | Same request, seed, resolved variant manifest, and execution schedule are deterministic. | Same as `production`. |
+| `fast` | Opt-in throughput on combinations that register a plan | Exact control/state ownership. The production plan plus any reduced-precision operand route that has not yet been certified against the production envelope. | Same request, seed, resolved variant manifest, and execution schedule are deterministic. | Same as `production`. |
 
-`fast` is an owner policy decision dated 2026-10-13. It exists because the
-calibrated production envelope admits none of the operand-class changes that
-separate hipEngine from the fastest engines on the same hardware, and that
-work needs a named profile to land in rather than a set of environment flags.
-Its contract:
+`fast` is an owner policy decision dated 2026-10-13. It is the named profile
+a reduced-precision operand route lands in before its production gate, so
+that the work does not live in a set of environment flags. Its first
+composition (F16 operands with F32 accumulation and no exact repair, for
+`qwen4_exp_gguf` / `gguf_ud_q4_k_xl`) passed the production gate on
+2026-10-13 and is now that quant's production plan (section 2.9); `fast`
+there currently selects the same routes as `production`. Its contract:
 
 - It is **never a shipped default**. A caller must name it; an omitted profile
   still resolves to `production` or the migration path.
@@ -316,27 +318,36 @@ not have the same certification status**. Both keep a registered strict
 fallback, and both resolve to `production` when the profile is omitted.
 
 **`gguf_ud_q4_k_xl` — numerical gates pass; task gate requires review.** Its
-production plan is the arithmetic-recovery composition: the fifteen unqualified
-arithmetic selectors are disabled before resources are configured, and the
-manifest selects recovery variants while the experimental kernels stay
-registered. Measured on the current tree (18 prompts, 24 decode steps, 3
-repeats, chunk 512, BF16 KV, gfx1151, machine
-`55ea6c509d0b49eea8de7094a1023668`): mean/p95/p99/max KL
-`3.065e-4/1.785e-3/4.271e-3/7.771e-3`, top-1 agreement `0.99556` (448/450),
-**no scope failures and no row over the `2e-2` review boundary**, and the
-`prefill_last` / `prefill_to_c1` scope is bit-identical at mean KL `0.0`. The
-gate's overall status is `requires_task_review` on the task axis, not a full
-pass: 15 of 18 strict-exact task outputs, with three deterministic cross-route
-divergences, which is the same finding recorded for the GDN prefill promotion
-and is not a numerical-envelope failure. Its manifest is `a55324f9…` and is
-unchanged by later GDN work. **It costs throughput**: against the unrecovered
-composition on the same host,
-weighted prefill moves `292.695/309.268/285.790` to
-`172.870/179.721/129.950` (`-40.94/-41.89/-54.53%`) and decode
-`20.171/19.430/18.057` to `17.629/17.015/11.398`
-(`-12.60/-12.43/-36.88%`). Evidence:
-[`cost packet`](../benchmarks/results/2026-09-14-q8-prefill-numerics/README.md),
-[`UD gate`](../benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-gate/gate.json).
+production plan is the F16 route composition layered on the
+arithmetic-recovery plan: the wide-tile routed F16 GEMMs for every grouped
+routed-expert dispatch, the F16 dense wide route at layers 0-47 (which
+carries the hyper-connection down projection), the hyper-connection up
+projection on the wide route, the small-matrix F16 WMMA GEMM for the indexer
+projections and the router logits, the WMMA prefill attention, and the tiled
+GDN recurrence at every GDN layer. Every route keeps its registered strict
+fallback. Measured against strict (18 prompts, 24 decode steps, 3 repeats,
+chunk 4096, BF16 KV, gfx1151, machine `55ea6c509d0b49eea8de7094a1023668`):
+mean/p95/p99/max KL `6.493e-4/3.452e-3/7.889e-3/1.186e-2`, top-1 agreement
+`0.99556` (448/450) overall and at least `0.99` in every scope, no row over
+the `2e-2` review boundary, three bit-identical repeats, and exact state
+layout and metadata. Three scopes are listed under `scope_kl_advisories`,
+which section 6.1 reports without binding: `prefill_last` / `prefill_to_c1`
+at mean KL `1.206e-3` (18 rows) and `mixed_ja_en` at mean `1.108e-3`, p95
+`5.636e-3` (100 rows). The task axis is `requires_task_review`, not a full
+pass: 15 of 18 strict-exact task outputs with three deterministic
+divergences, the same count the arithmetic-recovery plan measured.
+
+The gate prompts are short, so the attention route's sparse window (contexts
+past the dense-equivalent limit) is exercised by its kernel test and by the
+4096-token throughput cases, not by a teacher-forced row. The plan it
+replaced, the arithmetic-recovery composition alone, measured mean/p95/p99/max
+KL `3.065e-4/1.785e-3/4.271e-3/7.771e-3` with a bit-identical `prefill_last`
+scope; it remains reachable by clearing the composition's selectors after the
+binder. On the canonical 12-case protocol the composition moves weighted
+prefill at p512/p1024/p4096 from `306.6/331.4/337.2` to
+`769.8/935.1/1104.8 tok/s` on the same host. Evidence:
+[`composition gate`](../benchmarks/results/2026-10-14-qwen4exp-fast-composition-gate-2/README.md),
+[`recovery gate`](../benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-gate/gate.json).
 
 **`gguf_q4_k_m` — registered, and it FAILS the numerical envelope.** Its
 production plan is the unrecovered composition, and it **fails the calibrated
@@ -478,7 +489,15 @@ binding automatic-admission limits, not tuning targets:
 | Top-1 agreement | >= `99%` overall |
 | Top-1 agreement | >= `97%` in every declared category/shape/transition scope |
 
-All global and per-scope limits bind together. Rows with KL above `2e-2`
+The KL limits bind on the complete row set. A declared scope binds on its
+top-1 floor only; its mean/p95/p99 KL against the same limits is computed and
+reported as `kl_within_global_limits` and listed under `scope_kl_advisories`,
+and it localizes drift without deciding admission. The maximum-row ceiling is
+a per-row limit, so it holds in every scope whenever it holds globally. This
+is an owner decision dated 2026-10-13 UTC: a scope of 18 to 100 rows estimates a
+mean or a p95 far more noisily than the 450-row set does, and a candidate
+inside every global limit was being rejected on a scope mean 10-20% over a
+limit calibrated for the whole set. Rows with KL above `2e-2`
 require explicit top-k overlap, strict logit-margin, finite-state, and
 applicable task diagnosis even when the absolute `5e-2` ceiling passes; they
 are never admitted automatically. Every applicable task/heldout check must pass

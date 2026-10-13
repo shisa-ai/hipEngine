@@ -12,6 +12,8 @@ import ctypes
 import numpy as np
 import pytest
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
@@ -20,6 +22,8 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.core.tensor import Tensor
+from hipengine.kvcache import KVLiveSpans
 from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa_wmma import (
     build_qwen4_exp_qsa_wmma,
     qsa_wmma_mask_words,
@@ -118,8 +122,18 @@ def _run(q, k_bits, v_bits, start, rows, selection=None):
         k16 = upload(np.zeros((context, KV_WIDTH), dtype=np.uint16))
         v16 = upload(np.zeros((context, KV_WIDTH), dtype=np.uint16))
         out_dev = upload(out_host)
+        device = Device("hip", 0)
+        live = upload(np.asarray([context], dtype=np.int64))
+        spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(
+                table_dev.ptr, (1, table_full.size), DType.INT32, device
+            ),
+            live_counts=Tensor.from_handle(live.ptr, (1,), DType.INT64, device),
+            max_live_count=context,
+            storage_dtype=DType.BF16,
+        )
         qwen4_exp_qsa_wmma_gather_kv_f16(
-            k_dev.ptr, v_dev.ptr, table_dev.ptr, k16.ptr, v16.ptr,
+            k_dev.ptr, v_dev.ptr, spans, k16.ptr, v16.ptr,
             block_size=BLOCK_SIZE, first_position=0, context_len=context,
             library=library, runtime=runtime,
         )

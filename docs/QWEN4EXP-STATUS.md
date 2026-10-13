@@ -23,6 +23,24 @@
   sustained load, an ~7% aggregate cost on the same protocol; settled-state
   figures remain the scoreboard's basis.
 
+**2026-10-13 UTC, later state additions: the F16 route composition is the
+production plan.** The owner decided that the production envelope's KL limits bind on
+the complete row set and that a scope binds on its top-1 floor only
+(`docs/EXECUTION-PROFILES.md` section 6.1). The composition described in the
+2026-10-13 paragraph below passes that gate, so it is now the `production`
+plan for `gguf_ud_q4_k_xl` and the default for a caller that names no
+profile. `production` measures **768.4 / 930.6 / 1101.8 tok/s** prefill at
+p512/p1024/p4096 on the canonical 12-case protocol, with decode at 20.9 /
+20.2 / 20.6 tok/s and the same 12 output token sequences the `fast` run
+produced
+([rates and gates](../benchmarks/results/2026-10-14-qwen4exp-production-f16-composition/README.md)).
+`fast` stays registered as the profile the next uncertified route lands in
+and currently selects the same routes. The attention K/V gather now takes
+`KVLiveSpans`. Against the plan it replaced, 9 of the 12 canonical cases
+generate a different 128-token continuation; cross-route generated-ID
+equality is a diagnostic, and the teacher-forced gates are the binding
+evidence.
+
 **2026-10-13 state additions: the opt-in `fast` execution profile.** The
 owner accepted the X-7 question in the form of a fourth, opt-in profile
 (`docs/EXECUTION-PROFILES.md` section 2): `production` keeps its calibrated
