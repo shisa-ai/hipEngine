@@ -600,10 +600,12 @@ The kernel body is ported from gufo v0.12.0 (`88090afb`, MIT),
 `RoutedF16GEMMKernel`; the file header records the hipEngine changes.
 
 This is a reduced-precision operand route: it changes arithmetic relative to
-the exact grouped owners and is selected only by the opt-in `fast` execution
-profile for `qwen4_exp_gguf` / `hip_gfx1151` / `gguf_ud_q4_k_xl`
-(`HIPENGINE_QWEN4_EXP_ROUTED_F16`, published by the fast binder). The strict
-fallbacks are the registered exact grouped chains. Correctness test:
+the exact grouped owners. The `production` plan for `qwen4_exp_gguf` /
+`hip_gfx1151` / `gguf_ud_q4_k_xl` selects it
+(`HIPENGINE_QWEN4_EXP_ROUTED_F16`, published by that plan's binder) as part
+of the F16 route composition gated in
+`benchmarks/results/2026-10-14-qwen4exp-fast-composition-gate-2/README.md`.
+The strict fallbacks are the registered exact grouped chains. Correctness test:
 `tests/test_gpu_qwen4exp_routed_f16.py` (CPU-reference outer floor plus a
 relative-error bound, all four quants, every tile width, ragged buckets and
 non-tile-multiple output widths). Evidence:
@@ -653,16 +655,15 @@ support launches:
 The attention kernel is ported unchanged from gufo v0.12.0 (`88090afb`, MIT),
 `src/models/qwen38_flash_next/kernels/rocm/kernels.hip.cpp`.
 
-**ABI deviation, tracked in `docs/REFACTOR.md`:** the gather addresses the
-paged cache through the request's block table and a context length, not
-through `KVLiveSpans`. That is valid only for a dense, non-evicting KV policy
-on one request's contiguous positions, which is the only shape the fast
-profile runs it in; it is not a route for DMS/H2O/SnapKV policies. Decode
-attention is unchanged and keeps the spans ABI.
+The gather wrapper takes a `KVLiveSpans` and accepts uniform BF16 spans
+only, like the scalar sparse-attention wrappers beside it; it reads the page
+table the spans carry over one request's contiguous positions. It is not a
+route for DMS/H2O/SnapKV policies, which need a variable-span gather. Decode
+attention is unchanged.
 
-Selected only by the opt-in `fast` profile for `qwen4_exp_gguf` /
+Selected by the `production` plan for `qwen4_exp_gguf` /
 `hip_gfx1151` / `gguf_ud_q4_k_xl` (`HIPENGINE_QWEN4_EXP_QSA_WMMA`, published
-by the fast binder); strict fallbacks are the scalar FP32 span kernels.
+by that plan's binder); strict fallbacks are the scalar FP32 span kernels.
 Correctness test: `tests/test_gpu_qwen4exp_qsa_wmma.py` (float64 reference,
 dense windows with and without prior context, masked sparse windows with
 shuffled selection lists, a permuted block table). Evidence:
@@ -678,11 +679,11 @@ activations and FP32 or BF16 weights are rounded to F16 while staged in LDS
 WMMA and F32 accumulation, and written as unrounded FP32; any output width is
 accepted and waves whose columns are past the matrix skip the matrix work.
 The staging and fragment layout follow `dense_prefill_wmma_out_kernel` in
-`dense_gemv.hip`. It is a reduced-precision operand route selected only by
-the opt-in `fast` profile for `qwen4_exp_gguf` / `hip_gfx1151` /
+`dense_gemv.hip`. It is a reduced-precision operand route selected by
+the `production` plan for `qwen4_exp_gguf` / `hip_gfx1151` /
 `gguf_ud_q4_k_xl`: `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` moves FP32
 projections with at least 64 rows and 96 output columns (the indexer
-projections), and the fast plan's `router_logits` row selects the router
+projections), and the plan's `router_logits` row selects the router
 variant. Strict fallbacks are the scalar FP32 GEMV and the tile4 router.
 Correctness test: `tests/test_gpu_dense_f16_gemm.py` (against the FP32 product
 of the F16-rounded operands at 2e-5 of the output scale, and against the

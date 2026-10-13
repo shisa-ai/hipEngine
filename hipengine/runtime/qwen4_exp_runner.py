@@ -2899,7 +2899,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         qwen4_exp_qsa_wmma_gather_kv_f16(
             attention_state.key_cache.ptr,
             attention_state.value_cache.ptr,
-            metadata.block_tables.ptr,
+            metadata.spans(start_row=0, rows=1, decode=True),
             scratch.wmma_k_f16.ptr,
             scratch.wmma_v_f16.ptr,
             block_size=attention_state.block_size,

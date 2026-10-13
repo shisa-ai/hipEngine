@@ -18,6 +18,7 @@ from scripts.qwen4exp_router_dpp_gate_support import assert_router_outputs_exact
 
 PARENT = "f32_hidden_token_tile4_dense_exact"
 DPP = "f32_hidden_token_tile4_dpp_exact"
+F16_GEMM = "f32_hidden_f16_wmma_gemm"
 ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
 
 
@@ -122,7 +123,9 @@ print(json.dumps(out))
     data = json.loads(result.stdout)
     assert data["strict"]["bound"] == PARENT
     assert data["strict"]["selection"]["selected_variant"] == PARENT
-    selected = override or DPP
+    # With no named producer the plan selects the F16-operand GEMM; a named
+    # producer is an explicit rollback and is kept.
+    selected = override or F16_GEMM
     assert data["production"]["bound"] == selected
     assert data["production"]["selection"]["selected_variant"] == selected
     assert data["production"]["selection"]["strict_fallback_variant"] == PARENT
@@ -130,6 +133,7 @@ print(json.dumps(out))
     expected = {
         PARENT: "2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json",
         DPP: "qwen4exp-router-dpp/README.md",
+        F16_GEMM: "2026-10-14-qwen4exp-fast-composition-gate-2/README.md",
         "f32_hidden_warp_reduce_dense_exact": "2026-09-27-router-warp-reduce/",
     }
     assert evidence.endswith(expected[selected])

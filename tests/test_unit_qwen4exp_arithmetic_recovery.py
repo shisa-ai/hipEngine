@@ -21,13 +21,19 @@ def resolve(quant):
 
 
 def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
-    assert PRODUCTION_ARITHMETIC_RECOVERY_FLAGS == CONSERVATIVE_ARITHMETIC_FLAGS
+    # The conservative gate arm also closes the tiled GDN recurrence, which
+    # the production plan runs.
+    assert PRODUCTION_ARITHMETIC_RECOVERY_FLAGS == tuple(
+        flag for flag in CONSERVATIVE_ARITHMETIC_FLAGS
+        if flag != "GDN_COLWARPS_PREFILL")
     monkeypatch.setattr(os, "environ", os.environ.copy())
     profile = resolve("gguf_ud_q4_k_xl")
     profile.binder(SimpleNamespace(), profile)
-    for flag in CONSERVATIVE_ARITHMETIC_FLAGS:
-        assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == (
-            PRODUCTION_Q8_QSA_RESTORED_FLAGS.get(flag, "0"))
+    # GR_WIDE is closed by the recovery pass and reopened by the F16 route
+    # composition this quant's production plan carries.
+    expected = {**PRODUCTION_Q8_QSA_RESTORED_FLAGS, "GR_WIDE": "1"}
+    for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
+        assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == expected.get(flag, "0")
     for flag in ("Q4_IU8_EXACT", "Q51_IU8_EXACT", "GDN_REGISTER_PREFILL",
                  "GDN_WAVE_NORM", "FORKB_GROUPED_DOWN", "Q4_DP4A64"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "1"
@@ -94,10 +100,11 @@ def test_production_selects_the_multi_column_gdn_prefill_owner(monkeypatch):
     profile = resolve("gguf_ud_q4_k_xl")
     profile.binder(SimpleNamespace(), profile)
 
-    # The UD recovery profile closes the colwarps gate, so it must not name a
-    # tile16 route at all - naming one is unreachable by construction.
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == ""
+    # The UD profile keeps the colwarps gate open and names the multi-column
+    # route, so the binding is reachable.
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
+        "qwen4exp_gdn_tiled16_multi_prefill")
 
     # The recovery profile's manifest still keeps its exact owner.
     recovery_gdn = [

@@ -32,62 +32,66 @@ _last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
 # write apart from a value the caller set. Strict-then-production binding in one
 # process is normal and is not a conflict.
 _binder_written: dict[str, str] = {}
-# Fast-profile route selectors this module currently has published.
-_fast_published: set[str] = set()
+# F16 route selectors this module currently has published.
+_f16_routes_published: set[str] = set()
 
 
 PROFILE_Q5_1_DOWN_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
-# The opt-in fast profile is registered for the quant whose production plan is
-# in-envelope; it layers reduced-precision operand routes on that plan. Each
-# route passes the outer safety floor and keeps its strict fallback, and is
-# not yet certified against the calibrated production envelope.
-FAST_QUANTS = ("gguf_ud_q4_k_xl",)
+# Quants whose production plan runs the F16-operand route composition: F16
+# operands with F32 accumulation and no exact repair, layered on the
+# arithmetic-recovery plan. The complete composition passes the calibrated
+# production envelope against strict, and every route keeps its strict
+# fallback.
+F16_ROUTE_QUANTS = ("gguf_ud_q4_k_xl",)
+# The opt-in fast profile is where a reduced-precision route lands before its
+# production gate. It carries no route beyond the production plan at present.
+FAST_QUANTS = F16_ROUTE_QUANTS
 _ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
-_FAST_ROUTED_GATE_UP = "selected_routed_f16_dual_silu_wmma_prefill_bf16_bf16_out"
-_FAST_ROUTED_LINEAR = "selected_routed_f16_wmma_prefill_bf16_bf16_out"
-_FAST_QSA_WMMA = "wmma_f16_masked_prefill_f32"
-# Routed-expert scopes the fast plan moves to the wide-tile F16 GEMMs that
+_ROUTED_F16_GATE_UP = "selected_routed_f16_dual_silu_wmma_prefill_bf16_bf16_out"
+_ROUTED_F16_LINEAR = "selected_routed_f16_wmma_prefill_bf16_bf16_out"
+_QSA_WMMA_VARIANT = "wmma_f16_masked_prefill_f32"
+# Routed-expert scopes the plan moves to the wide-tile F16 GEMMs that
 # read the raw expert weights: (layer, scope, registry quant) -> variant.
 # Layers whose gate/up is Q5_K route from 64 rows; the rest from 2.
-_FAST_ROUTED_SCOPES = {
+_F16_ROUTE_SCOPES = {
     ("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up", "gguf_q4_k"):
-        _FAST_ROUTED_GATE_UP,
+        _ROUTED_F16_GATE_UP,
     ("moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up", "gguf_q4_k"):
-        _FAST_ROUTED_GATE_UP,
+        _ROUTED_F16_GATE_UP,
     ("linear", "ungrouped_prefill_rows_ge64_q5k_gate_up", "gguf_q5_k"):
-        _FAST_ROUTED_GATE_UP,
+        _ROUTED_F16_GATE_UP,
     ("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q5_1_down", "gguf_q5_1"):
-        _FAST_ROUTED_LINEAR,
+        _ROUTED_F16_LINEAR,
     ("moe_linear", "prefill_rows_ge64_lt512_exact_grouped_q5_1_down", "gguf_q5_1"):
-        _FAST_ROUTED_LINEAR,
+        _ROUTED_F16_LINEAR,
     ("moe_linear", "prefill_rows_ge512_k640_exact_grouped_q5_1_down", "gguf_q5_1"):
-        _FAST_ROUTED_LINEAR,
+        _ROUTED_F16_LINEAR,
     ("linear", "grouped_prefill_rows_lt512_q8_0_expert_down", "gguf_q8_0"):
-        _FAST_ROUTED_LINEAR,
+        _ROUTED_F16_LINEAR,
     ("linear", "grouped_prefill_rows_ge512_q8_0_expert_down", "gguf_q8_0"):
-        _FAST_ROUTED_LINEAR,
+        _ROUTED_F16_LINEAR,
     # QSA prefill attention, masked sparse window and dense causal window, on
     # the WMMA kernel over F16 K/V rows gathered from the paged BF16 cache.
     ("qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16", "bf16_kv"):
-        _FAST_QSA_WMMA,
+        _QSA_WMMA_VARIANT,
     ("paged_attn_decode", "qwen4exp_multirow_dense_qsa", "w4_paro"):
-        _FAST_QSA_WMMA,
+        _QSA_WMMA_VARIANT,
 }
-# Binder-owned route window the fast profile widens beyond the certified
-# production scope: the F16 dense wide route runs at every layer (production
-# certifies 13-47), which also carries the hyper-connection down projection.
-FAST_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(48))
-_FAST_BINDER_ENV = {
+# Binder-owned route windows of the composition: the F16 dense wide route runs
+# at every layer (13-47 on a quant without the composition), which also
+# carries the hyper-connection down projection.
+F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(48))
+_F16_ROUTE_BINDER_ENV = {
     "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
-        map(str, FAST_Q8_DENSE_WIDE_PREFILL_LAYERS)
+        map(str, F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS)
     ),
-    # The tiled GDN recurrence at every GDN layer (production certifies it
-    # for layers 27-47 and runs the register-state recurrence below).
+    # The tiled GDN recurrence at every GDN layer (27-47, with the
+    # register-state recurrence below, on a quant without the composition).
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(48))),
 }
-# Route selectors only the fast binder publishes; a later strict or
-# production bind in the same process retracts them to "0".
-_FAST_SELECTORS = {
+# Route selectors the composition's binder publishes; a later bind without the
+# composition in the same process retracts them to "0".
+_F16_ROUTE_SELECTORS = {
     _ROUTED_F16_ENV: "1",
     # Hyper-connection up projection on the F16 wide route.
     "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
@@ -97,8 +101,8 @@ _FAST_SELECTORS = {
     # QSA prefill attention on the WMMA kernel.
     "HIPENGINE_QWEN4_EXP_QSA_WMMA": "1",
 }
-_FAST_ROUTED_EVIDENCE = (
-    "benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md"
+_F16_ROUTE_EVIDENCE = (
+    "benchmarks/results/2026-10-14-qwen4exp-fast-composition-gate-2/README.md"
 )
 PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS = tuple(range(27, 48))
@@ -843,36 +847,42 @@ def last_prebinder_conflicts() -> dict[str, tuple[str, str]]:
     return dict(_last_prebinder_conflicts)
 
 
-def _fast_selections() -> tuple[VariantSelection, ...]:
-    """The in-envelope production plan with the fast operand-class overrides."""
+def _f16_route_selections() -> tuple[VariantSelection, ...]:
+    """The arithmetic-recovery plan with the F16-operand route overrides."""
 
     result = []
     replaced = set()
+    # A router producer the caller named before import is an explicit
+    # rollback and is kept; the binder's own published value is not.
+    requested = os.environ.get(_ROUTER_VARIANT_ENV, "").strip()
+    router_named = bool(requested) and _binder_written.get(_ROUTER_VARIANT_ENV) != requested
     for selection in _production_selections(recovery=True):
         key = (selection.layer, selection.scope, selection.registry_quant)
-        variant = _FAST_ROUTED_SCOPES.get(key)
-        if selection.layer == "router_logits" and (
-            selection.selected_variant == _ROUTER_DPP_VARIANT
+        variant = _F16_ROUTE_SCOPES.get(key)
+        if (
+            selection.layer == "router_logits"
+            and selection.selected_variant == _ROUTER_DPP_VARIANT
+            and not router_named
         ):
             # The F16-operand WMMA GEMM producer: about 295 ms per 4096-token
             # prefill on the fastest FP32 producer against about 15 ms.
             selection = replace(
                 selection,
                 selected_variant=_ROUTER_F16_GEMM_VARIANT,
-                evidence_artifact=_FAST_ROUTED_EVIDENCE,
+                evidence_artifact=_F16_ROUTE_EVIDENCE,
             )
         if variant is not None:
             replaced.add(key)
             selection = replace(
                 selection,
                 selected_variant=variant,
-                evidence_artifact=_FAST_ROUTED_EVIDENCE,
+                evidence_artifact=_F16_ROUTE_EVIDENCE,
             )
         result.append(selection)
-    missing = set(_FAST_ROUTED_SCOPES) - replaced
+    missing = set(_F16_ROUTE_SCOPES) - replaced
     if missing:
         raise RuntimeError(
-            f"Qwen4Exp fast plan lost routed scopes: {sorted(missing)!r}"
+            f"Qwen4Exp F16 route plan lost scopes: {sorted(missing)!r}"
         )
     return tuple(result)
 
@@ -935,20 +945,20 @@ def _bind_default_chunk(generator: Any, *, production: bool) -> None:
             generator.runner.prefill_chunk_size = 1024 if production else 512
 
 
-def _bind_fast_routes(*, fast: bool) -> None:
-    """Publish the fast profile's route selectors, or retract this module's own.
+def _bind_f16_routes(*, enabled: bool) -> None:
+    """Publish the F16 route selectors, or retract this module's own.
 
-    Strict and production leave a caller-set selector alone (the A/B and gate
-    harnesses set these directly); they only clear a value an earlier fast
+    A bind without the composition leaves a caller-set selector alone (the A/B
+    and gate harnesses set these directly); it only clears a value an earlier
     bind in this process wrote.
     """
 
-    for key, value in _FAST_SELECTORS.items():
-        if fast:
+    for key, value in _F16_ROUTE_SELECTORS.items():
+        if enabled:
             _apply_profile_env({key: value})
-            _fast_published.add(key)
-        elif key in _fast_published:
-            _fast_published.discard(key)
+            _f16_routes_published.add(key)
+        elif key in _f16_routes_published:
+            _f16_routes_published.discard(key)
             _apply_profile_env({key: "0"})
 
 
@@ -957,7 +967,6 @@ def _bind(
     resolved: ResolvedRuntimeProfile,
     *,
     production: bool,
-    fast: bool = False,
 ) -> None:
     _last_prebinder_conflicts.clear()
     _bind_default_chunk(generator,production=production)
@@ -1250,11 +1259,12 @@ def _bind(
                 for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
             }
         )
-    if fast:
-        # Every key here is written by each bind, so a later strict or
-        # production bind in the same process restores its own value.
-        _apply_profile_env(_FAST_BINDER_ENV)
-    _bind_fast_routes(fast=fast)
+    f16_routes = production and resolved.manifest.get("quant") in F16_ROUTE_QUANTS
+    if f16_routes:
+        # Every key here is written by each bind, so a later bind without the
+        # composition in the same process restores its own value.
+        _apply_profile_env(_F16_ROUTE_BINDER_ENV)
+    _bind_f16_routes(enabled=f16_routes)
     _report_prebinder_conflicts()
     if production:
         configure = getattr(
@@ -1274,8 +1284,10 @@ def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None
     _bind(generator, resolved, production=True)
 
 
-def _fast_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
-    _bind(generator, resolved, production=True, fast=True)
+def _plan_selections(quant: str) -> tuple[VariantSelection, ...]:
+    if quant in F16_ROUTE_QUANTS:
+        return _f16_route_selections()
+    return _production_selections(recovery=quant == "gguf_ud_q4_k_xl")
 
 
 def _wanted_keys() -> set[RuntimeProfileKey]:
@@ -1318,9 +1330,7 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
             quant=quant,
             profile=ExecutionProfile.PRODUCTION,
             plan=RuntimeProfilePlan(
-                selections=_production_selections(
-                    recovery=quant == "gguf_ud_q4_k_xl",
-                ),
+                selections=_plan_selections(quant),
                 kv_policy="paged_bf16_qsa_index_f32",
                 graph_policy="request_owned_exact_moe_graph_c1",
                 binder=_production_binder,
@@ -1333,10 +1343,10 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
             quant=quant,
             profile=ExecutionProfile.FAST,
             plan=RuntimeProfilePlan(
-                selections=_fast_selections(),
+                selections=_plan_selections(quant),
                 kv_policy="paged_bf16_qsa_index_f32",
                 graph_policy="request_owned_exact_moe_graph_c1",
-                binder=_fast_binder,
+                binder=_production_binder,
             ),
         )
     return True
@@ -1348,7 +1358,8 @@ def qwen4_exp_gfx1151_profiles_registered() -> bool:
 
 
 __all__ = [
-    "FAST_Q8_DENSE_WIDE_PREFILL_LAYERS",
+    "F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS",
+    "F16_ROUTE_QUANTS",
     "FAST_QUANTS",
     "PRODUCTION_GDN_PEER_PREFILL_LAYERS",
     "PRODUCTION_MOE_PREFILL_ENV",

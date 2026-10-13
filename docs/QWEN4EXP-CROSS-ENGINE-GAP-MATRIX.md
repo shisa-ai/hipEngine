@@ -23,17 +23,18 @@ The pass-1 p4096 prefill attribution is the prioritization signal:
 The family ratios above are dominated by arithmetic class, not by tile policy
 or launch geometry. gufo and halo-box run F16/BF16 operands through WMMA for
 every family at every layer with no repair pass; hipEngine's `production`
-profile runs exact F32 dense at the low layers, iu8 WMMA plus a sparse exact
-repair for routed experts, exact F32 hyper-connections, and scalar exact FMA
-attention. The per-block source comparison is in
+profile, when these ratios were measured on 2026-10-12, ran exact F32 dense
+at the low layers, iu8 WMMA plus a sparse exact repair for routed experts,
+exact F32 hyper-connections, and scalar exact FMA attention. The per-block source comparison is in
 [`QWEN4EXP-OPTIMIZATION-LEDGER.md`](QWEN4EXP-OPTIMIZATION-LEDGER.md) section
 2.1. Where hipEngine runs the same operand class it is competitive: its F16
 dense kernel measures 40.65 TFLOP/s on the 1024x2560x10240 packet shape.
 
 Closing the gap therefore means moving each family to the F16-operand class.
 That work lands in the opt-in `fast` execution profile
-([`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md)); `production` keeps its
-calibrated envelope. No same-operand replay inside an external engine is
+([`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md)) and moves into
+`production` when the complete composition passes the production gate; the
+first composition did so on 2026-10-13. No same-operand replay inside an external engine is
 required: each family is measured in-tree against the gufo kernel-time column
 above.
 

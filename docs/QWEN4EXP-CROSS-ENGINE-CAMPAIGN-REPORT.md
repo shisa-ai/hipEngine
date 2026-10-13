@@ -74,18 +74,20 @@ hipEngine's `production` profile keeps exact F32, iu8-plus-repair, and scalar
 FMA paths wherever a reduced-precision route exceeds its calibrated envelope.
 No same-operand replay inside an external engine was needed.
 
-The work landed in an opt-in `fast` execution profile, measured in-tree
-against the gufo kernel-time attribution. Same host and protocol as the
-baseline table above, 2026-10-13:
+The work landed first in an opt-in `fast` execution profile, measured
+in-tree against the gufo kernel-time attribution, and became the `production`
+plan later on 2026-10-13 UTC after the complete composition passed the
+production gate.
+Same host and protocol as the baseline table above:
 
 | Engine / profile | p512 | p1024 | p4096 | p4096 decode |
 | --- | ---: | ---: | ---: | ---: |
-| hipEngine `production` | 306.6 | 331.4 | 337.2 | 20.6 |
-| hipEngine `fast` | 769.8 | 935.1 | 1104.8 | 20.6 |
+| hipEngine `production` before the composition | 306.6 | 331.4 | 337.2 | 20.6 |
+| hipEngine `production` with the composition | 768.4 | 930.6 | 1101.8 | 20.6 |
 | halo-box master `6aa81b88e` (2026-10-12) | 759.3 | 1109.1 | 1446.4 | 25.1 |
 | gufo `v0.12.0` (2026-10-12) | 1095.0 | 1482.2 | 1736.4 | 28.1 |
 
-| Family, kernel ms per code-p4096 prefill | `production` | `fast` | gufo |
+| Family, kernel ms per code-p4096 prefill | Before | `production` | gufo |
 | --- | ---: | ---: | ---: |
 | Routed experts | 4621 | 694 | 812 |
 | Dense projections | 3045 | 1283 | 841 |
@@ -94,14 +96,14 @@ baseline table above, 2026-10-13:
 | Hyper-connection elementwise, router, reduce, conversions, other | 2618 | 1001 | 399 |
 | **Total** | **12186** | **3657** | **2373** |
 
-Quality of `fast` against the strict hipEngine teacher: 14/18 strict-exact on
+Quality of the composition against the strict hipEngine teacher: 14/18 strict-exact on
 the pass-1 battery with aligned top-1 agreement 1.00 (halo-box 11/18, gufo
 13/18 under the same scoring), and on the full-vocabulary layer2 gate mean KL
 6.49e-04, max 0.012, top-1 99.56%, 15/18 strict-exact tasks.
 
-Remaining gap to gufo at p4096 is 1.57x in prefill rate and 1.36x in decode.
+Remaining gap to gufo at p4096 is 1.58x in prefill rate and 1.36x in decode.
 The largest remaining prefill items are the dense projections, the
 hyper-connection elementwise chain, and attention block scoring; decode has
-not been worked on. `production` is unchanged apart from one bit-identical
-GDN kernel, and each `fast` route is re-reviewed under the production gates
-before it can become a production route.
+not been worked on. A new reduced-precision route lands in `fast` first and
+becomes a production route when the complete composition passes the
+production gate.

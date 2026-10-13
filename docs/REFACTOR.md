@@ -8853,7 +8853,7 @@ its temporary selector until the graph lands.
 
 ## The Qwen4Exp T16 routed-expert routes and tile residency
 
-The `fast` execution profile for `qwen4_exp_gguf` / `hip_gfx1151` /
+The `production` plan for `qwen4_exp_gguf` / `hip_gfx1151` /
 `gguf_ud_q4_k_xl` runs its routed experts on the wide-tile routed F16 GEMMs
 (`quant/qwen4_exp_routed_f16`), which read the raw expert weights. No profile
 selects the T16 compensated routes any more: `HIPENGINE_QWEN4_EXP_T16_GATE_UP`,
@@ -8867,46 +8867,51 @@ The T16 routes need a second copy of the expert weights (41.3 GiB gate/up,
 read, and measured about +8.5% prefill for the down leg against about +48%
 for the raw-layout routed GEMMs.
 
-Removal condition: delete all of the above once the routed F16 GEMMs have
-held the fast profile through the production-gate review, keeping the T16
-kernels and their round-trip tests only if another model's plan names them.
+Removal condition: met on 2026-10-13, when the routed F16 GEMMs passed the
+production gate and became the production route. Delete all of the above,
+keeping the T16 kernels and their round-trip tests only if another model's
+plan names them.
 `Qwen4ExpGGUFResidentModelRunner.rebind_resident_weights` stays: it is the
 general fix for weights republished after construction.
 
 ## The Qwen4Exp routed F16 selector
 
-`HIPENGINE_QWEN4_EXP_ROUTED_F16` (default off) is published by the fast
-profile's binder and read by `run_qwen4_exp_moe`. It exists because routed
-dispatch in this runner is env-selected throughout.
+`HIPENGINE_QWEN4_EXP_ROUTED_F16` (default off) is published by the
+`gguf_ud_q4_k_xl` production binder and read by `run_qwen4_exp_moe`. It
+exists because routed dispatch in this runner is env-selected throughout.
 
 Removal condition: replace it with manifest-driven dispatch when the runner's
-routed-expert selection moves off environment variables, or delete it with
-the exact grouped chains if the routed F16 GEMMs are promoted to
-`production`.
+routed-expert selection moves off environment variables. The exact grouped
+chains stay registered as the strict fallbacks and as the production routes
+of `gguf_q4_k_m`; their repair-pass siblings that only the old
+`gguf_ud_q4_k_xl` production plan selected can go once no manifest names
+them.
 
-## Fast-profile routes the manifest does not enumerate
+## Qwen4Exp production routes the manifest does not enumerate
 
-The Qwen4Exp `fast` binder widens three routes through binder-owned
-environment values that have no manifest row: the F16 dense wide route's
-layer window (`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`, 0-47 under `fast`,
-13-47 under `production`), the tiled GDN recurrence's layer window
-(`HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS`, every GDN layer under `fast`,
-27-47 under `production`; the manifest's GDN rows name the 27-47 scope), and
-the hyper-connection up projection on the wide route
-(`HIPENGINE_QWEN4_EXP_GR_WIDE`). The production plan has the same gap
-for its own 13-47 window: only the K10240/N320 tail leaf is a declared
-scope. The fast manifest hash therefore changes with the routed-expert and
-router selections but not with these two.
+The `gguf_ud_q4_k_xl` production binder sets three routes through
+binder-owned environment values that have no manifest row: the F16 dense wide
+route's layer window (`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`, 0-47), the
+tiled GDN recurrence's layer window
+(`HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS`, every GDN layer; the manifest's
+GDN rows do not name a tiled owner for this quant), and the hyper-connection
+up projection on the wide route (`HIPENGINE_QWEN4_EXP_GR_WIDE`). Only the
+K10240/N320 tail leaf of the dense wide route is a declared scope. The
+manifest hash therefore changes with the routed-expert, attention and router
+selections but not with these three, and the names
+`PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS` (13-47) and
+`PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS` (27-47) now describe only a quant
+without the composition.
 
 Removal condition: add strict scopes for the dense wide layer window, the
-GDN recurrence below layer 27 and the hyper-connection up projection, declare
-them in the production and fast plans, and have the binder publish the window from the manifest row the way
-it already does for the router producer.
+GDN recurrence and the hyper-connection up projection, declare them in the
+plan, and have the binder publish the window from the manifest row the way it
+already does for the router producer.
 
 ## The small-matrix F16 GEMM selector
 
 `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` (default off) is published by the
-Qwen4Exp fast binder and read by `_dense_f16_gemm_dispatch` in
+`gguf_ud_q4_k_xl` production binder and read by `_dense_f16_gemm_dispatch` in
 `runtime/gguf_linear.py`; it is part of the dispatch-resolve cache key. The
 96-column floor in that function is a measured setting for this model's
 shapes, not a general policy.
@@ -8919,21 +8924,23 @@ narrower column tile is added for the 48-column GDN gate projections and the
 
 ## The WMMA QSA attention selector and its F16 K/V gather
 
-`HIPENGINE_QWEN4_EXP_QSA_WMMA` (default off) is published by the Qwen4Exp
-fast binder and read by `run_qwen4_exp_qsa_prefill_token_mixer`. The route
+`HIPENGINE_QWEN4_EXP_QSA_WMMA` (default off) is published by the
+`gguf_ud_q4_k_xl` production binder and read by
+`run_qwen4_exp_qsa_prefill_token_mixer`. The route
 gathers the whole context's paged BF16 K/V into contiguous F16 scratch rows
 for every QSA layer on every prefill chunk (`wmma_k_f16`, `wmma_v_f16` on the
 QSA scratch), and builds a per-query block bitmask (`wmma_mask`) from the
 selected-position lists the existing top-k expand kernel writes.
 
-The gather takes `(block_table, context_len)`, which the architectural
-invariants reserve against: `KVLiveSpans` is the attention ABI. The existing
-`qwen4_exp_qsa_flash` prefill kernel has the same shape. Both are correct
-only for a dense, non-evicting policy.
+The gather wrapper takes a `KVLiveSpans` and rejects anything but uniform
+BF16 spans; the kernel reads the page table those spans carry. The three
+scratch buffers are allocated on first use and are not in the capacity
+planner (`loading/qwen4_exp_scratch.py`): about 2 KiB per context token for
+the two F16 buffers.
 
-Removal conditions: (0) make the gather consume `KVLiveSpans`
-(`base_offsets`, `live_counts`, `token_positions`, `evict_mask`) before the
-route is offered to any non-dense KV policy or promoted out of `fast`;
+Removal conditions: (0) a variable-span gather (`live_counts`,
+`token_positions`, `evict_mask`) before the route is offered to any
+non-dense KV policy, and the scratch counted by the capacity planner;
 (1) gather only the positions a chunk appended and keep
 the F16 rows per layer once multi-chunk prefill at long context makes the
 full regather measurable; (2) have the block selection write the bitmask
