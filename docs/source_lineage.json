@@ -65,6 +65,11 @@
       "path": "/home/lhl/comparators-20260915/halobox-pr63",
       "baseline_ref": "c4aa302294fcd5121af2039fd4d3dee0d472ec03",
       "baseline_note": "Pinned halo-box PR63 comparator tree built as the identical-operand replay target; parent of the wide-row Q8_0 dense prefill port."
+    },
+    "gufo": {
+      "path": "/home/lhl/comparators-20261012/gufo-src",
+      "baseline_ref": "88090afb",
+      "baseline_note": "gufo v0.12.0 (MIT), the cross-engine pass-1 pin. Source of the routed F16 GEMM port."
     }
   },
   "files": [
@@ -486,6 +491,13 @@
       "kind": "kernel",
       "family": "M8 gfx1151 quantize specializations; PF-1d activation-quantize reference",
       "baseline_ref": "a7ad7b7f"
+    },
+    {
+      "repo": "gufo",
+      "path": "src/models/qwen38_flash_next/kernels/rocm/kernels.hip.cpp",
+      "kind": "kernel",
+      "family": "Qwen4Exp routed-expert F16 WMMA GEMM (RoutedF16GEMMKernel) ported to quant/qwen4_exp_routed_f16.hip",
+      "baseline_ref": "88090afb"
     }
   ],
   "external_artifacts": [

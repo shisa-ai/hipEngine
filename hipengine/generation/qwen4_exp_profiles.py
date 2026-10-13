@@ -42,19 +42,33 @@ PROFILE_Q5_1_DOWN_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
 # route passes the outer safety floor and keeps its strict fallback, and is
 # not yet certified against the calibrated production envelope.
 FAST_QUANTS = ("gguf_ud_q4_k_xl",)
-_T16_DOWN_ENV = "HIPENGINE_QWEN4_EXP_T16_DOWN"
-_FAST_T16_DOWN_VARIANT = "selected_t16_expert_major_wmma_comp_bf16_bf16_out"
-_FAST_T16_DOWN_SCOPES = (
-    "prefill_rows_ge2_lt64_exact_grouped_q5_1_down",
-    "prefill_rows_ge64_lt512_exact_grouped_q5_1_down",
-    "prefill_rows_ge512_k640_exact_grouped_q5_1_down",
+_ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
+_FAST_ROUTED_GATE_UP = "selected_routed_f16_dual_silu_wmma_prefill_bf16_bf16_out"
+_FAST_ROUTED_LINEAR = "selected_routed_f16_wmma_prefill_bf16_bf16_out"
+# Routed-expert scopes the fast plan moves to the wide-tile F16 GEMMs that
+# read the raw expert weights: (layer, scope, registry quant) -> variant.
+# Layers whose gate/up is Q5_K route from 64 rows; the rest from 2.
+_FAST_ROUTED_SCOPES = {
+    ("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up", "gguf_q4_k"):
+        _FAST_ROUTED_GATE_UP,
+    ("moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up", "gguf_q4_k"):
+        _FAST_ROUTED_GATE_UP,
+    ("linear", "ungrouped_prefill_rows_ge64_q5k_gate_up", "gguf_q5_k"):
+        _FAST_ROUTED_GATE_UP,
+    ("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q5_1_down", "gguf_q5_1"):
+        _FAST_ROUTED_LINEAR,
+    ("moe_linear", "prefill_rows_ge64_lt512_exact_grouped_q5_1_down", "gguf_q5_1"):
+        _FAST_ROUTED_LINEAR,
+    ("moe_linear", "prefill_rows_ge512_k640_exact_grouped_q5_1_down", "gguf_q5_1"):
+        _FAST_ROUTED_LINEAR,
+    ("linear", "grouped_prefill_rows_lt512_q8_0_expert_down", "gguf_q8_0"):
+        _FAST_ROUTED_LINEAR,
+    ("linear", "grouped_prefill_rows_ge512_q8_0_expert_down", "gguf_q8_0"):
+        _FAST_ROUTED_LINEAR,
+}
+_FAST_ROUTED_EVIDENCE = (
+    "benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md"
 )
-_FAST_T16_DOWN_EVIDENCE = (
-    "benchmarks/results/2026-10-09-qwen4exp-t16-down-engine-ab/engine_ab.json"
-)
-# Routed-expert slot roles whose T16 tiles the fast profile makes resident at
-# bind time. The tiles sit beside the raw weights the decode owners read.
-_FAST_T16_RESIDENT_SLOTS = ("expert_down",)
 PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS = tuple(range(27, 48))
 PRODUCTION_QSA_FLASH_PREFILL_LAYERS = tuple(range(35, 48))
@@ -802,22 +816,20 @@ def _fast_selections() -> tuple[VariantSelection, ...]:
     result = []
     replaced = set()
     for selection in _production_selections(recovery=True):
-        if (
-            selection.layer == "moe_linear"
-            and selection.registry_quant == "gguf_q5_1"
-            and selection.scope in _FAST_T16_DOWN_SCOPES
-        ):
-            replaced.add(selection.scope)
+        key = (selection.layer, selection.scope, selection.registry_quant)
+        variant = _FAST_ROUTED_SCOPES.get(key)
+        if variant is not None:
+            replaced.add(key)
             selection = replace(
                 selection,
-                selected_variant=_FAST_T16_DOWN_VARIANT,
-                evidence_artifact=_FAST_T16_DOWN_EVIDENCE,
+                selected_variant=variant,
+                evidence_artifact=_FAST_ROUTED_EVIDENCE,
             )
         result.append(selection)
-    missing = set(_FAST_T16_DOWN_SCOPES) - replaced
+    missing = set(_FAST_ROUTED_SCOPES) - replaced
     if missing:
         raise RuntimeError(
-            f"Qwen4Exp fast plan lost routed down scopes: {sorted(missing)!r}"
+            f"Qwen4Exp fast plan lost routed scopes: {sorted(missing)!r}"
         )
     return tuple(result)
 
@@ -888,7 +900,7 @@ def _bind_fast_routes(*, fast: bool) -> None:
     bind in this process wrote.
     """
 
-    for key in (_T16_DOWN_ENV,):
+    for key in (_ROUTED_F16_ENV,):
         if fast:
             _apply_profile_env({key: "1"})
             _fast_published.add(key)
@@ -1216,11 +1228,6 @@ def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None
 
 
 def _fast_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
-    # Tiles first: a route selector published without its tiles would fall
-    # through to the production chain and misreport what ran.
-    populate = getattr(generator, "populate_t16_resident_stages", None)
-    if callable(populate):
-        populate(_FAST_T16_RESIDENT_SLOTS)
     _bind(generator, resolved, production=True, fast=True)
 
 

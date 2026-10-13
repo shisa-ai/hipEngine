@@ -233,3 +233,17 @@ class TestGufoDialect:
         from scripts.qwen4exp_comparator_role_map import FAMILIES
 
         assert "expert_fused" in FAMILIES
+
+
+def test_routed_f16_kernels_map_to_the_expert_families() -> None:
+    """The fast profile's routed GEMMs must not be billed to ``other``."""
+
+    grid = ("1", "1", "1")
+    pair = "void (anonymous namespace)::RoutedF16GEMMKernel<((anonymous namespace)::WeightType)12, 128, 128, 2, true>(void const*, unsigned short const*, int const*)"
+    down = "void (anonymous namespace)::RoutedF16GEMMKernel<((anonymous namespace)::WeightType)7, 128, 64, 2, false>(void const*, unsigned short const*, int const*)"
+    assert map_hipengine(pair, grid) == "expert_gate_up"
+    assert map_hipengine(down, grid) == "expert_down"
+    assert (
+        map_hipengine("(anonymous namespace)::RoutedTileMapKernel", grid)
+        == "moe_reduce"
+    )

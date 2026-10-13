@@ -109,6 +109,12 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
 )
+from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_routed_f16 import (
+    ROUTED_F16_GATE_UP_VARIANT,
+    ROUTED_F16_LINEAR_VARIANT,
+    qwen4_exp_routed_f16_tile_map,
+    routed_f16_tile_capacity,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_quantize_bf16_q8_1,
 )
@@ -3811,6 +3817,67 @@ _T16_DOWN_TILES: dict[int, object] = {}
 _T16_DOWN_ENV = "HIPENGINE_QWEN4_EXP_T16_DOWN"
 
 
+# Wide-tile routed F16 GEMMs over the raw expert weights (fast profile): the
+# gate/up pair with a SwiGLU epilogue and the down projection, each decoding a
+# weight tile once per macro tile of grouped rows. The binder publishes the
+# selector; without it the grouped chains below are untouched.
+_ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
+# Grouped prefill row counts each gate/up quant routes from, matching the
+# scopes the fast plan declares.
+_ROUTED_F16_MIN_ROWS = {"gguf_q4_k": 2, "gguf_q5_k": 64}
+_ROUTED_F16_GATE_UP_QUANTS = frozenset({"gguf_q4_k", "gguf_q5_k"})
+_ROUTED_F16_DOWN_QUANTS = frozenset({"gguf_q5_1", "gguf_q8_0"})
+
+
+def _routed_f16_enabled() -> bool:
+    return os.environ.get(_ROUTED_F16_ENV, "0") not in {"", "0", "false", "False"}
+
+
+def _routed_f16_gate_up_tile_rows(compact_rows: int, experts: int) -> int:
+    """Macro tile for the paired gate/up GEMM from the mean expert bucket."""
+
+    return 128 if compact_rows >= 64 * experts else 64
+
+
+def _routed_f16_down_tile_rows(compact_rows: int, experts: int) -> int:
+    """Macro tile for the down GEMM from the mean expert bucket."""
+
+    if compact_rows >= 32 * experts:
+        return 64
+    return 48 if compact_rows >= 12 * experts else 16
+
+
+def _routed_f16_tile_map(
+    scratch: "Qwen4ExpMoEScratch",
+    *,
+    compact: int,
+    experts: int,
+    tile_rows: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> int:
+    """Build the routed tile map in the grouped scratch; returns its capacity.
+
+    The int32 entries and count reuse the grouped 16-row tile buffers, which
+    are sized for at least as many int64 entries.
+    """
+
+    capacity = routed_f16_tile_capacity(compact, experts, tile_rows)
+    if capacity * DType.INT32.itemsize > scratch.group_tile_expert.nbytes:
+        raise RuntimeError("Qwen4Exp routed F16 tile capacity is invalid")
+    qwen4_exp_routed_f16_tile_map(
+        scratch.group_expert_start.ptr,
+        scratch.group_tile_expert.ptr,
+        scratch.group_wmma_total.ptr,
+        experts,
+        tile_rows=tile_rows,
+        tile_capacity=capacity,
+        stream=stream,
+        runtime=runtime,
+    )
+    return capacity
+
+
 def _t16_down_enabled() -> bool:
     """Default-off T16 Q5_1 expert-major down route."""
 
@@ -4361,8 +4428,26 @@ def run_qwen4_exp_moe(
         and hidden % 256 == 0
         and ffn % 128 == 0
     )
+    gate_quants = {
+        weights["expert_gate"].spec.quant_key,
+        weights["expert_up"].spec.quant_key,
+    }
+    # The down GEMM reads the grouped SwiGLU rows the paired gate/up writes,
+    # so the two are selected together.
+    routed_f16 = (
+        _routed_f16_enabled()
+        and len(gate_quants) == 1
+        and gate_quants <= _ROUTED_F16_GATE_UP_QUANTS
+        and rows >= _ROUTED_F16_MIN_ROWS[weights["expert_gate"].spec.quant_key]
+        and hidden % 256 == 0
+        and weights["expert_down"].spec.quant_key in _ROUTED_F16_DOWN_QUANTS
+        and ffn % 64 == 0
+    )
+    if routed_f16:
+        t16_down = False
     grouped_prefill = (
-        exact_grouped_down or exact_grouped_q4_gate or q5_k_iu8_exact or (
+        routed_f16
+        or exact_grouped_down or exact_grouped_q4_gate or q5_k_iu8_exact or (
             (production_grouped_moe or (
                 rows >= 16
                 and os.environ.get("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "")
@@ -4476,7 +4561,38 @@ def run_qwen4_exp_moe(
             tile_rows = 32 if q4_k_mmq_prefill else 16
             if wmma_total_rows <= 0 or wmma_total_rows > tile_capacity * tile_rows:
                 raise RuntimeError("Qwen4Exp grouped MoE tile row count is invalid")
-        if q4_k_mmq_prefill:
+        if routed_f16:
+            gate_quant = weights["expert_gate"].spec.quant_key
+            gate_up_tile_rows = _routed_f16_gate_up_tile_rows(compact, experts)
+            gate_up_capacity = _routed_f16_tile_map(
+                scratch,
+                compact=compact,
+                experts=experts,
+                tile_rows=gate_up_tile_rows,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            resolve(
+                backend=backend,
+                layer="moe_linear",
+                quant=gate_quant,
+                variant=ROUTED_F16_GATE_UP_VARIANT,
+            )(
+                scratch.expert_down.ptr,
+                scratch.group_expert_start.ptr,
+                scratch.group_tile_expert.ptr,
+                scratch.group_wmma_total.ptr,
+                weights["expert_gate"].allocation("raw").tensor.ptr,
+                weights["expert_up"].allocation("raw").tensor.ptr,
+                scratch.expert_intermediate.ptr,
+                hidden,
+                ffn,
+                tile_rows=gate_up_tile_rows,
+                tile_capacity=gate_up_capacity,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        elif q4_k_mmq_prefill:
             gguf_q4_k_q8_1_mmq_ds4_pack_bf16(
                 scratch.expert_down.ptr,
                 scratch.q4_k_mmq_ds4_workspace.ptr,
@@ -4947,7 +5063,36 @@ def run_qwen4_exp_moe(
                 stream=stream,
                 runtime=active_runtime,
             )
-        if weights["expert_down"].spec.quant_key == "gguf_q5_1":
+        if routed_f16:
+            down_tile_rows = _routed_f16_down_tile_rows(compact, experts)
+            down_capacity = _routed_f16_tile_map(
+                scratch,
+                compact=compact,
+                experts=experts,
+                tile_rows=down_tile_rows,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            resolve(
+                backend=backend,
+                layer="moe_linear",
+                quant=weights["expert_down"].spec.quant_key,
+                variant=ROUTED_F16_LINEAR_VARIANT,
+            )(
+                scratch.expert_intermediate.ptr,
+                scratch.group_expert_start.ptr,
+                scratch.group_tile_expert.ptr,
+                scratch.group_wmma_total.ptr,
+                weights["expert_down"].allocation("raw").tensor.ptr,
+                scratch.expert_down.ptr,
+                ffn,
+                hidden,
+                tile_rows=down_tile_rows,
+                tile_capacity=down_capacity,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        elif weights["expert_down"].spec.quant_key == "gguf_q5_1":
             q5_wmma = production_grouped_moe or os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q5_1_WMMA", ""
             ) not in {"", "0", "false", "False"}

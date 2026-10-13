@@ -420,6 +420,7 @@ hipengine/kernels/hip_gfx1100/
 │   ├── gguf_iq2_xs_mmq_prefill.hip
 │   ├── gguf_iq_gemv.hip
 │   ├── qwen4_exp_q5_1.hip
+│   ├── qwen4_exp_routed_f16.hip
 │   ├── gguf_iq_selected_prefill.hip
 │   ├── gguf_iq_source_mmq_prefill.hip
 │   ├── gguf_k_gemv.hip
@@ -566,6 +567,45 @@ tracked-clean same-residency twelve-case A/B improves weighted prefill
 and Q4_K_M keep tile4; no gfx1100 execution or decode-speed claim.
 The tile4 parent remains registered as strict fallback and temporary rollback.
 Evidence: `benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md`.
+
+## Qwen4Exp routed-expert F16 GEMMs
+
+`quant/qwen4_exp_routed_f16.{hip,py}` registers two routes, aliased to
+gfx1151, that read the **raw** GGUF expert tensors (no repacked copy):
+
+- `moe_linear/{gguf_q4_k,gguf_q5_k}/selected_routed_f16_dual_silu_wmma_prefill_bf16_bf16_out`
+  (Q5_K also under `linear`): gate and up in one launch with the SwiGLU
+  epilogue, macro tiles of 64 or 128 grouped rows.
+- `moe_linear/{gguf_q5_1,gguf_q8_0,gguf_q4_k,gguf_q5_k}/selected_routed_f16_wmma_prefill_bf16_bf16_out`
+  (Q8_0 also under `linear`): one projection, macro tiles of 16, 48 or 64
+  grouped rows (16 or 48 for the K-quants).
+
+Each block stages two 32-element K blocks of packed codes for 128 output
+rows in LDS, decodes them to F16 in registers (`1024 + q` through a byte
+permute into the half mantissa, then one packed FMA with the block scale and
+bias), and runs F16 WMMA with F32 accumulation over the whole K extent
+against up to 128 grouped activation rows. A weight tile is therefore decoded
+once per macro tile rather than once per 16 rows, and there is no integer
+risk tracking or repair pass. Inputs and outputs are BF16 rows in the grouped
+(expert-sorted) order of `qwen35_moe_group_scatter_gather_lowp`; activations
+are converted to F16 while staged. `qwen4_exp_routed_f16_tile_map` expands
+the int64 grouped prefix into `(expert | tile << 16)` int32 entries on the
+device and publishes the live count, so the GEMM grid is sized to a static
+bound with no device read.
+
+The kernel body is ported from gufo v0.12.0 (`88090afb`, MIT),
+`src/models/qwen38_flash_next/kernels/rocm/kernels.hip.cpp`
+`RoutedF16GEMMKernel`; the file header records the hipEngine changes.
+
+This is a reduced-precision operand route: it changes arithmetic relative to
+the exact grouped owners and is selected only by the opt-in `fast` execution
+profile for `qwen4_exp_gguf` / `hip_gfx1151` / `gguf_ud_q4_k_xl`
+(`HIPENGINE_QWEN4_EXP_ROUTED_F16`, published by the fast binder). The strict
+fallbacks are the registered exact grouped chains. Correctness test:
+`tests/test_gpu_qwen4exp_routed_f16.py` (CPU-reference outer floor plus a
+relative-error bound, all four quants, every tile width, ragged buckets and
+non-tile-multiple output widths). Evidence:
+`benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md`.
 
 ## Qwen4Exp GR-up ordered DPP sibling
 

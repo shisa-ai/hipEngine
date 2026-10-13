@@ -276,6 +276,13 @@ def map_hipengine(name: str, grid: tuple[str, str, str]) -> str:
     """
     bare = _hipengine_bare(name)
 
+    # Wide-tile routed F16 GEMMs (fast profile). The paired gate/up
+    # instantiation is the one whose last template argument is true.
+    if "RoutedF16GEMMKernel" in bare:
+        return "expert_gate_up" if ", true>" in bare else "expert_down"
+    if "RoutedTileMapKernel" in bare:
+        return "moe_reduce"
+
     # Routed MoE projections and their exact-repair passes.
     if "selected_dual_wmma_iu8_risk_prefill" in bare:
         return "expert_gate_up"
