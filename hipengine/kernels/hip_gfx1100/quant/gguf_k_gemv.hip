@@ -5533,6 +5533,8 @@ extern "C" int NAME(const float* x, const uint8_t* qweight, const float* normali
   return launch_q8_gr_up_scale<true, true, 4, true, true>(x, qweight, normalized, gate, mixed, rows, \
       in_features, branches, hidden, threads, stream); \
 }
+// The strict hyper-connection read above 256 rows launches this entry.
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32, false, true, 4)
 Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32, true, true, 4)
 Q8_GR_K320_FULL_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32)
 #undef Q8_GR_K320_FULL_ENTRY

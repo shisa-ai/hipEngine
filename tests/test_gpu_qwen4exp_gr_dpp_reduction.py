@@ -110,3 +110,48 @@ def test_dpp_gate_and_mixed_match_parent_bits(rows, k, h):
     finally:
         for ptr in reversed(allocations):
             free(ptr, runtime=runtime)
+
+
+@pytest.mark.skipif(not hip_available(), reason="HIP unavailable")
+@pytest.mark.parametrize("rows,k,h", [(257, 320, 2560), (1024, 320, 2560)])
+def test_strict_fused_up_owner_launches_and_tracks_the_wave_scale_owner(rows, k, h):
+    """The strict hyper-connection read above 256 rows names this owner.
+
+    Its entry point was once dropped from the kernel source while the strict
+    route still resolved it, which left strict unable to prefill more than
+    256 rows in one chunk.
+    """
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import resolve
+
+    register_gfx1151_kernels(replace=True)
+    strict_owner = resolve(
+        backend="hip_gfx1151", layer="linear+gr_gated_mean", quant="gguf_q8_0",
+        variant="coltile2_branch4_rowbatch4_f32_exact",
+    )
+    rng = np.random.default_rng(20261013)
+    x = rng.normal(0, 0.2, (rows, k)).astype(np.float32)
+    normalized = rng.normal(0, 0.2, (rows, 4, h)).astype(np.float32)
+    raw = rng.integers(0, 256, (4 * h, k // 32, 34), dtype=np.uint8)
+    scales = rng.uniform(0.0001, 0.003, raw.shape[:2]).astype(np.float16)
+    raw[..., :2] = scales.view(np.uint8).reshape(*raw.shape[:2], 2)
+    raw = raw.reshape(4 * h, -1)
+    runtime = get_hip_runtime()
+    allocations = []
+    try:
+        dx, dn, dw = [_upload(v, runtime, allocations) for v in (x, normalized, raw)]
+        outputs = []
+        for fn in (strict_owner, getattr(q8, PARENT)):
+            gate = _alloc((rows, 4, h), np.float32, runtime, allocations)
+            mixed = _alloc((rows, h), np.float32, runtime, allocations)
+            fn(dx.ptr, dw.ptr, dn.ptr, gate.ptr, mixed.ptr, rows, k, 4, h, runtime=runtime)
+            runtime.device_synchronize()
+            outputs.append((_download(gate, (rows, 4, h), np.float32, runtime),
+                            _download(mixed, (rows, h), np.float32, runtime)))
+        for got, want in zip(*outputs, strict=True):
+            assert np.isfinite(got).all()
+            np.testing.assert_allclose(got, want, rtol=1e-4, atol=1e-5)
+    finally:
+        for ptr in reversed(allocations):
+            free(ptr, runtime=runtime)
