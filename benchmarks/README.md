@@ -10,7 +10,7 @@ production default or performance claim changed.
 
 [Protocol, test and artifact](results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/README.md).
 
-Last updated: **2026-10-14 UTC**
+Last updated: **2026-10-13 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.

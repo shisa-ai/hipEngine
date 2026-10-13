@@ -1,6 +1,6 @@
 # Qwen4Exp `fast` composition: full-vocabulary teacher-forced gate
 
-Date: 2026-10-14 UTC. Host: AMD Radeon 8060S / gfx1151, machine
+Date: 2026-10-13 UTC. Host: AMD Radeon 8060S / gfx1151, machine
 `55ea6c509d0b49eea8de7094a1023668`, ROCm 10.0.0 (TheRock). Model: unsloth
 `Qwen3.8-Flash-Next` `UD-Q4_K_XL`. Tree at `98aaf1a8f`, tracked-clean.
 

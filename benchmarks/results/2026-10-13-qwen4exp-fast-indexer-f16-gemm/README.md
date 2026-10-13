@@ -1,6 +1,6 @@
 # Qwen4Exp `fast` profile: small-matrix F16 GEMM for the indexer projections and the router
 
-Date: 2026-10-13/14 UTC. Host: AMD Radeon 8060S / gfx1151, AMD Ryzen AI Max+
+Date: 2026-10-13 UTC. Host: AMD Radeon 8060S / gfx1151, AMD Ryzen AI Max+
 395, 128 GB unified memory, machine `55ea6c509d0b49eea8de7094a1023668`,
 kernel `7.2.9-2-cachyos`, ROCm 10.0.0 (TheRock), `tuned-adm` profile
 `accelerator-performance`, `scaling_governor=performance`. Model: unsloth
