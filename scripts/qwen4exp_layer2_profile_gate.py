@@ -365,6 +365,29 @@ CANDIDATES = {
                                 "gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out"),
         count_registered_dispatch=False,
     ),
+    "routed_f16": CandidateSpec(
+        name="routed_f16",
+        classification="T1",
+        mechanism=(
+            "the wide-tile routed F16 GEMMs over the raw expert weights (the "
+            "fast profile's routed-expert route): Q4_K/Q5_K gate and up in one "
+            "launch with the SwiGLU epilogue and the Q5_1/Q8_0 down "
+            "projection, weights decoded to F16 once per macro tile of "
+            "grouped rows, F16 WMMA with F32 accumulation, no repair pass, "
+            "replacing the exact grouped chains for every grouped prefill "
+            "dispatch"
+        ),
+        environment={
+            "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-routed-f16",
+        candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                       "selected_routed_f16_dual_silu_wmma_prefill_bf16_bf16_out"),
+        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                      "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
+        count_registered_dispatch=True,
+    ),
     "mx1_full_route": CandidateSpec(
         name="mx1_full_route",
         classification="T1",

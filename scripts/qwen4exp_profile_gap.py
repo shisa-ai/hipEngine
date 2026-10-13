@@ -448,7 +448,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", action="store_true", help="Emit ROCTX measurement ranges")
     parser.add_argument(
         "--execution-profile",
-        choices=("default", "strict", "production"),
+        choices=("default", "strict", "production", "fast"),
         default="production",
         help=(
             "Profile to resolve. 'default' mirrors the shipped LLM path: no caller "

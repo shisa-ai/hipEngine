@@ -8851,24 +8851,35 @@ demonstrates the launch-count savings compound at graph scope — in which
 case the fused kernel is the graph's building block and the flag becomes
 its temporary selector until the graph lands.
 
-## The Qwen4Exp fast profile's T16 down residency
+## The Qwen4Exp T16 routed-expert routes and tile residency
 
 The `fast` execution profile for `qwen4_exp_gguf` / `hip_gfx1151` /
-`gguf_ud_q4_k_xl` (added 2026-10-13) selects the T16 Q5_1 expert-major down
-route by making the 43 Q5_1 down tile sets resident at bind time
-(`Qwen4ExpGGUFTextGenerator.populate_t16_resident_stages`) and publishing
-`HIPENGINE_QWEN4_EXP_T16_DOWN=1` from the binder. The tiles sit beside the raw
-weights the decode owners read, which costs about 25 GiB of device memory and
-leaves the host with roughly 12 GiB available on the 128 GiB Strix Halo
-system. `HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS` (comma-separated slot roles)
-was added for the env-driven construction populate so a window can name one
-role.
+`gguf_ud_q4_k_xl` runs its routed experts on the wide-tile routed F16 GEMMs
+(`quant/qwen4_exp_routed_f16`), which read the raw expert weights. No profile
+selects the T16 compensated routes any more: `HIPENGINE_QWEN4_EXP_T16_GATE_UP`,
+`HIPENGINE_QWEN4_EXP_T16_DOWN`, `HIPENGINE_QWEN4_EXP_T16_RESIDENT`,
+`HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS`,
+`HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS`, the runner's T16 branches and
+sidecar caches, `Qwen4ExpGGUFTextGenerator.populate_t16_resident_stages`, and
+the `t16` allocation-stage helpers remain only as default-off experiments.
+The T16 routes need a second copy of the expert weights (41.3 GiB gate/up,
+25.2 GiB down) that does not fit beside the raw weights the decode owners
+read, and measured about +8.5% prefill for the down leg against about +48%
+for the raw-layout routed GEMMs.
 
-Removal condition: delete the T16 down selection, the bind-time populate, the
-`T16_RESIDENT*` flags, and `HIPENGINE_QWEN4_EXP_T16_DOWN` once the fast
-profile's routed experts run on a kernel that reads the raw GGUF layout
-directly (the wide-tile routed F16 GEMM), which needs no second weight copy.
-The T16 gate/up route (`HIPENGINE_QWEN4_EXP_T16_GATE_UP`) is not selected by
-any profile: its tiles do not fit beside the raw weights and the decode owners
-cannot read them, so it is deleted under the same condition.
+Removal condition: delete all of the above once the routed F16 GEMMs have
+held the fast profile through the production-gate review, keeping the T16
+kernels and their round-trip tests only if another model's plan names them.
+`Qwen4ExpGGUFResidentModelRunner.rebind_resident_weights` stays: it is the
+general fix for weights republished after construction.
 
+## The Qwen4Exp routed F16 selector
+
+`HIPENGINE_QWEN4_EXP_ROUTED_F16` (default off) is published by the fast
+profile's binder and read by `run_qwen4_exp_moe`. It exists because routed
+dispatch in this runner is env-selected throughout.
+
+Removal condition: replace it with manifest-driven dispatch when the runner's
+routed-expert selection moves off environment variables, or delete it with
+the exact grouped chains if the routed F16 GEMMs are promoted to
+`production`.

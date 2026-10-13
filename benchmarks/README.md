@@ -10,7 +10,7 @@ production default or performance claim changed.
 
 [Protocol, test and artifact](results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/README.md).
 
-Last updated: **2026-10-12 UTC**
+Last updated: **2026-10-13 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -38,6 +38,25 @@ under 3%.
 [Dense Q8 promotion](results/2026-10-08-qwen4exp-checked-q8-dpp-promotion/README.md)
 · [GR-up K320 qualification](results/2026-10-08-qwen4exp-gr-k320-natural-owner/README.md)
 · [GDN tiled16_multi admission](results/2026-10-08-qwen4exp-gdn-multicolumn-admission/README.md).
+
+## Qwen3.8 Flash Next opt-in `fast` profile
+
+On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, BF16 KV, chunk 4096,
+greedy decode (compact capture), canonical 12-case protocol, both profiles
+measured back to back on 2026-10-13. `fast` is selected with
+`execution_profile="fast"`; it runs the routed experts on wide-tile F16 GEMMs
+that read the raw expert weights, and it is not certified against the
+production numerical envelope. `production` remains the default.
+
+| Profile | p512 prefill tok/s | p1024 | p4096 | Decode at p4096 tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| `production` | 306.4 | 330.0 | 335.2 | 20.57 |
+| `fast` | **466.3** | **502.2** | **495.1** | 20.59 |
+
+Against the strict teacher on the 18-prompt battery, `fast` is 13/18
+strict-exact with aligned top-1 agreement 1.00 and top-20 mean KL 0.055;
+`production` is 15/18 with mean KL 0.0052.
+[Protocol, per-case rows and quality score](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).
 
 ## Cross-engine comparison on the same `UD-Q4_K_XL` GGUF file
 
