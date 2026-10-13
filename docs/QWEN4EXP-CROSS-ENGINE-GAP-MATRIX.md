@@ -1,6 +1,6 @@
 # Qwen4Exp cross-engine gap matrix
 
-Status: 2026-10-12. Scope: the same `Qwen3.8-Flash-Next` `UD-Q4_K_XL`
+Status: 2026-10-13. Scope: the same `Qwen3.8-Flash-Next` `UD-Q4_K_XL`
 GGUF on gfx1151. This is an investigation plan, not a claim that an external
 engine's arithmetic is acceptable for hipEngine production.
 
@@ -13,78 +13,60 @@ The pass-1 p4096 prefill attribution is the prioritization signal:
 | Hyper-connection | 4.9x | Shape-specific GR and Q8 activation-reuse paths are present; same-operand cross-engine decomposition is missing. | gufo has shape-specific vector and projection paths; hipEngine has qualified GR owners but not a cross-engine same-operand decomposition. | Compare HC mix, branch projection, combine, and the K=320 down shape separately at rows 1/8/64/4096. |
 | Dense projections | 3.6x | Checked dense Q8 DPP/MMQ promotions are live; remaining gap is dispatch/library geometry, not missing basic Q8 support. | hipEngine narrowed this gap with the checked dense Q8 DPP promotion; external builds use mature GGML HIP MMQ/BLAS dispatch. | Replay the same Q8/Q4 weights and activations across candidate kernels, including launch geometry and input quantization. |
 | GDN | 2.9x | Tiled16_multi GDN prefill is promoted for its certified suffix; taxonomy and direct equivalence remain unresolved. | External attribution taxonomy may fold some work into other families; no direct equivalence is established. | Compare projection, recurrent update, state movement, and output projection with identical state and chunk boundaries. |
-| Router/reduce | diagnostic | gufo's fused expert path changes launch and reduction ownership; direct ratios are not comparable yet. | Attribute routing, ID-map construction, weighted reduction, and residual combine separately. |
-| Launch scheduling | cross-cutting | gufo and halo-box run fewer/fused launches in several families; hipEngine's dispatch gaps are material in decode. | Request-delimited launch census and host/device timeline for identical p4096 and 128 decode workloads. |
-| Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
-| Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
+| Router/reduce | diagnostic | gufo's fused expert path changes launch and reduction ownership; direct ratios are not comparable yet. | Not separately attributed. | Attribute routing, ID-map construction, weighted reduction, and residual combine separately. |
+| Launch scheduling | cross-cutting | gufo and halo-box run fewer/fused launches in several families; hipEngine's dispatch gaps are material in decode. | Not separately attributed. | Request-delimited launch census and host/device timeline for identical p4096 and 128 decode workloads. |
+| Memory movement | cross-cutting | gufo groups expert rows and reuses pre-quantized Q8_1 activations; residency/layout effects are not isolated. | Not separately attributed. | Count H2D/D2H, temporary allocations, quantization bytes, and expert-weight reads per stage. |
+| Graph/runtime behavior | cross-cutting | hipEngine has explicit graph/eager policies; external server runtimes have different capture and scheduling behavior. | Not separately attributed. | Compare warm steady-state request traces with graph/capture status and dispatch gaps, without mixing server overhead into kernel claims. |
 
-The geometry-correct WMMA capture is now complete: 2,184 records, tile capacity
-800, and 7,088–9,440 row tiles per record (mean 8,255.65). This closes the
-hipEngine-side tile evidence. It still does not measure gufo's kernels on the
-same device or prove a replacement: gufo's column policy and hipEngine's row
-map remain different dimensions. The retained artifacts are the grouped
-histogram summary, the gufo policy replay, and the WMMA tile-map summary.
+## What explains the gap
 
-MMQ32 wrapper recorded no map calls for this production case, while grouped
-prefix counts still captured exactly. The source branch selects the generic
-`qwen35_moe_wmma_tile_map` for the active owner in this shape (MMQ32 is only
-selected when `q4_k_mmq_prefill` is true). The captured histogram is therefore
-usable, but a direct hipEngine tile-map artifact still needs a wrapper around
-the generic WMMA map if we need exact launch/tile counts.
+The family ratios above are dominated by arithmetic class, not by tile policy
+or launch geometry. gufo and halo-box run F16/BF16 operands through WMMA for
+every family at every layer with no repair pass; hipEngine's `production`
+profile runs exact F32 dense at the low layers, iu8 WMMA plus a sparse exact
+repair for routed experts, exact F32 hyper-connections, and scalar exact FMA
+attention. The per-block source comparison is in
+[`QWEN4EXP-OPTIMIZATION-LEDGER.md`](QWEN4EXP-OPTIMIZATION-LEDGER.md) section
+2.1. Where hipEngine runs the same operand class it is competitive: its F16
+dense kernel measures 40.65 TFLOP/s on the 1024x2560x10240 packet shape.
 
-is a column-tile policy in its MMQ routed GEMM, while hipEngine's grouped Q4
-prefill map uses expert-row tiles (`qwen35_moe_mmq32_tile_map` and related
-owners). The width-16 result is therefore a policy hypothesis, not proof that
-hipEngine should switch a tile dimension. The next valid comparison must report
-both dimensions and their padding/launch counts on the same bucket histogram.
+Closing the gap therefore means moving each family to the F16-operand class.
+That work lands in the opt-in `fast` execution profile
+([`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md)); `production` keeps its
+calibrated envelope. No same-operand replay inside an external engine is
+required: each family is measured in-tree against the gufo kernel-time column
+above.
 
-for `code-p4096` (the wrapper's old `records` assertion still failed because
-that assertion only recognizes pair2 records; the grouped data is valid). The
-compact summary is
-`benchmarks/results/2026-10-12-qwen4exp-cross-engine-gap-routing-code-p4096-grouped-summary.json`.
-Across the grouped records, the mean nonempty-expert bucket was 16.04 routed
-lanes, with per-record totals of 5,120 lanes and count-aware maxima reaching
-512. This is the real production histogram needed for the tile-policy replay;
-it is not itself a performance claim.
+## Routed-expert tile evidence
 
-Q4 prefill takes the grouped path, builds `group_counts`/`group_expert_start`,
-executes `qwen35_moe_group_scatter_gather_lowp`, then selects one of the
-`qwen35_moe_mmq32_tile_map`, exact grouped Q4, or T16/WMMA branches. The
-capture wrapper's `moe_linear` pair2 keys were therefore the wrong observation
-point. The correct instrumentation point is the grouped scheduler's
-`group_expert_start` and `group_wmma_total`/`group_tile_expert` buffers, before
-the selected grouped Q4/T16 owner launch.
+The routed-expert tile investigation is complete on the hipEngine side and
+did not identify a tile-policy change worth making.
 
-by model loading. `scripts/qwen4exp_routing_capture.py` wraps only the Q4/Q5_1
-pair-prefill `KernelKey` variants, while the production `code-p4096` run took a
-different registered owner (the capture produced zero records and preserved
-exact before/after logits/state). The blocked artifact is
-`benchmarks/results/2026-10-12-qwen4exp-cross-engine-gap-routing-code-p4096.json`.
-The next implementation task is to instrument the actual production routed
-owner/tile-map path, then capture its count histogram without changing route
-selection.
+- **Capture point.** Q4 prefill takes the grouped path: it builds
+  `group_counts`/`group_expert_start`, runs
+  `qwen35_moe_group_scatter_gather_lowp`, then selects the generic
+  `qwen35_moe_wmma_tile_map` owner for this shape (the MMQ32 map is selected
+  only when `q4_k_mmq_prefill` is true). `scripts/qwen4exp_routing_capture.py`
+  wraps only the pair-prefill keys and records nothing for this route; the
+  valid observation points are the grouped scheduler's buffers.
+- **Grouped histogram, `code-p4096`.** 1,152 prefix records, 5,120 routed
+  lanes per record, mean nonempty-expert bucket 16.04 lanes, count-aware
+  maxima up to 512
+  (`benchmarks/results/2026-10-12-qwen4exp-cross-engine-gap-routing-code-p4096-grouped-summary.json`).
+- **WMMA tile map, `code-p4096`.** 2,184 records, tile capacity 800,
+  7,088-9,440 row tiles per record, mean 8,255.65
+  (`benchmarks/results/2026-10-12-qwen4exp-cross-engine-gap-routing-code-p4096-wmma-summary.json`).
+- **Synthetic geometry screen.** Tile16 is about 2.2x faster than tile32 on
+  balanced and sparse 256-row distributions; production already runs 16-row
+  tiles.
+- **gufo policy replay.** gufo minimizes a cost over column widths 16..80 in
+  steps of 16 using observed per-expert counts and a fixed panel penalty
+  (`executor.cpp:1395-1405`, `qfn_mmq.hip.cpp:42-62`). Replayed on the
+  captured histogram it selects width 16. gufo's policy is a column-tile
+  width and hipEngine's map is an expert-row tile, so the replay is a
+  consistency check rather than a comparison of the same dimension.
 
-
-The two implementations are not using the same tile policy:
-
-- gufo's executor computes a tile width by minimizing a cost over widths
-  16..80 in steps of 16, using the observed per-expert counts and a fixed
-  panel penalty (`executor.cpp:1395-1405`, `qfn_mmq.hip.cpp:42-62`). Its
-  routed tile map is built from the actual host-side counts and uploaded before
-  the expert launches (`executor.cpp:1659-1705`).
-- hipEngine's Qwen4Exp executor also computes a count-aware tile width through
-  `qwen35_moe_mmq*_tile_map` and `qwen35_moe_group_*` metadata, and has separate
-  48/64/128-row maps plus a fused F16 gate/up path for selected large shapes
-  (`runtime/qwen4_exp_runner.py`, the routed dispatch around its tile-map and
-  grouped-scatter calls). It is therefore already structurally similar, but
-  the tile objective, map ownership, and fused-route admission differ.
-- The local screen confirms why the objective matters: tile16 beats tile32 by
-  about 2.2x on both balanced and sparse 256-row synthetic distributions.
-
-The next comparison must capture the actual per-expert count histogram and
-selected tile map from both engines for `code-p4096`, then replay that histogram
-through each implementation. Comparing only nominal tile widths would miss the
-padding and active-expert effects.
+## In-tree experiment entry points
 
 
 The repository already has focused experiments that can serve as the hipEngine
@@ -102,10 +84,7 @@ side of the comparison:
   `scripts/qwen4exp_per_prefill_attribution.py` provide request-delimited
   family attribution for the canonical workload.
 
-These experiments are not automatically cross-engine comparisons: external
-engines must receive equivalent operands or their source/kernel differences
-must be mapped to the same stage before a result is called explanatory.
-
+## gufo mechanisms to port
 
 The gufo Qwen3.8 Flash-Next ROCm implementation currently exposes these
 candidate mechanisms in `src/models/qwen38_flash_next/kernels/rocm/mmq/`:

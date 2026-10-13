@@ -1,7 +1,7 @@
 # Qwen4Exp cross-engine gap campaign report
 
-Status: 2026-10-12. This report records the current evidence and the remaining
-requirements; it is not a production-promotion report.
+Status: 2026-10-13. This report records the cross-engine evidence and the
+resulting direction; it is not a production-promotion report.
 
 ## Apples-to-apples baseline
 
@@ -65,18 +65,19 @@ calibrated mean/p95/p99/max KL, top-1 by scope/category, isolation, BF16
 relative checks, and task quality. No new candidate has been promoted, so no
 candidate-specific production gate is claimed here.
 
-## Remaining blockers
+## Conclusion and next steps
 
-The campaign is not complete. The missing evidence is:
+The family gaps are explained by arithmetic class. gufo and halo-box run
+F16/BF16 operands through WMMA for every family at every layer with no repair
+pass, while hipEngine's `production` profile keeps exact F32, iu8-plus-repair,
+and scalar FMA paths wherever a reduced-precision route exceeds its calibrated
+envelope. The tile-geometry diagnostics above did not identify a tile-policy
+change worth making, and no same-operand replay inside an external engine is
+needed to proceed.
 
-1. A same-operand external replay that measures gufo or halo-box kernels
-   against the captured hipEngine operands/histograms.
-2. A candidate implementation change selected from that replay.
-3. Full candidate correctness and canonical p512/p1024/p4096 remeasurement.
-4. A final keep/reject decision based on both performance and quality.
-
-Until those items land, the current conclusion is source-level and diagnostic:
-hipEngine has already adopted several external-style mechanisms, QSA and
-routed-expert geometry remain the highest-value areas, and no input-agnostic
-change has yet been proven safe and faster under the complete production
-contract.
+The work continues in an opt-in `fast` execution profile that moves each
+family to the F16-operand class and is measured in-tree against the gufo
+kernel-time attribution: routed experts, dense projections, hyper-connections,
+attention, MoE reduce, then GDN. `production` keeps its calibrated envelope;
+each `fast` route is re-reviewed under the production gates once the profile
+reaches the external engines' throughput class.
