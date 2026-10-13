@@ -805,6 +805,7 @@ def test_fast_binder_publishes_the_routed_selector_and_production_retracts_it() 
     assert os.environ[_ROUTED_F16_ENV] == "1"
     all_layers = ",".join(map(str, range(48)))
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == all_layers
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == all_layers
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "1"
@@ -821,6 +822,9 @@ def test_fast_binder_publishes_the_routed_selector_and_production_retracts_it() 
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(
         map(str, range(13, 48))
+    )
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ",".join(
+        map(str, range(27, 48))
     )
     assert (
         os.environ["HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"]

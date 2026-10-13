@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_profile_gap_window",
+  "command": [
+    "qwen4exp_profile_gap.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--mode",
+    "prefill",
+    "--case-id",
+    "code-p4096",
+    "--prefill-chunk-size",
+    "4096",
+    "--repetitions",
+    "1",
+    "--execution-profile",
+    "fast",
+    "--compiler-version-file",
+    "/tmp/claude-1000/-home-lhl-hipEngine/d74bca4b-3cfa-43e7-ba61-490fabeae83b/scratchpad/hipcc-version.txt",
+    "--require-cached-build",
+    "--profile",
+    "--role-markers",
+    "--output",
+    "/tmp/claude-1000/-home-lhl-hipEngine/d74bca4b-3cfa-43e7-ba61-490fabeae83b/scratchpad/prof-gdn/report.json"
+  ],
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1daec8e11ec9d2a91aeec229ad87049b474ea2ca",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.2.9-2-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "mode": "prefill",
+  "decode_output": null,
+  "profile": true,
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "prompt_file": null,
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "case": {
+    "id": "code-p4096",
+    "category": "code",
+    "prompt_tokens": 4096,
+    "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75"
+  },
+  "manifest_sha256": "f0d12e08df02bd1d11e5ca115c0b4c6ae919c2eb9417bd54b67bd9966261bba0",
+  "strict_manifest_sha256": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+  "fell_back_to_strict": false,
+  "execution_profile_requested": "fast",
+  "execution_profile": "fast",
+  "configuration_class": "named_profile",
+  "named_profile_intact": true,
+  "overrides": {},
+  "override_stage": "post_profile_binder_pre_measurement",
+  "bound_route_env": {
+    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES": null,
+    "HIPENGINE_QWEN4_EXP_PLE_WARM": null,
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": "0,2,5,6,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_MOE_GRAPH": null,
+    "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_f16_wmma_gemm"
+  },
+  "route_env": {
+    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES": null,
+    "HIPENGINE_QWEN4_EXP_PLE_WARM": null,
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": "0,2,5,6,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_MOE_GRAPH": null,
+    "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_f16_wmma_gemm"
+  },
+  "wall_seconds": [
+    3.743851988998358
+  ],
+  "lifecycle": {
+    "after_warmup": {
+      "current_allocated_bytes": 88573403936,
+      "peak_allocated_bytes": 88573403936,
+      "total_allocated_bytes": 88573403936,
+      "total_freed_bytes": 0,
+      "active_allocations": 1629,
+      "peak_allocations": 1629
+    },
+    "after_measurement": {
+      "current_allocated_bytes": 88573403936,
+      "peak_allocated_bytes": 88573403936,
+      "total_allocated_bytes": 88573403936,
+      "total_freed_bytes": 0,
+      "active_allocations": 1629,
+      "peak_allocations": 1629
+    },
+    "after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 88573403936,
+      "total_allocated_bytes": 88573403936,
+      "total_freed_bytes": 88573403936,
+      "active_allocations": 0,
+      "peak_allocations": 1629
+    },
+    "steady_allocation_growth": 0,
+    "steady_allocated_byte_growth": 0,
+    "passed": true
+  },
+  "token_id": 248068,
+  "logits_sha256": "931402e45e5257fffd4743c845018b5ac303825bac798249bc7613d3f7255c4f",
+  "runtime_census": {
+    "calls": {
+      "memset": 125,
+      "memcpy": 77,
+      "memcpy_async": 24,
+      "device_synchronize": 2
+    },
+    "bytes": {
+      "memset": 220393488,
+      "memcpy": 43776392,
+      "memcpy_async": 196944
+    },
+    "sizes": {
+      "memset": {
+        "2048": 96,
+        "4194304": 24,
+        "113246208": 1,
+        "5898240": 1,
+        "368640": 1,
+        "20480": 1,
+        "16": 1
+      },
+      "memcpy": {
+        "8": 49,
+        "32768": 25,
+        "41943040": 1,
+        "20480": 1,
+        "993280": 1
+      },
+      "memcpy_async": {
+        "16408": 12,
+        "4": 12
+      }
+    },
+    "memcpy_kinds": {
+      "memcpy": {
+        "1": 74,
+        "2": 2,
+        "3": 1
+      },
+      "memcpy_async": {
+        "3": 24
+      }
+    },
+    "memcpy_size_kinds": {
+      "memcpy": {
+        "8:1": 48,
+        "32768:1": 25,
+        "41943040:1": 1,
+        "8:2": 1,
+        "20480:3": 1,
+        "993280:2": 1
+      },
+      "memcpy_async": {
+        "16408:3": 12,
+        "4:3": 12
+      }
+    }
+  },
+  "wall_summary": {
+    "count": 1,
+    "sum": 3.743851988998358,
+    "mean": 3.743851988998358,
+    "median": 3.743851988998358,
+    "min": 3.743851988998358,
+    "max": 3.743851988998358,
+    "tok_s": 1094.0603453439026
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 88573403936,
+    "total_allocated_bytes": 88573403936,
+    "total_freed_bytes": 88573403936,
+    "active_allocations": 0,
+    "peak_allocations": 1629
+  }
+}

@@ -381,6 +381,71 @@ def qwen4_exp_gdn_prefill_columnwarps_f32(
         runtime.check(int(error))
 
 
+def _qwen4_exp_gdn_core_norm_gate(
+    symbol: str,
+    core_ptr: int,
+    output_gate_ptr: int,
+    norm_weight_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_v_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    if tokens <= 0 or num_v_heads <= 0 or head_v_dim <= 0:
+        raise ValueError("GDN norm/gate needs positive sizes")
+    library = library or build_qwen4_exp_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 3 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    runtime.check(
+        fn(
+            ctypes.c_void_p(core_ptr),
+            ctypes.c_void_p(output_gate_ptr),
+            ctypes.c_void_p(norm_weight_ptr),
+            ctypes.c_int64(tokens),
+            ctypes.c_int64(num_v_heads),
+            ctypes.c_int64(head_v_dim),
+            ctypes.c_void_p(stream),
+        )
+    )
+
+
+def qwen4_exp_gdn_core_norm_gate_f32(
+    core_ptr: int, output_gate_ptr: int, norm_weight_ptr: int,
+    tokens: int, num_v_heads: int, head_v_dim: int,
+    *, stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """In-place per-head RMS norm, weight and sigmoid gate: the strict parent
+    geometry, one 32-thread workgroup per (token, head)."""
+
+    _qwen4_exp_gdn_core_norm_gate(
+        "hipengine_qwen4_exp_gdn_core_norm_gate_f32",
+        core_ptr, output_gate_ptr, norm_weight_ptr, tokens, num_v_heads,
+        head_v_dim, stream=stream, library=library, runtime=runtime,
+    )
+
+
+def qwen4_exp_gdn_core_norm_gate_waves_f32(
+    core_ptr: int, output_gate_ptr: int, norm_weight_ptr: int,
+    tokens: int, num_v_heads: int, head_v_dim: int,
+    *, stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """The same norm/gate with eight (token, head) pairs per workgroup;
+    bit-identical to the per-pair parent."""
+
+    _qwen4_exp_gdn_core_norm_gate(
+        "hipengine_qwen4_exp_gdn_core_norm_gate_waves_f32",
+        core_ptr, output_gate_ptr, norm_weight_ptr, tokens, num_v_heads,
+        head_v_dim, stream=stream, library=library, runtime=runtime,
+    )
+
+
 def qwen4_exp_gdn_prefill_tiled16_f32(
     conv_ptr: int,
     output_gate_ptr: int,

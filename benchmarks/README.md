@@ -42,26 +42,26 @@ under 3%.
 ## Qwen3.8 Flash Next opt-in `fast` profile
 
 On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, BF16 KV, chunk 4096,
-greedy decode (compact capture), canonical 12-case protocol, both profiles
-measured back to back on 2026-10-13. `fast` is selected with
-`execution_profile="fast"`; it runs the routed experts, the dense
-projections at every layer, the hyper-connection projections, the indexer
-projections, the router and the prefill attention on F16 matrix kernels, and
-it is not certified
-against the production numerical envelope. `production` remains the default.
-Both rows were measured in the same boot, `production` first.
+greedy decode (compact capture), canonical 12-case protocol, the two profiles
+measured back to back on 2026-10-13, `fast` first. `fast` is selected with
+`execution_profile="fast"`. It runs the routed experts, the dense projections
+at every layer, the hyper-connection projections, the indexer projections,
+the router and the prefill attention on F16 matrix kernels, and the tiled GDN
+recurrence at every GDN layer. It is not certified against the production
+numerical envelope, and `production` remains the default.
 
 | Profile | p512 prefill tok/s | p1024 | p4096 | Decode at p4096 tok/s |
 | --- | ---: | ---: | ---: | ---: |
-| `production` | 306.4 | 330.0 | 335.2 | 20.57 |
-| `fast` | **728.9** | **868.4** | **1002.2** | 20.58 |
+| `production` | 306.6 | 331.4 | 337.2 | 20.55 |
+| `fast` | **769.8** | **935.1** | **1104.8** | 20.60 |
 
-Against the strict teacher on the 18-prompt battery, `fast` is 13/18
-strict-exact with aligned top-1 agreement 1.00 and top-20 mean KL 0.045;
+Against the strict teacher on the 18-prompt battery, `fast` is 14/18
+strict-exact with aligned top-1 agreement 1.00 and top-20 mean KL 0.049;
 `production` is 15/18 with mean KL 0.0052. A full-vocabulary teacher-forced
-gate of the `fast` composition before its attention kernel measured mean KL
-7.1e-4, max 0.034 and top-1 99.1% over 450 rows.
-[Protocol, per-case rows, quality score and per-family attribution](results/2026-10-14-qwen4exp-fast-qsa-wmma/README.md)
+gate of an earlier `fast` composition (before its attention and GDN changes)
+measured mean KL 7.1e-4, max 0.034 and top-1 99.1% over 450 rows.
+[Protocol, per-case rows, quality score and kernel evidence](results/2026-10-14-qwen4exp-gdn-norm-gate-waves/README.md)
+· [attention kernel](results/2026-10-14-qwen4exp-fast-qsa-wmma/README.md)
 · [full-vocabulary gate](results/2026-10-14-qwen4exp-fast-composition-gate/README.md)
 · [indexer and router GEMM](results/2026-10-13-qwen4exp-fast-indexer-f16-gemm/README.md)
 · [dense and hyper-connection routes](results/2026-10-13-qwen4exp-fast-dense-hc-router/README.md)

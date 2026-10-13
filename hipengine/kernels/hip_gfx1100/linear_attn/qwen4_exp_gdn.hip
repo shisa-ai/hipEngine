@@ -721,7 +721,94 @@ __global__ void qwen4_exp_gdn_core_norm_gate_f32_kernel(
   }
 }
 
+// The same norm/gate as qwen4_exp_gdn_core_norm_gate_f32_kernel with eight
+// (token, head) pairs per workgroup, one per wave. Each wave runs the parent's
+// per-lane partial sums, the parent's wave reduction and the parent's
+// epilogue, and reads the sum from lane 0 as the parent does through LDS, so
+// the result is bit-identical; only the launch geometry changes (one
+// workgroup per eight pairs instead of one 32-thread workgroup per pair).
+__global__ void qwen4_exp_gdn_core_norm_gate_waves_f32_kernel(
+    float* __restrict__ core,
+    const float* __restrict__ output_gate,
+    const float* __restrict__ norm_weight,
+    int64_t tokens,
+    int64_t core_width,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  const int lane = threadIdx.x & 31;
+  const int64_t pair = static_cast<int64_t>(blockIdx.x) * (blockDim.x / 32)
+      + (threadIdx.x >> 5);
+  if (pair >= tokens * num_v_heads) return;
+  const int64_t token = pair / num_v_heads;
+  const int64_t v_head = pair % num_v_heads;
+  const int64_t base = token * core_width + v_head * head_v_dim;
+  float partial = 0.0f;
+  for (int64_t col = lane; col < head_v_dim; col += 32) {
+    const float value = core[base + col];
+    partial += value * value;
+  }
+  partial = warp_sum_f32(partial);
+  const float total = __shfl(partial, 0);
+  const float inv_rms = rsqrtf(
+      total / static_cast<float>(head_v_dim) + 1.0e-6f);
+  for (int64_t col = lane; col < head_v_dim; col += 32) {
+    core[base + col] = core[base + col] * inv_rms
+        * norm_weight[col]
+        * sigmoid_f32(output_gate[base + col]);
+  }
+}
+
+int launch_core_norm_gate_waves(
+    void* core, const void* output_gate, const void* norm_weight,
+    int64_t tokens, int64_t num_v_heads, int64_t head_v_dim,
+    hipStream_t stream) {
+  const int64_t pairs = tokens * num_v_heads;
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_core_norm_gate_waves_f32_kernel,
+      dim3(static_cast<uint32_t>((pairs + 7) / 8)),
+      dim3(256), 0, stream,
+      static_cast<float*>(core),
+      static_cast<const float*>(output_gate),
+      static_cast<const float*>(norm_weight),
+      tokens, num_v_heads * head_v_dim, num_v_heads, head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
+
+// Standalone norm/gate launches. The per-pair parent stays reachable as the
+// strict reference for the eight-wave kernel's bit-parity test.
+extern "C" int hipengine_qwen4_exp_gdn_core_norm_gate_f32(
+    void* core, const void* output_gate, const void* norm_weight,
+    int64_t tokens, int64_t num_v_heads, int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!core || !output_gate || !norm_weight || tokens <= 0 ||
+      num_v_heads <= 0 || head_v_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_core_norm_gate_f32_kernel,
+      dim3(static_cast<uint32_t>(tokens),
+           static_cast<uint32_t>(num_v_heads)),
+      dim3(32), 0, stream,
+      static_cast<float*>(core),
+      static_cast<const float*>(output_gate),
+      static_cast<const float*>(norm_weight),
+      tokens, num_v_heads * head_v_dim, num_v_heads, head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gdn_core_norm_gate_waves_f32(
+    void* core, const void* output_gate, const void* norm_weight,
+    int64_t tokens, int64_t num_v_heads, int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!core || !output_gate || !norm_weight || tokens <= 0 ||
+      num_v_heads <= 0 || head_v_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return launch_core_norm_gate_waves(
+      core, output_gate, norm_weight, tokens, num_v_heads, head_v_dim, stream);
+}
 
 extern "C" int hipengine_qwen4_exp_gdn_decode_f32(
     const void* conv,
@@ -990,17 +1077,8 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_columnwarps_f32(
       tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
   const int err = static_cast<int>(hipGetLastError());
   if (err != 0) return err;
-  const int64_t core_width = num_v_heads * head_v_dim;
-  hipLaunchKernelGGL(
-      qwen4_exp_gdn_core_norm_gate_f32_kernel,
-      dim3(static_cast<uint32_t>(tokens),
-           static_cast<uint32_t>(num_v_heads)),
-      dim3(32), 0, stream,
-      static_cast<float*>(core),
-      static_cast<const float*>(output_gate),
-      static_cast<const float*>(norm_weight),
-      tokens, core_width, num_v_heads, head_v_dim);
-  return static_cast<int>(hipGetLastError());
+  return launch_core_norm_gate_waves(
+      core, output_gate, norm_weight, tokens, num_v_heads, head_v_dim, stream);
 }
 
 extern "C" int hipengine_qwen4_exp_gdn_prefill_tiled16_f32(
@@ -1051,17 +1129,8 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_tiled16_f32(
       tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
   const int err = static_cast<int>(hipGetLastError());
   if (err != 0) return err;
-  const int64_t core_width = num_v_heads * head_v_dim;
-  hipLaunchKernelGGL(
-      qwen4_exp_gdn_core_norm_gate_f32_kernel,
-      dim3(static_cast<uint32_t>(tokens),
-           static_cast<uint32_t>(num_v_heads)),
-      dim3(32), 0, stream,
-      static_cast<float*>(core),
-      static_cast<const float*>(output_gate),
-      static_cast<const float*>(norm_weight),
-      tokens, core_width, num_v_heads, head_v_dim);
-  return static_cast<int>(hipGetLastError());
+  return launch_core_norm_gate_waves(
+      core, output_gate, norm_weight, tokens, num_v_heads, head_v_dim, stream);
 }
 
 // 32-warp/block GDN prefill (PF-5 M6 port, lever 1; halo-box PR11
@@ -1109,17 +1178,8 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_w32_f32(
       tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
   const int err = static_cast<int>(hipGetLastError());
   if (err != 0) return err;
-  const int64_t core_width = num_v_heads * head_v_dim;
-  hipLaunchKernelGGL(
-      qwen4_exp_gdn_core_norm_gate_f32_kernel,
-      dim3(static_cast<uint32_t>(tokens),
-           static_cast<uint32_t>(num_v_heads)),
-      dim3(32), 0, stream,
-      static_cast<float*>(core),
-      static_cast<const float*>(output_gate),
-      static_cast<const float*>(norm_weight),
-      tokens, core_width, num_v_heads, head_v_dim);
-  return static_cast<int>(hipGetLastError());
+  return launch_core_norm_gate_waves(
+      core, output_gate, norm_weight, tokens, num_v_heads, head_v_dim, stream);
 }
 
 
@@ -1430,15 +1490,6 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_wy_f32(
   // the route is not a drop-in for the tiled16 interface.
   const int err = static_cast<int>(hipGetLastError());
   if (err != 0) return err;
-  const int64_t core_width = num_v_heads * head_v_dim;
-  hipLaunchKernelGGL(
-      qwen4_exp_gdn_core_norm_gate_f32_kernel,
-      dim3(static_cast<uint32_t>(tokens),
-           static_cast<uint32_t>(num_v_heads)),
-      dim3(32), 0, stream,
-      static_cast<float*>(core),
-      static_cast<const float*>(output_gate),
-      static_cast<const float*>(norm_weight),
-      tokens, core_width, num_v_heads, head_v_dim);
-  return static_cast<int>(hipGetLastError());
+  return launch_core_norm_gate_waves(
+      core, output_gate, norm_weight, tokens, num_v_heads, head_v_dim, stream);
 }
