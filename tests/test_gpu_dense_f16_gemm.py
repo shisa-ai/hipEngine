@@ -142,3 +142,45 @@ def test_staged_tiles_are_bit_identical_to_the_scalar_kernel(
     finally:
         for buf in (xd, wd, od):
             free(buf, runtime=runtime)
+
+
+@pytest.mark.parametrize("weight_dtype", ["f32", "bf16"])
+@pytest.mark.parametrize("rows,in_features,out_features", [(257, 2560, 48), (513, 1280, 512)])
+def test_a_declared_f16_image_gives_the_same_bits(
+    weight_dtype, rows, in_features, out_features
+) -> None:
+    from hipengine.kernels.hip_gfx1100.linear.f16_mirror import (
+        declare_f16_mirror, invalidate_f16_mirror,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import f32_to_f16
+
+    rng = np.random.default_rng(rows + out_features)
+    x = (rng.standard_normal((rows, in_features)) * 0.5).astype(np.float32)
+    w = (rng.standard_normal((out_features, in_features)) * 0.05).astype(np.float32)
+    w_host = w if weight_dtype == "f32" else _to_bf16(w)
+    gemm = (dense_f16_gemm_f32_f32w_f32_out if weight_dtype == "f32"
+            else dense_f16_gemm_f32_bf16w_f32_out)
+    runtime = get_hip_runtime()
+    xd = malloc(x.nbytes, runtime=runtime)
+    hd = malloc(x.nbytes // 2, runtime=runtime)
+    wd = malloc(w_host.nbytes, runtime=runtime)
+    od = malloc(rows * out_features * 4, runtime=runtime)
+    try:
+        copy_host_to_device(xd, host_array_ptr(x), runtime=runtime)
+        copy_host_to_device(wd, host_array_ptr(w_host), runtime=runtime)
+        f32_to_f16(xd.ptr, hd.ptr, rows * in_features, runtime=runtime)
+        results = []
+        for mirrored in (False, True):
+            invalidate_f16_mirror()
+            if mirrored:
+                declare_f16_mirror(xd.ptr, rows * in_features, hd.ptr)
+            host = np.zeros(rows * out_features, np.float32)
+            gemm(xd.ptr, wd.ptr, od.ptr, rows, in_features, out_features, runtime=runtime)
+            runtime.device_synchronize()
+            copy_device_to_host(host_array_ptr(host), od, runtime=runtime)
+            results.append(host)
+        np.testing.assert_array_equal(results[1].view(np.uint32), results[0].view(np.uint32))
+    finally:
+        invalidate_f16_mirror()
+        for buf in (xd, hd, wd, od):
+            free(buf, runtime=runtime)

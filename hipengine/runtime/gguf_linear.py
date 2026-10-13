@@ -21,6 +21,7 @@ from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
 )
+from hipengine.kernels.hip_gfx1100.linear.f16_mirror import lookup_f16_mirror
 from hipengine.kernels.hip_gfx1100.linear.dense_f16_gemm import (
     register_dense_f16_gemm_kernels,
 )
@@ -1016,6 +1017,15 @@ def _launch_dense_wide_f16_staged(
         f32_to_f16,
     )
 
+    mirror_ptr = lookup_f16_mirror(x_ptr, count)
+    if mirror_ptr:
+        # A producer already wrote half(x) for this exact buffer; read it in
+        # place of the conversion. Neither the stage nor a loan is touched.
+        _LAUNCH_ABI["raw"](
+            sibling, weight, mirror_ptr, out_ptr, rows, in_features, out_features,
+            stage_kwargs,
+        )
+        return True
     pair = _match_wide_f16_pair(weight, x_ptr, out_ptr, rows, in_features, out_features,
         key=key, stream=stage_kwargs.get("stream", 0), runtime=runtime)
     published_ptr = _consume_wide_f16_publication(

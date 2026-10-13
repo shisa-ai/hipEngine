@@ -375,7 +375,9 @@ __device__ __forceinline__ void wide_tile_gemm(
     // bf16(residual) * inv_rms * norm_weight instead of reading the plane.
     const uint16_t* __restrict__ gr_residual = nullptr,
     const float* __restrict__ gr_inv_rms = nullptr,
-    const float* __restrict__ gr_norm_weight = nullptr) {
+    const float* __restrict__ gr_norm_weight = nullptr,
+    // Optional F16 image of the mixed output, half(value) per element.
+    half_t* __restrict__ gr_out_f16 = nullptr) {
   constexpr int WAVES_M = BM / WTM;
   constexpr int TM = WTM / 16;
   constexpr int TN = WTN / 16;
@@ -664,10 +666,26 @@ __device__ __forceinline__ void wide_tile_gemm(
           }
         }
         float* op = out + static_cast<size_t>(row) * M + col;
-        *reinterpret_cast<float4*>(op) = make_float4(
-            value[0] / 4.0f, value[1] / 4.0f, value[2] / 4.0f, value[3] / 4.0f);
-        *reinterpret_cast<float4*>(op + 4) = make_float4(
-            value[4] / 4.0f, value[5] / 4.0f, value[6] / 4.0f, value[7] / 4.0f);
+#pragma unroll
+        for (int c = 0; c < 8; ++c) value[c] = value[c] / 4.0f;
+        *reinterpret_cast<float4*>(op) =
+            make_float4(value[0], value[1], value[2], value[3]);
+        *reinterpret_cast<float4*>(op + 4) =
+            make_float4(value[4], value[5], value[6], value[7]);
+        if (gr_out_f16 != nullptr) {
+          // Convert the stored FP32 register itself, as the standalone cast
+          // kernel does, so the image equals half(out) bit for bit.
+          uint32_t packed[4];
+#pragma unroll
+          for (int c = 0; c < 8; c += 2) {
+            uint32_t lo_bits, hi_bits;
+            asm volatile("v_cvt_f16_f32 %0, %1" : "=v"(lo_bits) : "v"(value[c]));
+            asm volatile("v_cvt_f16_f32 %0, %1" : "=v"(hi_bits) : "v"(value[c + 1]));
+            packed[c >> 1] = (lo_bits & 0xFFFFu) | (hi_bits << 16);
+          }
+          *reinterpret_cast<uint4*>(gr_out_f16 + static_cast<size_t>(row) * M + col) =
+              make_uint4(packed[0], packed[1], packed[2], packed[3]);
+        }
       }
       __syncwarp();
     }
@@ -734,7 +752,8 @@ q8_0_gr_up_mean_kernel(const half_t* __restrict__ x,
                        const int hidden,
                        const uint16_t* __restrict__ residual,
                        const float* __restrict__ inv_rms,
-                       const float* __restrict__ norm_weight) {
+                       const float* __restrict__ norm_weight,
+                       half_t* __restrict__ out_f16) {
   __shared__ __align__(16) half_t As[128 * WIDE_LDS_STRIDE];
   __shared__ __align__(16) half_t Bs[256 * WIDE_LDS_STRIDE];
   const int m0 = blockIdx.x * 32;
@@ -744,7 +763,7 @@ q8_0_gr_up_mean_kernel(const half_t* __restrict__ x,
   wide_tile_gemm<half_t, 128, 256, 64, 64, TAIL, 1, false, false, true>(
       qweight, wrow_bytes, 128, x, in_features, out, hidden, rows, t0, m0, As,
       Bs, nullptr, nullptr, nullptr, normalized, residual, inv_rms,
-      norm_weight);
+      norm_weight, out_f16);
 }
 
 // BF16-input dense-wide probe. It keeps the F16 route's tile and launch shape,
@@ -1034,7 +1053,7 @@ static int gr_up_mean_launch(
     const void* x, const void* qweight, const void* normalized,
     const void* residual, const void* inv_rms, const void* norm_weight,
     void* out, int64_t rows, int64_t in_features, int64_t branches,
-    int64_t hidden, hipStream_t stream) {
+    int64_t hidden, hipStream_t stream, void* out_f16 = nullptr) {
   const bool recompute = residual != nullptr;
   if (!x || !qweight || !out || rows <= 0 || in_features <= 0 ||
       (in_features % WIDE_BK) != 0 || branches != 4 || hidden <= 0 ||
@@ -1054,7 +1073,8 @@ static int gr_up_mean_launch(
                      static_cast<int>(in_features), static_cast<int>(hidden),  \
                      static_cast<const uint16_t*>(residual),                   \
                      static_cast<const float*>(inv_rms),                       \
-                     static_cast<const float*>(norm_weight))
+                     static_cast<const float*>(norm_weight),                   \
+                     static_cast<half_t*>(out_f16))
   if ((rows % 256) != 0) {
     HIPENGINE_GR_UP_MEAN_LAUNCH(true);
   } else {
@@ -1081,6 +1101,20 @@ extern "C" int hipengine_qwen4_exp_gr_up_mean_residual_f16in_f32_out(
   if (!residual) return static_cast<int>(hipErrorInvalidValue);
   return gr_up_mean_launch(x, qweight, nullptr, residual, inv_rms, norm_weight,
                            out, rows, in_features, branches, hidden, stream);
+}
+
+// As above, also writing ``out_f16[rows, hidden] = half(out)``.
+extern "C" int hipengine_qwen4_exp_gr_up_mean_residual_f16in_f32_f16_out(
+    const void* x, const void* qweight, const void* residual,
+    const void* inv_rms, const void* norm_weight, void* out, void* out_f16,
+    int64_t rows, int64_t in_features, int64_t branches, int64_t hidden,
+    hipStream_t stream) {
+  if (!residual || !out_f16 || out == out_f16) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return gr_up_mean_launch(x, qweight, nullptr, residual, inv_rms, norm_weight,
+                           out, rows, in_features, branches, hidden, stream,
+                           out_f16);
 }
 
 // The tile family. ``threads`` is accepted for ABI compatibility with the other
@@ -1166,6 +1200,14 @@ HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide128x128_f16in_f32_f32_
                             half_t, 128, 128, 64, 32)
 HIPENGINE_DENSE_WIDE_EXPORT_BF16(
     hipengine_gguf_q8_0_dense_wide256_bf16in_f32_f32_out, uint16_t)
+// Narrow-output tiles for the K10240/N320 hyper-connection down projection,
+// whose cost is the activation read: 320 columns per block reads each
+// activation row once, 160 twice, where the 128-column tiles read it three
+// times.
+HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide320x64_f16in_f32_f32_out,
+                            half_t, 320, 64, 80, 32)
+HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide160x128_f16in_f32_f32_out,
+                            half_t, 160, 128, 80, 32)
 
 
 // Measurement-only padded-fragment siblings. Full tiles retain the original

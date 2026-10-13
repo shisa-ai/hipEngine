@@ -165,14 +165,18 @@ __device__ __forceinline__ halfx4_t stage4(const uint16_t* p) {
   return h;
 }
 
+__device__ __forceinline__ halfx4_t stage4(const half_t* p) {
+  return *reinterpret_cast<const halfx4_t*>(p);
+}
+
 // BM output columns x BN rows per 256-thread workgroup, BK = 64. WAVES_M of
 // the eight waves split the columns; the rest split the rows. Operand roles in
 // the WMMA call match the scalar kernel (A = weights, B = activations), so each
 // output is the same sequence of 16-element F16 products accumulated in FP32.
-template <typename WeightT, int BM, int BN, int WAVES_M>
+template <typename WeightT, int BM, int BN, int WAVES_M, typename ActT = float>
 __launch_bounds__(256, 1)
 __global__ void dense_f16_gemm_staged_kernel(
-    const float* __restrict__ x,
+    const ActT* __restrict__ x,
     const WeightT* __restrict__ weight,
     float* __restrict__ out,
     int rows,
@@ -395,6 +399,71 @@ extern "C" int hipengine_dense_f16_gemm_f32_bf16w_f32_out(
     int64_t in_features, int64_t out_features, hipStream_t stream) {
   return launch<uint16_t>(x, weight, out, rows, in_features, out_features,
                           stream);
+}
+
+// F16 activations and F16 weights: the staged kernel with no conversion.
+// tile: 1 = 128x128, 2 = 128x256, 3 = 64x256 (columns x rows).
+extern "C" int hipengine_dense_f16_gemm_f16_f16w_f32_out(
+    const void* x, const void* weight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream, int tile) {
+  if (!x || !weight || !out || rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || (in_features % 64) != 0 || rows > INT32_MAX ||
+      in_features > INT32_MAX || out_features > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+#define HIPENGINE_F16_F16_LAUNCH(BM, BN, WAVES_M)                              \
+  hipLaunchKernelGGL(                                                          \
+      (dense_f16_gemm_staged_kernel<half_t, BM, BN, WAVES_M, half_t>),         \
+      dim3(static_cast<unsigned int>((out_features + BM - 1) / BM),            \
+           static_cast<unsigned int>((rows + BN - 1) / BN)),                   \
+      dim3(256), 0, stream, static_cast<const half_t*>(x),                     \
+      static_cast<const half_t*>(weight), out, static_cast<int>(rows),         \
+      static_cast<int>(in_features), static_cast<int>(out_features))
+  if (tile == 2) {
+    HIPENGINE_F16_F16_LAUNCH(128, 256, 2);
+  } else if (tile == 3) {
+    HIPENGINE_F16_F16_LAUNCH(64, 256, 1);
+  } else {
+    HIPENGINE_F16_F16_LAUNCH(128, 128, 2);
+  }
+#undef HIPENGINE_F16_F16_LAUNCH
+  return static_cast<int>(hipGetLastError());
+}
+
+// F16 activations (an image of the FP32 buffer, half(value) per element) with
+// FP32 or BF16 weights: the staged 128x128 kernel without the activation
+// conversion, so the products are those of the FP32-activation entry points.
+template <typename WeightT>
+int launch_f16_act(const void* x, const WeightT* weight, float* out,
+                   int64_t rows, int64_t in_features, int64_t out_features,
+                   hipStream_t stream) {
+  if (!x || !weight || !out || rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || (in_features % 64) != 0 || rows > INT32_MAX ||
+      in_features > INT32_MAX || out_features > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_f16_gemm_staged_kernel<WeightT, 128, 128, 2, half_t>),
+      dim3(static_cast<unsigned int>((out_features + 127) / 128),
+           static_cast<unsigned int>((rows + 127) / 128)),
+      dim3(256), 0, stream, static_cast<const half_t*>(x), weight, out,
+      static_cast<int>(rows), static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_f16_gemm_f16_f32w_f32_out(
+    const void* x, const float* weight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_f16_act<float>(x, weight, out, rows, in_features, out_features,
+                               stream);
+}
+
+extern "C" int hipengine_dense_f16_gemm_f16_bf16w_f32_out(
+    const void* x, const uint16_t* weight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_f16_act<uint16_t>(x, weight, out, rows, in_features,
+                                  out_features, stream);
 }
 
 // Measurement and parity entry points: the same GEMM on a named tile.

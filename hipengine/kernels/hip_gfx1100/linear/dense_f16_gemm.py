@@ -14,6 +14,7 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.kernels.hip_gfx1100.linear.f16_mirror import lookup_f16_mirror
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 
@@ -23,6 +24,10 @@ _OUTPUT_NAME = "dense_f16_gemm.so"
 _SYMBOLS = {
     "f32": "hipengine_dense_f16_gemm_f32_f32w_f32_out",
     "bf16": "hipengine_dense_f16_gemm_f32_bf16w_f32_out",
+}
+_F16_ACT_SYMBOLS = {
+    "f32": "hipengine_dense_f16_gemm_f16_f32w_f32_out",
+    "bf16": "hipengine_dense_f16_gemm_f16_bf16w_f32_out",
 }
 DENSE_F16_GEMM_VARIANT = "f16_wmma_f32_hidden_f32_out"
 DENSE_F16_GEMM_K_MULTIPLE = 32
@@ -94,7 +99,14 @@ def _make(weight_dtype: str):
             raise ValueError("dense F16 GEMM needs in_features % 32 == 0")
         lib = library or build_dense_f16_gemm(load=True)
         active = runtime or get_hip_runtime()
-        fn = getattr(lib, symbol)
+        # A declared F16 image of this exact activation buffer replaces the
+        # in-kernel conversion; the kernel then stages the same F16 bytes.
+        launch_symbol = symbol
+        if in_features % 64 == 0:
+            mirror_ptr = lookup_f16_mirror(x_ptr, rows * in_features)
+            if mirror_ptr:
+                x_ptr, launch_symbol = mirror_ptr, _F16_ACT_SYMBOLS[weight_dtype]
+        fn = getattr(lib, launch_symbol)
         fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 3 + [ctypes.c_void_p]
         fn.restype = ctypes.c_int
         err = fn(
@@ -107,7 +119,7 @@ def _make(weight_dtype: str):
             ctypes.c_void_p(stream),
         )
         if err != HIP_SUCCESS:
-            raise RuntimeError(f"{symbol} failed: {active.error_string(err)}")
+            raise RuntimeError(f"{launch_symbol} failed: {active.error_string(err)}")
 
     gemm.__name__ = f"dense_f16_gemm_f32_{weight_dtype}w_f32_out"
     return gemm

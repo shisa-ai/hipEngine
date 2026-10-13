@@ -218,6 +218,10 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kernels.registry import generation as _registry_generation
+from hipengine.kernels.hip_gfx1100.linear.f16_mirror import (
+    declare_f16_mirror,
+    invalidate_f16_mirror,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
     _WRAPPERS as _GGUF_Q8_0_DENSE_WIDE_WRAPPERS,
     f32_to_f16 as gguf_q8_0_f32_to_f16,
@@ -3311,6 +3315,9 @@ def run_qwen4_exp_gr_read(
     active_runtime = runtime or scratch.runtime
     if active_runtime is not scratch.runtime:
         raise ValueError("runtime must match the GR scratch owner")
+    # Every read rewrites ``mixed``; an image declared by an earlier read must
+    # not outlive it.
+    invalidate_f16_mirror()
     residual_width = branches * hidden
     # Without the FP32 normalized plane: the up epilogue and the inject logits
     # recompute bf16(residual) * inv_rms * weight, the value the norm stores,
@@ -3426,6 +3433,10 @@ def run_qwen4_exp_gr_read(
                 stream=stream, runtime=active_runtime,
             )
             if scale_only:
+                # ``scratch.normalized`` is unwritten on this path; it holds
+                # half(mixed), declared so the F16-operand projections that
+                # read ``mixed`` next skip their own conversion.
+                mirror = _qwen4_exp_gr_f16_mirror_enabled()
                 qwen4_exp_gr_up_mean_residual_f16in_f32_out(
                     workspace.ptr,
                     up_weight.allocation("raw").tensor.ptr,
@@ -3437,9 +3448,14 @@ def run_qwen4_exp_gr_read(
                     low_rank,
                     branches,
                     hidden,
+                    out_f16_ptr=scratch.normalized.ptr if mirror else 0,
                     stream=stream,
                     runtime=active_runtime,
                 )
+                if mirror:
+                    declare_f16_mirror(
+                        scratch.mixed.ptr, rows * hidden, scratch.normalized.ptr
+                    )
             else:
                 qwen4_exp_gr_up_mean_f16in_f32_out(
                     workspace.ptr,
@@ -3820,6 +3836,17 @@ def _qwen4_exp_gr_f16_direct_enabled(rows: int, low_rank: int) -> bool:
         and os.environ.get("HIPENGINE_QWEN4_EXP_GR_F16_DIRECT", "0")
         not in {"", "0", "false", "False"}
     )
+
+
+def _qwen4_exp_gr_f16_mirror_enabled() -> bool:
+    """Whether the scale-only read also publishes half(mixed).
+
+    ``HIPENGINE_QWEN4_EXP_GR_F16_MIRROR=0`` keeps the per-projection
+    conversions for bisection; see docs/REFACTOR.md.
+    """
+    return os.environ.get("HIPENGINE_QWEN4_EXP_GR_F16_MIRROR", "1") not in {
+        "", "0", "false", "False",
+    }
 
 
 def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:
@@ -8286,6 +8313,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         mrope_positions: np.ndarray | None = None,
     ) -> tuple[int, np.ndarray | None]:
         count = len(token_ids)
+        invalidate_f16_mirror()
         if count <= 0 or count > min(self.prefill_chunk_size, self.max_sequence_length):
             raise ValueError("Qwen4Exp prefill chunk has invalid row count")
         if self.position + count > self.max_sequence_length:
