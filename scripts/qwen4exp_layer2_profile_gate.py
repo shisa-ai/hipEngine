@@ -397,8 +397,9 @@ CANDIDATES = {
             "routed-expert dispatch, the F16 dense wide route at layers 0-47 "
             "(which carries the hyper-connection down projection), the "
             "hyper-connection up projection on the wide route, the "
-            "small-matrix F16 WMMA GEMM for the indexer projections, and the "
-            "F16-operand router-logits producer"
+            "small-matrix F16 WMMA GEMM for the indexer projections, the "
+            "F16-operand router-logits producer, the WMMA QSA prefill "
+            "attention, and the tiled GDN recurrence at every GDN layer"
         ),
         environment={
             "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
@@ -408,6 +409,10 @@ CANDIDATES = {
             "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
             "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
             "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_f16_wmma_gemm",
+            "HIPENGINE_QWEN4_EXP_QSA_WMMA": "1",
+            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(
+                str(layer) for layer in range(48)
+            ),
         },
         base_profile="production",
         scenario_id="qwen4exp-fast-composition",
