@@ -2787,10 +2787,11 @@ def _dense_bf16_wmma_dispatch(
 
 _DENSE_F16_GEMM_ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM"
 _DENSE_F16_GEMM_MIN_ROWS = 64
-# Narrower matrices stay on the scalar GEMV: a 128-column WMMA tile is
-# mostly padding for them and measured slower (4 columns: 682 to 592 tok/s at
-# p512; 48 columns: mixed, +1.5% at p4096 and -1.8% at p512 against 96).
-_DENSE_F16_GEMM_MIN_OUT_FEATURES = 96
+# A 4-column matrix stays on the scalar GEMV: its cost is the activation
+# read, which the F32-input tile does not reduce (4096 rows, K=10240: 1.95 ms
+# against 0.72). At 48 columns the staged tile measures 0.41 ms against 1.9
+# for the scalar GEMV at 4096 rows and 0.11 against 0.24 at 513.
+_DENSE_F16_GEMM_MIN_OUT_FEATURES = 16
 _DENSE_F16_GEMM_VARIANT = "f16_wmma_f32_hidden_f32_out"
 
 
