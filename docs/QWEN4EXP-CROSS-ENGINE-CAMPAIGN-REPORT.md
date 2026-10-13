@@ -89,9 +89,9 @@ baseline table above, 2026-10-13:
 | --- | ---: | ---: | ---: |
 | Routed experts | 4621 | 694 | 812 |
 | Dense projections | 3045 | 1283 | 841 |
-| Attention | 1152 | 300 | 113 |
+| Attention, including block scoring and the indexer projections | 1152 | 333 | 113 |
 | GDN | 750 | 347 | 208 |
-| Hyper-connection elementwise, router, reduce, conversions, other | 2618 | 1033 | 399 |
+| Hyper-connection elementwise, router, reduce, conversions, other | 2618 | 1001 | 399 |
 | **Total** | **12186** | **3657** | **2373** |
 
 Quality of `fast` against the strict hipEngine teacher: 14/18 strict-exact on
