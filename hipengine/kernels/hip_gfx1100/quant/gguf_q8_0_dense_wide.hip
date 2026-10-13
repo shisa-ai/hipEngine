@@ -370,7 +370,12 @@ __device__ __forceinline__ void wide_tile_gemm(
     half_t* As_lo = nullptr,
     half_t* Bs_lo = nullptr,
     int* range_miss = nullptr,
-    const float* __restrict__ gr_normalized = nullptr) {
+    const float* __restrict__ gr_normalized = nullptr,
+    // With a residual, the epilogue recomputes the normalized value as
+    // bf16(residual) * inv_rms * norm_weight instead of reading the plane.
+    const uint16_t* __restrict__ gr_residual = nullptr,
+    const float* __restrict__ gr_inv_rms = nullptr,
+    const float* __restrict__ gr_norm_weight = nullptr) {
   constexpr int WAVES_M = BM / WTM;
   constexpr int TM = WTM / 16;
   constexpr int TN = WTN / 16;
@@ -628,12 +633,30 @@ __device__ __forceinline__ void wide_tile_gemm(
           const float* lp = gst + i * 256 + n * 16 + half * 8;
           const float4 l0 = *reinterpret_cast<const float4*>(lp);
           const float4 l1 = *reinterpret_cast<const float4*>(lp + 4);
-          const float* np = gr_normalized + static_cast<size_t>(row) * 4 * M +
-                            static_cast<size_t>(i) * M + col;
-          const float4 n0 = *reinterpret_cast<const float4*>(np);
-          const float4 n1 = *reinterpret_cast<const float4*>(np + 4);
+          const size_t noff = static_cast<size_t>(row) * 4 * M +
+                              static_cast<size_t>(i) * M + col;
           const float logits[8] = {l0.x, l0.y, l0.z, l0.w, l1.x, l1.y, l1.z, l1.w};
-          const float normalized[8] = {n0.x, n0.y, n0.z, n0.w, n1.x, n1.y, n1.z, n1.w};
+          float normalized[8];
+          if (gr_residual != nullptr) {
+            const uint4 rb = *reinterpret_cast<const uint4*>(gr_residual + noff);
+            const float* wp = gr_norm_weight + static_cast<size_t>(i) * M + col;
+            const float4 w0 = *reinterpret_cast<const float4*>(wp);
+            const float4 w1 = *reinterpret_cast<const float4*>(wp + 4);
+            const float inv = gr_inv_rms[static_cast<size_t>(row) * 4 + i];
+            const uint32_t words[4] = {rb.x, rb.y, rb.z, rb.w};
+            const float weights[8] = {w0.x, w0.y, w0.z, w0.w, w1.x, w1.y, w1.z, w1.w};
+#pragma unroll
+            for (int c = 0; c < 8; ++c) {
+              const uint32_t bits = (words[c >> 1] >> ((c & 1) * 16)) << 16;
+              normalized[c] = __uint_as_float(bits) * inv * weights[c];
+            }
+          } else {
+            const float4 n0 = *reinterpret_cast<const float4*>(gr_normalized + noff);
+            const float4 n1 = *reinterpret_cast<const float4*>(gr_normalized + noff + 4);
+            const float values[8] = {n0.x, n0.y, n0.z, n0.w, n1.x, n1.y, n1.z, n1.w};
+#pragma unroll
+            for (int c = 0; c < 8; ++c) normalized[c] = values[c];
+          }
 #pragma unroll
           for (int c = 0; c < 8; ++c) {
             const float gate = 1.0f / (1.0f + expf(-logits[c]));
@@ -708,7 +731,10 @@ q8_0_gr_up_mean_kernel(const half_t* __restrict__ x,
                        float* __restrict__ out,
                        const int rows,
                        const int in_features,
-                       const int hidden) {
+                       const int hidden,
+                       const uint16_t* __restrict__ residual,
+                       const float* __restrict__ inv_rms,
+                       const float* __restrict__ norm_weight) {
   __shared__ __align__(16) half_t As[128 * WIDE_LDS_STRIDE];
   __shared__ __align__(16) half_t Bs[256 * WIDE_LDS_STRIDE];
   const int m0 = blockIdx.x * 32;
@@ -717,7 +743,8 @@ q8_0_gr_up_mean_kernel(const half_t* __restrict__ x,
       static_cast<size_t>(in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
   wide_tile_gemm<half_t, 128, 256, 64, 64, TAIL, 1, false, false, true>(
       qweight, wrow_bytes, 128, x, in_features, out, hidden, rows, t0, m0, As,
-      Bs, nullptr, nullptr, nullptr, normalized);
+      Bs, nullptr, nullptr, nullptr, normalized, residual, inv_rms,
+      norm_weight);
 }
 
 // BF16-input dense-wide probe. It keeps the F16 route's tile and launch shape,
@@ -1003,34 +1030,57 @@ extern "C" int hipengine_gguf_q8_0_f32_to_f16(const void* x,
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int hipengine_qwen4_exp_gr_up_mean_f16in_f32_out(
-    const void* x, const void* qweight, const void* normalized, void* out,
-    int64_t rows, int64_t in_features, int64_t branches, int64_t hidden,
-    hipStream_t stream) {
-  if (!x || !qweight || !normalized || !out || rows <= 0 || in_features <= 0 ||
+static int gr_up_mean_launch(
+    const void* x, const void* qweight, const void* normalized,
+    const void* residual, const void* inv_rms, const void* norm_weight,
+    void* out, int64_t rows, int64_t in_features, int64_t branches,
+    int64_t hidden, hipStream_t stream) {
+  const bool recompute = residual != nullptr;
+  if (!x || !qweight || !out || rows <= 0 || in_features <= 0 ||
       (in_features % WIDE_BK) != 0 || branches != 4 || hidden <= 0 ||
       (hidden % 32) != 0 || rows > INT32_MAX || in_features > INT32_MAX ||
-      hidden > INT32_MAX / 4) {
+      hidden > INT32_MAX / 4 ||
+      (recompute ? (!inv_rms || !norm_weight) : !normalized)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const dim3 grid(static_cast<unsigned int>(hidden / 32),
                   static_cast<unsigned int>((rows + 255) / 256));
+#define HIPENGINE_GR_UP_MEAN_LAUNCH(TAIL)                                      \
+  hipLaunchKernelGGL((q8_0_gr_up_mean_kernel<TAIL>), grid, dim3(WIDE_THREADS), \
+                     0, stream, static_cast<const half_t*>(x),                 \
+                     static_cast<const uint8_t*>(qweight),                     \
+                     static_cast<const float*>(normalized),                    \
+                     static_cast<float*>(out), static_cast<int>(rows),         \
+                     static_cast<int>(in_features), static_cast<int>(hidden),  \
+                     static_cast<const uint16_t*>(residual),                   \
+                     static_cast<const float*>(inv_rms),                       \
+                     static_cast<const float*>(norm_weight))
   if ((rows % 256) != 0) {
-    hipLaunchKernelGGL((q8_0_gr_up_mean_kernel<true>), grid, dim3(WIDE_THREADS),
-                       0, stream, static_cast<const half_t*>(x),
-                       static_cast<const uint8_t*>(qweight),
-                       static_cast<const float*>(normalized),
-                       static_cast<float*>(out), static_cast<int>(rows),
-                       static_cast<int>(in_features), static_cast<int>(hidden));
+    HIPENGINE_GR_UP_MEAN_LAUNCH(true);
   } else {
-    hipLaunchKernelGGL((q8_0_gr_up_mean_kernel<false>), grid, dim3(WIDE_THREADS),
-                       0, stream, static_cast<const half_t*>(x),
-                       static_cast<const uint8_t*>(qweight),
-                       static_cast<const float*>(normalized),
-                       static_cast<float*>(out), static_cast<int>(rows),
-                       static_cast<int>(in_features), static_cast<int>(hidden));
+    HIPENGINE_GR_UP_MEAN_LAUNCH(false);
   }
+#undef HIPENGINE_GR_UP_MEAN_LAUNCH
   return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gr_up_mean_f16in_f32_out(
+    const void* x, const void* qweight, const void* normalized, void* out,
+    int64_t rows, int64_t in_features, int64_t branches, int64_t hidden,
+    hipStream_t stream) {
+  return gr_up_mean_launch(x, qweight, normalized, nullptr, nullptr, nullptr,
+                           out, rows, in_features, branches, hidden, stream);
+}
+
+// The same kernel with the normalized value recomputed from the BF16
+// residual, the per-group scale and the norm weight.
+extern "C" int hipengine_qwen4_exp_gr_up_mean_residual_f16in_f32_out(
+    const void* x, const void* qweight, const void* residual,
+    const void* inv_rms, const void* norm_weight, void* out, int64_t rows,
+    int64_t in_features, int64_t branches, int64_t hidden, hipStream_t stream) {
+  if (!residual) return static_cast<int>(hipErrorInvalidValue);
+  return gr_up_mean_launch(x, qweight, nullptr, residual, inv_rms, norm_weight,
+                           out, rows, in_features, branches, hidden, stream);
 }
 
 // The tile family. ``threads`` is accepted for ABI compatibility with the other

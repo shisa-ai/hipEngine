@@ -169,6 +169,8 @@ from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
     qwen4_exp_gated_mean_sigmoid_f32,
+    qwen4_exp_gr_inject_bf16_f32,
+    qwen4_exp_grouped_rmsnorm_bf16_f16_scale,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
     _check_norm_publication,
     qwen4_exp_grouped_rmsnorm_f32,
@@ -220,6 +222,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
     _WRAPPERS as _GGUF_Q8_0_DENSE_WIDE_WRAPPERS,
     f32_to_f16 as gguf_q8_0_f32_to_f16,
     qwen4_exp_gr_up_mean_f16in_f32_out,
+    qwen4_exp_gr_up_mean_residual_f16in_f32_out,
     gguf_q8_0_dense_wide256_f32_f32_out,
 )
 gguf_q8_0_dense_wide128x128_f16in_f32_f32_out = _GGUF_Q8_0_DENSE_WIDE_WRAPPERS[
@@ -3176,8 +3179,14 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
 def _run_qwen4_exp_gr_norm_down(
     residual_ptr, norm_weight_ptr, down_weight, scratch, *,
     rows, branches, hidden, low_rank, eps, stream, runtime,
-) -> None:
-    """Publish only for a qualified immediate HC-down consumer; else parent."""
+    scale_ptr: int = 0,
+) -> bool:
+    """Publish only for a qualified immediate HC-down consumer; else parent.
+
+    With ``scale_ptr`` the direct launch may skip the FP32 normalized plane
+    and store ``inv_rms[rows, branches]`` there instead; the return value says
+    whether it did, in which case ``scratch.normalized`` is not written.
+    """
     width = branches * hidden
     count = rows * width
     iu8_down = (
@@ -3198,18 +3207,24 @@ def _run_qwen4_exp_gr_norm_down(
                 down_weight, rows=rows, in_features=width,
                 out_features=low_rank) is not None:
             _invalidate_wide_f16_publication()
-            resolve(backend=producer.backend, layer=producer.layer,
-                    quant=producer.quant, variant=producer.variant)(
-                residual_ptr, norm_weight_ptr, scratch.normalized.ptr,
-                workspace.ptr, rows, branches, hidden, eps,
-                stream=stream, runtime=runtime,
-            )
+            if scale_ptr:
+                qwen4_exp_grouped_rmsnorm_bf16_f16_scale(
+                    residual_ptr, norm_weight_ptr, workspace.ptr, scale_ptr,
+                    rows, branches, hidden, eps, stream=stream, runtime=runtime,
+                )
+            else:
+                resolve(backend=producer.backend, layer=producer.layer,
+                        quant=producer.quant, variant=producer.variant)(
+                    residual_ptr, norm_weight_ptr, scratch.normalized.ptr,
+                    workspace.ptr, rows, branches, hidden, eps,
+                    stream=stream, runtime=runtime,
+                )
             gguf_q8_0_dense_wide128x128_f16in_f32_f32_out(
                 workspace.ptr, down_weight.allocation("raw").tensor.ptr,
                 scratch.low_rank.ptr, rows, width, low_rank,
                 stream=stream, runtime=runtime,
             )
-            return
+            return bool(scale_ptr)
     keys = None
     unsafe_workspace = False
     if (workspace is not None and workspace.nbytes >= count * 2
@@ -3251,7 +3266,7 @@ def _run_qwen4_exp_gr_norm_down(
             launch_gguf_linear(down_weight, scratch.normalized.ptr, scratch.low_rank.ptr,
                 rows, width, low_rank, activation_dtype=GGUF_ACTIVATION_F32,
                 output_dtype=GGUF_OUTPUT_F32, stream=stream, runtime=runtime)
-        return
+        return False
     qwen4_exp_grouped_rmsnorm_bf16_f32(
         residual_ptr, norm_weight_ptr, scratch.normalized.ptr, rows, branches, hidden, eps,
         stream=stream, runtime=runtime,
@@ -3268,6 +3283,7 @@ def _run_qwen4_exp_gr_norm_down(
             launch_gguf_linear(down_weight, scratch.normalized.ptr, scratch.low_rank.ptr,
                 rows, width, low_rank, activation_dtype=GGUF_ACTIVATION_F32,
                 output_dtype=GGUF_OUTPUT_F32, stream=stream, runtime=runtime)
+    return False
 
 
 def run_qwen4_exp_gr_read(
@@ -3296,10 +3312,28 @@ def run_qwen4_exp_gr_read(
     if active_runtime is not scratch.runtime:
         raise ValueError("runtime must match the GR scratch owner")
     residual_width = branches * hidden
-    _run_qwen4_exp_gr_norm_down(
+    # Without the FP32 normalized plane: the up epilogue and the inject logits
+    # recompute bf16(residual) * inv_rms * weight, the value the norm stores,
+    # so nothing downstream changes. Requires the fused up epilogue and an
+    # inject projection the residual kernel covers; ``scratch.gate`` is unused
+    # on this path and holds inv_rms[rows, branches].
+    scale_only = (
+        _qwen4_exp_gr_f16_direct_enabled(rows, low_rank)
+        and _qwen4_exp_gr_wide_enabled(rows, low_rank)
+        and not _qwen4_exp_gr_iu8_enabled(rows)
+        and branches == 4
+        and hidden % 32 == 0
+        and residual_width % 2048 == 0
+        and up_weight.spec.quant_key == "gguf_q8_0"
+        and (inject_weight is None or inject_weight.spec.quant_key == "f32")
+        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY", "1")
+        not in {"", "0", "false", "False"}
+    )
+    scale_only = _run_qwen4_exp_gr_norm_down(
         residual_ptr, norm_weight_ptr, down_weight, scratch,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         eps=eps, stream=stream, runtime=active_runtime,
+        scale_ptr=scratch.gate.ptr if scale_only else 0,
     )
     qwen4_exp_scaled_silu_f32(
         scratch.low_rank.ptr,
@@ -3328,6 +3362,10 @@ def run_qwen4_exp_gr_read(
         and not gr_wide
         and _qwen4_exp_gr_staged_enabled(rows, low_rank)
     )
+    if scale_only and not gr_wide:
+        # ``scratch.normalized`` was not written; only the fused wide up
+        # epilogue can run without it.
+        raise RuntimeError("Qwen4Exp GR scale-only norm requires the wide up route")
     if gr_staged:
         # HC-1 candidate: the same LDS-staged tiling as the wide route, but the
         # multiply stays f32 FMA on f32 operands, so the only arithmetic
@@ -3387,17 +3425,37 @@ def run_qwen4_exp_gr_read(
                 scratch.low_rank.ptr, workspace.ptr, rows * low_rank,
                 stream=stream, runtime=active_runtime,
             )
-            qwen4_exp_gr_up_mean_f16in_f32_out(
-                workspace.ptr,
-                up_weight.allocation("raw").tensor.ptr,
-                scratch.normalized.ptr,
-                scratch.mixed.ptr,
-                rows,
-                low_rank,
-                branches,
-                hidden,
-                stream=stream,
-                runtime=active_runtime,
+            if scale_only:
+                qwen4_exp_gr_up_mean_residual_f16in_f32_out(
+                    workspace.ptr,
+                    up_weight.allocation("raw").tensor.ptr,
+                    residual_ptr,
+                    scratch.gate.ptr,
+                    norm_weight_ptr,
+                    scratch.mixed.ptr,
+                    rows,
+                    low_rank,
+                    branches,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            else:
+                qwen4_exp_gr_up_mean_f16in_f32_out(
+                    workspace.ptr,
+                    up_weight.allocation("raw").tensor.ptr,
+                    scratch.normalized.ptr,
+                    scratch.mixed.ptr,
+                    rows,
+                    low_rank,
+                    branches,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+        elif scale_only:
+            raise RuntimeError(
+                "Qwen4Exp GR scale-only norm ran without the fused up epilogue"
             )
         else:
             gguf_q8_0_dense_wide256_f32_f32_out(
@@ -3503,6 +3561,19 @@ def run_qwen4_exp_gr_read(
             )
         else:
             active_runtime.memset(scratch.inject_logits.ptr, 0, rows * branches * 4)
+    elif scale_only:
+        qwen4_exp_gr_inject_bf16_f32(
+            residual_ptr,
+            norm_weight_ptr,
+            scratch.gate.ptr,
+            inject_weight.allocation("raw").tensor.ptr,
+            scratch.inject_logits.ptr,
+            rows,
+            branches,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
     else:
         launch_gguf_linear(
             inject_weight,

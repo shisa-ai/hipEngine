@@ -108,6 +108,93 @@ __global__ void grouped_rmsnorm_bf16_f32_f16_kernel(
   }
 }
 
+// The F16 plane and the per-group scale, without the FP32 plane. A consumer
+// that needs an FP32 normalized value recomputes
+// bf16(residual) * inv_rms * weight, which is the expression stored by the
+// kernels above, so it reads half the bytes and gets the same bits.
+__global__ void grouped_rmsnorm_bf16_f16_scale_kernel(
+    const uint16_t* __restrict__ residual,
+    const float* __restrict__ weight,
+    _Float16* __restrict__ output_f16,
+    float* __restrict__ inv_rms_out,
+    int64_t branches,
+    int64_t hidden,
+    float eps) {
+  extern __shared__ float partial[];
+  const int64_t group = blockIdx.x;
+  const int64_t offset = group * hidden;
+  float sumsq = 0.0f;
+  for (int64_t column = threadIdx.x; column < hidden; column += blockDim.x) {
+    const float value = bf16_bits_to_float(residual[offset + column]);
+    sumsq += value * value;
+  }
+  partial[threadIdx.x] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(hidden) + eps);
+  if (threadIdx.x == 0) {
+    inv_rms_out[group] = inv_rms;
+  }
+  const int64_t branch = group % branches;
+  const int64_t weight_offset = branch * hidden;
+  for (int64_t column = threadIdx.x; column < hidden; column += blockDim.x) {
+    const float value =
+        bf16_bits_to_float(residual[offset + column]) * inv_rms * weight[weight_offset + column];
+    uint32_t half_bits;
+    asm volatile("v_cvt_f16_f32 %0, %1" : "=v"(half_bits) : "v"(value));
+    reinterpret_cast<uint16_t*>(output_f16)[offset + column] = static_cast<uint16_t>(half_bits);
+  }
+}
+
+// Hyper-connection inject logits from the BF16 residual: out[row][b] =
+// sum_k normalized[row][k] * inject_weight[b][k] over the four-branch row,
+// with normalized recomputed as above. One block per row computes all four
+// logits; each keeps the scalar GEMV's order (thread t owns k = 8t + 2048j,
+// eight sequential FMAs per step, then the 256-wide halving tree).
+__global__ void gr_inject_bf16_kernel(
+    const uint16_t* __restrict__ residual,
+    const float* __restrict__ norm_weight,
+    const float* __restrict__ inv_rms,
+    const float* __restrict__ inject_weight,
+    float* __restrict__ out,
+    int64_t hidden) {
+  __shared__ float sdata[4][256];
+  const int64_t row = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t width = 4 * hidden;
+  const uint16_t* __restrict__ r = residual + row * width;
+  float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  for (int64_t k = static_cast<int64_t>(tid) * 8; k < width; k += 2048) {
+    const float inv = inv_rms[row * 4 + k / hidden];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const float x = bf16_bits_to_float(r[k + j]) * inv * norm_weight[k + j];
+#pragma unroll
+      for (int b = 0; b < 4; ++b) {
+        acc[b] = fmaf(x, inject_weight[b * width + k + j], acc[b]);
+      }
+    }
+  }
+#pragma unroll
+  for (int b = 0; b < 4; ++b) sdata[b][tid] = acc[b];
+  __syncthreads();
+  for (int s = 128; s > 0; s >>= 1) {
+    if (tid < s) {
+#pragma unroll
+      for (int b = 0; b < 4; ++b) sdata[b][tid] += sdata[b][tid + s];
+    }
+    __syncthreads();
+  }
+  if (tid < 4) {
+    out[row * 4 + tid] = sdata[tid][0];
+  }
+}
+
 __global__ void grouped_rmsnorm_f32_kernel(
     const float* __restrict__ input,
     const float* __restrict__ weight,
@@ -332,6 +419,53 @@ extern "C" int hipengine_qwen4_exp_grouped_rmsnorm_bf16_f32_f16(
       dim3(static_cast<uint32_t>(rows * branches)), dim3(threads), threads * sizeof(float), stream,
       static_cast<const uint16_t*>(residual), static_cast<const float*>(weight),
       static_cast<float*>(output), static_cast<_Float16*>(output_f16), branches, hidden, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_grouped_rmsnorm_bf16_f16_scale(
+    const void* residual,
+    const void* weight,
+    void* output_f16,
+    void* inv_rms,
+    int64_t rows,
+    int64_t branches,
+    int64_t hidden,
+    float eps,
+    hipStream_t stream) {
+  if (!residual || !weight || !output_f16 || !inv_rms || rows <= 0 ||
+      branches <= 0 || hidden <= 0 || rows > UINT32_MAX / branches ||
+      rows * branches > INT64_MAX / hidden) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  hipLaunchKernelGGL(
+      grouped_rmsnorm_bf16_f16_scale_kernel,
+      dim3(static_cast<uint32_t>(rows * branches)), dim3(threads), threads * sizeof(float), stream,
+      static_cast<const uint16_t*>(residual), static_cast<const float*>(weight),
+      static_cast<_Float16*>(output_f16), static_cast<float*>(inv_rms), branches, hidden, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gr_inject_bf16_f32(
+    const void* residual,
+    const void* norm_weight,
+    const void* inv_rms,
+    const void* inject_weight,
+    void* out,
+    int64_t rows,
+    int64_t branches,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (!residual || !norm_weight || !inv_rms || !inject_weight || !out ||
+      rows <= 0 || rows > UINT32_MAX || branches != 4 || hidden <= 0 ||
+      (hidden % 8) != 0 || ((4 * hidden) % 2048) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      gr_inject_bf16_kernel, dim3(static_cast<uint32_t>(rows)), dim3(256), 0, stream,
+      static_cast<const uint16_t*>(residual), static_cast<const float*>(norm_weight),
+      static_cast<const float*>(inv_rms), static_cast<const float*>(inject_weight),
+      static_cast<float*>(out), hidden);
   return static_cast<int>(hipGetLastError());
 }
 

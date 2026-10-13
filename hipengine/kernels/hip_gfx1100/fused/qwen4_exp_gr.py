@@ -224,6 +224,54 @@ def qwen4_exp_grouped_rmsnorm_bf16_f32_f16(
                               rows, branches, hidden, float(eps), stream))
 
 
+def qwen4_exp_grouped_rmsnorm_bf16_f16_scale(
+    residual_ptr: int, weight_ptr: int, output_f16_ptr: int, inv_rms_ptr: int,
+    rows: int, branches: int, hidden: int, eps: float = 1e-6, *,
+    stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Grouped RMS norm publishing the F16 plane and ``inv_rms[rows, branches]``.
+
+    The F16 values and the scale are those of the F32-publishing kernels; a
+    consumer recomputes an FP32 normalized value as
+    ``bf16(residual) * inv_rms * weight``.
+    """
+
+    _check_shape(rows, branches, hidden)
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_qwen4_exp_grouped_rmsnorm_bf16_f16_scale",
+                          _ARGS_GROUPED_NORM_PUBLISH, ctypes.c_int)
+    _check_launch(runtime, fn(residual_ptr, weight_ptr, output_f16_ptr, inv_rms_ptr,
+                              rows, branches, hidden, float(eps), stream))
+
+
+def qwen4_exp_gr_inject_bf16_f32(
+    residual_ptr: int, norm_weight_ptr: int, inv_rms_ptr: int,
+    inject_weight_ptr: int, out_ptr: int, rows: int, branches: int, hidden: int, *,
+    stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Inject logits ``[rows, 4]`` from the BF16 residual and the norm scale.
+
+    Bit-identical to the scalar FP32 GEMV over the FP32 normalized plane when
+    ``4 * hidden`` is a multiple of 2048.
+    """
+
+    _check_shape(rows, branches, hidden)
+    if branches != 4 or hidden % 8 or (4 * hidden) % 2048:
+        raise ValueError("inject needs four branches and 4 * hidden % 2048 == 0")
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_qwen4_exp_gr_inject_bf16_f32",
+        (ctypes.c_void_p,) * 5 + (ctypes.c_int64,) * 3 + (ctypes.c_void_p,),
+        ctypes.c_int,
+    )
+    _check_launch(runtime, fn(residual_ptr, norm_weight_ptr, inv_rms_ptr,
+                              inject_weight_ptr, out_ptr, rows, branches, hidden, stream))
+
+
 def qwen4_exp_grouped_rmsnorm_bf16_f32_f16_unfused(
     residual_ptr: int, weight_ptr: int, output_ptr: int, output_f16_ptr: int,
     rows: int, branches: int, hidden: int, eps: float = 1e-6, *,

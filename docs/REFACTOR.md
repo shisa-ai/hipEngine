@@ -8901,6 +8901,19 @@ down projection takes the direct launch only where the dispatch would already
 select the F16 wide tile. Measured on `code-p4096`, Radeon 8060S, same
 process: 1176.4 -> 1224.4 prefill tok/s, identical output tokens.
 
+On the same path the read no longer writes the FP32 normalized plane
+(`HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY`, default on, `0` restores the plane):
+the grouped norm stores the F16 plane and `inv_rms[rows, branches]`, and the
+fused up epilogue and a four-logit inject kernel recompute
+`bf16(residual) * inv_rms * weight`, the value the norm stores. `inv_rms`
+lives in `scratch.gate`, which that path does not otherwise use, and
+`scratch.normalized` is left unwritten. Bit-identical
+(`tests/test_gpu_qwen4exp_gr_read_residual.py`); `code-p4096` 1320.5 ->
+1382.1 and `code-p512` 850.7 -> 911.4 prefill tok/s, same process, identical
+output tokens. The flag goes with `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT`; at that
+point `Qwen4ExpGRScratch.normalized` and `.gate` can shrink to the decode row
+bound and `inv_rms` gets its own buffer in the scratch planner.
+
 The direct launch makes three older mechanisms unreachable for this quant at
 prefill row counts: the publication loan and its policy table
 (`GGUF_DENSE_WIDE_F16_PUBLICATION_POLICIES`, layers 13-47, rows 4096 only),
