@@ -21,6 +21,9 @@ from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
 )
+from hipengine.kernels.hip_gfx1100.linear.dense_f16_gemm import (
+    register_dense_f16_gemm_kernels,
+)
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import register_dense_gemv_kernels
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_dual_gemv_bf16_bf16_out,
@@ -2782,6 +2785,53 @@ def _dense_bf16_wmma_dispatch(
     return GGUFLinearDispatch(key, dispatch.abi)
 
 
+_DENSE_F16_GEMM_ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM"
+_DENSE_F16_GEMM_MIN_ROWS = 64
+# Narrower matrices stay on the scalar GEMV: a 128-column WMMA tile is
+# mostly padding for them and measured slower (4 columns: 682 to 592 tok/s at
+# p512; 48 columns: mixed, +1.5% at p4096 and -1.8% at p512 against 96).
+_DENSE_F16_GEMM_MIN_OUT_FEATURES = 96
+_DENSE_F16_GEMM_VARIANT = "f16_wmma_f32_hidden_f32_out"
+
+
+def _dense_f16_gemm_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Route multi-row FP32 projections over uncompressed weights to F16 WMMA.
+
+    Selected only by the fast profile's binder. The scalar FP32 GEMV owner
+    stays the dispatch for every other profile, for decode-shaped rows, and
+    for K extents the WMMA stage cannot tile.
+    """
+
+    if (
+        os.environ.get(_DENSE_F16_GEMM_ENV, "0") in {"", "0", "false", "False"}
+        or dispatch.abi != "dense_bf16"
+        or dispatch.key.layer != "dense_gemv"
+        or dispatch.key.variant != "f32_hidden_f32_out"
+        or rows < _DENSE_F16_GEMM_MIN_ROWS
+        or out_features < _DENSE_F16_GEMM_MIN_OUT_FEATURES
+        or in_features <= 0
+        or in_features % 32
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        _DENSE_F16_GEMM_VARIANT,
+    )
+    if not is_registered(key):
+        _ensure_linear_kernel_registered(key)
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
+
+
 def _dense_bf16_rowtile_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -4668,6 +4718,7 @@ def launch_gguf_linear(
         ),
         raw_weight_ptr,
         has_raw_weight_sidecar,
+        os.environ.get(_DENSE_F16_GEMM_ENV, "0"),
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
     if cached is None:
@@ -4741,6 +4792,12 @@ def launch_gguf_linear(
             out_features=out_features,
             enabled=not use_wmma,
             native_batch=_native_batch_decode_session_enabled,
+        )
+        dispatch = _dense_f16_gemm_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
         )
         dispatch = _dense_bf16_wmma_dispatch(
             dispatch,
@@ -9663,6 +9720,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     if is_registered(key):
         return
     register_dense_gemv_kernels()
+    register_dense_f16_gemm_kernels()
     register_gguf_k_gemv_kernels()
     register_gguf_k_t16_selected_prefill_kernels()
     register_gguf_k_mmq_prefill_kernels()

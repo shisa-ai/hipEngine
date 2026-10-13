@@ -10,7 +10,7 @@ production default or performance claim changed.
 
 [Protocol, test and artifact](results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/README.md).
 
-Last updated: **2026-10-13 UTC**
+Last updated: **2026-10-14 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -45,21 +45,22 @@ On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, BF16 KV, chunk 4096,
 greedy decode (compact capture), canonical 12-case protocol, both profiles
 measured back to back on 2026-10-13. `fast` is selected with
 `execution_profile="fast"`; it runs the routed experts, the dense
-projections at every layer and the hyper-connection projections on F16
-matrix kernels, and it is not certified against the production numerical
-envelope. `production` remains the default. The `production` row was
-measured about two hours before the `fast` row in the same boot.
+projections at every layer, the hyper-connection projections, the indexer
+projections and the router on F16 matrix kernels, and it is not certified
+against the production numerical envelope. `production` remains the default.
+Both rows were measured in the same boot, `production` first.
 
 | Profile | p512 prefill tok/s | p1024 | p4096 | Decode at p4096 tok/s |
 | --- | ---: | ---: | ---: | ---: |
 | `production` | 306.4 | 330.0 | 335.2 | 20.57 |
-| `fast` | **684.8** | **754.4** | **754.7** | 20.60 |
+| `fast` | **707.3** | **811.4** | **825.0** | 20.57 |
 
-Against the strict teacher on the 18-prompt battery, `fast` is 12/18
-strict-exact with aligned top-1 agreement 1.00 and top-20 mean KL 0.036;
+Against the strict teacher on the 18-prompt battery, `fast` is 13/18
+strict-exact with aligned top-1 agreement 1.00 and top-20 mean KL 0.056;
 `production` is 15/18 with mean KL 0.0052.
-[Protocol, per-case rows and quality score](results/2026-10-13-qwen4exp-fast-dense-hc-router/README.md)
-· [routed-expert kernel and per-family attribution](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).
+[Protocol, per-case rows, quality score and per-family attribution](results/2026-10-13-qwen4exp-fast-indexer-f16-gemm/README.md)
+· [dense and hyper-connection routes](results/2026-10-13-qwen4exp-fast-dense-hc-router/README.md)
+· [routed-expert kernel](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).
 
 ## Cross-engine comparison on the same `UD-Q4_K_XL` GGUF file
 

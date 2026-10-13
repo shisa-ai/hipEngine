@@ -8900,3 +8900,17 @@ hyper-connection up projection, declare them in the production and fast
 plans, and have the binder publish the window from the manifest row the way
 it already does for the router producer.
 
+## The small-matrix F16 GEMM selector
+
+`HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` (default off) is published by the
+Qwen4Exp fast binder and read by `_dense_f16_gemm_dispatch` in
+`runtime/gguf_linear.py`; it is part of the dispatch-resolve cache key. The
+96-column floor in that function is a measured setting for this model's
+shapes, not a general policy.
+
+Removal condition: replace the selector with a manifest scope for the
+indexer projections when the linear launcher's dense-weight dispatch becomes
+manifest-driven; revisit the column floor if a kernel variant with a
+narrower column tile is added for the 48-column GDN gate projections and the
+4-column hyper-connection inject.
+
