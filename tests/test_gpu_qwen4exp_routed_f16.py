@@ -228,6 +228,56 @@ def test_gate_up_silu_matches_cpu_reference(
 
 
 @pytest.mark.parametrize(
+    "make,gate_up,qtype",
+    [
+        (make_q4_k_weight, qwen4_exp_q4_k_routed_f16_gate_up_silu_bf16_bf16_out,
+         GGMLQuantizationType.Q4_K),
+        (make_q5_k_weight, qwen4_exp_q5_k_routed_f16_gate_up_silu_bf16_bf16_out,
+         GGMLQuantizationType.Q5_K),
+    ],
+)
+@pytest.mark.parametrize("tile_rows", [64, 128])
+def test_gate_up_reads_token_rows_through_the_lane_map(
+    device, make, gate_up, qtype, tile_rows
+) -> None:
+    """Token-major x plus a lane map gives the bits of the gathered copy."""
+
+    del qtype
+    in_features, out_features, top_k = 512, 160, 4
+    bounds = np.concatenate([[0], np.cumsum(_COUNTS)]).astype(np.int64)
+    rows = int(bounds[-1])
+    tokens = (rows + top_k - 1) // top_k
+    experts = len(_COUNTS)
+    token_bits, _ = _inputs(tokens, in_features, seed=tile_rows + 5)
+    rng = np.random.default_rng(tile_rows)
+    lanes = rng.permutation(tokens * top_k)[:rows].astype(np.int64)
+    grouped_bits = np.ascontiguousarray(token_bits[lanes // top_k])
+    gate = _expert_weights(make, experts, out_features, in_features)
+    up = np.ascontiguousarray(gate[::-1])
+    bounds_dev, tiles_dev, count_dev, capacity, _, _ = _tile_map(
+        device, bounds, tile_rows
+    )
+    gate_dev, up_dev = device.upload(gate), device.upload(up)
+    outputs = []
+    for x_host, lanes_ptr in (
+        (grouped_bits, 0), (token_bits, device.upload(lanes).ptr),
+    ):
+        out_host = np.full((rows + 2, out_features), _SENTINEL, dtype=np.uint16)
+        out_dev = device.upload(out_host)
+        gate_up(
+            device.upload(x_host).ptr, bounds_dev.ptr, tiles_dev.ptr, count_dev.ptr,
+            gate_dev.ptr, up_dev.ptr, out_dev.ptr, in_features, out_features,
+            tile_rows=tile_rows, tile_capacity=capacity,
+            row_lanes_ptr=lanes_ptr, top_k=top_k,
+            library=device.library, runtime=device.runtime,
+        )
+        outputs.append(device.download(out_dev, out_host))
+    gathered, indexed = outputs
+    np.testing.assert_array_equal(indexed, gathered)
+    assert (indexed[rows:] == _SENTINEL).all()
+
+
+@pytest.mark.parametrize(
     "make,linear,qtype,in_features,tile_rows_set",
     [
         (make_q5_1_weight, qwen4_exp_q5_1_routed_f16_linear_bf16_bf16_out,

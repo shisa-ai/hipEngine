@@ -4664,23 +4664,45 @@ def run_qwen4_exp_moe(
             0,
             scratch.group_scatter_offsets.nbytes,
         )
-        qwen35_moe_group_scatter_gather_lowp(
-            scratch.hidden_bf16.ptr,
-            scratch.selected.ptr,
-            scratch.routing.ptr,
-            scratch.group_expert_start.ptr,
-            scratch.group_scatter_offsets.ptr,
-            scratch.group_sorted_lanes.ptr,
-            scratch.group_sorted_experts.ptr,
-            scratch.group_sorted_weights.ptr,
-            scratch.expert_down.ptr,
-            compact,
-            experts,
-            top_k,
-            hidden,
-            stream=stream,
-            runtime=active_runtime,
-        )
+        # The routed gate/up kernel can read token rows through the lane map,
+        # so its grouped copy of the activations (rows * top_k * hidden BF16)
+        # is not built. HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED=0 restores the
+        # gathered copy; see docs/REFACTOR.md.
+        routed_indexed = routed_f16 and os.environ.get(
+            "HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED", "1"
+        ) not in {"", "0", "false", "False"}
+        if routed_indexed:
+            qwen35_moe_group_scatter(
+                scratch.selected.ptr,
+                scratch.routing.ptr,
+                scratch.group_expert_start.ptr,
+                scratch.group_scatter_offsets.ptr,
+                scratch.group_sorted_lanes.ptr,
+                scratch.group_sorted_experts.ptr,
+                scratch.group_sorted_weights.ptr,
+                compact,
+                experts,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        else:
+            qwen35_moe_group_scatter_gather_lowp(
+                scratch.hidden_bf16.ptr,
+                scratch.selected.ptr,
+                scratch.routing.ptr,
+                scratch.group_expert_start.ptr,
+                scratch.group_scatter_offsets.ptr,
+                scratch.group_sorted_lanes.ptr,
+                scratch.group_sorted_experts.ptr,
+                scratch.group_sorted_weights.ptr,
+                scratch.expert_down.ptr,
+                compact,
+                experts,
+                top_k,
+                hidden,
+                stream=stream,
+                runtime=active_runtime,
+            )
         tile_capacity = scratch.group_tile_expert.nbytes // DType.INT64.itemsize
         wmma_total_rows = 0
         if q4_k_mmq_prefill:
@@ -4738,7 +4760,7 @@ def run_qwen4_exp_moe(
                 quant=gate_quant,
                 variant=ROUTED_F16_GATE_UP_VARIANT,
             )(
-                scratch.expert_down.ptr,
+                scratch.hidden_bf16.ptr if routed_indexed else scratch.expert_down.ptr,
                 scratch.group_expert_start.ptr,
                 scratch.group_tile_expert.ptr,
                 scratch.group_wmma_total.ptr,
@@ -4749,6 +4771,8 @@ def run_qwen4_exp_moe(
                 ffn,
                 tile_rows=gate_up_tile_rows,
                 tile_capacity=gate_up_capacity,
+                row_lanes_ptr=scratch.group_sorted_lanes.ptr if routed_indexed else 0,
+                top_k=top_k,
                 stream=stream,
                 runtime=active_runtime,
             )
