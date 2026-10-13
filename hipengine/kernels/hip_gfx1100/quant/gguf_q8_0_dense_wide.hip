@@ -609,8 +609,11 @@ __device__ __forceinline__ void wide_tile_gemm(
   // Bs. ``ok`` and ``jact[j]`` are wave-uniform, so every wave executes the
   // same number of wave barriers.
   if constexpr (GRMEAN) {
-    // Four 1 KB fragments per wave, 32 KB of the 36,864-byte Bs in total.
-    float* gst = reinterpret_cast<float*>(Bs) + wave * 1024;
+    // One 1 KB fragment per wave (8 KB of Bs): the four branch fragments of a
+    // row group pass through it one after another, each lane folding its
+    // eight outputs' share of a branch into ``value`` before the next branch
+    // overwrites the region.
+    float* gst = reinterpret_cast<float*>(Bs) + wave * 256;
     const int cm = lane & 15;
     const int cn = lane >> 4;
     const int n = lane >> 1;
@@ -618,23 +621,22 @@ __device__ __forceinline__ void wide_tile_gemm(
 #pragma unroll
     for (int j = 0; j < TN; ++j) {
       if (TAIL && !jact[j]) continue;
+      const int row = t0 + wn * WTN + j * 16 + n;
+      const bool live = row < rows;
+      const int col = m0 + wm * 16 + half * 8;
+      float value[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 #pragma unroll
       for (int i = 0; i < 4; ++i) {
 #pragma unroll
         for (int e = 0; e < 8; ++e) {
-          gst[i * 256 + (2 * e + cn) * 16 + cm] = acc[i][j][e];
+          gst[(2 * e + cn) * 16 + cm] = acc[i][j][e];
         }
-      }
-      __syncwarp();
-      const int row = t0 + wn * WTN + j * 16 + n;
-      if (row < rows) {
-        const int col = m0 + wm * 16 + half * 8;
-        float value[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-#pragma unroll
-        for (int i = 0; i < 4; ++i) {
-          const float* lp = gst + i * 256 + n * 16 + half * 8;
-          const float4 l0 = *reinterpret_cast<const float4*>(lp);
-          const float4 l1 = *reinterpret_cast<const float4*>(lp + 4);
+        __syncwarp();
+        const float* lp = gst + n * 16 + half * 8;
+        const float4 l0 = *reinterpret_cast<const float4*>(lp);
+        const float4 l1 = *reinterpret_cast<const float4*>(lp + 4);
+        __syncwarp();
+        if (live) {
           const size_t noff = static_cast<size_t>(row) * 4 * M +
                               static_cast<size_t>(i) * M + col;
           const float logits[8] = {l0.x, l0.y, l0.z, l0.w, l1.x, l1.y, l1.z, l1.w};
@@ -665,6 +667,8 @@ __device__ __forceinline__ void wide_tile_gemm(
             value[c] += normalized[c] * gate;
           }
         }
+      }
+      if (live) {
         float* op = out + static_cast<size_t>(row) * M + col;
 #pragma unroll
         for (int c = 0; c < 8; ++c) value[c] = value[c] / 4.0f;
@@ -687,7 +691,6 @@ __device__ __forceinline__ void wide_tile_gemm(
               make_uint4(packed[0], packed[1], packed[2], packed[3]);
         }
       }
-      __syncwarp();
     }
     return;
   }
@@ -741,7 +744,7 @@ q8_0_dense_wide_kernel(const x_t* __restrict__ x,
 // x is the F16 low-rank activation [rows, K], qweight the Q8_0 up weight
 // [4 * hidden, K], normalized the FP32 grouped norm [rows, 4, hidden], and out
 // the mixed stream [rows, hidden].
-template <bool TAIL>
+template <bool TAIL, int BN, int WTN>
 __global__ void __launch_bounds__(WIDE_THREADS, 1)
 q8_0_gr_up_mean_kernel(const half_t* __restrict__ x,
                        const uint8_t* __restrict__ qweight,
@@ -755,12 +758,12 @@ q8_0_gr_up_mean_kernel(const half_t* __restrict__ x,
                        const float* __restrict__ norm_weight,
                        half_t* __restrict__ out_f16) {
   __shared__ __align__(16) half_t As[128 * WIDE_LDS_STRIDE];
-  __shared__ __align__(16) half_t Bs[256 * WIDE_LDS_STRIDE];
+  __shared__ __align__(16) half_t Bs[BN * WIDE_LDS_STRIDE];
   const int m0 = blockIdx.x * 32;
-  const int t0 = blockIdx.y * 256;
+  const int t0 = blockIdx.y * BN;
   const size_t wrow_bytes =
       static_cast<size_t>(in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
-  wide_tile_gemm<half_t, 128, 256, 64, 64, TAIL, 1, false, false, true>(
+  wide_tile_gemm<half_t, 128, BN, 64, WTN, TAIL, 1, false, false, true>(
       qweight, wrow_bytes, 128, x, in_features, out, hidden, rows, t0, m0, As,
       Bs, nullptr, nullptr, nullptr, normalized, residual, inv_rms,
       norm_weight, out_f16);
@@ -1062,10 +1065,14 @@ static int gr_up_mean_launch(
       (recompute ? (!inv_rms || !norm_weight) : !normalized)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  // 128 rows per block measured fastest at 512 to 4096 rows (4096 rows,
+  // read chain: 2.86 ms against 3.57 for 256 and 3.40 for 64).
+  constexpr int bn = 128;
   const dim3 grid(static_cast<unsigned int>(hidden / 32),
-                  static_cast<unsigned int>((rows + 255) / 256));
-#define HIPENGINE_GR_UP_MEAN_LAUNCH(TAIL)                                      \
-  hipLaunchKernelGGL((q8_0_gr_up_mean_kernel<TAIL>), grid, dim3(WIDE_THREADS), \
+                  static_cast<unsigned int>((rows + bn - 1) / bn));
+#define HIPENGINE_GR_UP_MEAN_LAUNCH(TAIL, BN, WTN)                             \
+  hipLaunchKernelGGL((q8_0_gr_up_mean_kernel<TAIL, BN, WTN>), grid,            \
+                     dim3(WIDE_THREADS),                                       \
                      0, stream, static_cast<const half_t*>(x),                 \
                      static_cast<const uint8_t*>(qweight),                     \
                      static_cast<const float*>(normalized),                    \
@@ -1075,10 +1082,10 @@ static int gr_up_mean_launch(
                      static_cast<const float*>(inv_rms),                       \
                      static_cast<const float*>(norm_weight),                   \
                      static_cast<half_t*>(out_f16))
-  if ((rows % 256) != 0) {
-    HIPENGINE_GR_UP_MEAN_LAUNCH(true);
+  if ((rows % bn) != 0) {
+    HIPENGINE_GR_UP_MEAN_LAUNCH(true, 128, 32);
   } else {
-    HIPENGINE_GR_UP_MEAN_LAUNCH(false);
+    HIPENGINE_GR_UP_MEAN_LAUNCH(false, 128, 32);
   }
 #undef HIPENGINE_GR_UP_MEAN_LAUNCH
   return static_cast<int>(hipGetLastError());
