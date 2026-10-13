@@ -47,7 +47,13 @@ long-context gate (four prompts of about 2,000 to 2,600 tokens) puts
 only reorders one projection's F32 summation at 2.09e-3: at that length the
 envelope measures sensitivity to any perturbation and does not single out a
 route. How long prompts should be gated is an open owner item
-(`docs/EXECUTION-PROFILES.md` section 6.1).
+(`docs/EXECUTION-PROFILES.md` section 6.1). Two bit-identical prefill
+kernels followed (tiled attention block scoring and a fused hyper-connection
+epilogue), taking `production` to **779.4 / 977.9 / 1190.3 tok/s** with
+unchanged output tokens, and a 1024/8192/16384-token fixture now measures
+**978.7 / 1158.8 / 1133.1 tok/s** prefill with decode at 20.2 / 20.5 / 20.4
+([rates, ladder and attribution](../benchmarks/results/2026-10-14-qwen4exp-prefill-exact-kernels-and-ladder/README.md)).
+Kernel time per code-p4096 prefill is 3409 ms against 2373 for gufo.
 
 **2026-10-13 state additions: the opt-in `fast` execution profile.** The
 owner accepted the X-7 question in the form of a fourth, opt-in profile

@@ -80,6 +80,30 @@ from `qwen35_readme_sweep.py` and `qwen35_gguf_bench.py`. Speculative-decode
 tables use `gguf_ar_mtp_suite.py` or `gguf_mtp_category_bench.py` with a
 `gguf_true_ar_category_bench.py` true-AR denominator.
 
+## Qwen4Exp rate regression check (canonical and 1K/8K/16K fixtures)
+
+`scripts/qwen4exp_canonical_ar_bench.py hipengine` runs an exact-token
+fixture of four categories at three prompt lengths. Two fixtures are
+committed: `benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json`
+(the default) and `qwen4exp_canonical_ar_p1024_p8192_p16384.json` (pass it
+with `--fixture`). Each run takes about 25 and 15 minutes on Radeon 8060S.
+
+After a prefill or decode change, run both with `--prefill-chunk-size 4096
+--capture-mode compact --ple-cache-mode warm --execution-profile production`
+and compare each artifact with the current baseline on the same host:
+
+```bash
+python3 scripts/qwen4exp_rate_regression_check.py \
+  --baseline benchmarks/results/2026-10-14-qwen4exp-prefill-exact-kernels-and-ladder/hipengine-production-p1024-p8192-p16384.json \
+  --candidate <new artifact> [--require-identical-output]
+```
+
+It fails on a weighted prefill or decode drop of more than 3% at any prompt
+length, on a non-deterministic case, on a different fixture or host, and,
+with `--require-identical-output`, on any changed output token ids (use that
+flag for a change that claims bit-identity). When a change is kept, its
+artifacts become the next baseline; update the paths above.
+
 ## Profiling these harnesses under rocprofv3 (read before launching)
 
 A profiled Python/ctypes process must never discover the compiler: the

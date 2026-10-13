@@ -1,0 +1,48 @@
+{
+  "baseline": "benchmarks/results/2026-10-14-qwen4exp-production-f16-composition/hipengine-production.json",
+  "candidate": "benchmarks/results/2026-10-14-qwen4exp-prefill-exact-kernels-and-ladder/hipengine-production.json",
+  "changed_output_cases": [],
+  "decode_tolerance": 0.03,
+  "failures": [],
+  "passed": true,
+  "prefill_tolerance": 0.03,
+  "require_identical_output": true,
+  "shapes": {
+    "1024": {
+      "decode_tok_s_weighted": {
+        "baseline": 20.154714086271238,
+        "candidate": 20.182939918183333,
+        "delta": 0.001400458066101784
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 932.9008561459979,
+        "candidate": 977.8854832407648,
+        "delta": 0.048220158442781935
+      }
+    },
+    "4096": {
+      "decode_tok_s_weighted": {
+        "baseline": 20.568850210775867,
+        "candidate": 20.58860123115513,
+        "delta": 0.0009602393997170111
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 1108.3568073882798,
+        "candidate": 1190.3081919392541,
+        "delta": 0.07393953283336963
+      }
+    },
+    "512": {
+      "decode_tok_s_weighted": {
+        "baseline": 20.91230350738188,
+        "candidate": 20.944660698163876,
+        "delta": 0.001547280086604319
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 769.1709442140941,
+        "candidate": 779.371773408152,
+        "delta": 0.013262109379964526
+      }
+    }
+  }
+}
