@@ -23,6 +23,7 @@ _FAMILY = "qwen4_exp_routed_f16"
 _OUTPUT_NAME = "qwen4_exp_routed_f16.so"
 _SYMBOL_TILE_MAP = "hipengine_qwen4_exp_routed_f16_tile_map"
 _SYMBOL_GATE_UP = "hipengine_qwen4_exp_routed_f16_gate_up_silu_bf16"
+_SYMBOL_GATE_UP_INDEXED = _SYMBOL_GATE_UP + "_indexed"
 _SYMBOL_LINEAR = "hipengine_qwen4_exp_routed_f16_linear_bf16"
 
 # GGUF type ids the kernels accept, by registry quant.
@@ -155,11 +156,18 @@ def _make_gate_up(quant: str):
         *,
         tile_rows: int,
         tile_capacity: int,
+        row_lanes_ptr: int = 0,
+        top_k: int = 1,
         stream: int = 0,
         library: ctypes.CDLL | None = None,
         runtime: HipRuntime | None = None,
     ) -> None:
-        """out[row] = silu(gate[e] x[row]) * (up[e] x[row]) over grouped rows."""
+        """out[row] = silu(gate[e] x[row]) * (up[e] x[row]) over grouped rows.
+
+        With ``row_lanes_ptr`` (int64 routed lane of each grouped row), ``x``
+        is token-major and grouped row ``r`` reads token
+        ``row_lanes[r] // top_k``; without it ``x`` holds the grouped rows.
+        """
 
         if tile_rows not in _GATE_UP_TILE_ROWS:
             raise ValueError(f"routed F16 gate/up tile rows must be in {_GATE_UP_TILE_ROWS}")
@@ -167,10 +175,10 @@ def _make_gate_up(quant: str):
             raise ValueError("routed F16 gate/up needs K % 256 == 0 and positive sizes")
         lib = library or build_qwen4_exp_routed_f16(load=True)
         active = runtime or get_hip_runtime()
-        fn = getattr(lib, _SYMBOL_GATE_UP)
+        fn = getattr(lib, _SYMBOL_GATE_UP_INDEXED)
         fn.argtypes = (
             [ctypes.c_void_p] * 2 + [ctypes.c_int64] + [ctypes.c_void_p] * 5
-            + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+            + [ctypes.c_int64] * 4 + [ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
         )
         fn.restype = ctypes.c_int
         _check(
@@ -187,10 +195,12 @@ def _make_gate_up(quant: str):
                 ctypes.c_int64(in_features),
                 ctypes.c_int64(tile_rows),
                 ctypes.c_int64(tile_capacity),
+                ctypes.c_void_p(row_lanes_ptr or None),
+                ctypes.c_int64(top_k),
                 ctypes.c_void_p(stream),
             ),
             active,
-            _SYMBOL_GATE_UP,
+            _SYMBOL_GATE_UP_INDEXED,
         )
 
     gate_up.__name__ = f"qwen4_exp_{quant}_routed_f16_gate_up_silu_bf16_bf16_out"

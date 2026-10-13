@@ -161,7 +161,9 @@ __launch_bounds__(256) __global__
                              const std::int64_t* __restrict__ pad_bounds,
                              std::uint16_t* __restrict__ out_bf16,
                              std::size_t m, std::size_t k,
-                             const void* __restrict__ w_up) {
+                             const void* __restrict__ w_up,
+                             const std::int64_t* __restrict__ row_lanes,
+                             std::int32_t top_k) {
   // The grid is sized to a static tile bound; the map kernel publishes the
   // live count.
   if (static_cast<std::int32_t>(blockIdx.y) >= n_tiles[0]) {
@@ -278,10 +280,16 @@ __launch_bounds__(256) __global__
     const int t = chunk / (BK * 4);
     const int sub = chunk % (BK * 4);
     const int c_row = t_local + t;
-    // Rows are already grouped by expert: compact row c is input row c.
-    const std::int32_t src = (chunk < kActChunks && c_row < bucket_rows)
-                                 ? bucket_begin + c_row
-                                 : -1;
+    // Without a lane map the rows are already grouped by expert: compact
+    // row c is input row c. With one, x is token-major and grouped row c
+    // reads the token its routed lane belongs to, so no grouped copy of the
+    // activations is needed.
+    std::int32_t src = (chunk < kActChunks && c_row < bucket_rows)
+                           ? bucket_begin + c_row
+                           : -1;
+    if (row_lanes != nullptr && src >= 0) {
+      src = static_cast<std::int32_t>(row_lanes[src] / top_k);
+    }
     a_src[i] = src >= 0 ? x + (static_cast<std::size_t>(src) * k) + (sub * 8)
                         : nullptr;
     // s_act[(kb * 4 + quarter) * kActStride + t]
@@ -746,11 +754,13 @@ template<WeightType kType, int BN>
 int LaunchPair(const void* gate, const void* up, const std::uint16_t* x,
                const std::int32_t* tiles, const std::int32_t* n_tiles,
                const std::int64_t* bounds, std::uint16_t* out, std::size_t m,
-               std::size_t k, std::uint32_t capacity, hipStream_t stream) {
+               std::size_t k, std::uint32_t capacity, hipStream_t stream,
+               const std::int64_t* row_lanes = nullptr,
+               std::int32_t top_k = 1) {
   const dim3 grid(static_cast<unsigned int>((m + 63) / 64), capacity);
   hipLaunchKernelGGL((RoutedF16GEMMKernel<kType, 128, BN, 2, true>), grid,
                      dim3(kThreads), 0, stream, gate, x, tiles, n_tiles,
-                     bounds, out, m, k, up);
+                     bounds, out, m, k, up, row_lanes, top_k);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -762,7 +772,8 @@ int LaunchSingle(const void* w, const std::uint16_t* x,
   const dim3 grid(static_cast<unsigned int>((m + 127) / 128), capacity);
   hipLaunchKernelGGL((RoutedF16GEMMKernel<kType, 128, BN, 2>), grid,
                      dim3(kThreads), 0, stream, w, x, tiles, n_tiles, bounds,
-                     out, m, k, nullptr);
+                     out, m, k, nullptr,
+                     static_cast<const std::int64_t*>(nullptr), 1);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -785,37 +796,58 @@ extern "C" int hipengine_qwen4_exp_routed_f16_tile_map(
 }
 
 /// out[row][m] = silu(gate x) * (up x) for grouped rows, BF16 in and out.
-extern "C" int hipengine_qwen4_exp_routed_f16_gate_up_silu_bf16(
+/// `row_lanes` null: x holds the grouped rows. Otherwise x is token-major
+/// and grouped row r reads token `row_lanes[r] / top_k`.
+extern "C" int hipengine_qwen4_exp_routed_f16_gate_up_silu_bf16_indexed(
     const void* gate, const void* up, std::int64_t ggml_type,
     const std::uint16_t* x, const std::int32_t* tiles,
     const std::int32_t* n_tiles, const std::int64_t* bounds,
     std::uint16_t* out, std::int64_t m, std::int64_t k,
-    std::int64_t tile_rows, std::int64_t capacity, hipStream_t stream) {
+    std::int64_t tile_rows, std::int64_t capacity,
+    const std::int64_t* row_lanes, std::int64_t top_k_arg,
+    hipStream_t stream) {
   if (!gate || !up || !x || !tiles || !n_tiles || !bounds || !out || m <= 0 ||
-      k <= 0 || k % 256 != 0 || capacity <= 0) {
+      k <= 0 || k % 256 != 0 || capacity <= 0 ||
+      (row_lanes != nullptr && (top_k_arg <= 0 || top_k_arg > 1024))) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  const auto top_k = static_cast<std::int32_t>(row_lanes ? top_k_arg : 1);
   const auto type = static_cast<WeightType>(ggml_type);
   const auto cap = static_cast<std::uint32_t>(capacity);
   const auto um = static_cast<std::size_t>(m);
   const auto uk = static_cast<std::size_t>(k);
   if (type == WeightType::kQ4_K && tile_rows == 64) {
     return LaunchPair<WeightType::kQ4_K, 64>(gate, up, x, tiles, n_tiles,
-                                             bounds, out, um, uk, cap, stream);
+                                             bounds, out, um, uk, cap, stream,
+                                             row_lanes, top_k);
   }
   if (type == WeightType::kQ4_K && tile_rows == 128) {
     return LaunchPair<WeightType::kQ4_K, 128>(gate, up, x, tiles, n_tiles,
-                                              bounds, out, um, uk, cap, stream);
+                                              bounds, out, um, uk, cap, stream,
+                                             row_lanes, top_k);
   }
   if (type == WeightType::kQ5_K && tile_rows == 64) {
     return LaunchPair<WeightType::kQ5_K, 64>(gate, up, x, tiles, n_tiles,
-                                             bounds, out, um, uk, cap, stream);
+                                             bounds, out, um, uk, cap, stream,
+                                             row_lanes, top_k);
   }
   if (type == WeightType::kQ5_K && tile_rows == 128) {
     return LaunchPair<WeightType::kQ5_K, 128>(gate, up, x, tiles, n_tiles,
-                                              bounds, out, um, uk, cap, stream);
+                                              bounds, out, um, uk, cap, stream,
+                                             row_lanes, top_k);
   }
   return static_cast<int>(hipErrorInvalidValue);
+}
+
+extern "C" int hipengine_qwen4_exp_routed_f16_gate_up_silu_bf16(
+    const void* gate, const void* up, std::int64_t ggml_type,
+    const std::uint16_t* x, const std::int32_t* tiles,
+    const std::int32_t* n_tiles, const std::int64_t* bounds,
+    std::uint16_t* out, std::int64_t m, std::int64_t k,
+    std::int64_t tile_rows, std::int64_t capacity, hipStream_t stream) {
+  return hipengine_qwen4_exp_routed_f16_gate_up_silu_bf16_indexed(
+      gate, up, ggml_type, x, tiles, n_tiles, bounds, out, m, k, tile_rows,
+      capacity, nullptr, 1, stream);
 }
 
 /// out[row][m] = w x for grouped rows, BF16 in and out.
