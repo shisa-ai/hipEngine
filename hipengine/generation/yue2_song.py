@@ -28,8 +28,12 @@ VAE_REPO_DIRNAME = "models--m-a-p--YuE2-Vae"
 
 #: The AR span-attention route allocates its K/V for this many positions, and the
 #: runtime rejects a longer prefill. It is the pipeline's real context bound even
-#: though the checkpoint itself declares 24576 positions.
-DEFAULT_AR_CONTEXT = 4096
+#: though the checkpoint itself declares 24576 positions. The value has to cover the
+#: shipped phase budgets (``DEFAULT_SEMANTIC_SAMPLING.max_tokens``) plus a planning
+#: prefix, or a default request is refused by the resident-context check. 16000 is the
+#: span-attention kernel's shared-memory ceiling, so the pipeline uses the whole
+#: kernel budget.
+DEFAULT_AR_CONTEXT = 16000
 MODEL_CONTEXT = 24576
 
 SAMPLE_RATE = 48000
