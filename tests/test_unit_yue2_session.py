@@ -40,6 +40,7 @@ class FakeRuntime:
 
     branches = 2
     prefill_fallback_reason: str | None = None
+    max_context = 4096
 
     def __init__(self, logits=None, *, script=None, vocab: int = VOCAB):
         if (logits is None) == (script is None):
@@ -75,6 +76,7 @@ class FakeRuntime:
 
     def push_token(self, row, position: int, branch: int = 0) -> None:
         assert position == self.lengths[branch], "append-only positions"
+        assert position < self.max_context, "position must be within max_context"
         self.lengths[branch] += 1
 
     def forward_layers(self, position: int, branch: int = 0) -> None:
@@ -145,6 +147,35 @@ def test_budget_exit_is_reported_as_truncation():
     assert truncated is True
     assert timing["content_tokens"] == 5
     assert timing["output_tokens"] == 5
+
+
+def test_generation_budget_larger_than_resident_context_fails_loudly():
+    """A budget that outruns the resident runtime is refused by name, not in the kernel.
+
+    The checkpoint declares 24576 positions, but the resident runtime allocates only
+    ``max_context`` of them. A budget validated against the declaration alone drives
+    the loop to a position the runtime cannot address, which surfaced as an internal
+    position assertion rather than a named request error.
+    """
+
+    runtime = FakeRuntime(lambda branch, length: _logits_for(1000 + length))
+    runtime.max_context = 4
+    with pytest.raises(ValueError, match="resident AR context"):
+        session_module.generate_tokens(runtime, [1], _sampling(max_tokens=10), 7, "abc")
+    assert runtime.prefills == [], "validation failures must not touch the runtime"
+
+
+def test_product_default_budget_fits_the_shipped_ar_context():
+    """The shipped semantic budget must fit the shipped AR context.
+
+    A caller who passes no overrides gets exactly these two constants, so a default
+    request has to clear the resident-context validation. They drifted apart once, and
+    the result was a default request that died inside the runtime's position check.
+    """
+
+    from hipengine.generation.yue2_song import DEFAULT_AR_CONTEXT
+
+    assert generation_module.DEFAULT_SEMANTIC_SAMPLING.max_tokens < DEFAULT_AR_CONTEXT
 
 
 def test_end_token_is_callback_visible_once():

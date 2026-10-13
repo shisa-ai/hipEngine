@@ -196,12 +196,32 @@ def generate_tokens(
         raise ValueError("empty prefix")
     if len(prefix) + sampling.max_tokens > CONTEXT:
         raise ValueError("Prefix + requested generation budget exceeds 24576; no implicit truncation")
+    # The checkpoint declares 24576 positions, but a resident runtime allocates only
+    # ``max_context`` of them: the AR span-attention route sizes its K/V from that
+    # value, so the declaration alone is not the bound that matters. A budget checked
+    # against the declaration drives the loop to a position the runtime cannot address,
+    # which failed inside the runtime's own position check instead of naming the
+    # request error here.
+    resident_context = getattr(runtime, "max_context", None)
+    if resident_context is not None:
+        resident_context = int(resident_context)
+        if len(prefix) + sampling.max_tokens > resident_context:
+            raise ValueError(
+                f"Prefix + requested generation budget exceeds the resident AR context "
+                f"({len(prefix)} + {sampling.max_tokens} > {resident_context}); lower the "
+                f"phase budget or raise the resident context"
+            )
     if cfg_scale != 1 and negative is None:
         raise ValueError("CFG requires a negative prefix")
     if negative is not None:
         negative = [int(token) for token in negative]
         if len(negative) + sampling.max_tokens > CONTEXT:
             raise ValueError("Negative prefix + generation budget exceeds context")
+        if resident_context is not None and len(negative) + sampling.max_tokens > resident_context:
+            raise ValueError(
+                f"Negative prefix + generation budget exceeds the resident AR context "
+                f"({len(negative)} + {sampling.max_tokens} > {resident_context})"
+            )
         if runtime.branches < 2:
             raise ValueError("this runtime was built with branches=1; CFG needs two branches")
     if cancelled is not None and cancelled():
