@@ -188,7 +188,9 @@ from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
     WIDE_F16_PAIR_ENV,
+    _invalidate_wide_f16_publication,
     _q8_dense_wide_enabled,
+    _wide_f16_consumer_key,
     wide_f16_activation_pair,
     wide_f16_activation_enabled,
     wide_f16_activation_publication,
@@ -215,8 +217,14 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kernels.registry import generation as _registry_generation
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
+    _WRAPPERS as _GGUF_Q8_0_DENSE_WIDE_WRAPPERS,
+    f32_to_f16 as gguf_q8_0_f32_to_f16,
+    gguf_q8_0_dense_wide256_f16in_f32_f32_out,
     gguf_q8_0_dense_wide256_f32_f32_out,
 )
+gguf_q8_0_dense_wide128x128_f16in_f32_f32_out = _GGUF_Q8_0_DENSE_WIDE_WRAPPERS[
+    "dense_wide128x128_f16in_f32_f32_out"
+]
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_iu8_wmma_prefill_f32_f32,
 )
@@ -3178,6 +3186,30 @@ def _run_qwen4_exp_gr_norm_down(
         and width % 32 == 0
     )
     workspace = wide_f16_activation_workspace()
+    if (_qwen4_exp_gr_f16_direct_enabled(rows, low_rank) and not iu8_down
+            and workspace is not None and workspace.nbytes >= count * 2
+            and down_weight.spec.quant_key == "gguf_q8_0"):
+        producer = KernelKey(str(down_weight.backend), "gr_grouped_rmsnorm",
+                             "bf16_f32", "f32_f16_publish")
+        # Only where the ordinary dispatch already runs this projection on the
+        # F16 wide tile: the direct launch then changes the tile shape and who
+        # converts the activation, not a single output bit.
+        if is_registered(producer) and _wide_f16_consumer_key(
+                down_weight, rows=rows, in_features=width,
+                out_features=low_rank) is not None:
+            _invalidate_wide_f16_publication()
+            resolve(backend=producer.backend, layer=producer.layer,
+                    quant=producer.quant, variant=producer.variant)(
+                residual_ptr, norm_weight_ptr, scratch.normalized.ptr,
+                workspace.ptr, rows, branches, hidden, eps,
+                stream=stream, runtime=runtime,
+            )
+            gguf_q8_0_dense_wide128x128_f16in_f32_f32_out(
+                workspace.ptr, down_weight.allocation("raw").tensor.ptr,
+                scratch.low_rank.ptr, rows, width, low_rank,
+                stream=stream, runtime=runtime,
+            )
+            return
     keys = None
     unsafe_workspace = False
     if (workspace is not None and workspace.nbytes >= count * 2
@@ -3340,8 +3372,23 @@ def run_qwen4_exp_gr_read(
         # epilogue applies the sigmoid inside the gated-mean pass, which is
         # bit-identical to the separate pair and does not write the gate:
         # no caller reads it, and ``scratch.gate`` keeps the logits here.
-        gguf_q8_0_dense_wide256_f32_f32_out(
-            scratch.low_rank.ptr,
+        workspace = wide_f16_activation_workspace()
+        if (_qwen4_exp_gr_f16_direct_enabled(rows, low_rank)
+                and workspace is not None
+                and workspace.nbytes >= rows * low_rank * 2):
+            # The F32-input tile converts the activation to F16 while staging
+            # it; converting once up front feeds the same bytes to the same
+            # products and halves the activation traffic.
+            _invalidate_wide_f16_publication()
+            gguf_q8_0_f32_to_f16(
+                scratch.low_rank.ptr, workspace.ptr, rows * low_rank,
+                stream=stream, runtime=active_runtime,
+            )
+            up_x_ptr, up_launch = workspace.ptr, gguf_q8_0_dense_wide256_f16in_f32_f32_out
+        else:
+            up_x_ptr, up_launch = scratch.low_rank.ptr, gguf_q8_0_dense_wide256_f32_f32_out
+        up_launch(
+            up_x_ptr,
             up_weight.allocation("raw").tensor.ptr,
             scratch.gate.ptr,
             rows,
@@ -3672,6 +3719,21 @@ def _qwen4_exp_gr_wide_enabled(rows: int, low_rank: int) -> bool:
         rows > 256
         and low_rank % 64 == 0
         and os.environ.get("HIPENGINE_QWEN4_EXP_GR_WIDE", "0")
+        not in {"", "0", "false", "False"}
+    )
+
+
+def _qwen4_exp_gr_f16_direct_enabled(rows: int, low_rank: int) -> bool:
+    """Direct F16 launches for the hyper-connection read projections.
+
+    Bit-identical to the routes it replaces wherever those already run the F16
+    wide tile. Set ``HIPENGINE_QWEN4_EXP_GR_F16_DIRECT=0`` to return to the
+    ordinary dispatch for bisection; see docs/REFACTOR.md.
+    """
+    return (
+        rows > 256
+        and low_rank % 64 == 0
+        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_F16_DIRECT", "0")
         not in {"", "0", "false", "False"}
     )
 
