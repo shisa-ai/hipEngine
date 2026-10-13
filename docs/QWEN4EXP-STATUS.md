@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next (Qwen4Exp) Optimization Status
 
-- **Status date:** 2026-10-12 (refreshed; the pre-2026-10-09 narrative below is
+- **Status date:** 2026-10-13 (refreshed; the pre-2026-10-09 narrative below is
   preserved as history where later sections do not supersede it)
 - **Model / quant:** unsloth `Qwen3.8-Flash-Next` `UD-Q4_K_XL`, fingerprint
   `fb1f2fbf73d588c9…`, 111.3 GB, four shards
@@ -22,6 +22,36 @@
   (16.4 / 12.2 / 10.9 tok/s at p4096) — the host thermal-throttles under
   sustained load, an ~7% aggregate cost on the same protocol; settled-state
   figures remain the scoreboard's basis.
+
+**2026-10-13 state additions: the opt-in `fast` execution profile.** The
+owner accepted the X-7 question in the form of a fourth, opt-in profile
+(`docs/EXECUTION-PROFILES.md` section 2): `production` keeps its calibrated
+envelope and stays the default, and reduced-precision operand routes land in
+`fast`. On the canonical 12-case protocol `fast` measures **769.8 / 935.1 /
+1104.8 tok/s** prefill at p512/p1024/p4096 against 306.6 / 331.4 / 337.2 for
+`production` measured back to back (2.51x / 2.82x / 3.28x), with decode
+unchanged at 20.6 tok/s
+([rates](../benchmarks/results/2026-10-14-qwen4exp-gdn-norm-gate-waves/README.md)).
+Kernel time per code-p4096 prefill is 3657 ms (`production` 12186; gufo
+`v0.12.0` 2373 on this host on 2026-10-12). Its routes, in the order they
+landed: wide-tile routed-expert F16 GEMMs that read the raw GGUF expert
+tensors (routed experts 4621 to 695 ms; kernel ported from gufo, MIT); the
+F16 dense wide route at layers 0-47 and the hyper-connection projections on
+it; a small-matrix F16 WMMA GEMM for the indexer projections and the router;
+a WMMA prefill attention kernel over F16 K/V rows gathered from the paged
+BF16 cache (attention kernels 995 to 112 ms; kernel ported from gufo); and
+the tiled GDN recurrence at every GDN layer. One exact change landed in every
+profile: a bit-identical eight-wave GDN norm/gate (10.4 to 1.3 ms per layer).
+The full-vocabulary layer2 gate on the complete `fast` composition measures
+mean KL 6.49e-04, p99 7.89e-03, max 0.012, top-1 99.56% and 15/18
+strict-exact tasks: inside every global limit of the production envelope,
+failing only two per-scope means (`prefill_last` 1.21e-3 and `mixed_ja_en`
+1.11e-3 against 1e-3)
+([gate](../benchmarks/results/2026-10-14-qwen4exp-fast-composition-gate-2/README.md)).
+The compensated-T16 routes of the 2026-10-09 additions below are superseded
+for this purpose: they need a second copy of the expert weights that does not
+fit beside the raw weights decode reads, and no profile selects them
+(`docs/REFACTOR.md`). Decode has not been worked on in this campaign.
 
 **2026-10-08 state additions (see the ledger sections 1.3.6-1.3.8 and the DE-11
 head-refresh packet):** the decode depth growth is fully localized — device

@@ -58,11 +58,13 @@ numerical envelope, and `production` remains the default.
 Against the strict teacher on the 18-prompt battery, `fast` is 14/18
 strict-exact with aligned top-1 agreement 1.00 and top-20 mean KL 0.049;
 `production` is 15/18 with mean KL 0.0052. A full-vocabulary teacher-forced
-gate of an earlier `fast` composition (before its attention and GDN changes)
-measured mean KL 7.1e-4, max 0.034 and top-1 99.1% over 450 rows.
+gate of this `fast` composition measured mean KL 6.5e-4, max 0.012, top-1
+99.56% and 15/18 strict-exact tasks over 450 rows: inside every global limit
+of the production envelope, with two per-scope means at 1.21x and 1.11x of
+their limit.
 [Protocol, per-case rows, quality score and kernel evidence](results/2026-10-14-qwen4exp-gdn-norm-gate-waves/README.md)
 · [attention kernel](results/2026-10-14-qwen4exp-fast-qsa-wmma/README.md)
-· [full-vocabulary gate](results/2026-10-14-qwen4exp-fast-composition-gate/README.md)
+· [full-vocabulary gate](results/2026-10-14-qwen4exp-fast-composition-gate-2/README.md)
 · [indexer and router GEMM](results/2026-10-13-qwen4exp-fast-indexer-f16-gemm/README.md)
 · [dense and hyper-connection routes](results/2026-10-13-qwen4exp-fast-dense-hc-router/README.md)
 · [routed-expert kernel](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).

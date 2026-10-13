@@ -65,19 +65,43 @@ calibrated mean/p95/p99/max KL, top-1 by scope/category, isolation, BF16
 relative checks, and task quality. No new candidate has been promoted, so no
 candidate-specific production gate is claimed here.
 
-## Conclusion and next steps
+## Conclusion and results
 
-The family gaps are explained by arithmetic class. gufo and halo-box run
-F16/BF16 operands through WMMA for every family at every layer with no repair
-pass, while hipEngine's `production` profile keeps exact F32, iu8-plus-repair,
-and scalar FMA paths wherever a reduced-precision route exceeds its calibrated
-envelope. The tile-geometry diagnostics above did not identify a tile-policy
-change worth making, and no same-operand replay inside an external engine is
-needed to proceed.
+The family gaps were explained by arithmetic class and, for routed experts
+and attention, by kernel design. gufo and halo-box run F16/BF16 operands
+through WMMA for every family at every layer with no repair pass, while
+hipEngine's `production` profile keeps exact F32, iu8-plus-repair, and scalar
+FMA paths wherever a reduced-precision route exceeds its calibrated envelope.
+No same-operand replay inside an external engine was needed.
 
-The work continues in an opt-in `fast` execution profile that moves each
-family to the F16-operand class and is measured in-tree against the gufo
-kernel-time attribution: routed experts, dense projections, hyper-connections,
-attention, MoE reduce, then GDN. `production` keeps its calibrated envelope;
-each `fast` route is re-reviewed under the production gates once the profile
-reaches the external engines' throughput class.
+The work landed in an opt-in `fast` execution profile, measured in-tree
+against the gufo kernel-time attribution. Same host and protocol as the
+baseline table above, 2026-10-13:
+
+| Engine / profile | p512 | p1024 | p4096 | p4096 decode |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine `production` | 306.6 | 331.4 | 337.2 | 20.6 |
+| hipEngine `fast` | 769.8 | 935.1 | 1104.8 | 20.6 |
+| halo-box master `6aa81b88e` (2026-10-12) | 759.3 | 1109.1 | 1446.4 | 25.1 |
+| gufo `v0.12.0` (2026-10-12) | 1095.0 | 1482.2 | 1736.4 | 28.1 |
+
+| Family, kernel ms per code-p4096 prefill | `production` | `fast` | gufo |
+| --- | ---: | ---: | ---: |
+| Routed experts | 4621 | 694 | 812 |
+| Dense projections | 3045 | 1283 | 841 |
+| Attention | 1152 | 300 | 113 |
+| GDN | 750 | 347 | 208 |
+| Hyper-connection elementwise, router, reduce, conversions, other | 2618 | 1033 | 399 |
+| **Total** | **12186** | **3657** | **2373** |
+
+Quality of `fast` against the strict hipEngine teacher: 14/18 strict-exact on
+the pass-1 battery with aligned top-1 agreement 1.00 (halo-box 11/18, gufo
+13/18 under the same scoring), and on the full-vocabulary layer2 gate mean KL
+6.49e-04, max 0.012, top-1 99.56%, 15/18 strict-exact tasks.
+
+Remaining gap to gufo at p4096 is 1.57x in prefill rate and 1.36x in decode.
+The largest remaining prefill items are the dense projections, the
+hyper-connection elementwise chain, and attention block scoring; decode has
+not been worked on. `production` is unchanged apart from one bit-identical
+GDN kernel, and each `fast` route is re-reviewed under the production gates
+before it can become a production route.
