@@ -8850,3 +8850,25 @@ cleanup pass unless a whole-step graph (the committed bigger-seam build)
 demonstrates the launch-count savings compound at graph scope — in which
 case the fused kernel is the graph's building block and the flag becomes
 its temporary selector until the graph lands.
+
+## The Qwen4Exp fast profile's T16 down residency
+
+The `fast` execution profile for `qwen4_exp_gguf` / `hip_gfx1151` /
+`gguf_ud_q4_k_xl` (added 2026-10-13) selects the T16 Q5_1 expert-major down
+route by making the 43 Q5_1 down tile sets resident at bind time
+(`Qwen4ExpGGUFTextGenerator.populate_t16_resident_stages`) and publishing
+`HIPENGINE_QWEN4_EXP_T16_DOWN=1` from the binder. The tiles sit beside the raw
+weights the decode owners read, which costs about 25 GiB of device memory and
+leaves the host with roughly 12 GiB available on the 128 GiB Strix Halo
+system. `HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS` (comma-separated slot roles)
+was added for the env-driven construction populate so a window can name one
+role.
+
+Removal condition: delete the T16 down selection, the bind-time populate, the
+`T16_RESIDENT*` flags, and `HIPENGINE_QWEN4_EXP_T16_DOWN` once the fast
+profile's routed experts run on a kernel that reads the raw GGUF layout
+directly (the wide-tile routed F16 GEMM), which needs no second weight copy.
+The T16 gate/up route (`HIPENGINE_QWEN4_EXP_T16_GATE_UP`) is not selected by
+any profile: its tiles do not fit beside the raw weights and the decode owners
+cannot read them, so it is deleted under the same condition.
+

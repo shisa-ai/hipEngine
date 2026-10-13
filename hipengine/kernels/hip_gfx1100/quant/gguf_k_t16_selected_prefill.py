@@ -2166,6 +2166,20 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             replace=replace,
         )
 
+    # The Q5_1 T16 layout is a bit-lossless rearrangement of the raw Q5_1
+    # bytes, so the route is also keyed under the raw quant that execution
+    # profile manifests name for the routed down scopes.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
+            "selected_t16_expert_major_wmma_comp_bf16_bf16_out",
+        ),
+        gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
+        replace=replace,
+    )
+
 
 register_gguf_k_t16_selected_prefill_kernels()
 

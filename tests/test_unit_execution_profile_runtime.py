@@ -496,7 +496,7 @@ def test_profile_request_normalization_and_server_cli_env(monkeypatch) -> None:
     assert resolve_requested_execution_profile(None) is None
     assert resolve_requested_execution_profile("strict") is ExecutionProfile.STRICT
     with pytest.raises(ValueError, match="execution_profile"):
-        resolve_requested_execution_profile("fast")
+        resolve_requested_execution_profile("relaxed_all")
 
     monkeypatch.setenv("HIPENGINE_EXECUTION_PROFILE", "batch_invariant")
     assert resolve_requested_execution_profile(None) is ExecutionProfile.BATCH_INVARIANT

@@ -35,11 +35,32 @@ contract rather than a universal serving requirement.
 | `strict` | Oracle, debugging, regression localization, parent/reference parity | Uses the registered reference arithmetic for the selected model/quant/KV policy. Fused kernels must match their declared strict fallback contract. | Same request, seed, shape, and schedule are bit-stable on retained fixtures. | Not by itself a promise about sampler scheduling or every dynamic server composition; use `batch_invariant` for that public guarantee. |
 | `production` | Normal deployment and performance work | Exact control/state ownership with tightly bounded same-quant implementation drift. Width- and shape-specific arithmetic is allowed. | Same request, seed, resolved variant manifest, and execution schedule are deterministic. | Cross-width generated-ID equality is diagnostic, not a promotion requirement. Same-width neighbor data must never contaminate a request. |
 | `batch_invariant` | RL, evaluations, debugging, reproducible serving | May use any independently validated stable arithmetic, but must preserve the request result across supported batch compositions. The first implementation may alias strict routes. | Fixed-seed repeats are deterministic. | Same fixed-seed request result across physical slots, neighbor prompts, supported widths, admission order, cancellation of peers, and compaction. |
+| `fast` | Opt-in throughput on combinations that register a plan | Exact control/state ownership. Reduced-precision operand routes (F16 operands, F32 accumulate, no exact repair) that have not been certified against the production envelope. | Same request, seed, resolved variant manifest, and execution schedule are deterministic. | Same as `production`. |
 
-There is no public `relaxed_all`, `fast`, or `aggressive` fourth profile. More
-aggressive weight/KV representation changes, approximate routing, speculative
-acceptance changes, and sampling relaxations remain explicit experiments until
-the first three contracts are implemented and measured.
+`fast` is an owner policy decision dated 2026-10-13. It exists because the
+calibrated production envelope admits none of the operand-class changes that
+separate hipEngine from the fastest engines on the same hardware, and that
+work needs a named profile to land in rather than a set of environment flags.
+Its contract:
+
+- It is **never a shipped default**. A caller must name it; an omitted profile
+  still resolves to `production` or the migration path.
+- It is registered per model/backend/quant. Naming it for a combination with
+  no registered `fast` plan constructs the strict plan and reports
+  `fell_back_to_strict`.
+- Every selection keeps its registered strict fallback and is written into the
+  manifest like a production selection.
+- Admission bar for a route: exact control/ownership, same-schedule
+  determinism, finite outputs, and the outer safety floor (KL <= `0.05`,
+  top-1 >= `90%` against the strict teacher on the gate fixture). The
+  calibrated production gates in section 6 are **not** required for `fast`.
+- A `fast` route becomes a `production` route only by passing the complete
+  section 6 gate. Throughput measured under `fast` is reported as `fast`
+  throughput and is never presented as a production figure.
+
+There is no public `relaxed_all` or `aggressive` profile. Weight/KV
+representation changes, approximate routing, speculative acceptance changes,
+and sampling relaxations remain explicit experiments.
 
 ### 2.1 Migration and default
 

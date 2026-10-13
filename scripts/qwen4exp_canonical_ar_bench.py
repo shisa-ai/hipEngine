@@ -1559,7 +1559,7 @@ def build_parser() -> argparse.ArgumentParser:
     hip_parser.add_argument("--output", type=Path, required=True)
     hip_parser.add_argument("--prefill-chunk-size", type=int, default=512)
     hip_parser.add_argument(
-        "--execution-profile", choices=("strict", "production"), default="production"
+        "--execution-profile", choices=("strict", "production", "fast"), default="production"
     )
     hip_parser.add_argument(
         "--case-id", nargs="+",

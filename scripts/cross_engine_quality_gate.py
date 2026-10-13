@@ -726,7 +726,7 @@ def build_parser() -> argparse.ArgumentParser:
     hip = subparsers.add_parser("hipengine", help="In-process strict/production battery run")
     hip.add_argument("--model-root", type=Path, required=True)
     hip.add_argument("--engine-label", required=True)
-    hip.add_argument("--profile", choices=("strict", "production"), required=True)
+    hip.add_argument("--profile", choices=("strict", "production", "fast"), required=True)
     hip.add_argument("--quant")
     hip.add_argument("--max-sequence-length", type=int, default=8192)
     hip.add_argument("--prefill-chunk-size", type=int, default=1024)

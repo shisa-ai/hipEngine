@@ -33,6 +33,8 @@ from hipengine.tokenization.gguf import Qwen4ExpGGUFTokenizer
 
 _T16_RESIDENT_ENV = "HIPENGINE_QWEN4_EXP_T16_RESIDENT"
 _T16_RESIDENT_MAX_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS"
+_T16_RESIDENT_SLOTS_ENV = "HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS"
+_T16_RESIDENT_SLOTS = ("expert_gate", "expert_up", "expert_down")
 
 
 def _t16_resident_enabled() -> bool:
@@ -55,34 +57,52 @@ def _t16_resident_max_layers() -> int | None:
     return int(raw)
 
 
-def _populate_t16_resident_stages(resident, readers, *, runtime=None) -> dict:
-    """Populate the routed-expert t16 binding stages at construction.
+def _t16_resident_slot_suffixes() -> tuple[str, ...]:
+    """Routed-expert slot roles to populate; empty or unset selects all."""
 
-    Default-off (HIPENGINE_QWEN4_EXP_T16_RESIDENT): for every routed-expert
-    slot in the residency plan, read the raw tensor, repack through the
-    production T16 layout, upload, and attach as the weight's own ``t16``
-    allocation stage (raw stays; the free_raw detach is a separate explicit
-    phase). The env-gated T16 routes (X-7's candidates) then dispatch from
-    the weights with no module-level sidecar cache. Failures here are fatal
-    to construction - a half-populated residency would dispatch half the
-    layers, so the caller's except path closes the resident set.
+    import os
+
+    raw = os.environ.get(_T16_RESIDENT_SLOTS_ENV, "")
+    names = tuple(name.strip() for name in raw.split(",") if name.strip())
+    unknown = sorted(set(names) - set(_T16_RESIDENT_SLOTS))
+    if unknown:
+        raise ValueError(
+            f"{_T16_RESIDENT_SLOTS_ENV} names unknown slot roles: {unknown!r}"
+        )
+    return tuple("." + name for name in (names or _T16_RESIDENT_SLOTS))
+
+
+def _populate_t16_resident_stages(
+    resident,
+    readers,
+    *,
+    runtime=None,
+    slot_suffixes: tuple[str, ...] | None = None,
+    max_layers: int | None = None,
+) -> dict:
+    """Populate routed-expert t16 binding stages from the GGUF readers.
+
+    For every selected routed-expert slot in the residency plan, read the raw
+    tensor, repack through the production T16 layout, upload, and attach as
+    the weight's own ``t16`` allocation stage (raw stays; the free_raw detach
+    is a separate explicit phase). The T16 routes then dispatch from the
+    weights with no module-level sidecar cache. Slots that already carry a
+    stage are skipped. Failures are fatal to the caller - a half-populated
+    residency would dispatch half the layers.
     """
 
-    if not _t16_resident_enabled():
-        return {}
     from hipengine.loading.qwen4_exp_materialize import (
         materialize_qwen4_exp_t16_stages,
     )
 
+    suffixes = slot_suffixes or tuple("." + name for name in _T16_RESIDENT_SLOTS)
     slots = [
         spec.slot_path
         for layer in resident.plan.layer_specs
         for spec in layer.values()
-        if spec.slot_path.endswith(
-            (".expert_gate", ".expert_up", ".expert_down")
-        )
+        if spec.slot_path.endswith(suffixes)
+        and "t16" not in getattr(resident.weight(spec.slot_path), "allocations", {})
     ]
-    max_layers = _t16_resident_max_layers()
     if max_layers is not None:
         # Bound the populate window by MoE layer index: the raw stages stay
         # resident until the explicit free_raw phase, so an unbounded
@@ -112,6 +132,20 @@ def _populate_t16_resident_stages(resident, readers, *, runtime=None) -> dict:
         read_tensor=read_tensor,
         slots=slots,
         runtime=runtime,
+    )
+
+
+def _populate_t16_resident_stages_from_env(resident, readers, *, runtime=None) -> dict:
+    """Default-off construction populate (HIPENGINE_QWEN4_EXP_T16_RESIDENT)."""
+
+    if not _t16_resident_enabled():
+        return {}
+    return _populate_t16_resident_stages(
+        resident,
+        readers,
+        runtime=runtime,
+        slot_suffixes=_t16_resident_slot_suffixes(),
+        max_layers=_t16_resident_max_layers(),
     )
 
 
@@ -260,7 +294,7 @@ class Qwen4ExpGGUFTextGenerator:
                 runtime=runtime,
             )
             try:
-                _populate_t16_resident_stages(
+                _populate_t16_resident_stages_from_env(
                     self._resident, readers, runtime=runtime
                 )
                 runner = Qwen4ExpGGUFResidentModelRunner(
@@ -645,6 +679,35 @@ class Qwen4ExpGGUFTextGenerator:
                 sampler_mode="greedy_multimodal_mrope",
             ),
         )
+
+    def populate_t16_resident_stages(self, slots: Sequence[str]) -> dict:
+        """Make the named routed-expert roles' T16 tiles resident.
+
+        The profile binder's entry point: a profile whose plan selects T16
+        routes calls this once at bind time. ``slots`` names roles
+        (``expert_gate``/``expert_up``/``expert_down``); roles whose tiles are
+        already resident are left alone.
+        """
+
+        unknown = sorted(set(slots) - set(_T16_RESIDENT_SLOTS))
+        if unknown:
+            raise ValueError(f"unknown T16 residency slot roles: {unknown!r}")
+        if self._resident is None or not slots:
+            return {}
+        readers = tuple(
+            GGUFReader(path) for path in discover_gguf_files(self.model_path)
+        )
+        populated = _populate_t16_resident_stages(
+            self._resident,
+            readers,
+            runtime=self.runner.runtime,
+            slot_suffixes=tuple("." + name for name in slots),
+        )
+        if populated:
+            # The runner's layer bindings hold weight objects; rebind so the
+            # new stages are the ones dispatch sees.
+            self.runner.rebind_resident_weights()
+        return populated
 
     def close(self) -> None:
         if self._closed:

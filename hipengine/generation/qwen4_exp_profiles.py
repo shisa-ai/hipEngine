@@ -32,9 +32,29 @@ _last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
 # write apart from a value the caller set. Strict-then-production binding in one
 # process is normal and is not a conflict.
 _binder_written: dict[str, str] = {}
+# Fast-profile route selectors this module currently has published.
+_fast_published: set[str] = set()
 
 
 PROFILE_Q5_1_DOWN_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
+# The opt-in fast profile is registered for the quant whose production plan is
+# in-envelope; it layers reduced-precision operand routes on that plan. Each
+# route passes the outer safety floor and keeps its strict fallback, and is
+# not yet certified against the calibrated production envelope.
+FAST_QUANTS = ("gguf_ud_q4_k_xl",)
+_T16_DOWN_ENV = "HIPENGINE_QWEN4_EXP_T16_DOWN"
+_FAST_T16_DOWN_VARIANT = "selected_t16_expert_major_wmma_comp_bf16_bf16_out"
+_FAST_T16_DOWN_SCOPES = (
+    "prefill_rows_ge2_lt64_exact_grouped_q5_1_down",
+    "prefill_rows_ge64_lt512_exact_grouped_q5_1_down",
+    "prefill_rows_ge512_k640_exact_grouped_q5_1_down",
+)
+_FAST_T16_DOWN_EVIDENCE = (
+    "benchmarks/results/2026-10-09-qwen4exp-t16-down-engine-ab/engine_ab.json"
+)
+# Routed-expert slot roles whose T16 tiles the fast profile makes resident at
+# bind time. The tiles sit beside the raw weights the decode owners read.
+_FAST_T16_RESIDENT_SLOTS = ("expert_down",)
 PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS = tuple(range(27, 48))
 PRODUCTION_QSA_FLASH_PREFILL_LAYERS = tuple(range(35, 48))
@@ -776,6 +796,32 @@ def last_prebinder_conflicts() -> dict[str, tuple[str, str]]:
     return dict(_last_prebinder_conflicts)
 
 
+def _fast_selections() -> tuple[VariantSelection, ...]:
+    """The in-envelope production plan with the fast operand-class overrides."""
+
+    result = []
+    replaced = set()
+    for selection in _production_selections(recovery=True):
+        if (
+            selection.layer == "moe_linear"
+            and selection.registry_quant == "gguf_q5_1"
+            and selection.scope in _FAST_T16_DOWN_SCOPES
+        ):
+            replaced.add(selection.scope)
+            selection = replace(
+                selection,
+                selected_variant=_FAST_T16_DOWN_VARIANT,
+                evidence_artifact=_FAST_T16_DOWN_EVIDENCE,
+            )
+        result.append(selection)
+    missing = set(_FAST_T16_DOWN_SCOPES) - replaced
+    if missing:
+        raise RuntimeError(
+            f"Qwen4Exp fast plan lost routed down scopes: {sorted(missing)!r}"
+        )
+    return tuple(result)
+
+
 def _apply_profile_env(values: dict[str, str]) -> None:
     """Write binder-owned env values, recording any caller value it discards."""
 
@@ -834,7 +880,30 @@ def _bind_default_chunk(generator: Any, *, production: bool) -> None:
             generator.runner.prefill_chunk_size = 1024 if production else 512
 
 
-def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool) -> None:
+def _bind_fast_routes(*, fast: bool) -> None:
+    """Publish the fast profile's route selectors, or retract this module's own.
+
+    Strict and production leave a caller-set selector alone (the A/B and gate
+    harnesses set these directly); they only clear a value an earlier fast
+    bind in this process wrote.
+    """
+
+    for key in (_T16_DOWN_ENV,):
+        if fast:
+            _apply_profile_env({key: "1"})
+            _fast_published.add(key)
+        elif key in _fast_published:
+            _fast_published.discard(key)
+            _apply_profile_env({key: "0"})
+
+
+def _bind(
+    generator: Any,
+    resolved: ResolvedRuntimeProfile,
+    *,
+    production: bool,
+    fast: bool = False,
+) -> None:
     _last_prebinder_conflicts.clear()
     _bind_default_chunk(generator,production=production)
     table = getattr(getattr(generator, "_resident", None), "ple_table", None)
@@ -1126,6 +1195,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
                 for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
             }
         )
+    _bind_fast_routes(fast=fast)
     _report_prebinder_conflicts()
     if production:
         configure = getattr(
@@ -1145,16 +1215,29 @@ def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None
     _bind(generator, resolved, production=True)
 
 
+def _fast_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
+    # Tiles first: a route selector published without its tiles would fall
+    # through to the production chain and misreport what ran.
+    populate = getattr(generator, "populate_t16_resident_stages", None)
+    if callable(populate):
+        populate(_FAST_T16_RESIDENT_SLOTS)
+    _bind(generator, resolved, production=True, fast=True)
+
+
+def _wanted_keys() -> set[RuntimeProfileKey]:
+    return {
+        _key(quant, profile)
+        for quant in QWEN4_EXP_QUANTS
+        for profile in (ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION)
+    } | {_key(quant, ExecutionProfile.FAST) for quant in FAST_QUANTS}
+
+
 def _key(quant: str, profile: ExecutionProfile) -> RuntimeProfileKey:
     return RuntimeProfileKey(QWEN4_EXP_MODEL, QWEN4_EXP_BACKEND, quant, profile)
 
 
 def register_qwen4_exp_gfx1151_profiles() -> bool:
-    wanted = {
-        _key(quant, profile)
-        for quant in QWEN4_EXP_QUANTS
-        for profile in (ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION)
-    }
+    wanted = _wanted_keys()
     existing = set(registered_runtime_profile_keys())
     if wanted <= existing:
         return False
@@ -1189,19 +1272,29 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
                 binder=_production_binder,
             ),
         )
+    for quant in FAST_QUANTS:
+        register_runtime_profile_plan(
+            model=QWEN4_EXP_MODEL,
+            backend=QWEN4_EXP_BACKEND,
+            quant=quant,
+            profile=ExecutionProfile.FAST,
+            plan=RuntimeProfilePlan(
+                selections=_fast_selections(),
+                kv_policy="paged_bf16_qsa_index_f32",
+                graph_policy="request_owned_exact_moe_graph_c1",
+                binder=_fast_binder,
+            ),
+        )
     return True
 
 
 def qwen4_exp_gfx1151_profiles_registered() -> bool:
-    wanted = {
-        _key(quant, profile)
-        for quant in QWEN4_EXP_QUANTS
-        for profile in (ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION)
-    }
+    wanted = _wanted_keys()
     return wanted <= set(registered_runtime_profile_keys())
 
 
 __all__ = [
+    "FAST_QUANTS",
     "PRODUCTION_GDN_PEER_PREFILL_LAYERS",
     "PRODUCTION_MOE_PREFILL_ENV",
     "PROFILE_Q5_1_DOWN_M1_ENV",
