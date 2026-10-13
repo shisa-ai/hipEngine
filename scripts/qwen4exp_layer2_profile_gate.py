@@ -80,6 +80,60 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
     "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2", "GR_WIDE",
 )
 
+_F16_ROUTES_OFF = {
+    "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
+    "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
+    "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "0",
+    "HIPENGINE_QWEN4_EXP_QSA_WMMA": "0",
+    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(13, 48))),
+    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
+    "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_token_tile4_dpp_exact",
+}
+_ALL_LAYERS = ",".join(map(str, range(48)))
+_F16_ROUTE_ARMS = {
+    "recovery_plan": {},
+    "recovery_plus_routed_f16": {"HIPENGINE_QWEN4_EXP_ROUTED_F16": "1"},
+    "recovery_plus_dense_wide_all_layers": {
+        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": _ALL_LAYERS,
+    },
+    "recovery_plus_gr_wide": {"HIPENGINE_QWEN4_EXP_GR_WIDE": "1"},
+    "recovery_plus_indexer_router_f16": {
+        "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
+        "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_f16_wmma_gemm",
+    },
+    "recovery_plus_qsa_wmma": {"HIPENGINE_QWEN4_EXP_QSA_WMMA": "1"},
+    "recovery_plus_gdn_tiled_all_layers": {
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": _ALL_LAYERS,
+    },
+}
+
+
+def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
+    """The arithmetic-recovery plan, alone and with one F16 route added.
+
+    The UD-Q4_K_XL production plan carries the F16 route composition; these
+    arms clear it after the binder and restore one route at a time, so a
+    drift measured on the composition can be attributed to a route.
+    """
+
+    return {
+        name: CandidateSpec(
+            name=name,
+            classification="diagnostic",
+            mechanism=(
+                "production with the F16 route composition cleared after the "
+                "binder" + (", plus " + ", ".join(sorted(extra)) if extra else "")
+            ),
+            environment={**_F16_ROUTES_OFF, **extra},
+            base_profile="production",
+            scenario_id="qwen4exp-" + name.replace("_", "-"),
+            candidate_key=None,
+            fallback_key=None,
+        )
+        for name, extra in _F16_ROUTE_ARMS.items()
+    }
+
+
 CANDIDATES = {
     "dense_q8_checked_full_rows": CandidateSpec(
         name="dense_q8_checked_full_rows",
@@ -519,6 +573,7 @@ CANDIDATES = {
         candidate_key=None,
         fallback_key=None,
     ),
+    **_f16_route_isolation_candidates(),
     "production_baseline": CandidateSpec(
         name="production_baseline",
         classification="diagnostic",
