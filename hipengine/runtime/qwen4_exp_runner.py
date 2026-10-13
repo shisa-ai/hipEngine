@@ -109,6 +109,13 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
 )
+from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa_wmma import (
+    qsa_wmma_geometry_supported,
+    qsa_wmma_mask_words,
+    qwen4_exp_qsa_wmma_attention_f32,
+    qwen4_exp_qsa_wmma_gather_kv_f16,
+    qwen4_exp_qsa_wmma_selection_mask,
+)
 from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_routed_f16 import (
     ROUTED_F16_GATE_UP_VARIANT,
     ROUTED_F16_LINEAR_VARIANT,
@@ -1701,6 +1708,7 @@ class Qwen4ExpQSAScratch:
             free(buffer, runtime=self.runtime)
         for lazy_key in (
             "flash_k_scratch", "flash_v_scratch", "ordered_scores",
+            "wmma_k_f16", "wmma_v_f16", "wmma_mask",
             "ordered_coefficients",
         ):
             lazy = getattr(self, lazy_key, None)
@@ -2861,7 +2869,57 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             default="all",
         )
     )
-    if qsa_flash:
+    # WMMA attention (fast profile): F16 K/V gathered once per chunk for
+    # this layer, then one dense launch and one masked sparse launch.
+    qsa_wmma = (
+        os.environ.get(_QSA_WMMA_ENV, "0") not in {"", "0", "false", "False"}
+        and qsa_wmma_geometry_supported(
+            query_heads=query_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            compression_ratio=index_state.compression_ratio,
+            context_tokens=start + count,
+        )
+    )
+    if qsa_wmma:
+        context_len = start + count
+        kv_bytes = context_len * kv_heads * head_dim * DType.FP16.itemsize
+        mask_words = qsa_wmma_mask_words(context_len)
+        mask_bytes = count * mask_words * DType.INT32.itemsize
+        for name, nbytes in (
+            ("wmma_k_f16", kv_bytes),
+            ("wmma_v_f16", kv_bytes),
+            ("wmma_mask", mask_bytes),
+        ):
+            owned = getattr(scratch, name, None)
+            if owned is None or owned.nbytes < nbytes:
+                if owned is not None:
+                    free(owned, runtime=active_runtime)
+                setattr(scratch, name, malloc(nbytes, runtime=active_runtime))
+        qwen4_exp_qsa_wmma_gather_kv_f16(
+            attention_state.key_cache.ptr,
+            attention_state.value_cache.ptr,
+            metadata.block_tables.ptr,
+            scratch.wmma_k_f16.ptr,
+            scratch.wmma_v_f16.ptr,
+            block_size=attention_state.block_size,
+            first_position=0,
+            context_len=context_len,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        if dense_rows:
+            qwen4_exp_qsa_wmma_attention_f32(
+                scratch.query.ptr,
+                scratch.wmma_k_f16.ptr,
+                scratch.wmma_v_f16.ptr,
+                scratch.context.ptr,
+                rows=dense_rows,
+                start_position=start,
+                stream=stream,
+                runtime=active_runtime,
+            )
+    elif qsa_flash:
         context_len = start + dense_rows
         kv_elems = context_len * kv_heads * head_dim
         kv_bytes = kv_elems * DType.BF16.itemsize
@@ -3016,6 +3074,32 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             HipMemcpyKind.DEVICE_TO_DEVICE,
             stream,
         )
+        if qsa_wmma:
+            selected_offset = (
+                dense_rows * metadata.selection_capacity * DType.INT64.itemsize
+            )
+            qwen4_exp_qsa_wmma_selection_mask(
+                metadata.selected_positions.ptr + selected_offset,
+                metadata.selected_counts.ptr + dense_rows * DType.INT32.itemsize,
+                scratch.wmma_mask.ptr,
+                rows=sparse_rows,
+                selected_stride=metadata.selection_capacity,
+                mask_words=mask_words,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            qwen4_exp_qsa_wmma_attention_f32(
+                scratch.query.ptr + dense_rows * q_width * DType.FP32.itemsize,
+                scratch.wmma_k_f16.ptr,
+                scratch.wmma_v_f16.ptr,
+                scratch.context.ptr + dense_rows * q_width * DType.FP32.itemsize,
+                rows=sparse_rows,
+                start_position=start + dense_rows,
+                mask_ptr=scratch.wmma_mask.ptr,
+                mask_words=mask_words,
+                stream=stream,
+                runtime=active_runtime,
+            )
         sparse_attention_rows = qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32
         backend = str(weights.projections["attn_q"].backend)
         if qwen4_exp_qsa_h256_wave_prefill_selected(
@@ -3037,25 +3121,26 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             sparse_attention_rows = (
                 qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32
             )
-        sparse_attention_rows(
-            scratch.query.ptr + dense_rows * q_width * DType.FP32.itemsize,
-            attention_state.key_cache.ptr,
-            attention_state.value_cache.ptr,
-            metadata.selected_positions.ptr
-            + dense_rows * metadata.selection_capacity * DType.INT64.itemsize,
-            metadata.selected_counts.ptr + dense_rows * DType.INT32.itemsize,
-            scratch.context.ptr + dense_rows * q_width * DType.FP32.itemsize,
-            metadata.spans(start_row=dense_rows, rows=sparse_rows, decode=True),
-            rows=sparse_rows,
-            selected_stride=metadata.selection_capacity,
-            block_size=attention_state.block_size,
-            query_heads=query_heads,
-            kv_heads=kv_heads,
-            head_dim=head_dim,
-            scale=head_dim ** -0.5,
-            stream=stream,
-            runtime=active_runtime,
-        )
+        if not qsa_wmma:
+            sparse_attention_rows(
+                scratch.query.ptr + dense_rows * q_width * DType.FP32.itemsize,
+                attention_state.key_cache.ptr,
+                attention_state.value_cache.ptr,
+                metadata.selected_positions.ptr
+                + dense_rows * metadata.selection_capacity * DType.INT64.itemsize,
+                metadata.selected_counts.ptr + dense_rows * DType.INT32.itemsize,
+                scratch.context.ptr + dense_rows * q_width * DType.FP32.itemsize,
+                metadata.spans(start_row=dense_rows, rows=sparse_rows, decode=True),
+                rows=sparse_rows,
+                selected_stride=metadata.selection_capacity,
+                block_size=attention_state.block_size,
+                query_heads=query_heads,
+                kv_heads=kv_heads,
+                head_dim=head_dim,
+                scale=head_dim ** -0.5,
+                stream=stream,
+                runtime=active_runtime,
+            )
     qwen4_exp_qsa_gate_context_f32(
         scratch.context.ptr,
         scratch.gate.ptr,
@@ -3825,6 +3910,8 @@ _T16_DOWN_ENV = "HIPENGINE_QWEN4_EXP_T16_DOWN"
 # gate/up pair with a SwiGLU epilogue and the down projection, each decoding a
 # weight tile once per macro tile of grouped rows. The binder publishes the
 # selector; without it the grouped chains below are untouched.
+# WMMA QSA prefill attention (fast profile); see run_qwen4_exp_qsa_prefill_token_mixer.
+_QSA_WMMA_ENV = "HIPENGINE_QWEN4_EXP_QSA_WMMA"
 _ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
 # Grouped prefill row counts each gate/up quant routes from, matching the
 # scopes the fast plan declares.

@@ -382,7 +382,8 @@ hipengine/kernels/hip_gfx1100/
 │   ├── moonshine_attention.hip
 │   ├── paged_attn_decode.hip
 │   ├── paged_kv_write.hip
-│   └── qwen4_exp_qsa.hip
+│   ├── qwen4_exp_qsa.hip
+│   └── qwen4_exp_qsa_wmma.hip
 ├── convert/
 │   ├── cast.hip
 │   └── gather.hip
@@ -607,6 +608,48 @@ fallbacks are the registered exact grouped chains. Correctness test:
 relative-error bound, all four quants, every tile width, ragged buckets and
 non-tile-multiple output widths). Evidence:
 `benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md`.
+
+## Qwen4Exp WMMA QSA prefill attention
+
+`attention/qwen4_exp_qsa_wmma.{hip,py}` registers
+`qsa_sparse_attention/bf16_kv/wmma_f16_masked_prefill_f32` and the same
+function under `paged_attn_decode/w4_paro`, aliased to gfx1151, plus two
+support launches:
+
+- `WmmaCausalAttentionKernel`: 24 query heads of 256 dims over two KV heads.
+  Queries (scaled by 1/16), keys and values are F16 fragments on the matrix
+  units with F32 score and output accumulation and an online softmax; the
+  next 16-key tile's K/V is prefetched into registers behind the current
+  tile's score, softmax and PV phases. The dense causal window packs 16
+  queries x 2 heads per workgroup. The masked sparse window packs 4 queries
+  x 12 heads and gathers key tiles from the union of those queries' selected
+  four-token blocks, so a sweep costs the union of the selections rather
+  than the context.
+- `PagedKvToF16Kernel` (hipEngine): gathers the paged BF16 K/V caches for
+  positions `[first, context)` into contiguous F16 rows. Every BF16 value in
+  F16 range converts exactly.
+- `SelectionMaskKernel` (hipEngine): folds each query's selected-position
+  list into a bitmask over four-token blocks. The attention kernel treats a
+  query's own incomplete tail block as always visible, matching the tail
+  positions the selection lists carry.
+
+The attention kernel is ported unchanged from gufo v0.12.0 (`88090afb`, MIT),
+`src/models/qwen38_flash_next/kernels/rocm/kernels.hip.cpp`.
+
+**ABI deviation, tracked in `docs/REFACTOR.md`:** the gather addresses the
+paged cache through the request's block table and a context length, not
+through `KVLiveSpans`. That is valid only for a dense, non-evicting KV policy
+on one request's contiguous positions, which is the only shape the fast
+profile runs it in; it is not a route for DMS/H2O/SnapKV policies. Decode
+attention is unchanged and keeps the spans ABI.
+
+Selected only by the opt-in `fast` profile for `qwen4_exp_gguf` /
+`hip_gfx1151` / `gguf_ud_q4_k_xl` (`HIPENGINE_QWEN4_EXP_QSA_WMMA`, published
+by the fast binder); strict fallbacks are the scalar FP32 span kernels.
+Correctness test: `tests/test_gpu_qwen4exp_qsa_wmma.py` (float64 reference,
+dense windows with and without prior context, masked sparse windows with
+shuffled selection lists, a permuted block table). Evidence:
+`benchmarks/results/2026-10-14-qwen4exp-fast-qsa-wmma/README.md`.
 
 ## Small-matrix F16 WMMA GEMM
 
