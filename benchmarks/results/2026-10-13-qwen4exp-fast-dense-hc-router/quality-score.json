@@ -1,0 +1,569 @@
+{
+  "schema": 1,
+  "kind": "cross_engine_quality_score",
+  "teacher": {
+    "engine": "hipengine-strict-teacher",
+    "profile": "strict",
+    "battery": {
+      "suites": [
+        {
+          "path": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a"
+        },
+        {
+          "path": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+        }
+      ],
+      "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+      "steps": 32
+    }
+  },
+  "engines": [
+    {
+      "engine": "hipengine-production",
+      "surface": "hipengine_in_process",
+      "g0_conformance": {
+        "battery_suites_match": true,
+        "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+        "identity_present": true
+      },
+      "g1_greedy_identity": {
+        "prompt_count": 18,
+        "exact_count": 15,
+        "first_divergences": {
+          "general_ja_plan": 0,
+          "heldout_code_rate_limiter": 1,
+          "heldout_mixed_review": 4
+        },
+        "per_prompt": {
+          "code_lru_cache": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_markdown_table": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_merge_intervals": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_topological_sort": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_plan": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_plan": {
+            "exact": false,
+            "first_divergence": 0,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_interval_schedule": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_rate_limiter": {
+            "exact": false,
+            "first_divergence": 1,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_incident": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_quant": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_migration": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_speculative": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_review": {
+            "exact": false,
+            "first_divergence": 4,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_summary": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_review": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_translate": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          }
+        }
+      },
+      "g2_distribution": {
+        "available": true,
+        "prompt_count": 18,
+        "top1_agreement_mean": 1.0,
+        "mean_kl": 0.005229626265873588,
+        "max_kl": 0.621704566765035,
+        "per_prompt": [
+          {
+            "id": "code_lru_cache",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0027903511561895708,
+            "max_kl": 0.08458497427280745
+          },
+          {
+            "id": "code_markdown_table",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0019650260409902064,
+            "max_kl": 0.024014234592793327
+          },
+          {
+            "id": "code_merge_intervals",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0009650474899813456,
+            "max_kl": 0.016092664908617445
+          },
+          {
+            "id": "code_topological_sort",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0010344472052756938,
+            "max_kl": 0.030439438686697077
+          },
+          {
+            "id": "general_en_explain",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0024824221309933643,
+            "max_kl": 0.06443047128084826
+          },
+          {
+            "id": "general_en_plan",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 9.915454986385884e-05,
+            "max_kl": 0.0019124147043653812
+          },
+          {
+            "id": "general_ja_explain",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0019201020153490128,
+            "max_kl": 0.035514760676979604
+          },
+          {
+            "id": "general_ja_plan",
+            "aligned_positions": 0,
+            "top1_agreement": null,
+            "mean_kl": null
+          },
+          {
+            "id": "heldout_code_interval_schedule",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0025246441032793455,
+            "max_kl": 0.07210321896595004
+          },
+          {
+            "id": "heldout_code_rate_limiter",
+            "aligned_positions": 1,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.00039810182371484464,
+            "max_kl": 0.00039810182371484464
+          },
+          {
+            "id": "heldout_general_en_incident",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0006870667380824114,
+            "max_kl": 0.01526118663816054
+          },
+          {
+            "id": "heldout_general_en_quant",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.05593880114164923,
+            "max_kl": 0.621704566765035
+          },
+          {
+            "id": "heldout_general_ja_migration",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.00032945177035808855,
+            "max_kl": 0.004558655882153919
+          },
+          {
+            "id": "heldout_general_ja_speculative",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0017325445259026655,
+            "max_kl": 0.04854484022790123
+          },
+          {
+            "id": "heldout_mixed_review",
+            "aligned_positions": 4,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0009260961614954234,
+            "max_kl": 0.001843707415865291
+          },
+          {
+            "id": "heldout_mixed_summary",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.009339447481003725,
+            "max_kl": 0.29747319681442996
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0036182396381961527,
+            "max_kl": 0.10774018733279668
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0021527025475260564,
+            "max_kl": 0.05489856873879552
+          }
+        ]
+      },
+      "g3_determinism": {
+        "prompt_count": 18,
+        "all_repeats_exact": true
+      },
+      "g4_task_battery": {
+        "prompt_count": 18,
+        "strict_exact_count": 15,
+        "verdict": "characterized"
+      }
+    },
+    {
+      "engine": "hipengine-fast",
+      "surface": "hipengine_in_process",
+      "g0_conformance": {
+        "battery_suites_match": true,
+        "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+        "identity_present": true
+      },
+      "g1_greedy_identity": {
+        "prompt_count": 18,
+        "exact_count": 12,
+        "first_divergences": {
+          "code_markdown_table": 6,
+          "general_en_plan": 6,
+          "heldout_code_interval_schedule": 0,
+          "heldout_code_rate_limiter": 1,
+          "heldout_general_en_quant": 14,
+          "heldout_mixed_review": 2
+        },
+        "per_prompt": {
+          "code_lru_cache": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_markdown_table": {
+            "exact": false,
+            "first_divergence": 6,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_merge_intervals": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_topological_sort": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_plan": {
+            "exact": false,
+            "first_divergence": 6,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_plan": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_interval_schedule": {
+            "exact": false,
+            "first_divergence": 0,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_rate_limiter": {
+            "exact": false,
+            "first_divergence": 1,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_incident": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_quant": {
+            "exact": false,
+            "first_divergence": 14,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_migration": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_speculative": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_review": {
+            "exact": false,
+            "first_divergence": 2,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_summary": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_review": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_translate": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          }
+        }
+      },
+      "g2_distribution": {
+        "available": true,
+        "prompt_count": 18,
+        "top1_agreement_mean": 1.0,
+        "mean_kl": 0.03622508974723914,
+        "max_kl": 0.935533771784213,
+        "per_prompt": [
+          {
+            "id": "code_lru_cache",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.009698718673259327,
+            "max_kl": 0.2787314934806957
+          },
+          {
+            "id": "code_markdown_table",
+            "aligned_positions": 6,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.03723049130367787,
+            "max_kl": 0.21765622426646114
+          },
+          {
+            "id": "code_merge_intervals",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.007570912985610753,
+            "max_kl": 0.16029447306556596
+          },
+          {
+            "id": "code_topological_sort",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.006684858486839091,
+            "max_kl": 0.20505257144918826
+          },
+          {
+            "id": "general_en_explain",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.011361379752708308,
+            "max_kl": 0.19065316525274745
+          },
+          {
+            "id": "general_en_plan",
+            "aligned_positions": 6,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.02500891157990191,
+            "max_kl": 0.1321583052861112
+          },
+          {
+            "id": "general_ja_explain",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.009459190702786245,
+            "max_kl": 0.21074809917646453
+          },
+          {
+            "id": "general_ja_plan",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.004430877159426267,
+            "max_kl": 0.10460150858011927
+          },
+          {
+            "id": "heldout_code_interval_schedule",
+            "aligned_positions": 0,
+            "top1_agreement": null,
+            "mean_kl": null
+          },
+          {
+            "id": "heldout_code_rate_limiter",
+            "aligned_positions": 1,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.14010196224806337,
+            "max_kl": 0.14010196224806337
+          },
+          {
+            "id": "heldout_general_en_incident",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.00337320014275945,
+            "max_kl": 0.09112622881894175
+          },
+          {
+            "id": "heldout_general_en_quant",
+            "aligned_positions": 14,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.18874817923773388,
+            "max_kl": 0.5467809639245284
+          },
+          {
+            "id": "heldout_general_ja_migration",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0028370231012203196,
+            "max_kl": 0.07557051258145596
+          },
+          {
+            "id": "heldout_general_ja_speculative",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.005028060841836173,
+            "max_kl": 0.10277561348339656
+          },
+          {
+            "id": "heldout_mixed_review",
+            "aligned_positions": 2,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.10231852648864909,
+            "max_kl": 0.20320991378453634
+          },
+          {
+            "id": "heldout_mixed_summary",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.018493577642501865,
+            "max_kl": 0.5760060059147141
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.030904987029590304,
+            "max_kl": 0.935533771784213
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.012575668326501187,
+            "max_kl": 0.3777562885622383
+          }
+        ]
+      },
+      "g3_determinism": {
+        "prompt_count": 18,
+        "all_repeats_exact": true
+      },
+      "g4_task_battery": {
+        "prompt_count": 18,
+        "strict_exact_count": 12,
+        "verdict": "characterized"
+      }
+    }
+  ]
+}

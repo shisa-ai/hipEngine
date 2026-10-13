@@ -44,19 +44,22 @@ under 3%.
 On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, BF16 KV, chunk 4096,
 greedy decode (compact capture), canonical 12-case protocol, both profiles
 measured back to back on 2026-10-13. `fast` is selected with
-`execution_profile="fast"`; it runs the routed experts on wide-tile F16 GEMMs
-that read the raw expert weights, and it is not certified against the
-production numerical envelope. `production` remains the default.
+`execution_profile="fast"`; it runs the routed experts, the dense
+projections at every layer and the hyper-connection projections on F16
+matrix kernels, and it is not certified against the production numerical
+envelope. `production` remains the default. The `production` row was
+measured about two hours before the `fast` row in the same boot.
 
 | Profile | p512 prefill tok/s | p1024 | p4096 | Decode at p4096 tok/s |
 | --- | ---: | ---: | ---: | ---: |
 | `production` | 306.4 | 330.0 | 335.2 | 20.57 |
-| `fast` | **466.3** | **502.2** | **495.1** | 20.59 |
+| `fast` | **684.8** | **754.4** | **754.7** | 20.60 |
 
-Against the strict teacher on the 18-prompt battery, `fast` is 13/18
-strict-exact with aligned top-1 agreement 1.00 and top-20 mean KL 0.055;
+Against the strict teacher on the 18-prompt battery, `fast` is 12/18
+strict-exact with aligned top-1 agreement 1.00 and top-20 mean KL 0.036;
 `production` is 15/18 with mean KL 0.0052.
-[Protocol, per-case rows and quality score](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).
+[Protocol, per-case rows and quality score](results/2026-10-13-qwen4exp-fast-dense-hc-router/README.md)
+· [routed-expert kernel and per-family attribution](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).
 
 ## Cross-engine comparison on the same `UD-Q4_K_XL` GGUF file
 

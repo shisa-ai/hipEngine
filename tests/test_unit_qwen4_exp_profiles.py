@@ -741,6 +741,7 @@ _ROUTED_SCOPES = {
     ("moe_linear", "prefill_rows_ge512_k640_exact_grouped_q5_1_down"): _ROUTED_LINEAR,
     ("linear", "grouped_prefill_rows_lt512_q8_0_expert_down"): _ROUTED_LINEAR,
     ("linear", "grouped_prefill_rows_ge512_q8_0_expert_down"): _ROUTED_LINEAR,
+    ("router_logits", "qwen4exp_multirow_f32_router"): "f32_hidden_warp_reduce_dense_exact",
 }
 
 
@@ -796,10 +797,25 @@ def test_fast_binder_publishes_the_routed_selector_and_production_retracts_it() 
 
     fast.binder(SimpleNamespace(), fast)
     assert os.environ[_ROUTED_F16_ENV] == "1"
+    all_layers = ",".join(map(str, range(48)))
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == all_layers
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "1"
+    assert (
+        os.environ["HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"]
+        == "f32_hidden_warp_reduce_dense_exact"
+    )
 
-    # A later production bind in the same process retracts the fast selector.
+    # A later production bind in the same process restores its own routes.
     production.binder(SimpleNamespace(), production)
     assert os.environ[_ROUTED_F16_ENV] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(
+        map(str, range(13, 48))
+    )
+    assert (
+        os.environ["HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"]
+        == "f32_hidden_token_tile4_dpp_exact"
+    )
 
 
 def test_production_binder_leaves_a_caller_set_routed_selector_alone(

@@ -66,6 +66,22 @@ _FAST_ROUTED_SCOPES = {
     ("linear", "grouped_prefill_rows_ge512_q8_0_expert_down", "gguf_q8_0"):
         _FAST_ROUTED_LINEAR,
 }
+# Binder-owned route window the fast profile widens beyond the certified
+# production scope: the F16 dense wide route runs at every layer (production
+# certifies 13-47), which also carries the hyper-connection down projection.
+FAST_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(48))
+_FAST_BINDER_ENV = {
+    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
+        map(str, FAST_Q8_DENSE_WIDE_PREFILL_LAYERS)
+    ),
+}
+# Route selectors only the fast binder publishes; a later strict or
+# production bind in the same process retracts them to "0".
+_FAST_SELECTORS = {
+    _ROUTED_F16_ENV: "1",
+    # Hyper-connection up projection on the F16 wide route.
+    "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
+}
 _FAST_ROUTED_EVIDENCE = (
     "benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md"
 )
@@ -818,6 +834,16 @@ def _fast_selections() -> tuple[VariantSelection, ...]:
     for selection in _production_selections(recovery=True):
         key = (selection.layer, selection.scope, selection.registry_quant)
         variant = _FAST_ROUTED_SCOPES.get(key)
+        if selection.layer == "router_logits" and (
+            selection.selected_variant == _ROUTER_DPP_VARIANT
+        ):
+            # The warp-reduce producer measures faster than the DPP tile here
+            # once the routed experts no longer dominate the layer.
+            selection = replace(
+                selection,
+                selected_variant=_ROUTER_WARP_REDUCE_VARIANT,
+                evidence_artifact=_FAST_ROUTED_EVIDENCE,
+            )
         if variant is not None:
             replaced.add(key)
             selection = replace(
@@ -900,9 +926,9 @@ def _bind_fast_routes(*, fast: bool) -> None:
     bind in this process wrote.
     """
 
-    for key in (_ROUTED_F16_ENV,):
+    for key, value in _FAST_SELECTORS.items():
         if fast:
-            _apply_profile_env({key: "1"})
+            _apply_profile_env({key: value})
             _fast_published.add(key)
         elif key in _fast_published:
             _fast_published.discard(key)
@@ -1207,6 +1233,10 @@ def _bind(
                 for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
             }
         )
+    if fast:
+        # Every key here is written by each bind, so a later strict or
+        # production bind in the same process restores its own value.
+        _apply_profile_env(_FAST_BINDER_ENV)
     _bind_fast_routes(fast=fast)
     _report_prebinder_conflicts()
     if production:
@@ -1301,6 +1331,7 @@ def qwen4_exp_gfx1151_profiles_registered() -> bool:
 
 
 __all__ = [
+    "FAST_Q8_DENSE_WIDE_PREFILL_LAYERS",
     "FAST_QUANTS",
     "PRODUCTION_GDN_PEER_PREFILL_LAYERS",
     "PRODUCTION_MOE_PREFILL_ENV",
