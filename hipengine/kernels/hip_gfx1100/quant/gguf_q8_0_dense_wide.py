@@ -181,6 +181,54 @@ def f32_to_f16(
         runtime.check(int(err))
 
 
+def qwen4_exp_gr_up_mean_f16in_f32_out(
+    x_ptr: int,
+    qweight_ptr: int,
+    normalized_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    branches: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Hyper-connection up projection with the sigmoid gated mean folded in.
+
+    ``out[rows, hidden] = mean_b(normalized[rows, b, hidden] *
+    sigmoid(x @ W.T)[rows, b, hidden])`` over an F16 activation ``x`` and a
+    Q8_0 weight of ``branches * hidden`` rows. Bit-identical to the
+    ``dense_wide256_f16in`` projection followed by the gated-mean kernel; the
+    gate logits are never written.
+    """
+
+    if branches != 4:
+        raise ValueError("the fused up projection needs four branches")
+    if rows <= 0 or hidden <= 0 or hidden % 32:
+        raise ValueError("rows and hidden must be positive, hidden % 32 == 0")
+    if in_features <= 0 or in_features % K_TILE:
+        raise ValueError(f"in_features must be a positive multiple of {K_TILE}")
+    library = library or build_gguf_q8_0_dense_wide(load=True)
+    runtime = runtime or get_hip_runtime()
+    symbol = "hipengine_qwen4_exp_gr_up_mean_f16in_f32_out"
+    launch_census.record_launch(
+        "gguf_q8_0", symbol, rows, in_features, branches * hidden
+    )
+    fn = getattr(library, symbol)
+    fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(normalized_ptr), ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows), ctypes.c_int64(in_features),
+        ctypes.c_int64(branches), ctypes.c_int64(hidden), ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _make_wrapper(symbol: str, variant: str):
     def wrapper(*args, **kwargs) -> None:
         _launch(symbol, *args, **kwargs)
@@ -271,5 +319,6 @@ __all__ = [
     "gguf_q8_0_dense_wide256_f16in_f32_f32_out",
     "gguf_q8_0_dense_wide256_f32_f32_out",
     "plan_gguf_q8_0_dense_wide_build",
+    "qwen4_exp_gr_up_mean_f16in_f32_out",
     "register_gguf_q8_0_dense_wide_kernels",
 ]

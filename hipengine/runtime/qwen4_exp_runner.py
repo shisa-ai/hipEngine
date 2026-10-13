@@ -219,7 +219,7 @@ from hipengine.kernels.registry import generation as _registry_generation
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
     _WRAPPERS as _GGUF_Q8_0_DENSE_WIDE_WRAPPERS,
     f32_to_f16 as gguf_q8_0_f32_to_f16,
-    gguf_q8_0_dense_wide256_f16in_f32_f32_out,
+    qwen4_exp_gr_up_mean_f16in_f32_out,
     gguf_q8_0_dense_wide256_f32_f32_out,
 )
 gguf_q8_0_dense_wide128x128_f16in_f32_f32_out = _GGUF_Q8_0_DENSE_WIDE_WRAPPERS[
@@ -3375,39 +3375,52 @@ def run_qwen4_exp_gr_read(
         workspace = wide_f16_activation_workspace()
         if (_qwen4_exp_gr_f16_direct_enabled(rows, low_rank)
                 and workspace is not None
-                and workspace.nbytes >= rows * low_rank * 2):
+                and workspace.nbytes >= rows * low_rank * 2
+                and hidden % 32 == 0):
             # The F32-input tile converts the activation to F16 while staging
             # it; converting once up front feeds the same bytes to the same
-            # products and halves the activation traffic.
+            # products. The fused kernel then applies the sigmoid gated mean
+            # to the logits while they are still in registers, so neither the
+            # logits nor the gate reach ``scratch.gate``; no caller reads it.
             _invalidate_wide_f16_publication()
             gguf_q8_0_f32_to_f16(
                 scratch.low_rank.ptr, workspace.ptr, rows * low_rank,
                 stream=stream, runtime=active_runtime,
             )
-            up_x_ptr, up_launch = workspace.ptr, gguf_q8_0_dense_wide256_f16in_f32_f32_out
+            qwen4_exp_gr_up_mean_f16in_f32_out(
+                workspace.ptr,
+                up_weight.allocation("raw").tensor.ptr,
+                scratch.normalized.ptr,
+                scratch.mixed.ptr,
+                rows,
+                low_rank,
+                branches,
+                hidden,
+                stream=stream,
+                runtime=active_runtime,
+            )
         else:
-            up_x_ptr, up_launch = scratch.low_rank.ptr, gguf_q8_0_dense_wide256_f32_f32_out
-        up_launch(
-            up_x_ptr,
-            up_weight.allocation("raw").tensor.ptr,
-            scratch.gate.ptr,
-            rows,
-            low_rank,
-            residual_width,
-            stream=stream,
-            runtime=active_runtime,
-        )
-        qwen4_exp_gated_mean_sigmoid_f32(
-            scratch.normalized.ptr,
-            scratch.gate.ptr,
-            scratch.mixed.ptr,
-            rows,
-            branches,
-            hidden,
-            stream=stream,
-            runtime=active_runtime,
-            store_gate=False,
-        )
+            gguf_q8_0_dense_wide256_f32_f32_out(
+                scratch.low_rank.ptr,
+                up_weight.allocation("raw").tensor.ptr,
+                scratch.gate.ptr,
+                rows,
+                low_rank,
+                residual_width,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            qwen4_exp_gated_mean_sigmoid_f32(
+                scratch.normalized.ptr,
+                scratch.gate.ptr,
+                scratch.mixed.ptr,
+                rows,
+                branches,
+                hidden,
+                stream=stream,
+                runtime=active_runtime,
+                store_gate=False,
+            )
     elif gr_iu8:
         # T1 candidate: iu8-WMMA projection + separate sigmoid/gated-mean
         # epilogue (the unfused epilogue kernels are the retained exact ones).

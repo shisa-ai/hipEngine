@@ -344,8 +344,16 @@ __device__ __noinline__ void wide_split_range_fallback(
 // the splitting arithmetic a real split needs, so its timing is a lower bound
 // on the split's cost. A negative here kills the scheme cheaply; a positive
 // says the split is worth scoping.
+// ``GRMEAN`` is the hyper-connection read's up projection with its epilogue
+// folded in. The block's 128 weight rows are 32 hidden columns of each of the
+// four branches (fragment i of a wave is branch i), so one wave holds all four
+// gate logits of every (row, column) it owns and can publish
+// mean_b(normalized_b * sigmoid(logit_b)) directly: the logits never reach
+// global memory. ``w_base`` is then the matrix base, ``m0`` the first hidden
+// column, ``M`` the hidden width.
 template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
-          int WMMA_REP = 1, bool SPLIT = false, bool PADDED = false>
+          int WMMA_REP = 1, bool SPLIT = false, bool PADDED = false,
+          bool GRMEAN = false>
 __device__ __forceinline__ void wide_tile_gemm(
     const uint8_t* __restrict__ w_base,  // first weight row of this block
     const size_t wrow_bytes,
@@ -361,7 +369,8 @@ __device__ __forceinline__ void wide_tile_gemm(
     half_t* Bs,
     half_t* As_lo = nullptr,
     half_t* Bs_lo = nullptr,
-    int* range_miss = nullptr) {
+    int* range_miss = nullptr,
+    const float* __restrict__ gr_normalized = nullptr) {
   constexpr int WAVES_M = BM / WTM;
   constexpr int TM = WTM / 16;
   constexpr int TN = WTN / 16;
@@ -394,7 +403,12 @@ __device__ __forceinline__ void wide_tile_gemm(
     for (int i = 0; i < A_ITEMS; ++i) {
       const int row = tid + i * WIDE_THREADS;
       if (row < BM && row < a_rows) {
-        const uint8_t* p = w_base + static_cast<size_t>(row) * wrow_bytes +
+        size_t wrow = static_cast<size_t>(row);
+        if constexpr (GRMEAN) {
+          wrow = static_cast<size_t>((row >> 4) & 3) * M + m0 + (row >> 6) * 16 +
+                 (row & 15);
+        }
+        const uint8_t* p = w_base + wrow * wrow_bytes +
                            static_cast<size_t>(ks) * 2 * Q8_0_BLOCK_BYTES;
         a0[i] = *reinterpret_cast<const uint4*>(p);
         a1[i] = *reinterpret_cast<const uint4*>(p + 16);
@@ -587,6 +601,55 @@ __device__ __forceinline__ void wide_tile_gemm(
   // The loop above ends on a block-wide barrier, so no wave is still reading
   // Bs. ``ok`` and ``jact[j]`` are wave-uniform, so every wave executes the
   // same number of wave barriers.
+  if constexpr (GRMEAN) {
+    // Four 1 KB fragments per wave, 32 KB of the 36,864-byte Bs in total.
+    float* gst = reinterpret_cast<float*>(Bs) + wave * 1024;
+    const int cm = lane & 15;
+    const int cn = lane >> 4;
+    const int n = lane >> 1;
+    const int half = lane & 1;
+#pragma unroll
+    for (int j = 0; j < TN; ++j) {
+      if (TAIL && !jact[j]) continue;
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+#pragma unroll
+        for (int e = 0; e < 8; ++e) {
+          gst[i * 256 + (2 * e + cn) * 16 + cm] = acc[i][j][e];
+        }
+      }
+      __syncwarp();
+      const int row = t0 + wn * WTN + j * 16 + n;
+      if (row < rows) {
+        const int col = m0 + wm * 16 + half * 8;
+        float value[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+          const float* lp = gst + i * 256 + n * 16 + half * 8;
+          const float4 l0 = *reinterpret_cast<const float4*>(lp);
+          const float4 l1 = *reinterpret_cast<const float4*>(lp + 4);
+          const float* np = gr_normalized + static_cast<size_t>(row) * 4 * M +
+                            static_cast<size_t>(i) * M + col;
+          const float4 n0 = *reinterpret_cast<const float4*>(np);
+          const float4 n1 = *reinterpret_cast<const float4*>(np + 4);
+          const float logits[8] = {l0.x, l0.y, l0.z, l0.w, l1.x, l1.y, l1.z, l1.w};
+          const float normalized[8] = {n0.x, n0.y, n0.z, n0.w, n1.x, n1.y, n1.z, n1.w};
+#pragma unroll
+          for (int c = 0; c < 8; ++c) {
+            const float gate = 1.0f / (1.0f + expf(-logits[c]));
+            value[c] += normalized[c] * gate;
+          }
+        }
+        float* op = out + static_cast<size_t>(row) * M + col;
+        *reinterpret_cast<float4*>(op) = make_float4(
+            value[0] / 4.0f, value[1] / 4.0f, value[2] / 4.0f, value[3] / 4.0f);
+        *reinterpret_cast<float4*>(op + 4) = make_float4(
+            value[4] / 4.0f, value[5] / 4.0f, value[6] / 4.0f, value[7] / 4.0f);
+      }
+      __syncwarp();
+    }
+    return;
+  }
   float* stg = reinterpret_cast<float*>(Bs) + wave * 256;
 #pragma unroll
   for (int i = 0; i < TM; ++i) {
@@ -631,6 +694,30 @@ q8_0_dense_wide_kernel(const x_t* __restrict__ x,
   wide_tile_gemm<x_t, BM, BN, WTM, WTN, TAIL, WMMA_REP, false, PADDED>(
       qweight + static_cast<size_t>(m0) * wrow_bytes, wrow_bytes,
       out_features - m0, x, in_features, out, out_features, rows, t0, m0, As, Bs);
+}
+
+// Hyper-connection read: up projection with the sigmoid gated mean folded in.
+// x is the F16 low-rank activation [rows, K], qweight the Q8_0 up weight
+// [4 * hidden, K], normalized the FP32 grouped norm [rows, 4, hidden], and out
+// the mixed stream [rows, hidden].
+template <bool TAIL>
+__global__ void __launch_bounds__(WIDE_THREADS, 1)
+q8_0_gr_up_mean_kernel(const half_t* __restrict__ x,
+                       const uint8_t* __restrict__ qweight,
+                       const float* __restrict__ normalized,
+                       float* __restrict__ out,
+                       const int rows,
+                       const int in_features,
+                       const int hidden) {
+  __shared__ __align__(16) half_t As[128 * WIDE_LDS_STRIDE];
+  __shared__ __align__(16) half_t Bs[256 * WIDE_LDS_STRIDE];
+  const int m0 = blockIdx.x * 32;
+  const int t0 = blockIdx.y * 256;
+  const size_t wrow_bytes =
+      static_cast<size_t>(in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  wide_tile_gemm<half_t, 128, 256, 64, 64, TAIL, 1, false, false, true>(
+      qweight, wrow_bytes, 128, x, in_features, out, hidden, rows, t0, m0, As,
+      Bs, nullptr, nullptr, nullptr, normalized);
 }
 
 // BF16-input dense-wide probe. It keeps the F16 route's tile and launch shape,
@@ -913,6 +1000,36 @@ extern "C" int hipengine_gguf_q8_0_f32_to_f16(const void* x,
                      dim3(static_cast<unsigned int>(blocks)), dim3(256), 0,
                      stream, static_cast<const float*>(x),
                      static_cast<half_t*>(out), n);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gr_up_mean_f16in_f32_out(
+    const void* x, const void* qweight, const void* normalized, void* out,
+    int64_t rows, int64_t in_features, int64_t branches, int64_t hidden,
+    hipStream_t stream) {
+  if (!x || !qweight || !normalized || !out || rows <= 0 || in_features <= 0 ||
+      (in_features % WIDE_BK) != 0 || branches != 4 || hidden <= 0 ||
+      (hidden % 32) != 0 || rows > INT32_MAX || in_features > INT32_MAX ||
+      hidden > INT32_MAX / 4) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(hidden / 32),
+                  static_cast<unsigned int>((rows + 255) / 256));
+  if ((rows % 256) != 0) {
+    hipLaunchKernelGGL((q8_0_gr_up_mean_kernel<true>), grid, dim3(WIDE_THREADS),
+                       0, stream, static_cast<const half_t*>(x),
+                       static_cast<const uint8_t*>(qweight),
+                       static_cast<const float*>(normalized),
+                       static_cast<float*>(out), static_cast<int>(rows),
+                       static_cast<int>(in_features), static_cast<int>(hidden));
+  } else {
+    hipLaunchKernelGGL((q8_0_gr_up_mean_kernel<false>), grid, dim3(WIDE_THREADS),
+                       0, stream, static_cast<const half_t*>(x),
+                       static_cast<const uint8_t*>(qweight),
+                       static_cast<const float*>(normalized),
+                       static_cast<float*>(out), static_cast<int>(rows),
+                       static_cast<int>(in_features), static_cast<int>(hidden));
+  }
   return static_cast<int>(hipGetLastError());
 }
 
