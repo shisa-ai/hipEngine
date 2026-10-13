@@ -282,6 +282,74 @@ def test_profile_logit_summary_reports_tails_scopes_and_review_rows() -> None:
     assert result["top1_mismatch_rows"] == []
 
 
+def test_profile_scope_kl_is_advisory_and_scope_top1_binds() -> None:
+    strict = _logits()
+    candidate = strict.copy()
+    candidate[1] = np.asarray([0.0, 3.5, 1.5, -1.0], dtype=np.float32)
+    loose = dict(p95_kl_max=1.0, p99_kl_max=1.0, max_kl_max=1.0, review_kl=1.0)
+    probe = compare_profile_logits(
+        strict,
+        candidate,
+        _rows(),
+        thresholds=EvaluationThresholds(
+            mean_kl_max=1.0, top1_min=0.0, per_scope_top1_min=0.0, **loose
+        ),
+    )
+    global_mean = probe["summary"]["kl_mean"]
+    scope_means = [
+        scope["kl_mean"]
+        for groups in probe["by_scope"].values()
+        for scope in groups.values()
+    ]
+    assert max(scope_means) > global_mean > 0.0
+
+    # A limit the complete row set meets and one scope's own mean exceeds.
+    limit = (global_mean + max(scope_means)) / 2.0
+    result = compare_profile_logits(
+        strict,
+        candidate,
+        _rows(),
+        thresholds=EvaluationThresholds(
+            mean_kl_max=limit, top1_min=0.0, per_scope_top1_min=0.0, **loose
+        ),
+    )
+    assert result["scope_kl_advisories"]
+    assert result["scope_failures"] == []
+    assert result["hard_gates_passed"] is True
+    advised = result["scope_kl_advisories"][0]
+    scope = result["by_scope"][advised["dimension"]][advised["value"]]
+    assert scope["kl_within_global_limits"] is False
+    assert scope["passed"] is True
+
+    # The same limit on the complete row set still binds.
+    tight = compare_profile_logits(
+        strict,
+        candidate,
+        _rows(),
+        thresholds=EvaluationThresholds(
+            mean_kl_max=global_mean / 2.0,
+            top1_min=0.0,
+            per_scope_top1_min=0.0,
+            **loose,
+        ),
+    )
+    assert tight["hard_gates_passed"] is False
+
+    # The per-scope top-1 floor binds.
+    flipped = strict.copy()
+    flipped[2] = np.asarray([2.9, 3.1, 0.0, -2.0], dtype=np.float32)
+    floor = compare_profile_logits(
+        strict,
+        flipped,
+        _rows(),
+        thresholds=EvaluationThresholds(
+            mean_kl_max=1.0, top1_min=0.0, per_scope_top1_min=1.0, **loose
+        ),
+    )
+    assert floor["scope_failures"]
+    assert floor["hard_gates_passed"] is False
+
+
 def test_profile_logit_summary_attributes_top1_mismatch_below_review_boundary() -> None:
     strict = _logits()
     candidate = strict.copy()
