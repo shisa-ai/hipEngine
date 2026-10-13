@@ -398,6 +398,7 @@ hipengine/kernels/hip_gfx1100/
 │   ├── qwen4_exp_gr.hip
 │   └── qwen4_exp_ple.hip
 ├── linear/
+│   ├── dense_f16_gemm.hip
 │   ├── dense_gemv.hip
 │   ├── laguna_f16_projection.hip
 │   ├── lm_head.hip
@@ -606,6 +607,27 @@ fallbacks are the registered exact grouped chains. Correctness test:
 relative-error bound, all four quants, every tile width, ragged buckets and
 non-tile-multiple output widths). Evidence:
 `benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md`.
+
+## Small-matrix F16 WMMA GEMM
+
+`linear/dense_f16_gemm.{hip,py}` registers
+`dense_gemv/{f32,bf16}/f16_wmma_f32_hidden_f32_out` and
+`router_logits/f32/f32_hidden_f16_wmma_gemm`, aliased to gfx1151. FP32
+activations and FP32 or BF16 weights are rounded to F16 while staged in LDS
+(128 output columns x 64 rows x BK 32 per workgroup), multiplied with F16
+WMMA and F32 accumulation, and written as unrounded FP32; any output width is
+accepted and waves whose columns are past the matrix skip the matrix work.
+The staging and fragment layout follow `dense_prefill_wmma_out_kernel` in
+`dense_gemv.hip`. It is a reduced-precision operand route selected only by
+the opt-in `fast` profile for `qwen4_exp_gguf` / `hip_gfx1151` /
+`gguf_ud_q4_k_xl`: `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` moves FP32
+projections with at least 64 rows and 96 output columns (the indexer
+projections), and the fast plan's `router_logits` row selects the router
+variant. Strict fallbacks are the scalar FP32 GEMV and the tile4 router.
+Correctness test: `tests/test_gpu_dense_f16_gemm.py` (against the FP32 product
+of the F16-rounded operands at 2e-5 of the output scale, and against the
+unrounded product at 2e-3 relative). Evidence:
+`benchmarks/results/2026-10-13-qwen4exp-fast-indexer-f16-gemm/README.md`.
 
 ## Qwen4Exp GR-up ordered DPP sibling
 

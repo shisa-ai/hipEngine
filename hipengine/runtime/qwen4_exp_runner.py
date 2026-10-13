@@ -3671,10 +3671,14 @@ _ROUTER_PRODUCER_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
 _ROUTER_PRODUCER_TILE4_VARIANT = "f32_hidden_token_tile4_dense_exact"
 _ROUTER_PRODUCER_WARP_REDUCE_VARIANT = "f32_hidden_warp_reduce_dense_exact"
 _ROUTER_PRODUCER_DPP_VARIANT = "f32_hidden_token_tile4_dpp_exact"
+# F16-operand WMMA GEMM producer (fast profile): operands rounded to F16, so
+# near-tied expert selections can differ from the FP32 producers.
+_ROUTER_PRODUCER_F16_GEMM_VARIANT = "f32_hidden_f16_wmma_gemm"
 _ROUTER_PRODUCER_VARIANTS = (
     _ROUTER_PRODUCER_TILE4_VARIANT,
     _ROUTER_PRODUCER_WARP_REDUCE_VARIANT,
     _ROUTER_PRODUCER_DPP_VARIANT,
+    _ROUTER_PRODUCER_F16_GEMM_VARIANT,
 )
 
 

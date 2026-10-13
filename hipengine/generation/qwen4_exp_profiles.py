@@ -81,6 +81,9 @@ _FAST_SELECTORS = {
     _ROUTED_F16_ENV: "1",
     # Hyper-connection up projection on the F16 wide route.
     "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
+    # Multi-row FP32 projections over uncompressed weights (the indexer
+    # projections) on the small-matrix F16 WMMA GEMM.
+    "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
 }
 _FAST_ROUTED_EVIDENCE = (
     "benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md"
@@ -176,10 +179,12 @@ _ROUTER_DPP_VARIANT = "f32_hidden_token_tile4_dpp_exact"
 # One-barrier ordered DPP passed the natural-input/full-state canonical gate
 # and improves prefill in the same-residency twelve-case model-wall campaign.
 # Keep the exact tile4 parent as the strict fallback and temporary rollback.
+_ROUTER_F16_GEMM_VARIANT = "f32_hidden_f16_wmma_gemm"
 _ROUTER_VARIANTS = (
     _ROUTER_TILE4_VARIANT,
     _ROUTER_WARP_REDUCE_VARIANT,
     _ROUTER_DPP_VARIANT,
+    _ROUTER_F16_GEMM_VARIANT,
 )
 
 
@@ -837,11 +842,11 @@ def _fast_selections() -> tuple[VariantSelection, ...]:
         if selection.layer == "router_logits" and (
             selection.selected_variant == _ROUTER_DPP_VARIANT
         ):
-            # The warp-reduce producer measures faster than the DPP tile here
-            # once the routed experts no longer dominate the layer.
+            # The F16-operand WMMA GEMM producer: about 295 ms per 4096-token
+            # prefill on the fastest FP32 producer against about 15 ms.
             selection = replace(
                 selection,
-                selected_variant=_ROUTER_WARP_REDUCE_VARIANT,
+                selected_variant=_ROUTER_F16_GEMM_VARIANT,
                 evidence_artifact=_FAST_ROUTED_EVIDENCE,
             )
         if variant is not None:
