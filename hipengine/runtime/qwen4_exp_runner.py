@@ -3336,10 +3336,10 @@ def run_qwen4_exp_gr_read(
     elif gr_wide:
         # Measured 4.38x faster than the fused exact kernel at rows=1024,
         # K=320, N=10240 (1.4925 ms against 6.5379 ms, real weights). The
-        # projection is the same tile the dense route already ships, so the
-        # epilogue is the retained exact sigmoid plus gated-mean pair.
-        # Default-off: the GR numerical gate is a cliff at ~5e-9
-        # prefill-boundary KL, so this route has to cross that screen first.
+        # projection is the same tile the dense route already ships. The
+        # epilogue applies the sigmoid inside the gated-mean pass, which is
+        # bit-identical to the separate pair and does not write the gate:
+        # no caller reads it, and ``scratch.gate`` keeps the logits here.
         gguf_q8_0_dense_wide256_f32_f32_out(
             scratch.low_rank.ptr,
             up_weight.allocation("raw").tensor.ptr,
@@ -3350,14 +3350,7 @@ def run_qwen4_exp_gr_read(
             stream=stream,
             runtime=active_runtime,
         )
-        qwen4_exp_sigmoid_f32(
-            scratch.gate.ptr,
-            scratch.gate.ptr,
-            rows * residual_width,
-            stream=stream,
-            runtime=active_runtime,
-        )
-        qwen4_exp_gated_mean_f32(
+        qwen4_exp_gated_mean_sigmoid_f32(
             scratch.normalized.ptr,
             scratch.gate.ptr,
             scratch.mixed.ptr,
@@ -3366,6 +3359,7 @@ def run_qwen4_exp_gr_read(
             hidden,
             stream=stream,
             runtime=active_runtime,
+            store_gate=False,
         )
     elif gr_iu8:
         # T1 candidate: iu8-WMMA projection + separate sigmoid/gated-mean
