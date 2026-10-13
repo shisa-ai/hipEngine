@@ -47,7 +47,8 @@ def run_chains(rows, k, hidden, *, iters=0):
     host = {"residual": residual, "norm_weight": norm_weight,
             "inject_weight": inject_weight, "x": x, "up": up}
     dev = {name: malloc(a.nbytes, runtime=runtime) for name, a in host.items()}
-    out_sizes = {"plane": rows * width * 4, "half_p": rows * width * 2,
+    out_sizes = {"image": rows * hidden * 2, "image_ref": rows * hidden * 2,
+                 "plane": rows * width * 4, "half_p": rows * width * 2,
                  "half_c": rows * width * 2, "inv": rows * 4 * 4,
                  "mixed_p": rows * hidden * 4, "mixed_c": rows * hidden * 4,
                  "inject_p": rows * 4 * 4, "inject_c": rows * 4 * 4}
@@ -74,7 +75,7 @@ def run_chains(rows, k, hidden, *, iters=0):
             dw.qwen4_exp_gr_up_mean_residual_f16in_f32_out(
                 dev["x"].ptr, dev["up"].ptr, dev["residual"].ptr, dev["inv"].ptr,
                 dev["norm_weight"].ptr, dev["mixed_c"].ptr, rows, k, 4, hidden,
-                runtime=runtime)
+                out_f16_ptr=dev["image"].ptr, runtime=runtime)
             qwen4_exp_gr_inject_bf16_f32(
                 dev["residual"].ptr, dev["norm_weight"].ptr, dev["inv"].ptr,
                 dev["inject_weight"].ptr, dev["inject_c"].ptr, rows, 4, hidden,
@@ -89,8 +90,12 @@ def run_chains(rows, k, hidden, *, iters=0):
                 fn()
             runtime.device_synchronize()
             timings.append((time.perf_counter() - start) / max(iters, 1) * 1e3)
+        dw.f32_to_f16(dev["mixed_c"].ptr, dev["image_ref"].ptr, rows * hidden,
+                      runtime=runtime)
+        runtime.device_synchronize()
         result = {}
-        for name, dtype in (("half_p", np.uint16), ("half_c", np.uint16),
+        for name, dtype in (("image", np.uint16), ("image_ref", np.uint16),
+                            ("half_p", np.uint16), ("half_c", np.uint16),
                             ("mixed_p", np.uint32), ("mixed_c", np.uint32),
                             ("inject_p", np.uint32), ("inject_c", np.uint32)):
             a = np.empty(out_sizes[name] // np.dtype(dtype).itemsize, dtype)
@@ -108,6 +113,8 @@ def test_read_chain_without_the_f32_plane_is_bit_identical(rows, k, hidden):
     np.testing.assert_array_equal(result["half_c"], result["half_p"])
     np.testing.assert_array_equal(result["mixed_c"], result["mixed_p"])
     np.testing.assert_array_equal(result["inject_c"], result["inject_p"])
+    # The F16 image is the standalone cast of the FP32 output it mirrors.
+    np.testing.assert_array_equal(result["image"], result["image_ref"])
     assert np.isfinite(result["mixed_c"].view(np.float32)).all()
 
 

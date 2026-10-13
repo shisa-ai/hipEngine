@@ -241,11 +241,15 @@ def qwen4_exp_gr_up_mean_residual_f16in_f32_out(
     branches: int,
     hidden: int,
     *,
+    out_f16_ptr: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
     """:func:`qwen4_exp_gr_up_mean_f16in_f32_out` without the FP32 norm plane.
+
+    ``out_f16_ptr`` additionally receives ``half(out)`` as ``[rows, hidden]``
+    F16, the bytes :func:`f32_to_f16` would produce from ``out``.
 
     The normalized value is recomputed as ``bf16(residual) * inv_rms *
     norm_weight``, the expression the grouped norm stores, so the output bits
@@ -260,17 +264,24 @@ def qwen4_exp_gr_up_mean_residual_f16in_f32_out(
         raise ValueError(f"in_features must be a positive multiple of {K_TILE}")
     library = library or build_gguf_q8_0_dense_wide(load=True)
     runtime = runtime or get_hip_runtime()
-    symbol = "hipengine_qwen4_exp_gr_up_mean_residual_f16in_f32_out"
+    symbol = (
+        "hipengine_qwen4_exp_gr_up_mean_residual_f16in_f32_f16_out"
+        if out_f16_ptr
+        else "hipengine_qwen4_exp_gr_up_mean_residual_f16in_f32_out"
+    )
     launch_census.record_launch(
         "gguf_q8_0", symbol, rows, in_features, branches * hidden
     )
     fn = getattr(library, symbol)
-    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    pointers = [x_ptr, qweight_ptr, residual_ptr, inv_rms_ptr, norm_weight_ptr, out_ptr]
+    if out_f16_ptr:
+        pointers.append(out_f16_ptr)
+    fn.argtypes = (
+        [ctypes.c_void_p] * len(pointers) + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    )
     fn.restype = ctypes.c_int
     err = fn(
-        ctypes.c_void_p(x_ptr), ctypes.c_void_p(qweight_ptr),
-        ctypes.c_void_p(residual_ptr), ctypes.c_void_p(inv_rms_ptr),
-        ctypes.c_void_p(norm_weight_ptr), ctypes.c_void_p(out_ptr),
+        *(ctypes.c_void_p(p) for p in pointers),
         ctypes.c_int64(rows), ctypes.c_int64(in_features),
         ctypes.c_int64(branches), ctypes.c_int64(hidden), ctypes.c_void_p(stream),
     )
@@ -318,6 +329,12 @@ _VARIANTS = {
     ),
     "dense_wide128x128_f16in_f32_f32_out": (
         "hipengine_gguf_q8_0_dense_wide128x128_f16in_f32_f32_out"
+    ),
+    "dense_wide320x64_f16in_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_wide320x64_f16in_f32_f32_out"
+    ),
+    "dense_wide160x128_f16in_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_wide160x128_f16in_f32_f32_out"
     ),
     # DP-3 probe. Not a production route: it issues three WMMA products per
     # accumulator on identical operands, so its *result* is not a split-operand

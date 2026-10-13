@@ -8914,6 +8914,20 @@ output tokens. The flag goes with `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT`; at that
 point `Qwen4ExpGRScratch.normalized` and `.gate` can shrink to the decode row
 bound and `inv_rms` gets its own buffer in the scratch planner.
 
+The scale-only read also writes `half(mixed)` into the otherwise unwritten
+`scratch.normalized` and declares it through
+`hipengine/kernels/hip_gfx1100/linear/f16_mirror.py`
+(`HIPENGINE_QWEN4_EXP_GR_F16_MIRROR`, default on, `0` keeps the
+per-projection conversions). The F16 wide dispatch and the small-matrix F16
+GEMM look the image up by exact pointer and extent and read it instead of
+converting `mixed` again; every read and every prefill chunk invalidates the
+declaration first. Bit-identical; `code-p4096` 1390.8 -> 1440.1 and
+`code-p512` 912.2 -> 951.4 prefill tok/s, same process, identical output
+tokens. The image makes the pair loan (`HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR`)
+redundant for projections that read `mixed`. Removal with the two flags
+above: give the image its own buffer in the scratch planner and delete the
+flag.
+
 The direct launch makes three older mechanisms unreachable for this quant at
 prefill row counts: the publication loan and its policy table
 (`GGUF_DENSE_WIDE_F16_PUBLICATION_POLICIES`, layers 13-47, rows 4096 only),
