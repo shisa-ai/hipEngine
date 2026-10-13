@@ -29,7 +29,7 @@ the complete row set and that a scope binds on its top-1 floor only
 (`docs/EXECUTION-PROFILES.md` section 6.1). The composition described in the
 2026-10-13 paragraph below passes that gate, so it is now the `production`
 plan for `gguf_ud_q4_k_xl` and the default for a caller that names no
-profile. `production` measures **768.4 / 930.6 / 1101.8 tok/s** prefill at
+profile. `production` measures **769.2 / 932.9 / 1108.4 tok/s** prefill at
 p512/p1024/p4096 on the canonical 12-case protocol, with decode at 20.9 /
 20.2 / 20.6 tok/s and the same 12 output token sequences the `fast` run
 produced
@@ -39,7 +39,15 @@ and currently selects the same routes. The attention K/V gather now takes
 `KVLiveSpans`. Against the plan it replaced, 9 of the 12 canonical cases
 generate a different 128-token continuation; cross-route generated-ID
 equality is a diagnostic, and the teacher-forced gates are the binding
-evidence.
+evidence. `strict` could not prefill more than 256 tokens in one chunk
+between 2026-10-06 and this date (a dropped kernel entry point, now
+restored), so no earlier gate covered a long prefill chunk. The first
+long-context gate (four prompts of about 2,000 to 2,600 tokens) puts
+`production` at mean KL 2.10e-3, outside the envelope, and a control that
+only reorders one projection's F32 summation at 2.09e-3: at that length the
+envelope measures sensitivity to any perturbation and does not single out a
+route. How long prompts should be gated is an open owner item
+(`docs/EXECUTION-PROFILES.md` section 6.1).
 
 **2026-10-13 state additions: the opt-in `fast` execution profile.** The
 owner accepted the X-7 question in the form of a fourth, opt-in profile

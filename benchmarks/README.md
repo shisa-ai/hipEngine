@@ -15,59 +15,44 @@ This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
-## Qwen3.8 Flash Next current production rates (checked dense Q8 + K320 GR-up + tiled16_multi GDN defaults)
+## Qwen3.8 Flash Next current production rates
 
-On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, production profile,
-BF16 KV, chunk 4096, greedy decode (compact capture), idle-settled host. Three
-promotions are live: the checked full-rows dense Q8 DPP leaf (exact), the
-K320/full-row GR-up DPP leaf (exact), and the tiled16_multi GDN prefill for
-its certified suffix window (production-envelope-admitted reassociation at
-fp32 round-off, NMSE 1.8e-14). Registered strict fallbacks retained for all
-three.
+On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, `production` profile
+(the default), BF16 KV, chunk 4096, greedy decode (compact capture),
+canonical 12-case protocol with one warmup and three repetitions, measured
+2026-10-13 UTC on a tracked-clean tree.
 
 | Prompt length | Prefill tok/s | Decode (128) tok/s |
 | ---: | ---: | ---: |
-| 512 | 314.83 | 20.39 |
-| 1024 | 342.00 | 19.77 |
-| 4096 | 346.66 | 16.75 |
+| 512 | **769.2** | 20.91 |
+| 1024 | **932.9** | 20.15 |
+| 4096 | **1108.4** | 20.57 |
 
-Prefill improved +6.8/+6.8/+5.9% and total request wall −2.66% over the
-2026-10-07 defaults; decode is unchanged within noise. Cross-run comparisons
-on this host require an idle-settled or same-residency protocol for effects
-under 3%.
-[Dense Q8 promotion](results/2026-10-08-qwen4exp-checked-q8-dpp-promotion/README.md)
-· [GR-up K320 qualification](results/2026-10-08-qwen4exp-gr-k320-natural-owner/README.md)
-· [GDN tiled16_multi admission](results/2026-10-08-qwen4exp-gdn-multicolumn-admission/README.md).
+The production plan runs the routed experts, the dense projections at every
+layer, the hyper-connection, indexer and router projections and the prefill
+attention on F16-operand matrix kernels with F32 accumulation, and the tiled
+GDN recurrence at every GDN layer; every route keeps a registered strict
+fallback. The plan it replaced measured 305.6 / 331.6 / 335.5 prefill on the
+same host and protocol the same day, with the same decode rates.
 
-## Qwen3.8 Flash Next opt-in `fast` profile
-
-On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, BF16 KV, chunk 4096,
-greedy decode (compact capture), canonical 12-case protocol, the two profiles
-measured back to back on 2026-10-13, `fast` first. `fast` is selected with
-`execution_profile="fast"`. It runs the routed experts, the dense projections
-at every layer, the hyper-connection projections, the indexer projections,
-the router and the prefill attention on F16 matrix kernels, and the tiled GDN
-recurrence at every GDN layer. It is not certified against the production
-numerical envelope, and `production` remains the default.
-
-| Profile | p512 prefill tok/s | p1024 | p4096 | Decode at p4096 tok/s |
-| --- | ---: | ---: | ---: | ---: |
-| `production` | 306.6 | 331.4 | 337.2 | 20.55 |
-| `fast` | **769.8** | **935.1** | **1104.8** | 20.60 |
-
-Against the strict teacher on the 18-prompt battery, `fast` is 14/18
-strict-exact with aligned top-1 agreement 1.00 and top-20 mean KL 0.049;
-`production` is 15/18 with mean KL 0.0052. A full-vocabulary teacher-forced
-gate of this `fast` composition measured mean KL 6.5e-4, max 0.012, top-1
-99.56% and 15/18 strict-exact tasks over 450 rows: inside every global limit
-of the production envelope, with two per-scope means at 1.21x and 1.11x of
-their limit.
-[Protocol, per-case rows, quality score and kernel evidence](results/2026-10-14-qwen4exp-gdn-norm-gate-waves/README.md)
+Against the `strict` teacher on the 18-prompt full-vocabulary gate (450
+teacher-forced rows): mean KL 6.5e-4, p95 3.5e-3, max 0.012, top-1 99.56%,
+bit-identical repeats, 15/18 strict-exact tasks. On the 18-prompt
+cross-engine battery: 14/18 strict-exact, top-1 agreement 1.00, top-20 mean
+KL 0.049 (the replaced plan: 15/18 and 0.0052). On four prompts of about
+2,000 to 2,600 tokens the plan measures mean KL 2.1e-3 against `strict`,
+outside the calibrated limit of 1e-3; a control that only reorders one
+projection's F32 summation measures the same 2.1e-3, so that length is
+reported as a sensitivity measurement rather than a route verdict.
+[Rates, gates, battery and long-context isolation](results/2026-10-14-qwen4exp-production-f16-composition/README.md)
 · [attention kernel](results/2026-10-14-qwen4exp-fast-qsa-wmma/README.md)
-· [full-vocabulary gate](results/2026-10-14-qwen4exp-fast-composition-gate-2/README.md)
+· [GDN norm/gate kernel](results/2026-10-14-qwen4exp-gdn-norm-gate-waves/README.md)
 · [indexer and router GEMM](results/2026-10-13-qwen4exp-fast-indexer-f16-gemm/README.md)
 · [dense and hyper-connection routes](results/2026-10-13-qwen4exp-fast-dense-hc-router/README.md)
 · [routed-expert kernel](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).
+
+The opt-in `fast` profile is where a reduced-precision route lands before
+its production gate. It currently selects the same routes as `production`.
 
 ## Cross-engine comparison on the same `UD-Q4_K_XL` GGUF file
 
@@ -79,16 +64,21 @@ per-case medians.
 
 | Engine | p512 | p1024 | p4096 | Decode at p4096 |
 | --- | ---: | ---: | ---: | ---: |
-| hipEngine production | 305.1 | 328.9 | 334.4 | 20.6 |
-| halo-box `strix-llama.cpp` master `6aa81b88e` | 759.3 | 1109.1 | 1446.4 | 25.1 |
-| gufo `v0.12.0` | 1095.0 | 1482.2 | 1736.4 | 28.1 |
+| hipEngine production (2026-10-13) | 769.2 | 932.9 | 1108.4 | 20.6 |
+| halo-box `strix-llama.cpp` master `6aa81b88e` (2026-10-12) | 759.3 | 1109.1 | 1446.4 | 25.1 |
+| gufo `v0.12.0` (2026-10-12) | 1095.0 | 1482.2 | 1736.4 | 28.1 |
 
-At p4096, halo-box is 4.33x and gufo is 5.19x hipEngine's prefill rate.
-The 18-prompt quality battery reports 15/18 strict-exact for hipEngine,
-11/18 for halo-box, and 13/18 for gufo; halo-box's aligned top-20 mean KL is
-0.241 with top-1 agreement 1.00, while gufo does not expose logprobs for the
-G2 comparison. These are characterization results, not external-engine
-certifications. See the [full pass-1 artifact](results/2026-10-12-qwen4exp-cross-engine-pass1/README.md)
+At p4096, halo-box is 1.30x and gufo is 1.57x hipEngine's prefill rate; at
+p512 hipEngine is level with halo-box. The external rows were measured a day
+earlier on the same host and have not been rerun. The hipEngine column is the
+weighted rate per prompt length.
+The 18-prompt quality battery reports 14/18 strict-exact for hipEngine,
+11/18 for halo-box, and 13/18 for gufo; aligned top-20 mean KL against the
+hipEngine strict teacher is 0.049 for hipEngine production and 0.241 for
+halo-box, both with top-1 agreement 1.00, while gufo does not expose
+logprobs for that comparison. These are characterization results, not
+external-engine certifications. See the [pass-1 artifact for the external
+engines](results/2026-10-12-qwen4exp-cross-engine-pass1/README.md)
 and [canonical protocol](../docs/CROSS-ENGINE-PROTOCOL.md).
 
 Kyojin is recorded as an alternate engine/implementation only. It uses a
