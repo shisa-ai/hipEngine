@@ -102,6 +102,59 @@ def test_multi_row_logits_are_bit_equal_to_one_row_forwards(runner) -> None:
     np.testing.assert_array_equal(in_one_call, one_at_a_time)
 
 
+@pytest.mark.parametrize("exact", [True, False])
+def test_verify_block_requests_row_exact_launches_only_when_exact(runner, monkeypatch, exact):
+    """``verify_dense_exact`` decides the dense schedule and the per-row attention."""
+
+    from hipengine.runtime import gemma4 as module
+
+    seen = []
+    original = module.gemma4_layer_forward_bf16
+
+    def record(*args, **kwargs):
+        seen.append((kwargs["dense_wmma_prefill"], kwargs["row_decode_attention"]))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "gemma4_layer_forward_bf16", record)
+    previous = runner.verify_dense_exact
+    runner.verify_dense_exact = exact
+    try:
+        runner.reset()
+        runner.forward(_TOKENS[:1])
+        seen.clear()
+        runner.forward(_TOKENS[1:], logits_rows=4, verification=True)
+        assert seen
+        for dense_wmma, rows in seen:
+            assert dense_wmma is (not exact)
+            if exact:
+                # Row t of the block sits at position 1 + t and attends from key 0.
+                assert rows.key_begins == (0, 0, 0, 0)
+            else:
+                assert rows is None
+        # A prefill block never asks for either, whatever the setting.
+        runner.reset()
+        seen.clear()
+        runner.forward(_TOKENS, logits_rows=5)
+        assert seen and all(entry == (True, None) for entry in seen)
+    finally:
+        runner.verify_dense_exact = previous
+
+
+def test_exact_verify_block_is_bit_equal_to_one_row_forwards(runner) -> None:
+    """The verify phase's rows are the one-token steps' rows, bit for bit."""
+
+    assert runner.verify_dense_exact
+    runner.reset()
+    runner.forward(_TOKENS[:1])
+    one_at_a_time = np.stack([runner.forward([t]) for t in _TOKENS[1:]])
+
+    runner.reset()
+    runner.forward(_TOKENS[:1])
+    block = runner.forward(_TOKENS[1:], logits_rows=4, verification=True)
+
+    np.testing.assert_array_equal(block, one_at_a_time)
+
+
 def test_multi_row_logits_agree_on_the_sampled_token(runner) -> None:
     """Require greedy acceptance to see the same winners on this fixture."""
 

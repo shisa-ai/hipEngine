@@ -12,10 +12,10 @@ specification describe the implementation, how to reach it, what it measures,
 and what is still open.
 
 The head is implemented and reachable through the public API for greedy
-requests on `hip_gfx1100` and `hip_gfx1151`. Two things in this document are
-not as the code's own docstrings describe them, and both are under
-"Open defects": the verify pass is not arithmetically identical to one-token
-decode, and sampled (temperature above zero) requests are refused.
+requests on `hip_gfx1100` and `hip_gfx1151`. Whether its output is
+token-identical to plain greedy decoding depends on the execution profile; see
+"The verify contract". Sampled (temperature above zero) requests are refused;
+see "Open defects".
 
 ## The artifact
 
@@ -237,6 +237,45 @@ accepted draft, so a cycle commits between 1 and `candidate_budget + 1` tokens.
 The backbone is rewound to the committed position and the next cycle's seed
 hidden row is taken from the verify pass.
 
+### The verify contract
+
+A verify row is the target's logits for one drafted position. Whether it equals
+the logits a one-token decode step produces at that position, bit for bit, is
+`Gemma4Runner.verify_dense_exact`, which the generator sets from the execution
+profile.
+
+| Profile | `verify_dense_exact` | A verify block runs | Rows against one-token decode | Telemetry `verify_equivalence` |
+| --- | --- | --- | --- | --- |
+| production | false | WMMA dense prefill kernels, one multi-row attention launch, the multi-row router | within the production numerical envelope | `production_envelope_of_target_ar_greedy` |
+| strict, or no profile bound | true | row-exact dense schedule, one decode-shaped attention launch per row, the one-token router per row | bit-identical | `bit_identical_to_target_ar_greedy` |
+
+Three operators make a multi-row block differ from one-token decode, and the
+exact path replaces each:
+
+- **Dense projections.** A multi-row block takes the WMMA prefill kernels, which
+  accumulate in a different order from the one-row kernel. The exact path keeps
+  the block on the row-exact dense schedule.
+- **Attention.** The decode kernel partitions its reduction by the number of
+  keys it is handed, and a multi-row launch hands every row the block's key
+  range. The exact path launches each row over the range that row would have as
+  a one-token step.
+- **The MoE router.** The one-token router is a fused launch whose projection
+  reduces in a different order from the multi-row chain. The exact path routes
+  each row through the one-token launch.
+
+With all three, a block of up to nine rows is bit-identical to nine one-token
+steps in both profiles at prompts of 120, 600 and 1100 tokens. Under the
+production setting the same rows differ from one-token decode by a row KL of
+5.8e-8 to 8.8e-2 with no argmax change in the 72 rows compared; over a long
+generation a near tie can still resolve differently, so the output can diverge
+from plain greedy decoding and each divergent output is itself a greedy
+continuation under the block's arithmetic.
+
+INT8 KV storage has no per-row decode launch here, so a verify block on it keeps
+the multi-row attention; the provider requires BF16 KV.
+
+### Cycle details
+
 - `drafts[0]` predicts the token after `token`, not `token` itself.
 - The last cycle leaves one row of headroom so a request never emits more than
   `max_tokens`.
@@ -281,29 +320,34 @@ A budget of 4 is the best measured setting on this device. Artifact:
 `benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-status.json`. The head has not
 been measured on `hip_gfx1151` on the current tree.
 
+The table above is the production profile, whose verify block is not exact. The
+same 18 prompts at a budget of 4, measured again with the exact verify path
+available, compare the two contracts:
+
+| Profile | Verify | Plain tok/s | MTP tok/s | Ratio | Prompts token-identical to plain greedy |
+| --- | --- | ---: | ---: | ---: | ---: |
+| production | envelope (default) | 73.7 | 102.8 | 1.40x | 11 of 18 |
+| production | exact (forced) | 73.5 | 88.5 | 1.20x | 18 of 18 |
+| strict | exact (default) | 73.2 | 87.5 | 1.19x | 18 of 18 |
+
+The cost is in the verify block itself. Median time for one verify block after
+a 600-token prompt, production profile:
+
+| Rows in the block | 1 | 3 | 5 | 7 | 9 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Envelope verify (ms) | 14.1 | 23.9 | 28.0 | 32.7 | 56.7 |
+| Exact verify (ms) | 13.9 | 23.4 | 33.5 | 43.9 | 66.4 |
+
+A one-token decode step takes 12.8 ms in the same run. Artifact:
+`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-exact-verify.json`.
+
 ## Open defects
 
-1. **The verify pass is not the arithmetic of one-token decode.** The provider's
-   docstring and its telemetry field
-   `verify_equivalence: bit_identical_to_target_ar_greedy` state that a verify
-   row equals the single-token forward for that position. It does not. After
-   the same prefill, forwarding K tokens one at a time and forwarding them as
-   one K-row block with `verification=True` gives no bitwise-equal row in either
-   the production or the strict profile (prompts of 120, 600 and 1100 tokens, K
-   of 3 and 7; row KL from 5.8e-8 to 3.7e-2 in production). The first row of the
-   block already differs after layer 0, so the cause is how a multi-row block
-   is computed rather than context; the operator that introduces it has not
-   been isolated. In the table above, MTP output is token-identical to plain
-   greedy on 11 of 18 prompts and diverges on the same 7 at every budget; under
-   the strict profile at budget 4 it is identical on 14 of 18. Each MTP output
-   is still a greedy continuation under the block arithmetic. Either the verify
-   block has to run row-invariant arithmetic, or the equivalence claim has to
-   be replaced by the production envelope in `docs/EXECUTION-PROFILES.md` with
-   its own measurement. The telemetry label is wrong until one of those lands.
-2. **A budget of 8 gives no speedup** where 6 gives 1.38x. The acceptance and
-   cycle-length telemetry was not examined for that row, so whether the cost is
-   in the nine-row verify block or in acceptance is unmeasured.
-3. **Sampled requests are refused.** `hipengine/speculative/sampling.py`
+1. **A budget of 8 gives no speedup** where 6 gives 1.38x. A budget of 8 makes a
+   nine-row verify block, and the block's time jumps from 32.7 ms at seven rows
+   to 56.7 ms at nine. Which kernel changes route above eight rows has not been
+   identified.
+2. **Sampled requests are refused.** `hipengine/speculative/sampling.py`
    already implements exact speculative sampling (accept with `min(1, p/q)`,
    resample the residual on rejection), and `hipengine/generation/mtp_sampled_accept.py`
    applies it for the Qwen MTP route. The Gemma provider does not call it. Two

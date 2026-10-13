@@ -150,6 +150,7 @@ def gemma4_project(
     out_features: int,
     *,
     stream: int = 0,
+    use_wmma_prefill: bool = True,
 ) -> None:
     """Run one ``(rows, in_features) x (in_features, out_features)`` projection.
 
@@ -160,6 +161,11 @@ def gemma4_project(
     Keep WMMA prefill eligible for every dense projection, including GeGLU
     down. T16 Q8 kernels repair non-finite WMMA accumulators in FP32 from the
     original activation rather than disabling prefill for the whole projection.
+
+    ``use_wmma_prefill=False`` keeps a multi-row block on the row-exact dense
+    schedule, whose every row is bit-identical to the one-row decode kernel. A
+    speculative verify block asks for it when its rows have to equal one-token
+    decode.
     """
 
     if isinstance(weight, int):
@@ -177,8 +183,23 @@ def gemma4_project(
         in_features,
         out_features,
         stream=stream,
-        use_wmma_prefill=True,
+        use_wmma_prefill=use_wmma_prefill,
     )
+
+
+@dataclass(frozen=True)
+class Gemma4RowDecodeAttention:
+    """What each row of a block would have been handed as a one-token step.
+
+    ``key_begins`` and ``windows`` are per row, cache-relative, exactly the
+    ``key_begin`` and ``window`` the caller passes for a one-row block at that
+    row's position; the two variant requests are the ones a decode step carries.
+    """
+
+    key_begins: tuple[int, ...]
+    windows: tuple[int, ...]
+    prefill_attention_variants: tuple[str, ...] | None = None
+    decode_attention_variants: tuple[str, ...] | None = None
 
 
 @dataclass
@@ -930,6 +951,13 @@ def gemma4_layer_forward_bf16(
     # native/exact call site below, and only for a multi-row sliding block the
     # tiled and aotriton routes refused; every other route is unchanged.
     exact_prefill_attention_variants: tuple[str, ...] | None = None,
+    # False keeps every dense projection of a multi-row block on the row-exact
+    # schedule instead of the WMMA prefill kernels, so each row is bit-identical
+    # to a one-row decode step. A one-row block is unaffected either way.
+    dense_wmma_prefill: bool = True,
+    # Per-row decode ranges for a multi-row block whose attention must repeat
+    # the one-token step row by row; ``None`` attends the block in one launch.
+    row_decode_attention: Gemma4RowDecodeAttention | None = None,
     stream: int = 0,
     # -1 (the default) selects a second stream so the MoE branch overlaps the
     # dense branch. Passing ``stream_moe=stream`` restores the single-stream
@@ -1020,6 +1048,7 @@ def gemma4_layer_forward_bf16(
     q_width = num_heads * head_dim
     kv_width = num_kv_heads * head_dim
     kwargs = {"stream": stream}
+    project_kwargs = {"stream": stream, "use_wmma_prefill": bool(dense_wmma_prefill)}
     # P11: the shared-expert MLP and the MoE experts are independent -- both
     # read `hidden` and write their own buffer, and neither consumes the
     # other's result until the combine -- so they overlap on two streams.
@@ -1048,7 +1077,7 @@ def gemma4_layer_forward_bf16(
             rows,
             hidden_size,
             q_width + 2 * kv_width,
-            **kwargs,
+            **project_kwargs,
         )
         gemma4_qkv_split_bf16(
             buf("qkv"),
@@ -1062,8 +1091,8 @@ def gemma4_layer_forward_bf16(
             **kwargs,
         )
     else:
-        gemma4_project(buf("normalized"), layer.q_proj, buf("q"), rows, hidden_size, q_width, **kwargs)
-        gemma4_project(buf("normalized"), layer.k_proj, buf("k"), rows, hidden_size, kv_width, **kwargs)
+        gemma4_project(buf("normalized"), layer.q_proj, buf("q"), rows, hidden_size, q_width, **project_kwargs)
+        gemma4_project(buf("normalized"), layer.k_proj, buf("k"), rows, hidden_size, kv_width, **project_kwargs)
 
     # `attention_k_eq_v` layers have no v_proj: the reference binds V to the *raw*
     # K projection and normalises a separate `key` array. So K is never normed in
@@ -1079,7 +1108,7 @@ def gemma4_layer_forward_bf16(
             # On the fused path the split already wrote buf("v"); only the
             # unfused path needs its own V projection.
             gemma4_project(
-                buf("normalized"), layer.v_proj, buf("v"), rows, hidden_size, kv_width, **kwargs
+                buf("normalized"), layer.v_proj, buf("v"), rows, hidden_size, kv_width, **project_kwargs
             )
         # V is normalised weightlessly and never rotated.
         gemma4_rmsnorm_weightless_bf16(
@@ -1158,173 +1187,222 @@ def gemma4_layer_forward_bf16(
         if key_begin and kv is None:
             raise ValueError("key_begin requires a cache to skip into")
 
-        key_count = rows if kv is None else kv.write_offset + rows - key_begin
-        route = _select_prefill_route(
-            rows=rows,
-            keys=key_count,
-            num_heads=num_heads,
-            num_kv_heads=num_kv_heads,
-            head_dim=head_dim,
-            sliding_window=geometry.sliding_window,
-            mask_is_causal=attention_mask_is_causal,
-        )
-        _last_prefill_route = route
-        if prefill_attention_variants is not None:
-            # `rows` goes with it because a one-token block is a decode step, and
-            # the variants are multi-row prefill kernels. Before this was passed,
-            # decode ran the prefill tiling for all 30 layers and never reached
-            # the decode kernel the strict path routes to: 30 launches at
-            # tokens=1 per step, 0 to `_launch_prefill`, and 10 percent off
-            # decode throughput.
-            #
-            # `keys` goes with `rows` because which of the two a one-token block
-            # takes is a measured crossover, not a fixed rule: the strict decode
-            # kernel is faster below `_STRICT_DECODE_WINS_UNTIL_KEYS` and the
-            # variants' decode shape is faster above it. A block past that
-            # crossover takes the variants' online-softmax walk, which is also
-            # the only path that runs once the strict kernel's own shared-memory
-            # bound is passed -- and what makes a context longer than that bound
-            # reachable at all.
-            attention = select_prefill_attention(
-                requested_variant=prefill_attention_variants,
-                num_heads=num_heads, num_kv_heads=num_kv_heads,
-                head_dim=head_dim, tokens=rows, keys=key_count,
-            )
-            _last_prefill_route = attention.variant
-            attention.launcher(
-                buf("q_rot"),
-                (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
-                if kv is not None else buf("k_rot"),
-                (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
-                if kv is not None else buf("v"),
-                keep_mask_ptr,
-                buf("context"), tokens=rows, keys=key_count,
-                window=window,
-                row_offset=(kv.write_offset if kv is not None else 0) - key_begin,
-                scratch=scratch.attention, num_heads=num_heads,
-                num_kv_heads=num_kv_heads, head_dim=head_dim,
-                scale=geometry.scale, **kwargs,
-            )
-        elif route == "tiled":
-            # head_dim 512: Gemma 4's five global layers. The tiled kernel stages
-            # its own dtype buffers inside the HIP source, so unlike the other two
-            # routes it takes no scratch arena.
-            gemma4_attention_prefill_tiled(
-                buf("q_rot"),
-                (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
-                if kv is not None
-                else buf("k_rot"),
-                (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
-                if kv is not None
-                else buf("v"),
-                keep_mask_ptr,
-                buf("context"),
-                tokens=rows,
+        def attend(
+            rows: int,
+            key_begin: int,
+            keep_mask_ptr: int,
+            window: int,
+            write_offset: int,
+            query_ptr: int,
+            out_ptr: int,
+            prefill_attention_variants: tuple[str, ...] | None,
+            decode_attention_variants: tuple[str, ...] | None,
+            exact_prefill_attention_variants: tuple[str, ...] | None,
+        ) -> None:
+            """Attend ``rows`` queries whose first row sits at ``write_offset``."""
+
+            global _last_prefill_route
+            key_count = rows if kv is None else write_offset + rows - key_begin
+            route = _select_prefill_route(
+                rows=rows,
                 keys=key_count,
                 num_heads=num_heads,
                 num_kv_heads=num_kv_heads,
                 head_dim=head_dim,
-                scale=geometry.scale,
-                **kwargs,
-            )
-        elif route == "aotriton":
-            gemma4_attention_prefill_aotriton(
-                buf("q_rot"),
-                (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
-                if kv is not None
-                else buf("k_rot"),
-                (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
-                if kv is not None
-                else buf("v"),
-                buf("context"),
-                tokens=rows,
-                keys=key_count,
-                scratch=scratch.attention,
-                num_heads=num_heads,
-                num_kv_heads=num_kv_heads,
-                head_dim=head_dim,
-                scale=geometry.scale,
-                **kwargs,
-            )
-        else:
-            # The native/exact route. Its BF16 entry serves the multi-row prefill
-            # fallback and the one-token global decode step; a production profile
-            # may route the latter to the staged singleton candidate, which
-            # reproduces this entry's ``global_class`` arithmetic in bounded
-            # shared memory. The reporter shows the inner variant that ran.
-            launcher, _last_prefill_route = _select_exact_decode_attention(
-                decode_attention_variants=decode_attention_variants,
-                backend=_layer_backend(layer),
-                tokens=rows,
-                keys=key_count,
-                num_heads=num_heads,
-                num_kv_heads=num_kv_heads,
-                head_dim=head_dim,
-                # The scope the candidate was verified on: a windowless global
-                # layer and a caller that dropped no prefix. A sliding layer's
-                # decode is windowed, and a trimmed global call skips keys the
-                # candidate was not checked against; both keep the native
-                # kernel.
                 sliding_window=geometry.sliding_window,
-                key_begin=key_begin,
+                mask_is_causal=attention_mask_is_causal,
             )
-            # The staged multi-row sliding prefill is a second, disjoint scope
-            # on the same call site. It is consulted only after the decode
-            # selector kept the native route, and it overrides that launcher
-            # only when the scope actually applies to this call (a multi-row
-            # sliding block): an out-of-scope call -- a global block or a
-            # one-row block -- keeps the decode selector's resolved callable,
-            # so a replaced decode fallback still runs.
-            staged_prefill = False
-            if _last_prefill_route == "exact" and exact_prefill_attention_variants:
-                prefill_launcher, prefill_route = _select_exact_prefill_attention(
-                    exact_prefill_attention_variants=exact_prefill_attention_variants,
+            _last_prefill_route = route
+            if prefill_attention_variants is not None:
+                # `rows` goes with it because a one-token block is a decode step, and
+                # the variants are multi-row prefill kernels. Before this was passed,
+                # decode ran the prefill tiling for all 30 layers and never reached
+                # the decode kernel the strict path routes to: 30 launches at
+                # tokens=1 per step, 0 to `_launch_prefill`, and 10 percent off
+                # decode throughput.
+                #
+                # `keys` goes with `rows` because which of the two a one-token block
+                # takes is a measured crossover, not a fixed rule: the strict decode
+                # kernel is faster below `_STRICT_DECODE_WINS_UNTIL_KEYS` and the
+                # variants' decode shape is faster above it. A block past that
+                # crossover takes the variants' online-softmax walk, which is also
+                # the only path that runs once the strict kernel's own shared-memory
+                # bound is passed -- and what makes a context longer than that bound
+                # reachable at all.
+                attention = select_prefill_attention(
+                    requested_variant=prefill_attention_variants,
+                    num_heads=num_heads, num_kv_heads=num_kv_heads,
+                    head_dim=head_dim, tokens=rows, keys=key_count,
+                )
+                _last_prefill_route = attention.variant
+                attention.launcher(
+                    query_ptr,
+                    (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+                    if kv is not None else buf("k_rot"),
+                    (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+                    if kv is not None else buf("v"),
+                    keep_mask_ptr,
+                    out_ptr, tokens=rows, keys=key_count,
+                    window=window,
+                    row_offset=(write_offset if kv is not None else 0) - key_begin,
+                    scratch=scratch.attention, num_heads=num_heads,
+                    num_kv_heads=num_kv_heads, head_dim=head_dim,
+                    scale=geometry.scale, **kwargs,
+                )
+            elif route == "tiled":
+                # head_dim 512: Gemma 4's five global layers. The tiled kernel stages
+                # its own dtype buffers inside the HIP source, so unlike the other two
+                # routes it takes no scratch arena.
+                gemma4_attention_prefill_tiled(
+                    query_ptr,
+                    (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+                    if kv is not None
+                    else buf("k_rot"),
+                    (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+                    if kv is not None
+                    else buf("v"),
+                    keep_mask_ptr,
+                    out_ptr,
+                    tokens=rows,
+                    keys=key_count,
+                    num_heads=num_heads,
+                    num_kv_heads=num_kv_heads,
+                    head_dim=head_dim,
+                    scale=geometry.scale,
+                    **kwargs,
+                )
+            elif route == "aotriton":
+                gemma4_attention_prefill_aotriton(
+                    query_ptr,
+                    (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+                    if kv is not None
+                    else buf("k_rot"),
+                    (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+                    if kv is not None
+                    else buf("v"),
+                    out_ptr,
+                    tokens=rows,
+                    keys=key_count,
+                    scratch=scratch.attention,
+                    num_heads=num_heads,
+                    num_kv_heads=num_kv_heads,
+                    head_dim=head_dim,
+                    scale=geometry.scale,
+                    **kwargs,
+                )
+            else:
+                # The native/exact route. Its BF16 entry serves the multi-row prefill
+                # fallback and the one-token global decode step; a production profile
+                # may route the latter to the staged singleton candidate, which
+                # reproduces this entry's ``global_class`` arithmetic in bounded
+                # shared memory. The reporter shows the inner variant that ran.
+                launcher, _last_prefill_route = _select_exact_decode_attention(
+                    decode_attention_variants=decode_attention_variants,
                     backend=_layer_backend(layer),
                     tokens=rows,
                     keys=key_count,
                     num_heads=num_heads,
                     num_kv_heads=num_kv_heads,
                     head_dim=head_dim,
+                    # The scope the candidate was verified on: a windowless global
+                    # layer and a caller that dropped no prefix. A sliding layer's
+                    # decode is windowed, and a trimmed global call skips keys the
+                    # candidate was not checked against; both keep the native
+                    # kernel.
                     sliding_window=geometry.sliding_window,
+                    key_begin=key_begin,
                 )
-                if prefill_route is not None:
-                    launcher = prefill_launcher
-                    _last_prefill_route = prefill_route
-                    staged_prefill = prefill_route == EXACT_PREFILL_ATTENTION_STAGED
-            # ``window``/``row_offset`` are forwarded only to the staged
-            # multi-row prefill, the one launcher whose per-row trim the layer's
-            # window licenses. The strict native entry and the registered decode
-            # fallback keep the exact keyword set they have always been called
-            # with, so their call is byte-for-byte unchanged.
-            if staged_prefill:
-                trim_kwargs = {
-                    "window": window,
-                    "row_offset": (kv.write_offset if kv is not None else 0) - key_begin,
-                }
-            else:
-                trim_kwargs = {}
-            launcher(
-                buf("q_rot"),
-                (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
-                if kv is not None
-                else buf("k_rot"),
-                (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
-                if kv is not None
-                else buf("v"),
-                keep_mask_ptr,
-                buf("context"),
-                tokens=rows,
-                keys=key_count,
-                **trim_kwargs,
-                scratch=scratch.attention,
-                num_heads=num_heads,
-                num_kv_heads=num_kv_heads,
-                head_dim=head_dim,
-                scale=geometry.scale,
-                **kwargs,
+                # The staged multi-row sliding prefill is a second, disjoint scope
+                # on the same call site. It is consulted only after the decode
+                # selector kept the native route, and it overrides that launcher
+                # only when the scope actually applies to this call (a multi-row
+                # sliding block): an out-of-scope call -- a global block or a
+                # one-row block -- keeps the decode selector's resolved callable,
+                # so a replaced decode fallback still runs.
+                staged_prefill = False
+                if _last_prefill_route == "exact" and exact_prefill_attention_variants:
+                    prefill_launcher, prefill_route = _select_exact_prefill_attention(
+                        exact_prefill_attention_variants=exact_prefill_attention_variants,
+                        backend=_layer_backend(layer),
+                        tokens=rows,
+                        keys=key_count,
+                        num_heads=num_heads,
+                        num_kv_heads=num_kv_heads,
+                        head_dim=head_dim,
+                        sliding_window=geometry.sliding_window,
+                    )
+                    if prefill_route is not None:
+                        launcher = prefill_launcher
+                        _last_prefill_route = prefill_route
+                        staged_prefill = prefill_route == EXACT_PREFILL_ATTENTION_STAGED
+                # ``window``/``row_offset`` are forwarded only to the staged
+                # multi-row prefill, the one launcher whose per-row trim the layer's
+                # window licenses. The strict native entry and the registered decode
+                # fallback keep the exact keyword set they have always been called
+                # with, so their call is byte-for-byte unchanged.
+                if staged_prefill:
+                    trim_kwargs = {
+                        "window": window,
+                        "row_offset": (write_offset if kv is not None else 0) - key_begin,
+                    }
+                else:
+                    trim_kwargs = {}
+                launcher(
+                    query_ptr,
+                    (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+                    if kv is not None
+                    else buf("k_rot"),
+                    (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+                    if kv is not None
+                    else buf("v"),
+                    keep_mask_ptr,
+                    out_ptr,
+                    tokens=rows,
+                    keys=key_count,
+                    **trim_kwargs,
+                    scratch=scratch.attention,
+                    num_heads=num_heads,
+                    num_kv_heads=num_kv_heads,
+                    head_dim=head_dim,
+                    scale=geometry.scale,
+                    **kwargs,
+                )
+
+        if row_decode_attention is None or rows == 1:
+            attend(
+                rows, key_begin, keep_mask_ptr, window,
+                kv.write_offset if kv is not None else 0,
+                buf("q_rot"), buf("context"),
+                prefill_attention_variants, decode_attention_variants,
+                exact_prefill_attention_variants,
             )
+        else:
+            # One decode-shaped launch per row. A multi-row launch reduces each
+            # row over the block's key range, and the decode kernel partitions
+            # its reduction by the key count, so only a launch that carries the
+            # row's own range repeats the one-token step's arithmetic.
+            if kv is None:
+                raise ValueError("row_decode_attention requires a KV cache")
+            if len(row_decode_attention.key_begins) != rows:
+                raise ValueError("row_decode_attention must describe every row")
+            block_keys = kv.write_offset + rows - key_begin
+            row_bytes = q_width * _BF16_BYTES
+            for row, (row_begin, row_window) in enumerate(
+                zip(row_decode_attention.key_begins, row_decode_attention.windows)
+            ):
+                if row_begin < key_begin:
+                    raise ValueError("a row cannot read keys before its block's first key")
+                attend(
+                    1, int(row_begin),
+                    keep_mask_ptr + row * block_keys + (int(row_begin) - key_begin),
+                    int(row_window), kv.write_offset + row,
+                    buf("q_rot") + row * row_bytes, buf("context") + row * row_bytes,
+                    row_decode_attention.prefill_attention_variants,
+                    row_decode_attention.decode_attention_variants,
+                    None,
+                )
     gemma4_project(
-        buf("context"), layer.o_proj, buf("attn_out"), rows, q_width, hidden_size, **kwargs
+        buf("context"), layer.o_proj, buf("attn_out"), rows, q_width, hidden_size, **project_kwargs
     )
 
     # residual + norm(attended), with a null layer scalar meaning 1.0.
@@ -1371,7 +1449,7 @@ def gemma4_layer_forward_bf16(
         rows,
         hidden_size,
         2 * scratch.dense_intermediate,
-        **kwargs,
+        **project_kwargs,
     )
     # Both halves live in one resident weight, so the fused GeGLU reads them
     # from a single buffer -- the form the expert path already uses.
@@ -1389,29 +1467,34 @@ def gemma4_layer_forward_bf16(
         rows,
         scratch.dense_intermediate,
         hidden_size,
-        **kwargs,
+        **project_kwargs,
     )
     # D6: post_feedforward_layernorm_1 is NOT applied here anymore. The fold
     # below consumes the RAW dense output, so this stage moved into the combine
     # kernel -- one launch instead of three, bit-identical to the chain.
 
     # --- MoE branch ---------------------------------------------------------
-    gemma4_router_topk_bf16(
-        buf("hidden"),
-        layer.router_scale,
-        layer.router_proj,
-        layer.router_per_expert_scale,
-        buf("selected"),
-        buf("routing"),
-        tokens=rows,
-        hidden_size=hidden_size,
-        num_experts=scratch.num_experts,
-        top_k=scratch.top_k,
-        scratch=scratch.router,
-        eps=eps,
-        stream=moe_stream,
-        backend=_layer_backend(layer),
-    )
+    # A row-exact block routes each row through the one-token launch: the
+    # fused decode router and the multi-row chain reduce the projection in a
+    # different order, so their weights can differ in the last place.
+    router_rows = 1 if row_decode_attention is not None else rows
+    for router_row in range(0, rows, router_rows):
+        gemma4_router_topk_bf16(
+            buf("hidden") + router_row * hidden_size * _BF16_BYTES,
+            layer.router_scale,
+            layer.router_proj,
+            layer.router_per_expert_scale,
+            buf("selected") + router_row * scratch.top_k * _I64_BYTES,
+            buf("routing") + router_row * scratch.top_k * _F32_BYTES,
+            tokens=router_rows,
+            hidden_size=hidden_size,
+            num_experts=scratch.num_experts,
+            top_k=scratch.top_k,
+            scratch=scratch.router,
+            eps=eps,
+            stream=moe_stream,
+            backend=_layer_backend(layer),
+        )
     gemma4_rmsnorm_f32w_bf16(
         buf("hidden"),
         layer.pre_feedforward_layernorm_2,

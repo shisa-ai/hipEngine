@@ -365,6 +365,18 @@ class Gemma4GGUFGenerator:
             self._decode_graph_runner = runner
         return self._decode_graph_session
 
+    @property
+    def verify_dense_exact(self) -> bool:
+        """Whether a speculative verify block must equal one-token decode bitwise.
+
+        The production profile verifies on the WMMA dense kernels, which agree
+        with one-token decode within that profile's numerical envelope and cost
+        less per verify block. Every other resolution -- strict, or a generator
+        no profile was bound to -- keeps the verify rows exact.
+        """
+
+        return getattr(self, "execution_profile", None) != "production"
+
     def _resolve_prefill_attention_variants(self) -> tuple[str, ...] | None:
         """The prefill-attention variants the execution profile selects, if any.
 
@@ -434,6 +446,10 @@ class Gemma4GGUFGenerator:
                 prefill_attention_variants=self._resolve_prefill_attention_variants(),
                 decode_attention_variants=self.decode_attention_variants,
                 exact_prefill_attention_variants=self.exact_prefill_attention_variants,
+                # The production profile verifies a speculative block on the
+                # WMMA dense kernels; every other profile keeps verify rows
+                # bit-identical to one-token decode.
+                verify_dense_exact=self.verify_dense_exact,
                 kv_storage=storage,
                 kv_scale_dtype=scale_dtype,
                 kv_scale_granularity=granularity,

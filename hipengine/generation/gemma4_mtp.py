@@ -5,13 +5,16 @@ The cycle is the batched-verify one measured in
 backbone in **one** call with ``logits_rows=len(drafts) + 1``, so one backbone
 forward commits up to ``len(drafts) + 1`` tokens.
 
-What makes that legal is a property ``Gemma4Runner.forward`` documents and this
-provider depends on: *"Each returned row is the same computation a single-token
-forward would produce for that position: the mask is built from absolute
-positions, so a row never depends on how many rows accompany it."* The batched
-verify is therefore **bit-identical** to verifying one token at a time, and the
-measured cycle reproduces plain greedy decoding exactly. That is why this
-provider is arithmetic-preserving rather than a reassociating candidate.
+Whether a verify row equals the one-token step for its position bit for bit is
+the runner's ``verify_dense_exact`` contract, which the execution profile
+decides. Under the strict profile it does: the block's dense projections run the
+row-exact schedule and each row is attended and routed as its own one-token
+step, so the cycle reproduces plain greedy decoding exactly. Under the
+production profile the block runs the WMMA dense kernels and one multi-row
+attention launch; its rows agree with one-token decode within that profile's
+numerical envelope, which is cheaper per cycle and can commit a different token
+where two candidates are nearly tied. The telemetry field
+``verify_equivalence`` reports which of the two a generation ran.
 
 Two details that are easy to get wrong and are load-bearing:
 
@@ -66,6 +69,8 @@ from hipengine.speculative.registry import (
 _PROVIDER = "gemma4_mtp"
 _TARGET_MODEL = "gemma4_gguf"
 _EPS = 1e-6
+_VERIFY_EXACT = "bit_identical_to_target_ar_greedy"
+_VERIFY_ENVELOPE = "production_envelope_of_target_ar_greedy"
 
 # The assistant head is a small sidecar, so its scratch is sized by the same
 # context the backbone runs at rather than by a bring-up ceiling.
@@ -83,7 +88,7 @@ class Gemma4MTPCycle:
 
 
 class Gemma4MTPTextProvider:
-    """Greedy MTP with a batched exact verify over the backbone's own logits."""
+    """Greedy MTP with a batched verify over the backbone's own logits."""
 
     provider_name = _PROVIDER
 
@@ -180,8 +185,14 @@ class Gemma4MTPTextProvider:
             "strict_fallback": row.strict_fallback,
             "candidate_budget": self.candidate_budget,
             "streaming_mode": "buffered_public",
-            "verify_equivalence": "bit_identical_to_target_ar_greedy",
+            "verify_equivalence": self._verify_equivalence(),
         }
+
+    def _verify_equivalence(self) -> str:
+        """What a verify row is to the one-token step at the same position."""
+
+        exact = bool(getattr(self.target_generator, "verify_dense_exact", True))
+        return _VERIFY_EXACT if exact else _VERIFY_ENVELOPE
 
     # --- generation -----------------------------------------------------
 
@@ -337,6 +348,7 @@ class Gemma4MTPTextProvider:
             )
 
         self.last_cycles = tuple(cycles)
+        verify_exact = bool(getattr(runner, "verify_dense_exact", True))
         proposed = sum(len(cycle.candidates) for cycle in cycles)
         accepted_total = sum(cycle.accepted for cycle in cycles)
         telemetry = GenerationTelemetry(
@@ -345,7 +357,11 @@ class Gemma4MTPTextProvider:
                 generated_tokens=len(generated),
                 step_index=len(cycles),
                 sampler_mode="greedy_speculative_mtp",
-                execution_path="gemma4_mtp_batched_exact_verify",
+                execution_path=(
+                    "gemma4_mtp_batched_exact_verify"
+                    if verify_exact
+                    else "gemma4_mtp_batched_verify"
+                ),
             ),
             event="generation_complete",
             diagnostics={
@@ -368,9 +384,9 @@ class Gemma4MTPTextProvider:
                     }
                     for cycle in cycles
                 ],
-                "target_verify": "batched_exact",
+                "target_verify": "batched_exact" if verify_exact else "batched_wmma",
                 "draft_rollback": "cursor_rewind",
-                "verify_equivalence": "bit_identical_to_target_ar_greedy",
+                "verify_equivalence": _VERIFY_EXACT if verify_exact else _VERIFY_ENVELOPE,
                 "phase_census": {
                     "cycles": len(cycles),
                     "target_prefill": {
