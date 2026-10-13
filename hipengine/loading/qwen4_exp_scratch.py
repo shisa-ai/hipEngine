@@ -46,6 +46,8 @@ def qwen4_exp_scratch_breakdown(config, *, context_tokens: int, prefill_chunk_si
             n * (4 * experts + 12 * h + 12 * ffn + 4)
             + compact * (40 + 2 * h + 10 * ffn)
             + 12 * experts + 16 * (experts + 1) + 8 * tiles + 8
+            # Active-expert list and its count.
+            + 8 * experts + 8
         )
 
     def gdn_layer(n):

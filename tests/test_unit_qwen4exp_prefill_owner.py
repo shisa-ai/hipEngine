@@ -15,14 +15,24 @@ def config():
     return qwen4_exp_gguf_config_from_metadata(_info())
 
 
+_LATER_MOE_BUFFERS = {"group_active_experts", "group_active_count"}
+
+
 def test_original_allocation_sequence_matches_frozen_census():
     path = Path(__file__).resolve().parents[1] / (
         "benchmarks/results/2026-09-15-chunk4096-accounting/artifact.json")
     frozen = json.loads(path.read_bytes())["captures"]["resume-scratch-census.json"]
     for row in frozen["records"]:
         actual = census(config(), context=row["context"], chunk=row["chunk"])
-        assert actual["allocations"] == row["allocations"]
-        assert actual["owner_bytes"] == row["owner_bytes"]
+        # Each MoE scratch gained an active-expert list and its count after
+        # the census was frozen; everything else keeps its order and size.
+        later = [a for a in actual["allocations"]
+                 if a["owner"].rsplit(".", 1)[-1] in _LATER_MOE_BUFFERS]
+        assert len(later) == 8
+        assert [a for a in actual["allocations"] if a not in later] == row["allocations"]
+        assert set(actual["owner_bytes"]) == set(row["owner_bytes"])
+        assert (sum(actual["owner_bytes"].values()) - sum(row["owner_bytes"].values())
+                == sum(a["nbytes"] for a in later))
 
 
 def test_extra_workspace_owns_no_decode_or_kv_state():
