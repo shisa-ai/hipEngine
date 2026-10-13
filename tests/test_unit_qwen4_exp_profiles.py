@@ -87,6 +87,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_GR_WIDE",
         "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM",
+        "HIPENGINE_QWEN4_EXP_QSA_WMMA",
         NORM_F16_PUBLICATION_ENV,
     )
     for name in environment_names:
@@ -744,6 +745,9 @@ _ROUTED_SCOPES = {
     ("linear", "grouped_prefill_rows_lt512_q8_0_expert_down"): _ROUTED_LINEAR,
     ("linear", "grouped_prefill_rows_ge512_q8_0_expert_down"): _ROUTED_LINEAR,
     ("router_logits", "qwen4exp_multirow_f32_router"): "f32_hidden_f16_wmma_gemm",
+    ("qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16"):
+        "wmma_f16_masked_prefill_f32",
+    ("paged_attn_decode", "qwen4exp_multirow_dense_qsa"): "wmma_f16_masked_prefill_f32",
 }
 
 
@@ -803,6 +807,7 @@ def test_fast_binder_publishes_the_routed_selector_and_production_retracts_it() 
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == all_layers
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "1"
     assert (
         os.environ["HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"]
         == "f32_hidden_f16_wmma_gemm"
@@ -813,6 +818,7 @@ def test_fast_binder_publishes_the_routed_selector_and_production_retracts_it() 
     assert os.environ[_ROUTED_F16_ENV] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(
         map(str, range(13, 48))
     )

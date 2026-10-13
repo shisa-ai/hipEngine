@@ -496,7 +496,7 @@
       "repo": "gufo",
       "path": "src/models/qwen38_flash_next/kernels/rocm/kernels.hip.cpp",
       "kind": "kernel",
-      "family": "Qwen4Exp routed-expert F16 WMMA GEMM (RoutedF16GEMMKernel) ported to quant/qwen4_exp_routed_f16.hip",
+      "family": "Qwen4Exp routed-expert F16 WMMA GEMM (RoutedF16GEMMKernel) ported to quant/qwen4_exp_routed_f16.hip; WMMA masked prefill attention (WmmaCausalAttentionKernel) ported to attention/qwen4_exp_qsa_wmma.hip",
       "baseline_ref": "88090afb"
     }
   ],

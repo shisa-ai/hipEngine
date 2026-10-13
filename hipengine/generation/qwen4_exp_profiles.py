@@ -45,6 +45,7 @@ FAST_QUANTS = ("gguf_ud_q4_k_xl",)
 _ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
 _FAST_ROUTED_GATE_UP = "selected_routed_f16_dual_silu_wmma_prefill_bf16_bf16_out"
 _FAST_ROUTED_LINEAR = "selected_routed_f16_wmma_prefill_bf16_bf16_out"
+_FAST_QSA_WMMA = "wmma_f16_masked_prefill_f32"
 # Routed-expert scopes the fast plan moves to the wide-tile F16 GEMMs that
 # read the raw expert weights: (layer, scope, registry quant) -> variant.
 # Layers whose gate/up is Q5_K route from 64 rows; the rest from 2.
@@ -65,6 +66,12 @@ _FAST_ROUTED_SCOPES = {
         _FAST_ROUTED_LINEAR,
     ("linear", "grouped_prefill_rows_ge512_q8_0_expert_down", "gguf_q8_0"):
         _FAST_ROUTED_LINEAR,
+    # QSA prefill attention, masked sparse window and dense causal window, on
+    # the WMMA kernel over F16 K/V rows gathered from the paged BF16 cache.
+    ("qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16", "bf16_kv"):
+        _FAST_QSA_WMMA,
+    ("paged_attn_decode", "qwen4exp_multirow_dense_qsa", "w4_paro"):
+        _FAST_QSA_WMMA,
 }
 # Binder-owned route window the fast profile widens beyond the certified
 # production scope: the F16 dense wide route runs at every layer (production
@@ -84,6 +91,8 @@ _FAST_SELECTORS = {
     # Multi-row FP32 projections over uncompressed weights (the indexer
     # projections) on the small-matrix F16 WMMA GEMM.
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
+    # QSA prefill attention on the WMMA kernel.
+    "HIPENGINE_QWEN4_EXP_QSA_WMMA": "1",
 }
 _FAST_ROUTED_EVIDENCE = (
     "benchmarks/results/2026-10-13-qwen4exp-fast-routed-f16/README.md"

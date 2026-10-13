@@ -8914,3 +8914,26 @@ manifest-driven; revisit the column floor if a kernel variant with a
 narrower column tile is added for the 48-column GDN gate projections and the
 4-column hyper-connection inject.
 
+## The WMMA QSA attention selector and its F16 K/V gather
+
+`HIPENGINE_QWEN4_EXP_QSA_WMMA` (default off) is published by the Qwen4Exp
+fast binder and read by `run_qwen4_exp_qsa_prefill_token_mixer`. The route
+gathers the whole context's paged BF16 K/V into contiguous F16 scratch rows
+for every QSA layer on every prefill chunk (`wmma_k_f16`, `wmma_v_f16` on the
+QSA scratch), and builds a per-query block bitmask (`wmma_mask`) from the
+selected-position lists the existing top-k expand kernel writes.
+
+The gather takes `(block_table, context_len)`, which the architectural
+invariants reserve against: `KVLiveSpans` is the attention ABI. The existing
+`qwen4_exp_qsa_flash` prefill kernel has the same shape. Both are correct
+only for a dense, non-evicting policy.
+
+Removal conditions: (0) make the gather consume `KVLiveSpans`
+(`base_offsets`, `live_counts`, `token_positions`, `evict_mask`) before the
+route is offered to any non-dense KV policy or promoted out of `fast`;
+(1) gather only the positions a chunk appended and keep
+the F16 rows per layer once multi-chunk prefill at long context makes the
+full regather measurable; (2) have the block selection write the bitmask
+directly, which also removes the expand-to-positions kernel from this route;
+(3) replace the selector with manifest-driven dispatch.
+
