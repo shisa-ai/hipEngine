@@ -171,6 +171,7 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_sigmoid_f32,
     qwen4_exp_gr_inject_bf16_f32,
     qwen4_exp_grouped_rmsnorm_bf16_f16_scale,
+    qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
     _check_norm_publication,
     qwen4_exp_grouped_rmsnorm_f32,
@@ -3188,6 +3189,8 @@ def _run_qwen4_exp_gr_norm_down(
     residual_ptr, norm_weight_ptr, down_weight, scratch, *,
     rows, branches, hidden, low_rank, eps, stream, runtime,
     scale_ptr: int = 0,
+    inject_weight_ptr: int = 0,
+    inject_out_ptr: int = 0,
 ) -> bool:
     """Publish only for a qualified immediate HC-down consumer; else parent.
 
@@ -3215,7 +3218,15 @@ def _run_qwen4_exp_gr_norm_down(
                 down_weight, rows=rows, in_features=width,
                 out_features=low_rank) is not None:
             _invalidate_wide_f16_publication()
-            if scale_ptr:
+            if scale_ptr and inject_out_ptr:
+                # One block per row: the norm and the inject logits from a
+                # single read of the residual.
+                qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject(
+                    residual_ptr, norm_weight_ptr, inject_weight_ptr,
+                    workspace.ptr, scale_ptr, inject_out_ptr,
+                    rows, branches, hidden, eps, stream=stream, runtime=runtime,
+                )
+            elif scale_ptr:
                 qwen4_exp_grouped_rmsnorm_bf16_f16_scale(
                     residual_ptr, norm_weight_ptr, workspace.ptr, scale_ptr,
                     rows, branches, hidden, eps, stream=stream, runtime=runtime,
@@ -3390,12 +3401,26 @@ def run_qwen4_exp_gr_read(
         and os.environ.get("HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY", "1")
         not in {"", "0", "false", "False"}
     )
+    # The norm launch also computes the inject logits when it runs
+    # scale-only and there is an inject projection; bit-identical to the
+    # separate launch. HIPENGINE_QWEN4_EXP_GR_NORM_INJECT=0 keeps them apart.
+    norm_inject = (
+        scale_only
+        and inject_weight is not None
+        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_NORM_INJECT", "1")
+        not in {"", "0", "false", "False"}
+    )
     scale_only = _run_qwen4_exp_gr_norm_down(
         residual_ptr, norm_weight_ptr, down_weight, scratch,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         eps=eps, stream=stream, runtime=active_runtime,
         scale_ptr=scratch.gate.ptr if scale_only else 0,
+        inject_weight_ptr=(
+            inject_weight.allocation("raw").tensor.ptr if norm_inject else 0
+        ),
+        inject_out_ptr=scratch.inject_logits.ptr if norm_inject else 0,
     )
+    norm_inject = norm_inject and scale_only
     qwen4_exp_scaled_silu_f32(
         scratch.low_rank.ptr,
         scratch.low_rank.ptr,
@@ -3631,6 +3656,8 @@ def run_qwen4_exp_gr_read(
             )
         else:
             active_runtime.memset(scratch.inject_logits.ptr, 0, rows * branches * 4)
+    elif norm_inject:
+        pass  # written by the norm launch
     elif scale_only:
         qwen4_exp_gr_inject_bf16_f32(
             residual_ptr,

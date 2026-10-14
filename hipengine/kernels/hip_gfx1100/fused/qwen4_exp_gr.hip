@@ -195,6 +195,101 @@ __global__ void gr_inject_bf16_kernel(
   }
 }
 
+// Grouped norm and inject logits for one row in one block: the F16 plane,
+// inv_rms[row][branch] and inject[row][4] from the BF16 residual. The sum of
+// squares keeps grouped_rmsnorm_bf16_f16_scale_kernel's partition and tree
+// (thread t owns columns t + 256 j of each branch), and the normalized values
+// and the inject accumulation keep gr_inject_bf16_kernel's (thread t owns
+// k = 8 t + 2048 j, eight sequential FMAs per step, 256-wide halving tree),
+// so all three outputs are the bits those two kernels produce. Each thread's
+// second pass moves eight contiguous elements per load and store.
+__global__ void __launch_bounds__(256) grouped_rmsnorm_bf16_f16_scale_inject_kernel(
+    const uint16_t* __restrict__ residual,
+    const float* __restrict__ weight,
+    const float* __restrict__ inject_weight,
+    _Float16* __restrict__ output_f16,
+    float* __restrict__ inv_rms_out,
+    float* __restrict__ inject_out,
+    int hidden,
+    float eps) {
+  __shared__ float partial[4][256];
+  const int tid = threadIdx.x;
+  const int64_t row = blockIdx.x;
+  const int width = 4 * hidden;
+  const uint16_t* __restrict__ r = residual + row * width;
+
+  float sumsq[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  for (int column = tid; column < hidden; column += 256) {
+#pragma unroll
+    for (int b = 0; b < 4; ++b) {
+      const float value = bf16_bits_to_float(r[b * hidden + column]);
+      sumsq[b] += value * value;
+    }
+  }
+#pragma unroll
+  for (int b = 0; b < 4; ++b) partial[b][tid] = sumsq[b];
+  __syncthreads();
+  for (int stride = 128; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+#pragma unroll
+      for (int b = 0; b < 4; ++b) partial[b][tid] += partial[b][tid + stride];
+    }
+    __syncthreads();
+  }
+  float inv[4];
+#pragma unroll
+  for (int b = 0; b < 4; ++b) {
+    inv[b] = rsqrtf(partial[b][0] / static_cast<float>(hidden) + eps);
+  }
+  // The last barrier above published partial[b][0] to every thread; the
+  // array is rewritten only after the next one.
+  __syncthreads();
+  if (tid < 4) {
+    inv_rms_out[row * 4 + tid] = inv[tid];
+  }
+
+  uint16_t* __restrict__ out16 = reinterpret_cast<uint16_t*>(output_f16) + row * width;
+  float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  for (int k = tid * 8; k < width; k += 2048) {
+    const float scale = inv[k / hidden];
+    const uint4 packed = *reinterpret_cast<const uint4*>(r + k);
+    const float4 w0 = *reinterpret_cast<const float4*>(weight + k);
+    const float4 w1 = *reinterpret_cast<const float4*>(weight + k + 4);
+    const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
+    const float weights[8] = {w0.x, w0.y, w0.z, w0.w, w1.x, w1.y, w1.z, w1.w};
+    uint32_t halves[4] = {0U, 0U, 0U, 0U};
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const uint32_t bits = (words[j >> 1] >> ((j & 1) * 16)) << 16;
+      const float value = __uint_as_float(bits) * scale * weights[j];
+      uint32_t half_bits;
+      asm volatile("v_cvt_f16_f32 %0, %1" : "=v"(half_bits) : "v"(value));
+      halves[j >> 1] |= (half_bits & 0xFFFFU) << ((j & 1) * 16);
+      if (inject_weight != nullptr) {
+#pragma unroll
+        for (int b = 0; b < 4; ++b) {
+          acc[b] = fmaf(value, inject_weight[static_cast<int64_t>(b) * width + k + j], acc[b]);
+        }
+      }
+    }
+    *reinterpret_cast<uint4*>(out16 + k) =
+        make_uint4(halves[0], halves[1], halves[2], halves[3]);
+  }
+#pragma unroll
+  for (int b = 0; b < 4; ++b) partial[b][tid] = acc[b];
+  __syncthreads();
+  for (int stride = 128; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+#pragma unroll
+      for (int b = 0; b < 4; ++b) partial[b][tid] += partial[b][tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid < 4) {
+    inject_out[row * 4 + tid] = partial[tid][0];
+  }
+}
+
 __global__ void grouped_rmsnorm_f32_kernel(
     const float* __restrict__ input,
     const float* __restrict__ weight,
@@ -443,6 +538,36 @@ extern "C" int hipengine_qwen4_exp_grouped_rmsnorm_bf16_f16_scale(
       dim3(static_cast<uint32_t>(rows * branches)), dim3(threads), threads * sizeof(float), stream,
       static_cast<const uint16_t*>(residual), static_cast<const float*>(weight),
       static_cast<_Float16*>(output_f16), static_cast<float*>(inv_rms), branches, hidden, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Grouped norm (F16 plane + inv_rms) and inject logits in one launch.
+// ``inject_weight`` may be null (logits are zero).
+extern "C" int hipengine_qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject(
+    const void* residual,
+    const void* weight,
+    const void* inject_weight,
+    void* output_f16,
+    void* inv_rms,
+    void* inject_out,
+    int64_t rows,
+    int64_t branches,
+    int64_t hidden,
+    float eps,
+    hipStream_t stream) {
+  if (!residual || !weight || !output_f16 || !inv_rms || !inject_out ||
+      rows <= 0 || rows > UINT32_MAX || branches != 4 || hidden <= 0 ||
+      (hidden % 8) != 0 || ((4 * hidden) % 2048) != 0 ||
+      hidden > INT32_MAX / 4) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      grouped_rmsnorm_bf16_f16_scale_inject_kernel,
+      dim3(static_cast<uint32_t>(rows)), dim3(256), 0, stream,
+      static_cast<const uint16_t*>(residual), static_cast<const float*>(weight),
+      static_cast<const float*>(inject_weight), static_cast<_Float16*>(output_f16),
+      static_cast<float*>(inv_rms), static_cast<float*>(inject_out),
+      static_cast<int>(hidden), eps);
   return static_cast<int>(hipGetLastError());
 }
 

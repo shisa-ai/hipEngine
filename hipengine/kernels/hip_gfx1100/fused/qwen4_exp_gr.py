@@ -32,6 +32,9 @@ _ARGS_GROUPED_NORM = (
     ctypes.c_void_p,
 )
 _ARGS_GROUPED_NORM_PUBLISH = _ARGS_GROUPED_NORM[:3] + (ctypes.c_void_p,) + _ARGS_GROUPED_NORM[3:]
+_ARGS_NORM_SCALE_INJECT = (
+    (ctypes.c_void_p,) * 6 + (ctypes.c_int64,) * 3 + (ctypes.c_float, ctypes.c_void_p)
+)
 _ARGS_MEAN = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -244,6 +247,35 @@ def qwen4_exp_grouped_rmsnorm_bf16_f16_scale(
                           _ARGS_GROUPED_NORM_PUBLISH, ctypes.c_int)
     _check_launch(runtime, fn(residual_ptr, weight_ptr, output_f16_ptr, inv_rms_ptr,
                               rows, branches, hidden, float(eps), stream))
+
+
+def qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject(
+    residual_ptr: int, weight_ptr: int, inject_weight_ptr: int,
+    output_f16_ptr: int, inv_rms_ptr: int, inject_ptr: int,
+    rows: int, branches: int, hidden: int, eps: float = 1e-6, *,
+    stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Grouped norm (F16 plane, ``inv_rms``) and inject logits in one launch.
+
+    Bit-identical to :func:`qwen4_exp_grouped_rmsnorm_bf16_f16_scale` followed
+    by :func:`qwen4_exp_gr_inject_bf16_f32`; the residual is read once.
+    ``inject_weight_ptr`` 0 writes zero logits.
+    """
+
+    _check_shape(rows, branches, hidden)
+    if branches != 4 or hidden % 8 or (4 * hidden) % 2048:
+        raise ValueError("norm+inject needs four branches and 4 * hidden % 2048 == 0")
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject",
+        _ARGS_NORM_SCALE_INJECT, ctypes.c_int,
+    )
+    _check_launch(runtime, fn(
+        residual_ptr, weight_ptr, inject_weight_ptr or None, output_f16_ptr,
+        inv_rms_ptr, inject_ptr, rows, branches, hidden, float(eps), stream,
+    ))
 
 
 def qwen4_exp_gr_inject_bf16_f32(

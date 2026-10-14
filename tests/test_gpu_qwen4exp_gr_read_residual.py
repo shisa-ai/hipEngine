@@ -123,3 +123,53 @@ if __name__ == "__main__":
     print("identical", all(np.array_equal(r[a + "_c"], r[a + "_p"])
                            for a in ("half", "mixed", "inject")),
           "parent %.3f ms candidate %.3f ms" % tuple(t))
+
+
+@pytest.mark.parametrize("rows,hidden", [(512, 2560), (300, 512), (3, 2560)])
+def test_norm_with_inject_matches_the_two_launches(rows, hidden):
+    from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
+        qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject,
+    )
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(rows + hidden)
+    width = 4 * hidden
+    residual = _bf16(rng.normal(0, 2.0, (rows, width)))
+    norm_weight = rng.normal(1.0, 0.2, width).astype(np.float32)
+    inject_weight = rng.normal(0, 0.02, (4, width)).astype(np.float32)
+    dev = {name: malloc(a.nbytes, runtime=runtime) for name, a in (
+        ("residual", residual), ("norm_weight", norm_weight),
+        ("inject_weight", inject_weight))}
+    sizes = {"half_p": rows * width * 2, "half_c": rows * width * 2,
+             "inv_p": rows * 16, "inv_c": rows * 16,
+             "inject_p": rows * 16, "inject_c": rows * 16}
+    dev.update({name: malloc(n, runtime=runtime) for name, n in sizes.items()})
+    try:
+        for name, a in (("residual", residual), ("norm_weight", norm_weight),
+                        ("inject_weight", inject_weight)):
+            copy_host_to_device(dev[name], host_array_ptr(a), runtime=runtime)
+        qwen4_exp_grouped_rmsnorm_bf16_f16_scale(
+            dev["residual"].ptr, dev["norm_weight"].ptr, dev["half_p"].ptr,
+            dev["inv_p"].ptr, rows, 4, hidden, runtime=runtime)
+        qwen4_exp_gr_inject_bf16_f32(
+            dev["residual"].ptr, dev["norm_weight"].ptr, dev["inv_p"].ptr,
+            dev["inject_weight"].ptr, dev["inject_p"].ptr, rows, 4, hidden,
+            runtime=runtime)
+        qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject(
+            dev["residual"].ptr, dev["norm_weight"].ptr, dev["inject_weight"].ptr,
+            dev["half_c"].ptr, dev["inv_c"].ptr, dev["inject_c"].ptr, rows, 4,
+            hidden, runtime=runtime)
+        runtime.device_synchronize()
+        got = {}
+        for name, dtype in (("half_p", np.uint16), ("half_c", np.uint16),
+                            ("inv_p", np.uint32), ("inv_c", np.uint32),
+                            ("inject_p", np.uint32), ("inject_c", np.uint32)):
+            a = np.empty(sizes[name] // np.dtype(dtype).itemsize, dtype)
+            copy_device_to_host(host_array_ptr(a), dev[name], runtime=runtime)
+            got[name] = a
+    finally:
+        for buf in dev.values():
+            free(buf, runtime=runtime)
+    np.testing.assert_array_equal(got["half_c"], got["half_p"])
+    np.testing.assert_array_equal(got["inv_c"], got["inv_p"])
+    np.testing.assert_array_equal(got["inject_c"], got["inject_p"])
