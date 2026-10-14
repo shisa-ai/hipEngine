@@ -192,7 +192,14 @@ class Qwen4ExpMTPTextProvider:
         )
         while len(generated) < request.max_tokens and reason != "eos":
             raise_if_generation_deadline_expired(request)
-            budget = min(self.candidate_budget, request.max_tokens - len(generated))
+            remaining = request.max_tokens - len(generated)
+            # A batched cycle commits up to budget + 1 tokens (the row after the
+            # last draft is a bonus), so leave that row of headroom.
+            bonus_row = batched_verify and remaining >= 2
+            budget = min(
+                self.candidate_budget, remaining - 1 if bonus_row else remaining,
+                7 if bonus_row else remaining,
+            )
             start_position = int(target.position)
             if int(self.draft.position) != start_position:
                 raise RuntimeError("Qwen4Exp target/draft cursors diverged before proposal")
@@ -211,23 +218,25 @@ class Qwen4ExpMTPTextProvider:
             accepted = 0
             mismatch: int | None = None
             serial_candidates = candidates
-            if batched_verify and len(candidates) >= 2:
-                # Rows [root, c1 .. c(n-1)] score every candidate: row i's
-                # target token checks candidate i, and the first mismatch
-                # ends the cycle with the target's own token for that row.
+            if bonus_row and candidates:
+                # Rows [root, c1 .. cn] score every candidate: row i's target
+                # token checks candidate i, the first mismatch ends the cycle
+                # with the target's own token for that row, and when every
+                # candidate matches the last row is one more (bonus) token.
                 serial_candidates = ()
-                inputs = (root_token, *candidates[:-1])
+                inputs = (root_token, *candidates)
                 verify_started = time.perf_counter()
                 block = target.verify_target_block_state_rows(inputs)
                 record_phase("target_verify", verify_started)
                 acceptance_started = time.perf_counter()
                 consumed = 0
-                for truth, candidate in zip(block.token_ids, candidates, strict=True):
+                for truth, candidate in zip(
+                        block.token_ids, (*candidates, None), strict=True):
                     consumed += 1
                     generated.append(int(truth))
-                    if int(truth) != candidate:
+                    if candidate is not None and int(truth) != candidate:
                         mismatch = int(truth)
-                    else:
+                    elif candidate is not None:
                         accepted += 1
                     if not request.ignore_eos and int(truth) == eos:
                         reason = "eos"
@@ -236,6 +245,15 @@ class Qwen4ExpMTPTextProvider:
                         break
                 target.commit_target_block_rows(consumed)
                 assert block.hidden_seeds is not None
+                if consumed == len(inputs):
+                    # Every draft matched and the bonus row was committed: the
+                    # draft has consumed root .. c(n-1), so it also takes cn,
+                    # with the target's hidden row that produced it.
+                    self.draft.forward(
+                        candidates[-1], block.hidden_seeds[len(candidates) - 1],
+                        capture_logits=False, capture_hidden_seed=False,
+                        capture_token_id=False,
+                    )
                 root_token = int(block.token_ids[consumed - 1])
                 root_hidden = block.hidden_seeds[consumed - 1]
                 record_phase("acceptance_control", acceptance_started)
