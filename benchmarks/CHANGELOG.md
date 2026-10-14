@@ -1,3 +1,7 @@
+## 2026-10-14 — Qwen4Exp prefill: one-launch norm and inject, 1562.9 → 1596.3 tok/s at p4096
+
+Qwen3.8-Flash-Next `UD-Q4_K_XL`, Radeon 8060S/gfx1151, `production`, canonical 12-case protocol, tracked-clean: prefill **1029.0 → 1031.8 (+0.3%)**, **1284.0 → 1309.3 (+2.0%)**, **1562.9 → 1596.3 (+2.1%)** at p512/p1024/p4096 and **1528.1 → 1553.6 (+1.7%)**, **1476.7 → 1503.1 (+1.8%)** at p8192/p16384; decode unchanged; output tokens identical. Reason: the grouped norm and the inject logits of a prefill hyper-connection read in one launch (bit-identical). Artifact: [`results/2026-10-14-qwen4exp-final/`](results/2026-10-14-qwen4exp-final/README.md).
+
 ## 2026-10-14 — Qwen4Exp decode: 20.53 → 22.99 tok/s at p4096
 
 Qwen3.8-Flash-Next `UD-Q4_K_XL`, Radeon 8060S/gfx1151, `production`, canonical 12-case protocol, tracked-clean `1b7fb672d`: decode **20.88 → 23.40 (+12.1%)**, **20.12 → 22.47 (+11.7%)**, **20.53 → 22.99 (+12.0%)** tok/s at p512/p1024/p4096 and **20.48 → 22.92 (+11.9%)**, **20.37 → 22.81 (+12.0%)** at p8192/p16384; prefill unchanged. Reason: a row-split GDN decode step, the warp-per-expert routed-expert decode kernels (rejected in September on a stress suite the default also failed; they pass the binding layer2 gate), and the one-row hyper-connection read in three launches (bit-identical). Gate on the same commit: mean/p95/p99/max KL 6.364e-4/3.637e-3/8.069e-3/9.880e-3, top-1 446/450, bit-identical repeats, 13/18 strict-exact tasks. Artifact: [`results/2026-10-14-qwen4exp-decode-batch/`](results/2026-10-14-qwen4exp-decode-batch/README.md).
