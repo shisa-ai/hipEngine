@@ -420,7 +420,11 @@ class Qwen4ExpGGUFMTPDraftRunner:
         capture_token_id: bool = True,
         token_id_resident: bool = False,
         hidden_seed_resident: bool = False,
+        run_head: bool = True,
     ) -> Qwen4ExpMTPDraftResult:
+        """One draft position. ``run_head=False`` only advances the draft's
+        KV and hidden state (prompt priming, accepted-token catch-up) and
+        skips the vocabulary head, whose output that caller discards."""
         self._require_open()
         if self.position >= self.max_sequence_length:
             raise ValueError("Qwen4Exp MTP draft capacity exceeded")
@@ -469,6 +473,10 @@ class Qwen4ExpGGUFMTPDraftRunner:
             self.last_hidden.nbytes,
             HipMemcpyKind.DEVICE_TO_DEVICE,
         )
+        if not run_head:
+            self.last_forward_stage_timings_ms = stages
+            self.position += 1
+            return Qwen4ExpMTPDraftResult(token_id=-1, logits=None, hidden_seed=None)
         started = time.perf_counter()
         head = run_qwen4_exp_gr_read(
             output.ptr,
@@ -573,7 +581,7 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self.reset()
         zero = np.zeros(self.config.residual_width, dtype=np.float32)
         for row, token in enumerate(tokens):
-            self.forward(token, zero if row == 0 else hidden[row - 1])
+            self.forward(token, zero if row == 0 else hidden[row - 1], run_head=False)
 
     def propose_chain(
         self,

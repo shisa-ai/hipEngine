@@ -6,7 +6,7 @@ mtp-bench category suite (`benchmarks/prompts/mtpbench-code-general-ja.jsonl`,
 heldouts included), chat-formatted, 64 greedy tokens per prompt, draft
 budget 3, one unmeasured warmup per prompt and arm, true autoregressive
 arm in the same process (`scripts/qwen4exp_mtp_inprocess_bench.py`).
-The first rows are history; the bonus-row rows are the current result.
+The first rows are history; the last row is the current result.
 
 | Verify | MTP / AR full | code | general_en | general_ja | mixed_ja_en | Acceptance |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -16,6 +16,7 @@ The first rows are history; the bonus-row rows are the current result.
 | the same, budget 4 | 1.125 | 1.348 | 1.087 | 1.057 | 0.920 | 49.0% |
 | verify `[root, c1 .. cn]` with a bonus row (budget 3) | **1.172** | **1.402** | **1.159** | **1.092** | **0.948** | 56.1% |
 | the same, budget 4 | 1.160 | 1.421 | 1.132 | 1.052 | 0.939 | 49.1% |
+| draft head skipped when priming, compact device-argmax proposal (budget 3) | **1.273** | **1.552** | **1.239** | **1.168** | **1.032** | 56.1% |
 
 AR measured 22.66 tok/s over the suite in this protocol. The batched pass
 runs `[root, c1, c2]` through the prefill-chunk owners with the row-split
@@ -52,3 +53,12 @@ As in the in-tree Gemma 4 MTP, the verify block is `[root, c1 .. cn]`
 the last row; the draft then takes `cn` with the target's hidden row so its
 cursor reaches the committed position. Budget 3: 25.06 -> 26.56 tok/s
 (1.107 -> 1.172x AR).
+
+## Draft priming and proposal
+
+Priming the draft on the prompt ran the 675 MB vocabulary head for every
+prompt token and discarded it; it now runs the draft layer only (28-token
+prompt: 124 -> 38 ms per request). The proposal uses the draft's compact
+mode (device argmax, device-resident chaining, one id copy per cycle)
+instead of a full-logit copy and host argmax per draft. Same drafts
+(acceptance unchanged); budget 3: 26.56 -> 28.85 tok/s (1.273x AR).
