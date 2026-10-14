@@ -278,7 +278,7 @@ profile.
 
 | Profile | `verify_dense_exact` | A verify block runs | Rows against one-token decode | Telemetry `verify_equivalence` |
 | --- | --- | --- | --- | --- |
-| production | false | the one-row dense kernel per row (WMMA for a wide output above four rows), one multi-row attention launch, the multi-row router | within the production numerical envelope | `production_envelope_of_target_ar_greedy` |
+| production | false | the one-row dense kernel per row (WMMA for a wide output above four rows), one multi-row key-sliced flash attention launch from 256 keys (the class kernel below), the multi-row router | within the production numerical envelope | `production_envelope_of_target_ar_greedy` |
 | strict, or no profile bound | true | the one-row dense kernel per row, one decode-shaped attention launch per row, the one-token router per row | bit-identical | `bit_identical_to_target_ar_greedy` |
 
 Three operators make a multi-row block differ from one-token decode, and the
@@ -295,7 +295,11 @@ exact path replaces each:
 - **Attention.** The decode kernel partitions its reduction by the number of
   keys it is handed, and a multi-row launch hands every row the block's key
   range. The exact path launches each row over the range that row would have as
-  a one-token step.
+  a one-token step. Production serves the whole block with one launch of the
+  decode plan's key-sliced flash kernel from 256 keys, each row bounded by its
+  own mask row; before that a long block ran the owned-logits class kernel,
+  133.7 ms for five rows at 32K keys against 43.1 ms now. A one-row verify
+  block takes exactly a decode step's attention in both profiles.
 - **The MoE router.** The one-token router is a fused launch whose projection
   reduces in a different order from the multi-row chain. The exact path routes
   each row through the one-token launch.
@@ -384,6 +388,25 @@ spent 21.9 ms in the lm head alone before the split, against 2.4 ms for five
 rows. Artifacts:
 `benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-wide-head.json` and
 `benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-small-block-dense.json`.
+
+### Long prompts
+
+The draft head attends to the target's cache. It runs the key-sliced flash
+decode with the long-row slice count in every profile, because a draft only
+proposes and the target verifies every token: on the native launch a long
+global row took the owned-logits class kernel, 12.8 ms a draft token at 32K
+keys against 3.3 ms now. Through `generate_speculative_mtp_detailed` at a
+budget of 4, 128 greedy tokens after one long prompt of cycled campaign prose
+(draft acceptance 100% on it), production, W7900:
+
+| Prompt tokens | Plain s | MTP s | Decode phase, plain / MTP s | Output |
+| ---: | ---: | ---: | ---: | --- |
+| 8192 | 4.26 | 3.48 | 1.81 / 1.03 | identical |
+| 32768 | 14.65 | 13.93 | 2.18 / 1.43 | identical |
+
+Before the multi-row flash verify and the head's flash attention the same runs
+took 3.60 s and 17.27 s, so MTP was slower than plain decoding at 32K. The
+decode phase is the call less the 2.45 s / 12.47 s prefill both arms share.
 
 ### Sampled requests
 

@@ -57,7 +57,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference.gemma4 import Gemma4RopeConfig
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     Gemma4AttentionScratch,
-    gemma4_attention_prefill_bf16,
+    gemma4_attention_decode_flash_long_bf16,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import gemma4_gelu_tanh_mul_bf16
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
@@ -567,7 +567,13 @@ class Gemma4AssistantHead:
                 base=int(view.base),
             )
             mask_buf = self._stage(f"mask{block_id}", np.ascontiguousarray(mask))
-            gemma4_attention_prefill_bf16(
+            # A draft is only a proposal -- the target verifies every token,
+            # under every profile -- so the head takes the fastest decode route
+            # rather than a profile's exact one: key-sliced flash from 256 keys
+            # with the long-row slice count, the native kernel below that. The
+            # native launch puts a long global row on the owned-logits class
+            # kernel, 12.8 ms a draft token at 32K keys on a W7900.
+            gemma4_attention_decode_flash_long_bf16(
                 q_rot.ptr,
                 view.key_cache,
                 view.value_cache,

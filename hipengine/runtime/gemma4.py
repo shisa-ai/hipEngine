@@ -2576,6 +2576,7 @@ class Gemma4Runner:
             verification and self.verify_dense_exact
             and key_begin_at is None and int8_block is None
         )
+        step_like = decode_phase or (verification and rows == 1)
         for index, layer in enumerate(self.weights.layers):
             attention = config.geometry(index)
             cos_buf, sin_buf = tables[attention.rope]
@@ -2637,15 +2638,21 @@ class Gemma4Runner:
                 # scope, so a decode step forwards no prefill request and the
                 # layer's decode selector decides; a plan without one keeps the
                 # prefill request's own one-token routing.
+                #
+                # A one-row verify block is a decode step's computation and takes
+                # its variants exactly. A wider verify block keeps the strict
+                # prefill request as its fallback and, outside the row-exact
+                # form, also carries the decode scope, whose flash variant serves
+                # the whole block in one launch from the preferred entry up.
                 prefill_attention_variants=(
-                    ("gemma4_plain",) if verification
-                    else None if decode_phase and self.decode_attention_variants is not None
+                    None if step_like and self.decode_attention_variants is not None
+                    else ("gemma4_plain",) if verification
                     else self.prefill_attention_variants
                 ),
                 decode_attention_variants=(
-                    None
-                    if verification or not decode_phase
-                    else self.decode_attention_variants
+                    self.decode_attention_variants
+                    if step_like or (verification and not row_exact)
+                    else None
                 ),
                 # The exact-prefill preference is a prefill scope, so it is
                 # forwarded only for a prefill call: a genuine decode step
