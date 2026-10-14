@@ -9185,3 +9185,17 @@ and writes the gated context's F16 image into the wide-route workspace
 Bit-identical (`tests/test_gpu_qwen4exp_qsa_select_mask.py`); same-process
 `code-p4096` 1631.4 -> 1634.5 prefill tok/s. `=0` restores the copy and the
 separate multiply. Remove with the direct-selection flag above.
+
+## Qwen4Exp residual write fused into the next norm (`HIPENGINE_QWEN4_EXP_GR_WRITE_NORM`)
+
+Default on for prefill (rows > 1). The residual write after the token mixer
+is deferred into the FFN hyper-connection read: where that read runs the
+direct norm+inject launch, one kernel (`gr_write_norm_inject_kernel`) writes
+the residual and normalizes the row from LDS; every other read path
+launches the write on its own first. Bit-identical
+(`tests/test_gpu_qwen4exp_gr_write_norm.py`); same-process `code-p4096`
+1630.1 -> 1639.3 prefill tok/s, identical tokens. `=0` restores the separate
+write. The MoE-side write (`gr_write_bf16_bf16`) crosses into the next
+layer's read and is not fused yet; the kernel already has a BF16
+block-output instantiation for it. Remove the flag after the next rate
+rollup.

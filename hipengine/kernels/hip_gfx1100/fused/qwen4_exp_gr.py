@@ -278,6 +278,45 @@ def qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject(
     ))
 
 
+def qwen4_exp_gr_write_norm_inject(
+    residual_ptr: int, block_output_ptr: int, inject_logits_ptr: int,
+    output_ptr: int, weight_ptr: int, inject_weight_ptr: int,
+    output_f16_ptr: int, inv_rms_ptr: int, inject_ptr: int,
+    rows: int, branches: int, hidden: int, eps: float = 1e-6, *,
+    block_bf16: bool = False,
+    stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Residual write, grouped norm and inject logits in one launch.
+
+    Bit-identical to :func:`qwen4_exp_gr_write_bf16_f32` (or the BF16 block
+    output write with ``block_bf16``) followed by
+    :func:`qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject` on ``output_ptr``;
+    the new residual row is kept on chip for the second pass.
+    """
+
+    _check_shape(rows, branches, hidden)
+    if branches != 4 or hidden % 8 or (4 * hidden) % 2048 or 8 * hidden > 48 * 1024:
+        raise ValueError("write+norm needs four branches, 4 * hidden % 2048 == 0 "
+                         "and a row that fits in 48 KiB")
+    if not inject_weight_ptr:
+        raise ValueError("write+norm needs the inject projection")
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_gr_write_norm_inject_bf16" if block_bf16
+        else "hipengine_qwen4_exp_gr_write_norm_inject_f32",
+        (ctypes.c_void_p,) * 9 + (ctypes.c_int64,) * 3 + (ctypes.c_float, ctypes.c_void_p),
+        ctypes.c_int,
+    )
+    _check_launch(runtime, fn(
+        residual_ptr, block_output_ptr, inject_logits_ptr, output_ptr, weight_ptr,
+        inject_weight_ptr, output_f16_ptr, inv_rms_ptr, inject_ptr, rows, branches,
+        hidden, float(eps), stream,
+    ))
+
+
 def qwen4_exp_gr_inject_bf16_f32(
     residual_ptr: int, norm_weight_ptr: int, inv_rms_ptr: int,
     inject_weight_ptr: int, out_ptr: int, rows: int, branches: int, hidden: int, *,
@@ -744,6 +783,7 @@ register_qwen4_exp_gr_kernels()
 
 
 __all__ = [
+    "qwen4_exp_gr_write_norm_inject",
     "build_qwen4_exp_gr",
     "plan_qwen4_exp_gr_build",
     "qwen4_exp_gated_mean_f32",

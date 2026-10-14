@@ -290,6 +290,121 @@ __global__ void __launch_bounds__(256) grouped_rmsnorm_bf16_f16_scale_inject_ker
   }
 }
 
+// gr_write_bf16_{f32,bf16}_kernel followed by
+// grouped_rmsnorm_bf16_f16_scale_inject_kernel on the residual it writes, in
+// one launch per row: the new residual row stays in LDS for the second pass
+// instead of being read back from memory. Each residual value is the write
+// kernel's expression, each norm step the norm kernel's (same column-per-thread
+// first pass, same 256-wide trees, same eight-element second pass), so all
+// four outputs are the bits the two launches produce. Four branches.
+template <typename BlockT>
+__global__ void __launch_bounds__(256) gr_write_norm_inject_kernel(
+    const uint16_t* __restrict__ residual,
+    const BlockT* __restrict__ block_output,
+    const float* __restrict__ inject_logits,
+    uint16_t* __restrict__ output,
+    const float* __restrict__ weight,
+    const float* __restrict__ inject_weight,
+    _Float16* __restrict__ output_f16,
+    float* __restrict__ inv_rms_out,
+    float* __restrict__ inject_out,
+    int hidden,
+    float eps) {
+  extern __shared__ uint4 shared_row[];
+  uint16_t* __restrict__ r = reinterpret_cast<uint16_t*>(shared_row);
+  __shared__ float partial[4][256];
+  const int tid = threadIdx.x;
+  const int64_t row = blockIdx.x;
+  const int width = 4 * hidden;
+  float scatter[4];
+#pragma unroll
+  for (int b = 0; b < 4; ++b) {
+    const float inject = inject_logits[row * 4 + b] / static_cast<float>(4);
+    scatter[b] = 2.0f / (1.0f + expf(-inject));
+  }
+  const uint16_t* __restrict__ source = residual + row * width;
+  uint16_t* __restrict__ written = output + row * width;
+  const BlockT* __restrict__ block = block_output + row * hidden;
+
+  float sumsq[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  for (int column = tid; column < hidden; column += 256) {
+    float block_value;
+    if constexpr (sizeof(BlockT) == 2) {
+      block_value = bf16_bits_to_float(block[column]);
+    } else {
+      block_value = block[column];
+    }
+#pragma unroll
+    for (int b = 0; b < 4; ++b) {
+      const float value = bf16_bits_to_float(source[b * hidden + column])
+          + scatter[b] * block_value;
+      const uint16_t bits = float_to_bf16_bits(value);
+      written[b * hidden + column] = bits;
+      r[b * hidden + column] = bits;
+      const float rounded = bf16_bits_to_float(bits);
+      sumsq[b] += rounded * rounded;
+    }
+  }
+#pragma unroll
+  for (int b = 0; b < 4; ++b) partial[b][tid] = sumsq[b];
+  __syncthreads();
+  for (int stride = 128; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+#pragma unroll
+      for (int b = 0; b < 4; ++b) partial[b][tid] += partial[b][tid + stride];
+    }
+    __syncthreads();
+  }
+  float inv[4];
+#pragma unroll
+  for (int b = 0; b < 4; ++b) {
+    inv[b] = rsqrtf(partial[b][0] / static_cast<float>(hidden) + eps);
+  }
+  __syncthreads();
+  if (tid < 4) {
+    inv_rms_out[row * 4 + tid] = inv[tid];
+  }
+
+  uint16_t* __restrict__ out16 = reinterpret_cast<uint16_t*>(output_f16) + row * width;
+  float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  for (int k = tid * 8; k < width; k += 2048) {
+    const float scale = inv[k / hidden];
+    const uint4 packed = *reinterpret_cast<const uint4*>(r + k);
+    const float4 w0 = *reinterpret_cast<const float4*>(weight + k);
+    const float4 w1 = *reinterpret_cast<const float4*>(weight + k + 4);
+    const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
+    const float weights[8] = {w0.x, w0.y, w0.z, w0.w, w1.x, w1.y, w1.z, w1.w};
+    uint32_t halves[4] = {0U, 0U, 0U, 0U};
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const uint32_t bits = (words[j >> 1] >> ((j & 1) * 16)) << 16;
+      const float value = __uint_as_float(bits) * scale * weights[j];
+      uint32_t half_bits;
+      asm volatile("v_cvt_f16_f32 %0, %1" : "=v"(half_bits) : "v"(value));
+      halves[j >> 1] |= (half_bits & 0xFFFFU) << ((j & 1) * 16);
+#pragma unroll
+      for (int b = 0; b < 4; ++b) {
+        acc[b] = fmaf(value, inject_weight[static_cast<int64_t>(b) * width + k + j], acc[b]);
+      }
+    }
+    *reinterpret_cast<uint4*>(out16 + k) =
+        make_uint4(halves[0], halves[1], halves[2], halves[3]);
+  }
+#pragma unroll
+  for (int b = 0; b < 4; ++b) partial[b][tid] = acc[b];
+  __syncthreads();
+  for (int stride = 128; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+#pragma unroll
+      for (int b = 0; b < 4; ++b) partial[b][tid] += partial[b][tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid < 4) {
+    inject_out[row * 4 + tid] = partial[tid][0];
+  }
+}
+
 __global__ void grouped_rmsnorm_f32_kernel(
     const float* __restrict__ input,
     const float* __restrict__ weight,
@@ -800,4 +915,47 @@ extern "C" int hipengine_qwen4_exp_sigmoid_gated_rmsnorm_f32(
       static_cast<const float*>(input), static_cast<const float*>(weight),
       static_cast<const float*>(gate), static_cast<float*>(output), head_dim, eps);
   return static_cast<int>(hipGetLastError());
+}
+
+template <typename BlockT>
+static int gr_write_norm_inject_launch(
+    const void* residual, const void* block_output, const void* inject_logits,
+    void* output, const void* weight, const void* inject_weight, void* output_f16,
+    void* inv_rms, void* inject_out, int64_t rows, int64_t branches,
+    int64_t hidden, float eps, hipStream_t stream) {
+  if (!residual || !block_output || !inject_logits || !output || !weight ||
+      !inject_weight || !output_f16 || !inv_rms || !inject_out || rows <= 0 ||
+      rows > UINT32_MAX || branches != 4 || hidden <= 0 || (hidden % 8) != 0 ||
+      ((4 * hidden) % 2048) != 0 || 4 * hidden * 2 > 48 * 1024) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      gr_write_norm_inject_kernel<BlockT>, dim3(static_cast<uint32_t>(rows)),
+      dim3(256), static_cast<size_t>(4 * hidden * 2), stream,
+      static_cast<const uint16_t*>(residual), static_cast<const BlockT*>(block_output),
+      static_cast<const float*>(inject_logits), static_cast<uint16_t*>(output),
+      static_cast<const float*>(weight), static_cast<const float*>(inject_weight),
+      static_cast<_Float16*>(output_f16), static_cast<float*>(inv_rms),
+      static_cast<float*>(inject_out), static_cast<int>(hidden), eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gr_write_norm_inject_f32(
+    const void* residual, const void* block_output, const void* inject_logits,
+    void* output, const void* weight, const void* inject_weight, void* output_f16,
+    void* inv_rms, void* inject_out, int64_t rows, int64_t branches,
+    int64_t hidden, float eps, hipStream_t stream) {
+  return gr_write_norm_inject_launch<float>(
+      residual, block_output, inject_logits, output, weight, inject_weight,
+      output_f16, inv_rms, inject_out, rows, branches, hidden, eps, stream);
+}
+
+extern "C" int hipengine_qwen4_exp_gr_write_norm_inject_bf16(
+    const void* residual, const void* block_output, const void* inject_logits,
+    void* output, const void* weight, const void* inject_weight, void* output_f16,
+    void* inv_rms, void* inject_out, int64_t rows, int64_t branches,
+    int64_t hidden, float eps, hipStream_t stream) {
+  return gr_write_norm_inject_launch<uint16_t>(
+      residual, block_output, inject_logits, output, weight, inject_weight,
+      output_f16, inv_rms, inject_out, rows, branches, hidden, eps, stream);
 }

@@ -175,6 +175,7 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gr_write_bf16_bf16,
     qwen4_exp_grouped_rmsnorm_bf16_f16_scale,
     qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject,
+    qwen4_exp_gr_write_norm_inject,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
     _check_norm_publication,
     qwen4_exp_grouped_rmsnorm_f32,
@@ -3258,14 +3259,48 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     return scratch.output
 
 
+def _qwen4_exp_gr_pending_write(
+    rows: int, source_ptr: int, block_ptr: int, logits_ptr: int,
+) -> tuple[int, int, int, bool] | None:
+    """Defer a prefill residual write into the next read's norm launch.
+
+    Bit-identical (`tests/test_gpu_qwen4exp_gr_write_norm.py`); one-row decode
+    keeps its captured segments. HIPENGINE_QWEN4_EXP_GR_WRITE_NORM=0 rolls
+    back (docs/REFACTOR.md).
+    """
+
+    if rows <= 1 or os.environ.get(
+        "HIPENGINE_QWEN4_EXP_GR_WRITE_NORM", "1"
+    ) in {"", "0", "false", "False"}:
+        return None
+    return (int(source_ptr), int(block_ptr), int(logits_ptr), False)
+
+
+def _qwen4_exp_gr_flush_write(
+    pending_write: tuple[int, int, int, bool], output_ptr: int, rows: int,
+    branches: int, hidden: int, *, stream: int, runtime: HipRuntime,
+) -> None:
+    """Launch a deferred residual write on its own."""
+
+    source_ptr, block_ptr, logits_ptr, block_bf16 = pending_write
+    write = qwen4_exp_gr_write_bf16_bf16 if block_bf16 else qwen4_exp_gr_write_bf16_f32
+    write(source_ptr, block_ptr, logits_ptr, output_ptr, rows, branches, hidden,
+          stream=stream, runtime=runtime)
+
+
 def _run_qwen4_exp_gr_norm_down(
     residual_ptr, norm_weight_ptr, down_weight, scratch, *,
     rows, branches, hidden, low_rank, eps, stream, runtime,
     scale_ptr: int = 0,
     inject_weight_ptr: int = 0,
     inject_out_ptr: int = 0,
+    pending_write: tuple[int, int, int, bool] | None = None,
 ) -> bool:
     """Publish only for a qualified immediate HC-down consumer; else parent.
+
+    ``pending_write`` is a residual write ``(source, block, inject_logits,
+    block_bf16)`` whose output is ``residual_ptr``; it runs before the norm
+    reads ``residual_ptr``, fused into the norm launch where it can be.
 
     With ``scale_ptr`` the direct launch may skip the FP32 normalized plane
     and store ``inv_rms[rows, branches]`` there instead; the return value says
@@ -3291,7 +3326,23 @@ def _run_qwen4_exp_gr_norm_down(
                 down_weight, rows=rows, in_features=width,
                 out_features=low_rank) is not None:
             _invalidate_wide_f16_publication()
-            if scale_ptr and inject_out_ptr:
+            if pending_write is not None and not (scale_ptr and inject_out_ptr):
+                _qwen4_exp_gr_flush_write(
+                    pending_write, residual_ptr, rows, branches, hidden,
+                    stream=stream, runtime=runtime)
+                pending_write = None
+            if scale_ptr and inject_out_ptr and pending_write is not None:
+                # The residual write and the norm in one launch: the written
+                # row is normalized from LDS instead of being read back.
+                source_ptr, block_ptr, logits_ptr, block_bf16 = pending_write
+                qwen4_exp_gr_write_norm_inject(
+                    source_ptr, block_ptr, logits_ptr, residual_ptr,
+                    norm_weight_ptr, inject_weight_ptr, workspace.ptr,
+                    scale_ptr, inject_out_ptr, rows, branches, hidden, eps,
+                    block_bf16=block_bf16, stream=stream, runtime=runtime,
+                )
+                pending_write = None
+            elif scale_ptr and inject_out_ptr:
                 # One block per row: the norm and the inject logits from a
                 # single read of the residual.
                 qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject(
@@ -3317,6 +3368,10 @@ def _run_qwen4_exp_gr_norm_down(
                 stream=stream, runtime=runtime,
             )
             return bool(scale_ptr)
+    if pending_write is not None:
+        _qwen4_exp_gr_flush_write(
+            pending_write, residual_ptr, rows, branches, hidden,
+            stream=stream, runtime=runtime)
     keys = None
     unsafe_workspace = False
     if (workspace is not None and workspace.nbytes >= count * 2
@@ -3393,8 +3448,14 @@ def run_qwen4_exp_gr_read(
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
+    pending_write: tuple[int, int, int, bool] | None = None,
 ) -> Qwen4ExpGRReadDeviceResult:
-    """Execute strict grouped GR read using model-neutral resident projections."""
+    """Execute strict grouped GR read using model-neutral resident projections.
+
+    ``pending_write`` = ``(source, block, inject_logits, block_bf16)`` is the
+    residual write that produces ``residual_ptr``; the read launches it first,
+    or inside its norm launch where that is bit-identical.
+    """
 
     if scratch.closed:
         raise RuntimeError("Qwen4Exp GR scratch is closed")
@@ -3418,6 +3479,10 @@ def run_qwen4_exp_gr_read(
             and "raw" in inject_weight.allocations
         ))
     ):
+        if pending_write is not None:
+            _qwen4_exp_gr_flush_write(
+                pending_write, residual_ptr, rows, branches, hidden,
+                stream=stream, runtime=active_runtime)
         # Three launches for the whole read, bit-identical to the six-launch
         # chain: the grouped norm, then the down projection with the scaled
         # SiLU and the inject logits, then the up projection with the gated
@@ -3492,6 +3557,7 @@ def run_qwen4_exp_gr_read(
             inject_weight.allocation("raw").tensor.ptr if norm_inject else 0
         ),
         inject_out_ptr=scratch.inject_logits.ptr if norm_inject else 0,
+        pending_write=pending_write,
     )
     norm_inject = norm_inject and scale_only
     qwen4_exp_scaled_silu_f32(
@@ -6455,11 +6521,14 @@ def run_qwen4_exp_dense_qsa_layer(
         attention_context_limit=attention_context_limit,
         stream=stream, runtime=active_runtime,
     )
-    qwen4_exp_gr_write_bf16_f32(
-        residual_ptr, mixer.ptr, attention_read.inject_logits.ptr,
-        scratch.after_attention.ptr, rows, branches, hidden,
-        stream=stream, runtime=active_runtime,
-    )
+    pending_write = _qwen4_exp_gr_pending_write(
+        rows, residual_ptr, mixer.ptr, attention_read.inject_logits.ptr)
+    if pending_write is None:
+        qwen4_exp_gr_write_bf16_f32(
+            residual_ptr, mixer.ptr, attention_read.inject_logits.ptr,
+            scratch.after_attention.ptr, rows, branches, hidden,
+            stream=stream, runtime=active_runtime,
+        )
     ffn_read = run_qwen4_exp_gr_read(
         scratch.after_attention.ptr,
         weights.ffn_gr.norm_weight_ptr,
@@ -6469,6 +6538,7 @@ def run_qwen4_exp_dense_qsa_layer(
         scratch.ffn_gr,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         stream=stream, runtime=active_runtime,
+        pending_write=pending_write,
     )
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr, weights.moe, scratch=scratch.moe,
@@ -6556,17 +6626,20 @@ def run_qwen4_exp_qsa_prefill_layer(
         stream=stream,
         runtime=active_runtime,
     )
-    qwen4_exp_gr_write_bf16_f32(
-        residual_ptr,
-        mixer.ptr,
-        attention_read.inject_logits.ptr,
-        scratch.after_attention.ptr,
-        rows,
-        branches,
-        hidden,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    pending_write = _qwen4_exp_gr_pending_write(
+        rows, residual_ptr, mixer.ptr, attention_read.inject_logits.ptr)
+    if pending_write is None:
+        qwen4_exp_gr_write_bf16_f32(
+            residual_ptr,
+            mixer.ptr,
+            attention_read.inject_logits.ptr,
+            scratch.after_attention.ptr,
+            rows,
+            branches,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
     ffn_read = run_qwen4_exp_gr_read(
         scratch.after_attention.ptr,
         weights.ffn_gr.norm_weight_ptr,
@@ -6580,6 +6653,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         low_rank=low_rank,
         stream=stream,
         runtime=active_runtime,
+        pending_write=pending_write,
     )
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
@@ -6751,11 +6825,14 @@ def run_qwen4_exp_gdn_layer(
             inject_logits=scratch.ffn_gr.inject_logits,
         )
     else:
-        qwen4_exp_gr_write_bf16_f32(
-            residual_ptr, mixer_output.ptr, attention_read.inject_logits.ptr,
-            scratch.after_attention.ptr, rows, branches, hidden,
-            stream=stream, runtime=active_runtime,
-        )
+        pending_write = _qwen4_exp_gr_pending_write(
+        rows, residual_ptr, mixer_output.ptr, attention_read.inject_logits.ptr)
+        if pending_write is None:
+            qwen4_exp_gr_write_bf16_f32(
+                residual_ptr, mixer_output.ptr, attention_read.inject_logits.ptr,
+                scratch.after_attention.ptr, rows, branches, hidden,
+                stream=stream, runtime=active_runtime,
+            )
         ffn_read = run_qwen4_exp_gr_read(
             scratch.after_attention.ptr,
             weights.ffn_gr.norm_weight_ptr,
@@ -6765,6 +6842,7 @@ def run_qwen4_exp_gdn_layer(
             scratch.ffn_gr,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             stream=stream, runtime=active_runtime,
+            pending_write=pending_write,
         )
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
