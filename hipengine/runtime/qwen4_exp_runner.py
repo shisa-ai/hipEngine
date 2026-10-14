@@ -8463,32 +8463,56 @@ class Qwen4ExpGGUFResidentModelRunner:
             cfg.hidden_size,
             runtime=self.runtime,
         )
-        rows, self._ple_hash_states = ple_hash_rows(
-            [int(token_id)],
-            positions=[self.position],
-            sequence_ids=[0],
-            states=self._ple_hash_states,
-            eos_token_id=cfg.ple_eos_token_id,
-            layer_multipliers=cfg.ple_layer_multipliers,
-            head_offsets=cfg.ple_head_offsets,
-            head_vocab_sizes=cfg.ple_head_vocab_sizes,
-            heads_per_ngram=cfg.ple_heads_per_ngram,
-            ngram_size=cfg.ple_ngram_size,
+        # The PLE row is first read at the first PLE layer. With a pinned
+        # staging ring its host hash, gather and copy run after the layers
+        # before it are enqueued, so they overlap GPU work; the copy is then
+        # asynchronous on the same stream (bit-identical).
+        overlap_ple = (
+            self.resident.ple_staging.pinned
+            and min(cfg.ple_layers, default=0) > 0
+            and os.environ.get("HIPENGINE_QWEN4_EXP_PLE_OVERLAP", "1")
+            not in {"", "0", "false", "False"}
         )
-        staged = self.resident.ple_staging.stage(rows[0]).reshape(1, cfg.hidden_size)
-        ple_telemetry = self.resident.ple_table.telemetry() is not None
-        ple_h2d_started = time.perf_counter_ns() if ple_telemetry else 0
-        copy_host_to_device(
-            self.ple_embedding_buffer,
-            host_array_ptr(staged),
-            staged.nbytes,
-            runtime=self.runtime,
-        )
-        if ple_h2d_started:
-            self.resident.ple_staging.record_h2d(
-                nbytes=staged.nbytes,
-                wall_ns=time.perf_counter_ns() - ple_h2d_started,
+
+        def stage_ple() -> None:
+            ple_rows, self._ple_hash_states = ple_hash_rows(
+                [int(token_id)],
+                positions=[self.position],
+                sequence_ids=[0],
+                states=self._ple_hash_states,
+                eos_token_id=cfg.ple_eos_token_id,
+                layer_multipliers=cfg.ple_layer_multipliers,
+                head_offsets=cfg.ple_head_offsets,
+                head_vocab_sizes=cfg.ple_head_vocab_sizes,
+                heads_per_ngram=cfg.ple_heads_per_ngram,
+                ngram_size=cfg.ple_ngram_size,
             )
+            staged = self.resident.ple_staging.stage(ple_rows[0]).reshape(1, cfg.hidden_size)
+            ple_telemetry = self.resident.ple_table.telemetry() is not None
+            ple_h2d_started = time.perf_counter_ns() if ple_telemetry else 0
+            if overlap_ple:
+                self.runtime.memcpy_async(
+                    self.ple_embedding_buffer.ptr,
+                    host_array_ptr(staged),
+                    staged.nbytes,
+                    HipMemcpyKind.HOST_TO_DEVICE,
+                    0,
+                )
+            else:
+                copy_host_to_device(
+                    self.ple_embedding_buffer,
+                    host_array_ptr(staged),
+                    staged.nbytes,
+                    runtime=self.runtime,
+                )
+            if ple_h2d_started:
+                self.resident.ple_staging.record_h2d(
+                    nbytes=staged.nbytes,
+                    wall_ns=time.perf_counter_ns() - ple_h2d_started,
+                )
+
+        if not overlap_ple:
+            stage_ple()
         residual_ptr = self.state.residual.ptr
         gdn_conv_row_bytes = (
             (2 * cfg.gdn_group_count * cfg.gdn_state_size + cfg.gdn_inner_size)
@@ -8501,6 +8525,8 @@ class Qwen4ExpGGUFResidentModelRunner:
             if layer == 0 and self._batched_position:
                 self._prepare_decode_positions(self.position)
             if layer in cfg.ple_layers:
+                if overlap_ple and layer == min(cfg.ple_layers):
+                    stage_ple()
                 layer_prefix = f"layers.{layer}."
                 residual_ptr = run_qwen4_exp_ple(
                     residual_ptr,
