@@ -104,6 +104,19 @@ with `--require-identical-output`, on any changed output token ids (use that
 flag for a change that claims bit-identity). When a change is kept, its
 artifacts become the next baseline; update the paths above.
 
+## Qwen4Exp production gates (short and long prompts)
+
+A route that changes arithmetic in the Qwen4Exp `production` plan runs two
+gates, each requiring a clean committed tree:
+
+- `scripts/qwen4exp_layer2_profile_gate.py --candidate <id>`: the 18-prompt
+  calibrated envelope against `strict` (about 5 minutes).
+- `scripts/qwen4exp_long_context_gate.py --candidate <id>`: the long-prompt
+  gate (`docs/EXECUTION-PROFILES.md` section 6.1). Its KL limits come from
+  `strict` reruns with one rounding flip in the prompt embeddings, and it
+  scores retrieval answers at 8K and 16K tokens (about 25 minutes, most of
+  it `strict` prefilling the 16K prompts at about 63 tok/s).
+
 ## Profiling these harnesses under rocprofv3 (read before launching)
 
 A profiled Python/ctypes process must never discover the compiler: the

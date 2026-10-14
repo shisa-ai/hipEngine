@@ -352,9 +352,13 @@ arithmetic-recovery plan also measured.
 The default gate prompts are short. On four prompts of about 2,000 to 2,600
 tokens the plan measures mean/p95/max KL `2.16e-3/9.59e-3/3.23e-2` with top-1
 97/100 (`2.10e-3/1.28e-2/2.06e-2` and 99/100 on 2026-10-13), outside the
-envelope, and so does every comparison arm that is not bit-identical to
+short-prompt limits, and so does every comparison arm that is not bit-identical to
 `strict`, including an F32 summation-order change in a single projection
-(`2.09e-3/1.05e-2/4.81e-2`); see the long-context note in section 6.1. The
+(`2.09e-3/1.05e-2/4.81e-2`). Long prompts are gated against a round-off
+floor (section 6.1), and the plan passes that gate: mean / p95 / max KL
+`2.13e-3/8.28e-3/3.46e-2` against a floor of `5.03e-3/2.24e-2/0.116`, top-1
+98 against 97, and 16 of 16 retrieval answers at 8K and 16K tokens, the
+same as `strict`. The
 plan it
 replaced, the arithmetic-recovery composition alone, measured mean/p95/p99/max
 KL `3.065e-4/1.785e-3/4.271e-3/7.771e-3` with a bit-identical `prefill_last`
@@ -518,18 +522,37 @@ mean or a p95 far more noisily than the 450-row set does, and a candidate
 inside every global limit was being rejected on a scope mean 10-20% over a
 limit calibrated for the whole set.
 
-**Long prompts are an open calibration item.** The envelope was calibrated
-on prompts of tens to hundreds of tokens. On 2,000-token-class prompts for
-`qwen4_exp_gguf` / `gguf_ud_q4_k_xl`, a round-off-class perturbation (one
-projection's F32 summation order) measured mean KL `2.09e-3` against
-`strict`, a complete F16-operand composition measured `2.10e-3`, and single
-F16 routes measured `1.6e-3` to `2.3e-3` without adding. The limits above
-therefore cannot be met by any non-bit-identical plan at that length and do
-not separate routes there. Until a long-context suite is calibrated, a
-long-prompt gate is reported alongside a round-off control measured on the
-same prompts and is diagnostic, not binding; the short-suite gate, top-1
-floors and task checks bind. Evidence:
-[`long-context isolation`](../benchmarks/results/2026-10-14-qwen4exp-production-f16-composition/README.md).
+**Long prompts are gated against a round-off floor.** The envelope above
+was calibrated on prompts of tens to hundreds of tokens. On 2,000-token-class
+prompts for `qwen4_exp_gguf` / `gguf_ud_q4_k_xl`, a round-off-class
+perturbation (one projection's F32 summation order) measured mean KL
+`2.09e-3` against `strict`, the complete F16-operand composition `2.10e-3`,
+and single F16 routes `1.6e-3` to `2.3e-3` without adding, so fixed
+short-prompt limits cannot separate a defect from round-off at that length
+([long-context isolation](../benchmarks/results/2026-10-14-qwen4exp-production-f16-composition/README.md)).
+Since 2026-10-14 (owner request: "implement something that makes sense for
+the gate"), a long-prompt gate binds alongside the short suite,
+`scripts/qwen4exp_long_context_gate.py`:
+
+- **Round-off floor.** `strict` is rerun on the long numerical prompts with
+  one BF16 ulp flipped in one element of one prompt embedding row (the
+  smallest change one rounding flip in the BF16 residual stream can make),
+  once per seed; each seed is a control arm. The candidate's mean and p95 KL
+  against `strict` must not exceed the median control's, its max KL must not
+  exceed the largest control max, and its top-1 matches must not be below
+  the lowest control's. The measurement is invalid if a control changes
+  nothing or its mean KL exceeds `1e-2`.
+- **Retrieval.** On 8K and 16K retrieval prompts whose answers are stored in
+  the suite (`benchmarks/prompts/qwen4exp-long-retrieval-v1.jsonl`), every
+  arm is teacher-forced through the gold answer; the candidate must answer at
+  least as many questions as `strict`.
+- Candidate repeats must be bit-identical.
+
+The short-suite gate, its top-1 floors and task checks still bind. A single
+rounding flip measures mean KL `4.5e-3` to `7.7e-3` on the four 2K-2.6K
+prompts, so this gate admits drift of round-off size and nothing larger.
+Evidence:
+[`long-context gate`](../benchmarks/results/2026-10-14-qwen4exp-long-context-gate/README.md).
 
 Rows with KL above `2e-2`
 require explicit top-k overlap, strict logit-margin, finite-state, and
