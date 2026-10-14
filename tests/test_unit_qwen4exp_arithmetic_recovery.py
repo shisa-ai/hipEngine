@@ -100,11 +100,15 @@ def test_production_selects_the_multi_column_gdn_prefill_owner(monkeypatch):
     profile = resolve("gguf_ud_q4_k_xl")
     profile.binder(SimpleNamespace(), profile)
 
-    # The UD profile keeps the colwarps gate open and names the multi-column
-    # route, so the binding is reachable.
+    # The UD profile keeps the colwarps gate open and names the row-split
+    # recurrence, the composition's replacement for the multi-column body.
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
-        "qwen4exp_gdn_tiled16_multi_prefill")
+        "qwen4exp_gdn_rowsplit_prefill")
+    assert resolve_kernel(
+        backend="hip_gfx1151", layer="gdn_recurrence_norm_gate",
+        quant="f32_state", variant="qwen4exp_gdn_rowsplit_prefill",
+    ) is not None
 
     # The recovery profile's manifest still keeps its exact owner.
     recovery_gdn = [

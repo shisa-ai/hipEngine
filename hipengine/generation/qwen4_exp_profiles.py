@@ -88,6 +88,10 @@ _F16_ROUTE_BINDER_ENV = {
     # The tiled GDN recurrence at every GDN layer (27-47, with the
     # register-state recurrence below, on a quant without the composition).
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(48))),
+    # The row-split recurrence in place of the multi-column tile-16 body: the
+    # same recurrence with the scales applied to the two dot products, a
+    # different FP32 summation order, 128-thread blocks.
+    "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_rowsplit_prefill",
 }
 # Route selectors the composition's binder publishes; a later bind without the
 # composition in the same process retracts them to "0".

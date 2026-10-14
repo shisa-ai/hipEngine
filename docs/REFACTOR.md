@@ -8958,6 +8958,36 @@ effect under the routed F16 selection.
 Removal condition: once a `gguf_ud_q4_k_xl` release has shipped with the
 indexed read, delete the flag and the gathered branch of the routed path.
 
+## Qwen4Exp row-split GDN prefill recurrence (`qwen4exp_gdn_rowsplit_prefill`)
+
+The `gguf_ud_q4_k_xl` production binder names
+`qwen4exp_gdn_rowsplit_prefill` in
+`HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`; `gguf_q4_k_m` keeps
+`qwen4exp_gdn_tiled16_multi_prefill`. The row-split kernel is a port of
+gufo's `GdnRowSplitKernel` (commit 9cad139, MIT) with the per-token norms,
+decay and beta computed in the block. It is the same recurrence with the key
+and query scales applied to the two dot products and a different FP32
+summation order: relative L2 difference from the column-warp owner 1.5e-7 on
+the gated output and 8e-8 on the final state over 4096 tokens
+(`tests/test_gpu_qwen4exp_gdn_rowsplit_prefill.py`).
+
+Measured on a Radeon 8060S at 4096 tokens and 48 value heads, recurrence plus
+norm/gate epilogue: 5.58 ms against 8.00 ms for the multi-column tile-16
+body. Same process, `code-p4096` 1478.5 -> 1529.8 and `code-p512` 963.7 ->
+982.2 prefill tok/s. The gain is the workgroup size as much as the
+arithmetic: the same row-split kernel in 256-thread blocks measures 7.93 ms.
+Two bit-exact relayouts of the tile-16 body (four lanes per column and eight
+lanes per two columns, both 256-thread blocks) measured 8.5 and 9.6 ms and
+were not kept, and shrinking the tile-16 body's own blocks to 128 threads
+made it slower (10.4 ms) because each block restages the token tile with
+scalar global loads.
+
+Like the routes in the next section this selection has no manifest row.
+Rollback: set `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` after the bind, as the
+A/B harnesses do. Removal condition: declare the variant in the plan with a
+strict scope, then delete the tile-16 multi-column body for this quant once a
+release has shipped on the row-split recurrence.
+
 ## Qwen4Exp production routes the manifest does not enumerate
 
 The `gguf_ud_q4_k_xl` production binder sets three routes through

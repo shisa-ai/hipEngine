@@ -88,6 +88,7 @@ _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_QSA_WMMA": "0",
     "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(13, 48))),
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
+    "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
     "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_token_tile4_dpp_exact",
 }
 _ALL_LAYERS = ",".join(map(str, range(48)))

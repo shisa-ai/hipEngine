@@ -623,6 +623,248 @@ qwen4_exp_gdn_prefill_tiled_f32_kernel(
   }
 }
 
+// Row-split recurrence for the 128x128 state, ported from gufo v0.12.0+
+// (commit 9cad139, MIT License, Copyright (c) 2026 gufo contributors),
+// src/models/qwen38_flash_next/kernels/rocm/kernels.hip.cpp, GdnRowSplitKernel
+// with GdnPrepKqKernel and GdnPrepAbKernel folded in. Four lanes own one
+// value column of the state (32 keys each, in registers), eight columns share
+// a wave, and two blocks cover a head. The block stages four tokens at a time
+// through LDS and keeps three such windows of loads in flight, one window
+// ahead of the one being committed, so the serial token loop reads no global
+// memory.
+//
+// hipEngine changes: the state stays in this file's [head][key][value]
+// layout; the per-token key/query norms, their dot product, the decay and
+// beta are computed in the block from the window's registers when the window
+// is committed rather than by separate kernels; and the output is this
+// file's unnormalized core row.
+//
+// This changes arithmetic relative to the column-warp owners. The state is
+// decayed first and the memory, the output and the update are taken from the
+// decayed state with raw keys:
+//   s *= decay; u = s.k; p = s.q; delta = (v - u * inv_k) * beta;
+//   out = p * q_scale + delta * inv_k * q_scale * (k.q); s += delta * inv_k * k
+// which is the same recurrence with the scales applied to the two dot
+// products instead of to every key, and a different summation order.
+constexpr int kGdnRsWindow = 4;
+constexpr int kGdnRsAhead = 3;
+
+template <int MASK>
+__device__ __forceinline__ float gdn_rs_xor_add(float x) {
+#if defined(__gfx1151__) || defined(__gfx1100__)
+  const int y = __builtin_amdgcn_update_dpp(
+      0, __builtin_bit_cast(int, x), 0x160 | MASK, 0xF, 0xF, false);
+  return x + __builtin_bit_cast(float, y);
+#else
+  return x + __shfl_xor(x, MASK);
+#endif
+}
+
+template <int kLanesPerRow, int kWaves>
+__global__ void __launch_bounds__(kWaves * 32)
+qwen4_exp_gdn_prefill_rowsplit_f32_kernel(
+    const float* __restrict__ conv,
+    const float* __restrict__ alpha,
+    const float* __restrict__ beta_logits,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a,
+    float* __restrict__ recurrent_state,
+    float* __restrict__ core_out,
+    int n_tokens,
+    int k_heads,
+    int v_heads) {
+  constexpr int d = 128;
+  constexpr int kKeysPerLane = d / kLanesPerRow;
+  constexpr int kVec = kKeysPerLane / 4;  // float4 per lane
+  constexpr int kRowsPerWave = 32 / kLanesPerRow;
+  constexpr int kRowsPerBlock = kRowsPerWave * kWaves;
+  constexpr int kThreads = kWaves * 32;
+  constexpr int kW = kGdnRsWindow;
+  // v elements each thread stages per window.
+  constexpr int kVItems = kW * kRowsPerBlock / kThreads;
+  static_assert(kWaves >= kW, "one wave stages one token's q and k");
+  static_assert(kVItems * kThreads == kW * kRowsPerBlock);
+  const int h = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int segment = lane % kLanesPerRow;
+  const int row_local = (tid >> 5) * kRowsPerWave + lane / kLanesPerRow;
+  const int row = blockIdx.y * kRowsPerBlock + row_local;
+  const int kh = h % k_heads;
+  const int channels = 2 * k_heads * d + v_heads * d;
+
+  // Two window slots: q and k rows, the block's v columns, and five scalars
+  // per token (inv_k, q_scale, k.q, decay, beta).
+  __shared__ float4 s_qk[2][2][kW][d / 4];
+  __shared__ float s_v[2][kW][kRowsPerBlock];
+  __shared__ float s_misc[2][kW][5];
+
+  // State column `row` of head h: key j at [h][j][row].
+  float* state_col = recurrent_state + (static_cast<size_t>(h) * d * d) + row;
+  float4 s[kVec];
+#pragma unroll
+  for (int i = 0; i < kVec; ++i) {
+    const int j = segment * kKeysPerLane + i * 4;
+    s[i] = make_float4(state_col[static_cast<size_t>(j) * d],
+                       state_col[static_cast<size_t>(j + 1) * d],
+                       state_col[static_cast<size_t>(j + 2) * d],
+                       state_col[static_cast<size_t>(j + 3) * d]);
+  }
+
+  // Window loads. Waves 0..3 each take one token's q and k rows (one float4
+  // of each per lane) and its alpha and beta logits; every thread takes one
+  // v element (token tid / 64, column tid % 64).
+  const bool qk_owner = tid < kW * 32;
+  const int qk_tok = tid >> 5;
+  const int qk_vec = tid & 31;
+  const float* q_src = conv + kh * d + qk_vec * 4;
+  const float* k_src = conv + (k_heads + kh) * d + qk_vec * 4;
+  const float* v_src =
+      conv + 2 * k_heads * d + h * d + blockIdx.y * kRowsPerBlock;
+
+  struct Window {
+    float4 q;
+    float4 k;
+    float v[kVItems];
+    float alpha;
+    float beta_logit;
+  };
+  Window r0;
+  Window r1;
+  Window r2;
+  const auto load_window = [&](int w, Window& r) {
+    const int last = n_tokens - 1;
+#pragma unroll
+    for (int i = 0; i < kVItems; ++i) {
+      const int index = tid + i * kThreads;
+      const int t_v = min(w * kW + index / kRowsPerBlock, last);
+      r.v[i] = v_src[static_cast<size_t>(t_v) * channels + index % kRowsPerBlock];
+    }
+    if (qk_owner) {
+      const int t_qk = min(w * kW + qk_tok, last);
+      r.q = *reinterpret_cast<const float4*>(
+          q_src + static_cast<size_t>(t_qk) * channels);
+      r.k = *reinterpret_cast<const float4*>(
+          k_src + static_cast<size_t>(t_qk) * channels);
+      if (lane < 2) {
+        r.alpha = alpha[static_cast<size_t>(t_qk) * v_heads + h];
+        r.beta_logit = beta_logits[static_cast<size_t>(t_qk) * v_heads + h];
+      }
+    }
+  };
+  // A token's 32 float4 are stored [i][segment] so the four segments of a
+  // column's lanes read adjacent 16-byte chunks (row-major they would be 128
+  // bytes apart: a four-way bank conflict on every fragment).
+  const int qk_slot = ((qk_vec % kVec) * kLanesPerRow) + (qk_vec / kVec);
+  const auto commit_window = [&](const Window& r, int lds) {
+#pragma unroll
+    for (int i = 0; i < kVItems; ++i) {
+      const int index = tid + i * kThreads;
+      s_v[lds][index / kRowsPerBlock][index % kRowsPerBlock] = r.v[i];
+    }
+    if (qk_owner) {
+      s_qk[lds][0][qk_tok][qk_slot] = r.q;
+      s_qk[lds][1][qk_tok][qk_slot] = r.k;
+      float qs = r.q.x * r.q.x + r.q.y * r.q.y + r.q.z * r.q.z + r.q.w * r.q.w;
+      float ks = r.k.x * r.k.x + r.k.y * r.k.y + r.k.z * r.k.z + r.k.w * r.k.w;
+      float kq = r.k.x * r.q.x + r.k.y * r.q.y + r.k.z * r.q.z + r.k.w * r.q.w;
+#pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        qs += __shfl_xor(qs, offset);
+        ks += __shfl_xor(ks, offset);
+        kq += __shfl_xor(kq, offset);
+      }
+      if (lane == 0) {
+        s_misc[lds][qk_tok][0] = rsqrtf(ks + 1.0e-6f);
+        s_misc[lds][qk_tok][1] =
+            rsqrtf(qs + 1.0e-6f) * rsqrtf(static_cast<float>(d));
+        s_misc[lds][qk_tok][2] = kq;
+        s_misc[lds][qk_tok][3] =
+            expf(a[h] * softplus_f32(r.alpha + dt_bias[h]));
+      } else if (lane == 1) {
+        s_misc[lds][qk_tok][4] = sigmoid_f32(r.beta_logit);
+      }
+    }
+  };
+
+  const int n_windows = (n_tokens + kW - 1) / kW;
+  load_window(0, r0);
+  if (n_windows > 1) load_window(1, r1);
+  if (n_windows > 2) load_window(2, r2);
+  commit_window(r0, 0);
+  __syncthreads();
+  const int core_width = v_heads * d;
+  float* out_base = core_out + h * d;
+  // `cur` held window w (committed already) and takes window w + 3; `next`
+  // holds window w + 1, committed after this window's tokens.
+  const auto window = [&](int w, Window& cur, const Window& next) {
+    if (w >= n_windows) return;
+    const int lds = w & 1;
+    if (w + kGdnRsAhead < n_windows) load_window(w + kGdnRsAhead, cur);
+    const int t_end = min(kW, n_tokens - w * kW);
+    for (int tl = 0; tl < t_end; ++tl) {
+      const float4* q4 = s_qk[lds][0][tl];
+      const float4* k4 = s_qk[lds][1][tl];
+      const float decay = s_misc[lds][tl][3];
+      float u = 0.0f;
+      float p = 0.0f;
+      float4 kc[kVec];
+#pragma unroll
+      for (int i = 0; i < kVec; ++i) {
+        const float4 qv = q4[i * kLanesPerRow + segment];
+        kc[i] = k4[i * kLanesPerRow + segment];
+        s[i].x *= decay;
+        s[i].y *= decay;
+        s[i].z *= decay;
+        s[i].w *= decay;
+        u += s[i].x * kc[i].x + s[i].y * kc[i].y + s[i].z * kc[i].z +
+             s[i].w * kc[i].w;
+        p += s[i].x * qv.x + s[i].y * qv.y + s[i].z * qv.z + s[i].w * qv.w;
+      }
+      u = gdn_rs_xor_add<1>(u);
+      p = gdn_rs_xor_add<1>(p);
+      if constexpr (kLanesPerRow == 4) {
+        u = gdn_rs_xor_add<2>(u);
+        p = gdn_rs_xor_add<2>(p);
+      }
+      const float inv_k = s_misc[lds][tl][0];
+      const float q_scale = s_misc[lds][tl][1];
+      const float delta =
+          (s_v[lds][tl][row_local] - u * inv_k) * s_misc[lds][tl][4];
+      if (segment == 0) {
+        out_base[row] =
+            p * q_scale + delta * inv_k * q_scale * s_misc[lds][tl][2];
+      }
+      const float update = delta * inv_k;
+#pragma unroll
+      for (int i = 0; i < kVec; ++i) {
+        s[i].x += update * kc[i].x;
+        s[i].y += update * kc[i].y;
+        s[i].z += update * kc[i].z;
+        s[i].w += update * kc[i].w;
+      }
+      out_base += core_width;
+    }
+    // The other slot was last read one window ago (before the previous
+    // barrier), so window w + 1 goes in without a second barrier.
+    if (w + 1 < n_windows) commit_window(next, lds ^ 1);
+    __syncthreads();
+  };
+  for (int w = 0; w < n_windows; w += kGdnRsAhead) {
+    window(w, r0, r1);
+    window(w + 1, r1, r2);
+    window(w + 2, r2, r0);
+  }
+#pragma unroll
+  for (int i = 0; i < kVec; ++i) {
+    const int j = segment * kKeysPerLane + i * 4;
+    state_col[static_cast<size_t>(j) * d] = s[i].x;
+    state_col[static_cast<size_t>(j + 1) * d] = s[i].y;
+    state_col[static_cast<size_t>(j + 2) * d] = s[i].z;
+    state_col[static_cast<size_t>(j + 3) * d] = s[i].w;
+  }
+}
+
 __global__ void qwen4_exp_gdn_state_transpose_f32_kernel(
     const float* __restrict__ source,
     float* __restrict__ destination,
@@ -1127,6 +1369,63 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_tiled16_f32(
       static_cast<float*>(recurrent_state),
       static_cast<float*>(core),
       tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
+  const int err = static_cast<int>(hipGetLastError());
+  if (err != 0) return err;
+  return launch_core_norm_gate_waves(
+      core, output_gate, norm_weight, tokens, num_v_heads, head_v_dim, stream);
+}
+
+// Row-split recurrence followed by the wave norm/gate epilogue. Arguments
+// as hipengine_qwen4_exp_gdn_prefill_tiled16_f32.
+extern "C" int hipengine_qwen4_exp_gdn_prefill_rowsplit_f32(
+    const void* conv,
+    const void* output_gate,
+    const void* alpha,
+    const void* beta_logits,
+    const void* dt_bias,
+    const void* a,
+    const void* norm_weight,
+    void* recurrent_state,
+    void* core,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
+      !norm_weight || !recurrent_state || !core || tokens <= 0 ||
+      tokens > INT32_MAX / 64 || num_k_heads <= 0 || num_k_heads > 64 ||
+      num_v_heads <= 0 || num_v_heads > 256 || head_k_dim != 128 ||
+      head_v_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+// Four lanes per column in 128-thread blocks (192 blocks at 48 heads) is the
+// measured layout on gfx1151 at 4096 tokens and 48 heads, recurrence plus
+// epilogue: 5.58 ms, against 5.82 for two lanes per column in 128-thread
+// blocks and 7.93 / 7.95 for either lane count in 256-thread blocks.
+#ifndef HIPENGINE_QWEN4_GDN_RS_LANES
+#define HIPENGINE_QWEN4_GDN_RS_LANES 4
+#endif
+#ifndef HIPENGINE_QWEN4_GDN_RS_WAVES
+#define HIPENGINE_QWEN4_GDN_RS_WAVES 4
+#endif
+  constexpr int rs_lanes = HIPENGINE_QWEN4_GDN_RS_LANES;
+  constexpr int rs_waves = HIPENGINE_QWEN4_GDN_RS_WAVES;
+  constexpr int rs_rows_per_block = (32 / rs_lanes) * rs_waves;
+  hipLaunchKernelGGL(
+      (qwen4_exp_gdn_prefill_rowsplit_f32_kernel<rs_lanes, rs_waves>),
+      dim3(static_cast<uint32_t>(num_v_heads), 128 / rs_rows_per_block),
+      dim3(rs_waves * 32), 0, stream,
+      static_cast<const float*>(conv),
+      static_cast<const float*>(alpha),
+      static_cast<const float*>(beta_logits),
+      static_cast<const float*>(dt_bias),
+      static_cast<const float*>(a),
+      static_cast<float*>(recurrent_state),
+      static_cast<float*>(core),
+      static_cast<int>(tokens), static_cast<int>(num_k_heads),
+      static_cast<int>(num_v_heads));
   const int err = static_cast<int>(hipGetLastError());
   if (err != 0) return err;
   return launch_core_norm_gate_waves(
