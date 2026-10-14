@@ -865,6 +865,138 @@ qwen4_exp_gdn_prefill_rowsplit_f32_kernel(
   }
 }
 
+// Row-split decode step: the single-token form of the row-split recurrence
+// above, one 512-thread block per value head. Four lanes own one value column
+// (32 keys each, in registers), so the state is read once and written once
+// and both dot products run in registers; the column-major decode owner reads
+// the state twice from global memory with one thread per column. The block's
+// first wave stages q and k and computes the norms, k.q, decay and beta.
+// Same arithmetic form as the row-split prefill kernel, so it differs from
+// the decode owner by FP32 summation order.
+__global__ void __launch_bounds__(512)
+qwen4_exp_gdn_decode_rowsplit_f32_kernel(
+    const float* __restrict__ conv,
+    const float* __restrict__ output_gate,
+    const float* __restrict__ alpha,
+    const float* __restrict__ beta_logits,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a,
+    const float* __restrict__ norm_weight,
+    float* __restrict__ recurrent_state,
+    float* __restrict__ output,
+    int k_heads,
+    int v_heads) {
+  constexpr int d = 128;
+  __shared__ float4 s_q[32];
+  __shared__ float4 s_k[32];
+  __shared__ float s_misc[5];
+  __shared__ float s_core[d];
+  const int h = blockIdx.x;
+  const int kh = h % k_heads;
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  const int segment = lane & 3;
+  const int col = wave * 8 + (lane >> 2);
+
+  if (wave == 0) {
+    const float4 q4 = *reinterpret_cast<const float4*>(conv + kh * d + lane * 4);
+    const float4 k4 =
+        *reinterpret_cast<const float4*>(conv + (k_heads + kh) * d + lane * 4);
+    float qs = q4.x * q4.x + q4.y * q4.y + q4.z * q4.z + q4.w * q4.w;
+    float ks = k4.x * k4.x + k4.y * k4.y + k4.z * k4.z + k4.w * k4.w;
+    float kq = k4.x * q4.x + k4.y * q4.y + k4.z * q4.z + k4.w * q4.w;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      qs += __shfl_xor(qs, offset);
+      ks += __shfl_xor(ks, offset);
+      kq += __shfl_xor(kq, offset);
+    }
+    // [i][segment]: the four segments of a column read adjacent chunks.
+    const int slot = ((lane % 8) * 4) + (lane / 8);
+    s_q[slot] = q4;
+    s_k[slot] = k4;
+    if (lane == 0) {
+      s_misc[0] = rsqrtf(ks + 1.0e-6f);
+      s_misc[1] = rsqrtf(qs + 1.0e-6f) * rsqrtf(static_cast<float>(d));
+      s_misc[2] = kq;
+      s_misc[3] = expf(a[h] * softplus_f32(alpha[h] + dt_bias[h]));
+    } else if (lane == 1) {
+      s_misc[4] = sigmoid_f32(beta_logits[h]);
+    }
+  }
+
+  // State column `col` of head h: key j at [h][j][col].
+  float* state_col = recurrent_state + static_cast<size_t>(h) * d * d + col;
+  float4 s[8];
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const int j = segment * 32 + i * 4;
+    s[i] = make_float4(state_col[static_cast<size_t>(j) * d],
+                       state_col[static_cast<size_t>(j + 1) * d],
+                       state_col[static_cast<size_t>(j + 2) * d],
+                       state_col[static_cast<size_t>(j + 3) * d]);
+  }
+  const float value = conv[2 * k_heads * d + h * d + col];
+  __syncthreads();
+
+  const float decay = s_misc[3];
+  float u = 0.0f;
+  float p = 0.0f;
+  float4 kc[8];
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const float4 qv = s_q[i * 4 + segment];
+    kc[i] = s_k[i * 4 + segment];
+    s[i].x *= decay;
+    s[i].y *= decay;
+    s[i].z *= decay;
+    s[i].w *= decay;
+    u += s[i].x * kc[i].x + s[i].y * kc[i].y + s[i].z * kc[i].z +
+         s[i].w * kc[i].w;
+    p += s[i].x * qv.x + s[i].y * qv.y + s[i].z * qv.z + s[i].w * qv.w;
+  }
+  u = gdn_rs_xor_add<1>(u);
+  p = gdn_rs_xor_add<1>(p);
+  u = gdn_rs_xor_add<2>(u);
+  p = gdn_rs_xor_add<2>(p);
+  const float inv_k = s_misc[0];
+  const float q_scale = s_misc[1];
+  const float delta = (value - u * inv_k) * s_misc[4];
+  const float core = p * q_scale + delta * inv_k * q_scale * s_misc[2];
+  const float update = delta * inv_k;
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const int j = segment * 32 + i * 4;
+    state_col[static_cast<size_t>(j) * d] = s[i].x + update * kc[i].x;
+    state_col[static_cast<size_t>(j + 1) * d] = s[i].y + update * kc[i].y;
+    state_col[static_cast<size_t>(j + 2) * d] = s[i].z + update * kc[i].z;
+    state_col[static_cast<size_t>(j + 3) * d] = s[i].w + update * kc[i].w;
+  }
+  if (segment == 0) {
+    s_core[col] = core;
+  }
+  __syncthreads();
+
+  // Every wave sums the head's 128 squared outputs in the same order.
+  float sumsq = 0.0f;
+#pragma unroll
+  for (int r = 0; r < 4; ++r) {
+    const float c = s_core[r * 32 + lane];
+    sumsq += c * c;
+  }
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    sumsq += __shfl_xor(sumsq, offset);
+  }
+  if (segment == 0) {
+    const size_t index = static_cast<size_t>(h) * d + col;
+    const float inv_rms = rsqrtf(sumsq / static_cast<float>(d) + 1.0e-6f);
+    output[index] =
+        core * inv_rms * norm_weight[col] * sigmoid_f32(output_gate[index]);
+  }
+}
+
 __global__ void qwen4_exp_gdn_state_transpose_f32_kernel(
     const float* __restrict__ source,
     float* __restrict__ destination,
@@ -1095,6 +1227,31 @@ extern "C" int hipengine_qwen4_exp_gdn_decode_f32(
       static_cast<const float*>(dt_bias), static_cast<const float*>(a),
       static_cast<const float*>(norm_weight), static_cast<float*>(recurrent_state),
       static_cast<float*>(output), num_k_heads, num_v_heads, head_k_dim, head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Row-split decode step. Arguments as hipengine_qwen4_exp_gdn_decode_f32.
+extern "C" int hipengine_qwen4_exp_gdn_decode_rowsplit_f32(
+    const void* conv, const void* output_gate, const void* alpha,
+    const void* beta_logits, const void* dt_bias, const void* a,
+    const void* norm_weight, void* recurrent_state, void* output,
+    int64_t num_k_heads, int64_t num_v_heads, int64_t head_k_dim,
+    int64_t head_v_dim, hipStream_t stream) {
+  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
+      !norm_weight || !recurrent_state || !output || num_k_heads <= 0 ||
+      num_k_heads > 64 || num_v_heads <= 0 || num_v_heads > 4096 ||
+      num_v_heads % num_k_heads || head_k_dim != 128 || head_v_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_decode_rowsplit_f32_kernel,
+      dim3(static_cast<uint32_t>(num_v_heads)), dim3(512), 0, stream,
+      static_cast<const float*>(conv), static_cast<const float*>(output_gate),
+      static_cast<const float*>(alpha), static_cast<const float*>(beta_logits),
+      static_cast<const float*>(dt_bias), static_cast<const float*>(a),
+      static_cast<const float*>(norm_weight), static_cast<float*>(recurrent_state),
+      static_cast<float*>(output), static_cast<int>(num_k_heads),
+      static_cast<int>(num_v_heads));
   return static_cast<int>(hipGetLastError());
 }
 
