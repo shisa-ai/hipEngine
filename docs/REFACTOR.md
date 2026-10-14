@@ -9201,3 +9201,14 @@ launches the write on its own first. Bit-identical
 write. With both writes deferred: same-process `code-p4096` 1634.4 ->
 1646.3, `code-p1024` 1300.0 -> 1304.5. Remove the flag after the next rate
 rollup.
+
+## Qwen4Exp decode PLE staging overlapped with layer 0 (`HIPENGINE_QWEN4_EXP_PLE_OVERLAP`)
+
+Default on when the PLE staging ring is pinned and the first PLE layer is
+not layer 0. A decode step's host PLE hash, row gather and dequantization
+run after the layers before the first PLE layer are enqueued, and the copy
+is a stream-ordered `hipMemcpyAsync` from the pinned ring instead of a
+blocking copy, so about 0.5 ms of host work per step overlaps GPU work.
+Bit-identical; same-process decode after `code-p512` 23.52 -> 23.67 tok/s
+(warm PLE page cache). `=0` restores the inline blocking copy. Remove the
+flag once a device-side PLE gather (planned) replaces the host staging.
