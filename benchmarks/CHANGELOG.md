@@ -1,3 +1,7 @@
+## 2026-10-14 — Qwen4Exp: two fewer launches per layer, 1596.3 → 1615.5 prefill and 22.99 → 23.12 decode at p4096
+
+Qwen3.8-Flash-Next `UD-Q4_K_XL`, Radeon 8060S/gfx1151, `production`, canonical 12-case protocol, tracked-clean `ffd1335c7`: prefill **1031.8 → 1037.2 (+0.5%)**, **1309.3 → 1314.2 (+0.4%)**, **1596.3 → 1615.5 (+1.2%)** and decode **23.41 → 23.55**, **22.47 → 22.60**, **22.99 → 23.12 (+0.6%)** at p512/p1024/p4096; 8K/16K prefill 1570.4/1516.7; output tokens identical. Reason: the residual write reads the BF16 MoE output directly and the shared-expert combine rounds its FP32 input itself (both bit-identical). Artifact: [`results/2026-10-14-qwen4exp-final/`](results/2026-10-14-qwen4exp-final/README.md).
+
 ## 2026-10-14 — Qwen4Exp prefill: one-launch norm and inject, 1562.9 → 1596.3 tok/s at p4096
 
 Qwen3.8-Flash-Next `UD-Q4_K_XL`, Radeon 8060S/gfx1151, `production`, canonical 12-case protocol, tracked-clean: prefill **1029.0 → 1031.8 (+0.3%)**, **1284.0 → 1309.3 (+2.0%)**, **1562.9 → 1596.3 (+2.1%)** at p512/p1024/p4096 and **1528.1 → 1553.6 (+1.7%)**, **1476.7 → 1503.1 (+1.8%)** at p8192/p16384; decode unchanged; output tokens identical. Reason: the grouped norm and the inject logits of a prefill hyper-connection read in one launch (bit-identical). Artifact: [`results/2026-10-14-qwen4exp-final/`](results/2026-10-14-qwen4exp-final/README.md).
