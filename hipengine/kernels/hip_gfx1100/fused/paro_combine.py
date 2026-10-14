@@ -1539,6 +1539,46 @@ def shared_gate_combine_out_bf16(
     )
 
 
+def shared_gate_combine_f32_shared_out_bf16(
+    expert_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """BF16 expert sum plus sigmoid(gate) times an FP32 shared output.
+
+    The shared output is rounded to BF16 inside the kernel, so the result is
+    the bits of the F32-to-BF16 cast followed by
+    :func:`shared_gate_combine_batch_out_bf16`.
+    """
+
+    _check_matrix_shape(tokens, features, threads)
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, "hipengine_shared_gate_combine_f32_shared_out_bf16")
+    fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int64] * 3 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(expert_ptr),
+        ctypes.c_void_p(shared_ptr),
+        ctypes.c_void_p(gate_logits_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def shared_gate_combine_batch_out_bf16(
     expert_ptr: int,
     shared_ptr: int,

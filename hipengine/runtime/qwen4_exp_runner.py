@@ -72,8 +72,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
 )
 from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
-    shared_gate_combine_batch_out_bf16,
-    shared_gate_combine_out_bf16,
+    shared_gate_combine_f32_shared_out_bf16,
     weighted_sum_batch_out_bf16_f32w,
     weighted_lanes_sum_out_bf16_f32w,
     weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w,
@@ -6251,6 +6250,23 @@ def run_qwen4_exp_moe(
         output_dtype=GGUF_OUTPUT_F32,
         stream=stream, runtime=active_runtime,
     )
+    fused_lane_combine = grouped_prefill and os.environ.get(
+        "HIPENGINE_QWEN4_EXP_FUSED_COMBINE", ""
+    ) == "1"
+    if not fused_lane_combine:
+        # The combine rounds the FP32 shared output to BF16 itself, which is
+        # bit-identical to the separate cast followed by the BF16 combine.
+        shared_gate_combine_f32_shared_out_bf16(
+            scratch.routed.ptr,
+            scratch.shared_down.ptr,
+            scratch.shared_gate_logits.ptr,
+            scratch.output.ptr,
+            rows,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        return Qwen4ExpMoEDeviceResult(scratch.output, scratch.selected, scratch.routing)
     f32_to_bf16(
         scratch.shared_down.ptr,
         scratch.shared_down_bf16.ptr,
@@ -6258,19 +6274,7 @@ def run_qwen4_exp_moe(
         stream=stream,
         runtime=active_runtime,
     )
-    if rows == 1:
-        shared_gate_combine_out_bf16(
-            scratch.routed.ptr,
-            scratch.shared_down_bf16.ptr,
-            scratch.shared_gate_logits.ptr,
-            scratch.output.ptr,
-            hidden,
-            stream=stream,
-            runtime=active_runtime,
-        )
-    elif grouped_prefill and os.environ.get(
-        "HIPENGINE_QWEN4_EXP_FUSED_COMBINE", ""
-    ) == "1":
+    if fused_lane_combine:
         # PF-4 lever 2 T0: fused routed-sum + gated shared combine (bit-exact
         # vs the unfused weighted_lanes_sum -> shared_gate_combine chain;
         # kernel-level A/B 455e176ab). Opt-in only: whole-model A/B measured
@@ -6286,17 +6290,6 @@ def run_qwen4_exp_moe(
             scratch.output.ptr,
             rows,
             top_k,
-            hidden,
-            stream=stream,
-            runtime=active_runtime,
-        )
-    else:
-        shared_gate_combine_batch_out_bf16(
-            scratch.routed.ptr,
-            scratch.shared_down_bf16.ptr,
-            scratch.shared_gate_logits.ptr,
-            scratch.output.ptr,
-            rows,
             hidden,
             stream=stream,
             runtime=active_runtime,

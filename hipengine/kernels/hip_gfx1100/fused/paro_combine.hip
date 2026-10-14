@@ -748,6 +748,28 @@ __global__ void shared_gate_combine_batch_out_kernel(
   out[offset] = float_to_scalar<scalar_t>(value);
 }
 
+// BF16 routed sum plus sigmoid(gate) times an FP32 shared-expert output that
+// is rounded to BF16 here (round to nearest even), as the standalone cast
+// would store it; the combine arithmetic is that of the BF16 kernels above.
+__global__ void shared_gate_combine_f32_shared_out_bf16_kernel(
+    const uint16_t* __restrict__ expert,
+    const float* __restrict__ shared,
+    const float* __restrict__ gate_logits,
+    uint16_t* __restrict__ out,
+    int64_t tokens,
+    int64_t features) {
+  const int64_t token = blockIdx.y;
+  const int64_t col = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (token >= tokens || col >= features) return;
+  const int64_t offset = token * features + col;
+  const float gate_logit = gate_logits[token];
+  const float gate = 1.0f / (1.0f + expf(-gate_logit));
+  const uint16_t shared_bits = float_to_scalar<uint16_t>(shared[offset]);
+  const float value = scalar_to_float(expert[offset])
+      + gate * scalar_to_float(shared_bits);
+  out[offset] = float_to_scalar<uint16_t>(value);
+}
+
 template <typename scalar_t>
 __global__ void shared_gate_combine_residual_out_kernel(
     const scalar_t* __restrict__ expert,
@@ -1979,5 +2001,26 @@ extern "C" int hipengine_shared_gate_combine_residual_batch_out_fp16(
       tokens,
       features,
       gate_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_shared_gate_combine_f32_shared_out_bf16(
+    const uint16_t* expert,
+    const float* shared,
+    const float* gate_logits,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!expert || !shared || !gate_logits || !out || tokens <= 0 ||
+      tokens > 65535 || features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      shared_gate_combine_f32_shared_out_bf16_kernel,
+      dim3(feature_grid(features, threads).x, static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)), 0, stream,
+      expert, shared, gate_logits, out, tokens, features);
   return static_cast<int>(hipGetLastError());
 }
