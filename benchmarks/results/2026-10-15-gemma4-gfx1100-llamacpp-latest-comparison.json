@@ -1,0 +1,198 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_llamacpp_latest_comparison",
+ "date": "2026-10-15",
+ "performance_claim": true,
+ "question": "Where does hipEngine Gemma 4 stand against the latest llama.cpp on the same W7900, for plain prefill and decode and for MTP?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL (/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf, 17010980576 bytes); MTP head mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc",
+  "pci": "0000:0d:00.0",
+  "rocr_visible_devices": "0"
+ },
+ "llamacpp": {
+  "commit": "45451c3",
+  "date": "2026-10-13",
+  "build": "cmake -S . -B build-hip -DGGML_HIP=ON -DAMDGPU_TARGETS=gfx1100 -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF; targets llama-server llama-bench",
+  "server_sha256": "8be18bc33018d158ef1f598b691d47c7eda10404b26c7c8152897226c347b6db",
+  "previous_comparator": {
+   "commit": "8cfc315",
+   "prompt_512": {
+    "prefill_tok_s": 3199.6,
+    "decode_tok_s": 71.6
+   },
+   "latest_same_session": {
+    "prefill_tok_s": 3190.5,
+    "decode_tok_s": 69.6
+   },
+   "note": "506 commits later, not faster on this model and device"
+  }
+ },
+ "plain_ladder": {
+  "hipengine_commit": "f4259f19d",
+  "profile": "production",
+  "kv": "bf16",
+  "output_tokens": 128,
+  "warmups": 1,
+  "samples": "3 (2 at 131072)",
+  "commands": {
+   "hipengine": "HIPENGINE_EXECUTION_PROFILE=production scripts/gemma4_campaign_bench.py --prompt P --output 128 --context P+256 --warmup 1 --samples 3 --expect-gpu W7900",
+   "llamacpp": "scripts/gemma4_llamacpp_reference_bench.py --pci 0000:0d:00.0 --server <45451c3 llama-server> --source <tree> --prompt P --output 128 --context P+256 --samples 3 --warmup 1 (server: -ngl 99 -fa on -ctk bf16 -ctv bf16 -np 1 -b 4096 -ub 1024 --no-cache-prompt --fit off)"
+  },
+  "pairing": "each prompt length ran llama.cpp then hipEngine back to back; prompt ids byte-identical (sha256 equal at every length)",
+  "rows": [
+   {
+    "prompt": 512,
+    "samples": 3,
+    "hip_prefill": 3696.9,
+    "hip_decode": 76.43,
+    "llama_prefill": 3165.2,
+    "llama_decode": 69.25,
+    "prefill_ratio": 1.168,
+    "decode_ratio": 1.104,
+    "ids_equal": true,
+    "prompt_sha_equal": true,
+    "hip_parity": true
+   },
+   {
+    "prompt": 2048,
+    "samples": 3,
+    "hip_prefill": 3665.4,
+    "hip_decode": 74.3,
+    "llama_prefill": 3687.3,
+    "llama_decode": 65.25,
+    "prefill_ratio": 0.994,
+    "decode_ratio": 1.139,
+    "ids_equal": true,
+    "prompt_sha_equal": true,
+    "hip_parity": true
+   },
+   {
+    "prompt": 8192,
+    "samples": 3,
+    "hip_prefill": 3336.1,
+    "hip_decode": 70.04,
+    "llama_prefill": 3557.7,
+    "llama_decode": 62.25,
+    "prefill_ratio": 0.938,
+    "decode_ratio": 1.125,
+    "ids_equal": true,
+    "prompt_sha_equal": true,
+    "hip_parity": true
+   },
+   {
+    "prompt": 32768,
+    "samples": 3,
+    "hip_prefill": 2646.9,
+    "hip_decode": 54.12,
+    "llama_prefill": 2502.8,
+    "llama_decode": 52.77,
+    "prefill_ratio": 1.058,
+    "decode_ratio": 1.026,
+    "ids_equal": true,
+    "prompt_sha_equal": true,
+    "hip_parity": true
+   },
+   {
+    "prompt": 65536,
+    "samples": 3,
+    "hip_prefill": 2086.3,
+    "hip_decode": 41.67,
+    "llama_prefill": 1800.2,
+    "llama_decode": 44.89,
+    "prefill_ratio": 1.159,
+    "decode_ratio": 0.928,
+    "ids_equal": true,
+    "prompt_sha_equal": true,
+    "hip_parity": true
+   },
+   {
+    "prompt": 131072,
+    "samples": 2,
+    "hip_prefill": 1467.5,
+    "hip_decode": 32.79,
+    "llama_prefill": 1139.8,
+    "llama_decode": 34.89,
+    "prefill_ratio": 1.287,
+    "decode_ratio": 0.94,
+    "ids_equal": false,
+    "prompt_sha_equal": true,
+    "hip_parity": true
+   }
+  ],
+  "ids_note": "first-sample generated ids equal at every length through 65536; at 131072 the two engines' greedy outputs differ"
+ },
+ "mtp": {
+  "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl + benchmarks/prompts/gdn-prefill-category-heldouts.jsonl, 18 prompts x 2 samples, chat template rendered by hipEngine and sent to llama.cpp as the same token ids",
+  "timing_scope": "whole request wall time including the short prefill, 128 tokens, EOS honored (no row stopped early)",
+  "budget": 4,
+  "llamacpp_server": "-md <head> --spec-type draft-mtp --spec-draft-n-max 4 -ngld 99 -ctkd bf16 -ctvd bf16, otherwise the plain-ladder flags with -c 1024; /completion with the prompt as token ids, cache_prompt false",
+  "greedy": {
+   "llamacpp": {
+    "plain_tok_s": 68.4,
+    "mtp_tok_s": 137.4,
+    "ratio": 2.01,
+    "draft_acceptance": 0.725,
+    "rows_text_identical_to_plain": "14 of 36"
+   },
+   "hipengine_production": {
+    "plain_tok_s": 74.3,
+    "mtp_tok_s": 107.7,
+    "ratio": 1.449,
+    "draft_acceptance": 0.73,
+    "rows_token_identical_to_plain": "32 of 36",
+    "artifact": "benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-small-block-dense.json"
+   }
+  },
+  "temperature_0_8": {
+   "llamacpp": {
+    "plain_tok_s": 63.0,
+    "mtp_greedy_draft_tok_s": 111.4,
+    "mtp_greedy_draft_ratio": 1.77,
+    "mtp_greedy_draft_acceptance": 0.656,
+    "mtp_probabilistic_draft_tok_s": 45.3,
+    "mtp_probabilistic_draft_ratio": 0.72,
+    "mtp_probabilistic_draft_acceptance": 0.667,
+    "note": "--spec-draft-sampling probabilistic (added in 1fb7ef3) is slower than plain decoding here; greedy draft is the default"
+   },
+   "hipengine_production": {
+    "plain_tok_s": 70.0,
+    "mtp_tok_s": 89.8,
+    "ratio": 1.283,
+    "draft_acceptance": 0.662,
+    "draft_law": "drawn from the head's distribution, exact speculative sampling"
+   }
+  },
+  "verify_block_ms": {
+   "method": "llama-bench -p R -n 0 -d 600 -r 10 -fa 1 -ctk bf16 -ctv bf16 (prompt processing of R rows at depth 600) against hipEngine Gemma4Runner.forward(R rows, verification=True) after a 600-token prompt, production",
+   "rows": [
+    1,
+    3,
+    5,
+    7,
+    9
+   ],
+   "llamacpp": [
+    14.59,
+    15.93,
+    18.64,
+    20.12,
+    24.54
+   ],
+   "hipengine": [
+    14.01,
+    21.01,
+    26.98,
+    32.98,
+    39.86
+   ]
+  }
+ },
+ "limitations": [
+  "Single device, single host.",
+  "The MTP comparison uses one prompt family pair (18 prompts).",
+  "llama.cpp verify-block times come from llama-bench prompt processing, which includes no draft step."
+ ]
+}
