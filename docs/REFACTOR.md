@@ -8979,6 +8979,15 @@ redundant for projections that read `mixed`. Removal with the two flags
 above: give the image its own buffer in the scratch planner and delete the
 flag.
 
+The scale-only norm also computes the four inject logits in the same launch
+when the read has an inject projection
+(`grouped_rmsnorm_bf16_f16_scale_inject_kernel`, one block per row,
+`HIPENGINE_QWEN4_EXP_GR_NORM_INJECT=0` keeps the separate inject launch).
+Bit-identical (`tests/test_gpu_qwen4exp_gr_read_residual.py`); `code-p4096`
+1560.4 -> 1587.1 and `code-p512` 1018.4 -> 1024.5 prefill tok/s, same
+process, identical output tokens. The flag goes with the others in this
+section.
+
 The direct launch makes three older mechanisms unreachable for this quant at
 prefill row counts: the publication loan and its policy table
 (`GGUF_DENSE_WIDE_F16_PUBLICATION_POLICIES`, layers 13-47, rows 4096 only),
