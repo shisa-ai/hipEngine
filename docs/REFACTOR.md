@@ -9212,3 +9212,12 @@ blocking copy, so about 0.5 ms of host work per step overlaps GPU work.
 Bit-identical; same-process decode after `code-p512` 23.52 -> 23.67 tok/s
 (warm PLE page cache). `=0` restores the inline blocking copy. Remove the
 flag once a device-side PLE gather (planned) replaces the host staging.
+
+## Qwen4Exp MTP batched verify (`HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY`)
+
+Default on in the Qwen4Exp MTP provider (itself opt-in). A cycle verifies
+`[root, c1 .. c(n-1)]` in one prefill-shaped pass that keeps each row's GDN
+and conv state (`verify_target_block_state_rows`), then
+`commit_target_block_rows` keeps the accepted rows without a replay. `=0`
+restores serial target steps. Remove the serial verify path once the
+batched path is the gated production MTP route.

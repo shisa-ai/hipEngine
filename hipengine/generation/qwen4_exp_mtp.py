@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import time
 from typing import Any
@@ -182,6 +183,13 @@ class Qwen4ExpMTPTextProvider:
         if not request.ignore_eos and root_token == eos:
             reason = "eos"
 
+        # One prefill-shaped verify pass per cycle, committing the accepted
+        # rows' states (no replay); otherwise serial target steps.
+        batched_verify = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY", "1"
+        ) not in {"", "0", "false", "False"} and hasattr(
+            target, "verify_target_block_state_rows"
+        )
         while len(generated) < request.max_tokens and reason != "eos":
             raise_if_generation_deadline_expired(request)
             budget = min(self.candidate_budget, request.max_tokens - len(generated))
@@ -202,7 +210,36 @@ class Qwen4ExpMTPTextProvider:
             candidates = tuple(int(row.token_id) for row in proposal)
             accepted = 0
             mismatch: int | None = None
-            for candidate in candidates:
+            serial_candidates = candidates
+            if batched_verify and len(candidates) >= 2:
+                # Rows [root, c1 .. c(n-1)] score every candidate: row i's
+                # target token checks candidate i, and the first mismatch
+                # ends the cycle with the target's own token for that row.
+                serial_candidates = ()
+                inputs = (root_token, *candidates[:-1])
+                verify_started = time.perf_counter()
+                block = target.verify_target_block_state_rows(inputs)
+                record_phase("target_verify", verify_started)
+                acceptance_started = time.perf_counter()
+                consumed = 0
+                for truth, candidate in zip(block.token_ids, candidates, strict=True):
+                    consumed += 1
+                    generated.append(int(truth))
+                    if int(truth) != candidate:
+                        mismatch = int(truth)
+                    else:
+                        accepted += 1
+                    if not request.ignore_eos and int(truth) == eos:
+                        reason = "eos"
+                    if (mismatch is not None or reason == "eos"
+                            or len(generated) >= request.max_tokens):
+                        break
+                target.commit_target_block_rows(consumed)
+                assert block.hidden_seeds is not None
+                root_token = int(block.token_ids[consumed - 1])
+                root_hidden = block.hidden_seeds[consumed - 1]
+                record_phase("acceptance_control", acceptance_started)
+            for candidate in serial_candidates:
                 raise_if_generation_deadline_expired(request)
                 verify_started = time.perf_counter()
                 verified = target.step(root_token, capture_hidden_seed=True)
@@ -249,7 +286,10 @@ class Qwen4ExpMTPTextProvider:
                 generated_tokens=len(generated),
                 step_index=len(generated),
                 sampler_mode="greedy_speculative_mtp",
-                execution_path="qwen4exp_mtp_serial_exact_verify",
+                execution_path=(
+                    "qwen4exp_mtp_batched_state_rows_verify"
+                    if batched_verify else "qwen4exp_mtp_serial_exact_verify"
+                ),
             ),
             event="generation_complete",
             diagnostics={
@@ -270,7 +310,9 @@ class Qwen4ExpMTPTextProvider:
                     }
                     for cycle in cycles
                 ],
-                "target_verify": "serial_exact",
+                "target_verify": (
+                    "batched_state_rows" if batched_verify else "serial_exact"
+                ),
                 "draft_rollback": "cursor_trim",
                 "target_hidden_handoff": "host",
                 "phase_census": {

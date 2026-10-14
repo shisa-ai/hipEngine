@@ -564,6 +564,8 @@ def qwen4_exp_gdn_prefill_rowsplit_f32(
 qwen4_exp_gdn_prefill_rowsplit_f32.publishes_f16_image = True
 # Any row count from 1 up; the tile-16 owners need at least 16 rows.
 qwen4_exp_gdn_prefill_rowsplit_f32.supports_any_rows = True
+# It can also write the state after every token (``state_rows_ptr``).
+qwen4_exp_gdn_prefill_rowsplit_f32.supports_state_rows = True
 
 
 def qwen4_exp_gdn_prefill_tiled16_f32(
