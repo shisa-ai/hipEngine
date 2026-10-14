@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field, replace
+import contextvars
 import os
 import time
 from types import MappingProxyType
@@ -7068,6 +7069,14 @@ def run_qwen4_exp_ple(
     return scratch.output
 
 
+# Per-token state capture for a speculative verify pass: maps a GDN layer's
+# recurrent-state pointer to (recurrent state rows, conv state rows) buffers.
+# Set only around ``Qwen4ExpGGUFResidentModelRunner.verify_target_block_state_rows``.
+_GDN_STATE_ROWS_CAPTURE: contextvars.ContextVar[Mapping[int, tuple[int, int]] | None] = (
+    contextvars.ContextVar("qwen4_exp_gdn_state_rows_capture", default=None)
+)
+
+
 def run_qwen4_exp_gdn_token_mixer(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
@@ -7103,6 +7112,11 @@ def run_qwen4_exp_gdn_token_mixer(
     missing = sorted(required - set(weights))
     if missing:
         raise ValueError("missing Qwen4Exp GDN weights: " + ", ".join(missing))
+    capture_map = _GDN_STATE_ROWS_CAPTURE.get()
+    state_rows_capture = (
+        capture_map.get(int(recurrent_state_ptr)) if capture_map else None
+    )
+    captured: set[str] = set()
     _launch_qwen4_exp_dense_pair(
         weights["attn_qkv"], weights["attn_gate"], mixed_ptr,
         scratch.qkv.ptr, scratch.gate.ptr, rows, hidden, qkv_width, core_width,
@@ -7191,7 +7205,10 @@ def run_qwen4_exp_gdn_token_mixer(
                 conv_kernel,
                 stream=stream,
                 runtime=active_runtime,
+                **({"state_rows_ptr": state_rows_capture[1]}
+                   if state_rows_capture else {}),
             )
+            captured.add("conv")
         else:
             for row in range(rows):
                 qwen35_linear_attn_conv_decode_f32(
@@ -7263,6 +7280,13 @@ def run_qwen4_exp_gdn_token_mixer(
                 ):
                     _invalidate_wide_f16_publication()
                     core_image_kwargs["core_f16_ptr"] = image_workspace.ptr
+                state_rows_kwargs = {}
+                if state_rows_capture:
+                    if not getattr(tile16, "supports_state_rows", False):
+                        raise RuntimeError(
+                            "GDN state-row capture needs the row-split recurrence")
+                    state_rows_kwargs["state_rows_ptr"] = state_rows_capture[0]
+                    captured.add("recurrence")
                 tile16(
                     scratch.conv.ptr,
                     scratch.gate.ptr,
@@ -7281,6 +7305,7 @@ def run_qwen4_exp_gdn_token_mixer(
                     stream=stream,
                     runtime=active_runtime,
                     **core_image_kwargs,
+                    **state_rows_kwargs,
                 )
                 if core_image_kwargs:
                     declare_f16_mirror(
@@ -7365,6 +7390,10 @@ def run_qwen4_exp_gdn_token_mixer(
                 stream=stream,
                 runtime=active_runtime,
             )
+    if state_rows_capture and captured != {"conv", "recurrence"}:
+        raise RuntimeError(
+            "GDN state-row capture requested but this chunk ran "
+            f"{sorted(captured) or 'no capturing owner'}")
     launch_gguf_linear(
         weights["ssm_out"],
         scratch.core.ptr,
@@ -7669,6 +7698,11 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._target_verify_output: Qwen4ExpTargetVerifyOutput | None = None
         self._device_transaction_snapshot: Qwen4ExpDecodeStateDeviceSnapshot | None = None
         self._device_transaction_lease = False
+        # Batched verify with per-row state capture (MTP): device buffers sized
+        # for the largest block seen, and the block awaiting its commit.
+        self._verify_rows_buffers: dict[str, DeviceBuffer] = {}
+        self._verify_rows_capacity = 0
+        self._pending_verify_block: tuple[Any, ...] | None = None
         self.gdn_prefill_scratch: Qwen4ExpGDNLayerScratch | None = None
         self.qsa_prefill_scratch: Qwen4ExpQSALayerScratch | None = None
         self.ple_prefill_scratch: Qwen4ExpPLEScratch | None = None
@@ -8194,6 +8228,194 @@ class Qwen4ExpGGUFResidentModelRunner:
             logits=tuple(row for row in logits),
             hidden_seeds=np.concatenate(hidden_rows, axis=0),
         )
+
+    def _state_row_strides(self) -> tuple[int, int]:
+        cfg = self.config
+        matrix = (
+            cfg.gdn_time_step_rank * cfg.gdn_state_size * cfg.gdn_state_size
+            * DType.FP32.itemsize
+        )
+        conv = (
+            (2 * cfg.gdn_group_count * cfg.gdn_state_size + cfg.gdn_inner_size)
+            * cfg.gdn_conv_kernel * DType.FP32.itemsize
+        )
+        return matrix, conv
+
+    def _verify_rows_workspace(self, rows: int) -> Mapping[str, DeviceBuffer]:
+        if rows <= self._verify_rows_capacity:
+            return self._verify_rows_buffers
+        assert self.state is not None
+        cfg = self.config
+        matrix, conv = self._state_row_strides()
+        gdn_layers = len(self.gdn_bindings)
+        sizes = {
+            "gdn_matrix_rows": gdn_layers * rows * matrix,
+            "gdn_conv_rows": gdn_layers * rows * conv,
+            "ple_conv": self.state.ple_conv.nbytes,
+            "ple_out": rows * cfg.residual_width * DType.FP32.itemsize,
+        }
+        for buffer in self._verify_rows_buffers.values():
+            free(buffer, runtime=self.runtime)
+        self._verify_rows_buffers = {}
+        self._verify_rows_capacity = 0
+        for name, nbytes in sizes.items():
+            self._verify_rows_buffers[name] = malloc(nbytes, runtime=self.runtime)
+        self._verify_rows_capacity = rows
+        return self._verify_rows_buffers
+
+    def verify_target_block_state_rows(
+        self,
+        input_token_ids: Sequence[int],
+    ) -> Qwen4ExpTargetVerifyResult:
+        """Verify 2..8 rows in one prefill-shaped pass, keeping each row's state.
+
+        The pass advances the target by every input row, like
+        :meth:`verify_target_block_batched_body`, but the GDN recurrence and
+        conv also write the state after every row. :meth:`commit_target_block_rows`
+        must follow: it keeps the first ``consumed`` rows by copying that
+        row's GDN and conv states back and rewinding the attention, index,
+        PLE and position cursors, with no replay. Per-row logits come from
+        prefill-shaped kernels (production arithmetic), not from the serial
+        decode step.
+        """
+
+        self._require_open()
+        if self._pending_verify_block is not None:
+            raise RuntimeError("commit the previous Qwen4Exp verify block first")
+        tokens = tuple(int(token) for token in input_token_ids)
+        count = len(tokens)
+        if not 2 <= count <= 8:
+            raise ValueError("Qwen4Exp state-row verify needs 2..8 rows")
+        assert self.state is not None
+        cfg = self.config
+        buffers = self._verify_rows_workspace(count)
+        matrix, conv = self._state_row_strides()
+        capture: dict[int, tuple[int, int]] = {}
+        for binding in self.gdn_bindings.values():
+            index = int(binding.gdn_state_index)
+            capture[self.state.gdn_matrix.ptr + index * matrix] = (
+                buffers["gdn_matrix_rows"].ptr + index * count * matrix,
+                buffers["gdn_conv_rows"].ptr + index * count * conv,
+            )
+        self.runtime.memcpy_async(
+            buffers["ple_conv"].ptr, self.state.ple_conv.ptr,
+            self.state.ple_conv.nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, 0,
+        )
+        start = int(self.position)
+        hash_states = dict(self._ple_hash_states)
+        output = self.target_verify_output(count)
+        token = _GDN_STATE_ROWS_CAPTURE.set(MappingProxyType(capture))
+        try:
+            last_residual_ptr, hidden_rows = self._prefill_chunk(
+                tokens, capture_hidden_seeds=True
+            )
+        finally:
+            _GDN_STATE_ROWS_CAPTURE.reset(token)
+        self._pending_verify_block = (tokens, start, hash_states, count)
+        row_bytes = cfg.residual_width * DType.BF16.itemsize
+        head = run_qwen4_exp_gr_read(
+            int(last_residual_ptr) - (count - 1) * row_bytes,
+            self.resident.weight("root.head_hc_norm").allocation("raw").tensor.ptr,
+            self.resident.weight("root.head_hc_down"),
+            self.resident.weight("root.head_hc_up"),
+            None,
+            output.head_scratch,
+            rows=count,
+            branches=cfg.residual_branch_count,
+            hidden=cfg.hidden_size,
+            low_rank=cfg.residual_low_rank,
+            runtime=self.runtime,
+        )
+        launch_gguf_linear(
+            self.resident.weight("root.lm_head"),
+            head.mixed.ptr,
+            output.logits_rows.ptr,
+            count,
+            cfg.hidden_size,
+            cfg.vocab_size,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=self.runtime,
+        )
+        logits = np.empty((count, cfg.vocab_size), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(logits), output.logits_rows, logits.nbytes, runtime=self.runtime
+        )
+        assert hidden_rows is not None
+        return Qwen4ExpTargetVerifyResult(
+            token_ids=tuple(int(token) for token in np.argmax(logits, axis=1)),
+            logits=tuple(row for row in logits),
+            hidden_seeds=np.asarray(hidden_rows, dtype=np.float32),
+        )
+
+    def commit_target_block_rows(self, consumed: int) -> None:
+        """Keep the first ``consumed`` rows of the pending state-row verify."""
+
+        self._require_open()
+        if self._pending_verify_block is None:
+            raise RuntimeError("no Qwen4Exp verify block is pending")
+        tokens, start, hash_states, count = self._pending_verify_block
+        consumed = int(consumed)
+        if not 1 <= consumed <= count:
+            raise ValueError("consumed rows must be in 1..block rows")
+        self._pending_verify_block = None
+        if consumed == count:
+            return
+        assert self.state is not None and self.ple_prefill_scratch is not None
+        cfg = self.config
+        buffers = self._verify_rows_buffers
+        matrix, conv = self._state_row_strides()
+        last = consumed - 1
+        for binding in self.gdn_bindings.values():
+            index = int(binding.gdn_state_index)
+            self.runtime.memcpy_async(
+                self.state.gdn_matrix.ptr + index * matrix,
+                buffers["gdn_matrix_rows"].ptr + (index * count + last) * matrix,
+                matrix, HipMemcpyKind.DEVICE_TO_DEVICE, 0,
+            )
+            self.runtime.memcpy_async(
+                self.state.gdn_conv.ptr + index * conv,
+                buffers["gdn_conv_rows"].ptr + (index * count + last) * conv,
+                conv, HipMemcpyKind.DEVICE_TO_DEVICE, 0,
+            )
+        # The PLE conv history a prefill of the consumed rows leaves: restore
+        # the history from before the block and rerun the conv on those rows
+        # (its history update only copies inputs).
+        self.runtime.memcpy_async(
+            self.state.ple_conv.ptr, buffers["ple_conv"].ptr,
+            self.state.ple_conv.nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, 0,
+        )
+        for layer in cfg.ple_layers:
+            qwen4_exp_ple_dilated_depthwise_conv_f32(
+                self.ple_prefill_scratch.normalized.ptr,
+                self.resident.weight(f"layers.{layer}.ple_conv1d")
+                .allocation("raw").tensor.ptr,
+                self.state.ple_conv.ptr,
+                buffers["ple_out"].ptr,
+                consumed,
+                cfg.residual_width,
+                cfg.ple_conv_kernel,
+                cfg.ple_ngram_size,
+                runtime=self.runtime,
+            )
+        position = start + consumed
+        for attention in self.attention_states:
+            attention.set_position(max(position - 1, 0))
+        for index in self.index_states:
+            index.restore_count(position)
+        _, self._ple_hash_states = ple_hash_rows(
+            list(tokens[:consumed]),
+            positions=list(range(start, position)),
+            sequence_ids=[0] * consumed,
+            states=hash_states,
+            eos_token_id=cfg.ple_eos_token_id,
+            layer_multipliers=cfg.ple_layer_multipliers,
+            head_offsets=cfg.ple_head_offsets,
+            head_vocab_sizes=cfg.ple_head_vocab_sizes,
+            heads_per_ngram=cfg.ple_heads_per_ngram,
+            ngram_size=cfg.ple_ngram_size,
+        )
+        self.position = position
 
     def verify_target_block_with_acceptance(
         self,
@@ -9202,6 +9424,11 @@ class Qwen4ExpGGUFResidentModelRunner:
             self._device_transaction_snapshot.close()
             self._device_transaction_snapshot = None
             self._device_transaction_lease = False
+        for buffer in self._verify_rows_buffers.values():
+            free(buffer, runtime=self.runtime)
+        self._verify_rows_buffers = {}
+        self._verify_rows_capacity = 0
+        self._pending_verify_block = None
         if self._q8_mmq_weight_sidecars is not None:
             self._q8_mmq_weight_sidecars.close()
             self._q8_mmq_weight_sidecars = None
