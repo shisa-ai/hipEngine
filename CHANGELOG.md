@@ -6,7 +6,27 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
-## Unreleased
+## v0.7.1 - 2026-10-14
+
+Patch release fixing long-song YuE2 generation and the default song-generation
+context budget. APIs remain alpha; support depends on the model, backend, storage
+layout, and request shape.
+
+### Fixed
+
+- **YuE2 default song budget.** The resident AR context is now sized to fit the
+  shipped default semantic generation budget. Requests are checked against both
+  the runtime allocation and the checkpoint context limit before prefill, so an
+  oversized request fails with a named request error instead of reaching a
+  runtime position check.
+- **YuE2 long-song NAR attention.** Tiled non-autoregressive (NAR) attention now
+  preserves the complete key sequence for every query tile. Long songs no longer
+  lose NAR context after roughly 82 seconds and develop the associated audio
+  corruption. Scalar and tensor-core attention paths share the corrected key-count
+  contract and have regression coverage.
+- **DMS resident session sizing.** The DMS resident runner now accepts the same
+  explicit context-size keyword as the shared GGUF runner, keeping compact DMS
+  session reservation compatible with the context-sizing path.
 
 ## v0.7.0 - 2026-10-06
 
