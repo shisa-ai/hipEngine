@@ -9188,14 +9188,16 @@ separate multiply. Remove with the direct-selection flag above.
 
 ## Qwen4Exp residual write fused into the next norm (`HIPENGINE_QWEN4_EXP_GR_WRITE_NORM`)
 
-Default on for prefill (rows > 1). The residual write after the token mixer
-is deferred into the FFN hyper-connection read: where that read runs the
+Default on for prefill chunks of at least 1024 rows (at 512 rows the
+separate per-branch write fills the GPU better). The residual write after
+the token mixer is deferred into the FFN hyper-connection read, and the
+write after the MoE into the next layer's attention read (flushed before a
+PLE layer and after the last layer): where that read runs the
 direct norm+inject launch, one kernel (`gr_write_norm_inject_kernel`) writes
 the residual and normalizes the row from LDS; every other read path
 launches the write on its own first. Bit-identical
 (`tests/test_gpu_qwen4exp_gr_write_norm.py`); same-process `code-p4096`
 1630.1 -> 1639.3 prefill tok/s, identical tokens. `=0` restores the separate
-write. The MoE-side write (`gr_write_bf16_bf16`) crosses into the next
-layer's read and is not fused yet; the kernel already has a BF16
-block-output instantiation for it. Remove the flag after the next rate
+write. With both writes deferred: same-process `code-p4096` 1634.4 ->
+1646.3, `code-p1024` 1300.0 -> 1304.5. Remove the flag after the next rate
 rollup.
