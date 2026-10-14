@@ -470,6 +470,38 @@ def qwen4_exp_qsa_gate_context_f32(
     _check_launch(runtime, fn(context_ptr, gate_ptr, output_ptr, elements, stream))
 
 
+def qwen4_exp_qsa_gate_context_strided_f32(
+    context_ptr: int,
+    q_projected_ptr: int,
+    output_ptr: int,
+    elements: int,
+    head_dim: int,
+    *,
+    output_f16_ptr: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """:func:`qwen4_exp_qsa_gate_context_f32` with the gate read from the q
+    projection (``[row][head][2 * head_dim]``, gate second); optionally also
+    writes the output's F16 image."""
+
+    if elements <= 0 or head_dim <= 0 or elements % head_dim:
+        raise ValueError("elements must be a positive multiple of head_dim")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_gate_context_strided_f32",
+        (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+         ctypes.c_int64, ctypes.c_int64, ctypes.c_void_p),
+        ctypes.c_int,
+    )
+    _check_launch(runtime, fn(
+        context_ptr, q_projected_ptr, output_ptr, output_f16_ptr or None,
+        elements, head_dim, stream))
+
+
 def qwen4_exp_qsa_sparse_attention_paged_bf16_f32(
     query_ptr: int,
     key_cache_ptr: int,
@@ -1523,6 +1555,7 @@ __all__ = [
     "qwen4_exp_qsa_pool_norm_rope_f32",
     "qwen4_exp_qsa_score_f32",
     "qwen4_exp_qsa_score_rows_f32",
+    "qwen4_exp_qsa_gate_context_strided_f32",
     "qwen4_exp_qsa_topk_mask_rows_f32",
     "qwen4_exp_qsa_scatter_index_key_device_position_f32",
     "qwen4_exp_qsa_scatter_index_keys_f32",

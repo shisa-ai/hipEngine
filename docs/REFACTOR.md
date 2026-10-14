@@ -9175,3 +9175,13 @@ tiled all-block scorer, the full expand and the separate mask kernel.
 
 Remove the flag, the tiled scorer's prefill call and the mask kernel's
 prefill call once the next Qwen4Exp rate rollup passes with it on.
+
+## Qwen4Exp QSA prefill gate read in place (`HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE`)
+
+Default on. The prefill gate multiply reads the gate half of each query head
+from the q projection instead of a copy the split norm/RoPE kernel wrote,
+and writes the gated context's F16 image into the wide-route workspace
+(declared as the F16 mirror) so the output projection skips its conversion.
+Bit-identical (`tests/test_gpu_qwen4exp_qsa_select_mask.py`); same-process
+`code-p4096` 1631.4 -> 1634.5 prefill tok/s. `=0` restores the copy and the
+separate multiply. Remove with the direct-selection flag above.
