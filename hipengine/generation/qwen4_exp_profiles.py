@@ -92,6 +92,9 @@ _F16_ROUTE_BINDER_ENV = {
     # same recurrence with the scales applied to the two dot products, a
     # different FP32 summation order, 128-thread blocks.
     "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_rowsplit_prefill",
+    # The DP4A routed gate/up decode owner at every layer (43 layers on a
+    # quant without the composition).
+    "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": ",".join(map(str, range(48))),
 }
 # Route selectors the composition's binder publishes; a later bind without the
 # composition in the same process retracts them to "0".
