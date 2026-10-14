@@ -53,7 +53,24 @@ epilogue), taking `production` to **779.4 / 977.9 / 1190.3 tok/s** with
 unchanged output tokens, and a 1024/8192/16384-token fixture now measures
 **978.7 / 1158.8 / 1133.1 tok/s** prefill with decode at 20.2 / 20.5 / 20.4
 ([rates, ladder and attribution](../benchmarks/results/2026-10-14-qwen4exp-prefill-exact-kernels-and-ladder/README.md)).
-Kernel time per code-p4096 prefill is 3409 ms against 2373 for gufo.
+Kernel time per code-p4096 prefill was 3409 ms against 2373 for gufo.
+
+**2026-10-14: hyper-connection, GDN and expert-glue kernels.** `production`
+now measures **1028.5 / 1276.5 / 1562.2 tok/s** prefill at p512/p1024/p4096
+and **1526.6 / 1475.5** at p8192/p16384 on the same protocol (+30% to +32%
+at every length), with decode at 20.5 tok/s. Eleven bit-identical changes
+(the hyper-connection read as three launches without the FP32 normalized
+plane or the gate logits, one shared F16 image of its output, routed gate/up
+reading token rows through the lane map, a pipelined small-matrix F16 GEMM,
+tile and CU-mode choices by shape) and two arithmetic changes (the
+48-column GDN gate projections on the F16 GEMM, and a row-split GDN
+recurrence ported from gufo). Kernel time per code-p4096 prefill is 2564 ms
+against 2373 for gufo; the prefill rate is 0.94x / 0.86x / 0.90x of gufo's
+at p512/p1024/p4096 and ahead of halo-box at every length. The layer2 gate
+on the same commit passes every numerical limit (mean KL 6.30e-04, p99
+8.49e-03, max 0.010, top-1 99.56%) with 13/18 strict-exact tasks (15/18
+before), status `requires_task_review`
+([rates, gates and attribution](../benchmarks/results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/README.md)).
 
 **2026-10-13 state additions: the opt-in `fast` execution profile.** The
 owner accepted the X-7 question in the form of a fourth, opt-in profile

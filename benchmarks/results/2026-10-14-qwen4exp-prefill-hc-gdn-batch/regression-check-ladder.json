@@ -1,0 +1,58 @@
+{
+  "baseline": "benchmarks/results/2026-10-14-qwen4exp-prefill-exact-kernels-and-ladder/hipengine-production-p1024-p8192-p16384.json",
+  "candidate": "benchmarks/results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/hipengine-production-p1024-p8192-p16384.json",
+  "changed_output_cases": [
+    "code-p1024",
+    "code-p16384",
+    "code-p8192",
+    "general_en-p1024",
+    "general_en-p16384",
+    "general_en-p8192",
+    "general_ja-p8192",
+    "mixed_ja_en-p1024",
+    "mixed_ja_en-p16384"
+  ],
+  "decode_tolerance": 0.03,
+  "failures": [],
+  "passed": true,
+  "prefill_tolerance": 0.03,
+  "require_identical_output": false,
+  "shapes": {
+    "1024": {
+      "decode_tok_s_weighted": {
+        "baseline": 20.17648284265303,
+        "candidate": 20.13461515269372,
+        "delta": -0.002075073752240031
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 978.6978347271183,
+        "candidate": 1280.3717567398019,
+        "delta": 0.3082401036442435
+      }
+    },
+    "16384": {
+      "decode_tok_s_weighted": {
+        "baseline": 20.432552504883773,
+        "candidate": 20.372281476401575,
+        "delta": -0.0029497552235724367
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 1133.0670859174422,
+        "candidate": 1475.5076137792898,
+        "delta": 0.3022244067610296
+      }
+    },
+    "8192": {
+      "decode_tok_s_weighted": {
+        "baseline": 20.526595680367056,
+        "candidate": 20.484480125961294,
+        "delta": -0.0020517554426252582
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 1158.8421490297474,
+        "candidate": 1526.6100913709902,
+        "delta": 0.31735809976290597
+      }
+    }
+  }
+}

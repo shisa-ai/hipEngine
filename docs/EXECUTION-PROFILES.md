@@ -323,32 +323,40 @@ arithmetic-recovery plan: the wide-tile routed F16 GEMMs for every grouped
 routed-expert dispatch, the F16 dense wide route at layers 0-47 (which
 carries the hyper-connection down projection), the hyper-connection up
 projection on the wide route, the small-matrix F16 WMMA GEMM for the indexer
-projections and the router logits, the WMMA prefill attention, and the tiled
-GDN recurrence at every GDN layer. Every route keeps its registered strict
-fallback. Measured against strict (18 prompts, 24 decode steps, 3 repeats,
-chunk 4096, BF16 KV, gfx1151, machine `55ea6c509d0b49eea8de7094a1023668`):
-mean/p95/p99/max KL `6.493e-4/3.452e-3/7.889e-3/1.186e-2`, top-1 agreement
+projections, the router logits and the 48-column GDN gate projections, the
+WMMA prefill attention, and a row-split GDN recurrence at every GDN layer
+(FP32 operands, a different summation order than the column-warp owners).
+Every route keeps its registered strict fallback. Measured against strict on
+2026-10-14 (18 prompts, 24 decode steps, 3 repeats, chunk 4096, BF16 KV,
+gfx1151, machine `55ea6c509d0b49eea8de7094a1023668`, commit `21177f07f`):
+mean/p95/p99/max KL `6.295e-4/3.630e-3/8.495e-3/1.034e-2`, top-1 agreement
 `0.99556` (448/450) overall and at least `0.99` in every scope, no row over
 the `2e-2` review boundary, three bit-identical repeats, and exact state
 layout and metadata. Three scopes are listed under `scope_kl_advisories`,
 which section 6.1 reports without binding: `prefill_last` / `prefill_to_c1`
-at mean KL `1.206e-3` (18 rows) and `mixed_ja_en` at mean `1.108e-3`, p95
+at mean KL `1.478e-3` (18 rows) and `mixed_ja_en` at mean `1.108e-3`, p95
 `5.636e-3` (100 rows). The task axis is `requires_task_review`, not a full
-pass: 15 of 18 strict-exact task outputs with three deterministic
-divergences, the same count the arithmetic-recovery plan measured.
+pass: 13 of 18 strict-exact task outputs with five deterministic
+divergences. The composition as first promoted on 2026-10-13, before the
+48-column projections and the row-split recurrence joined it, measured
+`6.493e-4/3.452e-3/7.889e-3/1.186e-2` with 15 of 18, the count the
+arithmetic-recovery plan also measured.
 
 The default gate prompts are short. On four prompts of about 2,000 to 2,600
-tokens the plan measures mean/p95/max KL `2.10e-3/1.28e-2/2.06e-2` with top-1
-99/100, outside the envelope, and so does every comparison arm that is not
-bit-identical to `strict`, including an F32 summation-order change in a
-single projection (`2.09e-3/1.05e-2/4.81e-2`); see the long-context note in
-section 6.1. The plan it
+tokens the plan measures mean/p95/max KL `2.16e-3/9.59e-3/3.23e-2` with top-1
+97/100 (`2.10e-3/1.28e-2/2.06e-2` and 99/100 on 2026-10-13), outside the
+envelope, and so does every comparison arm that is not bit-identical to
+`strict`, including an F32 summation-order change in a single projection
+(`2.09e-3/1.05e-2/4.81e-2`); see the long-context note in section 6.1. The
+plan it
 replaced, the arithmetic-recovery composition alone, measured mean/p95/p99/max
 KL `3.065e-4/1.785e-3/4.271e-3/7.771e-3` with a bit-identical `prefill_last`
 scope; it remains reachable by clearing the composition's selectors after the
 binder. On the canonical 12-case protocol the composition moves weighted
 prefill at p512/p1024/p4096 from `306.6/331.4/337.2` to
-`769.2/932.9/1108.4 tok/s` on the same host. Evidence:
+`769.2/932.9/1108.4 tok/s` on the same host, and the 2026-10-14 kernel work
+moves it to `1028.5/1276.5/1562.2`. Evidence:
+[`current rates and gates`](../benchmarks/results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/README.md),
 [`rates, gates and long-context isolation`](../benchmarks/results/2026-10-14-qwen4exp-production-f16-composition/README.md),
 [`composition gate`](../benchmarks/results/2026-10-14-qwen4exp-fast-composition-gate-2/README.md),
 [`recovery gate`](../benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-gate/gate.json).

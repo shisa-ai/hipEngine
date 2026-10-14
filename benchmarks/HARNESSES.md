@@ -86,7 +86,7 @@ tables use `gguf_ar_mtp_suite.py` or `gguf_mtp_category_bench.py` with a
 fixture of four categories at three prompt lengths. Two fixtures are
 committed: `benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json`
 (the default) and `qwen4exp_canonical_ar_p1024_p8192_p16384.json` (pass it
-with `--fixture`). Each run takes about 25 and 15 minutes on Radeon 8060S.
+with `--fixture`). Each run takes about 10 minutes on Radeon 8060S.
 
 After a prefill or decode change, run both with `--prefill-chunk-size 4096
 --capture-mode compact --ple-cache-mode warm --execution-profile production`
@@ -94,7 +94,7 @@ and compare each artifact with the current baseline on the same host:
 
 ```bash
 python3 scripts/qwen4exp_rate_regression_check.py \
-  --baseline benchmarks/results/2026-10-14-qwen4exp-prefill-exact-kernels-and-ladder/hipengine-production-p1024-p8192-p16384.json \
+  --baseline benchmarks/results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/hipengine-production-p1024-p8192-p16384.json \
   --candidate <new artifact> [--require-identical-output]
 ```
 
