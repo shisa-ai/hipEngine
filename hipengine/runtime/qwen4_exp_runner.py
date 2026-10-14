@@ -70,7 +70,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_topk_expand_f32_i64,
     qwen4_exp_qsa_topk_expand_rows_f32_i64,
 )
-from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
+from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     shared_gate_combine_f32_shared_out_bf16,
     weighted_sum_batch_out_bf16_f32w,
