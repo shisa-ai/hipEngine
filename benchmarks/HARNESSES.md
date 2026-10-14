@@ -94,7 +94,7 @@ and compare each artifact with the current baseline on the same host:
 
 ```bash
 python3 scripts/qwen4exp_rate_regression_check.py \
-  --baseline benchmarks/results/2026-10-14-qwen4exp-decode-batch/hipengine-production-p1024-p8192-p16384.json \
+  --baseline benchmarks/results/2026-10-14-qwen4exp-final/hipengine-production-p1024-p8192-p16384.json \
   --candidate <new artifact> [--require-identical-output]
 ```
 

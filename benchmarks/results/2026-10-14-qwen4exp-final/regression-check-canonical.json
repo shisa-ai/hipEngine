@@ -1,0 +1,48 @@
+{
+  "baseline": "benchmarks/results/2026-10-14-qwen4exp-decode-batch/hipengine-production.json",
+  "candidate": "benchmarks/results/2026-10-14-qwen4exp-final/hipengine-production.json",
+  "changed_output_cases": [],
+  "decode_tolerance": 0.03,
+  "failures": [],
+  "passed": true,
+  "prefill_tolerance": 0.03,
+  "require_identical_output": false,
+  "shapes": {
+    "1024": {
+      "decode_tok_s_weighted": {
+        "baseline": 22.468737181315277,
+        "candidate": 22.474041386808192,
+        "delta": 0.0002360704765076438
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 1284.0038856427784,
+        "candidate": 1309.346793116603,
+        "delta": 0.019737407150553832
+      }
+    },
+    "4096": {
+      "decode_tok_s_weighted": {
+        "baseline": 22.990730943366202,
+        "candidate": 22.990430328570483,
+        "delta": -1.307547795936781e-05
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 1562.8625066988902,
+        "candidate": 1596.3385606585528,
+        "delta": 0.021419705070775175
+      }
+    },
+    "512": {
+      "decode_tok_s_weighted": {
+        "baseline": 23.40397723200348,
+        "candidate": 23.41154976459459,
+        "delta": 0.00032355750973622754
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 1028.9540027993394,
+        "candidate": 1031.835666671576,
+        "delta": 0.0028005759872617997
+      }
+    }
+  }
+}
