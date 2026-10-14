@@ -89,3 +89,53 @@ def test_rowsplit_matches_the_column_warp_owner_to_round_off(v_heads, rows):
     assert np.linalg.norm(core - parent) <= 2e-6 * np.linalg.norm(parent)
     assert np.linalg.norm(state - parent_state) <= 2e-6 * np.linalg.norm(parent_state)
     assert np.abs(core - parent).max() <= 1e-5 * max(1.0, np.abs(parent).max())
+
+
+def test_rowsplit_f16_image_is_the_cast_of_its_output():
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import f32_to_f16
+
+    runtime = get_hip_runtime()
+    library = build_qwen4_exp_gdn_dpp(multi_column=True)
+    rng = np.random.default_rng(99)
+    rows, v_heads, k_heads, dim = 67, 48, 16, 128
+    qkv_width = 2 * k_heads * dim + v_heads * dim
+    host = [
+        rng.normal(0.0, 0.05, (rows, qkv_width)).astype(np.float32),
+        rng.normal(0.0, 0.5, (rows, v_heads * dim)).astype(np.float32),
+        rng.normal(-0.2, 0.1, (rows, v_heads)).astype(np.float32),
+        rng.normal(0.0, 0.2, (rows, v_heads)).astype(np.float32),
+        rng.normal(-1.0, 0.1, v_heads).astype(np.float32),
+        (-np.exp(rng.normal(-0.5, 0.1, v_heads))).astype(np.float32),
+        rng.normal(1.0, 0.05, dim).astype(np.float32),
+    ]
+    state0 = rng.normal(0.0, 0.01, (v_heads, dim, dim)).astype(np.float32)
+    plain, plain_state = _run(
+        qwen4_exp_gdn_prefill_rowsplit_f32, host, state0, rows, v_heads,
+        library, runtime)
+    count = rows * v_heads * dim
+    dev = [malloc(a.nbytes, runtime=runtime) for a in host]
+    state = malloc(state0.nbytes, runtime=runtime)
+    out = malloc(count * 4, runtime=runtime)
+    image = malloc(count * 2, runtime=runtime)
+    reference = malloc(count * 2, runtime=runtime)
+    try:
+        for d, a in zip(dev, host):
+            copy_host_to_device(d, host_array_ptr(a), runtime=runtime)
+        copy_host_to_device(state, host_array_ptr(state0), runtime=runtime)
+        assert qwen4_exp_gdn_prefill_rowsplit_f32.publishes_f16_image
+        qwen4_exp_gdn_prefill_rowsplit_f32(
+            *[d.ptr for d in dev], state.ptr, out.ptr, rows, k_heads, v_heads,
+            dim, dim, core_f16_ptr=image.ptr, library=library, runtime=runtime)
+        f32_to_f16(out.ptr, reference.ptr, count, runtime=runtime)
+        runtime.device_synchronize()
+        core = np.empty((rows, v_heads * dim), np.float32)
+        got = np.empty(count, np.uint16)
+        want = np.empty(count, np.uint16)
+        copy_device_to_host(host_array_ptr(core), out, runtime=runtime)
+        copy_device_to_host(host_array_ptr(got), image, runtime=runtime)
+        copy_device_to_host(host_array_ptr(want), reference, runtime=runtime)
+    finally:
+        for buf in (*dev, state, out, image, reference):
+            free(buf, runtime=runtime)
+    np.testing.assert_array_equal(core.view(np.uint32), plain.view(np.uint32))
+    np.testing.assert_array_equal(got, want)

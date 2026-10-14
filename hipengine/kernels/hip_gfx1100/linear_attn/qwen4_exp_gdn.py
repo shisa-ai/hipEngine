@@ -462,11 +462,15 @@ def qwen4_exp_gdn_prefill_rowsplit_f32(
     head_k_dim: int,
     head_v_dim: int,
     *,
+    core_f16_ptr: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
     """Row-split Qwen4Exp GDN prefill recurrence plus the norm/gate epilogue.
+
+    ``core_f16_ptr`` additionally receives ``half(core)`` as F16, the bytes
+    the standalone FP32-to-F16 cast would produce from the gated output.
 
     Same operands and outputs as :func:`qwen4_exp_gdn_prefill_tiled16_f32`.
     The recurrence decays the state first and applies the key and query
@@ -480,19 +484,30 @@ def qwen4_exp_gdn_prefill_rowsplit_f32(
         raise ValueError("row-split GDN prefill requires 128x128 heads")
     library = library or build_qwen4_exp_gdn_dpp(multi_column=True)
     runtime = runtime or get_hip_runtime()
+    pointers = [
+        conv_ptr, output_gate_ptr, alpha_ptr, beta_logits_ptr, dt_bias_ptr,
+        a_ptr, norm_weight_ptr, recurrent_state_ptr, core_ptr,
+    ]
+    symbol = "hipengine_qwen4_exp_gdn_prefill_rowsplit_f32"
+    if core_f16_ptr:
+        pointers.append(core_f16_ptr)
+        symbol += "_f16"
     fn = signed_kernel_fn(
         library,
-        "hipengine_qwen4_exp_gdn_prefill_rowsplit_f32",
-        _PREFILL_ARGS,
+        symbol,
+        (ctypes.c_void_p,) * len(pointers) + (ctypes.c_int64,) * 5 + (ctypes.c_void_p,),
         ctypes.c_int,
     )
     error = fn(
-        conv_ptr, output_gate_ptr, alpha_ptr, beta_logits_ptr, dt_bias_ptr,
-        a_ptr, norm_weight_ptr, recurrent_state_ptr, core_ptr, tokens,
-        num_k_heads, num_v_heads, head_k_dim, head_v_dim, stream,
+        *pointers, tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim, stream,
     )
     if int(error) != HIP_SUCCESS:
         runtime.check(int(error))
+
+
+# The row-split wrapper can publish half(core); a caller checks this attribute
+# rather than the variant name before passing ``core_f16_ptr``.
+qwen4_exp_gdn_prefill_rowsplit_f32.publishes_f16_image = True
 
 
 def qwen4_exp_gdn_prefill_tiled16_f32(

@@ -6903,6 +6903,21 @@ def run_qwen4_exp_gdn_token_mixer(
                     )
                     if tile16_variant else qwen4_exp_gdn_prefill_tiled16_f32
                 )
+                # A recurrence owner that can publish half(core) writes it
+                # into the wide F16 stage, where the output projection (the
+                # next launch, and the only reader of ``core``) finds it in
+                # place of its own conversion.
+                core_image_kwargs = {}
+                core_count = rows * num_v_heads * head_dim
+                image_workspace = wide_f16_activation_workspace()
+                if (
+                    getattr(tile16, "publishes_f16_image", False)
+                    and _qwen4_exp_gr_f16_mirror_enabled()
+                    and image_workspace is not None
+                    and image_workspace.nbytes >= core_count * 2
+                ):
+                    _invalidate_wide_f16_publication()
+                    core_image_kwargs["core_f16_ptr"] = image_workspace.ptr
                 tile16(
                     scratch.conv.ptr,
                     scratch.gate.ptr,
@@ -6920,7 +6935,12 @@ def run_qwen4_exp_gdn_token_mixer(
                     head_dim,
                     stream=stream,
                     runtime=active_runtime,
+                    **core_image_kwargs,
                 )
+                if core_image_kwargs:
+                    declare_f16_mirror(
+                        scratch.core.ptr, core_count, image_workspace.ptr
+                    )
             else:
                 qwen4_exp_gdn_prefill_columnwarps_f32(
                     scratch.conv.ptr,
@@ -7012,6 +7032,9 @@ def run_qwen4_exp_gdn_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
+    # The image of ``core`` lives in the shared wide F16 stage, which the next
+    # staged conversion overwrites; retire the declaration with its one reader.
+    invalidate_f16_mirror()
     return scratch.output
 
 

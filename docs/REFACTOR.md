@@ -8999,6 +8999,14 @@ were not kept, and shrinking the tile-16 body's own blocks to 128 threads
 made it slower (10.4 ms) because each block restages the token tile with
 scalar global loads.
 
+The row-split owner also writes `half(core)` from its norm/gate epilogue
+into the wide F16 stage and the runner declares it as the image of `core`,
+so the output projection skips its conversion (same
+`HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` switch as the hyper-connection image;
+bit-identical; `code-p4096` 1535.1 -> 1554.6 prefill tok/s). The runner
+retires the declaration right after the output projection because the stage
+is shared with later conversions.
+
 Like the routes in the next section this selection has no manifest row.
 Rollback: set `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` after the bind, as the
 A/B harnesses do. Removal condition: declare the variant in the plan with a
