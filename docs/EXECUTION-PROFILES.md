@@ -337,7 +337,14 @@ which section 6.1 reports without binding: `prefill_last` / `prefill_to_c1`
 at mean KL `1.478e-3` (18 rows) and `mixed_ja_en` at mean `1.108e-3`, p95
 `5.636e-3` (100 rows). The task axis is `requires_task_review`, not a full
 pass: 13 of 18 strict-exact task outputs with five deterministic
-divergences. The composition as first promoted on 2026-10-13, before the
+divergences. Those five were reviewed by reading both continuations: each
+production continuation is coherent and on-task, and four of the five split
+at the prompt-format boundary (opening a `<think>` block or a new turn
+versus answering directly) in the first six tokens; see
+`benchmarks/results/2026-10-14-qwen4exp-decode-batch/README.md`. With the
+decode routes of the same day (row-split GDN step, warp-per-expert routed
+experts) the gate measures `6.364e-4/3.637e-3/8.069e-3/9.880e-3` and top-1
+446/450. The composition as first promoted on 2026-10-13, before the
 48-column projections and the row-split recurrence joined it, measured
 `6.493e-4/3.452e-3/7.889e-3/1.186e-2` with 15 of 18, the count the
 arithmetic-recovery plan also measured.
