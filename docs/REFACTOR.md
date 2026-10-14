@@ -9161,3 +9161,17 @@ full regather measurable; (2) have the block selection write the bitmask
 directly, which also removes the expand-to-positions kernel from this route;
 (3) replace the selector with manifest-driven dispatch.
 
+
+## Qwen4Exp direct QSA prefill selection (`HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT`)
+
+Default on. Prefill rows past the dense-equivalent limit score only the
+complete blocks they can see (`qsa_score_h4_d128_rows_f32_kernel`, one
+staged query tile per workgroup), and with the WMMA attention the top-k
+writes the selection mask directly (`qsa_topk_mask_rows_f32_kernel`); only
+the last row still expands positions, for decode. Selection and output are
+bit-identical (`tests/test_gpu_qwen4exp_qsa_select_mask.py`; same-process
+`code-p4096` 1612.6 -> 1629.4 tok/s, identical tokens). `=0` restores the
+tiled all-block scorer, the full expand and the separate mask kernel.
+
+Remove the flag, the tiled scorer's prefill call and the mask kernel's
+prefill call once the next Qwen4Exp rate rollup passes with it on.

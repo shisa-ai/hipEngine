@@ -1143,6 +1143,86 @@ def qwen4_exp_qsa_score_f32(
     )
 
 
+_ARGS_SCORE_ROWS = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ARGS_TOPK_MASK_ROWS = (
+    ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def qwen4_exp_qsa_score_rows_f32(
+    queries_ptr: int,
+    pooled_keys_ptr: int,
+    scores_ptr: int,
+    query_count: int,
+    blocks: int,
+    first_position: int,
+    ratio: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Prefill QSA block scores for four heads of 128 dimensions.
+
+    Row ``r`` sits at absolute position ``first_position + r`` and only its
+    ``(position + 1) // ratio`` complete blocks are scored (the scores the
+    top-k kernels read); ``first_position < 0`` scores every block. Written
+    scores are bit-identical to :func:`qwen4_exp_qsa_score_f32`.
+    """
+
+    if query_count <= 0 or blocks <= 0 or ratio <= 0:
+        raise ValueError("query_count, blocks and ratio must be positive")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_qwen4_exp_qsa_score_rows_f32", _ARGS_SCORE_ROWS, ctypes.c_int)
+    _check_launch(runtime, fn(
+        queries_ptr, pooled_keys_ptr, scores_ptr, query_count, blocks,
+        first_position, ratio, stream))
+
+
+def qwen4_exp_qsa_topk_mask_rows_f32(
+    scores_ptr: int,
+    mask_ptr: int,
+    rows: int,
+    first_position: int,
+    score_stride: int,
+    mask_words: int,
+    ratio: int,
+    budget: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exact top-k of :func:`qwen4_exp_qsa_topk_expand_rows_f32_i64` as a mask.
+
+    Writes the WMMA prefill attention's per-row selection bitmask (bit ``b``
+    = block ``b``) for rows at consecutive positions from ``first_position``,
+    the mask the expand kernel followed by the selection-mask kernel writes.
+    """
+
+    if rows <= 0 or first_position < 0 or ratio <= 0 or budget <= 0:
+        raise ValueError("invalid top-k mask rows, position, ratio or budget")
+    if mask_words <= 0 or mask_words > 2048:
+        raise ValueError("mask_words must be in [1, 2048]")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_qwen4_exp_qsa_topk_mask_rows_f32", _ARGS_TOPK_MASK_ROWS,
+        ctypes.c_int)
+    _check_launch(runtime, fn(
+        scores_ptr, mask_ptr, rows, first_position, score_stride, mask_words,
+        ratio, budget, stream))
+
+
 def qwen4_exp_qsa_topk_expand_f32_i64(
     scores_ptr: int,
     selected_positions_ptr: int,
@@ -1442,6 +1522,8 @@ __all__ = [
     "qwen4_exp_qsa_norm_mrope_rows_f32",
     "qwen4_exp_qsa_pool_norm_rope_f32",
     "qwen4_exp_qsa_score_f32",
+    "qwen4_exp_qsa_score_rows_f32",
+    "qwen4_exp_qsa_topk_mask_rows_f32",
     "qwen4_exp_qsa_scatter_index_key_device_position_f32",
     "qwen4_exp_qsa_scatter_index_keys_f32",
     "qwen4_exp_qsa_split_norm_rope_f32",

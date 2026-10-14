@@ -1182,6 +1182,205 @@ __global__ __launch_bounds__(256) void qsa_score_h4_d128_tiled_f32_kernel(
   scores[query * blocks + block] = lane0 * rsqrtf(static_cast<float>(kDim));
 }
 
+// Prefill sibling of qsa_score_h4_d128_tiled_f32_kernel. A workgroup owns 16
+// query rows, stages them once and walks the key blocks in tiles of 16, so a
+// query row is read from global memory once instead of once per key tile.
+// Key rows are staged with a 129-float stride: with the 128-float stride all
+// sixteen lanes of a tile read one bank. Row r sits at absolute position
+// first_position + r and only scores its (position + 1) / ratio complete
+// blocks, the only scores the top-k consumers read; first_position < 0 scores
+// every block. Each (query, block) score keeps the tiled kernel's statements,
+// so the scores it writes are bit-identical.
+__global__ __launch_bounds__(256) void qsa_score_h4_d128_rows_f32_kernel(
+    const float* __restrict__ queries,
+    const float* __restrict__ pooled_keys,
+    float* __restrict__ scores,
+    int64_t query_count,
+    int64_t blocks,
+    int64_t first_position,
+    int64_t ratio) {
+  constexpr int kTile = 16;
+  constexpr int kHeads = 4;
+  constexpr int kDim = 128;
+  constexpr int kQueryWidth = kHeads * kDim;
+  constexpr int kKeyStride = kDim + 1;
+  __shared__ float query_tile[kTile * kQueryWidth];
+  __shared__ float key_tile[kTile * kKeyStride];
+  const int64_t query_base = static_cast<int64_t>(blockIdx.x) * kTile;
+  const int tid = threadIdx.x;
+  for (int index = tid; index < kTile * kQueryWidth; index += 256) {
+    const int64_t query = query_base + index / kQueryWidth;
+    query_tile[index] = query < query_count
+        ? queries[query * kQueryWidth + index % kQueryWidth] : 0.0f;
+  }
+  const int local_query = tid / kTile;
+  const int local_block = tid % kTile;
+  const int64_t query = query_base + local_query;
+  int64_t tile_limit = blocks;
+  int64_t row_limit = blocks;
+  if (first_position >= 0) {
+    const int64_t last = min(query_base + kTile, query_count) - 1;
+    tile_limit = min(blocks, (first_position + last + 1) / ratio);
+    row_limit = min(blocks, (first_position + query + 1) / ratio);
+  }
+  const float* q = query_tile + local_query * kQueryWidth;
+  for (int64_t block_base = 0; block_base < tile_limit; block_base += kTile) {
+    __syncthreads();
+    for (int index = tid; index < kTile * kDim; index += 256) {
+      const int64_t block = block_base + index / kDim;
+      key_tile[(index / kDim) * kKeyStride + index % kDim] = block < blocks
+          ? pooled_keys[block * kDim + index % kDim] : 0.0f;
+    }
+    __syncthreads();
+    const int64_t block = block_base + local_block;
+    if (query >= query_count || block >= row_limit) {
+      continue;
+    }
+    const float* k = key_tile + local_block * kKeyStride;
+    float dot0 = 0.0f;
+    float dot1 = 0.0f;
+    float dot2 = 0.0f;
+    float dot3 = 0.0f;
+    for (int dimension = 0; dimension < kDim; ++dimension) {
+      const float key = k[dimension];
+      dot0 += q[dimension] * key;
+      dot1 += q[kDim + dimension] * key;
+      dot2 += q[2 * kDim + dimension] * key;
+      dot3 += q[3 * kDim + dimension] * key;
+    }
+    float lane0 = 0.0f;
+    float lane1 = 0.0f;
+    float lane2 = 0.0f;
+    float lane3 = 0.0f;
+    lane0 += fmaxf(dot0, 0.0f);
+    lane1 += fmaxf(dot1, 0.0f);
+    lane2 += fmaxf(dot2, 0.0f);
+    lane3 += fmaxf(dot3, 0.0f);
+    lane0 += 0.0f; lane1 += 0.0f; lane2 += 0.0f; lane3 += 0.0f;
+    lane0 += lane2;
+    lane1 += lane3;
+    lane0 += lane1;
+    scores[query * blocks + block] = lane0 * rsqrtf(static_cast<float>(kDim));
+  }
+}
+
+constexpr uint32_t kQsaMaskMaxWords = 2048;
+
+// Exact top-k of qsa_topk_expand_f32_i64_kernel written straight into the
+// WMMA prefill attention's selection bitmask (bit b of a row = block b),
+// without materializing selected positions. Same four radix passes over the
+// score bits, with the descending bin scan done by all 256 threads instead of
+// one; same tie rule (equal scores at the threshold take the lowest block
+// indices). The partial trailing block is always selected, as the expand
+// kernel's tail positions select it.
+__global__ __launch_bounds__(256) void qsa_topk_mask_rows_f32_kernel(
+    const float* __restrict__ score_rows,
+    uint32_t* __restrict__ mask,
+    int64_t first_position,
+    int64_t score_stride,
+    uint32_t mask_words,
+    int64_t ratio,
+    int64_t budget) {
+  __shared__ int histogram[256];
+  __shared__ int wave_totals[8];
+  __shared__ uint32_t words[kQsaMaskMaxWords];
+  __shared__ uint32_t prefix_bits;
+  __shared__ uint32_t prefix_mask;
+  __shared__ int rank_in_prefix;
+  __shared__ int chosen_bin;
+  __shared__ int chosen_rank;
+  __shared__ int equal_seen;
+  const int64_t row = blockIdx.x;
+  const int64_t query_position = first_position + row;
+  const int64_t blocks = (query_position + 1) / ratio;
+  const float* scores = score_rows + row * score_stride;
+  const int tid = threadIdx.x;
+  const int lane = tid % 32;
+  const int wave = tid / 32;
+  if (tid == 0) {
+    prefix_bits = 0;
+    prefix_mask = 0;
+    rank_in_prefix = static_cast<int>(budget);
+    equal_seen = 0;
+  }
+  for (uint32_t w = tid; w < mask_words; w += 256) words[w] = 0u;
+  __syncthreads();
+  for (int shift = 24; shift >= 0; shift -= 8) {
+    histogram[tid] = 0;
+    if (tid == 0) chosen_bin = -1;
+    __syncthreads();
+    for (int64_t index = tid; index < blocks; index += 256) {
+      const uint32_t bits = __float_as_uint(scores[index]);
+      if ((bits & prefix_mask) == prefix_bits) {
+        atomicAdd(&histogram[(bits >> shift) & 0xffu], 1);
+      }
+    }
+    __syncthreads();
+    // Thread t owns bin 255 - t; an inclusive scan in that order gives each
+    // bin the count of every bin above it plus its own.
+    const int bin = 255 - tid;
+    const int count = histogram[bin];
+    int inclusive = count;
+#pragma unroll
+    for (int distance = 1; distance < 32; distance <<= 1) {
+      const int other = __shfl_up(inclusive, distance, 32);
+      if (lane >= distance) inclusive += other;
+    }
+    if (lane == 31) wave_totals[wave] = inclusive;
+    __syncthreads();
+    int above = inclusive - count;
+    for (int w = 0; w < wave; ++w) above += wave_totals[w];
+    const int rank = rank_in_prefix;
+    if (rank > above && rank <= above + count) {
+      chosen_bin = bin;
+      chosen_rank = rank - above;
+    }
+    __syncthreads();
+    if (tid == 0) {
+      // No bin reaches the rank only when fewer scores remain than the rank;
+      // the serial scan then picks bin 0 and keeps the rank.
+      const int selected = chosen_bin < 0 ? 0 : chosen_bin;
+      if (chosen_bin >= 0) rank_in_prefix = chosen_rank;
+      prefix_bits |= static_cast<uint32_t>(selected) << shift;
+      prefix_mask |= 0xffu << shift;
+    }
+    __syncthreads();
+  }
+  const int equal_needed = rank_in_prefix;
+  const unsigned long long lower_mask =
+      lane == 0 ? 0ull : ((1ull << lane) - 1ull);
+  for (int64_t base = 0; base < blocks; base += 256) {
+    const int64_t index = base + tid;
+    const bool valid = index < blocks;
+    const uint32_t bits = valid ? __float_as_uint(scores[index]) : 0u;
+    const bool equal = valid && bits == prefix_bits;
+    const unsigned long long equal_ballot = __ballot(equal);
+    if (lane == 0) wave_totals[wave] = __popcll(equal_ballot);
+    __syncthreads();
+    int equal_rank = equal_seen + __popcll(equal_ballot & lower_mask);
+    int tile_equal = 0;
+    for (int w = 0; w < 8; ++w) {
+      if (w < wave) equal_rank += wave_totals[w];
+      tile_equal += wave_totals[w];
+    }
+    const bool candidate =
+        valid && (bits > prefix_bits || (equal && equal_rank < equal_needed));
+    if (candidate && index < static_cast<int64_t>(mask_words) * 32) {
+      atomicOr(&words[index / 32], 1u << (index % 32));
+    }
+    __syncthreads();
+    if (tid == 0) equal_seen += tile_equal;
+    __syncthreads();
+  }
+  if (tid == 0 && query_position + 1 > blocks * ratio &&
+      blocks < static_cast<int64_t>(mask_words) * 32) {
+    words[blocks / 32] |= 1u << (blocks % 32);
+  }
+  __syncthreads();
+  uint32_t* out = mask + static_cast<size_t>(row) * mask_words;
+  for (uint32_t w = tid; w < mask_words; w += 256) out[w] = words[w];
+}
+
 __global__ __launch_bounds__(1024) void qsa_topk_expand_f32_i64_kernel(
     const float* __restrict__ score_rows,
     const int64_t* __restrict__ query_positions,
@@ -2534,5 +2733,50 @@ extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_fused_v2_f32(
       static_cast<float*>(scores), static_cast<float*>(coefficients),
       static_cast<float*>(output),
       selected_count, block_size, block_table_len, query_heads, kv_heads, head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_score_rows_f32(
+    const void* queries,
+    const void* pooled_keys,
+    void* scores,
+    int64_t query_count,
+    int64_t blocks,
+    int64_t first_position,
+    int64_t ratio,
+    hipStream_t stream) {
+  if (!queries || !pooled_keys || !scores || query_count <= 0 || blocks <= 0 ||
+      ratio <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qsa_score_h4_d128_rows_f32_kernel,
+      dim3(static_cast<uint32_t>((query_count + 15) / 16)), dim3(256), 0, stream,
+      static_cast<const float*>(queries), static_cast<const float*>(pooled_keys),
+      static_cast<float*>(scores), query_count, blocks, first_position, ratio);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_topk_mask_rows_f32(
+    const void* scores,
+    void* mask,
+    int64_t rows,
+    int64_t first_position,
+    int64_t score_stride,
+    int64_t mask_words,
+    int64_t ratio,
+    int64_t budget,
+    hipStream_t stream) {
+  if (!scores || !mask || rows <= 0 || first_position < 0 || ratio <= 0 ||
+      budget <= 0 || score_stride < (first_position + rows) / ratio ||
+      mask_words <= 0 || mask_words > kQsaMaskMaxWords) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qsa_topk_mask_rows_f32_kernel,
+      dim3(static_cast<uint32_t>(rows)), dim3(256), 0, stream,
+      static_cast<const float*>(scores), static_cast<uint32_t*>(mask),
+      first_position, score_stride, static_cast<uint32_t>(mask_words), ratio,
+      budget);
   return static_cast<int>(hipGetLastError());
 }
