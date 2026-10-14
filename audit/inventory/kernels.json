@@ -8280,8 +8280,8 @@
           "hipengine/runtime/gguf_q8_mmq_sidecars.py",
           "hipengine/runtime/qwen4_exp_runner.py",
           "hipengine/runtime/qwen35_gguf_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/gemma4.py"
+          "hipengine/runtime/gemma4.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_iq2_xs_mmq_prefill.py",
@@ -8306,7 +8306,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip",
-      "evidence_hash": "671b11f8b178"
+      "evidence_hash": "620336bd5af6"
     },
     {
       "kind": "kernel",
@@ -8322,8 +8322,8 @@
           "hipengine/runtime/gguf_q8_mmq_sidecars.py",
           "hipengine/runtime/qwen4_exp_runner.py",
           "hipengine/runtime/qwen35_gguf_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/gemma4.py"
+          "hipengine/runtime/gemma4.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_gpu_gguf_iq2_xs_mmq_prefill.py",
@@ -8347,7 +8347,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py",
-      "evidence_hash": "12746e448847"
+      "evidence_hash": "9b825e2f1eee"
     },
     {
       "kind": "kernel",
@@ -8732,8 +8732,8 @@
         "referrers": 15,
         "runtime_referrers": [
           "hipengine/runtime/qwen35_gguf_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/gemma4.py"
+          "hipengine/runtime/gemma4.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_unit_qwen35_gguf_rocprof_summary.py",
@@ -8758,7 +8758,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip",
-      "evidence_hash": "cbe7e9bcb45e"
+      "evidence_hash": "468ee2d1abab"
     },
     {
       "kind": "kernel",
@@ -8772,8 +8772,8 @@
         "referrers": 15,
         "runtime_referrers": [
           "hipengine/runtime/qwen35_gguf_runner.py",
-          "hipengine/runtime/gguf_linear.py",
-          "hipengine/runtime/gemma4.py"
+          "hipengine/runtime/gemma4.py",
+          "hipengine/runtime/gguf_linear.py"
         ],
         "test_referrers": [
           "tests/test_unit_qwen35_gguf_rocprof_summary.py",
@@ -8797,7 +8797,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py",
-      "evidence_hash": "19efb9ebf29a"
+      "evidence_hash": "26ba07c45690"
     },
     {
       "kind": "kernel",
