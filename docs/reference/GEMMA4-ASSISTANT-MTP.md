@@ -341,18 +341,20 @@ Radeon Pro W7900 (`hip_gfx1100`), target `UD-Q4_K_XL`, head `Q8_0`, production
 profile, BF16 KV, 18 prompts from the two suites under `benchmarks/prompts/`
 (code, English, Japanese, mixed), two samples each, 128 greedy tokens. Rates
 are whole-call tokens per second including the prefill of a short prompt, plain
-call first, measured 2026-10-13 with `scripts/gemma4_mtp_probe.py`.
+call first, measured with `scripts/gemma4_mtp_probe.py`: budget 2 on 2026-10-13,
+budgets 4, 6 and 8 on 2026-10-15 after the wide-block lm-head fix below.
 
 | `candidate_budget` | Plain tok/s | MTP tok/s | Ratio | Code | English | Japanese | Mixed |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 2 | 74.3 | 94.2 | 1.27x | 1.33x | 1.24x | 1.23x | 1.25x |
-| 4 | 74.0 | 103.3 | 1.40x | 1.51x | 1.34x | 1.28x | 1.40x |
-| 6 | 74.2 | 102.2 | 1.38x | 1.50x | 1.32x | 1.21x | 1.43x |
-| 8 | 73.7 | 72.8 | 0.99x | 1.07x | 0.97x | 0.85x | 1.01x |
+| 4 | 74.1 | 102.9 | 1.39x | 1.51x | 1.34x | 1.27x | 1.40x |
+| 6 | 73.1 | 100.5 | 1.38x | 1.51x | 1.33x | 1.22x | 1.41x |
+| 8 | 73.2 | 91.1 | 1.24x | 1.38x | 1.22x | 1.09x | 1.27x |
 
-A budget of 4 is the best measured setting on this device. Artifact:
-`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-status.json`. The head has not
-been measured on `hip_gfx1151` on the current tree.
+A budget of 4 is the best measured setting on this device. Artifacts:
+`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-status.json` (budget 2) and
+`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-wide-head.json` (budgets 4, 6
+and 8). The head has not been measured on `hip_gfx1151` on the current tree.
 
 The table above is the production profile, whose verify block is not exact. The
 same 18 prompts at a budget of 4, measured again with the exact verify path
@@ -369,11 +371,17 @@ a 600-token prompt, production profile:
 
 | Rows in the block | 1 | 3 | 5 | 7 | 9 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Envelope verify (ms) | 14.1 | 23.9 | 28.0 | 32.7 | 56.7 |
-| Exact verify (ms) | 13.9 | 23.4 | 33.5 | 43.9 | 66.4 |
+| Envelope verify (ms) | 14.1 | 23.8 | 27.8 | 32.5 | 39.4 |
+| Exact verify (ms) | 13.9 | 23.3 | 33.3 | 43.5 | 49.1 |
 
-A one-token decode step takes 12.8 ms in the same run. Artifact:
-`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-exact-verify.json`.
+A one-token decode step takes 12.9 ms in the same run. The lm-head projection
+of a block wider than eight rows is launched in balanced chunks of at most
+eight, because its small-block kernel serves two to eight rows and the kernel
+behind it reads the whole vocabulary matrix once per row: a nine-row block
+spent 21.9 ms in the lm head alone before the split, against 2.4 ms for five
+rows. Artifacts:
+`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-exact-verify.json` and
+`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-wide-head.json`.
 
 ### Sampled requests
 
@@ -399,10 +407,13 @@ the host and sampled there. Artifact:
 
 ## Open defects
 
-1. **A budget of 8 gives no speedup** where 6 gives 1.38x. A budget of 8 makes a
-   nine-row verify block, and the block's time jumps from 32.7 ms at seven rows
-   to 56.7 ms at nine. Which kernel changes route above eight rows has not been
-   identified.
+1. **A verify block costs too much per row.** Each extra row adds about 2 to
+   5 ms to a 14 ms one-row block. llama.cpp at `45451c3` on the same card runs
+   a five-row block in 18.6 ms against its 14.6 ms one-row step, and its MTP
+   with the same head and prompts reaches 2.01x. A five-row production block
+   here spends 9.8 ms in dense projections (3.2 ms for one row), 7.6 ms in
+   expert projections (2.1 ms), 2.8 ms in attention (1.0 ms) and 2.4 ms in the
+   lm head (1.2 ms).
 2. **Sampling runs on the host.** Each sampled step copies a 262,144-entry
    logits row to the host. With a top-k the law costs about 0.4 ms a row; a
    whole-vocabulary law about 0.5 ms; a request with a history penalty about

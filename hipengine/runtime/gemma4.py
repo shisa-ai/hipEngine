@@ -136,6 +136,12 @@ class Gemma4SharedKV:
         return self.live * self.kv_width * _BF16_BYTES
 _F32_BYTES = 4
 _I64_BYTES = 8
+# The quantized lm-head's small-block kernel reuses each weight row across at
+# most this many rows; a wider projection falls to a kernel that reads the
+# whole vocabulary matrix once per row (21.9 ms against 2.4 ms at nine rows on
+# W7900). Both compute every row the same way, so splitting changes nothing but
+# the launch count.
+_LOGITS_ROW_CHUNK = 8
 
 # Widest block a single forward call hands to the kernels when the caller does
 # not ask for a specific one. The per-layer scratch is sized from this, and the
@@ -2718,16 +2724,21 @@ class Gemma4Runner:
         # reads the same field so a capture that leaves it at one still copies
         # exactly the row it projected.
         self._last_logits_rows = head_rows
-        launch_gguf_linear(
-            head,
-            head_input,
-            self._logits.ptr,
-            head_rows,
-            hidden,
-            vocab,
-            output_dtype="f32",
-            stream=stream,
-        )
+        chunks = -(-head_rows // _LOGITS_ROW_CHUNK)
+        start = 0
+        for chunk in range(chunks):
+            take = (head_rows - start) // (chunks - chunk)
+            launch_gguf_linear(
+                head,
+                head_input + start * hidden * _BF16_BYTES,
+                self._logits.ptr + start * vocab * _F32_BYTES,
+                take,
+                hidden,
+                vocab,
+                output_dtype="f32",
+                stream=stream,
+            )
+            start += take
 
     def _row_decode_attention(
         self,
