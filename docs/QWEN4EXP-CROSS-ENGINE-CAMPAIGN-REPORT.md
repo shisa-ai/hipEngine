@@ -86,6 +86,7 @@ Same host and protocol as the baseline table above:
 | hipEngine `production` with the composition | 769.2 | 932.9 | 1108.4 | 20.6 |
 | hipEngine `production`, plus two bit-identical prefill kernels | 779.4 | 977.9 | 1190.3 | 20.6 |
 | hipEngine `production` on 2026-10-14, after the hyper-connection, GDN and expert-glue kernels | 1028.5 | 1276.5 | 1562.2 | 20.5 |
+| hipEngine `production` on 2026-10-14, after the decode kernels | 1029.0 | 1284.0 | 1562.9 | 23.0 |
 | halo-box master `6aa81b88e` (2026-10-12) | 759.3 | 1109.1 | 1446.4 | 25.1 |
 | gufo `v0.12.0` (2026-10-12) | 1095.0 | 1482.2 | 1736.4 | 28.1 |
 
@@ -112,10 +113,14 @@ full-vocabulary layer2 gate mean KL 6.30e-04, max 0.010, top-1 99.56%, 13/18
 strict-exact tasks.
 
 hipEngine's prefill rate is now 0.94x / 0.86x / 0.90x of gufo's at p512 /
-p1024 / p4096 and ahead of halo-box at every length; gufo's decode rate is
-1.37x hipEngine's. The largest remaining prefill items are attention block
+p1024 / p4096 and ahead of halo-box at every length. After the decode
+kernels of the same day, gufo's decode rate is 1.22x hipEngine's (23.0 tok/s
+at p4096). The largest remaining prefill items are attention block
 scoring and the indexer, the GDN recurrence, and the expert glue; at 1024
 tokens the routed-expert kernels are bound by reading every expert's
-weights. Decode has not been worked on. A new reduced-precision route lands in `fast` first and
+weights. A decode step is about 38 ms of kernel time over about 1,450
+launches; the dense projections are at the weight-read floor, and most of
+the remaining distance to gufo is launch count and the routed-expert
+kernels. A new reduced-precision route lands in `fast` first and
 becomes a production route when the complete composition passes the
 production gate.

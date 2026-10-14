@@ -24,37 +24,41 @@ canonical 12-case protocol with one warmup and three repetitions, measured
 
 | Prompt length | Prefill tok/s | Decode (128) tok/s |
 | ---: | ---: | ---: |
-| 512 | **1028.5** | 20.88 |
-| 1024 | **1276.5** | 20.12 |
-| 4096 | **1562.2** | 20.53 |
-| 8192 | **1526.6** | 20.48 |
-| 16384 | **1475.5** | 20.37 |
+| 512 | **1029.0** | **23.40** |
+| 1024 | **1284.0** | **22.47** |
+| 4096 | **1562.9** | **22.99** |
+| 8192 | **1528.1** | **22.92** |
+| 16384 | **1476.7** | **22.81** |
 
 The 8192- and 16384-token rows come from a second 12-case fixture (1024 /
 8192 / 16384 tokens) run under the same protocol; its 1024-token cases are
-token-identical to the canonical ones and measured 1280.4.
+token-identical to the canonical ones and measured 1281.5.
 
 The production plan runs the routed experts, the dense projections at every
 layer, the hyper-connection, indexer and router projections and the prefill
 attention on F16-operand matrix kernels with F32 accumulation, and a
 row-split GDN recurrence at every GDN layer; every route keeps a registered
 strict fallback. The hyper-connection read runs as three launches that share
-one F16 image of its output with the projections that follow. The same host
+one F16 image of its output with the projections that follow. Decode uses a
+row-split GDN step and warp-per-expert routed-expert kernels, and runs the
+one-row hyper-connection read in three launches; decode measured 20.88 /
+20.12 / 20.53 tok/s before those changes the same day. The same host
 and protocol measured 779.4 / 977.9 / 1190.3 prefill at 512 / 1024 / 4096
 tokens on 2026-10-13, before the hyper-connection, GDN and expert-glue
 kernel work, and 305.6 / 331.6 / 335.5 for the plan without the F16 routes.
 
 Against the `strict` teacher on the 18-prompt full-vocabulary gate (450
-teacher-forced rows): mean KL 6.3e-4, p95 3.6e-3, max 0.010, top-1 99.56%,
+teacher-forced rows): mean KL 6.4e-4, p95 3.6e-3, max 0.010, top-1 99.1%,
 bit-identical repeats, 13/18 strict-exact tasks. On the 18-prompt
 cross-engine battery: 13/18 strict-exact, top-1 agreement 1.00, top-20 mean
-KL 0.076 (the plan without the F16 routes: 15/18 and 0.0052). On four
-prompts of about 2,000 to 2,600 tokens the plan measures mean KL 2.2e-3
+KL 0.077 (the plan without the F16 routes: 15/18 and 0.0052). On four
+prompts of about 2,000 to 2,600 tokens the plan measures mean KL 2.1e-3
 against `strict`, outside the calibrated limit of 1e-3; a control that only
 reorders one projection's F32 summation measured 2.1e-3 on the same prompts,
 so that length is reported as a sensitivity measurement rather than a route
 verdict.
-[Current rates, ladder, gates and kernel attribution](results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/README.md)
+[Current rates, gates and decode changes](results/2026-10-14-qwen4exp-decode-batch/README.md)
+· [prefill changes and kernel attribution](results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/README.md)
 · [long-context isolation](results/2026-10-14-qwen4exp-production-f16-composition/README.md)
 · [attention kernel](results/2026-10-14-qwen4exp-fast-qsa-wmma/README.md)
 · [GDN norm/gate kernel](results/2026-10-14-qwen4exp-gdn-norm-gate-waves/README.md)
@@ -75,18 +79,18 @@ per-case medians.
 
 | Engine | p512 | p1024 | p4096 | Decode at p4096 |
 | --- | ---: | ---: | ---: | ---: |
-| hipEngine production (2026-10-14) | 1028.5 | 1276.5 | 1562.2 | 20.5 |
+| hipEngine production (2026-10-14) | 1029.0 | 1284.0 | 1562.9 | 23.0 |
 | halo-box `strix-llama.cpp` master `6aa81b88e` (2026-10-12) | 759.3 | 1109.1 | 1446.4 | 25.1 |
 | gufo `v0.12.0` (2026-10-12) | 1095.0 | 1482.2 | 1736.4 | 28.1 |
 
 hipEngine's prefill rate is ahead of halo-box at every length and at 0.94x,
-0.86x and 0.90x of gufo at p512, p1024 and p4096; gufo's decode rate is
-1.37x and halo-box's 1.22x hipEngine's. The external rows were measured two
+0.87x and 0.90x of gufo at p512, p1024 and p4096; gufo's decode rate is
+1.22x and halo-box's 1.09x hipEngine's. The external rows were measured two
 days earlier on the same host and have not been rerun. The hipEngine column
 is the weighted rate per prompt length.
 The 18-prompt quality battery reports 13/18 strict-exact for hipEngine,
 11/18 for halo-box, and 13/18 for gufo; aligned top-20 mean KL against the
-hipEngine strict teacher is 0.076 for hipEngine production and 0.241 for
+hipEngine strict teacher is 0.077 for hipEngine production and 0.241 for
 halo-box, both with top-1 agreement 1.00, while gufo does not expose
 logprobs for that comparison. These are characterization results, not
 external-engine certifications. See the [pass-1 artifact for the external

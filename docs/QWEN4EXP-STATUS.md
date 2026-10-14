@@ -72,6 +72,17 @@ on the same commit passes every numerical limit (mean KL 6.30e-04, p99
 before), status `requires_task_review`
 ([rates, gates and attribution](../benchmarks/results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/README.md)).
 
+**2026-10-14: decode.** Decode measures **23.40 / 22.47 / 22.99 tok/s** at
+p512/p1024/p4096 and 22.92 / 22.81 at p8192/p16384 (+12% at every length;
+gufo 28.1 and halo-box 25.1 at p4096) from a row-split GDN decode step, the
+warp-per-expert routed-expert decode kernels and a bit-identical
+three-launch one-row hyper-connection read. Gate on the same commit: mean
+KL 6.36e-04, max 0.0099, top-1 446/450, 13/18 strict-exact tasks. MTP still
+verifies serially; one batched verify pass through the prefill owners costs
+1.97 decode steps at four rows and 2.36 at eight, with argmax equal to
+serial decode on every row
+([rates, gates and the MTP cost table](../benchmarks/results/2026-10-14-qwen4exp-decode-batch/README.md)).
+
 **2026-10-13 state additions: the opt-in `fast` execution profile.** The
 owner accepted the X-7 question in the form of a fourth, opt-in profile
 (`docs/EXECUTION-PROFILES.md` section 2): `production` keeps its calibrated
