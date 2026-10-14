@@ -1,0 +1,53 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_mtp_wide_head",
+ "date": "2026-10-15",
+ "performance_claim": true,
+ "question": "Why did a Gemma 4 MTP budget of 8 give no speedup, and what does splitting the wide lm-head projection recover?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL target, mtp-gemma-4-26B-A4B-it-Q8_0 assistant head, BF16 KV",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit": "f4259f19d plus this change",
+ "cause": {
+  "method": "rocprofv3 --kernel-trace of ten verify blocks after a 600-token prompt, production profile, busy milliseconds per forward",
+  "lm_head_kernel_ms": {
+   "rows_1": {"kernel": "gguf_k_pack8_prefill_out_kernel<bf16, f32, q8_0>", "ms": 1.18},
+   "rows_3": {"kernel": "gguf_k_prefill_out_rowtile_kernel<bf16, f32, q8_0, 3>", "ms": 2.51},
+   "rows_5": {"kernel": "gguf_k_prefill_out_rowtile_kernel<bf16, f32, q8_0, 5>", "ms": 2.39},
+   "rows_9": {"kernel": "gguf_k_prefill_out_kernel<bf16, f32, q8_0>", "ms": 21.89}
+  },
+  "explanation": "The small-block rowtile kernel serves two to eight rows; above eight the launch falls to the one-block-per-(column, row) kernel, which reads the 262144-row vocabulary matrix once per row."
+ },
+ "change": "Gemma4Runner launches the lm-head projection of a block wider than eight rows in balanced chunks of at most eight rows. Each row's arithmetic is unchanged.",
+ "verify_block_ms_median": {
+  "method": "scratch timing loop: 25 repetitions after a 600-token prompt, first 5 dropped, rewind between repetitions, production profile",
+  "rows": [1, 3, 5, 7, 9],
+  "envelope": [14.11, 23.75, 27.80, 32.45, 39.39],
+  "exact": [13.91, 23.29, 33.31, 43.51, 49.05],
+  "envelope_before": [14.07, 23.86, 27.95, 32.68, 56.73],
+  "exact_before": [13.91, 23.39, 33.48, 43.87, 66.40],
+  "one_token_decode_ms": 12.86
+ },
+ "row_equality": "exact verify bitwise equal to one-token steps at 3, 5, 7 and 9 rows after prompts of 120, 600 and 1100 tokens (72 of 72 rows); tests/test_gpu_gemma4_runner_verify_rows.py adds a twelve-row block on the fixture",
+ "public_path": {
+  "command": "scripts/gemma4_mtp_probe.py --artifact <target> --draft <head> --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --suite benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --tokens 128 --samples 2 --budget B, HIPENGINE_EXECUTION_PROFILE=production",
+  "timing_scope": "whole public call including prefill of short prompts, 128 greedy tokens; plain call first, then MTP; nothing else running",
+  "budgets": {
+   "4": {"plain_tok_s": 74.1, "mtp_tok_s": 102.9, "ratio": 1.389, "draft_acceptance": 0.729, "rows_token_identical": "22 of 36",
+         "ratio_by_category": {"code": 1.51, "general_en": 1.34, "general_ja": 1.27, "mixed_ja_en": 1.40}},
+   "6": {"plain_tok_s": 73.1, "mtp_tok_s": 100.5, "ratio": 1.376, "draft_acceptance": 0.630, "rows_token_identical": "22 of 36",
+         "ratio_by_category": {"code": 1.51, "general_en": 1.33, "general_ja": 1.22, "mixed_ja_en": 1.41}},
+   "8": {"plain_tok_s": 73.2, "mtp_tok_s": 91.1, "ratio": 1.245, "draft_acceptance": 0.539, "rows_token_identical": "22 of 36",
+         "ratio_by_category": {"code": 1.38, "general_en": 1.22, "general_ja": 1.09, "mixed_ja_en": 1.27}}
+  },
+  "budget_8_before": {"plain_tok_s": 73.7, "mtp_tok_s": 72.8, "ratio": 0.99, "artifact": "benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-status.json"}
+ },
+ "limitations": [
+  "Whole-call timing is not isolated decode throughput.",
+  "A budget of 4 remains the best setting; the per-row cost of the verify block below nine rows is unchanged by this change.",
+  "Not measured on hip_gfx1151."
+ ]
+}

@@ -252,3 +252,48 @@ def test_max_logits_rows_defaults_to_one_and_is_bounded(runner) -> None:
         Gemma4Runner(weights=runner.weights, capacity=64, max_logits_rows=0)
     with pytest.raises(ValueError, match="must not exceed max_block"):
         Gemma4Runner(weights=runner.weights, capacity=64, max_block=4, max_logits_rows=5)
+
+
+def test_a_wide_verify_block_splits_the_head_and_keeps_its_rows(
+    tmp_path_factory, monkeypatch
+) -> None:
+    """A verify block wider than the head's small-block kernel stays row-exact.
+
+    The lm-head projection is launched in balanced chunks of at most eight
+    rows, and every row is still the one-token step's row, bit for bit.
+    """
+
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.runtime import gemma4 as module
+    from hipengine.runtime.gemma4 import Gemma4Runner, load_gemma4_device_weights
+    from tests._gemma4_gguf_fixture import write_default_gemma4_gguf
+
+    path = write_default_gemma4_gguf(tmp_path_factory.mktemp("wide") / "fixture.gguf")
+    weights = load_gemma4_device_weights(GGUFReader(path))
+    tokens = [3, 17, 42, 8, 11, 5, 23, 9, 30, 14, 2, 27, 6]
+    wide = Gemma4Runner(weights=weights, capacity=64, max_logits_rows=12)
+    head_rows = []
+    original = module.launch_gguf_linear
+
+    def record(weight, x_ptr, out_ptr, rows, in_features, out_features, **kwargs):
+        if kwargs.get("output_dtype") == "f32":
+            head_rows.append(rows)
+        return original(weight, x_ptr, out_ptr, rows, in_features, out_features, **kwargs)
+
+    try:
+        assert wide.verify_dense_exact
+        wide.reset()
+        wide.forward(tokens[:1])
+        one_at_a_time = np.stack([wide.forward([t]) for t in tokens[1:]])
+
+        monkeypatch.setattr(module, "launch_gguf_linear", record)
+        wide.reset()
+        wide.forward(tokens[:1])
+        head_rows.clear()
+        block = wide.forward(tokens[1:], logits_rows=12, verification=True)
+
+        assert head_rows == [6, 6]
+        np.testing.assert_array_equal(block, one_at_a_time)
+    finally:
+        wide.close()
+        weights.free()
