@@ -3432,9 +3432,16 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         register(guarded_key, gguf_q8_0_selected_grouped_blockscale_guarded_prefill_bf16_bf16_out,
                  replace=replace)
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
+        qwen4_exp_gdn_prefill_rowsplit_f32,
         qwen4_exp_gdn_prefill_tiled16_dpp_f32,
         qwen4_exp_gdn_prefill_tiled16_multi_f32,
     )
+    rowsplit_key = KernelKey(
+        BACKEND, "gdn_recurrence_norm_gate", "f32_state",
+        "qwen4exp_gdn_rowsplit_prefill",
+    )
+    if replace or not is_registered(rowsplit_key):
+        register(rowsplit_key, qwen4_exp_gdn_prefill_rowsplit_f32, replace=replace)
     dpp_key = KernelKey(
         BACKEND, "gdn_recurrence_norm_gate", "f32_state",
         "qwen4exp_gdn_tiled16_dpp_prefill",
