@@ -131,6 +131,7 @@ yue2_nar_attention_wmma_kernel(
     float* __restrict__ out,
     int rows,
     int ar_rows,
+    int nar_rows,
     int num_q_heads,
     int num_kv_heads,
     float scale) {
@@ -144,7 +145,7 @@ yue2_nar_attention_wmma_kernel(
   const int linear_tid = wave * 32 + lane;
   const int kv_head = static_cast<int>(blockIdx.y);
   const int row_base = static_cast<int>(blockIdx.x) * ROWS_PER_BLOCK;
-  const int keys = ar_rows + rows;
+  const int keys = ar_rows + nar_rows;
 
   // One column per lane: eight query rows for both query heads of this
   // key/value head. The column index also selects the query row the lane owns.
@@ -353,13 +354,14 @@ extern "C" int hipengine_yue2_nar_attention_wmma(
     float* out,
     int rows,
     int ar_rows,
+    int nar_rows,
     int num_q_heads,
     int num_kv_heads,
     int head_dim,
     float scale,
     hipStream_t stream) {
   if (query == nullptr || nar_key == nullptr || nar_value == nullptr ||
-      out == nullptr || rows <= 0 || ar_rows < 0 || head_dim != HEAD_DIM ||
+      out == nullptr || rows <= 0 || ar_rows < 0 || nar_rows < 0 || head_dim != HEAD_DIM ||
       num_q_heads != Q_HEADS || num_kv_heads != KV_HEADS ||
       (ar_rows > 0 && (ar_key == nullptr || ar_value == nullptr))) {
     return hipErrorInvalidValue;
@@ -379,6 +381,7 @@ extern "C" int hipengine_yue2_nar_attention_wmma(
       out,
       rows,
       ar_rows,
+      nar_rows,
       num_q_heads,
       num_kv_heads,
       scale);

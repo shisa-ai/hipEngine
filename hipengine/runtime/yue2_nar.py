@@ -753,7 +753,7 @@ class Yue2NarRuntime:
                 attention(
                     self._q_out.ptr, self._nar_k.ptr, self._nar_v.ptr, ar_k.ptr, ar_v.ptr,
                     self._attn_f32.ptr, count, self._visible, self._heads, self._kv_heads,
-                    self._head_dim, self._scale, runtime=self.runtime,
+                    self._head_dim, self._scale, nar_rows=rows, runtime=self.runtime,
                 )
                 kernels.f32_to_bf16(self._attn_f32.ptr, self._attn_bf16.ptr, count * q_width, stream=0, runtime=self.runtime)
                 kernels.bf16_to_fp16(self._attn_bf16.ptr, self._attn16.ptr, count * q_width, stream=0, runtime=self.runtime)
