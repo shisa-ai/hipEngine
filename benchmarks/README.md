@@ -24,15 +24,15 @@ canonical 12-case protocol with one warmup and three repetitions, measured
 
 | Prompt length | Prefill tok/s | Decode (128) tok/s |
 | ---: | ---: | ---: |
-| 512 | **1031.8** | **23.41** |
-| 1024 | **1309.3** | **22.47** |
-| 4096 | **1596.3** | **22.99** |
-| 8192 | **1553.6** | **22.94** |
-| 16384 | **1503.1** | **22.82** |
+| 512 | **1037.2** | **23.55** |
+| 1024 | **1314.2** | **22.60** |
+| 4096 | **1615.5** | **23.12** |
+| 8192 | **1570.4** | **23.02** |
+| 16384 | **1516.7** | **22.91** |
 
 The 8192- and 16384-token rows come from a second 12-case fixture (1024 /
 8192 / 16384 tokens) run under the same protocol; its 1024-token cases are
-token-identical to the canonical ones and measured 1309.2.
+token-identical to the canonical ones and measured 1316.3.
 
 The production plan runs the routed experts, the dense projections at every
 layer, the hyper-connection, indexer and router projections and the prefill
@@ -80,12 +80,12 @@ per-case medians.
 
 | Engine | p512 | p1024 | p4096 | Decode at p4096 |
 | --- | ---: | ---: | ---: | ---: |
-| hipEngine production (2026-10-14) | 1031.8 | 1309.3 | 1596.3 | 23.0 |
+| hipEngine production (2026-10-14) | 1037.2 | 1314.2 | 1615.5 | 23.1 |
 | halo-box `strix-llama.cpp` master `6aa81b88e` (2026-10-12) | 759.3 | 1109.1 | 1446.4 | 25.1 |
 | gufo `v0.12.0` (2026-10-12) | 1095.0 | 1482.2 | 1736.4 | 28.1 |
 
-hipEngine's prefill rate is ahead of halo-box at every length and at 0.94x,
-0.88x and 0.92x of gufo at p512, p1024 and p4096; gufo's decode rate is
+hipEngine's prefill rate is ahead of halo-box at every length and at 0.95x,
+0.89x and 0.93x of gufo at p512, p1024 and p4096; gufo's decode rate is
 1.22x and halo-box's 1.09x hipEngine's. The external rows were measured two
 days earlier on the same host and have not been rerun. The hipEngine column
 is the weighted rate per prompt length.
