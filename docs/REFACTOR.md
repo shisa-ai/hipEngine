@@ -8958,6 +8958,23 @@ effect under the routed F16 selection.
 Removal condition: once a `gguf_ud_q4_k_xl` release has shipped with the
 indexed read, delete the flag and the gathered branch of the routed path.
 
+## Long-K F16 wide tile without CU mode (`HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K`)
+
+A Q8_0 F16 wide launch with at least 1024 rows, K >= 4096 and N >= 1024
+(the GDN output projection, K=6144, N=2560) runs the 128x128 tile from a
+build of the same source without `-mcumode`
+(`dense_wide128x128_wgp_f16in_f32_f32_out`) instead of the CU-mode 128x256
+tile. Bit-identical (`tests/test_gpu_qwen4exp_gr_f16_direct.py`). Radeon
+8060S microbench at K=6144, N=2560: 4096 rows 4.14 -> 3.47 ms, 1024 rows
+1.19 -> 1.03 ms; at 512 rows the parent is faster (0.39 against 0.60 ms), at
+K=2560 the builds tie, and at K=10240, N=320 CU mode wins. `code-p4096`
+1520.7 -> 1535.1 prefill tok/s, same process, identical output tokens.
+
+The rule is a default-on shape test in `hipengine/runtime/gguf_linear.py`
+with `HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K=0` as the opt-out. Removal
+condition: fold the shape test into the wide route's tile selection once a
+release has shipped with it, and delete the flag.
+
 ## Qwen4Exp row-split GDN prefill recurrence (`qwen4exp_gdn_rowsplit_prefill`)
 
 The `gguf_ud_q4_k_xl` production binder names

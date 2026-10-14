@@ -567,6 +567,40 @@ def _dense_wide_f16_tail_key(
     return candidate if is_registered(candidate) else key
 
 
+_DENSE_WIDE_LONG_K_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K"
+_DENSE_WIDE_LONG_K_PARENT = "dense_wide256_f16in_f32_f32_out"
+_DENSE_WIDE_LONG_K_VARIANT = "dense_wide128x128_wgp_f16in_f32_f32_out"
+_DENSE_WIDE_LONG_K_MIN_IN_FEATURES = 4096
+_DENSE_WIDE_LONG_K_MIN_OUT_FEATURES = 1024
+# K=6144, N=2560: 1.03 against 1.19 ms at 1024 rows and 3.47 against 4.14 at
+# 4096, but 0.60 against 0.39 at 512.
+_DENSE_WIDE_LONG_K_MIN_ROWS = 1024
+
+
+def _dense_wide_f16_long_k_key(
+    key: KernelKey, *, rows: int, in_features: int, out_features: int,
+) -> KernelKey:
+    """Long-K F16 wide launches take the 128x128 tile built without CU mode.
+
+    Same arithmetic as the parent tile, so the output bits are unchanged.
+    Measured at 4096 rows, K=6144, N=2560 on gfx1151: 3.47 ms against 4.14.
+    ``HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K=0`` keeps the parent.
+    """
+
+    if (
+        key.variant != _DENSE_WIDE_LONG_K_PARENT
+        or int(in_features) < _DENSE_WIDE_LONG_K_MIN_IN_FEATURES
+        or int(out_features) < _DENSE_WIDE_LONG_K_MIN_OUT_FEATURES
+        or int(rows) < _DENSE_WIDE_LONG_K_MIN_ROWS
+        or os.environ.get(_DENSE_WIDE_LONG_K_ENV, "1") in {"0", "false", "False"}
+    ):
+        return key
+    candidate = KernelKey(key.backend, key.layer, key.quant, _DENSE_WIDE_LONG_K_VARIANT)
+    if not is_registered(candidate):
+        _ensure_linear_kernel_registered(candidate)
+    return candidate if is_registered(candidate) else key
+
+
 def _wide_f16_activation_target_variant(variant: str) -> str | None:
     """Return the fp16-in sibling of a wide-route variant, or None."""
 
@@ -999,6 +1033,9 @@ def _launch_dense_wide_f16_staged(
         _invalidate_wide_f16_publication()
         return False
     key = _dense_wide_f16_tail_key(
+        key, rows=rows, in_features=in_features, out_features=out_features,
+    )
+    key = _dense_wide_f16_long_k_key(
         key, rows=rows, in_features=in_features, out_features=out_features,
     )
     sibling = resolve(

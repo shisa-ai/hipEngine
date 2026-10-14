@@ -98,6 +98,7 @@ def _launch(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    build_profile: ProfileName = "decode",
 ) -> None:
     if rows <= 0:
         raise ValueError("rows must be positive")
@@ -106,7 +107,7 @@ def _launch(
     if out_features <= 0:
         raise ValueError("out_features must be positive")
 
-    library = library or build_gguf_q8_0_dense_wide(load=True)
+    library = library or build_gguf_q8_0_dense_wide(load=True, profile=build_profile)
     runtime = runtime or get_hip_runtime()
     # The launch census is the instrument a route-execution claim is checked
     # with, so this family has to record: a census that cannot see the kernel
@@ -289,9 +290,9 @@ def qwen4_exp_gr_up_mean_residual_f16in_f32_out(
         runtime.check(int(err))
 
 
-def _make_wrapper(symbol: str, variant: str):
+def _make_wrapper(symbol: str, variant: str, build_profile: ProfileName = "decode"):
     def wrapper(*args, **kwargs) -> None:
-        _launch(symbol, *args, **kwargs)
+        _launch(symbol, *args, build_profile=build_profile, **kwargs)
 
     wrapper.__name__ = f"gguf_q8_0_dense_wide_{variant}"
     wrapper.__qualname__ = wrapper.__name__
@@ -348,6 +349,17 @@ _VARIANTS = {
 _WRAPPERS = {
     variant: _make_wrapper(symbol, variant) for variant, symbol in _VARIANTS.items()
 }
+# The 128x128 F16 tile from a build without CU mode. Same kernel source and
+# arithmetic as ``dense_wide128x128_f16in_f32_f32_out``; only the wave
+# placement differs. Measured on gfx1151 at 4096 rows, K=6144, N=2560: 3.47 ms
+# against 4.14 for the CU-mode 128x256 tile and 4.21 for the CU-mode 128x128
+# tile. At K=2560 the builds tie, and at K=10240, N=320 CU mode wins (1.44
+# against 1.88 ms), so this is a long-K variant, not a default.
+LONG_K_F16_VARIANT = "dense_wide128x128_wgp_f16in_f32_f32_out"
+_WRAPPERS[LONG_K_F16_VARIANT] = _make_wrapper(
+    _VARIANTS["dense_wide128x128_f16in_f32_f32_out"], LONG_K_F16_VARIANT,
+    build_profile="prefill",
+)
 
 gguf_q8_0_dense_split64x128_f32_f32_out = _WRAPPERS[
     "dense_split64x128_f32_f32_out"

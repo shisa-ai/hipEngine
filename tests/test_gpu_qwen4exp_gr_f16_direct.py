@@ -75,3 +75,18 @@ def test_up_with_a_converted_activation_matches_the_f32_input_tile(rows, k, n):
     direct = _run(dw._WRAPPERS["dense_wide256_f16in_f32_f32_out"],
                   x16.reshape(rows, k), w, rows, k, n, runtime, library)
     np.testing.assert_array_equal(direct.view(np.uint32), parent.view(np.uint32))
+
+
+@pytest.mark.parametrize("rows,k,n", [(1024, 1280, 640), (300, 640, 200)])
+def test_the_build_without_cu_mode_gives_the_same_bits(rows, k, n):
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(4413)
+    x = rng.normal(0, 0.1, (rows, k)).astype(np.float16)
+    w = make_q8_0_weight(n, k)
+    cu = _run(dw._WRAPPERS["dense_wide128x128_f16in_f32_f32_out"],
+              x, w, rows, k, n, runtime, dw.build_gguf_q8_0_dense_wide(load=True))
+    wgp = _run(dw._WRAPPERS[dw.LONG_K_F16_VARIANT], x, w, rows, k, n, runtime, None)
+    parent = _run(dw._WRAPPERS["dense_wide256_f16in_f32_f32_out"],
+                  x, w, rows, k, n, runtime, dw.build_gguf_q8_0_dense_wide(load=True))
+    np.testing.assert_array_equal(wgp.view(np.uint32), cu.view(np.uint32))
+    np.testing.assert_array_equal(wgp.view(np.uint32), parent.view(np.uint32))
