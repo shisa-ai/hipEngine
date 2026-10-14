@@ -4047,6 +4047,9 @@ _ROUTER_PRODUCER_VARIANTS = (
 )
 
 
+_ROUTER_F16_GEMM_MIN_ROWS = 64
+
+
 def _qwen4_exp_router_producer_variant(rows: int) -> str | None:
     """Return the multirow F32 router producer variant, or None for the linear path.
 
@@ -4068,6 +4071,15 @@ def _qwen4_exp_router_producer_variant(rows: int) -> str | None:
             + ", ".join(_ROUTER_PRODUCER_VARIANTS)
             + f"; got {requested!r}"
         )
+    if (
+        requested == _ROUTER_PRODUCER_F16_GEMM_VARIANT
+        and rows < _ROUTER_F16_GEMM_MIN_ROWS
+    ):
+        # The F16 WMMA GEMM stages 128-row tiles; at verifier and
+        # small-batch widths its tiles are almost empty (4 rows: 184 us per
+        # layer against 26 us for one row on the DPP producer). The exact
+        # DPP producer serves those widths.
+        return _ROUTER_PRODUCER_DPP_VARIANT
     return requested
 
 
@@ -7031,23 +7043,31 @@ def run_qwen4_exp_gdn_token_mixer(
             )
         )
         if colwarps_prefill:
+            tile16_variant = os.environ.get("HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT")
+            tile16 = (
+                resolve(
+                    backend=weights["attn_qkv"].backend,
+                    layer="gdn_recurrence_norm_gate", quant="f32_state",
+                    variant=tile16_variant,
+                )
+                if tile16_variant else qwen4_exp_gdn_prefill_tiled16_f32
+            )
             if qwen4_exp_gdn_tile16_prefill_selected(
                 rows=rows,
                 num_k_heads=num_k_heads,
                 num_v_heads=num_v_heads,
                 head_dim=head_dim,
+            ) or (
+                # An owner that serves any row count (the row-split
+                # recurrence) also takes verifier and small-batch widths,
+                # where the column-warp parent costs 147 us per layer at
+                # four rows.
+                rows >= 2
+                and head_dim == 128
+                and getattr(tile16, "supports_any_rows", False)
             ):
                 # PF-5 production: exact token-tile-16 owner, bit-exact to
                 # the columnwarp parent at the binding Hk16/Hv48/D128 shape.
-                tile16_variant = os.environ.get("HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT")
-                tile16 = (
-                    resolve(
-                        backend=weights["attn_qkv"].backend,
-                        layer="gdn_recurrence_norm_gate", quant="f32_state",
-                        variant=tile16_variant,
-                    )
-                    if tile16_variant else qwen4_exp_gdn_prefill_tiled16_f32
-                )
                 # A recurrence owner that can publish half(core) writes it
                 # into the wide F16 stage, where the output projection (the
                 # next launch, and the only reader of ``core``) finds it in

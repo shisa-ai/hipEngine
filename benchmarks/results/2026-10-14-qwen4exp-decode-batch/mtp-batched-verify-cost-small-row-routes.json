@@ -1,0 +1,71 @@
+{
+  "step_ms": 45.9169035833232,
+  "passes": [
+    {
+      "rows": 1,
+      "pass_ms": 42.39,
+      "pass_over_step": 0.92,
+      "per_token_ms": 42.39,
+      "argmax_matches_serial": [
+        true
+      ],
+      "snapshot_rollback_ms": 2.48
+    },
+    {
+      "rows": 2,
+      "pass_ms": 69.2,
+      "pass_over_step": 1.51,
+      "per_token_ms": 34.6,
+      "argmax_matches_serial": [
+        true,
+        true
+      ],
+      "snapshot_rollback_ms": 2.48
+    },
+    {
+      "rows": 4,
+      "pass_ms": 78.76,
+      "pass_over_step": 1.72,
+      "per_token_ms": 19.69,
+      "argmax_matches_serial": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "snapshot_rollback_ms": 2.48
+    },
+    {
+      "rows": 6,
+      "pass_ms": 87.4,
+      "pass_over_step": 1.9,
+      "per_token_ms": 14.57,
+      "argmax_matches_serial": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "snapshot_rollback_ms": 2.48
+    },
+    {
+      "rows": 8,
+      "pass_ms": 96.69,
+      "pass_over_step": 2.11,
+      "per_token_ms": 12.09,
+      "argmax_matches_serial": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "snapshot_rollback_ms": 2.47
+    }
+  ]
+}
