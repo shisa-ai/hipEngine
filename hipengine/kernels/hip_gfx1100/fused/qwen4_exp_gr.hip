@@ -385,6 +385,29 @@ __global__ void gr_write_bf16_f32_kernel(
   }
 }
 
+// The same write with a BF16 block output, widened in the load: the value is
+// the one the standalone BF16-to-F32 conversion would have stored.
+__global__ void gr_write_bf16_bf16_kernel(
+    const uint16_t* __restrict__ residual,
+    const uint16_t* __restrict__ block_output,
+    const float* __restrict__ inject_logits,
+    uint16_t* __restrict__ output,
+    int64_t branches,
+    int64_t hidden) {
+  const int64_t group = blockIdx.x;
+  const int64_t row = group / branches;
+  const int64_t branch = group % branches;
+  const float inject = inject_logits[row * branches + branch] / static_cast<float>(branches);
+  const float scatter = 2.0f / (1.0f + expf(-inject));
+  const int64_t offset = group * hidden;
+  const int64_t block_offset = row * hidden;
+  for (int64_t column = threadIdx.x; column < hidden; column += blockDim.x) {
+    const float value = bf16_bits_to_float(residual[offset + column])
+        + scatter * bf16_bits_to_float(block_output[block_offset + column]);
+    output[offset + column] = float_to_bf16_bits(value);
+  }
+}
+
 __global__ void scaled_silu_f32_kernel(
     const float* __restrict__ input,
     float* __restrict__ output,
@@ -679,6 +702,29 @@ extern "C" int hipengine_qwen4_exp_gr_write_bf16_f32(
       gr_write_bf16_f32_kernel,
       dim3(static_cast<uint32_t>(rows * branches)), dim3(threads), 0, stream,
       static_cast<const uint16_t*>(residual), static_cast<const float*>(block_output),
+      static_cast<const float*>(inject_logits), static_cast<uint16_t*>(output),
+      branches, hidden);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gr_write_bf16_bf16(
+    const void* residual,
+    const void* block_output,
+    const void* inject_logits,
+    void* output,
+    int64_t rows,
+    int64_t branches,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (!residual || !block_output || !inject_logits || !output ||
+      rows <= 0 || branches <= 0 || hidden <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  hipLaunchKernelGGL(
+      gr_write_bf16_bf16_kernel,
+      dim3(static_cast<uint32_t>(rows * branches)), dim3(threads), 0, stream,
+      static_cast<const uint16_t*>(residual), static_cast<const uint16_t*>(block_output),
       static_cast<const float*>(inject_logits), static_cast<uint16_t*>(output),
       branches, hidden);
   return static_cast<int>(hipGetLastError());

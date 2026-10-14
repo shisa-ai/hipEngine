@@ -170,6 +170,7 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
     qwen4_exp_gated_mean_sigmoid_f32,
     qwen4_exp_gr_inject_bf16_f32,
+    qwen4_exp_gr_write_bf16_bf16,
     qwen4_exp_grouped_rmsnorm_bf16_f16_scale,
     qwen4_exp_grouped_rmsnorm_bf16_f16_scale_inject,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
@@ -6389,12 +6390,9 @@ def run_qwen4_exp_dense_qsa_layer(
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
     )
-    bf16_to_f32(
-        moe.output.ptr, scratch.moe_f32.ptr, rows * hidden,
-        stream=stream, runtime=active_runtime,
-    )
-    qwen4_exp_gr_write_bf16_f32(
-        scratch.after_attention.ptr, scratch.moe_f32.ptr,
+    qwen4_exp_gr_write_bf16_bf16(
+        scratch.after_attention.ptr,
+        moe.output.ptr,
         ffn_read.inject_logits.ptr, scratch.output.ptr,
         rows, branches, hidden, stream=stream, runtime=active_runtime,
     )
@@ -6509,16 +6507,9 @@ def run_qwen4_exp_qsa_prefill_layer(
         stream=stream,
         runtime=active_runtime,
     )
-    bf16_to_f32(
-        moe.output.ptr,
-        scratch.moe_f32.ptr,
-        rows * hidden,
-        stream=stream,
-        runtime=active_runtime,
-    )
-    qwen4_exp_gr_write_bf16_f32(
+    qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
-        scratch.moe_f32.ptr,
+        moe.output.ptr,
         ffn_read.inject_logits.ptr,
         scratch.output.ptr,
         rows,
@@ -6699,16 +6690,9 @@ def run_qwen4_exp_gdn_layer(
     )
     if layer_graph is not None:
         def _segment_epilogue(graph_stream: int) -> None:
-            bf16_to_f32(
-                moe_output.output.ptr,
-                scratch.moe_f32.ptr,
-                rows * hidden,
-                stream=graph_stream,
-                runtime=active_runtime,
-            )
-            qwen4_exp_gr_write_bf16_f32(
+            qwen4_exp_gr_write_bf16_bf16(
                 scratch.after_attention.ptr,
-                scratch.moe_f32.ptr,
+                moe_output.output.ptr,
                 ffn_read.inject_logits.ptr,
                 scratch.output.ptr,
                 rows,
@@ -6726,16 +6710,9 @@ def run_qwen4_exp_gdn_layer(
             stream=stream,
         )
     else:
-        bf16_to_f32(
-            moe_output.output.ptr,
-            scratch.moe_f32.ptr,
-            rows * hidden,
-            stream=stream,
-            runtime=active_runtime,
-        )
-        qwen4_exp_gr_write_bf16_f32(
+        qwen4_exp_gr_write_bf16_bf16(
             scratch.after_attention.ptr,
-            scratch.moe_f32.ptr,
+            moe_output.output.ptr,
             ffn_read.inject_logits.ptr,
             scratch.output.ptr,
             rows,
