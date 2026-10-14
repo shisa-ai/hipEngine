@@ -1702,6 +1702,86 @@ def _check_launch(runtime: HipRuntime, err: int) -> None:
         runtime.check(int(err))
 
 
+_F32 = ctypes.c_float
+
+
+def qwen4_exp_gr_down_pack8_decode(
+    normalized_ptr: int,
+    down_q8_ptr: int,
+    inject_weight_ptr: int,
+    low_rank_ptr: int,
+    inject_ptr: int,
+    rows: int,
+    width: int,
+    low_rank: int,
+    silu_scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Decode-shaped hyper-connection down projection with its epilogues.
+
+    From the FP32 normalized plane ``[rows, width]``: the raw Q8_0 down
+    projection with ``silu(x * silu_scale)`` applied, and the inject logits
+    ``[rows, 4]`` (zeros when ``inject_weight_ptr`` is 0). Bit-identical to
+    the 256-thread pack8 GEMV, the scaled SiLU and the scalar FP32 GEMV run
+    one after another.
+    """
+
+    if rows <= 0 or width <= 0 or width % 32:
+        raise ValueError("decode read needs positive rows and width % 32 == 0")
+    if low_rank <= 0 or low_rank % 8:
+        raise ValueError("decode read needs low_rank % 8 == 0")
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library, "hipengine_qwen4_exp_gr_down_pack8_decode",
+        [_VOID] * 5 + [_I64] * 3 + [_F32, _VOID],
+    )
+    _check_launch(runtime, fn(
+        normalized_ptr, down_q8_ptr, inject_weight_ptr or None, low_rank_ptr,
+        inject_ptr, rows, width, low_rank, float(silu_scale), stream,
+    ))
+
+
+def qwen4_exp_gr_up_mean_pack8_decode(
+    low_rank_ptr: int,
+    up_q8_ptr: int,
+    normalized_ptr: int,
+    mixed_ptr: int,
+    rows: int,
+    branches: int,
+    hidden: int,
+    low_rank: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Decode-shaped hyper-connection up projection with the gated mean.
+
+    ``mixed[rows, hidden] = mean_b(normalized_b * sigmoid(up(low_rank))_b)``
+    from the raw Q8_0 up weight. Bit-identical to the 128-thread pack8 GEMV
+    followed by the sigmoid gated-mean kernel; the gate logits are not stored.
+    """
+
+    if rows <= 0 or branches != 4 or hidden <= 0 or hidden % 2:
+        raise ValueError("decode read needs positive rows, even hidden, four branches")
+    if low_rank <= 0 or low_rank % 32:
+        raise ValueError("decode read needs low_rank % 32 == 0")
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library, "hipengine_qwen4_exp_gr_up_mean_pack8_decode",
+        [_VOID] * 4 + [_I64] * 4 + [_VOID],
+    )
+    _check_launch(runtime, fn(
+        low_rank_ptr, up_q8_ptr, normalized_ptr, mixed_ptr, rows, branches,
+        hidden, low_rank, stream,
+    ))
+
+
 _Q8_0_BLOCK_BYTES = 34
 _INT32_MAX = 2**31 - 1
 

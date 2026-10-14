@@ -1954,6 +1954,172 @@ __global__ void gguf_k_pack8_prefill_out_kernel(
   }
 }
 
+// ---- Qwen4Exp decode-shaped hyper-connection read ------------------------
+//
+// At one row the read chain is six launches: grouped norm, the pack8 down
+// GEMV, scaled SiLU, the pack8 up GEMV, the four-column inject GEMV and the
+// sigmoid gated mean. The two kernels below fold the SiLU and the inject GEMV
+// into the down launch and the gated mean into the up launch, so the chain is
+// three launches (the grouped norm stays its own) and the gate logits are
+// never stored:
+//
+//   qwen4_exp_gr_down_pack8_decode: blocks 0..n-1 are the pack8 GEMV over the
+//     normalized plane with the scaled SiLU applied to their eight outputs;
+//     one extra block computes the inject logits in the scalar GEMV's order.
+//   qwen4_exp_gr_up_mean_pack8_decode: a block's eight pack8 rows are two
+//     hidden columns of each of the four branches, so its eight sums are the
+//     gate logits of two outputs, which thread 0 folds through the sigmoid
+//     gated mean.
+//
+// Thread partition, per-thread accumulation and reduction are those of
+// gguf_k_pack8_prefill_out_kernel at the same block size, so the outputs are
+// the bits of the six-launch chain. (A variant that also rebuilt the norm in
+// every block's LDS, for two launches, was bit-identical and 1.4% slower end
+// to end: 41 blocks each redo the norm.)
+__launch_bounds__(256, 2)
+__global__ void qwen4_exp_gr_down_pack8_decode_kernel(
+    const float* __restrict__ normalized,
+    const uint8_t* __restrict__ qweight,
+    const float* __restrict__ inject_weight,
+    float* __restrict__ low_rank_out,
+    float* __restrict__ inject_out,
+    int width,
+    int low_rank,
+    float silu_scale) {
+  const int tid = threadIdx.x;
+  const int64_t row = blockIdx.y;
+  const float* __restrict__ x_row = normalized + row * width;
+  const int out_pack = blockIdx.x;
+  if (out_pack >= (low_rank >> 3)) {
+    // Inject logits: thread t owns k = 8 t + 2048 j, eight sequential FMAs
+    // per step, then the 256-wide halving tree (dense_gemv_out_kernel).
+    __shared__ float sdata[4][256];
+    float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (inject_weight != nullptr) {
+      const int main_end = (width / 2048) * 2048;
+      for (int k_base = tid * 8; k_base < main_end; k_base += 2048) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const float xv = x_row[k_base + j];
+#pragma unroll
+          for (int b = 0; b < 4; ++b) {
+            acc[b] = fmaf(xv, inject_weight[static_cast<int64_t>(b) * width + k_base + j], acc[b]);
+          }
+        }
+      }
+      for (int k = main_end + tid; k < width; k += 256) {
+#pragma unroll
+        for (int b = 0; b < 4; ++b) {
+          acc[b] = fmaf(x_row[k], inject_weight[static_cast<int64_t>(b) * width + k], acc[b]);
+        }
+      }
+    }
+#pragma unroll
+    for (int b = 0; b < 4; ++b) sdata[b][tid] = acc[b];
+    __syncthreads();
+    for (int stride = 128; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+#pragma unroll
+        for (int b = 0; b < 4; ++b) sdata[b][tid] += sdata[b][tid + stride];
+      }
+      __syncthreads();
+    }
+    if (tid < 4) {
+      inject_out[row * 4 + tid] = sdata[tid][0];
+    }
+    return;
+  }
+
+  const int out_col = out_pack << 3;
+  const int row_bytes = gguf_k_row_bytes(8, width);
+  const uint8_t* __restrict__ w0 = qweight + static_cast<int64_t>(out_col + 0) * row_bytes;
+  const uint8_t* __restrict__ w1 = qweight + static_cast<int64_t>(out_col + 1) * row_bytes;
+  const uint8_t* __restrict__ w2 = qweight + static_cast<int64_t>(out_col + 2) * row_bytes;
+  const uint8_t* __restrict__ w3 = qweight + static_cast<int64_t>(out_col + 3) * row_bytes;
+  const uint8_t* __restrict__ w4 = qweight + static_cast<int64_t>(out_col + 4) * row_bytes;
+  const uint8_t* __restrict__ w5 = qweight + static_cast<int64_t>(out_col + 5) * row_bytes;
+  const uint8_t* __restrict__ w6 = qweight + static_cast<int64_t>(out_col + 6) * row_bytes;
+  const uint8_t* __restrict__ w7 = qweight + static_cast<int64_t>(out_col + 7) * row_bytes;
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  for (int k = tid; k < width; k += blockDim.x) {
+    const float xv = x_row[k];
+    acc0 += xv * q8_0_weight(w0, k);
+    acc1 += xv * q8_0_weight(w1, k);
+    acc2 += xv * q8_0_weight(w2, k);
+    acc3 += xv * q8_0_weight(w3, k);
+    acc4 += xv * q8_0_weight(w4, k);
+    acc5 += xv * q8_0_weight(w5, k);
+    acc6 += xv * q8_0_weight(w6, k);
+    acc7 += xv * q8_0_weight(w7, k);
+  }
+  GGUF_K_PACK8_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7,
+                      r0, r1, r2, r3, r4, r5, r6, r7);
+  if (tid == 0) {
+    const float sums[8] = {r0, r1, r2, r3, r4, r5, r6, r7};
+    const int64_t out_base = row * low_rank + out_col;
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      const float value = sums[i] * silu_scale;
+      low_rank_out[out_base + i] = value / (1.0f + expf(-value));
+    }
+  }
+}
+
+__launch_bounds__(128, 2)
+__global__ void qwen4_exp_gr_up_mean_pack8_decode_kernel(
+    const float* __restrict__ low_rank_in,
+    const uint8_t* __restrict__ qweight,
+    const float* __restrict__ normalized,
+    float* __restrict__ mixed,
+    int hidden,
+    int low_rank) {
+  const int tid = threadIdx.x;
+  const int64_t row = blockIdx.y;
+  const int c0 = blockIdx.x * 2;
+  const int row_bytes = gguf_k_row_bytes(8, low_rank);
+  const float* __restrict__ x_row = low_rank_in + row * low_rank;
+  // Accumulator 2 b + i is branch b, column c0 + i.
+  const uint8_t* __restrict__ w0 = qweight + (static_cast<int64_t>(0) * hidden + c0) * row_bytes;
+  const uint8_t* __restrict__ w1 = w0 + row_bytes;
+  const uint8_t* __restrict__ w2 = qweight + (static_cast<int64_t>(1) * hidden + c0) * row_bytes;
+  const uint8_t* __restrict__ w3 = w2 + row_bytes;
+  const uint8_t* __restrict__ w4 = qweight + (static_cast<int64_t>(2) * hidden + c0) * row_bytes;
+  const uint8_t* __restrict__ w5 = w4 + row_bytes;
+  const uint8_t* __restrict__ w6 = qweight + (static_cast<int64_t>(3) * hidden + c0) * row_bytes;
+  const uint8_t* __restrict__ w7 = w6 + row_bytes;
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  for (int k = tid; k < low_rank; k += blockDim.x) {
+    const float xv = x_row[k];
+    acc0 += xv * q8_0_weight(w0, k);
+    acc1 += xv * q8_0_weight(w1, k);
+    acc2 += xv * q8_0_weight(w2, k);
+    acc3 += xv * q8_0_weight(w3, k);
+    acc4 += xv * q8_0_weight(w4, k);
+    acc5 += xv * q8_0_weight(w5, k);
+    acc6 += xv * q8_0_weight(w6, k);
+    acc7 += xv * q8_0_weight(w7, k);
+  }
+  GGUF_K_PACK8_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7,
+                      r0, r1, r2, r3, r4, r5, r6, r7);
+  if (tid == 0) {
+    const float logits[8] = {r0, r1, r2, r3, r4, r5, r6, r7};
+    const int64_t base = row * 4 * hidden;
+#pragma unroll
+    for (int i = 0; i < 2; ++i) {
+      const int column = c0 + i;
+      float value = 0.0f;
+#pragma unroll
+      for (int b = 0; b < 4; ++b) {
+        const float gate = 1.0f / (1.0f + expf(-logits[2 * b + i]));
+        value += normalized[base + static_cast<int64_t>(b) * hidden + column] * gate;
+      }
+      mixed[row * hidden + column] = value / 4.0f;
+    }
+  }
+}
+
 // Decode-only raw-Q6 projection pair. One flattened output-pack range covers
 // equal-width K/V and Laguna layer-47's unequal query/gate without idle blocks;
 // every workgroup preserves the established pack8 singleton's K traversal,
@@ -6067,4 +6233,45 @@ extern "C" int hipengine_gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out(
     hipStream_t stream) {
   return launch_gguf_q8_0_exact_prefill_tiled_out<uint16_t, uint16_t, 16, 4>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+// Decode-shaped hyper-connection read after the grouped norm: low_rank[rows,
+// low_rank] (scaled SiLU applied) and inject[rows, 4] (zeros without an
+// inject weight) from the FP32 normalized plane.
+extern "C" int hipengine_qwen4_exp_gr_down_pack8_decode(
+    const void* normalized, const void* qweight, const void* inject_weight,
+    void* low_rank_out, void* inject_out, int64_t rows, int64_t width,
+    int64_t low_rank, float silu_scale, hipStream_t stream) {
+  if (!normalized || !qweight || !low_rank_out || !inject_out || rows <= 0 ||
+      rows > 65535 || width <= 0 || (width % Q8_0_BLOCK) != 0 ||
+      width > INT32_MAX || low_rank <= 0 || (low_rank % 8) != 0 ||
+      low_rank > 65534 * 8) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(low_rank / 8 + 1),
+                  static_cast<unsigned int>(rows));
+  qwen4_exp_gr_down_pack8_decode_kernel<<<grid, dim3(256), 0, stream>>>(
+      static_cast<const float*>(normalized), static_cast<const uint8_t*>(qweight),
+      static_cast<const float*>(inject_weight), static_cast<float*>(low_rank_out),
+      static_cast<float*>(inject_out), static_cast<int>(width),
+      static_cast<int>(low_rank), silu_scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Decode-shaped hyper-connection read, last launch: mixed[rows, hidden].
+extern "C" int hipengine_qwen4_exp_gr_up_mean_pack8_decode(
+    const void* low_rank_in, const void* qweight, const void* normalized,
+    void* mixed, int64_t rows, int64_t branches, int64_t hidden,
+    int64_t low_rank, hipStream_t stream) {
+  if (!low_rank_in || !qweight || !normalized || !mixed || rows <= 0 ||
+      rows > 65535 || branches != 4 || hidden <= 0 || (hidden % 2) != 0 ||
+      hidden > INT32_MAX / 4 || low_rank <= 0 || (low_rank % Q8_0_BLOCK) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(hidden / 2), static_cast<unsigned int>(rows));
+  qwen4_exp_gr_up_mean_pack8_decode_kernel<<<grid, dim3(128), 0, stream>>>(
+      static_cast<const float*>(low_rank_in), static_cast<const uint8_t*>(qweight),
+      static_cast<const float*>(normalized), static_cast<float*>(mixed),
+      static_cast<int>(hidden), static_cast<int>(low_rank));
+  return static_cast<int>(hipGetLastError());
 }
