@@ -139,3 +139,57 @@ def test_rowsplit_f16_image_is_the_cast_of_its_output():
             free(buf, runtime=runtime)
     np.testing.assert_array_equal(core.view(np.uint32), plain.view(np.uint32))
     np.testing.assert_array_equal(got, want)
+
+
+@pytest.mark.parametrize("rows", [2, 4, 9])
+def test_rowsplit_state_rows_are_each_prefix_final_state(rows):
+    """Per-token states equal the final state of the prefix run, bit for bit."""
+
+    runtime = get_hip_runtime()
+    library = build_qwen4_exp_gdn_dpp(multi_column=True)
+    rng = np.random.default_rng(7 + rows)
+    v_heads, k_heads, dim = 48, 16, 128
+    qkv_width = 2 * k_heads * dim + v_heads * dim
+    host = [
+        rng.normal(0.0, 0.05, (rows, qkv_width)).astype(np.float32),
+        rng.normal(0.0, 0.5, (rows, v_heads * dim)).astype(np.float32),
+        rng.normal(-0.2, 0.1, (rows, v_heads)).astype(np.float32),
+        rng.normal(0.0, 0.2, (rows, v_heads)).astype(np.float32),
+        rng.normal(-1.0, 0.1, v_heads).astype(np.float32),
+        (-np.exp(rng.normal(-0.5, 0.1, v_heads))).astype(np.float32),
+        rng.normal(1.0, 0.05, dim).astype(np.float32),
+    ]
+    state0 = rng.normal(0.0, 0.01, (v_heads, dim, dim)).astype(np.float32)
+    plain, plain_state = _run(
+        qwen4_exp_gdn_prefill_rowsplit_f32, host, state0, rows, v_heads,
+        library, runtime)
+    dev = [malloc(a.nbytes, runtime=runtime) for a in host]
+    state = malloc(state0.nbytes, runtime=runtime)
+    out = malloc(rows * v_heads * dim * 4, runtime=runtime)
+    rows_buf = malloc(rows * state0.nbytes, runtime=runtime)
+    try:
+        for d, a in zip(dev, host):
+            copy_host_to_device(d, host_array_ptr(a), runtime=runtime)
+        copy_host_to_device(state, host_array_ptr(state0), runtime=runtime)
+        qwen4_exp_gdn_prefill_rowsplit_f32(
+            *[d.ptr for d in dev], state.ptr, out.ptr, rows, k_heads, v_heads,
+            dim, dim, state_rows_ptr=rows_buf.ptr, library=library, runtime=runtime)
+        runtime.device_synchronize()
+        core = np.empty((rows, v_heads * dim), np.float32)
+        final = np.empty_like(state0)
+        per_row = np.empty((rows, v_heads, dim, dim), np.float32)
+        copy_device_to_host(host_array_ptr(core), out, runtime=runtime)
+        copy_device_to_host(host_array_ptr(final), state, runtime=runtime)
+        copy_device_to_host(host_array_ptr(per_row), rows_buf, runtime=runtime)
+    finally:
+        for buf in (*dev, state, out, rows_buf):
+            free(buf, runtime=runtime)
+    np.testing.assert_array_equal(core.view(np.uint32), plain.view(np.uint32))
+    np.testing.assert_array_equal(final.view(np.uint32), plain_state.view(np.uint32))
+    for t in range(rows):
+        prefix = [a[: t + 1] if a.ndim == 2 and a.shape[0] == rows else a for a in host]
+        _, prefix_state = _run(
+            qwen4_exp_gdn_prefill_rowsplit_f32, prefix, state0, t + 1, v_heads,
+            library, runtime)
+        np.testing.assert_array_equal(
+            per_row[t].view(np.uint32), prefix_state.view(np.uint32))

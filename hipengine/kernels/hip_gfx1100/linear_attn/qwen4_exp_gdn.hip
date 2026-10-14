@@ -672,7 +672,8 @@ qwen4_exp_gdn_prefill_rowsplit_f32_kernel(
     float* __restrict__ core_out,
     int n_tokens,
     int k_heads,
-    int v_heads) {
+    int v_heads,
+    float* __restrict__ state_rows = nullptr) {
   constexpr int d = 128;
   constexpr int kKeysPerLane = d / kLanesPerRow;
   constexpr int kVec = kKeysPerLane / 4;  // float4 per lane
@@ -842,6 +843,21 @@ qwen4_exp_gdn_prefill_rowsplit_f32_kernel(
         s[i].y += update * kc[i].y;
         s[i].z += update * kc[i].z;
         s[i].w += update * kc[i].w;
+      }
+      if (state_rows != nullptr) {
+        // The state after this token, in the recurrent state's layout, so a
+        // speculative verifier can commit any row without a replay.
+        float* row_state = state_rows +
+            static_cast<size_t>(w * kW + tl) * v_heads * d * d +
+            static_cast<size_t>(h) * d * d + row;
+#pragma unroll
+        for (int i = 0; i < kVec; ++i) {
+          const int j = segment * kKeysPerLane + i * 4;
+          row_state[static_cast<size_t>(j) * d] = s[i].x;
+          row_state[static_cast<size_t>(j + 1) * d] = s[i].y;
+          row_state[static_cast<size_t>(j + 2) * d] = s[i].z;
+          row_state[static_cast<size_t>(j + 3) * d] = s[i].w;
+        }
       }
       out_base += core_width;
     }
@@ -1561,7 +1577,8 @@ static int gdn_prefill_rowsplit_launch(
     int64_t head_k_dim,
     int64_t head_v_dim,
     hipStream_t stream,
-    void* core_f16) {
+    void* core_f16,
+    void* state_rows = nullptr) {
   if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
       !norm_weight || !recurrent_state || !core || tokens <= 0 ||
       tokens > INT32_MAX / 64 || num_k_heads <= 0 || num_k_heads > 64 ||
@@ -1594,7 +1611,7 @@ static int gdn_prefill_rowsplit_launch(
       static_cast<float*>(recurrent_state),
       static_cast<float*>(core),
       static_cast<int>(tokens), static_cast<int>(num_k_heads),
-      static_cast<int>(num_v_heads));
+      static_cast<int>(num_v_heads), static_cast<float*>(state_rows));
   const int err = static_cast<int>(hipGetLastError());
   if (err != 0) return err;
   return launch_core_norm_gate_waves(
@@ -1630,6 +1647,26 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_rowsplit_f32_f16(
       head_v_dim, stream, core_f16);
 }
 
+
+// As hipengine_qwen4_exp_gdn_prefill_rowsplit_f32_f16 (``core_f16`` may be
+// null), also writing the state after every token to
+// ``state_rows[tokens][v_heads][128][128]``; the final state still goes to
+// ``recurrent_state``. For speculative verification of a few rows.
+extern "C" int hipengine_qwen4_exp_gdn_prefill_rowsplit_state_rows_f32(
+    const void* conv, const void* output_gate, const void* alpha,
+    const void* beta_logits, const void* dt_bias, const void* a,
+    const void* norm_weight, void* recurrent_state, void* core,
+    void* core_f16, void* state_rows, int64_t tokens, int64_t num_k_heads,
+    int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!state_rows || (core_f16 != nullptr && core_f16 == core)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return gdn_prefill_rowsplit_launch(
+      conv, output_gate, alpha, beta_logits, dt_bias, a, norm_weight,
+      recurrent_state, core, tokens, num_k_heads, num_v_heads, head_k_dim,
+      head_v_dim, stream, core_f16, state_rows);
+}
 
 // 32-warp/block GDN prefill (PF-5 M6 port, lever 1; halo-box PR11
 // gated_delta_net.cu geometry): same column-warp layout and per-warp

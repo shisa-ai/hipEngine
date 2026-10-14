@@ -611,16 +611,35 @@ def qwen4_exp_linear_attn_conv_prefill_exact_f32(
     channels: int,
     kernel_size: int,
     *,
+    state_rows_ptr: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch bulk K4 Conv with strict decode arithmetic per prompt row."""
+    """Launch bulk K4 Conv with strict decode arithmetic per prompt row.
+
+    ``state_rows_ptr`` also receives the conv state after every token
+    (``[tokens][channels][kernel_size]``), for speculative verification.
+    """
 
     _check_conv_shape(channels, kernel_size)
     _check_positive(tokens, "tokens")
     if kernel_size != 4:
         raise ValueError("Qwen4Exp exact prefill requires kernel_size == 4")
+    if state_rows_ptr:
+        library = library or build_qwen35_linear_attn_conv(load=True)
+        runtime = runtime or get_hip_runtime()
+        fn = signed_kernel_fn(
+            library,
+            "hipengine_qwen4_exp_linear_attn_conv_prefill_exact_state_rows_f32",
+            (ctypes.c_void_p,) * 5 + (ctypes.c_int64,) * 3 + (ctypes.c_void_p,),
+            ctypes.c_int,
+        )
+        error = fn(hidden_states_ptr, conv_state_ptr, conv_weight_ptr, out_ptr,
+                   state_rows_ptr, tokens, channels, kernel_size, stream)
+        if int(error) != HIP_SUCCESS:
+            runtime.check(int(error))
+        return
     _launch_conv_prefill(
         _SYMBOL_QWEN4_EXP_PREFILL_EXACT_F32,
         hidden_states_ptr,
