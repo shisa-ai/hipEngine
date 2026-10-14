@@ -3455,6 +3455,10 @@ def launch_gguf_linear(
             dispatch, weight=weight, rows=rows,
             in_features=in_features, out_features=out_features,
         )
+        dispatch = _q8_t16_tiles_small_rows_dispatch(
+            dispatch, weight=weight, rows=rows,
+            in_features=in_features, out_features=out_features,
+        )
         dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
             dispatch,
             rows=rows,
@@ -8084,6 +8088,10 @@ def _pack8_decode_dispatch(
 
 
 _Q8_T16_TILES_QUANT = "gguf_q8_0_t16_v1"
+# Above this many rows of an output wider than the second bound, a call that
+# asked for WMMA prefill keeps it instead of the per-row T16 GEMV.
+_Q8_T16_SMALL_ROWS_WIDE_MAX_ROWS = 4
+_Q8_T16_SMALL_ROWS_WIDE_OUT_FEATURES = 4608
 
 
 def _weight_has_tiles_allocation(weight) -> bool:
@@ -8135,6 +8143,63 @@ def _q8_t16_tiles_prefill_dispatch(
         if is_registered(candidate):
             return GGUFLinearDispatch(candidate, "t16")
     return dispatch
+
+
+def _q8_t16_tiles_small_rows_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    weight,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Run 2-8 rows of a dual-resident Q8_0 projection on the T16 GEMV.
+
+    A speculative verify block, or the short tail of a chunked prefill, is a
+    handful of rows. The one-row T16 decode kernel launched with one grid row
+    per input row serves it faster than either multi-row owner it replaces,
+    and each row is bit-identical to a one-row step. Gemma 4 26B-A4B dense
+    shapes on W7900, five rows, cold over all layers: the 4096x2816 output
+    projection 40.6 us against 103.4 us on the T16 WMMA prefill and 66.6 us on
+    the exact pack8 prefill; the 2816x4224 gate/up 44.9 against 76.1; the
+    2112x2816 down 23.2 against 53.5. The GEMV's cost grows with each row
+    while the WMMA tile's does not, so a call that asked for WMMA keeps it above
+    four rows of a wide output: the 2816x8192 QKV at five rows runs in 95.2 us
+    on the GEMV against 82.6 on WMMA. Without WMMA (the exact verify) the GEMV
+    is faster than the pack8 prefill at every measured shape. Only raw
+    ``gguf_q8_0`` weights that ship the tiles allocation are routed.
+    """
+
+    if (
+        not 2 <= rows <= _ROWTILE_MAX_ROWS
+        or in_features % 16
+        or out_features % 16
+        or getattr(getattr(weight, "spec", None), "quant_key", None) != "gguf_q8_0"
+        or not _weight_has_tiles_allocation(weight)
+    ):
+        return dispatch
+    from_wmma = (
+        dispatch.abi == "t16" and dispatch.key.quant == _Q8_T16_TILES_QUANT
+        and dispatch.key.variant == "t16_wmma_prefill_bf16_bf16_out"
+    )
+    if not from_wmma and not (
+        dispatch.abi == "raw" and dispatch.key.quant == "gguf_q8_0"
+        and dispatch.key.variant == "prefill_bf16_bf16_out"
+    ):
+        return dispatch
+    if (
+        from_wmma
+        and rows > _Q8_T16_SMALL_ROWS_WIDE_MAX_ROWS
+        and out_features > _Q8_T16_SMALL_ROWS_WIDE_OUT_FEATURES
+    ):
+        return dispatch
+    candidate = KernelKey(
+        dispatch.key.backend, dispatch.key.layer, _Q8_T16_TILES_QUANT,
+        "t16_gemv_decode_bf16_bf16_out",
+    )
+    if not is_registered(candidate):
+        return dispatch
+    return GGUFLinearDispatch(candidate, "t16")
 
 
 def _q8_t16_tiles_decode_dispatch(

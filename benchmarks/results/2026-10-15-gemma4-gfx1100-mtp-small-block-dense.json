@@ -1,0 +1,50 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_mtp_small_block_dense",
+ "date": "2026-10-15",
+ "performance_claim": true,
+ "question": "Can the dense projections of a two-to-eight-row Gemma 4 verify block run on the one-row decode kernel, faster and bit-identical to decode?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL target, mtp-gemma-4-26B-A4B-it-Q8_0 assistant head, BF16 KV",
+ "hardware": {"device": "AMD Radeon Pro W7900", "arch": "gfx1100", "host": "epyc"},
+ "hipengine_commit": "e8cc517a9 plus this change",
+ "change": "Raw gguf_q8_0 projections that ship the T16 tiles allocation run 2-8 rows on the one-row T16 GEMV (one grid row per input row) instead of the T16 WMMA prefill (production) or the exact pack8 prefill (strict). A call that asked for WMMA keeps it above four rows of an output wider than 4608.",
+ "kernel_microbench_us": {
+  "method": "scratch microbench, events around five passes over every layer of the shape (cold weights), bf16 activations, W7900",
+  "columns": ["rows", "t16_gemv_per_row", "t16_wmma_prefill_auto", "exact_pack8_prefill"],
+  "o_proj_4096x2816": [[1, 24.2, 23.9, null], [2, 24.5, 103.0, null], [5, 40.6, 103.4, null], [8, 63.6, 103.6, null]],
+  "gate_up_2816x4224": [[1, 24.1, 23.9, null], [2, 25.2, 77.0, null], [5, 44.9, 76.1, null], [8, 68.8, 76.7, null]],
+  "down_2112x2816": [[1, 14.7, 14.1, null], [2, 14.7, 52.3, null], [5, 23.2, 53.5, null], [8, 29.4, 54.5, null]],
+  "qkv_2816x8192": [[1, 41.0, 41.3, null], [2, 54.2, 78.5, null], [4, 83.6, 81.6, null], [5, 95.2, 82.6, null], [8, 137.1, 80.9, null]],
+  "exact_pack8_note": "kernel trace of a five-row exact verify block: gguf_k_pack8_prefill_out_kernel 8.50 ms over 124 launches; the T16 GEMV route 5.37 ms over 117 launches in the production block"
+ },
+ "row_equality": "exact verify bitwise equal to one-token steps at 3, 5, 7 and 9 rows after prompts of 120, 600 and 1100 tokens (72 of 72); in production, rows of 3-row blocks after the 120-token prompt are now bitwise equal as well (envelope KL elsewhere at most 8.8e-2, no argmax change in 72 rows)",
+ "verify_block_ms_median": {
+  "method": "scratch timing loop: 25 repetitions after a 600-token prompt, first 5 dropped, rewind between repetitions, production profile",
+  "rows": [1, 3, 5, 7, 9],
+  "envelope": [14.01, 21.01, 26.98, 32.98, 39.86],
+  "exact": [null, 21.72, 29.96, 38.51, 49.73],
+  "envelope_before": [14.11, 23.75, 27.80, 32.45, 39.39],
+  "exact_before": [13.91, 23.29, 33.31, 43.51, 49.05],
+  "one_token_decode_ms": 12.87,
+  "note": "the exact one-row block and decode step read 15.5/16.2 ms in the first phase of this run (clock warm-up); a one-row block is the same code in both settings"
+ },
+ "public_path": {
+  "command": "scripts/gemma4_mtp_probe.py --artifact <target> --draft <head> --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --suite benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --tokens 128 --samples 2 --budget B, HIPENGINE_EXECUTION_PROFILE=production|strict",
+  "timing_scope": "whole public call including prefill of short prompts, 128 greedy tokens; plain call first, then MTP; nothing else running",
+  "production": {
+   "2": {"plain_tok_s": 72.9, "mtp_tok_s": 104.1, "ratio": 1.427, "draft_acceptance": 0.849, "rows_token_identical": "26 of 36", "ratio_by_category": {"code": 1.48, "general_en": 1.40, "general_ja": 1.38, "mixed_ja_en": 1.43}},
+   "4": {"plain_tok_s": 74.3, "mtp_tok_s": 107.7, "ratio": 1.449, "draft_acceptance": 0.730, "rows_token_identical": "32 of 36", "ratio_by_category": {"code": 1.55, "general_en": 1.43, "general_ja": 1.33, "mixed_ja_en": 1.45}},
+   "6": {"plain_tok_s": 73.9, "mtp_tok_s": 101.4, "ratio": 1.372, "draft_acceptance": 0.624, "rows_token_identical": "32 of 36", "ratio_by_category": {"code": 1.52, "general_en": 1.36, "general_ja": 1.18, "mixed_ja_en": 1.40}},
+   "8": {"plain_tok_s": 73.8, "mtp_tok_s": 91.2, "ratio": 1.235, "draft_acceptance": 0.539, "rows_token_identical": "24 of 36", "ratio_by_category": {"code": 1.37, "general_en": 1.21, "general_ja": 1.08, "mixed_ja_en": 1.26}}
+  },
+  "strict": {"4": {"plain_tok_s": 73.8, "mtp_tok_s": 95.0, "ratio": 1.288, "draft_acceptance": 0.733, "rows_token_identical": "36 of 36"}},
+  "before": {"production_budget_2": 1.27, "production_budget_4": 1.389, "strict_budget_4": 1.194}
+ },
+ "validation": ["tests/test_unit_gguf_q8_t16_tiles_prefill_dispatch.py and tests/test_unit_gguf_q8_t16_tiles_decode_dispatch.py: 40 passed", "default unit tier: 12782 passed, 109 skipped", "tests/test_gpu_gemma4_runner_verify_rows.py: 13 passed"],
+ "limitations": [
+  "Whole-call timing is not isolated decode throughput.",
+  "The dense branch runs concurrently with the expert branch, so a five-row production block moved 27.8 -> 27.0 ms although its dense kernel time fell 9.8 -> 5.4 ms.",
+  "One-token decode is unchanged (rows == 1 already took this kernel); a prefill chunk of 2-8 rows also takes it.",
+  "Not measured on hip_gfx1151."
+ ]
+}

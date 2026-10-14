@@ -278,15 +278,20 @@ profile.
 
 | Profile | `verify_dense_exact` | A verify block runs | Rows against one-token decode | Telemetry `verify_equivalence` |
 | --- | --- | --- | --- | --- |
-| production | false | WMMA dense prefill kernels, one multi-row attention launch, the multi-row router | within the production numerical envelope | `production_envelope_of_target_ar_greedy` |
-| strict, or no profile bound | true | row-exact dense schedule, one decode-shaped attention launch per row, the one-token router per row | bit-identical | `bit_identical_to_target_ar_greedy` |
+| production | false | the one-row dense kernel per row (WMMA for a wide output above four rows), one multi-row attention launch, the multi-row router | within the production numerical envelope | `production_envelope_of_target_ar_greedy` |
+| strict, or no profile bound | true | the one-row dense kernel per row, one decode-shaped attention launch per row, the one-token router per row | bit-identical | `bit_identical_to_target_ar_greedy` |
 
 Three operators make a multi-row block differ from one-token decode, and the
 exact path replaces each:
 
-- **Dense projections.** A multi-row block takes the WMMA prefill kernels, which
-  accumulate in a different order from the one-row kernel. The exact path keeps
-  the block on the row-exact dense schedule.
+- **Dense projections.** A block of two to eight rows runs each row on the
+  one-row T16 GEMV that decode uses, in one launch, so its rows are
+  bit-identical to decode in both profiles and faster than the multi-row
+  kernels it replaced (five rows of the 4096x2816 output projection: 40.6 us
+  against 103.4 us on WMMA prefill). The GEMV's cost grows with each row and
+  the WMMA tile's does not, so production keeps WMMA prefill for more than four
+  rows of the 8192-wide QKV projection, which accumulates in a different order.
+  The exact path never takes it.
 - **Attention.** The decode kernel partitions its reduction by the number of
   keys it is handed, and a multi-row launch hands every row the block's key
   range. The exact path launches each row over the range that row would have as
@@ -341,38 +346,35 @@ Radeon Pro W7900 (`hip_gfx1100`), target `UD-Q4_K_XL`, head `Q8_0`, production
 profile, BF16 KV, 18 prompts from the two suites under `benchmarks/prompts/`
 (code, English, Japanese, mixed), two samples each, 128 greedy tokens. Rates
 are whole-call tokens per second including the prefill of a short prompt, plain
-call first, measured with `scripts/gemma4_mtp_probe.py`: budget 2 on 2026-10-13,
-budgets 4, 6 and 8 on 2026-10-15 after the wide-block lm-head fix below.
+call first, measured 2026-10-15 with `scripts/gemma4_mtp_probe.py`.
 
-| `candidate_budget` | Plain tok/s | MTP tok/s | Ratio | Code | English | Japanese | Mixed |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 | 74.3 | 94.2 | 1.27x | 1.33x | 1.24x | 1.23x | 1.25x |
-| 4 | 74.1 | 102.9 | 1.39x | 1.51x | 1.34x | 1.27x | 1.40x |
-| 6 | 73.1 | 100.5 | 1.38x | 1.51x | 1.33x | 1.22x | 1.41x |
-| 8 | 73.2 | 91.1 | 1.24x | 1.38x | 1.22x | 1.09x | 1.27x |
+| `candidate_budget` | Plain tok/s | MTP tok/s | Ratio | Code | English | Japanese | Mixed | Rows token-identical to plain |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 | 72.9 | 104.1 | 1.43x | 1.48x | 1.40x | 1.38x | 1.43x | 26 of 36 |
+| 4 | 74.3 | 107.7 | 1.45x | 1.55x | 1.43x | 1.33x | 1.45x | 32 of 36 |
+| 6 | 73.9 | 101.4 | 1.37x | 1.52x | 1.36x | 1.18x | 1.40x | 32 of 36 |
+| 8 | 73.8 | 91.2 | 1.24x | 1.37x | 1.21x | 1.08x | 1.26x | 24 of 36 |
 
-A budget of 4 is the best measured setting on this device. Artifacts:
-`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-status.json` (budget 2) and
-`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-wide-head.json` (budgets 4, 6
-and 8). The head has not been measured on `hip_gfx1151` on the current tree.
+A budget of 4 is the best measured setting on this device. Artifact:
+`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-small-block-dense.json`. The
+head has not been measured on `hip_gfx1151` on the current tree.
 
 The table above is the production profile, whose verify block is not exact. The
 same 18 prompts at a budget of 4, measured again with the exact verify path
 available, compare the two contracts:
 
-| Profile | Verify | Plain tok/s | MTP tok/s | Ratio | Prompts token-identical to plain greedy |
+| Profile | Verify | Plain tok/s | MTP tok/s | Ratio | Rows token-identical to plain greedy |
 | --- | --- | ---: | ---: | ---: | ---: |
-| production | envelope (default) | 73.7 | 102.8 | 1.40x | 11 of 18 |
-| production | exact (forced) | 73.5 | 88.5 | 1.20x | 18 of 18 |
-| strict | exact (default) | 73.2 | 87.5 | 1.19x | 18 of 18 |
+| production | envelope (default) | 74.3 | 107.7 | 1.45x | 32 of 36 |
+| strict | exact (default) | 73.8 | 95.0 | 1.29x | 36 of 36 |
 
 The cost is in the verify block itself. Median time for one verify block after
 a 600-token prompt, production profile:
 
 | Rows in the block | 1 | 3 | 5 | 7 | 9 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Envelope verify (ms) | 14.1 | 23.8 | 27.8 | 32.5 | 39.4 |
-| Exact verify (ms) | 13.9 | 23.3 | 33.3 | 43.5 | 49.1 |
+| Envelope verify (ms) | 14.0 | 21.0 | 27.0 | 33.0 | 39.9 |
+| Exact verify (ms) | 14.0 | 21.7 | 30.0 | 38.5 | 49.7 |
 
 A one-token decode step takes 12.9 ms in the same run. The lm-head projection
 of a block wider than eight rows is launched in balanced chunks of at most
@@ -380,12 +382,13 @@ eight, because its small-block kernel serves two to eight rows and the kernel
 behind it reads the whole vocabulary matrix once per row: a nine-row block
 spent 21.9 ms in the lm head alone before the split, against 2.4 ms for five
 rows. Artifacts:
-`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-exact-verify.json` and
-`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-wide-head.json`.
+`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-wide-head.json` and
+`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-small-block-dense.json`.
 
 ### Sampled requests
 
-Same device, prompts and timing scope, production profile, a budget of 4. Plain
+Same device, prompts and timing scope, production profile, a budget of 4,
+measured 2026-10-13, before the small-block dense route above. Plain
 is the sampled plain route on the same seeds, averaged over the two runs of each
 row; each ratio is against the plain rate of its own run. The two MTP columns
 differ only in how a draft is proposed. Acceptance is accepted drafts over proposed
@@ -411,9 +414,10 @@ the host and sampled there. Artifact:
    5 ms to a 14 ms one-row block. llama.cpp at `45451c3` on the same card runs
    a five-row block in 18.6 ms against its 14.6 ms one-row step, and its MTP
    with the same head and prompts reaches 2.01x. A five-row production block
-   here spends 9.8 ms in dense projections (3.2 ms for one row), 7.6 ms in
-   expert projections (2.1 ms), 2.8 ms in attention (1.0 ms) and 2.4 ms in the
-   lm head (1.2 ms).
+   here spends 5.4 ms in dense projections (3.2 ms for one row), 7.7 ms in
+   expert projections (2.1 ms), 2.9 ms in attention (1.0 ms) and 2.5 ms in the
+   lm head (1.2 ms), and the dense branch overlaps the expert branch, so the
+   expert projections and attention set the block's length.
 2. **Sampling runs on the host.** Each sampled step copies a 262,144-entry
    logits row to the host. With a top-k the law costs about 0.4 ms a row; a
    whole-vocabulary law about 0.5 ms; a request with a history penalty about
