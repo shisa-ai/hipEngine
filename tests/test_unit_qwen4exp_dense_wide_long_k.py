@@ -37,3 +37,15 @@ def test_long_k_rule_opt_out_and_other_parents(monkeypatch):
     padded = "dense_wide256_padded_f16in_f32_f32_out"
     assert linear._dense_wide_f16_long_k_key(
         _key(padded), rows=4096, in_features=6144, out_features=2560).variant == padded
+
+
+def test_short_chunk_build_bound_is_overridable(monkeypatch):
+    from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_dense_wide as dw
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", raising=False)
+    assert dw._wgp_build_max_rows() == 1024
+    assert dw._WGP_BUILD_MIN_ROWS == 257
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", "0")
+    assert dw._wgp_build_max_rows() == 0
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", "2048")
+    assert dw._wgp_build_max_rows() == 2048

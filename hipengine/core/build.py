@@ -128,6 +128,7 @@ def plan_hip_build(
     device_lib_flags = _rocm_device_lib_flags()
     flags = (*build_profile.flags, *arch_flags, *device_lib_flags, *include_flags, *tuple(extra_flags))
     flags = _maybe_enable_prefill_mcumode(flags, build_profile)
+    flags = _maybe_strip_mcumode(flags, family)
     flags = _maybe_disable_unroll600(flags)
     cache_key = _cache_key(
         sources=source_paths,
@@ -665,6 +666,25 @@ def _maybe_enable_prefill_mcumode(flags: tuple[str, ...], profile: BuildProfile)
     if "-mcumode" in flags:
         return flags
     return (*flags, "-mcumode")
+
+
+def _maybe_strip_mcumode(flags: tuple[str, ...], family: str) -> tuple[str, ...]:
+    """Diagnostic ablation: drop ``-mcumode`` from named build families.
+
+    ``HIPENGINE_NO_MCUMODE_FAMILIES`` is a comma-separated list of family
+    names, or ``all``. It answers whether a decode-profile library's prefill
+    kernels prefer workgroup-processor wave placement; a positive result is
+    retained by building that surface with the prefill profile, not by this
+    knob.
+    """
+
+    requested = os.environ.get("HIPENGINE_NO_MCUMODE_FAMILIES", "").strip()
+    if not requested or "-mcumode" not in flags:
+        return flags
+    names = {name.strip() for name in requested.split(",")}
+    if "all" not in names and family not in names:
+        return flags
+    return tuple(flag for flag in flags if flag != "-mcumode")
 
 
 def _maybe_disable_unroll600(flags: tuple[str, ...]) -> tuple[str, ...]:

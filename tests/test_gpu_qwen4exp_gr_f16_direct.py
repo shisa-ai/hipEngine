@@ -90,3 +90,20 @@ def test_the_build_without_cu_mode_gives_the_same_bits(rows, k, n):
                   x, w, rows, k, n, runtime, dw.build_gguf_q8_0_dense_wide(load=True))
     np.testing.assert_array_equal(wgp.view(np.uint32), cu.view(np.uint32))
     np.testing.assert_array_equal(wgp.view(np.uint32), parent.view(np.uint32))
+
+
+@pytest.mark.parametrize("rows", [300, 1024])
+def test_short_chunk_build_selection_keeps_the_bits(rows, monkeypatch):
+    """Rows in the short-chunk window take the non-CU-mode build by default."""
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(4414 + rows)
+    k, n = 640, 384
+    x = rng.normal(0, 0.1, (rows, k)).astype(np.float16)
+    w = make_q8_0_weight(n, k)
+    fn = dw._WRAPPERS["dense_wide256_f16in_f32_f32_out"]
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", "0")
+    cu = _run(fn, x, w, rows, k, n, runtime, None)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS")
+    default = _run(fn, x, w, rows, k, n, runtime, None)
+    np.testing.assert_array_equal(default.view(np.uint32), cu.view(np.uint32))
