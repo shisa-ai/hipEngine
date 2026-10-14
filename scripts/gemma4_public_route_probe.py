@@ -101,8 +101,11 @@ def observe_attention_launches():
         result = original_launch(*args, **kwargs)
         if kwargs.get("tokens") == 1:
             selection = int(attention.decode_selection(kwargs.get("library")))
+            name = decode_names.get(selection, f"selection_{selection}")
+            if selection == 3 and kwargs.get("long_rows"):
+                name = attention.DECODE_ATTENTION_FLASH_LONG
             records.append({
-                "variant": decode_names.get(selection, f"selection_{selection}"),
+                "variant": name,
                 "reason": "launcher kernel selection",
                 **{name: kwargs.get(name) for name in
                    ("tokens", "keys", "head_dim", "num_heads", "num_kv_heads")},

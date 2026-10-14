@@ -578,12 +578,15 @@ class Gemma4DecodeGraphSession:
         # needs global scores even below the split threshold.
         from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
             DECODE_ATTENTION_FLASH,
+            DECODE_ATTENTION_FLASH_LONG,
             PREFILL_ATTENTION_STAGED,
             build_gemma4_attention,
             decode_slices,
             flash_admits,
             flash_decode_engages,
+            flash_long_row_slices,
             flash_request_slices,
+            flash_slices,
             flash_workspace_bytes,
             select_prefill_attention,
             split_workspace_bytes,
@@ -651,7 +654,9 @@ class Gemma4DecodeGraphSession:
                     sliding_window=attention.sliding_window,
                     key_begin=key_begin,
                 )
-                if decode_route in (_EXACT_DECODE_STAGED, DECODE_ATTENTION_FLASH):
+                if decode_route in (
+                    _EXACT_DECODE_STAGED, DECODE_ATTENTION_FLASH, DECODE_ATTENTION_FLASH_LONG,
+                ):
                     # Both routes can reach the staged singleton: the staged
                     # variant is it, and the flash variant falls back to it
                     # when its own admission rejects a shape. A cold staged
@@ -669,7 +674,8 @@ class Gemma4DecodeGraphSession:
             # takes it on a short row too, below the split policy's count.
             if flash_decode_engages(
                 keys=keys, head_dim=attention.head_dim,
-                prefer_flash=decode_route == DECODE_ATTENTION_FLASH,
+                prefer_flash=decode_route
+                in (DECODE_ATTENTION_FLASH, DECODE_ATTENTION_FLASH_LONG),
             ):
                 need = split_workspace_bytes(
                     1,
@@ -699,7 +705,21 @@ class Gemma4DecodeGraphSession:
                         num_kv_heads=attention.num_kv_heads,
                         head_dim=attention.head_dim,
                         library=library,
+                        long_rows=decode_route == DECODE_ATTENTION_FLASH_LONG,
                     )
+                    if (
+                        decode_route == DECODE_ATTENTION_FLASH_LONG
+                        and flash_long_row_slices(keys) != flash_slices(keys)
+                    ):
+                        # A captured flash launch re-derives its slices on the
+                        # device with the default rule, which the long-row
+                        # count leaves above 8192 keys; the replay would walk
+                        # longer slices than the launch sized its LDS for.
+                        raise RuntimeError(
+                            f"a {keys}-key bucket is past the long-row flash "
+                            "variant's capturable range; keep the capture window "
+                            "at or below 8192 keys"
+                        )
                     if request_slices:
                         need = max(
                             need,

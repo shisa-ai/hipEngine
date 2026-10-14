@@ -41,6 +41,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     DECODE_ATTENTION_FLASH,
+    DECODE_ATTENTION_FLASH_LONG,
     DECODE_ATTENTION_LAYER,
     DECODE_ATTENTION_PLAIN,
     DECODE_ATTENTION_QUANT,
@@ -743,15 +744,25 @@ def _select_exact_decode_attention(
     def keep_native():
         return plain, "exact"
 
+    # The long-row variant is the same route with a different slice count, so
+    # every scope test below treats the two alike; the plan's request decides
+    # which registered launcher a flash decision resolves to.
+    flash_variant = (
+        DECODE_ATTENTION_FLASH_LONG
+        if DECODE_ATTENTION_FLASH_LONG in decode_attention_variants
+        else DECODE_ATTENTION_FLASH
+        if DECODE_ATTENTION_FLASH in decode_attention_variants
+        else None
+    )
     if (
-        DECODE_ATTENTION_FLASH not in decode_attention_variants
+        flash_variant is None
         and DECODE_ATTENTION_STAGED not in decode_attention_variants
     ):
         return keep_native()
     if int(tokens) != 1:
         return keep_native()
     if (
-        DECODE_ATTENTION_FLASH in decode_attention_variants
+        flash_variant is not None
         and keys is not None
         and int(key_begin) == 0
         and flash_admits(
@@ -768,9 +779,9 @@ def _select_exact_decode_attention(
         # already asks for flash, so this changes nothing there. A sliding
         # layer has not started trimming at these counts (``key_begin == 0``).
         flash = _resolve_decode_attention_launcher(
-            backend=resolved_backend, variant=DECODE_ATTENTION_FLASH
+            backend=resolved_backend, variant=flash_variant
         )
-        return flash, DECODE_ATTENTION_FLASH
+        return flash, flash_variant
     if int(head_dim) != 512:
         return keep_native()
     if int(num_kv_heads) <= 0 or int(num_heads) % int(num_kv_heads):
@@ -785,7 +796,7 @@ def _select_exact_decode_attention(
         return keep_native()
     if int(key_begin) != 0:
         return keep_native()
-    if DECODE_ATTENTION_FLASH in decode_attention_variants:
+    if flash_variant is not None:
         # The flash candidate is the same scoped shape as the staged one and
         # replaces it in the production plan: one token, head_dim 512, GQA
         # ratio 8, untrimmed global, past the resident bound. It is resolved
@@ -794,9 +805,9 @@ def _select_exact_decode_attention(
         # native kernel. The staged entry stays registered as the exact chain
         # strict and batch-invariant keep, and as this route's rollback lever.
         flash = _resolve_decode_attention_launcher(
-            backend=resolved_backend, variant=DECODE_ATTENTION_FLASH
+            backend=resolved_backend, variant=flash_variant
         )
-        return flash, DECODE_ATTENTION_FLASH
+        return flash, flash_variant
     staged = _resolve_decode_attention_launcher(
         backend=resolved_backend, variant=DECODE_ATTENTION_STAGED
     )

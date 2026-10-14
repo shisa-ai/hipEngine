@@ -457,6 +457,27 @@ def flash_slices(keys: int) -> int:
     return min(64, max(4, -(-int(keys) // per_slice)))
 
 
+#: Long-row slicing for the ``gemma4_flash_long`` decode variant: one slice per
+#: this many keys, up to ``FLASH_LONG_ROW_MAX_SLICES``. The default policy caps
+#: a row at 64 slices (128 once the global packing's LDS fit raises it), which
+#: leaves a 64K-key global step 256 blocks of ~512 keys each; on a W7900
+#: (Gemma 4 26B-A4B, production, 2026-10-15) the whole decode step measured
+#: 23.9 -> 20.4 ms at 65536 keys, 18.6 -> 16.8 at 32768 and 30.7 -> 27.7 at
+#: 131072 with this rule, and it equals the default count up to 8192 keys, where
+#: more slices measured slower (13.9 -> 16+ ms at 8192 for 32-key slices).
+FLASH_LONG_ROW_KEYS_PER_SLICE = 128
+FLASH_LONG_ROW_MAX_SLICES = 1024
+
+
+def flash_long_row_slices(keys: int) -> int:
+    """Slice count the long-row flash variant asks for: never fewer than default."""
+
+    return max(
+        flash_slices(keys),
+        min(FLASH_LONG_ROW_MAX_SLICES, -(-int(keys) // FLASH_LONG_ROW_KEYS_PER_SLICE)),
+    )
+
+
 def flash_min_slices(
     *, keys: int, num_heads: int, num_kv_heads: int, head_dim: int,
     library: ctypes.CDLL | None = None,
@@ -516,6 +537,7 @@ def flash_request_slices(
     num_kv_heads: int,
     head_dim: int,
     library: ctypes.CDLL | None = None,
+    long_rows: bool = False,
 ) -> int:
     """Slice count a flash request for this shape carries, or ``0`` if none can.
 
@@ -531,7 +553,8 @@ def flash_request_slices(
     fits and is still servable where it does not. For the sliding packing the
     two never disagree, so this is the previous count exactly; for the global
     packing it is what keeps a long row on the flash route instead of falling
-    back.
+    back. ``long_rows`` takes :func:`flash_long_row_slices` as the policy count
+    instead, which is what the ``gemma4_flash_long`` variant requests.
     """
 
     library = library or build_gemma4_attention(load=True)
@@ -541,7 +564,8 @@ def flash_request_slices(
     )
     if not fitted:
         return 0
-    return max(fitted, flash_slices(keys))
+    policy = flash_long_row_slices(keys) if long_rows else flash_slices(keys)
+    return max(fitted, policy)
 
 
 def flash_admits(
@@ -894,6 +918,7 @@ def _launch_prefill(
     window: int = 0,
     row_offset: int = 0,
     prefer_flash: bool = False,
+    long_rows: bool = False,
 ) -> None:
     _check_prefill_shape(tokens, num_heads, num_kv_heads, head_dim)
     key_count = tokens if keys is None else int(keys)
@@ -986,6 +1011,7 @@ def _launch_prefill(
                 num_kv_heads=num_kv_heads,
                 head_dim=head_dim,
                 library=library,
+                long_rows=long_rows,
             )
             if flash
             else 0
@@ -1184,7 +1210,7 @@ def gemma4_attention_prefill_f32(
     )
 
 
-def gemma4_attention_decode_flash_bf16(
+def _decode_flash_bf16(
     query_ptr: int,
     key_ptr: int,
     value_ptr: int,
@@ -1203,27 +1229,9 @@ def gemma4_attention_decode_flash_bf16(
     scratch: Gemma4AttentionScratch | None = None,
     window: int = 0,
     row_offset: int = 0,
+    long_rows: bool = False,
 ) -> None:
-    """Decode attention that asks for key-sliced flash on a long global row.
-
-    Registered as the ``gemma4_flash`` decode-attention variant and identical to
-    :func:`gemma4_attention_prefill_bf16` except that it reaches the launcher
-    with the ``prefer_flash`` request. That request is what makes a global row
-    past the resident-logit bound ask for the key-sliced route instead of the
-    owned-scratch class kernel, and it is the only way that route is reachable:
-    the request is what a profile selects, not something the geometry implies.
-    A row short enough to keep its logits resident stays on the class kernel
-    under every profile.
-
-    A preference, not a promise. The flash route's per-block LDS logits are four
-    times larger for the global packing than for the sliding one, so the default
-    slice policy's cap is a tighter limit here: the request count is refitted
-    from the kernel's own export, and if even that cannot serve the shape the
-    call falls back to the staged singleton -- the chain this route replaced --
-    rather than to the owned-scratch class kernel, which is slower than both at
-    long context. Either way the fallback keeps working arithmetic and only the
-    route changes.
-    """
+    """Shared body of the two flash decode variants; ``long_rows`` picks the slicing."""
 
     key_count = tokens if keys is None else int(keys)
     library = library or build_gemma4_attention(load=True)
@@ -1233,6 +1241,7 @@ def gemma4_attention_decode_flash_bf16(
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
         library=library,
+        long_rows=long_rows,
     )
     if not slices or not flash_serves(
         tokens=tokens,
@@ -1302,6 +1311,93 @@ def gemma4_attention_decode_flash_bf16(
         window=window,
         row_offset=row_offset,
         prefer_flash=True,
+        long_rows=long_rows,
+    )
+
+
+def gemma4_attention_decode_flash_bf16(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    keep_mask_ptr: int,
+    out_ptr: int,
+    *,
+    tokens: int,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    keys: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    scratch: Gemma4AttentionScratch | None = None,
+    window: int = 0,
+    row_offset: int = 0,
+) -> None:
+    """Decode attention that asks for key-sliced flash on a long global row.
+
+    Registered as the ``gemma4_flash`` decode-attention variant and identical to
+    :func:`gemma4_attention_prefill_bf16` except that it reaches the launcher
+    with the ``prefer_flash`` request. That request is what makes a global row
+    past the resident-logit bound ask for the key-sliced route instead of the
+    owned-scratch class kernel, and it is the only way that route is reachable:
+    the request is what a profile selects, not something the geometry implies.
+    A row short enough to keep its logits resident stays on the class kernel
+    under every profile.
+
+    A preference, not a promise. The flash route's per-block LDS logits are four
+    times larger for the global packing than for the sliding one, so the default
+    slice policy's cap is a tighter limit here: the request count is refitted
+    from the kernel's own export, and if even that cannot serve the shape the
+    call falls back to the staged singleton -- the chain this route replaced --
+    rather than to the owned-scratch class kernel, which is slower than both at
+    long context. Either way the fallback keeps working arithmetic and only the
+    route changes.
+    """
+    _decode_flash_bf16(
+        query_ptr, key_ptr, value_ptr, keep_mask_ptr, out_ptr,
+        tokens=tokens, num_heads=num_heads, num_kv_heads=num_kv_heads,
+        head_dim=head_dim, scale=scale, keys=keys, stream=stream, library=library,
+        runtime=runtime, scratch=scratch, window=window, row_offset=row_offset,
+        long_rows=False,
+    )
+
+
+def gemma4_attention_decode_flash_long_bf16(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    keep_mask_ptr: int,
+    out_ptr: int,
+    *,
+    tokens: int,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    keys: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    scratch: Gemma4AttentionScratch | None = None,
+    window: int = 0,
+    row_offset: int = 0,
+) -> None:
+    """The ``gemma4_flash`` route with the long-row slice count.
+
+    Same kernels and admission as :func:`gemma4_attention_decode_flash_bf16`;
+    the request carries :func:`flash_long_row_slices` instead of the default
+    policy count, so a row past 8192 keys is cut into more, shorter slices. The
+    arithmetic differs from ``gemma4_flash`` only in where the slice boundaries
+    fall, which the combine pass's max-rescale makes exact in reals.
+    """
+    _decode_flash_bf16(
+        query_ptr, key_ptr, value_ptr, keep_mask_ptr, out_ptr,
+        tokens=tokens, num_heads=num_heads, num_kv_heads=num_kv_heads,
+        head_dim=head_dim, scale=scale, keys=keys, stream=stream, library=library,
+        runtime=runtime, scratch=scratch, window=window, row_offset=row_offset,
+        long_rows=True,
     )
 
 
@@ -1520,6 +1616,10 @@ DECODE_ATTENTION_STAGED = PREFILL_ATTENTION_STAGED
 # bit-exact with the native class kernel) and strict/batch-invariant must keep
 # the exact one.
 DECODE_ATTENTION_FLASH = "gemma4_flash"
+# The same route with the long-row slice count (``flash_long_row_slices``): a
+# separate variant because the slice boundaries change the arithmetic, so a plan
+# opts into it by name.
+DECODE_ATTENTION_FLASH_LONG = "gemma4_flash_long"
 
 # --- the multi-row sliding prefill scope -------------------------------------
 #

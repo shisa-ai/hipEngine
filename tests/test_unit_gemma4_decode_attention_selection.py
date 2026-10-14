@@ -55,6 +55,7 @@ from hipengine.execution_profiles import (
 )
 from hipengine.generation.gemma4_profiles import (
     DECODE_ATTENTION_FLASH,
+    DECODE_ATTENTION_FLASH_LONG,
     DECODE_ATTENTION_LAYER,
     DECODE_ATTENTION_PLAIN,
     DECODE_ATTENTION_QUANT,
@@ -78,6 +79,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     flash_serves,
     flash_slices,
     gemma4_attention_decode_flash_bf16,
+    gemma4_attention_decode_flash_long_bf16,
     gemma4_attention_prefill_bf16,
     gemma4_attention_resident_overflows,
 )
@@ -435,8 +437,10 @@ def _decode_rows(resolved):
         # The flash candidate is the production decode route: it passed the
         # production numerical envelope over the 527 teacher-forced rows at keys
         # 15,857-16,383, and the staged singleton stays registered as the
-        # rollback lever. See the selection's own comment for the artifact.
-        (ExecutionProfile.PRODUCTION, DECODE_ATTENTION_FLASH),
+        # rollback lever. The production plan asks for its long-row slicing,
+        # gated over 1,533 rows at 32K/64K/128K keys. See the selection's own
+        # comment for the artifacts.
+        (ExecutionProfile.PRODUCTION, DECODE_ATTENTION_FLASH_LONG),
         (ExecutionProfile.STRICT, DECODE_ATTENTION_PLAIN),
         # batch_invariant is deliberately unregistered: it falls back to strict.
         (ExecutionProfile.BATCH_INVARIANT, DECODE_ATTENTION_PLAIN),
@@ -463,7 +467,7 @@ def test_the_binder_binds_the_selected_decode_variant(
     # started with instead of leaking the strict route into later tests.
     monkeypatch.setenv(MOE_PREFILL_ENV, "auto")
     for profile, expected in (
-        (ExecutionProfile.PRODUCTION, (DECODE_ATTENTION_FLASH,)),
+        (ExecutionProfile.PRODUCTION, (DECODE_ATTENTION_FLASH_LONG,)),
         (ExecutionProfile.STRICT, (DECODE_ATTENTION_PLAIN,)),
         (ExecutionProfile.BATCH_INVARIANT, (DECODE_ATTENTION_PLAIN,)),
     ):
@@ -496,6 +500,12 @@ def test_the_decode_variants_are_registered_under_their_own_layer() -> None:
         quant=DECODE_ATTENTION_QUANT,
         variant=DECODE_ATTENTION_FLASH,
     ) is gemma4_attention_decode_flash_bf16
+    assert resolve(
+        backend=GEMMA4_GGUF_BACKEND,
+        layer=DECODE_ATTENTION_LAYER,
+        quant=DECODE_ATTENTION_QUANT,
+        variant=DECODE_ATTENTION_FLASH_LONG,
+    ) is gemma4_attention_decode_flash_long_bf16
 
 
 # --- the fallback a long row takes when flash cannot serve it ---------------
@@ -1048,3 +1058,85 @@ def test_a_short_row_flash_cannot_serve_keeps_the_native_launch(
         )
 
     assert calls == [("native", 512), ("staged", FIRST_OVERFLOW_KEYS)]
+
+
+
+# --- the long-row flash variant ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("keys", "expected"),
+    [(1, 4), (1024, 32), (8192, 64), (8320, 65), (32768, 256), (65536, 512),
+     (131072, 1024), (1 << 18, 1024)],
+)
+def test_the_long_row_slice_count(keys, expected) -> None:
+    """Equal to the default policy through 8192 keys, one slice per 128 keys
+    above it, capped at 1024; never fewer than the default."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        flash_long_row_slices,
+        flash_slices,
+    )
+
+    assert flash_long_row_slices(keys) == expected
+    assert flash_long_row_slices(keys) >= flash_slices(keys)
+    if keys <= 8192:
+        assert flash_long_row_slices(keys) == flash_slices(keys)
+
+
+@pytest.mark.parametrize("long_rows", [False, True])
+def test_the_request_carries_the_long_row_count_only_when_asked(
+    monkeypatch: pytest.MonkeyPatch, long_rows: bool
+) -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention
+
+    monkeypatch.setattr(attention, "flash_min_slices", lambda **kw: 128)
+    got = attention.flash_request_slices(
+        keys=65536, num_heads=16, num_kv_heads=2, head_dim=512,
+        library=object(), long_rows=long_rows,
+    )
+    assert got == (512 if long_rows else 128)
+
+
+@pytest.mark.parametrize(
+    ("geometry", "keys"),
+    [(SLIDING, 512), ({**GLOBAL}, 65536)],
+    ids=["short-row", "long-global"],
+)
+def test_a_long_row_plan_resolves_the_long_row_launcher(geometry, keys) -> None:
+    """Every flash decision a ``gemma4_flash`` plan makes, a ``gemma4_flash_long``
+    plan makes too, and resolves to its own launcher."""
+
+    launcher, route = _select_exact_decode_attention(
+        decode_attention_variants=(DECODE_ATTENTION_FLASH_LONG,),
+        **{**geometry, "keys": keys},
+    )
+    reference, reference_route = _select_exact_decode_attention(
+        decode_attention_variants=(DECODE_ATTENTION_FLASH,),
+        **{**geometry, "keys": keys},
+    )
+
+    assert reference_route == DECODE_ATTENTION_FLASH
+    assert route == DECODE_ATTENTION_FLASH_LONG
+    assert launcher is gemma4_attention_decode_flash_long_bf16
+
+
+def test_a_long_row_plan_refuses_a_capture_past_the_device_rule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A captured flash launch re-derives its slices with the default rule, so a
+    bucket where the long-row count differs cannot be replayed faithfully."""
+
+    with pytest.raises(RuntimeError, match="capturable range"):
+        _run_graph_preparation(monkeypatch, 15679, variant=DECODE_ATTENTION_FLASH_LONG)
+
+
+def test_a_long_row_plan_captures_where_the_counts_agree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _builds, _owner, session, bucket = _run_graph_preparation(
+        monkeypatch, 4095, variant=DECODE_ATTENTION_FLASH_LONG
+    )
+
+    assert session._captures == 1
+    assert bucket.end <= 8192
