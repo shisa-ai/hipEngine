@@ -284,8 +284,37 @@ def test_attention_matches_the_parent_kernel_bit_for_bit():
     )
 
 
+
+
 @requires_hip
-def test_attention_is_not_causal():
+def test_attention_accepts_tiled_queries_over_full_nar_key_set():
+    """A query tile may be shorter than the full bidirectional NAR key set."""
+    from hipengine.kernels.hip_gfx1100.yue2 import nar
+
+    ar_rows, nar_rows, query_rows = 64, 20, 7
+    num_q_heads, num_kv_heads, head_dim = 16, 8, 128
+    rng = np.random.default_rng(641207)
+    q = (rng.standard_normal((query_rows, num_q_heads, head_dim)) * 0.5).astype(np.float32)
+    nar_k = _bf16(rng.standard_normal((nar_rows, num_kv_heads, head_dim)))
+    nar_v = _bf16(rng.standard_normal((nar_rows, num_kv_heads, head_dim)))
+    ar_k = _bf16(rng.standard_normal((ar_rows, num_kv_heads, head_dim)))
+    ar_v = _bf16(rng.standard_normal((ar_rows, num_kv_heads, head_dim)))
+    scale = 1.0 / float(np.sqrt(head_dim))
+    q_buf, nk_buf, nv_buf = _upload(q), _upload(nar_k), _upload(nar_v)
+    ak_buf, av_buf = _upload(ar_k), _upload(ar_v)
+    out_buf = _upload(np.zeros_like(q))
+    nar.nar_attention_f32(
+        q_buf.ptr, nk_buf.ptr, nv_buf.ptr, ak_buf.ptr, av_buf.ptr, out_buf.ptr,
+        query_rows, ar_rows, num_q_heads, num_kv_heads, head_dim, scale,
+        nar_rows=nar_rows,
+    )
+    got = _download(out_buf, q.shape, np.float32)
+    expected = _attention_reference(
+        q, nar_k, nar_v, ar_k, ar_v, num_q_heads, num_kv_heads, scale
+    )
+    assert np.allclose(got, expected, rtol=2e-3, atol=2e-3)
+
+
     """A later query row must see earlier NAR keys: NAR attention is bidirectional."""
     from hipengine.kernels.hip_gfx1100.yue2 import nar
 
