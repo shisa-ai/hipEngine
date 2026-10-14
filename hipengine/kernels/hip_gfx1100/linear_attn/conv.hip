@@ -461,6 +461,39 @@ __global__ void qwen35_linear_attn_conv_prefill_state_kernel(
   }
 }
 
+// The conv state after each of the first rows of a prefill chunk
+// (state_rows[t] = the state qwen35_linear_attn_conv_prefill_state_kernel
+// leaves after a chunk of t + 1 tokens), read from the state before the chunk.
+// Launch it before the in-place final-state update.
+__global__ void qwen4_exp_linear_attn_conv_state_rows_kernel(
+    const float* __restrict__ hidden_states,
+    const float* __restrict__ conv_state,
+    float* __restrict__ state_rows,
+    int64_t tokens,
+    int64_t channels,
+    int64_t kernel_size) {
+  const int64_t state_size = channels * kernel_size;
+  const int64_t size = tokens * state_size;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < size;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t t = idx / state_size;
+    const int64_t within = idx - t * state_size;
+    const int64_t channel = within / kernel_size;
+    const int64_t k = within - channel * kernel_size;
+    const int64_t length = t + 1;
+    float value;
+    if (length >= kernel_size) {
+      value = hidden_states[(length - kernel_size + k) * channels + channel];
+    } else {
+      const int64_t kept = kernel_size - length;
+      value = k < kept ? conv_state[channel * kernel_size + k + length]
+                       : hidden_states[(k - kept) * channels + channel];
+    }
+    state_rows[idx] = value;
+  }
+}
+
 __global__ void qwen35_linear_attn_conv_prefill_segments_kernel(
     const float* __restrict__ hidden_states,
     const float* __restrict__ conv_state,
@@ -1440,6 +1473,17 @@ extern "C" int hipengine_qwen35_linear_attn_conv_prefill_f32(
   return static_cast<int>(hipGetLastError());
 }
 
+static int qwen4_exp_conv_prefill_exact_launch(
+    const float* hidden_states,
+    float* conv_state,
+    const float* conv_weight,
+    float* out,
+    int64_t tokens,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream,
+    float* state_rows);
+
 extern "C" int hipengine_qwen4_exp_linear_attn_conv_prefill_exact_f32(
     const float* hidden_states,
     float* conv_state,
@@ -1449,6 +1493,39 @@ extern "C" int hipengine_qwen4_exp_linear_attn_conv_prefill_exact_f32(
     int64_t channels,
     int64_t kernel_size,
     hipStream_t stream) {
+  return qwen4_exp_conv_prefill_exact_launch(
+      hidden_states, conv_state, conv_weight, out, tokens, channels,
+      kernel_size, stream, nullptr);
+}
+
+// As above, also writing the conv state after every token to
+// ``state_rows[tokens][channels][kernel_size]``.
+extern "C" int hipengine_qwen4_exp_linear_attn_conv_prefill_exact_state_rows_f32(
+    const float* hidden_states,
+    float* conv_state,
+    const float* conv_weight,
+    float* out,
+    float* state_rows,
+    int64_t tokens,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  if (state_rows == nullptr) return static_cast<int>(hipErrorInvalidValue);
+  return qwen4_exp_conv_prefill_exact_launch(
+      hidden_states, conv_state, conv_weight, out, tokens, channels,
+      kernel_size, stream, state_rows);
+}
+
+static int qwen4_exp_conv_prefill_exact_launch(
+    const float* hidden_states,
+    float* conv_state,
+    const float* conv_weight,
+    float* out,
+    int64_t tokens,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream,
+    float* state_rows) {
   if (tokens <= 0 || channels <= 0 || kernel_size != 4) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -1472,6 +1549,17 @@ extern "C" int hipengine_qwen4_exp_linear_attn_conv_prefill_exact_f32(
   int err = static_cast<int>(hipGetLastError());
   if (err != static_cast<int>(hipSuccess)) return err;
   const int64_t state_size = channels * kernel_size;
+  if (state_rows != nullptr) {
+    const int64_t rows_size = tokens * state_size;
+    const int64_t row_blocks64 = (rows_size + threads - 1) / threads;
+    hipLaunchKernelGGL(
+        qwen4_exp_linear_attn_conv_state_rows_kernel,
+        dim3(static_cast<unsigned int>(row_blocks64 < 65535 ? row_blocks64 : 65535)),
+        dim3(threads), 0, stream, hidden_states, conv_state, state_rows, tokens,
+        channels, kernel_size);
+    err = static_cast<int>(hipGetLastError());
+    if (err != static_cast<int>(hipSuccess)) return err;
+  }
   const int state_blocks = static_cast<int>(
       (state_size + threads - 1) / threads);
   hipLaunchKernelGGL(

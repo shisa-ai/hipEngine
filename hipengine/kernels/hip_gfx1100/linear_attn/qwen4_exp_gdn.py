@@ -510,6 +510,7 @@ def qwen4_exp_gdn_prefill_rowsplit_f32(
     head_v_dim: int,
     *,
     core_f16_ptr: int = 0,
+    state_rows_ptr: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -518,6 +519,9 @@ def qwen4_exp_gdn_prefill_rowsplit_f32(
 
     ``core_f16_ptr`` additionally receives ``half(core)`` as F16, the bytes
     the standalone FP32-to-F16 cast would produce from the gated output.
+    ``state_rows_ptr`` receives the state after every token
+    (``[tokens][num_v_heads][128][128]`` FP32, the recurrent state's layout);
+    the final state still goes to ``recurrent_state_ptr``.
 
     Same operands and outputs as :func:`qwen4_exp_gdn_prefill_tiled16_f32`.
     The recurrence decays the state first and applies the key and query
@@ -536,7 +540,10 @@ def qwen4_exp_gdn_prefill_rowsplit_f32(
         a_ptr, norm_weight_ptr, recurrent_state_ptr, core_ptr,
     ]
     symbol = "hipengine_qwen4_exp_gdn_prefill_rowsplit_f32"
-    if core_f16_ptr:
+    if state_rows_ptr:
+        pointers += [core_f16_ptr or None, state_rows_ptr]
+        symbol = "hipengine_qwen4_exp_gdn_prefill_rowsplit_state_rows_f32"
+    elif core_f16_ptr:
         pointers.append(core_f16_ptr)
         symbol += "_f16"
     fn = signed_kernel_fn(
