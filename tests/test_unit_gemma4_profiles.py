@@ -241,7 +241,7 @@ def test_production_requests_wmma_prefill_attention_and_strict_requests_none(
     assert generator.prefill_attention_variants == ("gemma4_wmma_flash", "gemma4_wmma_flash_full")
     # The decode scope is still declared, which is what keeps decode steps off
     # the prefill request.
-    assert generator.decode_attention_variants == ("gemma4_flash",)
+    assert generator.decode_attention_variants == ("gemma4_flash_long",)
 
     rows, generator = bound[ExecutionProfile.STRICT]
     assert rows[("prefill_attention", "sliding_head_dim_256")]["selected_variant"] == "gemma4_plain"

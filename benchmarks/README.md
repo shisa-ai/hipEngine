@@ -17,12 +17,15 @@ flash attention on, BF16 KV) with byte-identical prompt ids
 | 512 | 3696.9 | 76.43 | 3165.2 | 69.25 | 1.17x | 1.10x |
 | 2048 | 3665.4 | 74.30 | 3687.3 | 65.25 | 0.99x | 1.14x |
 | 8192 | 3336.1 | 70.04 | 3557.7 | 62.25 | 0.94x | 1.13x |
-| 32768 | 2646.9 | 54.12 | 2502.8 | 52.77 | 1.06x | 1.03x |
-| 65536 | 2086.3 | 41.67 | 1800.2 | 44.89 | 1.16x | 0.93x |
-| 131072 | 1467.5 | 32.79 | 1139.8 | 34.89 | 1.29x | 0.94x |
+| 32768 | 2646.9 | 58.80 | 2502.8 | 52.77 | 1.06x | 1.11x |
+| 65536 | 2086.3 | 48.69 | 1800.2 | 44.89 | 1.16x | 1.08x |
+| 131072 | 1467.5 | 36.02 | 1139.8 | 34.89 | 1.29x | 1.03x |
 
-Decode leads through 32768 tokens and trails by 6-7% from 65536; prefill
-trails at 2048 and 8192 and leads elsewhere. llama.cpp `45451c3` is no faster
+Decode leads at every length; prefill trails at 2048 and 8192 and leads
+elsewhere. The 32768-131072 decode figures were re-measured after the global
+decode step started cutting its key range into one slice per 128 keys past
+8192 keys (41.67 to 48.69 tok/s at 65536, 32.79 to 36.02 at 131072, generated
+ids equal); the other cells are the paired session. llama.cpp `45451c3` is no faster
 than the earlier `8cfc315` comparator on this model and device (3190.5 against
 3199.6 prefill and 69.6 against 71.6 decode tok/s at 512).
 
@@ -34,6 +37,7 @@ against 72.5%). At temperature 0.8 it is 1.28x (70.0 to 89.8) against 1.77x
 here and 18.6 ms in llama.cpp, whose one-row step is 14.6 ms against 14.0.
 Artifacts:
 [comparison](results/2026-10-15-gemma4-gfx1100-llamacpp-latest-comparison.json),
+[long-row decode slicing](results/2026-10-15-gemma4-gfx1100-flash-long-rows.json),
 [MTP](results/2026-10-15-gemma4-gfx1100-mtp-small-block-dense.json),
 [expert down](results/2026-10-10-gemma4-gfx1100-expert-down-wmma-promotion.json),
 [prefill attention](results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json),

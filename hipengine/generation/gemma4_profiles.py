@@ -99,6 +99,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     DECODE_ATTENTION_QUANT as _DECODE_ATTENTION_QUANT,
     DECODE_ATTENTION_STAGED as _DECODE_ATTENTION_STAGED,
     DECODE_ATTENTION_FLASH as _DECODE_ATTENTION_FLASH,
+    DECODE_ATTENTION_FLASH_LONG as _DECODE_ATTENTION_FLASH_LONG,
     EXACT_PREFILL_ATTENTION_LAYER as _EXACT_PREFILL_ATTENTION_LAYER,
     EXACT_PREFILL_ATTENTION_PLAIN as _EXACT_PREFILL_ATTENTION_PLAIN,
     EXACT_PREFILL_ATTENTION_QUANT as _EXACT_PREFILL_ATTENTION_QUANT,
@@ -133,6 +134,7 @@ DECODE_ATTENTION_SCOPE = "global_head_dim_512"
 DECODE_ATTENTION_PLAIN = _DECODE_ATTENTION_PLAIN
 DECODE_ATTENTION_STAGED = _DECODE_ATTENTION_STAGED
 DECODE_ATTENTION_FLASH = _DECODE_ATTENTION_FLASH
+DECODE_ATTENTION_FLASH_LONG = _DECODE_ATTENTION_FLASH_LONG
 DECODE_ATTENTION_QUANT = _DECODE_ATTENTION_QUANT
 
 # The multi-row sliding prefill block: the native/exact route's own geometry once
@@ -287,7 +289,12 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             # 5.59e-3, zero flips, with 122,695 of 122,695 decode launches on
             # flash at both head dimensions.
             # ``benchmarks/results/2026-10-09-gemma4-sliding-band-4096-gate.json``
-            selected_variant=DECODE_ATTENTION_FLASH,
+            # ``gemma4_flash_long`` is the same route with more, shorter key
+            # slices past 8192 keys (``flash_long_row_slices``); it equals
+            # ``gemma4_flash`` at and below 8192 keys, so the gates above stand
+            # there, and its own gate covers the long rows:
+            # ``benchmarks/results/2026-10-15-gemma4-gfx1100-flash-long-rows.json``
+            selected_variant=DECODE_ATTENTION_FLASH_LONG,
             strict_fallback_variant=DECODE_ATTENTION_PLAIN,
             registry_quant=DECODE_ATTENTION_QUANT,
         ),
@@ -503,7 +510,9 @@ def _register_decode_attention_variants() -> None:
 
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
         DECODE_ATTENTION_FLASH,
+        DECODE_ATTENTION_FLASH_LONG,
         gemma4_attention_decode_flash_bf16,
+        gemma4_attention_decode_flash_long_bf16,
         gemma4_attention_prefill_bf16,
     )
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
@@ -515,6 +524,7 @@ def _register_decode_attention_variants() -> None:
         (DECODE_ATTENTION_PLAIN, gemma4_attention_prefill_bf16),
         (DECODE_ATTENTION_STAGED, gemma4_attention_staged_bf16),
         (DECODE_ATTENTION_FLASH, gemma4_attention_decode_flash_bf16),
+        (DECODE_ATTENTION_FLASH_LONG, gemma4_attention_decode_flash_long_bf16),
     ):
         key = KernelKey(
             GEMMA4_GGUF_BACKEND, DECODE_ATTENTION_LAYER, DECODE_ATTENTION_QUANT, variant

@@ -1,0 +1,233 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_flash_long_rows",
+ "date": "2026-10-15",
+ "performance_claim": true,
+ "question": "Does cutting a long global decode row into more key slices speed up Gemma 4 long-context decode on W7900 within the production envelope?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit": "04248b6b9 plus this change",
+ "cause": {
+  "method": "rocprofv3 kernel trace of a 65536-key decode step, production",
+  "global_flash_ms_per_step": 10.97,
+  "step_busy_ms": 22.49,
+  "launch": "256 blocks of 256 threads (2 KV heads x 128 slices of ~512 keys), each block walking its slice serially; about 61-122 GB/s on ~134-268 MB of K/V per global layer"
+ },
+ "change": "New decode-attention variant gemma4_flash_long: the gemma4_flash route with max(default, min(1024, ceil(keys/128))) slices; equals gemma4_flash at or below 8192 keys. The gfx1100 production plan selects it; the gfx1151 plan and strict are unchanged. A decode-graph capture refuses a bucket where the long count departs from the device-side partition rule.",
+ "slice_sweep_step_ms": {
+  "method": "scratch: runner.forward of one token after an N-token prefill, rewind between, median of 10, production; policy patched per arm",
+  "8192": {
+   "default": 13.92,
+   "256_cap_32_keys": 16.27,
+   "512_cap_128_keys": 13.94
+  },
+  "32768": {
+   "default": 18.58,
+   "512_cap_128_keys": 16.82,
+   "1024_cap_128_keys": 16.85,
+   "256_cap_32_keys": 17.19
+  },
+  "65536": {
+   "default": 23.91,
+   "1024_cap_128_keys": 20.43,
+   "512_cap_64_keys": 20.46,
+   "512_cap_32_keys": 20.59
+  },
+  "131072": {
+   "default": 30.72,
+   "1024_cap_128_keys": 27.74,
+   "1024_cap_64_keys": 27.6,
+   "512_cap_32_keys": 29.05
+  }
+ },
+ "gate": {
+  "command": "scripts/gemma4_teacher_forced_gate.py capture (incumbent) / gate --prompt N+512 --prefill N --context N+768 --wmma-full-slices 1, HIPENGINE_EXECUTION_PROFILE=production; the 131072 baseline captured with the long policy mapped back to the default",
+  "note": "--wmma-full-slices 1 exempts the full-layer WMMA observation, a route the gfx1100 plan does not take; the 32K/64K verdicts are identical with and without it apart from that check",
+  "depths": {
+   "32768": {
+    "passed": true,
+    "rows": 511,
+    "scored_key_range": [
+     32769,
+     33279
+    ],
+    "kl_mean": 1.1804654102416833e-06,
+    "kl_p95": 6.407594875582097e-07,
+    "kl_p99": 6.543746236482746e-06,
+    "kl_max": 0.0002917390567944294,
+    "top1_rate": 1.0,
+    "top1_flips": 0,
+    "thresholds": {
+     "kl_max": 0.05,
+     "kl_mean": 0.001,
+     "kl_p95": 0.005,
+     "kl_p99": 0.02,
+     "top1_rate": 0.99
+    },
+    "observed_routes": {
+     "decode_launches": 15315,
+     "flash_launches": 15315,
+     "head_dims": [
+      256,
+      512
+     ],
+     "selections": [
+      3
+     ],
+     "split_family_launches": 15315,
+     "split_key_range": [
+      1024,
+      33279
+     ],
+     "split_launches": 0
+    },
+    "baseline_sha256": "0f2f8a9ff87a45c574832014dee491a1cf94faf52037e78b3ee6018807c0b926"
+   },
+   "65536": {
+    "passed": true,
+    "rows": 511,
+    "scored_key_range": [
+     65537,
+     66047
+    ],
+    "kl_mean": 2.2796772800919142e-06,
+    "kl_p95": 1.0264727593439443e-06,
+    "kl_p99": 1.2007215391158135e-05,
+    "kl_max": 0.0009417860092096951,
+    "top1_rate": 1.0,
+    "top1_flips": 0,
+    "thresholds": {
+     "kl_max": 0.05,
+     "kl_mean": 0.001,
+     "kl_p95": 0.005,
+     "kl_p99": 0.02,
+     "top1_rate": 0.99
+    },
+    "observed_routes": {
+     "decode_launches": 15315,
+     "flash_launches": 15315,
+     "head_dims": [
+      256,
+      512
+     ],
+     "selections": [
+      3
+     ],
+     "split_family_launches": 15315,
+     "split_key_range": [
+      1024,
+      66047
+     ],
+     "split_launches": 0
+    },
+    "baseline_sha256": "085a52dbd688315ec5ae96b0e2b85b25bb6ec697882b7ee501dfd7952043b3d2"
+   },
+   "131072": {
+    "passed": true,
+    "rows": 511,
+    "scored_key_range": [
+     131073,
+     131583
+    ],
+    "kl_mean": 1.0786733263901136e-05,
+    "kl_p95": 1.4922717371021528e-06,
+    "kl_p99": 1.2895551842574313e-05,
+    "kl_max": 0.005166240959586575,
+    "top1_rate": 1.0,
+    "top1_flips": 0,
+    "thresholds": {
+     "kl_max": 0.05,
+     "kl_mean": 0.001,
+     "kl_p95": 0.005,
+     "kl_p99": 0.02,
+     "top1_rate": 0.99
+    },
+    "observed_routes": {
+     "decode_launches": 15315,
+     "flash_launches": 15315,
+     "head_dims": [
+      256,
+      512
+     ],
+     "selections": [
+      3
+     ],
+     "split_family_launches": 15315,
+     "split_key_range": [
+      1024,
+      131583
+     ],
+     "split_launches": 0
+    },
+    "baseline_sha256": "fb5805f85835503d50800a6428bf8b20804e7574930cc4a5d63a3808bd1148c8"
+   }
+  },
+  "rows_total": 1533
+ },
+ "public_path": {
+  "command": "HIPENGINE_EXECUTION_PROFILE=production scripts/gemma4_campaign_bench.py --prompt P --output 128 --context P+256 --warmup 1 --samples 3 (2 at 131072) --expect-gpu W7900",
+  "before": "benchmarks/results/2026-10-15-gemma4-gfx1100-llamacpp-latest-comparison.json (hipEngine f4259f19d)",
+  "rows": [
+   {
+    "prompt": 8192,
+    "samples": 3,
+    "decode_before": 70.04,
+    "decode_after": 71.13,
+    "ratio": 1.016,
+    "llamacpp_45451c3_decode": 62.25,
+    "vs_llamacpp": 1.143,
+    "prefill_before": 3336.1,
+    "prefill_after": 3367.7,
+    "first_sample_ids_equal_to_before": true,
+    "public_parity": true
+   },
+   {
+    "prompt": 32768,
+    "samples": 3,
+    "decode_before": 54.12,
+    "decode_after": 58.8,
+    "ratio": 1.086,
+    "llamacpp_45451c3_decode": 52.77,
+    "vs_llamacpp": 1.114,
+    "prefill_before": 2646.9,
+    "prefill_after": 2635.3,
+    "first_sample_ids_equal_to_before": true,
+    "public_parity": true
+   },
+   {
+    "prompt": 65536,
+    "samples": 3,
+    "decode_before": 41.67,
+    "decode_after": 48.69,
+    "ratio": 1.169,
+    "llamacpp_45451c3_decode": 44.89,
+    "vs_llamacpp": 1.085,
+    "prefill_before": 2086.3,
+    "prefill_after": 2080.7,
+    "first_sample_ids_equal_to_before": true,
+    "public_parity": true
+   },
+   {
+    "prompt": 131072,
+    "samples": 2,
+    "decode_before": 32.79,
+    "decode_after": 36.02,
+    "ratio": 1.098,
+    "llamacpp_45451c3_decode": 34.89,
+    "vs_llamacpp": 1.032,
+    "prefill_before": 1467.5,
+    "prefill_after": 1464.1,
+    "first_sample_ids_equal_to_before": true,
+    "public_parity": true
+   }
+  ]
+ },
+ "limitations": [
+  "Not measured on hip_gfx1151; its plan does not select the variant.",
+  "Gated against the incumbent flash route, not against the strict single-kernel chain."
+ ]
+}

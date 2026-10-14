@@ -156,7 +156,8 @@ Single-token decode differs by plan. The gfx1151 plan appends `gemma4_staged`
 to the prefill request, so a one-token block resolves to the strict-parity
 staged singleton. The gfx1100 plan declares a decode scope, and the runner
 forwards no prefill request on a decode step when one exists: the layer's
-decode selector serves it, with `gemma4_flash` for the untrimmed global step
+decode selector serves it, with `gemma4_flash_long` (`gemma4_flash` with more
+slices past 8192 keys) for the untrimmed global step
 past the resident-logit bound, and for a step on either packing from 256 keys
 up to the 1024 where the native launch asks for flash itself, and
 `gemma4_staged` as that scope's rollback lever. Strict requests `gemma4_plain` on gfx1151; the gfx1100 strict plan
