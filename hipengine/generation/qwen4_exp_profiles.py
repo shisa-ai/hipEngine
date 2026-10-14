@@ -102,6 +102,11 @@ _F16_ROUTE_SELECTORS = {
     # Hyper-connection read projections launched directly on F16 activations:
     # bit-identical to the dispatch they replace under the windows above.
     "HIPENGINE_QWEN4_EXP_GR_F16_DIRECT": "1",
+    # Decode: the row-split GDN step and the warp-per-expert routed-expert
+    # owners (FP32 or integer operands as before; reduction order differs).
+    "HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT": "1",
+    "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP": "1",
+    "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN": "1",
     # Multi-row FP32 projections over uncompressed weights (the indexer
     # projections) on the small-matrix F16 WMMA GEMM.
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",

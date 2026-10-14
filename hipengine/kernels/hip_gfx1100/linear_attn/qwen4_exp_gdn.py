@@ -446,6 +446,53 @@ def qwen4_exp_gdn_core_norm_gate_waves_f32(
     )
 
 
+def qwen4_exp_gdn_decode_rowsplit_f32(
+    conv_ptr: int,
+    output_gate_ptr: int,
+    alpha_ptr: int,
+    beta_logits_ptr: int,
+    dt_bias_ptr: int,
+    a_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    output_ptr: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Row-split Qwen4Exp GDN decode step with the norm/gate epilogue.
+
+    Same operands and outputs as :func:`qwen4_exp_gdn_decode_f32`. The state
+    is read and written once with both dot products in registers; the result
+    differs from the column-major decode owner by FP32 summation order.
+    """
+
+    if num_k_heads <= 0 or num_v_heads <= 0 or num_v_heads % num_k_heads:
+        raise ValueError("num_v_heads must be divisible by positive num_k_heads")
+    if head_k_dim != 128 or head_v_dim != 128:
+        raise ValueError("row-split GDN decode requires 128x128 heads")
+    library = library or build_qwen4_exp_gdn_dpp(multi_column=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_gdn_decode_rowsplit_f32",
+        _ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        conv_ptr, output_gate_ptr, alpha_ptr, beta_logits_ptr, dt_bias_ptr,
+        a_ptr, norm_weight_ptr, recurrent_state_ptr, output_ptr,
+        num_k_heads, num_v_heads, head_k_dim, head_v_dim, stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def qwen4_exp_gdn_prefill_rowsplit_f32(
     conv_ptr: int,
     output_gate_ptr: int,

@@ -3838,6 +3838,17 @@ def _qwen4_exp_gr_f16_direct_enabled(rows: int, low_rank: int) -> bool:
     )
 
 
+def _qwen4_exp_moe_decode_warp_enabled(leg: str) -> bool:
+    """Warp-per-expert decode owners for the routed experts (``GATE_UP``, ``DOWN``).
+
+    Selected by the composition's binder through
+    ``HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_<leg>=1``; see docs/REFACTOR.md.
+    """
+    return os.environ.get(
+        f"HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_{leg}", "0"
+    ) not in {"", "0", "false", "False"}
+
+
 def _qwen4_exp_gr_f16_mirror_enabled() -> bool:
     """Whether the scale-only read also publishes half(mixed).
 
@@ -5885,15 +5896,21 @@ def run_qwen4_exp_moe(
                 stream=stream,
                 runtime=active_runtime,
             )
-            # DE-1 warp256 gate/up route REMOVED 2026-09-30. It cannot be
-            # admitted at any scope that passes the production envelope:
-            # 43L fails max KL 0.261188 (5.2x over), 48L fails mean+max, 35L
-            # fails mean+p99+max, 17L fails max, and the only passing scope
-            # (30L) costs a measured +1.426 ms/step = 3.10% of decode kernel
-            # time while the production default already passes the admission
-            # gate with 4-8x margin. The kernel stays registered for direct
-            # use by the probes. See docs/REFACTOR.md and
-            # worklog 20260930T031044 for the full scope table.
+            # The warp-per-expert DP4A owner (one block per output column,
+            # one wave per selected expert, no barriers) when the profile
+            # selects it and the row count fits; same per-group integer
+            # arithmetic as the logical128/t64 owner, a different reduction
+            # order. History of the earlier rejection: docs/REFACTOR.md.
+            warp_key = KernelKey(
+                dp4a_key.backend, dp4a_key.layer, dp4a_key.quant,
+                "selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out",
+            )
+            if (
+                compact <= 12
+                and _qwen4_exp_moe_decode_warp_enabled("GATE_UP")
+                and is_registered(warp_key)
+            ):
+                dp4a_key = warp_key
             resolve(
                 backend=dp4a_key.backend,
                 layer=dp4a_key.layer,
@@ -6022,12 +6039,19 @@ def run_qwen4_exp_moe(
             "selected_weighted_sum_logical256_t64_bf16_bf16_out",
         )
         fused_down = bool(rows == 1 and is_registered(fused_down_key))
-        # DE-1 warp256 down route REMOVED 2026-09-30. The plain (non-`fast`)
-        # warp256 down kernel is T0 bit-exact but 13.7% SLOWER than the
-        # incumbent (121.313 us vs 104.727 us), and the 5.8x belongs to the
-        # non-exact `fast` variant, which is not admissible. The kernels stay
-        # registered for direct use by the probes. See docs/REFACTOR.md and
-        # worklog 20260930T021532.
+        warp_down_key = KernelKey(
+            backend, "linear", down_weight.spec.quant_key,
+            "selected_weighted_sum_warp256_fast_bf16_bf16_out",
+        )
+        if (
+            fused_down
+            and compact <= 12
+            and _qwen4_exp_moe_decode_warp_enabled("DOWN")
+            and is_registered(warp_down_key)
+        ):
+            # Vectorized half-block loads, one wave per selected expert; the
+            # intra-dot reduction order differs from the logical256/t64 owner.
+            fused_down_key = warp_down_key
         if fused_down:
             resolve(
                 backend=fused_down_key.backend,
@@ -6817,7 +6841,26 @@ def run_qwen4_exp_gdn_token_mixer(
             stream=stream,
             runtime=active_runtime,
         )
-        qwen4_exp_gdn_decode_f32(
+        decode_step = qwen4_exp_gdn_decode_f32
+        rowsplit_decode_key = KernelKey(
+            weights["attn_qkv"].backend, "gdn_recurrence_norm_gate", "f32_state",
+            "qwen4exp_gdn_rowsplit_decode",
+        )
+        if (
+            head_dim == 128
+            and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT", "0")
+            not in {"", "0", "false", "False"}
+            and is_registered(rowsplit_decode_key)
+        ):
+            # One read and one write of the state with both dot products in
+            # registers; FP32 summation order differs from the decode owner.
+            decode_step = resolve(
+                backend=rowsplit_decode_key.backend,
+                layer=rowsplit_decode_key.layer,
+                quant=rowsplit_decode_key.quant,
+                variant=rowsplit_decode_key.variant,
+            )
+        decode_step(
             scratch.conv.ptr,
             scratch.gate.ptr,
             scratch.alpha.ptr,
