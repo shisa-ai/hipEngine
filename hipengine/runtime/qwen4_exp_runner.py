@@ -48,6 +48,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
 )
 from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_gate_context_f32,
+    qwen4_exp_qsa_gate_context_strided_f32,
     qwen4_exp_qsa_norm_rope_f32,
     qwen4_exp_qsa_norm_rope_rows_f32,
     qwen4_exp_qsa_norm_mrope_f32,
@@ -2810,6 +2811,9 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             stream=stream,
             runtime=active_runtime,
         )
+    # The gate multiply reads the gate half of the q projection in place, so
+    # the split kernel does not copy it out (bit-identical).
+    strided_gate = _qwen4_exp_qsa_strided_gate_enabled()
     split_rope_rows = (
         qwen4_exp_qsa_split_norm_mrope_rows_f32
         if rope_positions_ptr is not None
@@ -2825,7 +2829,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         else int(rope_positions_ptr),
         scratch.query.ptr,
         scratch.key.ptr,
-        scratch.gate.ptr,
+        0 if strided_gate else scratch.gate.ptr,
         count,
         query_heads,
         kv_heads,
@@ -3207,14 +3211,35 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
                 stream=stream,
                 runtime=active_runtime,
             )
-    qwen4_exp_qsa_gate_context_f32(
-        scratch.context.ptr,
-        scratch.gate.ptr,
-        scratch.gated.ptr,
-        count * q_width,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    gated_f16 = 0
+    if strided_gate:
+        # The gated context's F16 image goes to the wide-route workspace and
+        # is declared, so the output projection skips its own conversion.
+        workspace = wide_f16_activation_workspace()
+        if workspace is not None and workspace.nbytes >= count * q_width * 2:
+            _invalidate_wide_f16_publication()
+            gated_f16 = workspace.ptr
+        qwen4_exp_qsa_gate_context_strided_f32(
+            scratch.context.ptr,
+            scratch.q_projected.ptr,
+            scratch.gated.ptr,
+            count * q_width,
+            head_dim,
+            output_f16_ptr=gated_f16,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        if gated_f16:
+            declare_f16_mirror(scratch.gated.ptr, count * q_width, gated_f16)
+    else:
+        qwen4_exp_qsa_gate_context_f32(
+            scratch.context.ptr,
+            scratch.gate.ptr,
+            scratch.gated.ptr,
+            count * q_width,
+            stream=stream,
+            runtime=active_runtime,
+        )
     launch_gguf_linear(
         weights.projections["attn_output"],
         scratch.gated.ptr,
@@ -3227,6 +3252,8 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
+    if gated_f16:
+        invalidate_f16_mirror()
     attention_state.set_position(start + count - 1)
     return scratch.output
 
@@ -3752,6 +3779,16 @@ def run_qwen4_exp_gr_read(
         mixed=scratch.mixed,
         inject_logits=scratch.inject_logits,
     )
+
+
+def _qwen4_exp_qsa_strided_gate_enabled() -> bool:
+    """Prefill gate multiply reads the gate from the q projection and writes
+    the output projection's F16 image. Bit-identical; the env switch is a
+    rollback (docs/REFACTOR.md)."""
+
+    return os.environ.get(
+        "HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE", "1"
+    ) not in {"", "0", "false", "False"}
 
 
 def _qwen4_exp_qsa_direct_select_enabled() -> bool:

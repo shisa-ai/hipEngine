@@ -209,7 +209,7 @@ __global__ void qsa_split_norm_rope_rows_f32_kernel(
     const float value = source[dimension];
     values[dimension] = value;
     sumsq += value * value;
-    if (is_query) {
+    if (is_query && gate_out != nullptr) {
       gate_out[(row * num_q_heads + local_head) * head_dim + dimension]
           = source[head_dim + dimension];
     }
@@ -302,6 +302,29 @@ __global__ void qsa_gate_context_f32_kernel(
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index < elements) {
     output[index] = context[index] / (1.0f + expf(-gate[index]));
+  }
+}
+
+// qsa_gate_context_f32_kernel reading the gate half of each query head
+// straight from the q projection ([row][head][2 * head_dim], gate second)
+// instead of a copied gate buffer, and optionally writing the F16 image the
+// output projection consumes. Same expression per element, so the FP32
+// output is bit-identical and the image equals its F16 rounding.
+__global__ void qsa_gate_context_strided_f32_kernel(
+    const float* __restrict__ context,
+    const float* __restrict__ q_projected,
+    float* __restrict__ output,
+    _Float16* __restrict__ output_f16,
+    int64_t elements,
+    int64_t head_dim) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < elements) {
+    const int64_t head_row = index / head_dim;
+    const int64_t dimension = index - head_row * head_dim;
+    const float gate = q_projected[head_row * 2 * head_dim + head_dim + dimension];
+    const float value = context[index] / (1.0f + expf(-gate));
+    output[index] = value;
+    if (output_f16 != nullptr) output_f16[index] = static_cast<_Float16>(value);
   }
 }
 
@@ -1671,7 +1694,7 @@ extern "C" int hipengine_qwen4_exp_qsa_split_norm_rope_rows_f32(
     float eps,
     hipStream_t stream) {
   if (!q_projected || !key || !q_weight || !k_weight || !positions || !query_out ||
-      !key_out || !gate_out || rows <= 0 || num_q_heads <= 0 || num_kv_heads <= 0 ||
+      !key_out ||  rows <= 0 || num_q_heads <= 0 || num_kv_heads <= 0 ||
       head_dim <= 0 || rotary_dim <= 0 || rotary_dim > head_dim ||
       (rotary_dim & 1) || theta <= 0.0f) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -1771,7 +1794,7 @@ extern "C" int hipengine_qwen4_exp_qsa_split_norm_mrope_rows_f32(
     int64_t num_kv_heads, int64_t head_dim, int64_t rotary_dim,
     float theta, float eps, hipStream_t stream) {
   if (!q_projected || !key || !q_weight || !k_weight || !positions ||
-      !query_out || !key_out || !gate_out || rows <= 0 || num_q_heads <= 0 ||
+      !query_out || !key_out ||  rows <= 0 || num_q_heads <= 0 ||
       num_kv_heads <= 0 || head_dim <= 0 || rotary_dim <= 0 ||
       rotary_dim > head_dim || (rotary_dim & 1) || theta <= 0.0f) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -2778,5 +2801,27 @@ extern "C" int hipengine_qwen4_exp_qsa_topk_mask_rows_f32(
       static_cast<const float*>(scores), static_cast<uint32_t*>(mask),
       first_position, score_stride, static_cast<uint32_t>(mask_words), ratio,
       budget);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_gate_context_strided_f32(
+    const void* context,
+    const void* q_projected,
+    void* output,
+    void* output_f16,
+    int64_t elements,
+    int64_t head_dim,
+    hipStream_t stream) {
+  if (!context || !q_projected || !output || elements <= 0 || head_dim <= 0 ||
+      elements % head_dim != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  hipLaunchKernelGGL(
+      qsa_gate_context_strided_f32_kernel,
+      dim3(static_cast<uint32_t>((elements + threads - 1) / threads)), dim3(threads),
+      0, stream, static_cast<const float*>(context),
+      static_cast<const float*>(q_projected), static_cast<float*>(output),
+      static_cast<_Float16*>(output_f16), elements, head_dim);
   return static_cast<int>(hipGetLastError());
 }
