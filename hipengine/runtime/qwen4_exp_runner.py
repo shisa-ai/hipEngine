@@ -3264,16 +3264,30 @@ def _qwen4_exp_gr_pending_write(
 ) -> tuple[int, int, int, bool] | None:
     """Defer a prefill residual write into the next read's norm launch.
 
-    Bit-identical (`tests/test_gpu_qwen4exp_gr_write_norm.py`); one-row decode
-    keeps its captured segments. HIPENGINE_QWEN4_EXP_GR_WRITE_NORM=0 rolls
+    Bit-identical (`tests/test_gpu_qwen4exp_gr_write_norm.py`). Chunks of at
+    least 1024 rows only: the fused launch has one workgroup per row, and at
+    512 rows the separate per-branch write fills the GPU better (code-p512
+    1027.9 against 1021.7 tok/s). HIPENGINE_QWEN4_EXP_GR_WRITE_NORM=0 rolls
     back (docs/REFACTOR.md).
     """
 
-    if rows <= 1 or os.environ.get(
+    if rows < 1024 or os.environ.get(
         "HIPENGINE_QWEN4_EXP_GR_WRITE_NORM", "1"
     ) in {"", "0", "false", "False"}:
         return None
     return (int(source_ptr), int(block_ptr), int(logits_ptr), False)
+
+
+def _qwen4_exp_gr_defer_write(
+    defer_write: list | None, rows: int, source_ptr: int, block_ptr: int,
+    logits_ptr: int,
+) -> bool:
+    """Hand a layer's final BF16 residual write to the next layer's read."""
+
+    if defer_write is None or _qwen4_exp_gr_pending_write(rows, 1, 1, 1) is None:
+        return False
+    defer_write.append((int(source_ptr), int(block_ptr), int(logits_ptr), True))
+    return True
 
 
 def _qwen4_exp_gr_flush_write(
@@ -6582,8 +6596,16 @@ def run_qwen4_exp_qsa_prefill_layer(
     rope_positions_ptr: int | None = None,
     stream: int = 0,
     runtime: HipRuntime | None = None,
+    pending_write: tuple[int, int, int, bool] | None = None,
+    defer_write: list | None = None,
 ) -> DeviceBuffer:
-    """Execute one complete Qwen4Exp QSA+MoE prompt chunk."""
+    """Execute one complete Qwen4Exp QSA+MoE prompt chunk.
+
+    ``pending_write`` is the previous layer's deferred residual write (its
+    output is ``residual_ptr``). With ``defer_write`` this layer's own final
+    write may be appended there instead of launched; the returned buffer is
+    then written by whoever consumes the pending write.
+    """
 
     if scratch.closed:
         raise RuntimeError("Qwen4Exp QSA prefill layer scratch is closed")
@@ -6603,6 +6625,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         low_rank=low_rank,
         stream=stream,
         runtime=active_runtime,
+        pending_write=pending_write,
     )
     mixer = run_qwen4_exp_qsa_prefill_token_mixer(
         attention_read.mixed.ptr,
@@ -6667,17 +6690,21 @@ def run_qwen4_exp_qsa_prefill_layer(
         stream=stream,
         runtime=active_runtime,
     )
-    qwen4_exp_gr_write_bf16_bf16(
-        scratch.after_attention.ptr,
-        moe.output.ptr,
+    if not _qwen4_exp_gr_defer_write(
+        defer_write, rows, scratch.after_attention.ptr, moe.output.ptr,
         ffn_read.inject_logits.ptr,
-        scratch.output.ptr,
-        rows,
-        branches,
-        hidden,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    ):
+        qwen4_exp_gr_write_bf16_bf16(
+            scratch.after_attention.ptr,
+            moe.output.ptr,
+            ffn_read.inject_logits.ptr,
+            scratch.output.ptr,
+            rows,
+            branches,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
     return scratch.output
 
 
@@ -6705,8 +6732,14 @@ def run_qwen4_exp_gdn_layer(
     moe_graph_key: object | None = None,
     layer_graph_cache: MoeGraphCache | None = None,
     layer_graph_key: object | None = None,
+    pending_write: tuple[int, int, int, bool] | None = None,
+    defer_write: list | None = None,
 ) -> DeviceBuffer:
-    """Execute one complete strict Qwen4Exp GDN+MoE physical layer."""
+    """Execute one complete strict Qwen4Exp GDN+MoE physical layer.
+
+    ``pending_write`` / ``defer_write`` as for the QSA prefill layer; only
+    multi-row (uncaptured) chunks use them.
+    """
 
     if scratch.closed:
         raise RuntimeError("Qwen4Exp GDN layer scratch is closed")
@@ -6718,6 +6751,8 @@ def run_qwen4_exp_gdn_layer(
         if (layer_graph_cache is not None and rows == 1 and layer_graph_key is not None)
         else None
     )
+    if layer_graph is not None and pending_write is not None:
+        raise ValueError("a deferred residual write cannot enter a captured layer")
     if layer_graph is not None and (
         weights.attention_gr.inject is None or weights.ffn_gr.inject is None
     ):
@@ -6772,6 +6807,7 @@ def run_qwen4_exp_gdn_layer(
             scratch.attention_gr,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             stream=stream, runtime=active_runtime,
+            pending_write=pending_write,
         )
     mixer_output = run_qwen4_exp_gdn_token_mixer(
         attention_read.mixed.ptr,
@@ -6873,7 +6909,10 @@ def run_qwen4_exp_gdn_layer(
             out_nbytes=scratch.output.nbytes,
             stream=stream,
         )
-    else:
+    elif not _qwen4_exp_gr_defer_write(
+        defer_write, rows, scratch.after_attention.ptr, moe_output.output.ptr,
+        ffn_read.inject_logits.ptr,
+    ):
         qwen4_exp_gr_write_bf16_bf16(
             scratch.after_attention.ptr,
             moe_output.output.ptr,
@@ -8768,8 +8807,23 @@ class Qwen4ExpGGUFResidentModelRunner:
             * cfg.gdn_state_size
             * DType.FP32.itemsize
         )
+        # A layer may hand its final residual write to the next layer's read
+        # (bit-identical); it is flushed before anything else reads the
+        # residual.
+        pending_write = None
+
+        def flush_pending(output_ptr: int) -> None:
+            nonlocal pending_write
+            if pending_write is not None:
+                _qwen4_exp_gr_flush_write(
+                    pending_write, output_ptr, count, cfg.residual_branch_count,
+                    cfg.hidden_size, stream=0, runtime=self.runtime)
+                pending_write = None
+
         for layer, kind in enumerate(cfg.layer_types):
+            deferred: list = []
             if layer in cfg.ple_layers:
+                flush_pending(residual_ptr)
                 layer_prefix = f"layers.{layer}."
                 residual_ptr = run_qwen4_exp_ple(
                     residual_ptr,
@@ -8825,6 +8879,8 @@ class Qwen4ExpGGUFResidentModelRunner:
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
+                    pending_write=pending_write,
+                    defer_write=deferred,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -8853,7 +8909,11 @@ class Qwen4ExpGGUFResidentModelRunner:
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
+                    pending_write=pending_write,
+                    defer_write=deferred,
                 ).ptr
+            pending_write = deferred[0] if deferred else None
+        flush_pending(residual_ptr)
         hidden_seeds = (
             self._read_hidden_seed_rows(residual_ptr, count)
             if capture_hidden_seeds
