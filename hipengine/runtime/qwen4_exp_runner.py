@@ -222,6 +222,10 @@ from hipengine.kernels.hip_gfx1100.linear.f16_mirror import (
     declare_f16_mirror,
     invalidate_f16_mirror,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    qwen4_exp_gr_down_pack8_decode,
+    qwen4_exp_gr_up_mean_pack8_decode,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
     _WRAPPERS as _GGUF_Q8_0_DENSE_WIDE_WRAPPERS,
     f32_to_f16 as gguf_q8_0_f32_to_f16,
@@ -3319,6 +3323,56 @@ def run_qwen4_exp_gr_read(
     # not outlive it.
     invalidate_f16_mirror()
     residual_width = branches * hidden
+    if (
+        _qwen4_exp_gr_decode_fused_enabled(rows, branches, hidden, low_rank)
+        and down_weight.spec.quant_key == "gguf_q8_0"
+        and up_weight.spec.quant_key == "gguf_q8_0"
+        and "raw" in down_weight.allocations
+        and "raw" in up_weight.allocations
+        and (inject_weight is None or (
+            inject_weight.spec.quant_key == "f32"
+            and "raw" in inject_weight.allocations
+        ))
+    ):
+        # Three launches for the whole read, bit-identical to the six-launch
+        # chain: the grouped norm, then the down projection with the scaled
+        # SiLU and the inject logits, then the up projection with the gated
+        # mean. ``scratch.gate`` is not written.
+        qwen4_exp_grouped_rmsnorm_bf16_f32(
+            residual_ptr, norm_weight_ptr, scratch.normalized.ptr, rows, branches,
+            hidden, eps, stream=stream, runtime=active_runtime,
+        )
+        qwen4_exp_gr_down_pack8_decode(
+            scratch.normalized.ptr,
+            down_weight.allocation("raw").tensor.ptr,
+            0 if inject_weight is None else inject_weight.allocation("raw").tensor.ptr,
+            scratch.low_rank.ptr,
+            scratch.inject_logits.ptr,
+            rows,
+            residual_width,
+            low_rank,
+            1.0 / branches,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_gr_up_mean_pack8_decode(
+            scratch.low_rank.ptr,
+            up_weight.allocation("raw").tensor.ptr,
+            scratch.normalized.ptr,
+            scratch.mixed.ptr,
+            rows,
+            branches,
+            hidden,
+            low_rank,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        return Qwen4ExpGRReadDeviceResult(
+            normalized=scratch.normalized,
+            gate=scratch.gate,
+            mixed=scratch.mixed,
+            inject_logits=scratch.inject_logits,
+        )
     # Without the FP32 normalized plane: the up epilogue and the inject logits
     # recompute bf16(residual) * inv_rms * weight, the value the norm stores,
     # so nothing downstream changes. Requires the fused up epilogue and an
@@ -3847,6 +3901,27 @@ def _qwen4_exp_moe_decode_warp_enabled(leg: str) -> bool:
     return os.environ.get(
         f"HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_{leg}", "0"
     ) not in {"", "0", "false", "False"}
+
+
+def _qwen4_exp_gr_decode_fused_enabled(
+    rows: int, branches: int, hidden: int, low_rank: int,
+) -> bool:
+    """Three-launch hyper-connection read at one row.
+
+    Bit-identical to the six-launch chain at rows == 1, where that chain runs
+    the 256- and 128-thread pack8 GEMVs. ``HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED=0``
+    restores the chain; see docs/REFACTOR.md.
+    """
+    return (
+        rows == 1
+        and branches == 4
+        and hidden % 2 == 0
+        and (4 * hidden) % 32 == 0
+        and low_rank > 0
+        and low_rank % 32 == 0
+        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED", "1")
+        not in {"", "0", "false", "False"}
+    )
 
 
 def _qwen4_exp_gr_f16_mirror_enabled() -> bool:

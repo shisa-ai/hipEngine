@@ -738,6 +738,11 @@
 
 ## MoE Decode warp256 GEMV Pair - REMOVED 2026-09-30
 
+> 2026-10-14: the two kernels this section retained are selected again for
+> the `gguf_ud_q4_k_xl` production plan after passing the layer2 gate; see
+> "Qwen4Exp decode routes of the UD production plan". The text below is the
+> 2026-09-30 record.
+
 - **Both runtime routes and both flags are DELETED**
   (`HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` gate/up and `_DOWN`). The removal
   condition recorded here on `20260930T` was "localize the flip and test a
@@ -8886,6 +8891,52 @@ chains stay registered as the strict fallbacks and as the production routes
 of `gguf_q4_k_m`; their repair-pass siblings that only the old
 `gguf_ud_q4_k_xl` production plan selected can go once no manifest names
 them.
+
+## Qwen4Exp decode routes of the UD production plan
+
+The `gguf_ud_q4_k_xl` production binder selects three decode routes that
+change reduction order, and one bit-identical decode fusion is on by
+default. All were measured on a Radeon 8060S on the canonical `code-p512` /
+`code-p4096` cases (128 decode transitions).
+
+- `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT=1`
+  (`qwen4exp_gdn_rowsplit_decode`): one 512-thread block per value head,
+  four lanes per column, the state read and written once with both dot
+  products in registers. Kernel 66 -> 27.5 us per layer; decode 20.87 ->
+  21.47 tok/s at p512.
+- `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN=1`
+  (`selected_weighted_sum_warp256_fast_bf16_bf16_out`, Q5_1) and
+  `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP=1`
+  (`selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out`, Q4_K): the
+  warp-per-expert routed-expert kernels. Down 124 -> 73 us, gate/up 128 ->
+  114 us per layer; decode 21.47 -> 22.65 -> 23.00 tok/s at p512.
+- `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` (default on, `0` restores the chain):
+  the one-row hyper-connection read as three launches instead of six,
+  bit-identical (`tests/test_gpu_qwen4exp_gr_read_decode.py`); decode 22.99
+  -> 23.43 at p512 and 22.58 -> 23.00 at p4096.
+
+The layer2 production gate on the three reduction-order routes together
+(commit `542787507`): mean/p95/p99/max KL 6.36e-4/3.64e-3/8.07e-3/9.88e-3,
+top-1 446/450, three bit-identical repeats, 13/18 strict-exact tasks
+(`benchmarks/results/2026-10-14-qwen4exp-decode-batch/gate-a.json`).
+
+The two warp kernels are the ones the "MoE Decode warp256 GEMV Pair"
+section below records as removed on 2026-09-30. That removal judged the
+gate/up kernel on an 18-case, 1,494-row stress suite whose 0.05 max-KL bar
+the then-default plan also failed, and judged the down kernel's bit-exact
+sibling (which is slower) rather than this vectorized one. Under the
+binding layer2 gate the pair passes, so the kernels are registered for
+`hip_gfx1151` and selected by the binder; the scripts that section deleted
+stay deleted.
+
+Not kept: the DP4A gate/up owner at all 48 layers instead of 43 (+2.2%
+decode, but top-1 445/450 against the 0.99 floor, `gate-b.json`; reverted),
+and a two-launch read that rebuilt the norm in every block (bit-identical,
+1.4% slower).
+
+Removal conditions: declare the three selected variants in the plan with
+strict scopes; delete `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` and the
+six-launch one-row branch once a release has shipped on the fused read.
 
 ## Qwen4Exp direct F16 hyper-connection launches (`HIPENGINE_QWEN4_EXP_GR_F16_DIRECT`)
 
