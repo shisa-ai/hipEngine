@@ -80,6 +80,20 @@ status `requires_task_review` as before. Top-1 has the least margin: 446/450
 is two rows above the floor, and the 48-layer DP4A variant that would have
 taken one more row was rejected for that reason.
 
+Task review. The five battery prompts whose 32-token greedy continuation
+differs from `strict` were read side by side (decoded text in
+`task-review-divergences.txt`). The battery feeds raw `[id]` / `role:`
+sections without a chat template, so the first tokens decide between closing
+the tag, opening a `<think>` block or starting a new turn, and that is where
+four of the five split (`general_ja_plan` at token 0, `heldout_general_en_quant`
+at 3, `heldout_mixed_review` at 4, `code_markdown_table` at 6); the fifth
+(`general_en_plan`, token 6) is a paraphrase of the same sentence. Every
+production continuation is coherent and on-task, with no repetition,
+truncation or wrong-language output. My reading is that these are near-tied
+decisions at the format boundary, not quality regressions; the gate's
+`requires_task_review` is answered by this review rather than by a code
+change.
+
 18-prompt cross-engine battery (`quality-score.json`): 13/18 strict-exact,
 aligned top-1 agreement 1.00, all repeats exact, aligned top-20 mean KL
 0.077 (0.076 before).

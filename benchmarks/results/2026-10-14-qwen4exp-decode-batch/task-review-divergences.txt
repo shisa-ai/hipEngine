@@ -1,0 +1,15 @@
+===== code_markdown_table first divergence at 6
+STRICT : '[/code_markdown_table]\n\n<think>\nThe user wants me to write a Python function that generates a GitHub-flavored markdown table from a list of dictionaries.'
+PROD   : '[/code_markdown_table]\n\n\n[code_markdown_table]<|im_end|>\n<|im_start|>assistant\n<think>\nThe user wants me to write a Python function that generates a GitHub'
+===== general_en_plan first divergence at 6
+STRICT : '<think>\nThe user wants a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. They want risks, sequencing, and validation steps.'
+PROD   : '<think>\nThe user wants a migration plan for moving a small Flask application from SQLite to PostgreSQL. They want it concise but practical, covering risks, sequencing, and'
+===== general_ja_plan first divergence at 0
+STRICT : 'assistant:\n\n<think>\nThe user is asking me to create a practical plan in Japanese for migrating a small-scale internal Python tool to a production environment. They want'
+PROD   : '<think>\nThe user is asking me to create a practical plan in Japanese for migrating a small-scale internal Python tool to a production environment. They want it to include'
+===== heldout_general_en_quant first divergence at 3
+STRICT : 'assistant: 1. **Memory capacity**: INT4 weights reduce model memory by ~4x vs BF16, enabling larger models or longer contexts on the'
+PROD   : 'assistant: <|im_end|>\n<|im_start|>assistant\n<think>\nThe user is asking for a detailed technical explanation of the practical accuracy and throughput tradeoffs among three quantization/in'
+===== heldout_mixed_review first divergence at 4
+STRICT : 'assistant: <think>\n\n</think>\n\n- p99 latency が閾値を超えているため、影響範囲と根本原因を特定してください。\n- error'
+PROD   : 'assistant: <think>\nWe need answer user\'s request. Need produce final with Japanese bullets preserving English metric names. User asks: "[heldout_mixed_review'
