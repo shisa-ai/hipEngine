@@ -54,6 +54,8 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_norm_mrope_rows_f32,
     qwen4_exp_qsa_pool_norm_rope_f32,
     qwen4_exp_qsa_score_f32,
+    qwen4_exp_qsa_score_rows_f32,
+    qwen4_exp_qsa_topk_mask_rows_f32,
     qwen4_exp_qsa_scatter_index_key_device_position_f32,
     qwen4_exp_qsa_scatter_index_keys_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
@@ -3027,29 +3029,72 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         batched_selection = os.environ.get(
             "HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION", "1"
         ) not in {"", "0", "false", "False"}
+        mask_direct = False
         if batched_selection:
             score_blocks = (start + count) // index_state.compression_ratio
             if score_blocks > metadata.score_blocks:
                 raise ValueError("QSA score width exceeds prefill metadata capacity")
-            qwen4_exp_qsa_score_f32(
-                scratch.index_query.ptr
-                + dense_rows * index_heads * index_dim * DType.FP32.itemsize,
-                index_state.pooled_keys.ptr,
-                metadata.scores.ptr,
-                sparse_rows,
-                score_blocks,
-                index_heads,
-                index_dim,
-                stream=stream,
-                runtime=active_runtime,
+            direct_select = (
+                index_heads == 4 and index_dim == 128
+                and _qwen4_exp_qsa_direct_select_enabled()
             )
+            sparse_query_ptr = (
+                scratch.index_query.ptr
+                + dense_rows * index_heads * index_dim * DType.FP32.itemsize
+            )
+            if direct_select:
+                # Scores only the complete blocks each row can see (the only
+                # scores top-k reads); bit-identical to the tiled scorer.
+                qwen4_exp_qsa_score_rows_f32(
+                    sparse_query_ptr,
+                    index_state.pooled_keys.ptr,
+                    metadata.scores.ptr,
+                    sparse_rows,
+                    score_blocks,
+                    start + dense_rows,
+                    index_state.compression_ratio,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            else:
+                qwen4_exp_qsa_score_f32(
+                    sparse_query_ptr,
+                    index_state.pooled_keys.ptr,
+                    metadata.scores.ptr,
+                    sparse_rows,
+                    score_blocks,
+                    index_heads,
+                    index_dim,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            # With the WMMA attention only the selection mask and the last
+            # row's positions (for decode) are consumed, so the mask is
+            # written straight from the scores and only the last row expands.
+            mask_direct = direct_select and qsa_wmma
+            expand_first = sparse_rows - 1 if mask_direct else 0
+            if mask_direct:
+                qwen4_exp_qsa_topk_mask_rows_f32(
+                    metadata.scores.ptr,
+                    scratch.wmma_mask.ptr,
+                    sparse_rows,
+                    start + dense_rows,
+                    score_blocks,
+                    mask_words,
+                    index_state.compression_ratio,
+                    index_state.block_budget,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            expand_row = dense_rows + expand_first
             qwen4_exp_qsa_topk_expand_rows_f32_i64(
-                metadata.scores.ptr,
-                metadata.positions.ptr + dense_rows * DType.INT64.itemsize,
+                metadata.scores.ptr
+                + expand_first * score_blocks * DType.FP32.itemsize,
+                metadata.positions.ptr + expand_row * DType.INT64.itemsize,
                 metadata.selected_positions.ptr
-                + dense_rows * metadata.selection_capacity * DType.INT64.itemsize,
-                metadata.selected_counts.ptr + dense_rows * DType.INT32.itemsize,
-                sparse_rows,
+                + expand_row * metadata.selection_capacity * DType.INT64.itemsize,
+                metadata.selected_counts.ptr + expand_row * DType.INT32.itemsize,
+                sparse_rows - expand_first,
                 score_blocks,
                 metadata.selection_capacity,
                 index_state.compression_ratio,
@@ -3098,16 +3143,17 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             selected_offset = (
                 dense_rows * metadata.selection_capacity * DType.INT64.itemsize
             )
-            qwen4_exp_qsa_wmma_selection_mask(
-                metadata.selected_positions.ptr + selected_offset,
-                metadata.selected_counts.ptr + dense_rows * DType.INT32.itemsize,
-                scratch.wmma_mask.ptr,
-                rows=sparse_rows,
-                selected_stride=metadata.selection_capacity,
-                mask_words=mask_words,
-                stream=stream,
-                runtime=active_runtime,
-            )
+            if not mask_direct:
+                qwen4_exp_qsa_wmma_selection_mask(
+                    metadata.selected_positions.ptr + selected_offset,
+                    metadata.selected_counts.ptr + dense_rows * DType.INT32.itemsize,
+                    scratch.wmma_mask.ptr,
+                    rows=sparse_rows,
+                    selected_stride=metadata.selection_capacity,
+                    mask_words=mask_words,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
             qwen4_exp_qsa_wmma_attention_f32(
                 scratch.query.ptr + dense_rows * q_width * DType.FP32.itemsize,
                 scratch.wmma_k_f16.ptr,
@@ -3706,6 +3752,16 @@ def run_qwen4_exp_gr_read(
         mixed=scratch.mixed,
         inject_logits=scratch.inject_logits,
     )
+
+
+def _qwen4_exp_qsa_direct_select_enabled() -> bool:
+    """Causal-only block scoring and, with the WMMA attention, a selection
+    mask written straight from the scores. Bit-identical selection; the env
+    switch is a rollback (docs/REFACTOR.md)."""
+
+    return os.environ.get(
+        "HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT", "1"
+    ) not in {"", "0", "false", "False"}
 
 
 def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
