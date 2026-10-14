@@ -208,6 +208,11 @@ class Qwen4ExpMTPTextProvider:
                 start_token=root_token,
                 target_hidden_seed=root_hidden,
                 draft_n_max=budget,
+                # Device argmax and device-resident chaining; only the ids
+                # come back. Same draft tokens as the logits path.
+                compact_output=os.environ.get(
+                    "HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL", "1"
+                ) not in {"", "0", "false", "False"},
             )
             record_phase("proposal", proposal_started)
             for name, elapsed_ms in getattr(
@@ -252,7 +257,7 @@ class Qwen4ExpMTPTextProvider:
                     self.draft.forward(
                         candidates[-1], block.hidden_seeds[len(candidates) - 1],
                         capture_logits=False, capture_hidden_seed=False,
-                        capture_token_id=False,
+                        capture_token_id=False, run_head=False,
                     )
                 root_token = int(block.token_ids[consumed - 1])
                 root_hidden = block.hidden_seeds[consumed - 1]
