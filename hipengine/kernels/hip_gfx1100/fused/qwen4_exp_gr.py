@@ -500,6 +500,49 @@ def qwen4_exp_gr_write_bf16_f32(
     )
 
 
+
+def qwen4_exp_gr_write_bf16_bf16(
+    residual_ptr: int,
+    block_output_ptr: int,
+    inject_logits_ptr: int,
+    output_ptr: int,
+    rows: int,
+    branches: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Write a BF16 block output into every BF16 residual branch.
+
+    Bit-identical to widening the block output to F32 first and calling
+    :func:`qwen4_exp_gr_write_bf16_f32`.
+    """
+
+    _check_shape(rows, branches, hidden)
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_gr_write_bf16_bf16",
+        _ARGS_WRITE,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            residual_ptr,
+            block_output_ptr,
+            inject_logits_ptr,
+            output_ptr,
+            rows,
+            branches,
+            hidden,
+            stream,
+        ),
+    )
+
 def qwen4_exp_scaled_silu_f32(
     input_ptr: int,
     output_ptr: int,
@@ -707,6 +750,7 @@ __all__ = [
     "qwen4_exp_gated_mean_sigmoid_f32",
     "qwen4_exp_gated_mean_sigmoid_unfused_f32",
     "qwen4_exp_repeat_bf16_branches",
+    "qwen4_exp_gr_write_bf16_bf16",
     "qwen4_exp_gr_write_bf16_f32",
     "qwen4_exp_grouped_rmsnorm_bf16_f32",
     "qwen4_exp_grouped_rmsnorm_bf16_f32_f16",

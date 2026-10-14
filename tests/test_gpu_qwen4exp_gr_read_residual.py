@@ -173,3 +173,39 @@ def test_norm_with_inject_matches_the_two_launches(rows, hidden):
     np.testing.assert_array_equal(got["half_c"], got["half_p"])
     np.testing.assert_array_equal(got["inv_c"], got["inv_p"])
     np.testing.assert_array_equal(got["inject_c"], got["inject_p"])
+
+
+@pytest.mark.parametrize("rows,hidden", [(1, 2560), (37, 512)])
+def test_write_with_bf16_block_output_matches_widening_first(rows, hidden):
+    from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
+        qwen4_exp_gr_write_bf16_bf16,
+        qwen4_exp_gr_write_bf16_f32,
+    )
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(rows * 5 + hidden)
+    residual = _bf16(rng.normal(0, 2.0, (rows, 4 * hidden)))
+    block = _bf16(rng.normal(0, 1.0, (rows, hidden)))
+    widened = (block.astype(np.uint32) << 16).view(np.float32)
+    inject = rng.normal(0, 1.0, (rows, 4)).astype(np.float32)
+    arrays = {"residual": residual, "block": block, "widened": widened, "inject": inject}
+    dev = {name: malloc(a.nbytes, runtime=runtime) for name, a in arrays.items()}
+    dev["out_p"] = malloc(residual.nbytes, runtime=runtime)
+    dev["out_c"] = malloc(residual.nbytes, runtime=runtime)
+    try:
+        for name, a in arrays.items():
+            copy_host_to_device(dev[name], host_array_ptr(a), runtime=runtime)
+        qwen4_exp_gr_write_bf16_f32(dev["residual"].ptr, dev["widened"].ptr,
+                                    dev["inject"].ptr, dev["out_p"].ptr, rows, 4,
+                                    hidden, runtime=runtime)
+        qwen4_exp_gr_write_bf16_bf16(dev["residual"].ptr, dev["block"].ptr,
+                                     dev["inject"].ptr, dev["out_c"].ptr, rows, 4,
+                                     hidden, runtime=runtime)
+        runtime.device_synchronize()
+        got = [np.empty_like(residual), np.empty_like(residual)]
+        copy_device_to_host(host_array_ptr(got[0]), dev["out_p"], runtime=runtime)
+        copy_device_to_host(host_array_ptr(got[1]), dev["out_c"], runtime=runtime)
+    finally:
+        for buf in dev.values():
+            free(buf, runtime=runtime)
+    np.testing.assert_array_equal(got[1], got[0])
