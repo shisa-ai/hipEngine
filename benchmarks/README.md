@@ -24,15 +24,15 @@ canonical 12-case protocol with one warmup and three repetitions, measured
 
 | Prompt length | Prefill tok/s | Decode (128) tok/s |
 | ---: | ---: | ---: |
-| 512 | **1037.2** | **23.55** |
-| 1024 | **1314.2** | **22.60** |
-| 4096 | **1615.5** | **23.12** |
-| 8192 | **1570.4** | **23.02** |
-| 16384 | **1516.7** | **22.91** |
+| 512 | **1036.5** | **23.66** |
+| 1024 | **1323.8** | **22.69** |
+| 4096 | **1646.3** | **23.23** |
+| 8192 | **1621.5** | **23.18** |
+| 16384 | **1576.1** | **23.04** |
 
 The 8192- and 16384-token rows come from a second 12-case fixture (1024 /
 8192 / 16384 tokens) run under the same protocol; its 1024-token cases are
-token-identical to the canonical ones and measured 1316.3.
+token-identical to the canonical ones and measured 1321.6.
 
 The production plan runs the routed experts, the dense projections at every
 layer, the hyper-connection, indexer and router projections and the prefill
@@ -53,11 +53,11 @@ bit-identical repeats, 13/18 strict-exact tasks. On the 18-prompt
 cross-engine battery: 13/18 strict-exact, top-1 agreement 1.00, top-20 mean
 KL 0.077 (the plan without the F16 routes: 15/18 and 0.0052). On four
 prompts of about 2,000 to 2,600 tokens the plan measures mean KL 2.1e-3
-against `strict`, outside the calibrated limit of 1e-3; a control that only
-reorders one projection's F32 summation measured 2.1e-3 on the same prompts,
-so that length is reported as a sensitivity measurement rather than a route
-verdict.
-[Current rates](results/2026-10-14-qwen4exp-final/README.md)
+against `strict`; long prompts are gated against what a single rounding flip
+does on the same prompts (floor 5.0e-3), plus retrieval answers at 8K and
+16K tokens, and the plan passes (16/16 answers, the same as `strict`).
+[Current rates](results/2026-10-14-qwen4exp-prefill-select-fusion/README.md)
+· [long-prompt gate](results/2026-10-14-qwen4exp-long-context-gate/README.md)
 · [gates and decode changes](results/2026-10-14-qwen4exp-decode-batch/README.md)
 · [prefill changes and kernel attribution](results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/README.md)
 · [long-context isolation](results/2026-10-14-qwen4exp-production-f16-composition/README.md)

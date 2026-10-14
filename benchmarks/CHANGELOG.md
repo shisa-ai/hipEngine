@@ -1,3 +1,7 @@
+## 2026-10-14 — Qwen4Exp prefill: QSA selection and residual write fusion, 1615.5 → 1646.3 at p4096
+
+Qwen3.8-Flash-Next `UD-Q4_K_XL`, Radeon 8060S/gfx1151, `production`, canonical protocol plus the 1K/8K/16K fixture, tracked-clean `2dd109247`: prefill **1615.5 → 1646.3 (+1.9%)** at p4096, **1570.4 → 1621.5 (+3.3%)** at p8192, **1516.7 → 1576.1 (+3.9%)** at p16384, p512/p1024 1036.5/1323.8; decode **23.12 → 23.23** at p4096; output tokens identical in all 24 cases. Reason: QSA rows score only visible blocks and the top-k writes the attention mask directly; the attention gate is read in place; residual writes fuse into the next norm; the decode PLE row is staged while layer 0 runs (all bit-identical). Artifact: [`results/2026-10-14-qwen4exp-prefill-select-fusion/`](results/2026-10-14-qwen4exp-prefill-select-fusion/README.md).
+
 ## 2026-10-14 — Qwen4Exp: two fewer launches per layer, 1596.3 → 1615.5 prefill and 22.99 → 23.12 decode at p4096
 
 Qwen3.8-Flash-Next `UD-Q4_K_XL`, Radeon 8060S/gfx1151, `production`, canonical 12-case protocol, tracked-clean `ffd1335c7`: prefill **1031.8 → 1037.2 (+0.5%)**, **1309.3 → 1314.2 (+0.4%)**, **1596.3 → 1615.5 (+1.2%)** and decode **23.41 → 23.55**, **22.47 → 22.60**, **22.99 → 23.12 (+0.6%)** at p512/p1024/p4096; 8K/16K prefill 1570.4/1516.7; output tokens identical. Reason: the residual write reads the BF16 MoE output directly and the shared-expert combine rounds its FP32 input itself (both bit-identical). Artifact: [`results/2026-10-14-qwen4exp-final/`](results/2026-10-14-qwen4exp-final/README.md).
