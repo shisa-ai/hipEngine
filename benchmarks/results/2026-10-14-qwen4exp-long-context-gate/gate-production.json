@@ -1,0 +1,360 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_long_context_profile_gate",
+  "status": "passed",
+  "created_at": "2026-10-14T14:13:09.735179+00:00",
+  "wall_seconds": 1470.8,
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "d093d40b6f6430b232daf6362807efc48f3e3a0d",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.2.9-2-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "qwen4exp_long_context_gate.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--output",
+    "/tmp/claude-1000/-home-lhl-hipEngine/d74bca4b-3cfa-43e7-ba61-490fabeae83b/scratchpad/lcgate/production.json"
+  ],
+  "candidate": {
+    "id": "production_baseline",
+    "name": "production_baseline",
+    "base_profile": "production",
+    "environment": {},
+    "manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab"
+  },
+  "strict_manifest_sha256": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+  "protocol": {
+    "numeric_prompts": "/home/lhl/hipEngine/benchmarks/prompts/qwen4exp-long-context-gate.jsonl",
+    "numeric_prompts_sha256": "5225953524288ce829ab301ab33ca97f13f9951fafaf952b19d2d5a49b2d9525",
+    "retrieval_prompts": "/home/lhl/hipEngine/benchmarks/prompts/qwen4exp-long-retrieval-v1.jsonl",
+    "retrieval_prompts_sha256": "5fa44488321b39911854ee46581c56ebfbdd105a01d02789b8bec797bf383ba1",
+    "prompt_tokens": {
+      "long_context_code": 2358,
+      "long_context_general_en": 2572,
+      "long_context_general_ja": 1981,
+      "long_context_mixed_ja_en": 2089,
+      "long_retrieval_en_p8192": 8165,
+      "long_retrieval_ja_p8192": 8176,
+      "long_retrieval_en_p16384": 16337,
+      "long_retrieval_ja_p16384": 16357
+    },
+    "decode_steps": 24,
+    "controls": 3,
+    "control_seed": 1,
+    "control_perturbation": "one BF16 ulp in one element of one prompt embedding row",
+    "candidate_repeats": 2,
+    "prefill_chunk_size": 4096,
+    "max_sequence_length": 16640,
+    "control_mean_kl_cap": 0.01
+  },
+  "numeric": {
+    "candidate": {
+      "rows": 100,
+      "kl_mean": 0.002129883207024631,
+      "kl_p50": 0.00024499260967391235,
+      "kl_p95": 0.008282071498616527,
+      "kl_p99": 0.031122488260654006,
+      "kl_max": 0.03458465176309028,
+      "top1_agreement": 0.98,
+      "top1_matches": 98,
+      "topk_overlap_mean": 0.96,
+      "strict_teacher_nll_mean": 0.20795723123268847,
+      "candidate_teacher_nll_mean": 0.21058990913312553,
+      "teacher_nll_delta": 0.002632677900437058,
+      "teacher_delta_p_mean": -0.0006627263898249913,
+      "strict_margin_min": 0.05500984191894531,
+      "max_abs_logit_delta": 3.0842440128326416,
+      "flip_eligible_rows": 21,
+      "flip_eligible_share": 0.21,
+      "top1_mismatches_flip_eligible": 2,
+      "top1_mismatches_outside_flip_eligible": 0
+    },
+    "controls": [
+      {
+        "rows": 100,
+        "kl_mean": 0.004480124985382228,
+        "kl_p50": 0.000543693535741085,
+        "kl_p95": 0.02135425607965301,
+        "kl_p99": 0.04822855613223848,
+        "kl_max": 0.05316661614928145,
+        "top1_agreement": 0.98,
+        "top1_matches": 98,
+        "topk_overlap_mean": 0.94,
+        "strict_teacher_nll_mean": 0.20795723123268847,
+        "candidate_teacher_nll_mean": 0.21253023150000103,
+        "teacher_nll_delta": 0.004573000267312555,
+        "teacher_delta_p_mean": -0.001571667364092455,
+        "strict_margin_min": 0.05500984191894531,
+        "max_abs_logit_delta": 3.8358774185180664,
+        "flip_eligible_rows": 29,
+        "flip_eligible_share": 0.29,
+        "top1_mismatches_flip_eligible": 2,
+        "top1_mismatches_outside_flip_eligible": 0
+      },
+      {
+        "rows": 100,
+        "kl_mean": 0.005028654191428486,
+        "kl_p50": 0.0008403466115301271,
+        "kl_p95": 0.02236463877168368,
+        "kl_p99": 0.04367356421316871,
+        "kl_max": 0.10898629959456242,
+        "top1_agreement": 0.99,
+        "top1_matches": 99,
+        "topk_overlap_mean": 0.92,
+        "strict_teacher_nll_mean": 0.20795723123268847,
+        "candidate_teacher_nll_mean": 0.21301892884770268,
+        "teacher_nll_delta": 0.00506169761501421,
+        "teacher_delta_p_mean": -0.0017441096608394172,
+        "strict_margin_min": 0.05500984191894531,
+        "max_abs_logit_delta": 2.5887742042541504,
+        "flip_eligible_rows": 29,
+        "flip_eligible_share": 0.29,
+        "top1_mismatches_flip_eligible": 1,
+        "top1_mismatches_outside_flip_eligible": 0
+      },
+      {
+        "rows": 100,
+        "kl_mean": 0.0076853229911040865,
+        "kl_p50": 0.0006676055083543006,
+        "kl_p95": 0.04210299185171416,
+        "kl_p99": 0.06628497756316598,
+        "kl_max": 0.11585929740073779,
+        "top1_agreement": 0.97,
+        "top1_matches": 97,
+        "topk_overlap_mean": 0.9139999999999999,
+        "strict_teacher_nll_mean": 0.20795723123268847,
+        "candidate_teacher_nll_mean": 0.21116729641122042,
+        "teacher_nll_delta": 0.003210065178531951,
+        "teacher_delta_p_mean": -0.000812613766260624,
+        "strict_margin_min": 0.05500984191894531,
+        "max_abs_logit_delta": 3.8819587230682373,
+        "flip_eligible_rows": 33,
+        "flip_eligible_share": 0.33,
+        "top1_mismatches_flip_eligible": 3,
+        "top1_mismatches_outside_flip_eligible": 0
+      }
+    ],
+    "control_perturbations": [
+      {
+        "long_context_code": {
+          "position": 1115,
+          "element": 1310,
+          "ulp_step": 1
+        },
+        "long_context_general_en": {
+          "position": 1216,
+          "element": 1310,
+          "ulp_step": 1
+        },
+        "long_context_general_ja": {
+          "position": 936,
+          "element": 1310,
+          "ulp_step": 1
+        },
+        "long_context_mixed_ja_en": {
+          "position": 988,
+          "element": 1310,
+          "ulp_step": 1
+        }
+      },
+      {
+        "long_context_code": {
+          "position": 1974,
+          "element": 669,
+          "ulp_step": -1
+        },
+        "long_context_general_en": {
+          "position": 2153,
+          "element": 669,
+          "ulp_step": -1
+        },
+        "long_context_general_ja": {
+          "position": 1658,
+          "element": 669,
+          "ulp_step": -1
+        },
+        "long_context_mixed_ja_en": {
+          "position": 1748,
+          "element": 669,
+          "ulp_step": -1
+        }
+      },
+      {
+        "long_context_code": {
+          "position": 1912,
+          "element": 219,
+          "ulp_step": -1
+        },
+        "long_context_general_en": {
+          "position": 2086,
+          "element": 219,
+          "ulp_step": -1
+        },
+        "long_context_general_ja": {
+          "position": 1606,
+          "element": 219,
+          "ulp_step": -1
+        },
+        "long_context_mixed_ja_en": {
+          "position": 1694,
+          "element": 219,
+          "ulp_step": -1
+        }
+      }
+    ]
+  },
+  "retrieval": {
+    "strict_correct": 16,
+    "candidate_correct": 16,
+    "answers": 16,
+    "strict": {
+      "long_retrieval_en_p8192": {
+        "correct": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "correct_count": 4,
+        "gold_nll_mean": 0.00015646612020269918,
+        "answer_nll_mean": 9.08510801812006e-05
+      },
+      "long_retrieval_ja_p8192": {
+        "correct": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "correct_count": 4,
+        "gold_nll_mean": 0.00014480328788361567,
+        "answer_nll_mean": 3.5815854720461706e-05
+      },
+      "long_retrieval_en_p16384": {
+        "correct": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "correct_count": 4,
+        "gold_nll_mean": 0.0004373289923179632,
+        "answer_nll_mean": 0.0001337574920088477
+      },
+      "long_retrieval_ja_p16384": {
+        "correct": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "correct_count": 4,
+        "gold_nll_mean": 0.00011332507752123873,
+        "answer_nll_mean": 8.708181242556259e-05
+      }
+    },
+    "candidate": {
+      "long_retrieval_en_p8192": {
+        "correct": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "correct_count": 4,
+        "gold_nll_mean": 0.00018463581296774347,
+        "answer_nll_mean": 9.17036587016279e-05
+      },
+      "long_retrieval_ja_p8192": {
+        "correct": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "correct_count": 4,
+        "gold_nll_mean": 0.00013894409961686017,
+        "answer_nll_mean": 3.73091714648794e-05
+      },
+      "long_retrieval_en_p16384": {
+        "correct": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "correct_count": 4,
+        "gold_nll_mean": 0.000468672360849862,
+        "answer_nll_mean": 0.00014248417870374057
+      },
+      "long_retrieval_ja_p16384": {
+        "correct": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "correct_count": 4,
+        "gold_nll_mean": 0.000115122335095009,
+        "answer_nll_mean": 8.664150987622291e-05
+      }
+    },
+    "gold_forced_kl": {
+      "rows": 123,
+      "kl_mean": 5.972644571929855e-06,
+      "kl_p50": 5.450280363750315e-07,
+      "kl_p95": 2.5111603003342e-05,
+      "kl_p99": 9.788471649543369e-05,
+      "kl_max": 0.00021823608445549364,
+      "top1_agreement": 1.0,
+      "top1_matches": 123,
+      "topk_overlap_mean": 0.9447154471544715,
+      "strict_teacher_nll_mean": 0.00021353515876266178,
+      "candidate_teacher_nll_mean": 0.00022755828264062482,
+      "teacher_nll_delta": 1.4023123877963034e-05,
+      "teacher_delta_p_mean": -1.3953377505731887e-05,
+      "strict_margin_min": 4.929897308349609,
+      "max_abs_logit_delta": 2.562255859375,
+      "flip_eligible_rows": 0,
+      "flip_eligible_share": 0.0,
+      "top1_mismatches_flip_eligible": 0,
+      "top1_mismatches_outside_flip_eligible": 0
+    }
+  },
+  "decision": {
+    "floor": {
+      "kl_mean": 0.005028654191428486,
+      "kl_p95": 0.02236463877168368,
+      "kl_max": 0.11585929740073779,
+      "top1_matches": 97
+    },
+    "checks": {
+      "controls_effective": true,
+      "controls_round_off_sized": true,
+      "mean_within_floor": true,
+      "p95_within_floor": true,
+      "max_within_floor": true,
+      "top1_within_floor": true,
+      "retrieval_not_below_strict": true,
+      "candidate_repeats_identical": true
+    },
+    "measurement_valid": true,
+    "status": "passed"
+  }
+}
