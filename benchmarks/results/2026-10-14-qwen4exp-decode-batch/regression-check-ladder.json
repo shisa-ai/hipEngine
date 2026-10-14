@@ -1,0 +1,56 @@
+{
+  "baseline": "benchmarks/results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/hipengine-production-p1024-p8192-p16384.json",
+  "candidate": "benchmarks/results/2026-10-14-qwen4exp-decode-batch/hipengine-production-p1024-p8192-p16384.json",
+  "changed_output_cases": [
+    "code-p1024",
+    "code-p8192",
+    "general_en-p1024",
+    "general_en-p16384",
+    "general_en-p8192",
+    "general_ja-p16384",
+    "mixed_ja_en-p1024"
+  ],
+  "decode_tolerance": 0.03,
+  "failures": [],
+  "passed": true,
+  "prefill_tolerance": 0.03,
+  "require_identical_output": false,
+  "shapes": {
+    "1024": {
+      "decode_tok_s_weighted": {
+        "baseline": 20.13461515269372,
+        "candidate": 22.480302426748665,
+        "delta": 0.11650022889765177
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 1280.3717567398019,
+        "candidate": 1281.5111165264782,
+        "delta": 0.0008898663850391841
+      }
+    },
+    "16384": {
+      "decode_tok_s_weighted": {
+        "baseline": 20.372281476401575,
+        "candidate": 22.80799707394887,
+        "delta": 0.11956027607260022
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 1475.5076137792898,
+        "candidate": 1476.6513540833373,
+        "delta": 0.0007751503912052371
+      }
+    },
+    "8192": {
+      "decode_tok_s_weighted": {
+        "baseline": 20.484480125961294,
+        "candidate": 22.923930072246012,
+        "delta": 0.11908771573817223
+      },
+      "prefill_tok_s_weighted": {
+        "baseline": 1526.6100913709902,
+        "candidate": 1528.067570408303,
+        "delta": 0.0009547159720422194
+      }
+    }
+  }
+}
