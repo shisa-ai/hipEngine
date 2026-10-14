@@ -85,10 +85,11 @@ Same host and protocol as the baseline table above:
 | hipEngine `production` before the composition | 306.6 | 331.4 | 337.2 | 20.6 |
 | hipEngine `production` with the composition | 769.2 | 932.9 | 1108.4 | 20.6 |
 | hipEngine `production`, plus two bit-identical prefill kernels | 779.4 | 977.9 | 1190.3 | 20.6 |
+| hipEngine `production` on 2026-10-14, after the hyper-connection, GDN and expert-glue kernels | 1028.5 | 1276.5 | 1562.2 | 20.5 |
 | halo-box master `6aa81b88e` (2026-10-12) | 759.3 | 1109.1 | 1446.4 | 25.1 |
 | gufo `v0.12.0` (2026-10-12) | 1095.0 | 1482.2 | 1736.4 | 28.1 |
 
-| Family, kernel ms per code-p4096 prefill | Before | `production` | gufo |
+| Family, kernel ms per code-p4096 prefill | Before | `production` on 2026-10-13 | gufo |
 | --- | ---: | ---: | ---: |
 | Routed experts | 4621 | 694 | 812 |
 | Dense projections | 3045 | 1283 | 841 |
@@ -97,14 +98,24 @@ Same host and protocol as the baseline table above:
 | Hyper-connection elementwise, router, reduce, conversions, other | 2618 | 1001 | 399 |
 | **Total** | **12186** | **3657** | **2373** |
 
-Quality of the composition against the strict hipEngine teacher: 14/18 strict-exact on
-the pass-1 battery with aligned top-1 agreement 1.00 (halo-box 11/18, gufo
-13/18 under the same scoring), and on the full-vocabulary layer2 gate mean KL
-6.49e-04, max 0.012, top-1 99.56%, 15/18 strict-exact tasks.
+On 2026-10-14 the total is 2564 ms: routed experts 699, dense projections
+659, the hyper-connection read and write 544, GDN 271, attention with block
+scoring and the indexer 211, router, expert reduce and conversions 167
+([per-kernel table and the changes behind it](../benchmarks/results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/README.md);
+these families are drawn by kernel role, so the hyper-connection projections
+count under the hyper-connection row rather than under dense projections).
 
-Remaining gap to gufo at p4096 is 1.46x in prefill rate and 1.36x in decode.
-The largest remaining prefill items are the dense projections, the
-hyper-connection elementwise chain, and attention block scoring; decode has
-not been worked on. A new reduced-precision route lands in `fast` first and
+Quality of the 2026-10-14 plan against the strict hipEngine teacher: 13/18
+strict-exact on the pass-1 battery with aligned top-1 agreement 1.00
+(halo-box 11/18, gufo 13/18 under the same scoring), and on the
+full-vocabulary layer2 gate mean KL 6.30e-04, max 0.010, top-1 99.56%, 13/18
+strict-exact tasks.
+
+hipEngine's prefill rate is now 0.94x / 0.86x / 0.90x of gufo's at p512 /
+p1024 / p4096 and ahead of halo-box at every length; gufo's decode rate is
+1.37x hipEngine's. The largest remaining prefill items are attention block
+scoring and the indexer, the GDN recurrence, and the expert glue; at 1024
+tokens the routed-expert kernels are bound by reading every expert's
+weights. Decode has not been worked on. A new reduced-precision route lands in `fast` first and
 becomes a production route when the complete composition passes the
 production gate.

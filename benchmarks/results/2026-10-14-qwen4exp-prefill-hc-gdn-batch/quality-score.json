@@ -1,0 +1,297 @@
+{
+  "schema": 1,
+  "kind": "cross_engine_quality_score",
+  "teacher": {
+    "engine": "hipengine-strict-teacher",
+    "profile": "strict",
+    "battery": {
+      "suites": [
+        {
+          "path": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a"
+        },
+        {
+          "path": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+        }
+      ],
+      "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+      "steps": 32
+    }
+  },
+  "engines": [
+    {
+      "engine": "hipengine-production",
+      "surface": "hipengine_in_process",
+      "g0_conformance": {
+        "battery_suites_match": true,
+        "text_recipe": "[<id>]\\n<role>: <content> sections, no chat template",
+        "identity_present": true
+      },
+      "g1_greedy_identity": {
+        "prompt_count": 18,
+        "exact_count": 13,
+        "first_divergences": {
+          "general_en_plan": 6,
+          "general_ja_plan": 0,
+          "heldout_code_rate_limiter": 1,
+          "heldout_general_en_quant": 3,
+          "heldout_mixed_review": 2
+        },
+        "per_prompt": {
+          "code_lru_cache": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_markdown_table": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_merge_intervals": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "code_topological_sort": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_en_plan": {
+            "exact": false,
+            "first_divergence": 6,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_explain": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "general_ja_plan": {
+            "exact": false,
+            "first_divergence": 0,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_interval_schedule": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_code_rate_limiter": {
+            "exact": false,
+            "first_divergence": 1,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_incident": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_en_quant": {
+            "exact": false,
+            "first_divergence": 3,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_migration": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_general_ja_speculative": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_review": {
+            "exact": false,
+            "first_divergence": 2,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "heldout_mixed_summary": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_review": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          },
+          "mixed_ja_en_translate": {
+            "exact": true,
+            "first_divergence": null,
+            "comparison_basis": "token_ids",
+            "deterministic": true
+          }
+        }
+      },
+      "g2_distribution": {
+        "available": true,
+        "prompt_count": 18,
+        "top1_agreement_mean": 1.0,
+        "mean_kl": 0.07639054868726144,
+        "max_kl": 1.7350478877665179,
+        "per_prompt": [
+          {
+            "id": "code_lru_cache",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.02069962273033422,
+            "max_kl": 0.6256604612576765
+          },
+          {
+            "id": "code_markdown_table",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.018968810984633405,
+            "max_kl": 0.3076020598022112
+          },
+          {
+            "id": "code_merge_intervals",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0026678415201585198,
+            "max_kl": 0.060920701594768756
+          },
+          {
+            "id": "code_topological_sort",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0016460861649113692,
+            "max_kl": 0.04792624525623981
+          },
+          {
+            "id": "general_en_explain",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.015336605265950471,
+            "max_kl": 0.32105136413854496
+          },
+          {
+            "id": "general_en_plan",
+            "aligned_positions": 6,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.02264647503970105,
+            "max_kl": 0.12086553648155618
+          },
+          {
+            "id": "general_ja_explain",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.008368232961405231,
+            "max_kl": 0.2235010672826169
+          },
+          {
+            "id": "general_ja_plan",
+            "aligned_positions": 0,
+            "top1_agreement": null,
+            "mean_kl": null
+          },
+          {
+            "id": "heldout_code_interval_schedule",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.009142288914394016,
+            "max_kl": 0.19450988170924982
+          },
+          {
+            "id": "heldout_code_rate_limiter",
+            "aligned_positions": 1,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.09411053656963805,
+            "max_kl": 0.09411053656963805
+          },
+          {
+            "id": "heldout_general_en_incident",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0012800166846132278,
+            "max_kl": 0.022667758635853193
+          },
+          {
+            "id": "heldout_general_en_quant",
+            "aligned_positions": 3,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.6043211666309646,
+            "max_kl": 1.7350478877665179
+          },
+          {
+            "id": "heldout_general_ja_migration",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.0038742936250928135,
+            "max_kl": 0.10360794581158417
+          },
+          {
+            "id": "heldout_general_ja_speculative",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.00462208569805588,
+            "max_kl": 0.08923327579171406
+          },
+          {
+            "id": "heldout_mixed_review",
+            "aligned_positions": 2,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.41320671949330656,
+            "max_kl": 0.7503893612911802
+          },
+          {
+            "id": "heldout_mixed_summary",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.023166464398473027,
+            "max_kl": 0.7326730521141502
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.04446574207512587,
+            "max_kl": 1.3305868253590196
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "aligned_positions": 32,
+            "top1_agreement": 1.0,
+            "mean_kl": 0.01011633892668599,
+            "max_kl": 0.29653741696684854
+          }
+        ]
+      },
+      "g3_determinism": {
+        "prompt_count": 18,
+        "all_repeats_exact": true
+      },
+      "g4_task_battery": {
+        "prompt_count": 18,
+        "strict_exact_count": 13,
+        "verdict": "characterized"
+      }
+    }
+  ]
+}

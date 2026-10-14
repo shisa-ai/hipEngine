@@ -588,9 +588,13 @@ permute into the half mantissa, then one packed FMA with the block scale and
 bias), and runs F16 WMMA with F32 accumulation over the whole K extent
 against up to 128 grouped activation rows. A weight tile is therefore decoded
 once per macro tile rather than once per 16 rows, and there is no integer
-risk tracking or repair pass. Inputs and outputs are BF16 rows in the grouped
-(expert-sorted) order of `qwen35_moe_group_scatter_gather_lowp`; activations
-are converted to F16 while staged. `qwen4_exp_routed_f16_tile_map` expands
+risk tracking or repair pass. Outputs are BF16 rows in the grouped
+(expert-sorted) order. The paired gate/up kernel reads token-major BF16
+activations through the grouped lane map (`row_lanes[r] // top_k`), so the
+runner launches the metadata-only `qwen35_moe_group_scatter` and no grouped
+copy of the activations is written; without a lane map it reads grouped rows
+as `qwen35_moe_group_scatter_gather_lowp` lays them out. Activations are
+converted to F16 while staged. `qwen4_exp_routed_f16_tile_map` expands
 the int64 grouped prefix into `(expert | tile << 16)` int32 entries on the
 device and publishes the live count, so the GEMM grid is sized to a static
 bound with no device read.
@@ -635,6 +639,88 @@ untouched. The wide hyper-connection up route uses it in place of
 hyper-connection read, and on that route `scratch.gate` holds logits. The
 mixed output is bit-identical to the pair. Correctness test:
 `tests/test_gpu_qwen4exp_gr_sigmoid_mean_no_gate.py`.
+
+## Qwen4Exp hyper-connection read kernels (prefill)
+
+A read of more than 256 rows in the `gguf_ud_q4_k_xl` production plan is
+three launches plus the down GEMM, none of which writes the FP32 normalized
+plane or the gate logits:
+
+- `fused/qwen4_exp_gr.hip` `grouped_rmsnorm_bf16_f16_scale_kernel`: the
+  grouped RMS norm, storing the F16 plane the down projection reads and
+  `inv_rms[rows, branches]`. Same summation tree as
+  `grouped_rmsnorm_bf16_f32_kernel`, so both are the bits that kernel stores.
+- `quant/gguf_q8_0_dense_wide.hip` `q8_0_gr_up_mean_kernel`: the K320/N10240
+  up projection with the sigmoid gated mean in its epilogue. A block's 128
+  weight rows are 32 hidden columns of each of the four branches, so a wave
+  holds all four logits of every output it owns. The normalized value is
+  recomputed as `bf16(residual) * inv_rms * weight`. It can also write
+  `half(mixed)`. Bit-identical to the wide256 F16 projection followed by
+  `gated_mean_sigmoid_f32_kernel`.
+- `fused/qwen4_exp_gr.hip` `gr_inject_bf16_kernel`: the four inject logits
+  from the BF16 residual, one block per row, in the scalar FP32 GEMV's
+  summation order.
+
+Tests: `tests/test_gpu_qwen4exp_gr_f16_direct.py`,
+`tests/test_gpu_qwen4exp_gr_up_mean_fused.py`,
+`tests/test_gpu_qwen4exp_gr_read_residual.py`. No external kernel body is
+ported. Strict fallback: the unfused chain (`grouped_rmsnorm_bf16_f32`,
+`dense_wide*`, `gated_mean_sigmoid`, scalar GEMV), restored by
+`HIPENGINE_QWEN4_EXP_GR_F16_DIRECT=0`.
+
+## F16 activation image registry
+
+`linear/f16_mirror.py` holds one context-local declaration: "this F16 buffer
+is `half()` of that FP32 buffer, for exactly this extent". The fused
+hyper-connection up kernel and the row-split GDN norm/gate epilogue write
+such an image; the F16 wide dispatch (`runtime/gguf_linear.py`) and the
+small-matrix F16 GEMM (`linear/dense_f16_gemm.py`) look it up by pointer and
+extent and read it instead of converting. Producers' owners invalidate the
+declaration before either buffer can be rewritten. Tests:
+`tests/test_unit_f16_mirror.py`, `tests/test_gpu_dense_f16_gemm.py`.
+
+## Small-matrix F16 GEMM staged kernel
+
+`linear/dense_f16_gemm.hip` `dense_f16_gemm_staged_kernel` is the launch
+default for uncompressed FP32/BF16 weight matrices of at least 16 columns at
+64 rows or more (router logits, indexer projections, the 48-column GDN gate
+projections): four-element vector staging converted in registers, the next K
+tile fetched while the current one multiplies, coalesced row stores,
+128x128 tile. Bit-identical to the scalar kernel in the same file, which
+serves K extents that are not a multiple of 64. F16-activation entry points
+skip the conversion when an image is declared.
+
+## Qwen4Exp row-split GDN prefill recurrence
+
+`linear_attn/qwen4_exp_gdn.hip`
+`qwen4_exp_gdn_prefill_rowsplit_f32_kernel<4, 4>`, registered for
+`hip_gfx1151` as `gdn_recurrence_norm_gate / f32_state /
+qwen4exp_gdn_rowsplit_prefill` and selected by the `gguf_ud_q4_k_xl`
+production binder. Ported from gufo `GdnRowSplitKernel` (commit 9cad139,
+MIT); the file header records the hipEngine changes (state layout, in-block
+norms, decay and beta). Four lanes own one value column of the 128x128
+state, blocks are 128 threads, tokens are staged four at a time through LDS
+with three windows of loads in flight. It applies the key and query scales
+to the two dot products and sums in a different FP32 order than the
+column-warp owners (relative L2 1.5e-7 over 4096 tokens). Its norm/gate
+epilogue can publish `half(core)` for the output projection. Test:
+`tests/test_gpu_qwen4exp_gdn_rowsplit_prefill.py`. Strict fallback:
+`qwen4exp_sigmoid_strict_prefill`; rollback
+`HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT=qwen4exp_gdn_tiled16_multi_prefill`.
+
+## Workgroup size and CU mode on gfx1151
+
+Two measured facts that decide tile and build choices on this backend:
+
+- A kernel whose blocks run for the whole launch (the GDN recurrence) is
+  sensitive to workgroup size: the same row-split code measures 5.58 ms in
+  128-thread blocks and 7.93 ms in 256-thread blocks at 4096 tokens.
+- `-mcumode` (the `decode` build profile) is not uniformly better or worse.
+  Dense wide Q8_0 launches prefer the build without it up to 1024 rows and
+  for the long-K 128x128 tile, and the CU-mode build otherwise; the
+  routed-expert kernels prefer no CU mode; the hyper-connection elementwise
+  and GDN conv kernels show no difference. Measure in one process with both
+  builds loaded: cross-process runs differ by more than these effects.
 
 ## Qwen4Exp GDN eight-wave norm/gate
 
