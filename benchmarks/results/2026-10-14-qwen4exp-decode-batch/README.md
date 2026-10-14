@@ -122,3 +122,16 @@ decode steps, and rejecting part of a block means rolling back and replaying
 the accepted prefix, so batched verification only beats autoregressive
 decode at high draft acceptance. The two-row pass costing almost two steps
 points at small-row kernel selection rather than at the weight traffic.
+
+## Small-row routes (after the rollup)
+
+Commit `bd6ed2505` routes 2-63-row router logits to the exact DPP producer
+and lets the row-split GDN recurrence serve 2-15 rows. One-row decode and
+prefill chunks of 64 rows or more are unchanged. The 4-row verify pass
+drops from 90.6 to 78.8 ms (1.72 decode steps; 2 rows 69.2 ms, 1.51 steps),
+argmax still equal to serial decode on every row
+(`mtp-batched-verify-cost-small-row-routes.json`). Layer2 gate on that
+commit (`gate-c.json`; the gate's short prompts include chunks under 64
+rows, so its logits change): mean / p95 / p99 / max KL 6.899e-4 / 4.361e-3
+/ 8.414e-3 / 1.463e-2, top-1 446/450, 13/18 strict-exact tasks; every
+numerical limit passes.
