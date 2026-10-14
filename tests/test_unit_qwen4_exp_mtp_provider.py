@@ -77,6 +77,7 @@ class _DraftRunner:
         target_hidden_seed,
         draft_n_max,
         target_hidden_seed_ptr=None,
+        compact_output=False,
     ):
         values = self.proposals[self.proposal_index][:draft_n_max]
         self.proposal_index += 1
