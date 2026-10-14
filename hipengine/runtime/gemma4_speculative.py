@@ -142,7 +142,12 @@ class Gemma4SpeculativeAdapter:
         # block produces exactly as many rows as it has tokens.
         block = [int(token)] + [int(t) for t in draft]
         needed = len(block)
-        logits = self.runner.forward(block, logits_rows=needed)
+        # ``verification=True`` is the verify contract: under the runner's
+        # default ``verify_dense_exact`` each row is the one-token step's row bit
+        # for bit. A plain multi-row forward is prefill arithmetic, whose rows
+        # differ from one-token decode by up to ~1.8 logits on Gemma 4 and can
+        # flip a near-tie the token-by-token walk would accept.
+        logits = self.runner.forward(block, logits_rows=needed, verification=True)
         rows = np.asarray(logits)
         if rows.shape[0] != needed:
             raise ValueError(
