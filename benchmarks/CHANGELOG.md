@@ -1,3 +1,7 @@
+## 2026-10-14 — Qwen4Exp MTP 1.107 → 1.273x AR: bonus row and cheaper draft
+
+Qwen3.8-Flash-Next `UD-Q4_K_XL` + Q8_0 MTP sidecar, Radeon 8060S/gfx1151, `production`, full 10-prompt category suite, 64 greedy tokens, budget 3, same-process true AR (22.66 tok/s): MTP **25.06 → 28.85 tok/s (1.107 → 1.273x)**; every category ≥ 1.03x (mixed_ja_en 0.923 → 1.032). Reason: the verify block includes a bonus row (Gemma 4 design), and the draft skips its 675 MB vocabulary head when priming the prompt and uses device argmax for proposals (acceptance unchanged at 56.1%). Artifact: [`results/2026-10-14-qwen4exp-mtp-batched-verify/`](results/2026-10-14-qwen4exp-mtp-batched-verify/README.md).
+
 ## 2026-10-14 — Qwen4Exp MTP above AR: 0.825 → 1.107x on the full category suite
 
 Qwen3.8-Flash-Next `UD-Q4_K_XL` + Q8_0 MTP sidecar, Radeon 8060S/gfx1151, `production`, full 10-prompt mtp-bench category suite (heldouts included), 64 greedy tokens, same-process true-AR baseline (22.64 tok/s): MTP/AR **0.825 → 1.107** at budget 3 (25.06 tok/s; code 1.265, general_en 1.136, general_ja 1.034, mixed_ja_en 0.923) and **1.125** at budget 4 (25.52 tok/s); acceptance unchanged (55.4% at budget 3). Reason: one batched verify pass that commits the accepted row's GDN/conv state instead of serial target steps, and an eight-column pack8 GEMV for 2..8-row dense projections (bit-identical). Artifact: [`results/2026-10-14-qwen4exp-mtp-batched-verify/`](results/2026-10-14-qwen4exp-mtp-batched-verify/README.md).

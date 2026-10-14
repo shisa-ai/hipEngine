@@ -67,11 +67,11 @@ does on the same prompts (floor 5.0e-3), plus retrieval answers at 8K and
 · [dense and hyper-connection routes](results/2026-10-13-qwen4exp-fast-dense-hc-router/README.md)
 · [routed-expert kernel](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).
 
-With the Q8_0 MTP sidecar (explicit speculative provider, greedy, budget 4),
-generation over the full 10-prompt mtp-bench category suite runs at 25.5
-tok/s against 22.6 tok/s autoregressive in the same process (1.13x; code
-1.35x, general English 1.09x, general Japanese 1.06x, mixed Japanese/English
-0.92x), 64 tokens per prompt.
+With the Q8_0 MTP sidecar (explicit speculative provider, greedy, budget 3),
+generation over the full 10-prompt mtp-bench category suite runs at 28.9
+tok/s against 22.7 tok/s autoregressive in the same process (1.27x; code
+1.55x, general English 1.24x, general Japanese 1.17x, mixed Japanese/English
+1.03x), 64 tokens per prompt.
 [MTP measurements](results/2026-10-14-qwen4exp-mtp-batched-verify/README.md).
 
 The opt-in `fast` profile is where a reduced-precision route lands before
