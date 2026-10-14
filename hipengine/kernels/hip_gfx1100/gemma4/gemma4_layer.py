@@ -52,6 +52,8 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     EXACT_PREFILL_ATTENTION_STAGED,
     Gemma4AttentionScratch,
     aotriton_prefill_admits,
+    FLASH_DECODE_PREFERRED_MIN_KEYS,
+    FLASH_MULTI_ROW_MAX_TOKENS,
     flash_admits,
     flash_decode_short_row,
     gemma4_attention_prefill_aotriton,
@@ -760,6 +762,25 @@ def _select_exact_decode_attention(
     ):
         return keep_native()
     if int(tokens) != 1:
+        # A multi-row block under a decode scope is a speculative verify block.
+        # The flash variants serve it in one launch on either packing once the
+        # block reaches the preferred entry; a sliding layer's trimmed range is
+        # only a key offset, carried by the K/V pointers and each row's mask.
+        # Anything else -- a block too wide, a geometry without a flash
+        # instantiation, a short range -- keeps the native multi-row kernel.
+        if (
+            flash_variant is not None
+            and keys is not None
+            and int(keys) >= FLASH_DECODE_PREFERRED_MIN_KEYS
+            and flash_admits(
+                tokens=int(tokens), head_dim=int(head_dim), num_heads=int(num_heads),
+                num_kv_heads=int(num_kv_heads), max_tokens=FLASH_MULTI_ROW_MAX_TOKENS,
+            )
+        ):
+            flash = _resolve_decode_attention_launcher(
+                backend=resolved_backend, variant=flash_variant
+            )
+            return flash, flash_variant
         return keep_native()
     if (
         flash_variant is not None
@@ -1214,6 +1235,40 @@ def gemma4_layer_forward_bf16(
 
             global _last_prefill_route
             key_count = rows if kv is None else write_offset + rows - key_begin
+            if rows > 1 and decode_attention_variants is not None and kv is not None:
+                # Only a speculative verify block reaches a layer as several
+                # rows with the decode scope attached. The decode selector serves
+                # it when its flash variant admits the block; otherwise the
+                # block keeps the prefill request below.
+                launcher, route = _select_exact_decode_attention(
+                    decode_attention_variants=decode_attention_variants,
+                    backend=_layer_backend(layer),
+                    tokens=rows,
+                    keys=key_count,
+                    num_heads=num_heads,
+                    num_kv_heads=num_kv_heads,
+                    head_dim=head_dim,
+                    sliding_window=geometry.sliding_window,
+                    key_begin=key_begin,
+                )
+                if route != "exact":
+                    _last_prefill_route = route
+                    launcher(
+                        query_ptr,
+                        kv.key_cache + key_begin * kv_width * _BF16_BYTES,
+                        kv.value_cache + key_begin * kv_width * _BF16_BYTES,
+                        keep_mask_ptr,
+                        out_ptr,
+                        tokens=rows,
+                        keys=key_count,
+                        scratch=scratch.attention,
+                        num_heads=num_heads,
+                        num_kv_heads=num_kv_heads,
+                        head_dim=head_dim,
+                        scale=geometry.scale,
+                        **kwargs,
+                    )
+                    return
             route = _select_prefill_route(
                 rows=rows,
                 keys=key_count,

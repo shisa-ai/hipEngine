@@ -297,3 +297,40 @@ def test_a_wide_verify_block_splits_the_head_and_keeps_its_rows(
     finally:
         wide.close()
         weights.free()
+
+
+@pytest.mark.parametrize(
+    ("rows", "exact", "expected_prefill", "expected_decode"),
+    [
+        # One row is a decode step's computation and takes its variants.
+        (1, True, None, ("gemma4_flash_long",)),
+        (1, False, None, ("gemma4_flash_long",)),
+        # The row-exact form attends each row through its own decode launch.
+        (4, True, ("gemma4_plain",), None),
+        # Otherwise the block carries the decode scope beside its fallback.
+        (4, False, ("gemma4_plain",), ("gemma4_flash_long",)),
+    ],
+)
+def test_a_verify_block_forwards_the_decode_scope(
+    runner, monkeypatch, rows, exact, expected_prefill, expected_decode
+) -> None:
+    from hipengine.generation.gemma4_profiles import register_gemma4_gguf_profiles
+    from hipengine.runtime import gemma4 as module
+
+    register_gemma4_gguf_profiles()
+    calls = []
+    original = module.gemma4_layer_forward_bf16
+
+    def record(*args, **kwargs):
+        calls.append((kwargs["prefill_attention_variants"], kwargs["decode_attention_variants"]))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "gemma4_layer_forward_bf16", record)
+    monkeypatch.setattr(runner, "decode_attention_variants", ("gemma4_flash_long",))
+    monkeypatch.setattr(runner, "verify_dense_exact", exact)
+    runner.reset()
+    runner.forward(_TOKENS[:1])
+    calls.clear()
+    runner.forward(_TOKENS[1:1 + rows], logits_rows=rows, verification=True)
+
+    assert calls and all(call == (expected_prefill, expected_decode) for call in calls)

@@ -1,0 +1,154 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_mtp_long_context",
+ "date": "2026-10-15",
+ "performance_claim": true,
+ "question": "Why was Gemma 4 MTP slower than plain decoding on long prompts, and what restores it?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL target, mtp-gemma-4-26B-A4B-it-Q8_0 head, BF16 KV",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit": "82cdb84a3 plus this change",
+ "cause": {
+  "verify_attention": "a production multi-row verify block requested gemma4_plain prefill attention; past the resident-logit bound the global layers ran the owned-logits class kernel in batches of four rows. A one-row verify block took the same prefill route",
+  "draft_attention": "the head called the native attention launch, which keeps a long global row on the class kernel unless a decode variant asks for flash",
+  "verify_block_ms_32768_before": {
+   "rows_1": 65.0,
+   "rows_3": 73.96,
+   "rows_5": 133.72,
+   "decode_step": 16.92
+  },
+  "proposal_ms_per_draft_token_32768_before": 12.8
+ },
+ "change": [
+  "The runner forwards the decode scope with a multi-row production verify block, and a one-row verify block takes a decode step's variants exactly (both profiles).",
+  "The layer asks the decode selector first for a multi-row block carrying a decode scope; the flash variants serve 2-16 rows from 256 keys on either packing in one launch (C side already handled tokens > 1).",
+  "_launch_prefill admits multi-row flash only under prefer_flash, so no prefill block can reach it, and skips the four-row global batching when it serves.",
+  "The draft head attends through gemma4_attention_decode_flash_long_bf16 in every profile; drafts do not decide output."
+ ],
+ "verify_block_ms_median": {
+  "method": "scratch: runner.forward(rows, verification=True) after an N-token prefill, rewind between, median of 8, production",
+  "8192": {
+   "before": {
+    "rows_1": 15.9,
+    "rows_3": 27.74,
+    "rows_5": 33.79
+   },
+   "after": {
+    "rows_1": 16.09,
+    "rows_3": 22.69,
+    "rows_5": 30.04
+   },
+   "decode_step": 16.05
+  },
+  "32768": {
+   "before": {
+    "rows_1": 65.0,
+    "rows_3": 73.96,
+    "rows_5": 133.72
+   },
+   "after": {
+    "rows_1": 16.74,
+    "rows_3": 30.44,
+    "rows_5": 43.13
+   },
+   "decode_step": 17.11
+  },
+  "600_keys_25_reps": {
+   "before": [
+    14.01,
+    21.01,
+    26.98,
+    32.98,
+    39.86
+   ],
+   "after": [
+    13.25,
+    19.62,
+    25.92,
+    31.83,
+    39.15
+   ],
+   "rows": [
+    1,
+    3,
+    5,
+    7,
+    9
+   ]
+  }
+ },
+ "row_agreement_with_one_token_decode": {
+  "production_max_row_kl": {
+   "prompt_600": 5e-07,
+   "prompt_1100": 5.4e-07,
+   "prompt_8192": 2.2e-07,
+   "prompt_32768": 1.07e-07
+  },
+  "argmax_changes": 0,
+  "exact_verify": "bitwise 72 of 72 rows at 120/600/1100-token prompts, 3-9 rows"
+ },
+ "public_path": {
+  "short_prompts": {
+   "command": "scripts/gemma4_mtp_probe.py ... --budget 4 (18 prompts x 2, 128 tokens)",
+   "production": {
+    "plain_tok_s": 74.2,
+    "mtp_tok_s": 107.1,
+    "ratio": 1.444,
+    "rows_token_identical": "32 of 36"
+   },
+   "strict": {
+    "plain_tok_s": 73.6,
+    "mtp_tok_s": 95.0,
+    "ratio": 1.291,
+    "rows_token_identical": "36 of 36"
+   },
+   "note": "prompts under 256 keys keep the class kernel; unchanged within noise"
+  },
+  "long_prompt": {
+   "method": "hipengine.LLM(speculative_provider='gemma4_mtp', candidate budget 4); generate_detailed vs generate_speculative_mtp_detailed on one raw prompt of cycled campaign prose, 128 greedy tokens, after a 4-token warmup of each arm; draft acceptance 100% on this prompt",
+   "8192": {
+    "before": {
+     "plain_s": 4.229,
+     "mtp_s": 3.6
+    },
+    "after": {
+     "plain_s": 4.261,
+     "mtp_s": 3.484,
+     "prefill_ms": 2445.3,
+     "proposal_ms": 271.1,
+     "verify_ms": 752.8
+    },
+    "identical": true
+   },
+   "32768": {
+    "before": {
+     "plain_s": 14.678,
+     "mtp_s": 17.272
+    },
+    "after": {
+     "plain_s": 14.649,
+     "mtp_s": 13.928,
+     "prefill_ms": 12473.1,
+     "proposal_ms": 341.0,
+     "verify_ms": 1079.7
+    },
+    "identical": true
+   }
+  }
+ },
+ "validation": [
+  "unit tier 12824 passed",
+  "tests/test_unit_gemma4_decode_attention_selection.py 123 passed",
+  "tests/test_gpu_gemma4_runner_verify_rows.py 17 passed",
+  "tests/test_gpu_gemma4_flash_decode.py and verify rows 125 passed",
+  "tests/test_gpu_gemma4_assistant_forward.py and live MTP tests passed (the adapter test after 82cdb84a3)"
+ ],
+ "limitations": [
+  "The long-prompt rows are one prompt of repetitive prose with full draft acceptance; real long-context acceptance will be lower.",
+  "Each row of a multi-row flash block re-reads the block's keys; a five-row block at 32K costs 2.5x a decode step.",
+  "Not measured on hip_gfx1151 (its plan has no flash decode variant, so its verify attention is unchanged; the draft head change applies there too)."
+ ]
+}

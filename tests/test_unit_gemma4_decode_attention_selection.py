@@ -1016,9 +1016,9 @@ def test_a_flash_plan_takes_the_short_row_on_either_packing(geometry, keys, expe
     "overrides",
     [dict(decode_attention_variants=(DECODE_ATTENTION_STAGED,)),
      dict(decode_attention_variants=(DECODE_ATTENTION_PLAIN,)),
-     dict(tokens=2), dict(key_begin=1),
+     dict(key_begin=1),
      dict(num_kv_heads=4), dict(head_dim=128, num_heads=8, num_kv_heads=4)],
-    ids=["staged-plan", "plain-plan", "two-rows", "trimmed", "ratio-4", "other-head-dim"],
+    ids=["staged-plan", "plain-plan", "trimmed", "ratio-4", "other-head-dim"],
 )
 def test_a_short_row_outside_the_flash_scope_keeps_the_native_kernel(overrides) -> None:
     base = dict(decode_attention_variants=(DECODE_ATTENTION_FLASH,), **SLIDING)
@@ -1140,3 +1140,49 @@ def test_a_long_row_plan_captures_where_the_counts_agree(
 
     assert session._captures == 1
     assert bucket.end <= 8192
+
+
+
+# --- a multi-row verify block under a decode scope ---------------------------
+
+
+@pytest.mark.parametrize("variant", [DECODE_ATTENTION_FLASH, DECODE_ATTENTION_FLASH_LONG])
+@pytest.mark.parametrize(
+    ("geometry", "keys", "key_begin"),
+    [(SLIDING, 512, 0), (SLIDING, 1029, 6), ({**GLOBAL}, 600, 0), ({**GLOBAL}, 40000, 0)],
+    ids=["sliding-short", "sliding-trimmed", "global-short", "global-long"],
+)
+@pytest.mark.parametrize("tokens", [2, 5, 16])
+def test_a_verify_block_takes_its_flash_variant(variant, geometry, keys, key_begin, tokens) -> None:
+    """From the preferred entry, either packing, trimmed or not, up to 16 rows."""
+
+    launcher, route = _select_exact_decode_attention(
+        decode_attention_variants=(variant,),
+        **{**geometry, "tokens": tokens, "keys": keys, "key_begin": key_begin},
+    )
+
+    assert route == variant
+    assert launcher is (
+        gemma4_attention_decode_flash_long_bf16
+        if variant == DECODE_ATTENTION_FLASH_LONG
+        else gemma4_attention_decode_flash_bf16
+    )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [dict(tokens=17), dict(keys=255),
+     dict(decode_attention_variants=(DECODE_ATTENTION_STAGED,)),
+     dict(decode_attention_variants=(DECODE_ATTENTION_PLAIN,)),
+     dict(head_dim=128, num_heads=8, num_kv_heads=4)],
+    ids=["too-wide", "short-range", "staged-plan", "plain-plan", "other-head-dim"],
+)
+def test_a_verify_block_outside_the_flash_scope_keeps_the_native_kernel(overrides) -> None:
+    base = dict(decode_attention_variants=(DECODE_ATTENTION_FLASH_LONG,), **SLIDING)
+    base.update(tokens=5)
+    base.update(overrides)
+
+    launcher, route = _select_exact_decode_attention(**base)
+
+    assert route == "exact"
+    assert launcher is gemma4_attention_prefill_bf16

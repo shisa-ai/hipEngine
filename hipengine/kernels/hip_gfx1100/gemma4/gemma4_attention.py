@@ -386,6 +386,15 @@ def decode_slices(keys: int, head_dim: int) -> int:
 FLASH_DECODE_PREFERRED_MIN_KEYS = 256
 
 
+#: Widest block the flash decode variants serve in one launch: a speculative
+#: verify block (a draft budget of up to eight plus its bonus row, with room).
+#: Each query row of the block is one grid slab of the same key-sliced kernel
+#: over the block's key range, its causal limit carried by its own mask row. It
+#: is reachable only through a decode variant's ``prefer_flash`` request, so a
+#: prefill block never takes it.
+FLASH_MULTI_ROW_MAX_TOKENS = 16
+
+
 def flash_decode_engages(*, keys: int, head_dim: int, prefer_flash: bool) -> bool:
     """Whether an admitted one-token decode asks for the flash route at ``keys``.
 
@@ -569,7 +578,8 @@ def flash_request_slices(
 
 
 def flash_admits(
-    *, tokens: int, head_dim: int, num_heads: int, num_kv_heads: int
+    *, tokens: int, head_dim: int, num_heads: int, num_kv_heads: int,
+    max_tokens: int = 1,
 ) -> bool:
     """Capability admission for the flash decode route.
 
@@ -585,7 +595,7 @@ def flash_admits(
     execute the shape, it is admitted.
     """
 
-    if tokens != 1:
+    if not 1 <= int(tokens) <= max(1, int(max_tokens)):
         return False
     if num_heads <= 0 or num_kv_heads <= 0 or num_heads % num_kv_heads != 0:
         return False
@@ -928,7 +938,25 @@ def _launch_prefill(
     global_logits = _resident_attention_shared_bytes(
         head_dim=head_dim, keys=key_count,
     ) > _LDS_BUDGET_BYTES
-    if global_logits:
+    # A decode variant's multi-row request (a verify block) is served by one
+    # flash launch over the whole block, so it neither batches the rows below
+    # nor takes the legacy prefill entry, which has no workspace argument.
+    multi_row_flash = (
+        prefer_flash
+        and tokens > 1
+        and flash_admits(
+            tokens=tokens, head_dim=head_dim, num_heads=num_heads,
+            num_kv_heads=num_kv_heads, max_tokens=FLASH_MULTI_ROW_MAX_TOKENS,
+        )
+        and flash_decode_engages(keys=key_count, head_dim=head_dim, prefer_flash=True)
+    )
+    if multi_row_flash:
+        symbol = (
+            _SYMBOL_DECODE_BF16
+            if symbol in (_SYMBOL_PREFILL_BF16, _SYMBOL_DECODE_BF16)
+            else _SYMBOL_DECODE_F32
+        )
+    if global_logits and not multi_row_flash:
         # Bound resident global scratch as well as LDS: allocating a full
         # 128-query block independently in every model layer exhausts VRAM.
         # Query rows are independent, so batches of four preserve all arithmetic
@@ -987,6 +1015,7 @@ def _launch_prefill(
             head_dim=head_dim,
             num_heads=num_heads,
             num_kv_heads=num_kv_heads,
+            max_tokens=FLASH_MULTI_ROW_MAX_TOKENS if prefer_flash else 1,
         )
         flash = (
             admitted
