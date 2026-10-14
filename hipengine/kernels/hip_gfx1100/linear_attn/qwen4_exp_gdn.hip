@@ -969,6 +969,8 @@ __global__ void qwen4_exp_gdn_core_norm_gate_f32_kernel(
 // epilogue, and reads the sum from lane 0 as the parent does through LDS, so
 // the result is bit-identical; only the launch geometry changes (one
 // workgroup per eight pairs instead of one 32-thread workgroup per pair).
+// ``core_f16`` (optional) receives half(core) for every element written, the
+// bytes the standalone FP32-to-F16 cast would produce from the result.
 __global__ void qwen4_exp_gdn_core_norm_gate_waves_f32_kernel(
     float* __restrict__ core,
     const float* __restrict__ output_gate,
@@ -976,7 +978,8 @@ __global__ void qwen4_exp_gdn_core_norm_gate_waves_f32_kernel(
     int64_t tokens,
     int64_t core_width,
     int64_t num_v_heads,
-    int64_t head_v_dim) {
+    int64_t head_v_dim,
+    uint16_t* __restrict__ core_f16) {
   const int lane = threadIdx.x & 31;
   const int64_t pair = static_cast<int64_t>(blockIdx.x) * (blockDim.x / 32)
       + (threadIdx.x >> 5);
@@ -994,16 +997,23 @@ __global__ void qwen4_exp_gdn_core_norm_gate_waves_f32_kernel(
   const float inv_rms = rsqrtf(
       total / static_cast<float>(head_v_dim) + 1.0e-6f);
   for (int64_t col = lane; col < head_v_dim; col += 32) {
-    core[base + col] = core[base + col] * inv_rms
+    const float value = core[base + col] * inv_rms
         * norm_weight[col]
         * sigmoid_f32(output_gate[base + col]);
+    core[base + col] = value;
+    if (core_f16 != nullptr) {
+      // Convert the stored FP32 register itself so the image is half(core).
+      uint32_t half_bits;
+      asm volatile("v_cvt_f16_f32 %0, %1" : "=v"(half_bits) : "v"(value));
+      core_f16[base + col] = static_cast<uint16_t>(half_bits);
+    }
   }
 }
 
 int launch_core_norm_gate_waves(
     void* core, const void* output_gate, const void* norm_weight,
     int64_t tokens, int64_t num_v_heads, int64_t head_v_dim,
-    hipStream_t stream) {
+    hipStream_t stream, void* core_f16 = nullptr) {
   const int64_t pairs = tokens * num_v_heads;
   hipLaunchKernelGGL(
       qwen4_exp_gdn_core_norm_gate_waves_f32_kernel,
@@ -1012,7 +1022,8 @@ int launch_core_norm_gate_waves(
       static_cast<float*>(core),
       static_cast<const float*>(output_gate),
       static_cast<const float*>(norm_weight),
-      tokens, num_v_heads * head_v_dim, num_v_heads, head_v_dim);
+      tokens, num_v_heads * head_v_dim, num_v_heads, head_v_dim,
+      static_cast<uint16_t*>(core_f16));
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1377,7 +1388,7 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_tiled16_f32(
 
 // Row-split recurrence followed by the wave norm/gate epilogue. Arguments
 // as hipengine_qwen4_exp_gdn_prefill_tiled16_f32.
-extern "C" int hipengine_qwen4_exp_gdn_prefill_rowsplit_f32(
+static int gdn_prefill_rowsplit_launch(
     const void* conv,
     const void* output_gate,
     const void* alpha,
@@ -1392,7 +1403,8 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_rowsplit_f32(
     int64_t num_v_heads,
     int64_t head_k_dim,
     int64_t head_v_dim,
-    hipStream_t stream) {
+    hipStream_t stream,
+    void* core_f16) {
   if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
       !norm_weight || !recurrent_state || !core || tokens <= 0 ||
       tokens > INT32_MAX / 64 || num_k_heads <= 0 || num_k_heads > 64 ||
@@ -1429,8 +1441,38 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_rowsplit_f32(
   const int err = static_cast<int>(hipGetLastError());
   if (err != 0) return err;
   return launch_core_norm_gate_waves(
-      core, output_gate, norm_weight, tokens, num_v_heads, head_v_dim, stream);
+      core, output_gate, norm_weight, tokens, num_v_heads, head_v_dim, stream,
+      core_f16);
 }
+
+extern "C" int hipengine_qwen4_exp_gdn_prefill_rowsplit_f32(
+    const void* conv, const void* output_gate, const void* alpha,
+    const void* beta_logits, const void* dt_bias, const void* a,
+    const void* norm_weight, void* recurrent_state, void* core,
+    int64_t tokens, int64_t num_k_heads, int64_t num_v_heads,
+    int64_t head_k_dim, int64_t head_v_dim, hipStream_t stream) {
+  return gdn_prefill_rowsplit_launch(
+      conv, output_gate, alpha, beta_logits, dt_bias, a, norm_weight,
+      recurrent_state, core, tokens, num_k_heads, num_v_heads, head_k_dim,
+      head_v_dim, stream, nullptr);
+}
+
+// As above, also writing ``core_f16[tokens, heads * 128] = half(core)``.
+extern "C" int hipengine_qwen4_exp_gdn_prefill_rowsplit_f32_f16(
+    const void* conv, const void* output_gate, const void* alpha,
+    const void* beta_logits, const void* dt_bias, const void* a,
+    const void* norm_weight, void* recurrent_state, void* core,
+    void* core_f16, int64_t tokens, int64_t num_k_heads, int64_t num_v_heads,
+    int64_t head_k_dim, int64_t head_v_dim, hipStream_t stream) {
+  if (!core_f16 || core_f16 == core) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return gdn_prefill_rowsplit_launch(
+      conv, output_gate, alpha, beta_logits, dt_bias, a, norm_weight,
+      recurrent_state, core, tokens, num_k_heads, num_v_heads, head_k_dim,
+      head_v_dim, stream, core_f16);
+}
+
 
 // 32-warp/block GDN prefill (PF-5 M6 port, lever 1; halo-box PR11
 // gated_delta_net.cu geometry): same column-warp layout and per-warp
