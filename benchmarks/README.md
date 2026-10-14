@@ -1,36 +1,40 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-12**
+Last updated: **2026-10-15**
 
-## Gemma 4 on Radeon Pro W7900 — October 10
+## Gemma 4 on Radeon Pro W7900 — October 15
 
 Gemma 4 26B-A4B `UD-Q4_K_XL`, host **epyc / Radeon Pro W7900**, production
 profile, BF16 KV, 128 greedy outputs, one warmup and three samples per prompt
-length, measured through `scripts/gemma4_campaign_bench.py` with public-path
-parity true on every row. The llama.cpp columns are the saved 2026-10-06 rows
-for the same model and device; they were not re-measured.
+length (two at 131072), measured through `scripts/gemma4_campaign_bench.py`
+with public-path parity true on every row. The llama.cpp columns were measured
+in the same session, back to back with each row, on llama.cpp `45451c3` (HIP,
+flash attention on, BF16 KV) with byte-identical prompt ids
+(`scripts/gemma4_llamacpp_reference_bench.py`).
 
-| Prompt tokens | Prefill tok/s | Decode tok/s | llama.cpp prefill | llama.cpp decode |
-| ---: | ---: | ---: | ---: | ---: |
-| 512 | 3756.1 | 76.51 | 3171.0 | 72.87 |
-| 8192 | 3363.9 | 71.09 | — | — |
-| 32768 | 2635.3 | 53.69 | 2464.7 | 54.2 |
-| 65536 | 2073.2 | 41.63 | 1790.2 | 45.8 |
+| Prompt tokens | Prefill tok/s | Decode tok/s | llama.cpp prefill | llama.cpp decode | Prefill ratio | Decode ratio |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 3696.9 | 76.43 | 3165.2 | 69.25 | 1.17x | 1.10x |
+| 2048 | 3665.4 | 74.30 | 3687.3 | 65.25 | 0.99x | 1.14x |
+| 8192 | 3336.1 | 70.04 | 3557.7 | 62.25 | 0.94x | 1.13x |
+| 32768 | 2646.9 | 54.12 | 2502.8 | 52.77 | 1.06x | 1.03x |
+| 65536 | 2086.3 | 41.67 | 1800.2 | 44.89 | 1.16x | 0.93x |
+| 131072 | 1467.5 | 32.79 | 1139.8 | 34.89 | 1.29x | 0.94x |
 
-Three prefill changes account for most of the difference from the October 6
-rows below. The expert down projection runs a WMMA kernel instead of an exact
-staged one (2.5x prefill at 512 and 8192, 1.9x at 65536), and multi-row prefill
-attention runs the WMMA flash kernels (1.2x from 8192 up); each passed the
-routing-scoped production envelope on this hardware over 18 cases and 1,134
-rows. The dense Q8_0 projections' weight operand is held pre-converted to f16
-when 3.3 GB of device memory can be spared with 2 GiB left free (1.16x at 512,
-1.07x at 65536, bit-identical output). One-token decode runs the key-sliced
-flash route with every step launched: replaying decode from a captured HIP
-graph, which the Radeon 8060S build uses below 2176 keys, measured 0.93x at
-1536 and 2048 prompt tokens on this device and no gain below that. The flash
-route starts at 256 keys; the 512 decode figure was measured after that change
-(70.50 before it in the same session) and the other rows before it, which it
-does not reach. Artifacts:
+Decode leads through 32768 tokens and trails by 6-7% from 65536; prefill
+trails at 2048 and 8192 and leads elsewhere. llama.cpp `45451c3` is no faster
+than the earlier `8cfc315` comparator on this model and device (3190.5 against
+3199.6 prefill and 69.6 against 71.6 decode tok/s at 512).
+
+With the `Q8_0` assistant head and a draft budget of 4, over 18 prompts and
+128 tokens, MTP is 1.45x plain decoding here (74.3 to 107.7 tok/s, greedy)
+against 2.01x for llama.cpp (68.4 to 137.4) at the same draft acceptance (73%
+against 72.5%). At temperature 0.8 it is 1.28x (70.0 to 89.8) against 1.77x
+(63.0 to 111.4). The difference is the verify block: five rows take 27.0 ms
+here and 18.6 ms in llama.cpp, whose one-row step is 14.6 ms against 14.0.
+Artifacts:
+[comparison](results/2026-10-15-gemma4-gfx1100-llamacpp-latest-comparison.json),
+[MTP](results/2026-10-15-gemma4-gfx1100-mtp-small-block-dense.json),
 [expert down](results/2026-10-10-gemma4-gfx1100-expert-down-wmma-promotion.json),
 [prefill attention](results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json),
 [dense f16 weights](results/2026-10-10-gemma4-gfx1100-dense-f16w-prefill.json),
