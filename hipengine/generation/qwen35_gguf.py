@@ -1679,12 +1679,13 @@ class Qwen35GGUFBringupGenerator:
         )
         return resolved.create_policy(), resolved.scale_dtype.value, signature
 
-    def configure_dms(self, metadata_path: str) -> None:
-        """Bind an explicit sidecar before any resident session is prepared."""
-        if getattr(self, "_prepared_kv_signature", None) is not None:
-            raise RuntimeError("DMS must be configured before resident preparation")
-        self.dms_metadata_path = str(metadata_path)
-
+    def configure_dms(self, config) -> None:
+        """Bind either a compact DMS config or a sidecar metadata path."""
+        if isinstance(config, str):
+            self.dms_metadata_path = config
+            self.dms_config = None
+        else:
+            self.dms_config = config
     def _prepare_kv_policy(self, params: Any | None) -> None:
         current = getattr(self, "_prepared_kv_signature", None)
         requested_storage = getattr(params, "kv_storage", "auto") or "auto"
@@ -2032,7 +2033,14 @@ class Qwen35GGUFBringupGenerator:
         return result
 
     def configure_dms(self, config) -> None:
-        self.dms_config = config
+        """Bind either a compact DMS config or a sidecar metadata path."""
+        if getattr(self, "_prepared_kv_signature", None) is not None:
+            raise RuntimeError("DMS must be configured before resident preparation")
+        if isinstance(config, str):
+            self.dms_metadata_path = config
+            self.dms_config = None
+        else:
+            self.dms_config = config
 
     @_target_arch_scoped
     def create_resident_model_runner(
