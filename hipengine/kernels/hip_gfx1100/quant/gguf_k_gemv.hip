@@ -2,6 +2,16 @@
 // These preserve GGML quant math and are separate from PARO/AWQ kernels.
 
 #include <hip/hip_runtime.h>
+
+#include <cstdlib>
+
+// Row-tile launches with eight-column outputs run the eight-column pack8
+// kernel (bit-identical). HIPENGINE_GGUF_K_PACK8_ROWS=0 keeps the
+// one-column row-tile kernel (rollback; docs/REFACTOR.md).
+static inline bool gguf_k_pack8_rows_enabled() {
+  const char* value = std::getenv("HIPENGINE_GGUF_K_PACK8_ROWS");
+  return value == nullptr || value[0] != '0';
+}
 #include <stdint.h>
 #include <type_traits>
 
@@ -1951,6 +1961,77 @@ __global__ void gguf_k_pack8_prefill_out_kernel(
     store_output<out_t>(out, out_base + 5, r5);
     store_output<out_t>(out, out_base + 6, r6);
     store_output<out_t>(out, out_base + 7, r7);
+  }
+}
+
+// gguf_k_pack8_prefill_out_kernel for ROWS rows at once: one block owns eight
+// output columns, each weight element is dequantized once and applied to every
+// row. Each row keeps pack8's per-thread k order, statement form and reduction
+// tree (and so the row-tile kernel's), so every output is the bits the one-row
+// pack8 GEMV and the row-tile kernel produce. For the 2..8-row verifier.
+template <typename scalar_t, typename out_t, int qtype, int ROWS>
+__launch_bounds__(256, 2)
+__global__ void gguf_k_pack8_rows_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int in_features,
+    int out_features,
+    int out_packed) {
+  const int out_pack = blockIdx.x;
+  const int tid = threadIdx.x;
+  if (out_pack >= out_packed) return;
+  const int out_col = out_pack << 3;
+  const int row_bytes = gguf_k_row_bytes(qtype, in_features);
+  const uint8_t* __restrict__ w[8];
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    w[j] = qweight + static_cast<int64_t>(out_col + j) * row_bytes;
+  }
+  float acc[ROWS][8];
+#pragma unroll
+  for (int r = 0; r < ROWS; ++r) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) acc[r][j] = 0.0f;
+  }
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    float wv[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      if constexpr (qtype == 8) {
+        wv[j] = q8_0_weight(w[j], k);
+      } else if constexpr (qtype == 5) {
+        wv[j] = q5_k_weight(w[j], k);
+      } else {
+        wv[j] = q6_k_weight(w[j], k);
+      }
+    }
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r) {
+      const float xv = scalar_to_float<scalar_t>(x[static_cast<int64_t>(r) * in_features + k]);
+#pragma unroll
+      for (int j = 0; j < 8; ++j) acc[r][j] += xv * wv[j];
+    }
+  }
+#pragma unroll
+  for (int r = 0; r < ROWS; ++r) {
+    float a0 = acc[r][0], a1 = acc[r][1], a2 = acc[r][2], a3 = acc[r][3];
+    float a4 = acc[r][4], a5 = acc[r][5], a6 = acc[r][6], a7 = acc[r][7];
+    GGUF_K_PACK8_REDUCE(a0, a1, a2, a3, a4, a5, a6, a7,
+                        r0, r1, r2, r3, r4, r5, r6, r7);
+    if (tid == 0) {
+      const int64_t out_base = static_cast<int64_t>(r) * out_features + out_col;
+      store_output<out_t>(out, out_base + 0, r0);
+      store_output<out_t>(out, out_base + 1, r1);
+      store_output<out_t>(out, out_base + 2, r2);
+      store_output<out_t>(out, out_base + 3, r3);
+      store_output<out_t>(out, out_base + 4, r4);
+      store_output<out_t>(out, out_base + 5, r5);
+      store_output<out_t>(out, out_base + 6, r6);
+      store_output<out_t>(out, out_base + 7, r7);
+    }
+    // xchg is rewritten by the next row's reduction.
+    __syncthreads();
   }
 }
 
@@ -4982,6 +5063,29 @@ int launch_gguf_k_gemv_rowtile_out(
   const int r = static_cast<int>(rows);
   const int infe = static_cast<int>(in_features);
   const int outf = static_cast<int>(out_features);
+  if ((out_features % 8) == 0 && gguf_k_pack8_rows_enabled()) {
+    // Eight columns per block, same bits (see gguf_k_pack8_rows_out_kernel).
+    const dim3 pack_grid(static_cast<unsigned int>(out_features >> 3));
+    const int packed = static_cast<int>(out_features >> 3);
+#define GGUF_K_PACK8_ROWS_CASE(N)                                             \
+  case N:                                                                     \
+    gguf_k_pack8_rows_out_kernel<scalar_t, out_t, qtype, N>                   \
+        <<<pack_grid, block, 0, stream>>>(x, qweight, out, infe, outf, packed); \
+    break;
+    switch (r) {
+      GGUF_K_PACK8_ROWS_CASE(2)
+      GGUF_K_PACK8_ROWS_CASE(3)
+      GGUF_K_PACK8_ROWS_CASE(4)
+      GGUF_K_PACK8_ROWS_CASE(5)
+      GGUF_K_PACK8_ROWS_CASE(6)
+      GGUF_K_PACK8_ROWS_CASE(7)
+      GGUF_K_PACK8_ROWS_CASE(8)
+      default:
+        return static_cast<int>(hipErrorInvalidValue);
+    }
+#undef GGUF_K_PACK8_ROWS_CASE
+    return static_cast<int>(hipGetLastError());
+  }
 #define GGUF_K_ROWTILE_CASE(N)                                                \
   case N:                                                                     \
     gguf_k_prefill_out_rowtile_kernel<scalar_t, out_t, qtype, N>              \

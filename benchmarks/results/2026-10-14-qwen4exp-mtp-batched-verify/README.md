@@ -6,12 +6,14 @@ mtp-bench category suite (`benchmarks/prompts/mtpbench-code-general-ja.jsonl`,
 heldouts included), chat-formatted, 64 greedy tokens per prompt, draft
 budget 3, one unmeasured warmup per prompt and arm, true autoregressive
 arm in the same process (`scripts/qwen4exp_mtp_inprocess_bench.py`).
-Diagnostic: MTP is still slower than AR overall, so no speed claim.
+The first two rows are diagnostic; the last two are the current result.
 
 | Verify | MTP / AR full | code | general_en | general_ja | mixed_ja_en | Acceptance |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | serial target steps | 0.825 | 0.839 | 0.832 | 0.818 | 0.798 | 55.3% |
-| one batched pass, accepted row's state committed | **0.930** | **1.063** | 0.952 | 0.863 | 0.781 | 55.4% |
+| one batched pass, accepted row's state committed | 0.930 | 1.063 | 0.952 | 0.863 | 0.781 | 55.4% |
+| batched pass, eight-column pack8 dense GEMV for 2..8 rows (budget 3) | **1.107** | **1.265** | **1.136** | **1.034** | 0.923 | 55.4% |
+| the same, budget 4 | **1.125** | **1.348** | 1.087 | **1.057** | 0.920 | 49.0% |
 
 AR measured 22.66 tok/s over the suite in this protocol. The batched pass
 runs `[root, c1, c2]` through the prefill-chunk owners with the row-split
@@ -28,3 +30,15 @@ Cost per cycle at budget 3: verify pass about 76 ms (3 rows) against a
 42 ms decode step, draft proposal about 13.5 ms. The verify pass costs 1.8
 decode steps for 3 rows, so MTP only wins where acceptance is high (code
 prompts, 75%). Next: profile and cut the small-row verify pass.
+
+## Dense projections at verify widths
+
+`rocprofv3` of a 3-row verify pass (code-p512 context): 72.8 ms of kernels,
+43.5 ms of it the one-column row-tile Q8_0/Q5_K/Q6_K kernel over the dense
+projections, against 18 ms for the same weights in a decode step. The
+row-tile launcher now runs an eight-column pack8 kernel that dequantizes each
+weight element once for all rows; each row keeps the row-tile and pack8
+kernels' k order and reduction tree, so outputs are unchanged
+(`tests/test_gpu_gguf_k_rowtile_gemv.py`). Verify plus commit, 2 / 3 / 4
+rows: 72 / 76 / 83 -> 54 / 59.5 / 67 ms (decode step 42 ms). MTP over the
+suite (AR 22.64 tok/s): 25.06 tok/s at budget 3, 25.52 at budget 4.
