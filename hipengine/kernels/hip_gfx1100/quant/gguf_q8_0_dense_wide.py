@@ -31,6 +31,7 @@ original tail-free owner; no runtime selector or profile chooses the siblings.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -85,6 +86,21 @@ def build_gguf_q8_0_dense_wide(
     )
 
 
+# Short prefill chunks run a build of the same source without ``-mcumode``.
+# The arithmetic is unchanged; only wave placement differs. Same-process A/B
+# on gfx1151 (Qwen3.8-Flash-Next UD-Q4_K_XL prefill): 512 tokens 978.9 ->
+# 1017.2 tok/s and 1024 tokens 1242.3 -> 1255.0 with the rule at <= 1024
+# rows; at 4096 rows the CU-mode build is faster (1542.6 against 1504.2).
+# ``HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS`` overrides the bound (0 = off).
+_WGP_BUILD_MIN_ROWS = 257
+_WGP_BUILD_MAX_ROWS = 1024
+
+
+def _wgp_build_max_rows() -> int:
+    value = os.environ.get("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", "").strip()
+    return int(value) if value else _WGP_BUILD_MAX_ROWS
+
+
 def _launch(
     symbol: str,
     x_ptr: int,
@@ -107,6 +123,12 @@ def _launch(
     if out_features <= 0:
         raise ValueError("out_features must be positive")
 
+    if (
+        library is None
+        and build_profile == "decode"
+        and _WGP_BUILD_MIN_ROWS <= rows <= _wgp_build_max_rows()
+    ):
+        build_profile = "prefill"
     library = library or build_gguf_q8_0_dense_wide(load=True, profile=build_profile)
     runtime = runtime or get_hip_runtime()
     # The launch census is the instrument a route-execution claim is checked
