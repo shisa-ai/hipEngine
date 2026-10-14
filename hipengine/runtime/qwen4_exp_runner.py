@@ -8253,6 +8253,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             "gdn_conv_rows": gdn_layers * rows * conv,
             "ple_conv": self.state.ple_conv.nbytes,
             "ple_out": rows * cfg.residual_width * DType.FP32.itemsize,
+            "argmax_ids": rows * DType.INT64.itemsize,
         }
         for buffer in self._verify_rows_buffers.values():
             free(buffer, runtime=self.runtime)
@@ -8266,6 +8267,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     def verify_target_block_state_rows(
         self,
         input_token_ids: Sequence[int],
+        *,
+        capture_logits: bool = False,
     ) -> Qwen4ExpTargetVerifyResult:
         """Verify 2..8 rows in one prefill-shaped pass, keeping each row's state.
 
@@ -8337,14 +8340,36 @@ class Qwen4ExpGGUFResidentModelRunner:
             output_dtype=GGUF_OUTPUT_F32,
             runtime=self.runtime,
         )
-        logits = np.empty((count, cfg.vocab_size), dtype=np.float32)
-        copy_device_to_host(
-            host_array_ptr(logits), output.logits_rows, logits.nbytes, runtime=self.runtime
-        )
         assert hidden_rows is not None
+        if capture_logits:
+            logits = np.empty((count, cfg.vocab_size), dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(logits), output.logits_rows, logits.nbytes,
+                runtime=self.runtime,
+            )
+            return Qwen4ExpTargetVerifyResult(
+                token_ids=tuple(int(token) for token in np.argmax(logits, axis=1)),
+                logits=tuple(row for row in logits),
+                hidden_seeds=np.asarray(hidden_rows, dtype=np.float32),
+            )
+        # The decode step's device argmax per row; only the ids come back.
+        ids_buffer = buffers["argmax_ids"]
+        row_logits = cfg.vocab_size * DType.FP32.itemsize
+        for row in range(count):
+            argmax_f32(
+                output.logits_rows.ptr + row * row_logits,
+                self.argmax_block_values.ptr,
+                self.argmax_block_indices.ptr,
+                ids_buffer.ptr + row * DType.INT64.itemsize,
+                self.argmax_value.ptr,
+                cfg.vocab_size,
+                runtime=self.runtime,
+            )
+        ids = np.empty(count, dtype=np.int64)
+        copy_device_to_host(host_array_ptr(ids), ids_buffer, ids.nbytes, runtime=self.runtime)
         return Qwen4ExpTargetVerifyResult(
-            token_ids=tuple(int(token) for token in np.argmax(logits, axis=1)),
-            logits=tuple(row for row in logits),
+            token_ids=tuple(int(token) for token in ids),
+            logits=(),
             hidden_seeds=np.asarray(hidden_rows, dtype=np.float32),
         )
 
