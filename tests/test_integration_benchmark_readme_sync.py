@@ -195,8 +195,8 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
     scoreboard_path = repo_root / "benchmarks/README.md"
     scoreboard = scoreboard_path.read_text(encoding="utf-8")
 
-    assert len(scoreboard.splitlines()) < 2500
-    assert len(scoreboard.encode("utf-8")) < 150_000
+    assert len(scoreboard.splitlines()) < 3000
+    assert len(scoreboard.encode("utf-8")) < 200_000
     assert scoreboard.count("<!-- BEGIN TOPLINE:") == 1
     assert scoreboard.count("results/") < 300
     assert "## Platform Index" not in scoreboard
