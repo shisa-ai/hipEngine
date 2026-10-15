@@ -4287,7 +4287,7 @@ numerics waiver.
 | | DMS topology/backend component + model-plugin DMS config loader (eviction head weights) | ~500 | ~0 | **~500** |
 | | DMS HIP kernels: `dms_rope_store_compact_decode`, `compact_decode_grouped_splitk`, `streaming_pack_scatter` | ~1,500 (HIP) | ~0 | **~1,500** |
 | **5. Advanced Features** | C++ engine-step extension (lever #2) if profiling demands | ~1,500 | ~0 | **~1,500** |
-| | CUDA backend (`kernels/cuda_sm86/`) — reuse kernel tree shape | ~500 scaffolding | **~18,630** (retyped + recompiled per-kernel porting) | **~19,130** |
+| | CUDA backend (`hipengine/kernels/cuda_sm86/`) — reuse kernel tree shape | ~500 scaffolding | **~18,630** (retyped + recompiled per-kernel porting) | **~19,130** |
 | | EXL3 / QTIP codebook kernel family (new `codebook_lut` tree, ~14 kernels) | ~300 | ~8,000 (port from ExLlamaV3) | **~8,300** |
 | | FastKron `kronecker` kernel family (compute pattern rewrite) | ~1,500 | ~0 | **~1,500** |
 | | FP8 weight quant (only on `hip_gfx1200`+ / `cuda_sm90`+; skipped on gfx1100) | ~400 | ~0 | **~400** |
@@ -4340,14 +4340,14 @@ numerics waiver.
 | Host from scratch | ~700 lines new | Fits kernel dispatch model; nano-vllm/mini-sglang carry wrong assumptions |
 | Runtime language | Python, torch-free | Keeps HF ecosystem + pip/uv install + notebook workflow; drops 1.7 GiB torch dep |
 | Tensor type | `hipengine.Tensor` (thin wrapper over HIP/CUDA ptr + dlpack) | Controls backend dispatch at the type level; torch tensors flow in/out via `[torch]` extra |
-| Kernels copied + split | `nano-vllm-amd/csrc/amd/` + `paroquant_kernels.py` embedded HIP | ~17,590 lines HIP + ~1,040 lines retyped bindings, 120 `__global__` kernels across 14 files under `kernels/hip_gfx1100/` |
+| Kernels copied + split | `nano-vllm-amd/csrc/amd/` + `paroquant_kernels.py` embedded HIP | ~17,590 lines HIP + ~1,040 lines retyped bindings, 120 `__global__` kernels across 14 files under `hipengine/kernels/hip_gfx1100/` |
 | Kernel launch signatures | Raw pointer + shape/stride/dtype (not `torch::Tensor`) | Kernel bodies already torch-free; wrappers retype in one scripted pass |
 | Python dispatch adapted | `nano-vllm-amd/nanovllm/native/qwen35/` | ~10,900 lines of weight-layout / kernel-selection wrappers, retyped to `hipengine.Tensor` |
 | Dispatch axes | Backend × Model × Quant × Layer | Orthogonal plugin registries, no hardcoded branches |
 | Prefill attention | **Own HIP FA2 prefill kernel** (~1,500 lines) | Replaces `F.scaled_dot_product_attention`; needed anyway for long-context prefill on gfx1100 |
 | Graph capture | `hipGraph` via ctypes on `libamdhip64.so` | Phase-0 dispatch lever; zero Python overhead at replay; ROCm-native (no torch) |
 | Build | `hipcc` / `nvcc` via `subprocess.run` + `ctypes.CDLL` + hash cache | Drop `torch.utils.cpp_extension`; 3 profiles (decode `-mcumode`, prefill WGP, baseline) |
-| Correctness oracle | `kernels/cpu_reference/` torch-free numpy | Every `layer` key has a CPU implementation; KL ≤ 0.05 / top-1 ≥ 90% gate |
+| Correctness oracle | `hipengine/kernels/cpu_reference/` torch-free numpy | Every `layer` key has a CPU implementation; KL ≤ 0.05 / top-1 ≥ 90% gate |
 | Quantization | Plugin registry with six orthogonal axes (weight storage / activation preprocess / compute dtype / scale granularity / calibration artifact / kernel family) | Lets GPTQ, GPTAQ, AWQ, PARO-W4, W8A16 all share the `gemm_dequant` kernel family. EXL3/QTIP adds `codebook_lut` family (Phase 5). FastKron adds `kronecker` family (research). FP8 weight is backend-gated (not gfx1100). |
 | KV cache | `KVCacheBackend` with `KVLiveSpans` + registered `KVStorageView` as the kernel ABI and atomic `ResourceClaimSet`/delta accounting as the scheduler boundary | Makes retention topology, hot codec/layout, and cold tiering replaceable without request-lifecycle forks. Avoids both vLLM-DMS surgery and the current separate-INT8-concurrency trap. RadixCache uses backend snapshot capabilities. |
 | DMS support | Phase 4 topology/backend composition + compact HIP kernel families + loader | `KVLiveSpans`, global backend pool sets, and generic resource claims are designed before DMS so BF16/FP8/INT8 payload changes do not rewrite concurrency |
