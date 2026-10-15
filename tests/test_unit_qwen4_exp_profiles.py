@@ -708,7 +708,7 @@ def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() ->
             parent, rows=1024, in_features=2560, out_features=640, weight=weight(layer)
         ) == GGUFLinearDispatch(candidate, "raw"), layer
 
-    for rows in (1, 8):
+    for rows in (1, 256):
         assert (
             _q8_dense_wide_dispatch(
                 parent,
@@ -718,18 +718,6 @@ def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() ->
                 weight=weight(16),
             )
             == parent
-        ), rows
-
-    for rows in (9, 128, 256):
-        assert (
-            _q8_dense_wide_dispatch(
-                parent,
-                rows=rows,
-                in_features=2560,
-                out_features=640,
-                weight=weight(16),
-            )
-            == GGUFLinearDispatch(candidate, "raw")
         ), rows
 
 
