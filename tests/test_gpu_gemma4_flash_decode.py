@@ -545,3 +545,62 @@ def test_flash_variant_takes_a_short_row_from_the_preferred_entry(
     assert selections == [1, flash_selection]
     assert np.any(outputs[0])
     np.testing.assert_allclose(outputs[1], outputs[0], rtol=6e-3, atol=6e-3)
+
+
+@pytest.mark.parametrize("geom", _GEOMETRIES)
+@pytest.mark.parametrize("tokens", [2, 5, 9])
+@pytest.mark.parametrize("keys", [700, 4096])
+def test_a_multi_token_launch_repeats_each_tokens_own_launch(attention_library, geom, tokens, keys):
+    """A verify block's token group shares K/V loads, not arithmetic.
+
+    The multi-token kernel serves a group of tokens per block; every token's
+    output must be the bits a one-token launch over the same keys and mask row
+    produces, with each token's own causal mask.
+    """
+
+    from types import SimpleNamespace
+
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        _SYMBOL_DECODE_BF16,
+        flash_slices,
+        flash_workspace_bytes,
+    )
+    from tests.test_gpu_gemma4_attention_decode_parity import _raw_launch
+
+    num_heads, num_kv_heads, head_dim = geom["num_heads"], geom["num_kv_heads"], geom["head_dim"]
+    rng = np.random.default_rng(31)
+    query = _bf16_bits(rng.standard_normal((tokens, num_heads, head_dim)) * 0.7)
+    key = _bf16_bits(rng.standard_normal((keys, num_kv_heads, head_dim)) * 0.7)
+    value = _bf16_bits(rng.standard_normal((keys, num_kv_heads, head_dim)) * 0.7)
+    mask = np.zeros((tokens, keys), dtype=np.uint8)
+    for t in range(tokens):
+        mask[t, : keys - tokens + 1 + t] = 1
+    slices = flash_slices(keys)
+    row_q = num_heads * head_dim * 2
+    out_block = np.zeros((tokens, num_heads, head_dim), dtype=np.uint16)
+    out_rows = np.zeros_like(out_block)
+    buffers = [malloc(a.nbytes) for a in (query, key, value, mask, out_block, out_rows)]
+    workspace = malloc(flash_workspace_bytes(tokens, num_heads, head_dim, slices, library=attention_library))
+    shape = dict(keys=keys, num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim, scale=1.0)
+    try:
+        for buffer, array in zip(buffers[:4], (query, key, value, mask)):
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        _raw_launch(attention_library, _SYMBOL_DECODE_BF16, buffers[:5], tokens=tokens,
+                    split_workspace=workspace.ptr, split_slices=-slices, **shape)
+        for t in range(tokens):
+            offset = [
+                SimpleNamespace(ptr=buffers[0].ptr + t * row_q), buffers[1], buffers[2],
+                SimpleNamespace(ptr=buffers[3].ptr + t * keys),
+                SimpleNamespace(ptr=buffers[5].ptr + t * row_q),
+            ]
+            _raw_launch(attention_library, _SYMBOL_DECODE_BF16, offset, tokens=1,
+                        split_workspace=workspace.ptr, split_slices=-slices, **shape)
+        copy_device_to_host(host_array_ptr(out_block), buffers[4], out_block.nbytes)
+        copy_device_to_host(host_array_ptr(out_rows), buffers[5], out_rows.nbytes)
+    finally:
+        free(workspace)
+        for buffer in buffers:
+            free(buffer)
+
+    np.testing.assert_array_equal(out_block, out_rows)
