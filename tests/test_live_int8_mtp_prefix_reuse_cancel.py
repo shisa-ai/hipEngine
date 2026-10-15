@@ -47,7 +47,10 @@ import pytest
 
 from hipengine import LLM, SamplingParams
 from hipengine.generation.deadline import GenerationCancellationToken
-from hipengine.kernels.backends import detect_hip_target_arches
+from hipengine.kernels.backends import (
+    detect_hip_target_arches,
+    hip_target_arch_for_backend,
+)
 
 MODEL = Path(
     os.environ.get("HIPENGINE_INT8_MTP_MODEL", "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
@@ -64,7 +67,6 @@ BACKEND = "hip_gfx1151"
 # that executor for a prompt that fits one prefill round and prefills the whole
 # prompt once, so no boundary is ever captured and the reuse arms cannot pass
 # there. A host without gfx1151 therefore skips rather than crashing the run.
-REQUIRED_HOST_ARCH = "gfx1151"
 CACHE_MODES = ("radix", "off")
 
 # The engine retains a boundary only for a prompt longer than 256 tokens, and
@@ -90,16 +92,17 @@ def _hip_available() -> bool:
     return True
 
 
+# The backend compiles its kernels for its own target arch
+# (``Qwen35GGUFGenerator.target_arch`` -> ``hip_target_arch_for_backend``), so a
+# host whose devices cannot execute that arch would launch an unexecutable code
+# object. Require the arch to be present rather than only the model.
 pytestmark = pytest.mark.skipif(
     not (
         _hip_available()
         and MODEL.exists()
-        and REQUIRED_HOST_ARCH in detect_hip_target_arches()
+        and hip_target_arch_for_backend(BACKEND) in detect_hip_target_arches()
     ),
-    reason=(
-        "requires ROCm, the dense GGUF model, and a physical "
-        f"{REQUIRED_HOST_ARCH} device for the {BACKEND} backend"
-    ),
+    reason="requires ROCm + the dense GGUF model on a gfx1151 host",
 )
 
 

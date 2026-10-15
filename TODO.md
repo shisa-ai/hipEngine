@@ -24,6 +24,7 @@ Goal: basic hipEngine support for all of these. Start with models that have **no
 | BAAI/bge-m3 | XLM-RoBERTa | ✅ encoder embedding/pooling | ❌ |
 | Qwen/Qwen3-Embedding-8B | Qwen3 | ✅ qwen3 `--embeddings` | ❌ |
 | shisa-ai/chotto-e4b-20260515 | Gemma4 (not 3n) | ✅ `gemma4` + gemma4v mtmd | ❌ |
+| shisa-ai/shisa-de-1 | Gemma4 MoE 26B-A4B (`Gemma4ForConditionalGeneration`), decision-model readout | ✅ `gemma4` + mmproj | ❌ ([review/plan](docs/model-cards/MODEL-GEMMA4.md): GGUF Q8_0/Q4_K_M on the Laguna path; port not started) |
 | Qwen/Qwen-Image-2.1 | `QwenImage21Pipeline`: single-stream DiT (32 layers) + Qwen3-VL text encoder + VAE, flow-match Euler | ❌ (image-gen DiT; `qwen_image` GGUF rejected, ComfyUI / stable-diffusion.cpp are the runtimes) | ❌ (added 2026-09-20; new capability class — diffusion image generation/editing) |
 
 No llama.cpp model oracle (framework/community references exist; historical priority, easiest first): ~~EVIE (prefill-only encoder + MaxSim)~~ ✅ done → ~~shisa-asr (Phi4MM audio front end)~~ ✅ done → ~~VibeVoice-ASR~~ ✅ done → VibeVoice-TTS (diffusion head, hardest; torch oracle frozen, hipEngine port open).

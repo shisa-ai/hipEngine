@@ -165,6 +165,37 @@ margin/rank, teacher NLL/delta-p, and maximum absolute logit delta even when its
 KL is below the review boundary. The binding values and calibration evidence
 are in [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#61-calibrated-production-envelope).
 
+### Report-only distribution diagnostics
+
+The shared `scripts/quant_quality/metrics.py` row core adds a `diagnostics`
+object to quant-quality and execution-profile summaries, including each group
+or category/shape/transition scope. Prefix-reuse reports inherit it under
+`production_profile.summary.diagnostics`. These fields have `gating: false`;
+they do not change thresholds, outlier-review rules, or admission decisions.
+
+- `total_variation` is half the full-vocabulary sum of absolute probability
+  differences. `entropy_delta_nats` and `max_probability_delta` are candidate
+  minus reference. Each reports mean, min, max, and p05/p50/p95/p99. Signed
+  quantiles help expose changes that cancel in the mean. Probabilities use
+  FP64 stable log-softmax; adding a constant to every logit leaves these
+  distribution diagnostics unchanged.
+- `margin_buckets` reports row counts, flips, and flip rates for reference
+  top-1 minus top-2 raw-logit margins in `[0, 0.05)`, `[0.05, 0.5)`,
+  `[0.5, 2)`, and `[2, infinity)`. These are descriptive bins, not error
+  tolerances. A one-token vocabulary uses margin zero; ties follow NumPy's
+  first-index argmax. Empty bins report null rates and intervals.
+- `top1_flips` and each margin bucket include `wilson95_iid_rows`, a 95%
+  Wilson interval that assumes independent, identically distributed rows.
+  Consecutive tokens can be correlated, so this is an approximation, not a
+  confidence gate or a substitute for prompt-level analysis. Do not pool
+  deterministic repeats to increase the accuracy sample count.
+- `rows` counts compared token positions. Profile `sequence_count` counts
+  distinct `(scenario_id, request_id)` pairs within the summary; it does not
+  establish independent prompts. Quant-quality comparisons without sequence
+  identities report null; their enclosing harness may report prompt counts.
+
+### Run an evaluation packet
+
 Run a completed packet with:
 
 ```bash

@@ -567,3 +567,81 @@ def test_resident_charge_requires_a_name_and_positive_bytes() -> None:
         pool.reserve_resident_bytes("verifier_scratch", 0)
     assert pool.private_workspace_bytes == 0
     pool.close()
+
+
+def _growth_provider(grown: list[int]):
+    def grow(pages, start):
+        grown.append(pages)
+        return (
+            {
+                role: tuple(0xD000 + (start + i) * 256 for i in range(pages))
+                for role in ("layer0.key", "layer0.value")
+            },
+            {"layer0.key": 0xE000, "layer0.value": 0xF000},
+            {"arena": start},
+        )
+
+    return grow
+
+
+def test_growth_refuses_padded_physical_before_calling_the_provider() -> None:
+    """A granularity-padded growth is refused before any provider call.
+
+    ``budget_bytes`` is the logical page budget, but the prospective growth is
+    priced with the padded physical callback, so the boundary is respected
+    before a single byte is mapped.
+    """
+
+    pool, _ = _pool(pages=2)
+    pool.page_bytes = 1024
+    pool._max_pages = 4  # budget_bytes = 4096
+    pool._growth_chunk_pages = 1
+    # Physical commitment is twice the logical payload.
+    pool._physical_bytes_for_pages = lambda pages: pages * 2048
+    grown: list[int] = []
+    pool._grow_storage = _growth_provider(grown)
+
+    # Current padded commitment is 4096; one more page adds 2048 and exceeds
+    # the 4096-byte budget.
+    with pytest.raises(MemoryAdmissionRefused):
+        pool.grow(1)
+    assert grown == []
+    pool.close()
+
+
+def test_growth_without_padding_keeps_the_logical_boundary() -> None:
+    """A plain hipMalloc provider keeps its logical page budget."""
+
+    pool, _ = _pool(pages=2)
+    pool.page_bytes = 1024
+    pool._max_pages = 4  # budget_bytes = 4096
+    pool._growth_chunk_pages = 1
+    grown: list[int] = []
+    pool._grow_storage = _growth_provider(grown)
+
+    # Logical 2 * 1024 + 1 * 1024 = 3072 <= 4096, so growth proceeds.
+    pool.grow(1)
+    assert grown == [1]
+    pool.close()
+
+
+def test_ensure_free_pages_caps_at_the_padded_physical_budget() -> None:
+    """The contiguous-growth target is capped by padded physical pricing."""
+
+    pool, _ = _pool(pages=2)
+    pool.page_bytes = 1024
+    pool._max_pages = 8  # budget_bytes = 8192
+    pool._growth_chunk_pages = 1
+    pool._contiguous_growth = True
+    # Three logical pages fit (3072 <= 8192); four padded pages do not
+    # (4 * 2048 = 8192 exactly fits, 5 * 2048 = 10240 does not).
+    pool._physical_bytes_for_pages = lambda pages: pages * 2048
+    grown: list[int] = []
+    pool._grow_storage = _growth_provider(grown)
+
+    pool._ensure_free_pages(8)
+    # Uncapped the target would be 2 + 6 = 8 pages; padded physical pricing caps
+    # it at four (4 * 2048 = 8192 == budget, 5 * 2048 > budget).
+    assert grown == [2]
+    assert pool.global_pool.page_capacity == 4
+    pool.close()

@@ -801,3 +801,98 @@ def test_gguf_prefix_state_snapshot_outlives_source_session_and_restores_boundar
     assert source._prefix_snapshot_arena_pool().stats()["retained_arenas"] == 1
     with pytest.raises(RuntimeError, match="closed"):
         destination.clone_prefix_state_from_snapshot(snapshot)
+
+
+def test_backing_arena_identity_accepts_a_rebuilt_vmm_backing() -> None:
+    """VMM growth rebuilds the backing object but keeps the same owners."""
+
+    owner = SimpleNamespace(ptr=0x1234000)
+    first = SimpleNamespace(buffers=(SimpleNamespace(owner=owner),))
+    rebuilt = SimpleNamespace(buffers=(SimpleNamespace(owner=owner),))
+
+    assert first is not rebuilt
+    assert gguf_runner._gguf_kv_backings_share_arena(first, rebuilt) is True
+    # A different arena, or a plain chunk with no owners, stays distinct.
+    other = SimpleNamespace(buffers=(SimpleNamespace(owner=SimpleNamespace(ptr=0x9)),))
+    assert gguf_runner._gguf_kv_backings_share_arena(first, other) is False
+    assert gguf_runner._gguf_kv_backings_share_arena(object(), object()) is False
+    assert gguf_runner._gguf_kv_backings_share_arena(first, first) is True
+
+
+def test_prefix_snapshot_clone_accepts_a_rebuilt_vmm_backing(monkeypatch) -> None:
+    """A snapshot captured before VMM growth clones into the grown arena.
+
+    Growth replaces the backing object while reusing the per-plane owners, so
+    the destination's backing is a different object over the same arena. The
+    clone must accept it while still enforcing the block-table and boundary
+    checks.
+    """
+
+    runtime = _FakeRuntime()
+    shared_runner = object()
+    arena_owner = SimpleNamespace(ptr=0x1234000)
+
+    def arena_backing() -> SimpleNamespace:
+        # A fresh object per call, as VMM growth rebuilds the backing, but the
+        # same owner means the same physical arena.
+        return SimpleNamespace(buffers=(SimpleNamespace(owner=arena_owner),))
+
+    def make_session(*, state_base: int, allocation) -> gguf_runner.Qwen35GGUFResidentSession:
+        session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+        session.runtime = runtime
+        session.runner = shared_runner
+        session.scratch = SimpleNamespace(
+            max_positions=1024,
+            layer_conv_states=(DeviceBuffer(state_base, 64), None),
+            layer_recurrent_states=(DeviceBuffer(state_base + 0x200, 128), None),
+            position_host=np.zeros((1,), dtype=np.int64),
+            context_host=np.ones((1,), dtype=np.int64),
+            position_buf=DeviceBuffer(state_base + 0x800, 8),
+            context_buf=DeviceBuffer(state_base + 0x900, 8),
+        )
+        session.kv_storage_dtype = DType.BF16
+        session.kv_storage_layout = "uniform"
+        session._device_kv_allocation = allocation
+        session._device_kv_pool = object()
+        session._device_kv_graph_handles = {}
+        session._decode_graphs = []
+        session._packed_decode_state_dirty = False
+        session._runtime_state_library = object()
+        session._position = 0
+        session._hidden_seed_fp32_populated = True
+        session._last_pre_output_norm_hidden = np.ones((1, 1), dtype=np.float32)
+        session._last_layer_output_hidden = {0: np.ones((1, 1), dtype=np.float32)}
+        return session
+
+    source = make_session(
+        state_base=0x1000,
+        allocation=SimpleNamespace(
+            block_ids=(8, 9),
+            backing=arena_backing(),
+            reused_block_ids=(),
+        ),
+    )
+    destination = make_session(
+        state_base=0x5000,
+        allocation=SimpleNamespace(
+            block_ids=(8, 10),
+            backing=arena_backing(),
+            reused_block_ids=(8,),
+        ),
+    )
+    assert source._device_kv_allocation.backing is not destination._device_kv_allocation.backing
+    source._position = 256
+    source.scratch.position_host[0] = 256
+    source.scratch.context_host[0] = 257
+    monkeypatch.setattr(
+        gguf_runner,
+        "set_decode_position_i64",
+        lambda *args, **kwargs: None,
+    )
+
+    snapshot = source.capture_prefix_state_snapshot()
+    source._position = 0
+    copied = destination.clone_prefix_state_from_snapshot(snapshot, stream=7)
+    assert copied == 192
+    assert destination.position == 256
+    snapshot.close()

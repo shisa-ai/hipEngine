@@ -417,6 +417,7 @@ class ServerConfig:
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
+    dms_metadata_path: str | None = None
     generation_batch_window_ms: float = 0.0
     stream_queue_max_chunks: int = 16
     shutdown_grace_seconds: float = 5.0
@@ -426,7 +427,7 @@ class ServerConfig:
     # tracked in docs/REFACTOR.md; the per-request path fails closed with a
     # recorded reason, so an unqualified row prefills privately. See the
     # --prefix-cache default in hipengine/server/__main__.py.
-    prefix_cache: str = PREFIX_CACHE_DEFAULT
+    prefix_cache: str | None = None
     info: bool = False
     debug: bool = False
     replay_dir: str | None = None
@@ -454,6 +455,14 @@ class ServerConfig:
 
     def __post_init__(self) -> None:
         from hipengine.execution_profiles import resolve_requested_execution_profile
+        from hipengine.kvcache.dms_serving import resolve_dms_serving_options
+
+        path, capacity, prefix = resolve_dms_serving_options(
+            self.dms_metadata_path, self.max_active_requests, self.prefix_cache
+        )
+        object.__setattr__(self, "dms_metadata_path", path)
+        object.__setattr__(self, "max_active_requests", capacity)
+        object.__setattr__(self, "prefix_cache", resolve_prefix_cache_mode(prefix))
 
         if self.dms is not None:
             if not isinstance(self.dms, DMSConfig):
@@ -5495,6 +5504,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 draft_model=config.draft_model,
                 speculative_candidate_budget=config.speculative_candidate_budget,
                 kv_storage=config.kv_storage,
+                dms_metadata_path=config.dms_metadata_path,
                 kv_scale_dtype=config.kv_scale_dtype,
                 kv_scale_granularity=config.kv_scale_granularity,
                 vision_model=config.vision_model,
@@ -7448,6 +7458,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "pool": pool,
             },
             "prefix_cache": prefix_cache,
+            "dms": {
+                "requested_metadata_path": config.dms_metadata_path,
+                "policy": _nested_mapping(_nested_mapping(live_snapshot, "runner"), "model_runner").get("dms"),
+            },
             "graph_cache": {
                 "entries": graph["entries"],
                 "hits": graph["hits"],

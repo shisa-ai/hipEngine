@@ -1138,11 +1138,21 @@ class DMSDevicePayloadStore:
         extents: list[DMSDeviceExtentSnapshot] = []
         for layer in range(self._layers):
             self._ensure_layer(layer)
+            groups: list[list[tuple[int, int, int]]] = []
             for head in range(self._heads):
                 start = int(bases[layer, head])
                 length = int(capacities[layer, head])
                 if start < 0 or length <= 0 or start + length > self._slots:
                     raise ValueError("DMS device snapshot extent is out of range")
+                if groups and groups[-1][-1][1] + groups[-1][-1][2] == start:
+                    groups[-1].append((head, start, length))
+                else:
+                    groups.append([(head, start, length)])
+            # Coalesce only adjacent owned extents, never gaps belonging to
+            # another request. Per-head views retain the same snapshot ABI.
+            for group in groups:
+                start = group[0][1]
+                length = sum(item[2] for item in group)
                 k_bits = np.empty((length, self._dim), dtype=self._payload_dtype)
                 v_bits = np.empty_like(k_bits)
                 positions = np.empty((length,), dtype=np.int32)
@@ -1159,20 +1169,23 @@ class DMSDevicePayloadStore:
                         array.nbytes,
                     )
                 k_scales, v_scales = self._read_scales(layer, start, length)
-                extents.append(
-                    DMSDeviceExtentSnapshot(
-                        layer=layer,
-                        head=head,
-                        start=start,
-                        length=length,
-                        k_bits=k_bits,
-                        v_bits=v_bits,
-                        positions=positions,
-                        evict=evict,
-                        k_scales=k_scales,
-                        v_scales=v_scales,
+                for head, head_start, head_length in group:
+                    offset = head_start - start
+                    region = slice(offset, offset + head_length)
+                    extents.append(
+                        DMSDeviceExtentSnapshot(
+                            layer=layer,
+                            head=head,
+                            start=head_start,
+                            length=head_length,
+                            k_bits=k_bits[region],
+                            v_bits=v_bits[region],
+                            positions=positions[region],
+                            evict=evict[region],
+                            k_scales=None if k_scales is None else k_scales[region],
+                            v_scales=None if v_scales is None else v_scales[region],
+                        )
                     )
-                )
         live_counts = np.empty((self._layers, self._heads), dtype=np.int32)
         for layer in range(self._layers):
             live_counts[layer] = self.live_counts(layer)

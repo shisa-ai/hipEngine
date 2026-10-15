@@ -243,6 +243,45 @@ def _prepared_backend(*, packed: int = 9) -> DMSCompactBackend:
     return backend
 
 
+@pytest.mark.parametrize("selected", [None, "close", 0, 2])
+def test_final_row_uses_current_store_without_losing_rollback(selected, monkeypatch):
+    backend = _prepared_backend()
+    journal, resident = _journal(backend)
+    initial = _store_state(backend, 0)
+    calls = []
+    original = journal._snapshot
+    def snapshot():
+        calls.append(1)
+        return original()
+    monkeypatch.setattr(journal, "_snapshot", snapshot)
+    journal.capture_initial()
+    states = []
+    rng = np.random.default_rng(52)
+    for row in range(3):
+        backend.append_decode(0, _rows(rng, 1), _rows(rng, 1),
+                              np.zeros((1, 2), dtype=bool), position=9 + row)
+        if row == 2:
+            journal.capture_final_row(row)
+        else:
+            journal.capture_row(row)
+        states.append(_store_state(backend, 0))
+    assert len(calls) == 3  # initial plus two intermediate rows
+    with pytest.raises(RuntimeError, match="after the final"):
+        journal.capture_row(3)
+    if selected == "close":
+        journal.close()
+        expected = initial
+    elif selected is None:
+        journal.restore_initial()
+        expected = initial
+    else:
+        journal.restore_row(selected)
+        expected = states[selected]
+    _assert_store_state_equal(_store_state(backend, 0), expected)
+    journal.close()
+    _assert_store_state_equal(_store_state(backend, 0), expected)
+
+
 def test_full_rejection_restores_the_pre_cycle_store() -> None:
     backend = _prepared_backend()
     journal, resident = _journal(backend)

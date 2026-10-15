@@ -125,6 +125,7 @@ __global__ void yue2_nar_attention_kernel(
     float* __restrict__ out,
     int64_t rows,
     int64_t ar_rows,
+    int64_t nar_rows,
     int64_t num_q_heads,
     int64_t num_kv_heads,
     int64_t head_dim,
@@ -135,7 +136,7 @@ __global__ void yue2_nar_attention_kernel(
   if (row0 >= rows || q_head >= num_q_heads || lane >= head_dim) return;
   const int64_t kv_group = num_q_heads / num_kv_heads;
   const int64_t kv_head = q_head / kv_group;
-  const int64_t keys = ar_rows + rows;
+  const int64_t keys = ar_rows + nar_rows;
 
   extern __shared__ float shared[];
   float* scores = shared;                                       // [rows][blockDim]
@@ -488,9 +489,10 @@ extern "C" int hipengine_yue2_nar_state_update_bf16(
 extern "C" int hipengine_yue2_nar_attention_f32(
     const float* q, const uint16_t* nar_k, const uint16_t* nar_v,
     const uint16_t* ar_k, const uint16_t* ar_v, float* out,
-    int64_t rows, int64_t ar_rows, int64_t num_q_heads, int64_t num_kv_heads,
+    int64_t rows, int64_t ar_rows, int64_t nar_rows,
+    int64_t num_q_heads, int64_t num_kv_heads,
     int64_t head_dim, float scale, hipStream_t stream) {
-  if (rows <= 0 || ar_rows < 0 || num_q_heads <= 0 || num_kv_heads <= 0
+  if (rows <= 0 || ar_rows < 0 || nar_rows < 0 || num_q_heads <= 0 || num_kv_heads <= 0
       || num_q_heads % num_kv_heads || head_dim <= 0 || head_dim > 1024
       || scale <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -503,6 +505,6 @@ extern "C" int hipengine_yue2_nar_attention_f32(
       * sizeof(float);
   hipLaunchKernelGGL(yue2_nar_attention_kernel, dim3(num_q_heads, row_blocks), dim3(threads),
                      shared, stream, q, nar_k, nar_v, ar_k, ar_v, out, rows, ar_rows,
-                     num_q_heads, num_kv_heads, head_dim, scale);
+                     nar_rows, num_q_heads, num_kv_heads, head_dim, scale);
   return static_cast<int>(hipGetLastError());
 }

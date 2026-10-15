@@ -323,11 +323,18 @@ class LLM:
         kv_storage: str | None = None,
         kv_scale_dtype: str | None = None,
         kv_scale_granularity: str | None = None,
+        dms_metadata_path: str | None = None,
         vision_model: str | None = None,
         vae_model: str | None = None,
         dms: "DMSConfig | None" = None,
         engine_command_timeout_seconds: float | None = None,
     ) -> None:
+        from hipengine.kvcache.dms_serving import resolve_dms_serving_options
+
+        dms_metadata_path, max_active_requests, prefix_cache = resolve_dms_serving_options(
+            dms_metadata_path, max_active_requests, prefix_cache
+        )
+        self.dms_metadata_path = dms_metadata_path
         if dms is not None:
             if not isinstance(dms, DMSConfig):
                 raise TypeError("dms must be a DMSConfig")
@@ -1450,6 +1457,11 @@ class LLM:
             if profile_resolution is None
             else profile_resolution.construct_generator(factory, **factory_kwargs)
         )
+        if self.dms_metadata_path is not None:
+            configure_dms = getattr(generator, "configure_dms", None)
+            if not callable(configure_dms):
+                raise NotImplementedError("the selected model generator has no DMS sidecar implementation")
+            configure_dms(self.dms_metadata_path)
         _declare_serving_context(generator, self.max_sequence_length)
         # The loaded resident model owns staged MTP candidate depth. Publish the
         # public LLM setting on that owner before its cold adapter is resolved;
