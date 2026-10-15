@@ -97,16 +97,14 @@ INT8 agreed with BF16 more closely than the direct-INT8 route:
 | Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
 | DMS INT8 | 232,448 | 100% | 0.001 |
 
-Direct-INT8 failed 9 of 11 quality prompts and is not a default
-([capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)).
+Direct-INT8 failed 9 of 11 quality prompts; use DMS INT8 for long context.
 
 ### Prefix caching
 
 Multi-turn conversations resend the whole transcript, so hipEngine reuses the
 KV pages and hybrid state of any 256-token-aligned prefix a later request
 repeats. Radix is the default for both the direct engine and HTTP serving
-(`--prefix-cache off` to disable). Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo,
-14 multi-turn lanes of three turns:
+(`--prefix-cache off` to disable). Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo:
 
 | Lane | Cache off | Cache on | Wall time |
 | --- | ---: | ---: | ---: |
