@@ -305,3 +305,48 @@ class TestCaptureChain:
             assert gemma4_attention.decode_slices is original
         finally:
             gemma4_attention.decode_slices = original
+
+# --- the full-layer WMMA observation is scoped to plans that can reach it ----
+
+from types import SimpleNamespace  # noqa: E402
+
+from scripts.gemma4_teacher_forced_gate import (  # noqa: E402
+    require_wmma_full_split,
+    wmma_full_reachable,
+)
+
+_NO_PLANS = {"plans": 0, "divided_plans": 0}
+
+
+@pytest.mark.parametrize(
+    ("decode", "prefill", "expected"),
+    [
+        # gfx1100 production: a decode scope serves decode steps.
+        (("gemma4_flash_long",), ("gemma4_wmma_flash", "gemma4_wmma_flash_full"), False),
+        # gfx1151 production: no decode scope, the prefill request reaches decode.
+        (None, ("gemma4_wmma_flash", "gemma4_wmma_flash_full"), True),
+        (None, ("gemma4_plain",), False),
+        (None, None, False),
+    ],
+)
+def test_the_full_layer_walk_is_reachable_only_without_a_decode_scope(decode, prefill, expected):
+    runner = SimpleNamespace(decode_attention_variants=decode, prefill_attention_variants=prefill)
+    assert wmma_full_reachable(runner) is expected
+
+
+def test_an_unreachable_walk_is_not_required():
+    verdict = {"failed": []}
+    require_wmma_full_split(verdict, _NO_PLANS, None, reachable=False)
+    assert verdict["passed"] and verdict["wmma_full_split_scope"] == "not_reachable_under_candidate_plan"
+
+
+def test_an_unreachable_walk_that_was_planned_anyway_fails():
+    verdict = {"failed": []}
+    require_wmma_full_split(verdict, {"plans": 3, "divided_plans": 3}, None, reachable=False)
+    assert verdict["failed"] == ["wmma_full_launches_outside_candidate_plan"]
+
+
+def test_a_reachable_walk_is_still_required():
+    verdict = {"failed": []}
+    require_wmma_full_split(verdict, _NO_PLANS, None, reachable=True)
+    assert verdict["failed"] == ["no_wmma_full_launches_observed"]

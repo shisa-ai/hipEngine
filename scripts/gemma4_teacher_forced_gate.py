@@ -364,8 +364,26 @@ def require_candidate_route(verdict: dict[str, Any], routes: dict[str, Any],
     verdict["passed"] = not verdict["failed"]
 
 
+_WMMA_FULL_VARIANT = "gemma4_wmma_flash_full"
+
+
+def wmma_full_reachable(runner: Any) -> bool:
+    """Whether a decode step of this runner can reach the WMMA full-layer walk.
+
+    A decode step forwards the runner's prefill request only when the plan
+    declares no decode scope; with a decode scope the layer's decode selector
+    serves the step and the full-layer walk is never planned. So the walk is
+    reachable exactly when there is no decode scope and the prefill request
+    names the full-layer WMMA variant -- the gfx1151 plan, not the gfx1100 one.
+    """
+
+    if getattr(runner, "decode_attention_variants", None) is not None:
+        return False
+    return _WMMA_FULL_VARIANT in tuple(getattr(runner, "prefill_attention_variants", None) or ())
+
+
 def require_wmma_full_split(verdict: dict[str, Any], splits: dict[str, Any],
-                            forced_slices: int | None) -> None:
+                            forced_slices: int | None, *, reachable: bool = True) -> None:
     """Refuse a verdict whose candidate arm never divided its full-layer walk.
 
     A pinned arm is exempt for the same reason the strict arm is: asking for the
@@ -379,6 +397,15 @@ def require_wmma_full_split(verdict: dict[str, Any], splits: dict[str, Any],
     """
 
     if forced_slices == 1:
+        return
+    if not reachable:
+        # The candidate's plan routes decode through a decode scope, so the
+        # full-layer walk is not part of the arithmetic under test. Any plan
+        # observed anyway is a routing defect, not a pass.
+        verdict["wmma_full_split_scope"] = "not_reachable_under_candidate_plan"
+        if splits["plans"]:
+            verdict["failed"].append("wmma_full_launches_outside_candidate_plan")
+        verdict["passed"] = not verdict["failed"]
         return
     if not splits["plans"]:
         verdict["failed"].append("no_wmma_full_launches_observed")
@@ -805,6 +832,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     routes = []
     splits = []
+    reachable = wmma_full_reachable(runner)
     try:
         candidate = capture_chain(
             runner, prompt_ids, args.prefill, routes=routes, splits=splits
@@ -820,7 +848,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     verdict["observed_routes"] = route_summary(routes)
     verdict["observed_wmma_full_split"] = wmma_full_split_summary(splits)
     require_candidate_route(verdict, verdict["observed_routes"], args.slices)
-    require_wmma_full_split(verdict, verdict["observed_wmma_full_split"], args.wmma_full_slices)
+    require_wmma_full_split(
+        verdict, verdict["observed_wmma_full_split"], args.wmma_full_slices,
+        reachable=reachable,
+    )
     verdict["prefill"] = int(args.prefill)
     verdict["chain_kind"] = chain_kind
     verdict["scored_key_range"] = [int(args.prefill) + 1, len(prompt_ids) - 1]
