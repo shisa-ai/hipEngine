@@ -1,49 +1,82 @@
 ---
 status: normative
-owns: Rules for editing the root README product page: what belongs there, what does not, and the duplication and caveat patterns that have damaged it before.
+owns: Rules for editing the root README product page: who it is for, what belongs there, and the failure patterns that have repeatedly made it unreadable.
 ---
 # Root README Editing Rules
 
-`README.md` is a product page. It is the first thing a prospective user reads and
-the only page most of them will ever read. It is not a report, a changelog, a
-benchmark log, or a place to record what you learned.
+## The point
 
-Every rule below exists because an agent broke it. The examples are real text
-from this repository's history, not invented.
+`README.md` is an **end-user product page**. Its reader has never seen this
+repository, the worklog, or a benchmark artifact. They want to know four things:
+
+1. What is hipEngine, and what models does it run?
+2. How fast is it on my hardware?
+3. How do I install it and start using it?
+4. What will not work?
+
+Every line on the page answers one of those questions for that reader. A line
+that does not is noise, however true, careful, or hard-won it is.
+
+## Why agents keep breaking it
+
+Agents write README text the way they write evidence: defensively. Every number
+gets its date, host, token counts, run count, matched baseline, and a caveat so
+that nobody can call it wrong. That is correct in `benchmarks/README.md` and a
+worklog entry. On the product page it buries the result under its own paperwork.
+
+**On the README, accuracy comes from linking the report, not from inlining it.**
+The table states the number; one link below it leads to everything that backs
+the number up. If you feel the urge to qualify a number in place, that urge is
+the failure mode. Put the qualification in the report.
+
+The second failure mode is completeness: adding every new model, result, or
+feature as its own paragraph because it exists. The page does not need to
+mention everything that works. `docs/MODELS.md`, the model cards, and the
+benchmark report do that.
 
 ## Rule 0 — Default action is to not touch it
 
-Edit the root README **only** when the lead asks for a specific README change.
+Edit `README.md` only when the lead asks for a specific README change. Not as a
+side effect of release prep, a benchmark rollup, a doc sync, a refactor, or a
+test fix. Do not reword prose you find awkward. If something on the page looks
+wrong, say so in one line in your report and leave the file alone.
 
-Do not edit it as a side effect of another task. Release prep, doc syncs,
-benchmark rollups, refactors, and test repairs are not README work. Do not reword
-a sentence you find awkward. Do not "improve" the page while passing through it.
-Do not reorder sections, retitle headings, or convert tables to prose because you
-prefer the result.
+## Rule 1 — The stranger test
 
-If you believe something on the page is wrong, say so in one line and leave the
-file alone. If you are about to change prose the lead wrote, stop.
+For each line you add or keep, ask: *would someone who just found this project
+on GitHub care about this, and understand it without context?* If not, cut it.
 
-## Rule 1 — One fact, one place
+Fails the test:
 
-Before you add a sentence, find the sentence that already says it. Run the grep.
-Repeating a fact in a second section does not reinforce it; it makes the page
-read as if its author never got past the first screen.
+- Dates, host names (`epyc`, "the HP ZBook host"), token counts per run, warmup
+  and run counts, `hipcc` versions, artifact filenames.
+- Ratios against a derived baseline: "**1.63x** its matched 24.36 tok/s AR".
+- Explanations of why two of our own numbers differ: "the same GPU on two
+  machines, so the gap is thermal headroom".
+- Internal state words: `retained`, `qualified`, `certified plan`, `evidence
+  ladder`, `migration path`, `source-pinned`, `opt-in result`, kernel or
+  planner terms.
+- Self-justification: "These are measured results, not estimates."
 
-The README has exactly one copy of: the release version, the absence of a
-PyTorch dependency, the CPU-inference limitation, the model-support link, and
-each capacity figure.
+## Rule 2 — Performance is a table or nothing
 
-## Rule 2 — State the result, not the measurement
+Numbers go in tables, one result per cell. Never write performance as prose.
 
-A number belongs on the product page when a reader can act on it: throughput,
-memory footprint, maximum context, price-relevant GPU size.
+If a result cannot be stated as a compact table row, leave it off the page
+until it can. This paragraph was removed for exactly that reason:
 
-Warmup counts, tokens per run, run counts, dates, host codenames, artifact
-filenames, `hipcc` versions, and per-row provenance do not. They belong in
-`benchmarks/README.md` and the JSON artifact it links.
+```markdown
+Time-series forecasting (TimesFM 2.5 200M). hipEngine decodes batch=8, context
+8192, horizon 512 forecasts in 0.082 s on the HP ZBook Strix Halo host (8.6x the
+official torch reference) and 0.062 s on a Framework Desktop host — the same GPU
+on two machines, so the gap is thermal headroom.
+```
 
-**Bad** — four lines of protocol bookkeeping under a five-row table:
+Columns follow the same rule. A column that tracks measurement state rather than
+a result (`AR measured`, `Date`, `Host`, `Runs`) does not belong.
+
+Never put notes under a table that restate its rows, its protocol, or its
+provenance. This was four lines under a five-row table, and all of it was cut:
 
 ```markdown
 BF16 rows: September 20, `epyc`, 512/128 tokens, warmup + three runs.
@@ -52,147 +85,80 @@ INT8: September 13. MTP/capacity not refreshed. Laguna: 4K prompts.
 not either decode column.
 ```
 
-**Good** — nothing. The table stands, and the block links the benchmark report
-once, below it.
-
 ## Rule 3 — A caveat must change what the reader does
 
-Test every caveat with one question: *if the reader ignores this sentence, do
-they make a wrong decision?* If the answer is no, delete it.
+Ask: *if the reader skips this sentence, do they make a wrong decision?* If not,
+delete it.
 
-- "The 16-snapshot setting uses more memory and is opt-in" — changes a decision. Keep.
-- "Peers use F16 KV where hipEngine uses BF16" — does not. Delete.
-- "In these tests, DMS INT8 agreed more closely with BF16" — the table says it. Delete.
-- "Different prefill routes can change generated tokens" — a real caveat, but it
-  does not change what a reader does with a prefix-cache toggle. It belongs in
-  the benchmark report.
+- "The 16-snapshot setting uses more memory and is opt-in." Keep: it changes a
+  configuration choice.
+- "Peers use F16 KV where hipEngine uses BF16." Delete.
+- "Different prefill routes can change generated tokens." Delete. True, but
+  nobody acts on it from the product page.
 
-Do not stack caveats. One caveat per claim, and only when it changes behavior.
-Four limitations stacked under a three-row table is a defect, not thoroughness.
+At most one caveat per claim. A stack of limitations under a table is a defect.
 
-## Rule 4 — Never repeat what a heading or table header already says
+## Rule 4 — Say each fact once
 
-A section named `### Radeon Pro W7900 — 48 GB (gfx1100)` has already stated the
-GPU and its memory. Do not open the next paragraph with "The concurrency figures
-come from a 48 GB W7900".
+Before adding a sentence, grep the README for the fact. If a heading, table
+header, or another section already states it, do not state it again.
 
-Likewise a definition. If the performance block says "prompt processing is
-input, text generation is output", do not also write it in the section intro two
-lines above.
+- `### Radeon Pro W7900 — 48 GB (gfx1100)` already says the GPU and its memory.
+  Do not follow it with "measured on a 48 GB W7900".
+- Do not put a navigation line ("[Supported models](#supported-models) lists…")
+  directly above the section it points to.
+- Do not add a limit that restates figures already shown in a table.
 
-## Rule 5 — No internal vocabulary
+## Rule 5 — Write plainly
 
-Internal words name states the reader cannot see. They are meaningless on a
-product page and they make the writing look like it leaked out of a design doc.
+Use the shortest wording a user would use.
 
-| Do not write | Write |
+| Instead of | Write |
 | --- | --- |
-| `retained` ROCm 7.13 | ROCm 7.13 |
+| `; --prefix-cache off rolls it back` | `` (`--prefix-cache off` to disable) `` |
 | MTP is speculative decoding in qualified scopes | MTP is speculative decoding |
-| keeps the previous behaviour otherwise | otherwise keeps hipEngine's default kernel selection |
 | is not a default | do not use it |
-| the certified plan / the migration path | (delete; not a user-visible concept) |
+| `retained` ROCm 7.13 | ROCm 7.13 |
 
-Also banned: `source-pinned`, `physical c8`, `packet reaches`, `variant
-manifest`, `head-major`, and any kernel-internal or planner-internal term. The
-existing test enforces several of these.
+## Rule 6 — Removed detail moves, it does not vanish
 
-## Rule 6 — No navigation sentence that duplicates the section below it
+Before cutting a fact from the README, confirm it is recorded in
+`benchmarks/README.md`, a `docs/model-cards/` page, or a worklog entry. If it is
+not, put it there first. The rule is about where a fact lives, not whether it
+survives.
 
-**Bad** — a table-of-contents line placed directly above the section it
-describes, whose own closing line says the same thing:
-
-```markdown
-[Supported models](#supported-models) lists the current model families and
-hardware; the [model support reference](docs/MODELS.md) gives exact formats,
-checkpoints, and limitations for each.
-
-## Supported models
-...
-See the [model support reference](docs/MODELS.md) for exact checkpoints, ...
-```
-
-**Good** — delete the first paragraph. The section is right there.
-
-## Rule 7 — Never state the same thing in two sections
-
-This is Rule 1 applied to sections you did not write. Before adding a bullet to
-a list of limits, check whether the section above already covers it.
-
-**Bad** — a limit that is four restatements and one new fact:
-
-```markdown
-- The concurrency figures come from a 48 GB W7900. On a 24 GB card, single-request
-  context is qualified to 232,448 tokens on the DMS and opt-in direct-INT8 routes;
-  concurrent-request shapes at 24 GB are not qualified, so keep a conservative
-  context limit there.
-```
-
-The 48 GB is in the table heading. The 232,448 figure and the direct-INT8 warning
-are in `### Long context on a 24 GB GPU`. The release version is at the top of
-the file. Only the last clause is new.
-
-**Good:**
-
-```markdown
-- Concurrent long-context requests on a 24 GB card are untested; keep the
-  context limit conservative there.
-```
-
-## Rule 8 — Detail you remove goes to the report, never nowhere
-
-Deleting a sentence from the README is not licence to delete the fact from the
-repository. Before removing anything, confirm it is recorded in
-`benchmarks/README.md`, the relevant model card under `docs/model-cards/`, or a
-worklog entry. If it is not, move it there first, then remove it from the
-product page.
-
-Never remove a measurement, a gate result, or a limitation from the repository.
-The rule is about *where* it lives, not whether it survives.
-
-## Rule 9 — The performance tables are generated
+## Rule 7 — The performance block is generated
 
 The block between `<!-- BEGIN TOPLINE:README_HIGHLIGHTS -->` and
-`<!-- END TOPLINE:README_HIGHLIGHTS -->` is copied verbatim from
-`benchmarks/README.md`. Edit the source, then run:
+`<!-- END TOPLINE:README_HIGHLIGHTS -->` is copied from `benchmarks/README.md`.
+These rules apply to that source block too. Edit the source, then run:
 
 ```bash
 python3 scripts/sync_benchmark_readme.py --write
 ```
 
-Never hand-edit the block in `README.md`. `--check` fails when the two differ.
+Never hand-edit the block in `README.md`.
 
-## What belongs on the page
-
-| Belongs | Does not belong |
-| --- | --- |
-| What hipEngine is, in two sentences | Implementation diaries, optimization history |
-| Supported model families, with model-card links | Kernel, planner, or scheduler internals |
-| Current headline numbers as tables | Candidate ladders, rejected experiments |
-| Install, serve, chat, and Python API examples | Exact benchmark commands |
-| Limits a reader must act on | Evidence inventories, artifact lists |
-| Links to the report for everything else | Internal blockers, migration states |
-
-## The self-check before you commit a README change
+## Self-check before committing a README change
 
 1. Did the lead ask for this specific change? If not, revert it.
-2. Grep the README for the fact. Is it already there?
-3. Does a heading or table header already say it?
-4. Would a reader make a wrong decision without this sentence?
-5. Can the reader act on the number, or is it provenance?
-6. Is every word here something a user could observe?
-7. Is the removed detail recorded somewhere in the repository?
-8. Did `scripts/docs/check_all.py` and the README sync tests pass?
+2. Does each new line pass the stranger test?
+3. Is every number in a table, with no provenance attached?
+4. Does each caveat change a reader's decision?
+5. Is the fact already on the page?
+6. Is removed detail recorded somewhere else in the repository?
+7. Did `python3 scripts/docs/check_all.py` and
+   `uv run pytest tests/test_integration_benchmark_readme_sync.py` pass?
 
-If any answer is uncomfortable, cut the sentence. The page is stronger shorter.
+When in doubt, cut. A shorter page is a better page.
 
 ## Enforcement
 
 | Gate | Catches |
 | --- | --- |
 | `scripts/sync_benchmark_readme.py --check` | Block out of sync; block over 150 lines, 10 prose paragraphs, or 2800 prose characters; document over 500 lines |
-| `scripts/docs/check_all.py` | Documentation front-matter, indexes, ENVS coverage, export sync, published command drift |
-| `tests/test_integration_benchmark_readme_sync.py` | Section order, tables in the model section, retired filler phrases, duplicated sentences, malformed tables, broken local links and anchors |
+| `scripts/docs/check_all.py` | Documentation front-matter, indexes, export sync, published command drift |
+| `tests/test_integration_benchmark_readme_sync.py` | Section order, retired phrases, internal terms, duplicated sentences, malformed tables, broken links |
 
-Mechanical gates catch crude regressions. They cannot catch a well-written
-paragraph that should not exist. Rule 0 is the real defense.
+The gates catch phrases. They cannot catch a well-written paragraph that should
+not exist. Only the stranger test and Rule 0 catch that.
