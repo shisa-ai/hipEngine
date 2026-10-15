@@ -49,8 +49,10 @@ the tree cannot execute:
   which outranks the session toggle and the env var, so no profile can reach
   it without that call site taking profile policy (curation entry
   ``...gemma4-strict-curation-6312b4.md``, blocker B1).
-- ``moe_decode_q4_k`` / ``moe_decode_q5_1`` / ``moe_decode_q5_k``: no route pin
-  exists for the decode GEMVs (B2).
+- ``moe_decode_q5_k``: no route pin exists for this decode GEMV (B2).
+  ``moe_decode_q4_k`` and ``moe_decode_q5_1`` select production siblings that
+  the selected-expert chain offers only on the unpinned route this plan binds;
+  ``strict`` pins ``grouped`` and so keeps the selected owners.
 - ``lm_head_f32_q8_0``: its call counts are data-dependent, so no phase or arm
   difference was measurable (B4).
 - ``down_q8_0`` (revised B3): the grouped flow's q8_0 chain is three *probe*
@@ -201,6 +203,11 @@ _WMMA_PREFILL = "wmma_prefill_bf16_bf16_out"
 _PACK8_DECODE = "pack8_gemv_bf16_bf16_out"
 _PACK8_LM_HEAD_F32 = "pack8_gemv_bf16_f32_out"
 _SELECTED_GEMV = "selected_gemv_bf16_bf16_out"
+# Production expert decode owners: the selected GEMVs with eight-input runs per
+# thread (``gemma4_experts._SELECTED_CHUNK8_VARIANT`` and its pack8 sibling),
+# chosen on the unpinned MoE route this plan binds.
+_SELECTED_CHUNK8 = "selected_chunk8_gemv_bf16_bf16_out"
+_SELECTED_PACK8_CHUNK8 = "selected_pack8_chunk8_gemv_bf16_bf16_out"
 
 
 def _selection(
@@ -255,14 +262,18 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         # MoE work that resolves through the dense ``linear`` layer key: 29
         # decode calls/step matches the MoE layer count, and the selected owner
         # was site-attributed to gemma4_experts.py:1401. The T16 conversion of
-        # the gate_up stacks changes the registry key, not the owner.
+        # the gate_up stacks changes the registry key, not the owner. Both
+        # projections run the eight-input-run production owners; gate:
+        # ``benchmarks/results/2026-10-15-gemma4-gfx1100-expert-chunk8.json``.
         _selection(
             layer="linear", scope="moe_decode_q4_k",
-            selected_variant=_SELECTED_GEMV, registry_quant=_Q4_K_T16,
+            selected_variant=_SELECTED_CHUNK8, strict_fallback_variant=_SELECTED_GEMV,
+            registry_quant=_Q4_K_T16,
         ),
         _selection(
             layer="linear", scope="moe_decode_q5_1",
-            selected_variant=_SELECTED_GEMV, registry_quant=_Q5_1,
+            selected_variant=_SELECTED_PACK8_CHUNK8, strict_fallback_variant=_SELECTED_GEMV,
+            registry_quant=_Q5_1,
         ),
         _selection(
             layer="linear", scope="moe_decode_q5_k",

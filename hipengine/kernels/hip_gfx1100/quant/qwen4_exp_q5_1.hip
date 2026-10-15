@@ -1423,6 +1423,77 @@ __global__ void q5_1_selected_pack8_gemv_bf16_bf16_kernel(
   }
 }
 
+
+// Production arithmetic for the pack8 selected Q5_1 GEMV (the 256-thread
+// kernel above is the strict owner). That kernel is ALU-bound on a W7900: each
+// thread dequantizes one input per block of 256, re-reading d, m and the high
+// bits for every weight, then joins a 256-wide shared-memory tree. Here one wave
+// owns a (lane, eight-column pack) and each thread takes runs of eight
+// consecutive inputs of one 32-wide block: d, m and the high bits are read once
+// per eight weights and one load of eight activations feeds all eight output
+// columns. Each weight is dequant_q5_1's value; the input partition, and so the
+// summation order, differs: a production variant.
+__global__ __launch_bounds__(32) void q5_1_selected_pack8_chunk8_gemv_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ weights,
+    uint16_t* __restrict__ output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t row_bytes) {
+  constexpr int PACK8 = 8;
+  constexpr int kChunk = 8;
+  const int64_t pack = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int64_t out_col = pack * PACK8;
+  if (row >= rows || out_col >= out_features) return;
+  const int64_t expert = selected[row];
+  if (expert < 0 || expert >= num_experts) return;
+  const int64_t input_row = row / (rows / x_rows);
+  const uint16_t* __restrict__ x_row = input + input_row * in_features;
+  const uint8_t* __restrict__ w0 = weights + (expert * out_features + out_col) * row_bytes;
+  const int64_t units = (in_features / 32) * 4;
+  float value[PACK8];
+#pragma unroll
+  for (int j = 0; j < PACK8; ++j) value[j] = 0.0f;
+  for (int64_t u = threadIdx.x; u < units; u += 32) {
+    const int64_t blk = u >> 2;
+    const int within0 = static_cast<int>(u & 3) * kChunk;
+    const uint4 xq = *reinterpret_cast<const uint4*>(x_row + blk * 32 + within0);
+    const uint32_t xw[4] = {xq.x, xq.y, xq.z, xq.w};
+    float xv[kChunk];
+#pragma unroll
+    for (int kk = 0; kk < kChunk; ++kk) {
+      xv[kk] = bf16_bits_to_float(static_cast<uint16_t>(xw[kk >> 1] >> (16 * (kk & 1))));
+    }
+#pragma unroll
+    for (int j = 0; j < PACK8; ++j) {
+      const uint8_t* __restrict__ b = w0 + j * row_bytes + blk * 24;
+      const float d = load_fp16(b);
+      const float m = load_fp16(b + 2);
+      const uint32_t qh = *reinterpret_cast<const uint32_t*>(b + 4);
+      const uint8_t* __restrict__ qs = b + 8 + (within0 & 15);
+#pragma unroll
+      for (int kk = 0; kk < kChunk; ++kk) {
+        const int index = within0 + kk;
+        const uint8_t packed = qs[kk];
+        const uint8_t low = index < 16 ? (packed & 0x0fU) : (packed >> 4);
+        const uint8_t high = static_cast<uint8_t>((qh >> index) & 1U);
+        value[j] += xv[kk] * (d * static_cast<float>(low | (high << 4)) + m);
+      }
+    }
+  }
+#pragma unroll
+  for (int j = 0; j < PACK8; ++j) {
+    float reduced = value[j];
+    for (int offset = 16; offset > 0; offset >>= 1) reduced += __shfl_down(reduced, offset, 32);
+    if (threadIdx.x == 0) output[row * out_features + out_col + j] = float_to_bf16_bits(reduced);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Weight-exact iu8-WMMA selected Q5_1 down prefill with risk collection.
 //
@@ -2751,6 +2822,35 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
 // it asks for this variant, and the guard is repeated here because a launcher is
 // reachable without the caller. A width that fails either guard is an error
 // rather than a silent tail, so the caller falls back to the scalar route.
+extern "C" int hipengine_qwen4_exp_q5_1_selected_pack8_chunk8_gemv_bf16_bf16_out(
+    const void* input,
+    const void* selected,
+    const void* weights,
+    void* output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !selected || !weights || !output || x_rows <= 0 || rows <= 0 ||
+      rows % x_rows || num_experts <= 0 || in_features <= 0 ||
+      (in_features % 32) || out_features <= 0 || (out_features % 8)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int PACK8 = 8;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      q5_1_selected_pack8_chunk8_gemv_bf16_bf16_kernel,
+      dim3(static_cast<uint32_t>((out_features + PACK8 - 1) / PACK8),
+           static_cast<uint32_t>(rows)),
+      dim3(32), 0, stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      x_rows, rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen4_exp_q5_1_selected_pack8_gemv_bf16_bf16_out(
     const void* input,
     const void* selected,

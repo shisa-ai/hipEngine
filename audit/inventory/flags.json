@@ -2582,7 +2582,7 @@
       "kind": "flag",
       "key": "HIPENGINE_GEMMA4_MOE_DOWN_WMMA",
       "title": "HIPENGINE_GEMMA4_MOE_DOWN_WMMA",
-      "location": "hipengine/generation/gemma4_profiles.py:188",
+      "location": "hipengine/generation/gemma4_profiles.py:190",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
@@ -2591,7 +2591,7 @@
           "tests": 5
         },
         "runtime_sites": [
-          "hipengine/generation/gemma4_profiles.py:188",
+          "hipengine/generation/gemma4_profiles.py:190",
           "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:291",
           "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:300"
         ],
@@ -2613,7 +2613,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GEMMA4_MOE_DOWN_WMMA",
-      "evidence_hash": "0a6c22ea4a46"
+      "evidence_hash": "3640d1c4e0a8"
     },
     {
       "kind": "flag",
@@ -2660,24 +2660,25 @@
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
-          "hipengine": 7,
+          "hipengine": 8,
           "scripts": 1,
           "tests": 11
         },
         "runtime_sites": [
           "hipengine/generation/gemma4_profiles.py:18",
           "hipengine/generation/gemma4_profiles.py:40",
-          "hipengine/generation/gemma4_profiles.py:116",
-          "hipengine/generation/gemma4_profiles.py:195",
+          "hipengine/generation/gemma4_profiles.py:118",
+          "hipengine/generation/gemma4_profiles.py:197",
           "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:301",
           "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:655",
-          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:1230"
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:1098",
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:1242"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
       },
       "signals": [
-        "read at 7 runtime sites \u2014 branching is spread out"
+        "read at 8 runtime sites \u2014 branching is spread out"
       ],
       "hints": {
         "anchor": "env",
@@ -2692,7 +2693,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GEMMA4_MOE_PREFILL",
-      "evidence_hash": "dd85673bf679"
+      "evidence_hash": "c079cde81396"
     },
     {
       "kind": "flag",
@@ -2765,14 +2766,14 @@
       "kind": "flag",
       "key": "HIPENGINE_GEMMA4_Q5_1_DOWN_T16",
       "title": "HIPENGINE_GEMMA4_Q5_1_DOWN_T16",
-      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:2734",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:2758",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
           "hipengine": 1
         },
         "runtime_sites": [
-          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:2734"
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:2758"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -2791,7 +2792,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GEMMA4_Q5_1_DOWN_T16",
-      "evidence_hash": "10430fdae532"
+      "evidence_hash": "bdc0d37dea39"
     },
     {
       "kind": "flag",
@@ -7232,7 +7233,7 @@
       "kind": "flag",
       "key": "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6",
       "title": "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6",
-      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py:199",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py:200",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
@@ -7240,7 +7241,7 @@
           "tests": 3
         },
         "runtime_sites": [
-          "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py:199"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py:200"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -7261,7 +7262,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6",
-      "evidence_hash": "ed706e7a3344"
+      "evidence_hash": "9ad2725b193e"
     },
     {
       "kind": "flag",

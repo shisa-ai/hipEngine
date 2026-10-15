@@ -5627,6 +5627,108 @@ __global__ __launch_bounds__(128, 2) void qk_t16_selected_direct_gemv_kernel(
   }
 }
 
+
+// Production arithmetic for the Q4T16 selected GEMV (qk_t16_selected_direct_gemv
+// at qtype 4 is the strict owner). The strict kernel gives each thread one k of
+// a 32-wide sub-block per step, so every weight re-derives its column's
+// d*scale and dmin*min: on a W7900 the kernel is ALU-bound (as fast with every
+// lane on one cached expert as with distinct experts). Here one wave owns a
+// (lane, 16-column tile) and each thread takes runs of eight consecutive k of
+// one sub-block, decoding the sub-block's column scales once per eight
+// weights. The weight value per k is the strict expression regrouped as
+// (d*scale)*q - dmin*min, and the k partition differs, so this is a production
+// variant: rows of this kernel are bit-identical to each other at any lane
+// count, not to the strict owner.
+__global__ __launch_bounds__(32) void q4_t16_selected_chunk8_gemv_bf16_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  constexpr int kChunk = 8;
+  constexpr int kUnitsPerBlock = QK_K / kChunk;
+  const int64_t out_tile = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int64_t lanes_per_x_row = rows / x_rows;
+  const int64_t x_row_idx = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  const uint16_t* __restrict__ x_row = x + x_row_idx * in_features;
+  const int64_t units = blocks_per_row * kUnitsPerBlock;
+
+  float acc[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) acc[col] = 0.0f;
+
+  for (int64_t u = tid; u < units; u += 32) {
+    const int64_t blk = u / kUnitsPerBlock;
+    const int within = static_cast<int>(u % kUnitsPerBlock);
+    const int sb = within >> 2;
+    const int lane0 = (within & 3) * kChunk;
+    const uint8_t* __restrict__ tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+        tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    const uint4 d_lo = *reinterpret_cast<const uint4*>(tile + Q4_T16_D_OFFSET);
+    const uint4 d_hi = *reinterpret_cast<const uint4*>(tile + Q4_T16_D_OFFSET + 16);
+    const uint4 m_lo = *reinterpret_cast<const uint4*>(tile + Q4_T16_DMIN_OFFSET);
+    const uint4 m_hi = *reinterpret_cast<const uint4*>(tile + Q4_T16_DMIN_OFFSET + 16);
+    const uint4 sc4 = *reinterpret_cast<const uint4*>(tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS);
+    const uint4 mn4 = *reinterpret_cast<const uint4*>(tile + Q4_T16_MIN_OFFSET + sb * T16_COLS);
+    const uint4* __restrict__ qv = reinterpret_cast<const uint4*>(
+        tile + Q4_T16_Q_OFFSET + (sb * Q4_SUBBLOCK + lane0) * (T16_COLS / 2));
+    const uint4 q01 = qv[0], q23 = qv[1], q45 = qv[2], q67 = qv[3];
+    const uint32_t qw[16] = {q01.x, q01.y, q01.z, q01.w, q23.x, q23.y, q23.z, q23.w,
+                             q45.x, q45.y, q45.z, q45.w, q67.x, q67.y, q67.z, q67.w};
+    const uint4 xq = *reinterpret_cast<const uint4*>(
+        x_row + blk * QK_K + sb * Q4_SUBBLOCK + lane0);
+    const uint32_t xw[4] = {xq.x, xq.y, xq.z, xq.w};
+    float xv[kChunk];
+#pragma unroll
+    for (int kk = 0; kk < kChunk; ++kk) {
+      xv[kk] = bf16_bits_to_float(static_cast<uint16_t>(xw[kk >> 1] >> (16 * (kk & 1))));
+    }
+    const uint32_t dw[8] = {d_lo.x, d_lo.y, d_lo.z, d_lo.w, d_hi.x, d_hi.y, d_hi.z, d_hi.w};
+    const uint32_t mw[8] = {m_lo.x, m_lo.y, m_lo.z, m_lo.w, m_hi.x, m_hi.y, m_hi.z, m_hi.w};
+    const uint32_t sw[4] = {sc4.x, sc4.y, sc4.z, sc4.w};
+    const uint32_t nw[4] = {mn4.x, mn4.y, mn4.z, mn4.w};
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      union {
+        uint16_t u16;
+        half_t f16;
+      } hd, hm;
+      hd.u16 = static_cast<uint16_t>(dw[col >> 1] >> (16 * (col & 1)));
+      hm.u16 = static_cast<uint16_t>(mw[col >> 1] >> (16 * (col & 1)));
+      const float ds = static_cast<float>(hd.f16) *
+          static_cast<float>(static_cast<uint8_t>(sw[col >> 2] >> (8 * (col & 3))));
+      const float dm = static_cast<float>(hm.f16) *
+          static_cast<float>(static_cast<uint8_t>(nw[col >> 2] >> (8 * (col & 3))));
+#pragma unroll
+      for (int kk = 0; kk < kChunk; ++kk) {
+        const uint8_t packed = static_cast<uint8_t>(
+            qw[kk * 2 + (col >> 3)] >> (8 * ((col >> 1) & 3)));
+        const float q = static_cast<float>((col & 1) ? (packed >> 4) : (packed & 0x0Fu));
+        acc[col] += xv[kk] * (ds * q - dm);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc[col]);
+  if (tid == 0) {
+    uint16_t* __restrict__ out_row = out + row * out_features + out_tile * T16_COLS;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) out_row[col] = float_to_scalar<uint16_t>(acc[col]);
+  }
+}
+
 // E6c: exact dense Q5T16 FFN-down decode projection plus rounded-BF16
 // residual (folds the standalone gguf_bf16_add_kernel the runner pays per
 // block). The projection half is a verbatim copy of the resident tile8
@@ -8980,6 +9082,25 @@ hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_q8_1x2_dp4a_bf16_bf16_out(
       out_features,
       num_experts,
       stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_chunk8_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  if (!x || !selected || !tiles || !out || x_rows <= 0 || rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || out_features <= 0 || (rows % x_rows) != 0 ||
+      (in_features % QK_K) != 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  hipLaunchKernelGGL(q4_t16_selected_chunk8_gemv_bf16_bf16_kernel,
+                     dim3(static_cast<unsigned int>(out_features / T16_COLS),
+                          static_cast<unsigned int>(rows)),
+                     dim3(32), 0, stream,
+                     reinterpret_cast<const uint16_t*>(x), reinterpret_cast<const int64_t*>(selected),
+                     reinterpret_cast<const uint8_t*>(tiles), reinterpret_cast<uint16_t*>(out),
+                     x_rows, rows, in_features, out_features, num_experts);
+  return hipGetLastError();
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_selected_gemv_bf16_bf16_out(

@@ -147,6 +147,7 @@ _Q4_DUAL_SILU_DIRECT_Q8X2_DP4A_BF16 = (
     "bf16_bf16_out"
 )
 _Q4_SINGLE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_gemv_bf16_bf16_out"
+_Q4_SINGLE_CHUNK8_BF16 = "hipengine_gguf_q4_k_t16_selected_chunk8_gemv_bf16_bf16_out"
 _Q4_SINGLE_NATURAL_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out"
 )
@@ -2869,6 +2870,45 @@ def gguf_q4_k_t16_selected_gemv_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_t16_selected_chunk8_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Production selected Q4T16 GEMV: eight-k runs per thread, one wave per tile.
+
+    Same ABI and per-row results order as
+    :func:`gguf_q4_k_t16_selected_gemv_bf16_bf16_out` (the strict owner); the
+    summation order differs, so it is a production variant.
+    """
+
+    _launch_single_direct(
+        _Q4_SINGLE_CHUNK8_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -4699,6 +4739,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "selected_chunk8_gemv_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_selected_chunk8_gemv_bf16_bf16_out,
+        replace=replace,
+    )
 
     # D11: the Q5_K gate_up expert stack plans raw plus its Q5T16 tiles side
     # copy, and its decode rewrite resolves this key when the weight ships
@@ -5428,6 +5478,7 @@ __all__ = [
     "gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out",
     "gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_chunk8_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out",

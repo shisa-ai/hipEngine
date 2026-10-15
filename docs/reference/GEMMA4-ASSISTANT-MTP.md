@@ -354,13 +354,13 @@ call first, measured 2026-10-15 with `scripts/gemma4_mtp_probe.py`.
 
 | `candidate_budget` | Plain tok/s | MTP tok/s | Ratio | Code | English | Japanese | Mixed | Rows token-identical to plain |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 | 72.9 | 104.1 | 1.43x | 1.48x | 1.40x | 1.38x | 1.43x | 26 of 36 |
-| 4 | 74.3 | 107.7 | 1.45x | 1.55x | 1.43x | 1.33x | 1.45x | 32 of 36 |
-| 6 | 73.9 | 101.4 | 1.37x | 1.52x | 1.36x | 1.18x | 1.40x | 32 of 36 |
-| 8 | 73.8 | 91.2 | 1.24x | 1.37x | 1.21x | 1.08x | 1.26x | 24 of 36 |
+| 2 | 74.6 | 108.8 | 1.46x | 1.50x | 1.44x | 1.41x | 1.47x | 28 of 36 |
+| 4 | 75.0 | 118.3 | 1.58x | 1.71x | 1.50x | 1.43x | 1.62x | 24 of 36 |
+| 6 | 74.2 | 112.6 | 1.52x | 1.72x | 1.38x | 1.31x | 1.65x | 26 of 36 |
+| 8 | 75.1 | 104.0 | 1.39x | 1.50x | 1.37x | 1.22x | 1.43x | 26 of 36 |
 
 A budget of 4 is the best measured setting on this device. Artifact:
-`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-small-block-dense.json`. The
+`benchmarks/results/2026-10-15-gemma4-gfx1100-expert-chunk8.json`. The
 head has not been measured on `hip_gfx1151` on the current tree.
 
 The table above is the production profile, whose verify block is not exact. The
@@ -369,18 +369,22 @@ available, compare the two contracts:
 
 | Profile | Verify | Plain tok/s | MTP tok/s | Ratio | Rows token-identical to plain greedy |
 | --- | --- | ---: | ---: | ---: | ---: |
-| production | envelope (default) | 74.3 | 107.7 | 1.45x | 32 of 36 |
-| strict | exact (default) | 73.8 | 95.0 | 1.29x | 36 of 36 |
+| production | envelope (default) | 75.0 | 118.3 | 1.58x | 24 of 36 |
+| strict | exact (default) | 72.2 | 94.4 | 1.31x | 36 of 36 |
 
 The cost is in the verify block itself. Median time for one verify block after
 a 600-token prompt, production profile:
 
 | Rows in the block | 1 | 3 | 5 | 7 | 9 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Envelope verify (ms) | 14.0 | 21.0 | 27.0 | 33.0 | 39.9 |
-| Exact verify (ms) | 14.0 | 21.7 | 30.0 | 38.5 | 49.7 |
+| Envelope verify (ms) | 12.9 | 18.7 | 22.6 | 26.7 | 32.6 |
+| Exact verify (ms) | 12.7 | 20.6 | 26.7 | 33.4 | 43.2 |
 
-A one-token decode step takes 12.9 ms in the same run. The lm-head projection
+A one-token decode step takes 12.7 ms in the same run. In production the
+expert projections of a decode step and of a verify block run the
+eight-input-run selected kernels, whose rows are identical at any lane count, so
+an exact verify block in production stays bit-identical to production decode;
+strict keeps the per-k selected owners. The lm-head projection
 of a block wider than eight rows is launched in balanced chunks of at most
 eight, because its small-block kernel serves two to eight rows and the kernel
 behind it reads the whole vocabulary matrix once per row: a nine-row block
@@ -434,13 +438,12 @@ the host and sampled there. Artifact:
 ## Open defects
 
 1. **A verify block costs too much per row.** Each extra row adds about 2 to
-   5 ms to a 14 ms one-row block. llama.cpp at `45451c3` on the same card runs
+   3 ms to a 13 ms one-row block (five rows 22.6 ms). llama.cpp at `45451c3` on the same card runs
    a five-row block in 18.6 ms against its 14.6 ms one-row step, and its MTP
    with the same head and prompts reaches 2.01x. A five-row production block
-   here spends 5.4 ms in dense projections (3.2 ms for one row), 7.7 ms in
-   expert projections (2.1 ms), 2.9 ms in attention (1.0 ms) and 2.5 ms in the
-   lm head (1.2 ms), and the dense branch overlaps the expert branch, so the
-   expert projections and attention set the block's length.
+   here spends 5.4 ms in dense projections (3.2 ms for one row), 6.8 ms in
+   expert projections (2.0 ms), 1.6 ms in attention and 2.7 ms in the lm head
+   (1.2 ms); the dense branch overlaps the expert branch.
 2. **Sampling runs on the host.** Each sampled step copies a 262,144-entry
    logits row to the host. With a top-k the law costs about 0.4 ms a row; a
    whole-vocabulary law about 0.5 ms; a request with a history penalty about

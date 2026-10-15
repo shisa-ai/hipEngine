@@ -209,7 +209,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `quant/gguf_q6_k_pack8_gemv.hip` | Packed Q6_K matrix-vector projections. |
 | `quant/gguf_q8_0_pack8_gemv.hip` | Packed Q8_0 matrix-vector projections. |
 | `quant/gguf_q6_k_t16_gemv.hip` | T16/qmicro Q6_K projections and head/residual composites. |
-| `quant/gguf_t16_selected_gemv.hip` | T16 selected-expert projections and weighted/residual composites. |
+| `quant/gguf_t16_selected_gemv.hip` | T16 selected-expert projections and weighted/residual composites; `selected_chunk8_gemv` is the Q4T16 production sibling (eight-k runs per thread, one wave per tile). |
 | `quant/gguf_k_t16_selected_prefill.hip` | T16 Q5_K/Q6_K selected-expert prefill projections. |
 | `quant/gguf_q4_k_t16_selected_prefill.hip` | T16 Q4_K selected-expert prefill, including an LDS-transposed fused expert-major gate/up consumer. |
 | `quant/gguf_q5_k_qmicro_planar_gemv.hip` | Planar qmicro Q5_K selected-expert projections. |
@@ -246,7 +246,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `linear_attn/qwen4_exp_gdn.hip` | Gated delta recurrence with sigmoid output gating. |
 | `attention/qwen4_exp_qsa.hip` | Sparse-attention rotary transforms, block pooling/scoring/selection, and attention. |
 | `attention/qwen4_exp_qsa_flash.hip` | Flash-style dense prefill attention. |
-| `quant/qwen4_exp_q5_1.hip` | Raw Q5_1 selected-expert projections. |
+| `quant/qwen4_exp_q5_1.hip` | Raw Q5_1 selected-expert projections; `selected_pack8_chunk8_gemv` is the pack8 production sibling (eight-input runs per thread, one wave per pack). |
 | `vision/qwen4_exp_vision.hip` | Vision normalization, activation, residual, and attention operations. |
 
 ### Laguna
