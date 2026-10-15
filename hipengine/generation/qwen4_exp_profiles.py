@@ -97,6 +97,10 @@ _F16_ROUTE_BINDER_ENV = {
 # composition in the same process retracts them to "0".
 _F16_ROUTE_SELECTORS = {
     _ROUTED_F16_ENV: "1",
+    # Qwen4Exp short-prompt dense projections use the same wide implementation
+    # as the long-row route. The dispatch gate is profile-owned so this does
+    # not change other GGUF packs' small-row policy.
+    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS": "1",
     # Hyper-connection up projection on the F16 wide route.
     "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
     # Hyper-connection read projections launched directly on F16 activations:
