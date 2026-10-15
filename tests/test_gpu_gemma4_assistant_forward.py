@@ -299,8 +299,14 @@ def test_the_draft_chain_reproduces_llamacpps_candidates() -> None:
 
     The recurrence is where a wiring bug hides: step 0 uses the target's seed
     state and every later step uses the head's own projected state at a constant
-    position. Asserting the top three at each step, rather than only the top one,
-    makes an implementation that re-seeds or re-norms partway through fail.
+    position. Asserting the top three at each step, rather than only the top
+    one, makes an implementation that re-seeds or re-norms partway through fail.
+
+    Step 3's ranks 2 and 3 are a near tie whose order is backend rounding, not
+    wiring: W7900 orders them as llama.cpp does, while gfx1151 swaps the pair
+    (measured identically at f4259f19d and 875f51dfc, with the rank-1 draft
+    token equal at every step). The assertion therefore pins each step's
+    rank-1 token and its candidate set, not the order within the top three.
 
     The session runs under :func:`_llamacpp_parity_route` because the oracle is
     llama.cpp's output, not this engine's: the head's candidates follow the
@@ -316,7 +322,11 @@ def test_the_draft_chain_reproduces_llamacpps_candidates() -> None:
                 token, position=session.position, shared_kv=session.shared
             )
             top = [int(index) for index in np.argsort(logits)[::-1][:3]]
-            assert top == expected, (
+            assert top[0] == expected[0], (
+                f"draft step {step}: the head's top candidate is {top[0]}, "
+                f"llama.cpp's is {expected[0]}"
+            )
+            assert sorted(top) == sorted(expected), (
                 f"draft step {step}: the head's candidates are {top}, llama.cpp's "
                 f"are {expected}"
             )
