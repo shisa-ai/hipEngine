@@ -15,8 +15,8 @@ Category speedups were code 1.558x, general_en 1.246x, general_ja 1.172x, and mi
 
 ## Boundary-crossing context
 
-A 3,433-token prompt was run with `max_sequence_length=4096`, budget 3, and 16 generated tokens. MTP accepted all 11 proposed draft tokens, matched AR for all 16 output tokens, and completed four verification cycles. It measured 1.897 tok/s MTP versus 4.940 tok/s AR (`0.384x`), so larger context support is functional but not a performance win at this prompt length.
+A 3,433-token prompt was run with `max_sequence_length=4096`, budget 3, and 16 generated tokens through the public `Qwen4ExpGGUFTextGenerator.generate_speculative_mtp_detailed` API after provider attachment. MTP accepted all 11 proposed draft tokens, matched AR for all 16 output tokens, and completed four verification cycles. It measured 1.893 tok/s MTP versus 4.939 tok/s AR (`0.383x`), so larger context support is functional but not a performance win at this prompt length.
 
 The long-context result is a capability/rollback validation, not a retained speedup claim.
 
-Artifacts: `full-suite.json`, `long-context.json`.
+Artifacts: `full-suite.json`, `long-context.json`, `long-context-public.json`.
