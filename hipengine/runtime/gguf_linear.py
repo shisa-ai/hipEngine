@@ -3665,6 +3665,10 @@ def _variant_scoped_library(
 _Q8_DENSE_WIDE_K_TILE = 64
 _Q8_DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
 _Q8_DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
+# Qwen4Exp's short-prompt production gate admits rows 9-256 to the same
+# existing wide implementation. It is a profile-owned selector, not a global
+# threshold change: other GGUF packs retain their exact small-row owners.
+_Q8_DENSE_WIDE_SHORT_ROWS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS"
 
 
 _LAYER_SCOPE_PARSE_CACHE: dict[str, frozenset[int] | None] = {}
@@ -3729,6 +3733,12 @@ _Q8_DENSE_WIDE_EXACT_PARENTS = frozenset({
 # and rewrites a claimable parent to ``wmma_<parent>`` under this ABI.
 _Q8_DENSE_WIDE_WMMA_ABI = "wmma_raw"
 _Q8_DENSE_WIDE_WMMA_PREFIX = "wmma_"
+
+
+def _q8_dense_wide_short_rows_enabled() -> bool:
+    return os.environ.get(_Q8_DENSE_WIDE_SHORT_ROWS_ENV, "0") not in {
+        "", "0", "false", "False",
+    }
 
 
 def _q8_dense_wide_enabled() -> bool:
@@ -3828,8 +3838,23 @@ def _q8_dense_wide_dispatch(
         )
         return dispatch
     if (
+        dispatch.abi == "raw"
+        and dispatch.key.variant.startswith("dense_wide")
+        and dispatch.key.quant == "gguf_q8_0"
+    ):
+        # An early short-row admission may already have selected this route;
+        # keep the later pipeline stages from treating the selected leaf as an
+        # unclaimable parent.
+        _record_route_engagement(
+            "dense_wide", rows=rows, engaged=True, reason="already selected",
+            detail=dispatch.key.variant,
+        )
+        return dispatch
+    short_rows = _q8_dense_wide_short_rows_enabled()
+    if (
         dispatch.key.quant != "gguf_q8_0"
-        or rows <= 256
+        or rows < (9 if short_rows else 257)
+        or (rows <= 256 and not short_rows)
         or in_features <= 0
         or in_features % _Q8_DENSE_WIDE_K_TILE != 0
         or out_features <= 0
@@ -4777,6 +4802,17 @@ def launch_gguf_linear(
             backend=resolved_backend,
             rows=rows,
         )
+        # This must precede MMQ, pack8, and raw-rowbatch rewrites. Those
+        # selectors legitimately consume the exact parent for other shapes,
+        # but they otherwise make the Qwen4Exp short-row wide route unreachable.
+        if _q8_dense_wide_enabled() and _q8_dense_wide_short_rows_enabled():
+            dispatch = _q8_dense_wide_dispatch(
+                dispatch,
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
+                weight=weight,
+            )
         dispatch = _pack8_decode_dispatch(dispatch, rows=rows, out_features=out_features)
         dispatch = _gemv_decode_dispatch(dispatch, rows=rows, use_gemv_decode=f_gemv)
         dispatch = _registered_variant_dispatch(

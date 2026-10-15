@@ -49,3 +49,40 @@ def test_short_chunk_build_bound_is_overridable(monkeypatch):
     assert dw._wgp_build_max_rows() == 0
     monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", "2048")
     assert dw._wgp_build_max_rows() == 2048
+
+
+@pytest.mark.parametrize(
+    "rows,expected",
+    [
+        (8, "prefill_f32_f32_out"),
+        (9, "dense_wide256_f32_f32_out"),
+        (128, "dense_wide256_f32_f32_out"),
+        (256, "dense_wide256_f32_f32_out"),
+    ],
+)
+def test_qwen4exp_short_rows_admit_wide_route_only_in_profile(monkeypatch, rows, expected):
+    from hipengine.runtime.gguf_linear import GGUFLinearDispatch
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", raising=False)
+    monkeypatch.setattr(linear, "is_registered", lambda key: True)
+    dispatch = GGUFLinearDispatch(_key("prefill_f32_f32_out"), "raw")
+    selected = linear._q8_dense_wide_dispatch(
+        dispatch, rows=rows, in_features=320, out_features=2560, weight=None
+    )
+    assert selected.key.variant == expected
+
+
+def test_qwen4exp_short_rows_stay_exact_without_profile_selector(monkeypatch):
+    from hipengine.runtime.gguf_linear import GGUFLinearDispatch
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS", raising=False)
+    monkeypatch.setattr(linear, "is_registered", lambda key: True)
+    dispatch = GGUFLinearDispatch(_key("prefill_f32_f32_out"), "raw")
+    selected = linear._q8_dense_wide_dispatch(
+        dispatch, rows=128, in_features=320, out_features=2560, weight=None
+    )
+    assert selected.key.variant == "prefill_f32_f32_out"
+

@@ -9449,7 +9449,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             self._device_transaction_snapshot.close()
             self._device_transaction_snapshot = None
             self._device_transaction_lease = False
-        for buffer in self._verify_rows_buffers.values():
+        for buffer in getattr(self, "_verify_rows_buffers", {}).values():
             free(buffer, runtime=self.runtime)
         self._verify_rows_buffers = {}
         self._verify_rows_capacity = 0
