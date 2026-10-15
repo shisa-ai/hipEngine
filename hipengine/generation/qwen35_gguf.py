@@ -9724,7 +9724,7 @@ class Qwen35GGUFResidentModelRunner:
             return
         session = lease.session
         self._close_c1_decode_graph(row)
-        if getattr(self.generator, "dms_metadata_path", None) is not None:
+        if getattr(getattr(self, "generator", None), "dms_metadata_path", None) is not None:
             # Dense prefill planes were freed by compaction. A reset cannot
             # recreate those planes or erase the compact allocator's history.
             session.close()
