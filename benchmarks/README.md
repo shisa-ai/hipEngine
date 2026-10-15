@@ -187,6 +187,7 @@ context** is a capacity limit, not a full-length prefill.
 | --- | --- | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **754.5** | **153.2** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |
@@ -1636,6 +1637,19 @@ numeric 128K row is carried forward. Evidence:
 [`SH14-C1 completion gate`](results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
 
 ### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
+
+#### Topline 512/128 (2026-10-15)
+
+Framework Desktop / Radeon 8060S (`gfx1151`), production profile, BF16 KV,
+512 prompt tokens and 128 greedy outputs ignoring EOS, one warmup and three
+measured requests at `09b14efeb`.
+
+| Workload | Prefill | Decode | Public wall |
+| --- | ---: | ---: | ---: |
+| 512/128 | **1865.6 tok/s** | **43.30 tok/s** | 3.21 s |
+
+Repeated and public output IDs are equal and logits are finite.
+[Command, samples and provenance](results/2026-10-15-gemma4-gfx1151-512p128o-topline.json).
 
 #### Paired depth ladder on the promoted build (2026-10-08)
 

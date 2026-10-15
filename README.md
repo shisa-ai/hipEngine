@@ -29,7 +29,8 @@ notes](CHANGELOG.md#v071---2026-10-14) for scope and limitations.
 ## Supported models
 
 - **Language models:** Qwen3.5/3.6/3.8 dense and mixture-of-experts models,
-  Qwen3.8 Flash-Next, [Laguna S 2.1](docs/campaigns/LAGUNA.md), and
+  Qwen3.8 Flash-Next, [Gemma 4 26B-A4B](docs/model-cards/MODEL-GEMMA4.md),
+  [Laguna S 2.1](docs/campaigns/LAGUNA.md), and
   [Maple-Preview](docs/campaigns/MAPLE.md).
 - **Document understanding:** [Surya OCR 2](docs/model-cards/MODEL-SURYA.md) for full-page
   OCR and [EVIE 4.5B / 8B](docs/model-cards/MODEL-EVIE.md) for visual document retrieval.
@@ -91,6 +92,7 @@ context** is a capacity limit, not a full-length prefill.
 | --- | --- | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **754.5** | **153.2** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | — |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |

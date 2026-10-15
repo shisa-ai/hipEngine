@@ -5,7 +5,7 @@ owns: Gemma 4 model support: GGUF text inference, server usage, exercised covera
 # Gemma 4 text inference
 
 Gemma 4 GGUF text inference runs through `hipengine.LLM` and `hipengine serve`
-on the `hip_gfx1100` backend. The generator decodes greedily or samples, as the
+on the `hip_gfx1100` and `hip_gfx1151` backends. The generator decodes greedily or samples, as the
 request asks, and uses BF16 KV storage. Server chat uses the GGUF artifact's embedded Gemma template and
 separates the thought channel into `reasoning_content`.
 
