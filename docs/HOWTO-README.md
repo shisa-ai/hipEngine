@@ -36,14 +36,29 @@ benchmark report do that.
 
 ## Rule 0 — Default action is to not touch it
 
+The page has been reviewed by the lead line by line. Treat it as finished, not
+as a draft to improve.
+
 Edit `README.md` only when the lead asks for a specific README change. Not as a
-side effect of release prep, a benchmark rollup, a doc sync, a refactor, or a
-test fix. Do not reword prose you find awkward. If something on the page looks
-wrong, say so in one line in your report and leave the file alone.
+side effect of a refactor, a doc sync, or a test fix. Do not reword prose you
+find awkward. If something on the page looks wrong, say so in one line in your
+report and leave the file alone.
+
+When you are asked for a change, change only the lines that request names. Do
+not tidy the paragraph around it, retitle the section, or fix a second thing you
+noticed on the way. Report the second thing instead.
+
+Two routine tasks touch the page, and each has a fixed scope:
+
+- **Release prep** updates the version in the `Current release:` line and its
+  one-sentence summary of what the release fixes or adds. Nothing else.
+- **Benchmark rollups** update numbers in existing table cells of the generated
+  block (Rule 7). Adding or removing rows, columns, tables, or prose in that
+  block is a README change and needs the lead's request.
 
 ## Rule 1 — The stranger test
 
-For each line you add or keep, ask: *would someone who just found this project
+For each line you add or change, ask: *would someone who just found this project
 on GitHub care about this, and understand it without context?* If not, cut it.
 
 Fails the test:
@@ -150,7 +165,8 @@ Never hand-edit the block in `README.md`.
 7. Did `python3 scripts/docs/check_all.py` and
    `uv run pytest tests/test_integration_benchmark_readme_sync.py` pass?
 
-When in doubt, cut. A shorter page is a better page.
+When in doubt about a line you are adding, leave it out. These rules judge your
+change, not the rest of the page.
 
 ## Enforcement
 
