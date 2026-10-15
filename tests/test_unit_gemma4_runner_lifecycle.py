@@ -578,6 +578,13 @@ def test_multi_block_forward_takes_the_head_only_on_the_final_block(
     artifact that is 1 wasted launch at 1024 tokens and 7 at 4096.
     """
 
+    import ctypes
+
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime unavailable; the multi-block forward loads it")
+
     from contextlib import contextmanager
 
     base = _config(num_layers=2, hidden_size=16)

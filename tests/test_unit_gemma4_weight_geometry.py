@@ -37,6 +37,7 @@ from tests._gemma4_gguf_fixture import (
     fixture_metadata,
     write_fixture_gguf,
 )
+from tests._rocm_guard import hip_runtime_available
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +79,13 @@ def _install_fake_device(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         gemma4_module, "materialize_gemma4_gguf_device_weight", fake_materialize
+    )
+    # The fused gate/up and q|k|v projections resolve through the fused
+    # materializer inside ``_build_layer``; fake them too or the real loader
+    # reaches the HIP runtime (load_host_array_to_device_as_dtype) and breaks
+    # this module's "no device, no kernel, no ROCm import" contract.
+    monkeypatch.setattr(
+        gemma4_module, "materialize_fused_gguf_device_weight", fake_materialize
     )
     monkeypatch.setattr(
         gemma4_module, "load_host_array_to_device_as_dtype", fake_scalar
@@ -294,6 +302,10 @@ def _install_layer_dispatch_recorder(
     return calls
 
 
+@pytest.mark.skipif(
+    not hip_runtime_available(),
+    reason="HIP runtime unavailable; the layer forward sets up its MoE stream",
+)
 def test_layer_forward_dispatches_the_layers_own_dense_width(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

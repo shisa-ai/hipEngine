@@ -507,6 +507,13 @@ def test_gemma4_int8_prefill_rejects_oversized_rows_before_metadata_and_build(
 def test_gemma4_int8_prefill_allows_max_row_boundary(monkeypatch) -> None:
     """The 65535-row boundary is inclusive: it reaches metadata, not the bound refusal."""
 
+    import ctypes
+
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime unavailable; the 65535-row boundary path loads it")
+
     _no_build(monkeypatch)
     _no_metadata(monkeypatch)
     spans = _make_spans(
