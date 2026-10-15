@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_mtp_state_row_resource_accounting",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "model_architecture": "qwen4exp",
+  "geometry": {
+    "block_count": 48,
+    "gdn_layers": 36,
+    "gdn_time_step_rank": 48,
+    "gdn_state_size": 128,
+    "gdn_group_count": 16,
+    "gdn_inner_size": 6144,
+    "gdn_conv_kernel": 4,
+    "residual_width": 10240,
+    "bytes_per_fp32": 4,
+    "bytes_per_int64": 8
+  },
+  "accounting_contract": "Qwen4ExpGGUFResidentModelRunner._verify_rows_workspace",
+  "rows": [
+    {
+      "candidate_budget": 1,
+      "verifier_rows": 2,
+      "components_bytes": {
+        "gdn_matrix_rows": 226492416,
+        "gdn_conv_rows": 11796480,
+        "ple_out": 81920,
+        "argmax_ids": 16
+      },
+      "total_bytes": 238370832,
+      "total_mib": 227.32814025878906
+    },
+    {
+      "candidate_budget": 2,
+      "verifier_rows": 3,
+      "components_bytes": {
+        "gdn_matrix_rows": 339738624,
+        "gdn_conv_rows": 17694720,
+        "ple_out": 122880,
+        "argmax_ids": 24
+      },
+      "total_bytes": 357556248,
+      "total_mib": 340.9922103881836
+    },
+    {
+      "candidate_budget": 3,
+      "verifier_rows": 4,
+      "components_bytes": {
+        "gdn_matrix_rows": 452984832,
+        "gdn_conv_rows": 23592960,
+        "ple_out": 163840,
+        "argmax_ids": 32
+      },
+      "total_bytes": 476741664,
+      "total_mib": 454.6562805175781
+    },
+    {
+      "candidate_budget": 5,
+      "verifier_rows": 6,
+      "components_bytes": {
+        "gdn_matrix_rows": 679477248,
+        "gdn_conv_rows": 35389440,
+        "ple_out": 245760,
+        "argmax_ids": 48
+      },
+      "total_bytes": 715112496,
+      "total_mib": 681.9844207763672
+    },
+    {
+      "candidate_budget": 7,
+      "verifier_rows": 8,
+      "components_bytes": {
+        "gdn_matrix_rows": 905969664,
+        "gdn_conv_rows": 47185920,
+        "ple_out": 327680,
+        "argmax_ids": 64
+      },
+      "total_bytes": 953483328,
+      "total_mib": 909.3125610351562
+    }
+  ],
+  "conclusion": "State-row verification has a linear per-row workspace charge. This is the real verifier-state cost; the current provider still uses cursor trim for draft rollback and does not snapshot this target state."
+}
