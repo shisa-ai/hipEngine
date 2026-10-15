@@ -21,10 +21,10 @@ notes](CHANGELOG.md#v071---2026-10-14) for scope and limitations.
   supports completion, chat, token-level SSE, logprobs, tools, structured-output
   validation, Qwen thinking controls, logprob-biased effort control, and
   request diagnostics. There is also a simple built-in `chat` interface.
-- **Rigorous correctness.** Every implementation is checked against a CPU-side
-  oracle. The *strict* profile requires exact or parent-parity results;
-  *production* defaults must pass their correctness gates, and anything that
-  fails is rejected or made opt-in with its cost stated.
+- **Correct output first, then speed.** Some engines trade output accuracy for
+  benchmark numbers. hipEngine does not: every kernel is checked against a CPU
+  reference implementation, and a faster kernel becomes the default only after
+  its output passes those checks.
 
 ## Supported models
 
@@ -55,8 +55,8 @@ compares hipEngine against other engines on a single [Framework Desktop](https:/
 
 hipEngine includes [DMS](https://arxiv.org/abs/2506.05345) support and training
 code, with a published [DMS checkpoint for Qwen3.8-27B Q4_K_M](https://huggingface.co/shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192).
-The [DMS analysis](docs/reference/DMS-ANALYSIS.md) records the quality bar and the
-8K–232K evidence ladder; measured capacity is in
+The [DMS analysis](docs/reference/DMS-ANALYSIS.md) has the quality results;
+measured capacity is in
 [Long context on a 24 GB GPU](#long-context-on-a-24-gb-gpu) below.
 
 CPU model generation is not supported. The CPU backend is used for correctness
@@ -69,8 +69,6 @@ broader model and quantization ecosystem. See the
 trade-offs, including ROCmFP4/ROCmFPX.
 
 ## Performance highlights
-
-These are measured results, not estimates.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
 Tokens/s on each named host: **prompt processing** is input, **text generation**
@@ -117,16 +115,14 @@ INT8 agreed with BF16 more closely than the direct-INT8 route:
 | Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
 | DMS INT8 | 232,448 | 100% | 0.001 |
 
-Direct-INT8 failed 9 of 11 quality prompts and is not a default
-([capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)).
+Direct-INT8 failed 9 of 11 quality prompts; use DMS INT8 for long context.
 
 ### Prefix caching
 
 Multi-turn conversations resend the whole transcript, so hipEngine reuses the
 KV pages and hybrid state of any 256-token-aligned prefix a later request
 repeats. Radix is the default for both the direct engine and HTTP serving
-(`--prefix-cache off` to disable). Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo,
-14 multi-turn lanes of three turns:
+(`--prefix-cache off` to disable). Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo:
 
 | Lane | Cache off | Cache on | Wall time |
 | --- | ---: | ---: | ---: |
@@ -297,11 +293,12 @@ llm.close()
 
 `LLM(...)` detects a supported AMD GPU and chooses the model format
 automatically. You can also pass a local GGUF or Maple path. Advanced users can
-override the choice with `backend=` and `quant=`. The
-`execution_profile="strict"|"production"|"batch_invariant"` selector is
-fail-closed to registered kernel plans with exact fallbacks; omitting it selects
-`production` where a certified plan exists and otherwise keeps hipEngine's
-default kernel selection.
+override the choice with `backend=` and `quant=`. Pass
+`execution_profile="strict"` for results that match the reference kernels
+exactly, or `"batch_invariant"` for output that does not change with other
+concurrent requests. The default is `"production"`, the fastest kernels that
+pass hipEngine's correctness checks. If a model has no kernels for the requested
+profile, loading fails instead of falling back.
 
 ## Documentation
 
@@ -323,7 +320,7 @@ default kernel selection.
 | --- | --- |
 | [Architecture and roadmap](docs/PLAN.md) | Engine design and planned work |
 | [Kernel catalog](docs/KERNELS.md) | Kernel implementations and source history |
-| [DMS analysis](docs/reference/DMS-ANALYSIS.md) | DMS quality bar, paper-matched tests, and the 8K–232K evidence ladder |
+| [DMS analysis](docs/reference/DMS-ANALYSIS.md) | DMS quality tests and long-context results |
 | [Testing](docs/TESTING.md) | Correctness tests and release checks |
 | [Benchmark methods](docs/BENCHMARK.md) | Rules used for performance claims |
 | [Benchmark results](benchmarks/README.md) | Full result tables and evidence |
