@@ -25,7 +25,7 @@ class _Tokenizer:
 
 class _TargetRunner:
     def __init__(self) -> None:
-        self.max_sequence_length = 1_024
+        self.max_sequence_length = 4_096
         self.position = 0
         self.truth = (10, 11, 12, 13, 14)
         self.cursor = 0
@@ -56,7 +56,7 @@ class _TargetRunner:
 
 
 class _DraftRunner:
-    max_sequence_length = 1_024
+    max_sequence_length = 4_096
 
     def __init__(self) -> None:
         self.position = 0
@@ -165,11 +165,35 @@ def test_qwen4_exp_mtp_provider_keeps_exact_target_output_and_trims_draft() -> N
     capability = provider.capabilities()
     assert capability["strict_fallback"] == "target_ar"
     assert capability["streaming_mode"] == "buffered_public"
+    assert capability["context_limit"] == 4_096
 
     chunks = list(provider.stream_detailed(_request()))
     assert len(chunks) == 1
-    assert chunks[0].generated_token_ids == (10, 11, 12, 13, 14)
 
+
+def test_qwen4_exp_mtp_crosses_the_old_1k_boundary() -> None:
+    target = _TargetGenerator()
+    draft = _DraftRunner()
+    provider = Qwen4ExpMTPTextProvider(
+        target_generator=target,
+        config=SpeculativeProviderConfig(
+            provider="qwen4_exp_mtp", draft_model="/tmp/fake.gguf", candidate_budget=2
+        ),
+        draft_runner=draft,
+        draft_resident=object(),
+    )
+
+    request = GenerationRequest(
+        prompts=(tuple(range(1_020)),),
+        max_tokens=5,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=True,
+        top_k=1,
+    )
+    output = provider.generate_detailed(request)[0]
+    assert output.generated_token_ids == (10, 11, 12, 13, 14)
+    assert provider.capabilities()["context_limit"] == 4_096
 
 
 def test_qwen4_exp_mtp_provider_is_registered_for_operational_quant() -> None:

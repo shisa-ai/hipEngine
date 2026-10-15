@@ -72,7 +72,7 @@ class Qwen4ExpMTPDraftSnapshot:
 
 
 class Qwen4ExpGGUFMTPDraftRunner:
-    """One request-owned dense MTP draft at the 512/1K bring-up scope."""
+    """One request-owned dense MTP draft with model-capacity admission."""
 
     def __init__(
         self,
@@ -88,8 +88,28 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self.backend = str(backend)
         self.runtime = runtime or resident.runtime or get_hip_runtime()
         self.max_sequence_length = int(max_sequence_length)
-        if not 0 < self.max_sequence_length <= 1_024:
-            raise ValueError("Qwen4Exp MTP bring-up capacity must be in 1..1024")
+        model_capacity = int(getattr(target_config, "context_length", 0))
+        if not 0 < self.max_sequence_length <= model_capacity:
+            raise ValueError(
+                "Qwen4Exp MTP capacity must be within the target model context "
+                f"(1..{model_capacity})"
+            )
+        # The one-layer draft owns its own K/V plane. Refuse a requested
+        # capacity that cannot be admitted with a conservative half-free-memory
+        # reserve; callers can retry with a smaller explicitly admitted target
+        # capacity instead of discovering the failure after partial allocation.
+        free_bytes, _ = self.runtime.mem_get_info()
+        kv_bytes = (
+            self.max_sequence_length
+            * int(self.config.attention_kv_head_count)
+            * int(self.config.attention_key_length)
+            * (2 + 4)
+        )
+        if kv_bytes > int(free_bytes) // 2:
+            raise MemoryError(
+                "Qwen4Exp MTP context capacity exceeds available draft KV memory: "
+                f"required={kv_bytes}, free={int(free_bytes)}"
+            )
         sidecar = resident.plan.config
         for field in (
             "hidden_size",
