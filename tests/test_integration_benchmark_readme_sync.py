@@ -158,7 +158,7 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
     assert len(readme.splitlines()) <= 500
     assert readme.index("## Supported models") < readme.index("## Performance highlights")
-    assert readme.index("## Performance highlights") < readme.index("## Status")
+    assert readme.index("## Performance highlights") < readme.index("## Limits")
     models = (repo_root / "docs/MODELS.md").read_text(encoding="utf-8")
     assert "[model support reference](docs/MODELS.md)" in readme
     model_section = readme.split("## Supported models", 1)[1].split("## Performance highlights", 1)[0]

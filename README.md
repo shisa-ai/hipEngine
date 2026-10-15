@@ -8,16 +8,12 @@ model loading, generation, and OpenAI-compatible serving on supported hardware.
 makes the default YuE2 song budget fit the resident AR context. See the [release
 notes](CHANGELOG.md#v071---2026-10-14) for scope and limitations.
 
-[Supported models](#supported-models) lists the current model families and
-hardware; the [model support reference](docs/MODELS.md) gives exact formats,
-checkpoints, and limitations for each.
-
 ## Why use hipEngine?
 
 - **Native AMD support.** HIP-first kernels are written from scratch and tuned specifically for
   RDNA 3 (gfx1100) and Strix Halo RDNA 3.5 (gfx1151) instead of being CUDA ports.
 - **No PyTorch runtime required.** There is no PyTorch dependency, which keeps
-  hipEngine lightweight: a small Python host drives compiled HIP kernels.
+  hipEngine lightweight.
 - **Optimized for agents and concurrent requests.** hipEngine is tuned for both
   single-request latency and multiple concurrent requests, with continuous
   batching, prefix caching, and a shared KV pool.
@@ -43,15 +39,16 @@ checkpoints, and limitations for each.
   public audio API support is planned.
 - **Music generation:** [YuE2](docs/model-cards/MODEL-YUE2.md) for songs from lyrics
   and a style prompt, through `LLM.generate_song()` or `POST /v1/audio/songs`
-  (early support; measured on Strix Halo).
+  (early support).
 - **Time-series forecasting:** [TimesFM 2.5](docs/model-cards/MODEL-TIMESFM.md) and
   [TimesFM 3.0](docs/model-cards/MODEL-TIMESFM3.md).
 
 See the [model support reference](docs/MODELS.md) for exact checkpoints,
 GGUF quantizations, ParoQuant, MLX, and safetensors formats, plus hardware
 and API limits. Qwen3.8-27B GGUF `Q4_K_M` is the dense model to start with
-on either AMD backend. Most other modalities are tested on Strix Halo;
-NVIDIA Blackwell (`sm_120a`) support is limited to Maple's Python API.
+on either AMD backend. Most other modalities are tested on Strix Halo.
+NVIDIA Blackwell (`sm_120a`) support is limited to Maple's Python API, which
+you load explicitly with `backend="cuda_sm120a"`.
 
 An independent [survey of Qwen3.8-27B implementations on Strix Halo](docs/campaigns/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
 compares hipEngine against other engines on a single [Framework Desktop](https://frame.work/desktop) host.
@@ -63,8 +60,7 @@ The [DMS analysis](docs/reference/DMS-ANALYSIS.md) records the quality bar and t
 [Long context on a 24 GB GPU](#long-context-on-a-24-gb-gpu) below.
 
 CPU model generation is not supported. The CPU backend is used for correctness
-tests. On NVIDIA, load Maple with `backend="cuda_sm120a"`; automatic hardware
-selection currently covers AMD only.
+tests.
 
 Choose the [ParoQuant W4 checkpoint](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed)
 for the optimized Qwen3.6 35B-A3B path, or [GGUF](docs/reference/GGUF.md) for the
@@ -169,22 +165,13 @@ prompt processing. Qwen3.6-35B-A3B `UD_Q4_K_M` on Strix Halo (`gfx1151`):
 recomputed. The 16-snapshot setting uses more memory and is opt-in.
 [Results and retention guidance](benchmarks/README.md#current-default-notes).
 
-## Status and limits
-
-v0.7.1 is a patch release. Automatic performance routes stay scoped to
-configurations hipEngine has measured.
+## Limits
 
 - hipEngine uses one GPU per process; multi-GPU inference is not implemented.
-  There is no desktop GUI or automatic model download, and CPU model inference
-  is not implemented.
-- The concurrency figures come from a 48 GB W7900. On a 24 GB card, single-request
-  context is qualified to 232,448 tokens on the DMS and opt-in direct-INT8 routes;
-  concurrent-request shapes at 24 GB are not qualified, so keep a conservative
-  context limit there.
-- Automatic speculative decoding covers a qualified set of model, GPU, storage,
-  and request shapes and is bounded by available memory; the server reports why
-  it skips a request. Packed INT8 and compact-DMS MTP are not implemented. See
+- Speculative decoding does not support packed INT8 or compact-DMS KV. See
   [Server API](docs/API.md) for admission and fallback behavior.
+- Concurrent long-context requests on a 24 GB card are untested; keep the
+  context limit conservative there.
 
 ## Hardware detection
 
@@ -193,7 +180,7 @@ Radeon Pro W7900 and Ryzen AI MAX+ 395 / Radeon 8060S systems.
 Other AMD architecture numbers are not automatically treated as compatible.
 
 You can force a nearby backend, but do so only after checking output quality and
-performance. hipEngine will not silently use PyTorch when a GPU is unsupported.
+performance.
 
 ## Installation
 
@@ -205,9 +192,10 @@ performance. hipEngine will not silently use PyTorch when a GPU is unsupported.
 | NVIDIA Blackwell | Linux x86-64, Python 3.11+ and the CUDA toolkit with `nvcc`; Maple only |
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
-ROCm 7.x is the safest choice for the current wheel (ROCm 10.0 has been tested and works fine as well).
-See the [TheRock setup guide](docs/reference/THEROCK.md) for retained ROCm 7.13 and gfx1151 ROCm 10 setup/JIT validation.
-The first model load compiles and caches kernels, so it takes longer than later starts.
+ROCm 7.x is the safest choice for the current wheel; ROCm 10.0 has also been
+tested and works. See the [TheRock setup guide](docs/reference/THEROCK.md) for
+ROCm 7.13 and gfx1151 ROCm 10 setup and JIT validation. The first model load
+compiles and caches kernels, so it takes longer than later starts.
 
 Install from PyPI:
 
@@ -312,8 +300,8 @@ automatically. You can also pass a local GGUF or Maple path. Advanced users can
 override the choice with `backend=` and `quant=`. The
 `execution_profile="strict"|"production"|"batch_invariant"` selector is
 fail-closed to registered kernel plans with exact fallbacks; omitting it selects
-`production` for models with a certified plan and keeps the previous behaviour
-otherwise.
+`production` where a certified plan exists and otherwise keeps hipEngine's
+default kernel selection.
 
 ## Documentation
 
