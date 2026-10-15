@@ -120,6 +120,7 @@ class _DraftRunner:
         target_hidden_seed,
         draft_n_max: int,
         target_hidden_seed_ptr=None,
+        compact_output=False,
     ):
         values = self.candidates[: int(draft_n_max)]
         self.forward_calls += len(values)

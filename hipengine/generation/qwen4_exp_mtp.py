@@ -85,9 +85,7 @@ class Qwen4ExpMTPTextProvider:
                 draft_runner = Qwen4ExpGGUFMTPDraftRunner(
                     self._resident,
                     target_config=target_generator.runner.config,
-                    max_sequence_length=min(
-                        1_024, int(target_generator.runner.max_sequence_length)
-                    ),
+                    max_sequence_length=int(target_generator.runner.max_sequence_length),
                     backend=target_generator.backend,
                     runtime=target_generator.runner.runtime,
                 )
@@ -120,7 +118,7 @@ class Qwen4ExpMTPTextProvider:
             "transaction_mode": row.transaction_mode,
             "strict_fallback": row.strict_fallback,
             "candidate_budget": self.candidate_budget,
-            "context_limit": min(1_024, int(self.draft.max_sequence_length)),
+            "context_limit": int(self.draft.max_sequence_length),
             "streaming_mode": "buffered_public",
         }
 
@@ -140,12 +138,15 @@ class Qwen4ExpMTPTextProvider:
         )
         if not token_ids:
             raise ValueError("Qwen4Exp MTP prompt produced no token IDs")
-        if len(token_ids) + request.max_tokens > min(
-            1_024,
+        capacity = min(
             int(self.target_generator.runner.max_sequence_length),
             int(self.draft.max_sequence_length),
-        ):
-            raise ValueError("Qwen4Exp MTP request exceeds the 512/1K bring-up scope")
+        )
+        if len(token_ids) + request.max_tokens > capacity:
+            raise ValueError(
+                "Qwen4Exp MTP request exceeds the admitted target/draft context "
+                f"capacity ({capacity} tokens)"
+            )
         if request.max_tokens == 0:
             return GenerationOutput(
                 text="",
