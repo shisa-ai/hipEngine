@@ -550,12 +550,14 @@ def test_flash_variant_takes_a_short_row_from_the_preferred_entry(
 @pytest.mark.parametrize("geom", _GEOMETRIES)
 @pytest.mark.parametrize("tokens", [2, 5, 9])
 @pytest.mark.parametrize("keys", [700, 4096])
-def test_a_multi_token_launch_repeats_each_tokens_own_launch(attention_library, geom, tokens, keys):
-    """A verify block's token group shares K/V loads, not arithmetic.
+def test_a_multi_token_launch_agrees_with_each_tokens_own_launch(attention_library, geom, tokens, keys):
+    """A verify block's token group is each token's own attention, re-summed.
 
-    The multi-token kernel serves a group of tokens per block; every token's
-    output must be the bits a one-token launch over the same keys and mask row
-    produces, with each token's own causal mask.
+    The multi-token kernel serves a group of tokens per block and computes each
+    query-key dot product in one thread rather than through the per-token
+    kernel's warp tree, so the logits sum in a different order (a production
+    route). Every token's output must agree with a one-token launch over the same
+    keys and mask row, with its own causal mask, to within bf16 rounding.
     """
 
     from types import SimpleNamespace
@@ -603,4 +605,11 @@ def test_a_multi_token_launch_repeats_each_tokens_own_launch(attention_library, 
         for buffer in buffers:
             free(buffer)
 
-    np.testing.assert_array_equal(out_block, out_rows)
+    got = _as_float(out_block, "bf16")
+    want = _as_float(out_rows, "bf16")
+    # Two bf16 ulps of each head row's largest magnitude: the logits differ in
+    # the last f32 bits, which moves every output by a sliver of the row's scale
+    # before the bf16 store rounds it.
+    scale = np.abs(want).max(axis=-1, keepdims=True)
+    worst = float((np.abs(got - want) / scale).max())
+    assert worst <= 2 * 2.0 ** -8, worst
