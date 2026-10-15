@@ -1090,6 +1090,18 @@ def gemma4_project_expert(
 # this one variant name, so the expert forward resolves it from the registry by
 # quant key rather than branching on the type.
 _SELECTED_VARIANT = "selected_gemv_bf16_bf16_out"
+# Production siblings of the two selected owners Gemma 4's experts resolve (the
+# Q4T16 gate/up tiles and the Q5_1 pack8 down). They partition each output's
+# input sum into eight-input runs per thread so a block's scales are decoded
+# once per eight weights; the selected owners re-decode them for every weight
+# and are ALU-bound. Different summation order, so the chain offers them only on
+# the unpinned production route (``HIPENGINE_GEMMA4_MOE_PREFILL`` unset or
+# ``auto``); the strict profile pins ``grouped`` and keeps the selected owners.
+# W7900, all 30 layers, cold weights: gate/up 1.43x at 8 lanes (one decode
+# step), 1.59x at 40 lanes (a five-row verify block), 1.71x at 72; down 1.18x,
+# 1.64x and 1.78x.
+_SELECTED_CHUNK8_VARIANT = "selected_chunk8_gemv_bf16_bf16_out"
+_SELECTED_PACK8_CHUNK8_VARIANT = "selected_pack8_chunk8_gemv_bf16_bf16_out"
 # D11: the pack8 selected leaf shares the raw selected GEMV's launch ABI and
 # sits registered under this sibling variant for quants whose pack-of-8
 # blocks exist (q8_0, q5_k); the chain below prefers it only where
@@ -1986,12 +1998,14 @@ def _selected_route(
         callable(getattr(weight, "has_allocation", None))
         and weight.has_allocation("tiles")
     )
+    production = _prefill_mode() == "auto"
     fingerprint = (
         weight.backend,
         weight.spec.quant_key,
         tiles_quant,
         has_tiles,
         out_features,
+        production,
     )
     gen = generation()
     entry = _SELECTED_ROUTE_CACHE.get(fingerprint)
@@ -2000,11 +2014,21 @@ def _selected_route(
 
     candidates: list[tuple[str, str, str | None]] = []
     if tiles_quant and has_tiles:
+        if production:
+            candidates.append((tiles_quant, _SELECTED_CHUNK8_VARIANT, "tiles"))
         candidates.append((tiles_quant, _SELECTED_VARIANT, "tiles"))
     if out_features % 8 == 0:
+        if production:
+            candidates.append(
+                (weight.spec.quant_key, _SELECTED_PACK8_CHUNK8_VARIANT, None)
+            )
         candidates.append(
             (weight.spec.quant_key, _SELECTED_PACK8_VARIANT, None)
         )
+    if production:
+        # A stack planned directly in the T16 layout carries the tiles quant as
+        # its own key, so its production sibling is resolved here.
+        candidates.append((weight.spec.quant_key, _SELECTED_CHUNK8_VARIANT, None))
     candidates.append((weight.spec.quant_key, _SELECTED_VARIANT, None))
 
     resolved_fn: object | None = None

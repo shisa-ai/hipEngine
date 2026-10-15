@@ -1110,7 +1110,7 @@ def test_q5_k_t16_selected_key_resolves() -> None:
     ), key.display()
 
 
-def test_selected_expert_prefers_tiles_then_pack8_then_incumbent() -> None:
+def test_selected_expert_prefers_tiles_then_pack8_then_incumbent(monkeypatch) -> None:
     """``gemma4_project_experts_selected`` trials its candidates in order.
 
     The chain is registration-existence and geometry gated, never identity
@@ -1134,6 +1134,11 @@ def test_selected_expert_prefers_tiles_then_pack8_then_incumbent() -> None:
     sibling reads the tiles allocation, every raw candidate reads the
     primary.
     """
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import _PREFILL_MODE_ENV
+
+    # The strict chain's order. The unpinned production route probes each rung's
+    # eight-input-run sibling first (test_unit_gemma4_expert_route covers that).
+    monkeypatch.setenv(_PREFILL_MODE_ENV, "grouped")
 
     from types import SimpleNamespace
 

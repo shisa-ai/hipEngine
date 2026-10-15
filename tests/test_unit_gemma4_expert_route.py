@@ -391,6 +391,29 @@ def test_grouped_prefill_records_the_variant_it_resolved() -> None:
     assert gemma4_moe_grouped_variant_counts().get(preferred, 0) == before + 1
 
 
+@pytest.fixture
+def strict_selected_route(monkeypatch):
+    """Pin the strict selected chain for tests that stub its owners.
+
+    These tests register stand-ins for the selected owners and call with
+    placeholder pointers. The unpinned production route would first offer the
+    real eight-input-run sibling, which is not stubbed, and launching it on the
+    placeholders faults the device; the next synchronizing call then never
+    returns. The chain under test is the strict one, so the route is pinned.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        _PREFILL_MODE_ENV,
+        _SELECTED_ROUTE_CACHE,
+    )
+
+    monkeypatch.setenv(_PREFILL_MODE_ENV, "grouped")
+    _SELECTED_ROUTE_CACHE.clear()
+    yield
+    _SELECTED_ROUTE_CACHE.clear()
+
+
+@pytest.mark.usefixtures("strict_selected_route")
 def test_rows_prefers_the_grouped_family_over_the_selected_gemv() -> None:
     """The cheaper route wins, and the other one is not launched anyway."""
 
@@ -426,6 +449,7 @@ def test_rows_prefers_the_grouped_family_over_the_selected_gemv() -> None:
     assert pack8_calls == []
 
 
+@pytest.mark.usefixtures("strict_selected_route")
 def test_rows_falls_back_to_the_selected_gemv_without_a_grouped_family(monkeypatch) -> None:
     """A quant with no grouped family keeps the arithmetic it had before.
 
@@ -467,6 +491,7 @@ def test_rows_falls_back_to_the_selected_gemv_without_a_grouped_family(monkeypat
     assert len(selected_calls) == 1
 
 
+@pytest.mark.usefixtures("strict_selected_route")
 def test_rows_keeps_the_selected_gemv_below_one_lane_per_expert() -> None:
     """A decode block must not pay for a grid that walks every expert."""
 
@@ -728,6 +753,7 @@ def _run_selected(weight, out_features: int, in_features: int = 704):
     )
 
 
+@pytest.mark.usefixtures("strict_selected_route")
 def test_selected_prefers_the_pack8_sibling_over_the_single_output_owner() -> None:
     """Eight columns per block is the same arithmetic, so it is preferred."""
 
@@ -747,6 +773,7 @@ def test_selected_prefers_the_pack8_sibling_over_the_single_output_owner() -> No
     assert selected_calls == []
 
 
+@pytest.mark.usefixtures("strict_selected_route")
 def test_selected_falls_back_when_the_width_is_not_eight_wide() -> None:
     """A pack8 block has to write eight columns, so an odd width declines it.
 
@@ -772,6 +799,7 @@ def test_selected_falls_back_when_the_width_is_not_eight_wide() -> None:
     assert len(selected_calls) == 1
 
 
+@pytest.mark.usefixtures("strict_selected_route")
 def test_selected_falls_back_when_no_pack8_sibling_is_registered() -> None:
     """A quant that declares no pack8 sibling keeps the arithmetic it had.
 
@@ -806,6 +834,7 @@ def test_selected_falls_back_when_no_pack8_sibling_is_registered() -> None:
     assert len(selected_calls) == 1
 
 
+@pytest.mark.usefixtures("strict_selected_route")
 def test_selected_reports_a_quant_that_registers_neither_variant() -> None:
     """The boolean still means what it meant: this quant has no selected GEMV."""
 
@@ -962,7 +991,7 @@ def _from_bf16_bits(bits: np.ndarray) -> np.ndarray:
 @_needs_hip
 @pytest.mark.parametrize("quant, out_features, in_features", _GROUPED_CASES)
 def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
-    quant, out_features, in_features
+    quant, out_features, in_features, monkeypatch
 ) -> None:
     """Weight reuse must not cost a single bit against the per-lane GEMV.
 
@@ -983,9 +1012,14 @@ def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
         malloc,
     )
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        _PREFILL_MODE_ENV,
         gemma4_project_experts_selected,
     )
 
+    # Both owners compared here are the strict arm's: the pinned route keeps the
+    # selected owner, where the unpinned production route would offer its
+    # eight-input-run sibling, which sums in a different order by design.
+    monkeypatch.setenv(_PREFILL_MODE_ENV, "grouped")
     num_experts = 4
     counts = np.asarray([3, 0, 5, 2], dtype=np.int64)
     rows = int(counts.sum())
@@ -2454,3 +2488,53 @@ def test_down_mmq_defaults_to_exact_after_observed_continuation_failure(monkeypa
     else:
         monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", value)
     assert gemma4_moe_down_mmq_enabled() is expected
+
+
+# --- production eight-input-run siblings on the unpinned route --------------
+
+
+@pytest.mark.parametrize(
+    ("quant", "tiles_quant", "has_tiles", "out_features", "production_variant", "strict_variant"),
+    [
+        # A stack planned in the T16 layout carries the tiles quant as its own key.
+        ("gguf_q4_k_t16_v1", None, True, 1408,
+         "selected_chunk8_gemv_bf16_bf16_out", "selected_gemv_bf16_bf16_out"),
+        # A raw stack with a T16 side copy resolves the sibling under the tiles key.
+        ("gguf_q4_k", "gguf_q4_k_t16_v1", True, 1408,
+         "selected_chunk8_gemv_bf16_bf16_out", "selected_gemv_bf16_bf16_out"),
+        # The Q5_1 down stack's pack8 owner and its sibling.
+        ("gguf_q5_1", None, False, 2816,
+         "selected_pack8_chunk8_gemv_bf16_bf16_out", "selected_pack8_gemv_bf16_bf16_out"),
+    ],
+)
+@pytest.mark.parametrize("mode", ["", "auto", "grouped", "selected"])
+def test_the_unpinned_route_takes_the_production_sibling(
+    monkeypatch, quant, tiles_quant, has_tiles, out_features, production_variant,
+    strict_variant, mode,
+):
+    from types import SimpleNamespace
+
+    from hipengine.kernels import registry
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts
+    from hipengine.runtime import gguf_linear
+
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(quant_key=quant, tiles_quant_key=tiles_quant),
+        backend="hip_gfx1100",
+        has_allocation=lambda name: has_tiles and name == "tiles",
+    )
+    registered = {
+        (tiles_quant or quant, production_variant),
+        (tiles_quant or quant, strict_variant),
+    }
+    monkeypatch.setattr(registry, "is_registered", lambda key: (key.quant, key.variant) in registered)
+    monkeypatch.setattr(registry, "resolve", lambda *, backend, layer, quant, variant: variant)
+    monkeypatch.setattr(gguf_linear, "_ensure_linear_kernel_registered", lambda key: None)
+    monkeypatch.setenv(gemma4_experts._PREFILL_MODE_ENV, mode)
+    gemma4_experts._SELECTED_ROUTE_CACHE.clear()
+    try:
+        fn, _allocation = gemma4_experts._selected_route(weight, out_features)
+    finally:
+        gemma4_experts._SELECTED_ROUTE_CACHE.clear()
+
+    assert fn == (production_variant if mode in ("", "auto") else strict_variant)
