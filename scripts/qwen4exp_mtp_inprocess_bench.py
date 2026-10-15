@@ -77,6 +77,7 @@ def main(argv=None) -> int:
         config=SpeculativeProviderConfig(
             provider="qwen4_exp_mtp", draft_model=args.sidecar,
             candidate_budget=args.budget))
+    generator.attach_speculative_provider(provider)
     runner = generator.runner
     rows = []
     try:
@@ -97,7 +98,7 @@ def main(argv=None) -> int:
                     prompts=(tuple(prompt),), max_tokens=args.max_tokens,
                     temperature=0.0, top_p=1.0, ignore_eos=True, top_k=1)
                 started = time.perf_counter()
-                output = provider.generate_detailed(request)[0]
+                output = generator.generate_speculative_mtp_detailed(request)[0]
                 mtp_seconds = time.perf_counter() - started
             diagnostics = output.telemetry.diagnostics
             mtp_tokens = [int(t) for t in output.generated_token_ids]
@@ -127,7 +128,6 @@ def main(argv=None) -> int:
             print(json.dumps({k: (round(v, 3) if isinstance(v, float) else v)
                               for k, v in rows[-1].items()}), flush=True)
     finally:
-        provider.close()
         generator.close()
 
     groups = defaultdict(list)
