@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_mtp_inprocess_bench",
+  "created_at": "2026-10-15T01:29:48.871444+00:00",
+  "performance_claim": true,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "0d5a98c0411f4dd1fd1ff8a8236611f57a07a4c2",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.2.9-2-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "qwen4exp_mtp_inprocess_bench.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--sidecar",
+    "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+    "--prompts",
+    "/tmp/qwen4exp-mtp-long-prompt.jsonl",
+    "--max-tokens",
+    "16",
+    "--budget",
+    "3",
+    "--max-sequence-length",
+    "4096",
+    "--execution-profile",
+    "production",
+    "--output",
+    "/tmp/qwen4exp-mtp-context/long-context.json"
+  ],
+  "protocol": {
+    "prompts": "/tmp/qwen4exp-mtp-long-prompt.jsonl",
+    "max_tokens": 16,
+    "budget": 3,
+    "execution_profile": "production",
+    "warmup": "one unmeasured AR and MTP run per prompt",
+    "batched_verify_env": null
+  },
+  "rows": [
+    {
+      "id": "long_context_crosses_1k",
+      "category": "general_en",
+      "prompt_tokens": 3433,
+      "ar_seconds": 3.2389231889974326,
+      "mtp_seconds": 8.43279445701046,
+      "ar_tok_s": 4.939913380580228,
+      "mtp_tok_s": 1.8973544394525914,
+      "mtp_over_ar": 0.38408658073063895,
+      "proposed": 11,
+      "accepted": 11,
+      "acceptance": 1.0,
+      "cycles": 4,
+      "verify_ms": 280.5016720085405,
+      "proposal_ms": 51.44458098220639,
+      "agree_prefix_with_ar": 16,
+      "identical_to_ar": true,
+      "target_verify": "batched_state_rows"
+    }
+  ],
+  "summary": {
+    "full": {
+      "prompts": 1,
+      "ar_tok_s": 4.939913380580228,
+      "mtp_tok_s": 1.8973544394525914,
+      "mtp_over_ar": 0.38408658073063895,
+      "acceptance": 1.0,
+      "identical_to_ar": 1
+    },
+    "category:general_en": {
+      "prompts": 1,
+      "ar_tok_s": 4.939913380580228,
+      "mtp_tok_s": 1.8973544394525914,
+      "mtp_over_ar": 0.38408658073063895,
+      "acceptance": 1.0,
+      "identical_to_ar": 1
+    }
+  }
+}
