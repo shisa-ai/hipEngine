@@ -35,6 +35,10 @@ against 2.01x for llama.cpp (68.4 to 137.4) at the same draft acceptance (73%
 against 72.5%). At temperature 0.8 it is 1.28x (70.0 to 89.8) against 1.77x
 (63.0 to 111.4). The difference is the verify block: five rows take 27.0 ms
 here and 18.6 ms in llama.cpp, whose one-row step is 14.6 ms against 14.0.
+After the selected expert projections moved to eight-input runs, the same
+greedy budget-4 measurement reaches 118.3 tok/s against 75.0 plain (1.58x); the
+root README row uses this figure
+([expert chunk8](results/2026-10-15-gemma4-gfx1100-expert-chunk8.json)).
 Artifacts:
 [comparison](results/2026-10-15-gemma4-gfx1100-llamacpp-latest-comparison.json),
 [long-row decode slicing](results/2026-10-15-gemma4-gfx1100-flash-long-rows.json),
@@ -179,6 +183,7 @@ context** is a capacity limit, not a full-length prefill.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — | **176,128** |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3696.9** | **76.4** | **118.3** | — |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
 ### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
@@ -187,7 +192,7 @@ context** is a capacity limit, not a full-length prefill.
 | --- | --- | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **754.5** | **153.2** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
-| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | — |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | **69.4** |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |
@@ -1650,6 +1655,18 @@ measured requests at `09b14efeb`.
 
 Repeated and public output IDs are equal and logits are finite.
 [Command, samples and provenance](results/2026-10-15-gemma4-gfx1151-512p128o-topline.json).
+
+MTP with the `Q8_0` assistant head at a draft budget of 4, same host and
+commit, production profile, BF16 KV: 18 prompts from the two suites under
+`benchmarks/prompts/` (code, English, Japanese, mixed), two samples each, 128
+greedy tokens, whole-call rate including prefill, through the public API.
+
+| Plain tok/s | MTP tok/s | Ratio | Draft acceptance | Rows token-identical to plain |
+| ---: | ---: | ---: | ---: | ---: |
+| 45.5 | **69.4** | **1.52x** | 72.3% | 28 of 36 |
+
+All 36 rows complete their 128 tokens within the production verify envelope.
+[MTP artifact](results/2026-10-15-gemma4-gfx1151-mtp-budget4.json).
 
 #### Paired depth ladder on the promoted build (2026-10-08)
 

@@ -84,6 +84,7 @@ context** is a capacity limit, not a full-length prefill.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — | **176,128** |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3696.9** | **76.4** | **118.3** | — |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
 ### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
@@ -92,7 +93,7 @@ context** is a capacity limit, not a full-length prefill.
 | --- | --- | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **754.5** | **153.2** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
-| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | — |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | **69.4** |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |

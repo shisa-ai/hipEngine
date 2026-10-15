@@ -361,8 +361,10 @@ call first, measured 2026-10-15 with `scripts/gemma4_mtp_probe.py`.
 | 8 | 75.1 | 104.0 | 1.39x | 1.50x | 1.37x | 1.22x | 1.43x | 26 of 36 |
 
 A budget of 4 is the best measured setting on this device. Artifact:
-`benchmarks/results/2026-10-15-gemma4-gfx1100-expert-chunk8.json`. The
-head has not been measured on `hip_gfx1151` on the current tree.
+`benchmarks/results/2026-10-15-gemma4-gfx1100-expert-chunk8.json`. On
+`hip_gfx1151` (Radeon 8060S) the same protocol at a budget of 4 gives 45.5 plain
+and 69.4 MTP tok/s (1.52x, 72.3% acceptance):
+`benchmarks/results/2026-10-15-gemma4-gfx1151-mtp-budget4.json`.
 
 The table above is the production profile, whose verify block is not exact. The
 same 18 prompts at a budget of 4, measured again with the exact verify path
