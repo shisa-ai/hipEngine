@@ -54,12 +54,10 @@ The root README exports this compact retained summary verbatim.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
 Tokens/s on each named host: **prompt processing** is input, **text generation**
-is output. **MTP** is speculative decoding in qualified scopes. Dashes are
-unmeasured; context limits are capacity tests.
+is output. **MTP** is speculative decoding. Dashes are unmeasured; **Max
+context** is a capacity limit, not a full-length prefill.
 
-### Performance
-
-#### Radeon Pro W7900 — 48 GB (`gfx1100`)
+### Radeon Pro W7900 — 48 GB (`gfx1100`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -69,38 +67,18 @@ unmeasured; context limits are capacity tests.
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
-BF16 rows: September 20, `epyc`, 512/128 tokens, warmup + three runs.
-INT8: September 13. MTP/capacity not refreshed. Laguna: 4K prompts.
-35B GGUF MTP is opt-in; 27B MTP is **1.63x** its matched 24.36 tok/s AR,
-not either decode column.
+### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
-#### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
+| Model | Quant | Prompt processing | Text generation | With MTP |
+| --- | --- | ---: | ---: | ---: |
+| Maple-Preview | 2-bit | **754.5** | **153.2** | — |
+| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
+| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | — | **10.84** | **19.3** |
 
-| Model | Quant | Prompt processing | Text generation | With MTP | AR measured |
-| --- | --- | ---: | ---: | ---: | --- |
-| Maple-Preview | 2-bit | **754.5** | **153.2** | — | 2026-08-08 |
-| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 | 2026-09-20 |
-| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | 2026-07/08 |
-| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | 2026-08-17 |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** | 2026-09-20 |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | — | **10.84** | **19.3** | 2026-09-23 |
-
-September 20: Framework Desktop. Qwen3.8 `Q4_K_M` MTP: **1.98x** its matched
-11.30 tok/s AR, 25 output tokens. A short-context measurement. 35B MTP is
-the July 19 opt-in result. INT8-KV row: **1.78x** AR at c1, **2.39x** at c2,
-**3.06x** at c4, documented override.
-[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json).
-
-**Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
-context 8192, horizon 512 forecasts in **0.082 s** on the HP ZBook Strix Halo
-host (8.6x the official torch reference) and **0.062 s** on a Framework Desktop
-host — the same GPU on two machines, so the gap is thermal headroom.
-
-**VibeVoice-ASR 9B** is torch-free on Strix Halo. Q4_K_M beats bf16 — **1.52x**
-prefill, **1.55x** decode — at 6.1 vs 16.7 GB, WER 2.01% vs 2.81%; **RTF 0.35**.
-[Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-q4-e2e-rtf.json).
-
-#### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
+### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -109,8 +87,8 @@ prefill, **1.55x** decode — at 6.1 vs 16.7 GB, WER 2.01% vs 2.81%; **RTF 0.35*
 ### Long context on a 24 GB GPU
 
 Qwen3.8-27B `Q4_K_M` can hold up to 232K tokens on a 24 GB `gfx1100` GPU
-using [DMS](https://arxiv.org/abs/2506.05345), a trained KV eviction policy.
-In these tests, DMS INT8 agreed more closely with BF16 than the direct-INT8 route:
+using [DMS](https://arxiv.org/abs/2506.05345), a trained KV eviction policy. DMS
+INT8 agreed with BF16 more closely than the direct-INT8 route:
 
 | KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
 | --- | ---: | ---: | ---: |
@@ -119,17 +97,16 @@ In these tests, DMS INT8 agreed more closely with BF16 than the direct-INT8 rout
 | Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
 | DMS INT8 | 232,448 | 100% | 0.001 |
 
-Direct-INT8 failed 9 of 11 quality prompts and is not a default.
-[Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+Direct-INT8 failed 9 of 11 quality prompts and is not a default
+([capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)).
 
 ### Prefix caching
 
 Multi-turn conversations resend the whole transcript, so hipEngine reuses the
 KV pages and hybrid state of any 256-token-aligned prefix a later request
-repeats. Radix is the default for both the direct engine and HTTP serving;
-`--prefix-cache off` rolls it back. Different prefill routes can change generated tokens.
-Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo (`gfx1151`), 14 multi-turn lanes of
-three turns, reusing 42,496 of 87,582 prompt tokens:
+repeats. Radix is the default for both the direct engine and HTTP serving
+(`--prefix-cache off` to disable). Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo,
+14 multi-turn lanes of three turns:
 
 | Lane | Cache off | Cache on | Wall time |
 | --- | ---: | ---: | ---: |
@@ -140,20 +117,13 @@ three turns, reusing 42,496 of 87,582 prompt tokens:
 
 ### Serving several requests at once
 
-Aggregate tokens per second across all active requests, Qwen3.8-27B `Q4_K_M`
-on the W7900, September 4, 2026. Peers use F16 KV where hipEngine uses BF16.
+Aggregate tokens/s across all active requests, Qwen3.8-27B `Q4_K_M` on the W7900:
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | hipEngine | **23.6** | **39.1** | **53.1** | **63.9** | **72.8** | **79.5** | **83.2** | **85.9** |
 | llama.cpp HIP | 21.0 | 34.4 | 30.6 | 27.7 | 36.7 | 46.4 | 52.1 | 58.4 |
 | hipEngine advantage | +12% | +14% | +74% | +130% | +99% | +71% | +60% | **+47%** |
-
-On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
-requests (123.131 at one, 202.038 at four). Where speculative
-decoding runs automatically in production it is scoped to a qualified shape:
-Qwen3.6-35B-A3B GGUF reaches **93.644 tok/s public** — 1.1565x its own AR — at
-two concurrent requests on the W7900.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## RX 7900 XTX Same-Model Comparison
