@@ -9679,7 +9679,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1005,
-        "referrers": 1082,
+        "referrers": 1083,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -9711,7 +9711,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/runtime/state.hip",
-      "evidence_hash": "cdeffb47427d"
+      "evidence_hash": "6066ea1a7038"
     },
     {
       "kind": "kernel",
@@ -9722,7 +9722,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 1247,
-        "referrers": 1082,
+        "referrers": 1083,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -9753,7 +9753,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/runtime/state.py",
-      "evidence_hash": "267eb56c0eab"
+      "evidence_hash": "8425cddc9f24"
     },
     {
       "kind": "kernel",

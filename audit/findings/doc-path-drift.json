@@ -1,8 +1,8 @@
 {
   "kind": "doc-path-drift",
   "meta": {
-    "paths_checked": 1837,
-    "skipped_as_illustrative": 1454,
+    "paths_checked": 1841,
+    "skipped_as_illustrative": 1459,
     "exempt": [
       "docs/campaigns/",
       "docs/archive/",
@@ -11,142 +11,6 @@
     ]
   },
   "rows": [
-    {
-      "kind": "doc-path-drift",
-      "key": "AGENTS.md:80:kernels/cpu_reference",
-      "title": "names `kernels/cpu_reference`, which is actually at `hipengine/kernels/cpu_reference`",
-      "location": "AGENTS.md:80",
-      "evidence": {
-        "fix": "Change `kernels/cpu_reference` to `hipengine/kernels/cpu_reference`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "kernels/cpu_reference",
-        "doc": "AGENTS.md",
-        "actual": [
-          "hipengine/kernels/cpu_reference"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "AGENTS.md",
-        "refs": [
-          "AGENTS.md:80:kernels/cpu_reference"
-        ],
-        "tokens": [
-          "actually",
-          "cpu_reference",
-          "hipengine",
-          "kernels",
-          "names",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/AGENTS.md:80:kernels/cpu_reference",
-      "evidence_hash": "af56b9f2b10d"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "AGENTS.md:80:kernels/cuda_sm86",
-      "title": "names `kernels/cuda_sm86`, which is actually at `hipengine/kernels/cuda_sm86`",
-      "location": "AGENTS.md:80",
-      "evidence": {
-        "fix": "Change `kernels/cuda_sm86` to `hipengine/kernels/cuda_sm86`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "kernels/cuda_sm86",
-        "doc": "AGENTS.md",
-        "actual": [
-          "hipengine/kernels/cuda_sm86"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "AGENTS.md",
-        "refs": [
-          "AGENTS.md:80:kernels/cuda_sm86"
-        ],
-        "tokens": [
-          "actually",
-          "cuda_sm86",
-          "hipengine",
-          "kernels",
-          "names",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/AGENTS.md:80:kernels/cuda_sm86",
-      "evidence_hash": "c483470960d4"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "AGENTS.md:80:kernels/hip_gfx1100",
-      "title": "names `kernels/hip_gfx1100`, which is actually at `hipengine/kernels/hip_gfx1100`",
-      "location": "AGENTS.md:80",
-      "evidence": {
-        "fix": "Change `kernels/hip_gfx1100` to `hipengine/kernels/hip_gfx1100`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "kernels/hip_gfx1100",
-        "doc": "AGENTS.md",
-        "actual": [
-          "hipengine/kernels/hip_gfx1100"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "AGENTS.md",
-        "refs": [
-          "AGENTS.md:80:kernels/hip_gfx1100"
-        ],
-        "tokens": [
-          "actually",
-          "hip_gfx1100",
-          "hipengine",
-          "kernels",
-          "names",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/AGENTS.md:80:kernels/hip_gfx1100",
-      "evidence_hash": "769505b101b7"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "AGENTS.md:80:kernels/hip_gfx1151",
-      "title": "names `kernels/hip_gfx1151`, which is actually at `hipengine/kernels/hip_gfx1151`",
-      "location": "AGENTS.md:80",
-      "evidence": {
-        "fix": "Change `kernels/hip_gfx1151` to `hipengine/kernels/hip_gfx1151`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "kernels/hip_gfx1151",
-        "doc": "AGENTS.md",
-        "actual": [
-          "hipengine/kernels/hip_gfx1151"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "AGENTS.md",
-        "refs": [
-          "AGENTS.md:80:kernels/hip_gfx1151"
-        ],
-        "tokens": [
-          "actually",
-          "hip_gfx1151",
-          "hipengine",
-          "kernels",
-          "names",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/AGENTS.md:80:kernels/hip_gfx1151",
-      "evidence_hash": "3543e051f2fd"
-    },
     {
       "kind": "doc-path-drift",
       "key": "docs/BENCHMARK.md:1285:kernels/cpu_reference",
