@@ -39,6 +39,31 @@ def _heading_slug(heading: str) -> str:
     return re.sub(r"\s+", "-", plain)
 
 
+def _assert_no_duplicate_prose_sentences(text: str) -> None:
+    """A fact stated twice on the product page is a defect (docs/HOWTO-README.md Rule 1).
+
+    Tables, headings, fenced code, and HTML markers are excluded, so this only
+    compares prose against prose.
+    """
+    body = re.sub(r"```.*?```", "", text, flags=re.S)
+    body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+    body = re.sub(r"^\|.*$", "", body, flags=re.M)
+    body = re.sub(r"^#{1,6}.*$", "", body, flags=re.M)
+
+    seen: dict[str, int] = {}
+    for sentence in re.split(r"(?<=[.!?])\s+", body):
+        normalized = re.sub(r"[^a-z0-9 ]", "", " ".join(sentence.split()).lower())
+        if len(normalized.split()) < 6:
+            continue
+        seen[normalized] = seen.get(normalized, 0) + 1
+
+    repeated = sorted(sentence for sentence, count in seen.items() if count > 1)
+    assert not repeated, (
+        "README states the same sentence more than once; say it once, in the "
+        f"section that needs it (docs/HOWTO-README.md Rule 1): {repeated}"
+    )
+
+
 def _assert_local_markdown_links_exist(text: str, base_dir: Path) -> None:
     for target in _LOCAL_LINK_RE.findall(text):
         if target.startswith(("http://", "https://", "mailto:", "#")):
@@ -180,12 +205,16 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     assert "SH14-C1" not in readme
     # Retired from the product page: this detail belongs to the benchmark report,
     # and repeating it here made the performance summary unreadable.
+    # See docs/HOWTO-README.md for the rules behind this list.
     for retired_phrase in (
         "AR measured",
         "In these tests,",
         "September 20: Framework Desktop",
         "one adapted transcript",
         "not a general agent-quality benchmark",
+        "will not silently use PyTorch",
+        "can still change before 1.0",
+        "keep a conservative context limit",
     ):
         assert retired_phrase not in readme
     project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -196,6 +225,10 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
         assert internal_phrase not in readme
     _assert_markdown_tables_are_rectangular(readme)
     _assert_local_markdown_links_exist(readme, repo_root)
+    _assert_no_duplicate_prose_sentences(readme)
+    rules = repo_root / "docs/HOWTO-README.md"
+    assert rules.is_file(), "the root README editing rules must exist"
+    assert "docs/HOWTO-README.md" in (repo_root / "AGENTS.md").read_text(encoding="utf-8")
 
 
 def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
