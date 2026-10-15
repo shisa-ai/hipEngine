@@ -260,7 +260,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 807,
-        "referrers": 286,
+        "referrers": 285,
         "runtime_referrers": [
           "hipengine/chat/gemma4.py",
           "hipengine/generation/__init__.py",
@@ -290,7 +290,7 @@
         ]
       },
       "id": "kernel/cpu_reference/gemma4.py",
-      "evidence_hash": "542ca614f25d"
+      "evidence_hash": "b16ca10f5601"
     },
     {
       "kind": "kernel",
@@ -9764,7 +9764,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1398,
-        "referrers": 173,
+        "referrers": 172,
         "runtime_referrers": [
           "hipengine/benchmark/agentic.py",
           "hipengine/benchmark/agentic_live.py",
@@ -9798,7 +9798,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/sampling/sampler.hip",
-      "evidence_hash": "8b608a53ac06"
+      "evidence_hash": "999e45df5e62"
     },
     {
       "kind": "kernel",
@@ -9809,7 +9809,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 579,
-        "referrers": 173,
+        "referrers": 172,
         "runtime_referrers": [
           "hipengine/benchmark/agentic.py",
           "hipengine/benchmark/agentic_live.py",
@@ -9840,7 +9840,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/sampling/sampler.py",
-      "evidence_hash": "86942fccaf0c"
+      "evidence_hash": "b76745634f84"
     },
     {
       "kind": "kernel",
