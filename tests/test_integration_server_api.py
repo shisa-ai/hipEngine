@@ -4486,6 +4486,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         kv_scale_granularity: str = "per_token_head",
         vision_model: str | None = None,
         vae_model: str | None = None,
+        dms_metadata_path: str | None = None,
     ) -> FakeLLM:
         captured.update(
             {
@@ -22968,19 +22969,14 @@ def test_server_prefix_cache_default_and_overrides(monkeypatch, mode) -> None:
 
     monkeypatch.delenv("HIPENGINE_PREFIX_CACHE", raising=False)
     assert PREFIX_CACHE_DEFAULT == "radix"
-    # Both surfaces default to radix as of 2026-09-20 (owner decision). The
-    # gfx1100 numerical gate is still open and tracked in docs/REFACTOR.md, so
-    # the override below is the rollback and this pin is a decision, not an
-    # oversight.
-    assert ServerConfig(model="fake-path").prefix_cache == PREFIX_CACHE_DEFAULT
-    assert (
-        build_parser().parse_args(["--model", "fake-path"]).prefix_cache
-        == PREFIX_CACHE_DEFAULT
-    )
+    # The CLI preserves an omitted value so the engine can resolve its
+    # backend-owned default; explicit environment and command-line values remain
+    # visible at parse time.
+    assert build_parser().parse_args(["--model", "fake-path"]).prefix_cache is None
     if mode is not None:
         monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", mode)
     args = build_parser().parse_args(["--model", "fake-path"])
-    assert args.prefix_cache == (mode or PREFIX_CACHE_DEFAULT)
+    assert args.prefix_cache == mode
     for explicit in ("off", "radix"):
         assert build_parser().parse_args(
             ["--model", "fake-path", "--prefix-cache", explicit]
