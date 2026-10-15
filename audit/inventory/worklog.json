@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11604,
-    "current": 4372,
+    "entries": 11605,
+    "current": 4373,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1413,
+    "rows": 1414,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1252
+      "status": 1253
     }
   },
   "rows": [
@@ -46507,14 +46507,14 @@
         "written": "2026-09-28",
         "age_days": 18,
         "open_by": "status",
-        "continuation_entries": 10,
+        "continuation_entries": 11,
         "open_text": "1. **Find why `llm.generate` does not select the speculative route.** Read the\n   path from `LLM.generate` through the engine loop; the answer is a specific\n   branch, and the last attempt shows guessing at declarations does not find it.\n2. **Add a test that pins the route**, not just the provider: that a generator\n   with an attached provider and a greedy request reaches\n   `execution_path == \"gemma4_mtp_batched_exact_verify\"`.\n3. **Bit-exactness is the reason this can land enabled by default.** The cycle\n   reproduces plain greedy exactly, so promotion does not need the\n   arithmetic-change ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "10 later entries by the same worker share this topic prefix"
+        "11 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49.md",
@@ -46535,7 +46535,7 @@
         ]
       },
       "id": "worklog/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49",
-      "evidence_hash": "d5a1c4d1de13"
+      "evidence_hash": "a24795502f11"
     },
     {
       "kind": "worklog",
@@ -53521,14 +53521,14 @@
         "written": "2026-10-12",
         "age_days": 4,
         "open_by": "status",
-        "continuation_entries": 4,
+        "continuation_entries": 5,
         "open_text": "- Decide the verify contract: make the verify block row-invariant (then the\n  equality claim and the probe's pass condition hold again, at some cost to\n  the verify pass), or state production-envelope equivalence, measure it with\n  the section 2.11 packet, and change the telemetry label and the probe's pass\n  condition. The label is wrong until then.\n- Budget 8 loses the whole gain. Read the cycle telemetry for that row.\n- Sampled requests: `hipengine/speculative/sampling.py` has exact `min(1, p/q)`\n  acceptance with residual resampling and the Qwen MTP route uses it. Gemma\n  needs the accept ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "4 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261012T190026.866783Z-lhl-gemma4-mtp-status-820a2d.md",
@@ -53549,7 +53549,7 @@
         ]
       },
       "id": "worklog/20261012T190026.866783Z-lhl-gemma4-mtp-status-820a2d",
-      "evidence_hash": "77137a5fddaf"
+      "evidence_hash": "39efad9700a1"
     },
     {
       "kind": "worklog",
@@ -53627,6 +53627,45 @@
       },
       "id": "worklog/20261015T115913.114421Z-lhl-gemma4-gfx1151-review-a8a2cc",
       "evidence_hash": "89aa31f655a8"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261015T214300.056529Z-lhl-gemma4-mtp-serving-audit-3bce52",
+      "title": "Gemma 4 MTP on gfx1151, W7900 topline row, and OpenAI serving MTP audit",
+      "location": "worklog/entries/20261015T214300.056529Z-lhl-gemma4-mtp-serving-audit-3bce52.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-mtp-serving-audit",
+        "written": "2026-10-15",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Fix serving defects 1-5 so Gemma 4 MTP is on by default for compatible\n  requests, sampled and streamed requests run MTP or fail loudly, and the\n  generic route accepts BF16 KV.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261015T214300.056529Z-lhl-gemma4-mtp-serving-audit-3bce52.md",
+        "refs": [],
+        "tokens": [
+          "audit",
+          "gemma",
+          "gfx1151",
+          "mtp",
+          "openai",
+          "row",
+          "serving",
+          "topline",
+          "w7900"
+        ]
+      },
+      "id": "worklog/20261015T214300.056529Z-lhl-gemma4-mtp-serving-audit-3bce52",
+      "evidence_hash": "878b4b03880a"
     }
   ]
 }
