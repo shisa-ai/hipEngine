@@ -296,9 +296,10 @@ exact path replaces each:
   keys it is handed, and a multi-row launch hands every row the block's key
   range. The exact path launches each row over the range that row would have as
   a one-token step. Production serves the whole block with one launch of the
-  decode plan's key-sliced flash kernel from 256 keys, each row bounded by its
-  own mask row; before that a long block ran the owned-logits class kernel,
-  133.7 ms for five rows at 32K keys against 43.1 ms now. A one-row verify
+  decode plan's key-sliced flash route from 256 keys, each row bounded by its
+  own mask row; the block's tokens share each key slice's loads and each
+  query-key dot product is one thread's sum. Five rows at 32K keys take 29.1 ms
+  against 133.7 ms on the owned-logits class kernel the block used before. A one-row verify
   block takes exactly a decode step's attention in both profiles.
 - **The MoE router.** The one-token router is a fused launch whose projection
   reduces in a different order from the multi-row chain. The exact path routes
@@ -377,7 +378,7 @@ a 600-token prompt, production profile:
 
 | Rows in the block | 1 | 3 | 5 | 7 | 9 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Envelope verify (ms) | 12.9 | 18.7 | 22.6 | 26.7 | 32.6 |
+| Envelope verify (ms) | 12.8 | 18.5 | 21.8 | 25.3 | 30.6 |
 | Exact verify (ms) | 12.7 | 20.6 | 26.7 | 33.4 | 43.2 |
 
 A one-token decode step takes 12.7 ms in the same run. In production the
@@ -405,8 +406,8 @@ budget of 4, 128 greedy tokens after one long prompt of cycled campaign prose
 
 | Prompt tokens | Plain s | MTP s | Decode phase, plain / MTP s | Output |
 | ---: | ---: | ---: | ---: | --- |
-| 8192 | 4.26 | 3.48 | 1.81 / 1.03 | identical |
-| 32768 | 14.65 | 13.93 | 2.18 / 1.43 | identical |
+| 8192 | 4.26 | 3.32 | 1.82 / 0.88 | identical |
+| 32768 | 14.66 | 13.66 | 2.12 / 1.12 | identical |
 
 Before the multi-row flash verify and the head's flash attention the same runs
 took 3.60 s and 17.27 s, so MTP was slower than plain decoding at 32K. The

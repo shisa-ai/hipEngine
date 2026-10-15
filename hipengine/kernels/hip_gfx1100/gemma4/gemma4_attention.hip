@@ -1742,15 +1742,38 @@ __global__ void gemma4_attention_decode_flash_kernel(
 }
 
 
-// Multi-token flash decode: one block per (token group, KV head, key slice)
-// serves kG tokens of a verify block, loading each key's K row and V row once
-// for all kG * kQ query rows instead of once per token. Every row repeats
-// gemma4_attention_decode_flash_kernel's arithmetic in its order -- the same
-// warp tree per key, running maximum, weight pass, sequential slice
-// denominator and in-order V walk -- and writes the same partials, so the
-// combine pass and every output are unchanged. The staged query rows are kept
-// in their input type (bf16 is exact in float), which is what lets four global
-// tokens fit the shared-memory budget. Not used inside a graph capture.
+// Eight consecutive elements as floats, in one 16-byte load for a 2-byte type
+// (two for float). The pointer must be 16-byte aligned.
+template <typename scalar_t>
+__device__ __forceinline__ void gemma4_load8_as_float(const scalar_t* __restrict__ p, float (&out)[8]) {
+  if constexpr (sizeof(scalar_t) == 2) {
+    const uint4 w = *reinterpret_cast<const uint4*>(p);
+    const uint32_t words[4] = {w.x, w.y, w.z, w.w};
+#pragma unroll
+    for (int e = 0; e < 8; ++e) {
+      const uint16_t bits = static_cast<uint16_t>(words[e >> 1] >> (16 * (e & 1)));
+      out[e] = gemma4_attn_to_float(*reinterpret_cast<const scalar_t*>(&bits));
+    }
+  } else {
+    const float4 a = *reinterpret_cast<const float4*>(p);
+    const float4 b = *reinterpret_cast<const float4*>(p + 4);
+    out[0] = a.x; out[1] = a.y; out[2] = a.z; out[3] = a.w;
+    out[4] = b.x; out[5] = b.y; out[6] = b.z; out[7] = b.w;
+  }
+}
+
+// Multi-token flash decode for a speculative verify block: one block per
+// (token group, KV head, key slice) serves kG tokens, so each key's K row and V
+// row are loaded once for all kG * kQ query rows. Each thread computes whole
+// query-key dot products (one key against a share of the group's rows, read in
+// eight-element chunks) instead of the single-token kernel's warp tree per key,
+// and row maxima and slice denominators are warp reductions; the softmax over
+// each slice and the V walk follow the single-token kernel, and the partials
+// layout is the same, so the combine pass is shared. The dot products and
+// denominators sum in a different order from the single-token kernel: a
+// production route, reached only through a decode variant's flash request and
+// never inside a graph capture. Query rows are read from global memory (a few
+// KiB, cached), which keeps shared memory to the slice logits.
 template <typename scalar_t, int kQ, int kHalves, int kG>
 __launch_bounds__(kFlashThreads, 1)
 __global__ void gemma4_attention_decode_flash_multi_kernel(
@@ -1767,9 +1790,10 @@ __global__ void gemma4_attention_decode_flash_multi_kernel(
     int64_t keys,
     int slices) {
   constexpr int kWarpLanes = 32;
-  constexpr int kOwn = 8;
   constexpr int kHalfDim = 256;
   constexpr int kRows = kG * kQ;
+  constexpr int kSplit = kRows >= 16 ? 4 : (kRows >= 8 ? 2 : 1);
+  constexpr int kRowsPerThread = kRows / kSplit;
   const int64_t slice = static_cast<int64_t>(blockIdx.x) % slices;
   const int64_t kv = (static_cast<int64_t>(blockIdx.x) / slices) % num_kv_heads;
   const int64_t token0 = (static_cast<int64_t>(blockIdx.x) / (slices * num_kv_heads)) * kG;
@@ -1779,78 +1803,62 @@ __global__ void gemma4_attention_decode_flash_multi_kernel(
   const int64_t slice_keys = j_end - j_begin;
 
   extern __shared__ float smem[];
-  float* warp_max = smem;                                  // [kRows][kFlashWarps]
-  float* logits_s = warp_max + kRows * kFlashWarps;        // [kRows][slice_keys]
-  scalar_t* q_s = reinterpret_cast<scalar_t*>(logits_s + kRows * slice_keys);  // [kRows][head_dim]
+  float* row_stat = smem;                     // [kRows]: maxima, then denominators
+  float* logits_s = row_stat + kRows;         // [kRows][slice_keys]
 
   const unsigned int tid = threadIdx.x;
   const unsigned int warp = tid / kWarpLanes;
   const unsigned int lane = tid & (kWarpLanes - 1);
 
-  for (int64_t i = tid; i < static_cast<int64_t>(kRows) * head_dim; i += kFlashThreads) {
-    const int r = static_cast<int>(i / head_dim);
-    const int g = r / kQ;
-    const int q = r - g * kQ;
-    const int64_t token = token0 + (g < live_tokens ? g : 0);
-    const int64_t row = token * num_heads + kv * kQ + q;
-    q_s[i] = query[row * head_dim + (i % head_dim)];
-  }
-  __syncthreads();
-
-  float running_max[kRows];
-#pragma unroll
-  for (int r = 0; r < kRows; ++r) running_max[r] = -INFINITY;
-  for (int64_t j = j_begin + warp; j < j_end; j += kFlashWarps) {
+  // Logits: thread (key, part) dots one key with kRowsPerThread rows. Masked
+  // keys and rows past the block's tokens hold -inf.
+  const int part = static_cast<int>(tid % kSplit);
+  for (int64_t jj = tid / kSplit; jj < slice_keys; jj += kFlashThreads / kSplit) {
+    const int64_t j = j_begin + jj;
     const scalar_t* k_row = key + (j * num_kv_heads + kv) * head_dim;
-    float k_reg[kHalves][kOwn];
+    float dot[kRowsPerThread];
 #pragma unroll
-    for (int h = 0; h < kHalves; ++h) {
+    for (int i = 0; i < kRowsPerThread; ++i) dot[i] = 0.0f;
+    for (int d = 0; d < kHalves * kHalfDim; d += 8) {
+      float kf[8];
+      gemma4_load8_as_float(k_row + d, kf);
 #pragma unroll
-      for (int i = 0; i < kOwn; ++i) {
-        k_reg[h][i] = gemma4_attn_to_float(k_row[h * kHalfDim + lane * kOwn + i]);
+      for (int i = 0; i < kRowsPerThread; ++i) {
+        const int r = part * kRowsPerThread + i;
+        const int g = r / kQ;
+        const int64_t token = token0 + (g < live_tokens ? g : 0);
+        const scalar_t* qrow = query + (token * num_heads + kv * kQ + (r - g * kQ)) * head_dim;
+        float qf[8];
+        gemma4_load8_as_float(qrow + d, qf);
+#pragma unroll
+        for (int e = 0; e < 8; ++e) dot[i] += qf[e] * kf[e];
       }
     }
 #pragma unroll
-    for (int g = 0; g < kG; ++g) {
-      if (g >= live_tokens) continue;
-      if (keep_mask[(token0 + g) * keys + j] == 0) continue;
-      for (int q = 0; q < kQ; ++q) {
-        const int r = g * kQ + q;
-        float v[kOwn];
-#pragma unroll
-        for (int i = 0; i < kOwn; ++i) v[i] = 0.0f;
-#pragma unroll
-        for (int h = 0; h < kHalves; ++h) {
-#pragma unroll
-          for (int i = 0; i < kOwn; ++i) {
-            v[i] += gemma4_attn_to_float(q_s[r * head_dim + h * kHalfDim + lane * kOwn + i]) *
-                    k_reg[h][i];
-          }
-        }
-        const float reduced = gemma4_warp_tree(v, lane);
-        if (lane == 0) {
-          const float logit = reduced * scale;
-          logits_s[r * slice_keys + (j - j_begin)] = logit;
-          running_max[r] = fmaxf(running_max[r], logit);
-        }
-      }
+    for (int i = 0; i < kRowsPerThread; ++i) {
+      const int r = part * kRowsPerThread + i;
+      const int g = r / kQ;
+      const bool keep = g < live_tokens && keep_mask[(token0 + g) * keys + j] != 0;
+      logits_s[r * slice_keys + jj] = keep ? dot[i] * scale : -INFINITY;
     }
-  }
-  if (lane == 0) {
-#pragma unroll
-    for (int r = 0; r < kRows; ++r) warp_max[r * kFlashWarps + warp] = running_max[r];
   }
   __syncthreads();
 
+  // Row maxima, one warp per row. A maximum does not depend on order.
+  for (int r = static_cast<int>(warp); r < kRows; r += kFlashWarps) {
+    float m = -INFINITY;
+    for (int64_t jj = lane; jj < slice_keys; jj += kWarpLanes) m = fmaxf(m, logits_s[r * slice_keys + jj]);
+    for (int offset = 16; offset > 0; offset >>= 1) m = fmaxf(m, __shfl_down(m, offset));
+    if (lane == 0) row_stat[r] = m;
+  }
+  __syncthreads();
   float row_max[kRows];
 #pragma unroll
-  for (int r = 0; r < kRows; ++r) {
-    float m = -INFINITY;
-    for (unsigned int w = 0; w < kFlashWarps; ++w) m = fmaxf(m, warp_max[r * kFlashWarps + w]);
-    row_max[r] = m;
-  }
+  for (int r = 0; r < kRows; ++r) row_max[r] = row_stat[r];
   __syncthreads();
 
+  // Weights exp(logit - row max), zero for masked keys, as the single-token
+  // kernel's weight pass.
   const int64_t weight_count = static_cast<int64_t>(kRows) * slice_keys;
   for (int64_t idx = tid; idx < weight_count; idx += kFlashThreads) {
     const int r = static_cast<int>(idx / slice_keys);
@@ -1861,16 +1869,20 @@ __global__ void gemma4_attention_decode_flash_multi_kernel(
   }
   __syncthreads();
 
-  if (warp == 0 && lane < kRows) {
+  // Slice denominators, one warp per row.
+  for (int r = static_cast<int>(warp); r < kRows; r += kFlashWarps) {
     float acc = 0.0f;
-    for (int64_t jj = 0; jj < slice_keys; ++jj) acc += logits_s[lane * slice_keys + jj];
-    warp_max[lane] = acc;
+    for (int64_t jj = lane; jj < slice_keys; jj += kWarpLanes) acc += logits_s[r * slice_keys + jj];
+    for (int offset = 16; offset > 0; offset >>= 1) acc += __shfl_down(acc, offset);
+    if (lane == 0) row_stat[r] = acc;
   }
   __syncthreads();
   float denom[kRows];
 #pragma unroll
-  for (int r = 0; r < kRows; ++r) denom[r] = warp_max[r];
+  for (int r = 0; r < kRows; ++r) denom[r] = row_stat[r];
 
+  // Weighted V: every thread walks dimensions (2*tid, 2*tid+1) over the slice
+  // in key order, one V load feeding every row of the group.
   const int64_t dim_step = static_cast<int64_t>(kFlashThreads) * 2;
   const int64_t v_stride = num_kv_heads * head_dim;
   const scalar_t* v_base = value + kv * head_dim + j_begin * v_stride;
@@ -2035,14 +2047,19 @@ __host__ inline int64_t gemma4_flash_lds_bytes(
 }
 
 // Shared bytes of the multi-token kernel for ``rows`` query rows (token group
-// times query heads per KV head): warp maxima, per-row slice logits, and the
-// staged query rows in their input type.
+// times query heads per KV head): per-row statistics and slice logits.
+// Widest token group (in query rows) the multi-token kernel takes: wider
+// groups raise its per-thread accumulators past the point where occupancy pays
+// for the shared loads (W7900, five-row verify at 32K keys: 29.1 ms at 16 rows,
+// 29.6 at 32, 31.5 at 64).
+constexpr int kFlashMultiMaxRows = 16;
+
 template <typename scalar_t>
 __host__ inline int64_t gemma4_flash_multi_lds_bytes(
     int64_t rows, int64_t head_dim, int64_t keys, int64_t slices) {
   const int64_t slice_max = (keys + slices - 1) / slices;
-  return (rows * kFlashWarps + rows * slice_max) * static_cast<int64_t>(sizeof(float)) +
-      rows * head_dim * static_cast<int64_t>(sizeof(scalar_t));
+  (void)head_dim;
+  return (rows + rows * slice_max) * static_cast<int64_t>(sizeof(float));
 }
 
 // Flash launcher: KV slices over one q-pair, then the combine. Returns -1
@@ -2074,15 +2091,16 @@ int gemma4_decode_flash_launch_impl(
   if (gemma4_flash_lds_bytes(kQ, head_dim, keys, slices) > kFlashLdsBudgetBytes) {
     return -1;
   }
-  // A multi-token block (a speculative verify block) shares each slice's K and
-  // V loads across a group of tokens. A capture's live-extent partitioning is
-  // single-token only, and a group must fit the shared-memory budget and the
-  // 32-lane denominator step; anything else keeps the per-token kernel, whose
-  // per-row arithmetic the group kernel repeats exactly.
+  // A multi-token block (a speculative verify block) runs the group kernel
+  // above, which shares each slice's K and V loads across a group of tokens. A
+  // capture's live-extent partitioning is single-token only, and a group must
+  // fit the shared-memory budget and kFlashMultiMaxRows; anything else keeps
+  // the per-token kernel.
   int group = 1;
   if (tokens > 1 && live_extent == nullptr) {
     for (const int g : {8, 4, 2}) {
-      if (g * kQ <= 32 && gemma4_flash_multi_lds_bytes<scalar_t>(g * kQ, head_dim, keys, slices) <=
+      if (g * kQ <= kFlashMultiMaxRows &&
+          gemma4_flash_multi_lds_bytes<scalar_t>(g * kQ, head_dim, keys, slices) <=
                               kFlashLdsBudgetBytes) {
         group = g;
         break;
