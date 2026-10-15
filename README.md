@@ -17,21 +17,18 @@ checkpoints, and limitations for each.
 - **Native AMD support.** HIP-first kernels are written from scratch and tuned specifically for
   RDNA 3 (gfx1100) and Strix Halo RDNA 3.5 (gfx1151) instead of being CUDA ports.
 - **No PyTorch runtime required.** There is no PyTorch dependency, which keeps
-  hipEngine lightweight. Although it is packaged for Python, almost all of the
-  hot path is C++.
-- **Optimized for agents and concurrent requests.** Besides extensive tuning for
-  fast single-request performance, hipEngine is specifically tuned for multiple concurrent request performance.
-  The engine is built with continuous batching, prefix caching, and a shared KV pool.
+  hipEngine lightweight: a small Python host drives compiled HIP kernels.
+- **Optimized for agents and concurrent requests.** hipEngine is tuned for both
+  single-request latency and multiple concurrent requests, with continuous
+  batching, prefix caching, and a shared KV pool.
 - **Drop-in support for existing clients.** The included OpenAI-compatible server
   supports completion, chat, token-level SSE, logprobs, tools, structured-output
   validation, Qwen thinking controls, logprob-biased effort control, and
   request diagnostics. There is also a simple built-in `chat` interface.
-- **Rigorous correctness.** All implementations are checked against a CPU-side
-  oracle. The *strict* profile requires exact or parent-parity
-  results, while *production* defaults must pass correctness gates. Optimizations or routes that
-  fail these gates are rejected or made explicitly opt-in with measured costs stated.
-
-hipEngine is a from-scratch project and does not inherit any unvetted code or legacy design. It is AGPL 3.0 licensed.
+- **Rigorous correctness.** Every implementation is checked against a CPU-side
+  oracle. The *strict* profile requires exact or parent-parity results;
+  *production* defaults must pass their correctness gates, and anything that
+  fails is rejected or made opt-in with its cost stated.
 
 ## Supported models
 
@@ -77,19 +74,14 @@ trade-offs, including ROCmFP4/ROCmFPX.
 
 ## Performance highlights
 
-These are measured results, not estimates. Prompt processing is the speed of
-reading the input. Text generation is the speed of producing new tokens.
-
-The benchmark summary below is synchronized from the [benchmark report](benchmarks/README.md).
+These are measured results, not estimates.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
 Tokens/s on each named host: **prompt processing** is input, **text generation**
-is output. **MTP** is speculative decoding in qualified scopes. Dashes are
-unmeasured; context limits are capacity tests.
+is output. **MTP** is speculative decoding. Dashes are unmeasured; **Max
+context** is a capacity limit, not a full-length prefill.
 
-### Performance
-
-#### Radeon Pro W7900 — 48 GB (`gfx1100`)
+### Radeon Pro W7900 — 48 GB (`gfx1100`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -99,38 +91,18 @@ unmeasured; context limits are capacity tests.
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — | **176,128** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
-BF16 rows: September 20, `epyc`, 512/128 tokens, warmup + three runs.
-INT8: September 13. MTP/capacity not refreshed. Laguna: 4K prompts.
-35B GGUF MTP is opt-in; 27B MTP is **1.63x** its matched 24.36 tok/s AR,
-not either decode column.
+### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
-#### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
+| Model | Quant | Prompt processing | Text generation | With MTP |
+| --- | --- | ---: | ---: | ---: |
+| Maple-Preview | 2-bit | **754.5** | **153.2** | — |
+| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
+| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | — | **10.84** | **19.3** |
 
-| Model | Quant | Prompt processing | Text generation | With MTP | AR measured |
-| --- | --- | ---: | ---: | ---: | --- |
-| Maple-Preview | 2-bit | **754.5** | **153.2** | — | 2026-08-08 |
-| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 | 2026-09-20 |
-| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | 2026-07/08 |
-| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | 2026-08-17 |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** | 2026-09-20 |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | — | **10.84** | **19.3** | 2026-09-23 |
-
-September 20: Framework Desktop. Qwen3.8 `Q4_K_M` MTP: **1.98x** its matched
-11.30 tok/s AR, 25 output tokens. A short-context measurement. 35B MTP is
-the July 19 opt-in result. INT8-KV row: **1.78x** AR at c1, **2.39x** at c2,
-**3.06x** at c4, documented override.
-[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json).
-
-**Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
-context 8192, horizon 512 forecasts in **0.082 s** on the HP ZBook Strix Halo
-host (8.6x the official torch reference) and **0.062 s** on a Framework Desktop
-host — the same GPU on two machines, so the gap is thermal headroom.
-
-**VibeVoice-ASR 9B** is torch-free on Strix Halo. Q4_K_M beats bf16 — **1.52x**
-prefill, **1.55x** decode — at 6.1 vs 16.7 GB, WER 2.01% vs 2.81%; **RTF 0.35**.
-[Results](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-14-gfx1151-vibevoice-q4-e2e-rtf.json).
-
-#### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
+### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -139,8 +111,8 @@ prefill, **1.55x** decode — at 6.1 vs 16.7 GB, WER 2.01% vs 2.81%; **RTF 0.35*
 ### Long context on a 24 GB GPU
 
 Qwen3.8-27B `Q4_K_M` can hold up to 232K tokens on a 24 GB `gfx1100` GPU
-using [DMS](https://arxiv.org/abs/2506.05345), a trained KV eviction policy.
-In these tests, DMS INT8 agreed more closely with BF16 than the direct-INT8 route:
+using [DMS](https://arxiv.org/abs/2506.05345), a trained KV eviction policy. DMS
+INT8 agreed with BF16 more closely than the direct-INT8 route:
 
 | KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
 | --- | ---: | ---: | ---: |
@@ -149,17 +121,16 @@ In these tests, DMS INT8 agreed more closely with BF16 than the direct-INT8 rout
 | Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
 | DMS INT8 | 232,448 | 100% | 0.001 |
 
-Direct-INT8 failed 9 of 11 quality prompts and is not a default.
-[Capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)
+Direct-INT8 failed 9 of 11 quality prompts and is not a default
+([capacity evidence](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json)).
 
 ### Prefix caching
 
 Multi-turn conversations resend the whole transcript, so hipEngine reuses the
 KV pages and hybrid state of any 256-token-aligned prefix a later request
-repeats. Radix is the default for both the direct engine and HTTP serving;
-`--prefix-cache off` rolls it back. Different prefill routes can change generated tokens.
-Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo (`gfx1151`), 14 multi-turn lanes of
-three turns, reusing 42,496 of 87,582 prompt tokens:
+repeats. Radix is the default for both the direct engine and HTTP serving
+(`--prefix-cache off` to disable). Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo,
+14 multi-turn lanes of three turns:
 
 | Lane | Cache off | Cache on | Wall time |
 | --- | ---: | ---: | ---: |
@@ -170,32 +141,23 @@ three turns, reusing 42,496 of 87,582 prompt tokens:
 
 ### Serving several requests at once
 
-Aggregate tokens per second across all active requests, Qwen3.8-27B `Q4_K_M`
-on the W7900, September 4, 2026. Peers use F16 KV where hipEngine uses BF16.
+Aggregate tokens/s across all active requests, Qwen3.8-27B `Q4_K_M` on the W7900:
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | hipEngine | **23.6** | **39.1** | **53.1** | **63.9** | **72.8** | **79.5** | **83.2** | **85.9** |
 | llama.cpp HIP | 21.0 | 34.4 | 30.6 | 27.7 | 36.7 | 46.4 | 52.1 | 58.4 |
 | hipEngine advantage | +12% | +14% | +74% | +130% | +99% | +71% | +60% | **+47%** |
-
-On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
-requests (123.131 at one, 202.038 at four). Where speculative
-decoding runs automatically in production it is scoped to a qualified shape:
-Qwen3.6-35B-A3B GGUF reaches **93.644 tok/s public** — 1.1565x its own AR — at
-two concurrent requests on the W7900.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
-Full commands, software versions, model hashes, memory use, and correctness
-checks are in the [benchmark report](benchmarks/README.md).
+The summary above is synchronized from the [benchmark report](benchmarks/README.md),
+which has the full commands, software versions, model hashes, memory use, and
+correctness checks.
 
 ### Coding-Agent Session Replay
 
 Replaying a recorded coding session shows the benefit of avoiding repeated
-prompt processing: 32 sequential requests, 128 output tokens per request,
-and a cumulative transcript growing from 740 to 13,762 tokens.
-Qwen3.6-35B-A3B `UD_Q4_K_M` on the HP ZBook / Radeon 8060S (`gfx1151`),
-using the in-process engine and server chat renderer:
+prompt processing. Qwen3.6-35B-A3B `UD_Q4_K_M` on Strix Halo (`gfx1151`):
 
 | Prefix cache | End-to-end output | Average turn | Cache hits |
 | --- | ---: | ---: | ---: |
@@ -203,53 +165,26 @@ using the in-process engine and server chat renderer:
 | Radix, default retention | 12.61 tok/s | 10.2 s | 19/32 |
 | Radix, 16 retained snapshots | **19.69 tok/s** | **6.5 s** | **30/32** |
 
-**2.79x end-to-end throughput**, with 91% of prompt tokens reused rather
-than recomputed. This is one adapted transcript and one run per setting,
-not a general agent-quality benchmark; outputs were not compared across arms.
-System/tool definitions are substituted and long tool results truncated.
-The 16-snapshot setting uses more memory and is opt-in.
+**2.79x end-to-end throughput**, with 91% of prompt tokens reused rather than
+recomputed. The 16-snapshot setting uses more memory and is opt-in.
 [Results and retention guidance](benchmarks/README.md#current-default-notes).
 
 ## Status and limits
 
-v0.7.1 is a patch release. Automatic performance routes remain scoped to qualified
-model, hardware, and workload combinations:
+v0.7.1 is a patch release. Automatic performance routes stay scoped to
+configurations hipEngine has measured.
 
-- Qwen3.6-27B and Qwen3.8-27B GGUF generation and serving on both AMD backends.
-  Both can speculate with the model's own multi-token prediction head, as can
-  Qwen3.6-35B-A3B.
-- The server enables speculative decoding for supported model, GPU, storage,
-  and request shapes, labels unmeasured configurations, reports why when it
-  skips speculation, and can be
-  switched off for all new requests by one endpoint call.
-- An optional execution-profile selector (`strict`, `production`,
-  `batch_invariant`) that runs a registered kernel plan, checks that its
-  fallbacks are installed, and rejects a combination hipEngine has not been
-  shown to complete.
-- Scheduling and memory defaults: the `fair` prefill/decode policy, a smaller
-  per-process GPU memory reserve on Radeon RDNA 3, and FP16 recurrent state for
-  Qwen3.8 `Q4_K_S` on Strix Halo.
-- Still supported: Qwen3.5/3.6 GGUF and ParoQuant, Laguna S 2.1, Maple-Preview,
-  several requests at once on one resident model, and OpenAI-compatible
-  streaming, sampling, tools, structured-output validation, and cancellation.
-
-Full user-facing change history is in the [changelog](CHANGELOG.md).
-
-Important limits:
-
-- hipEngine uses one GPU. Multi-GPU inference is not yet implemented.
-- There is no desktop GUI, model catalog, or automatic model download.
-- CPU model inference is not implemented.
-- The concurrency memory figures come from a 48 GB W7900. Single-request
-  context on a 24 GB card is qualified to 232,448 tokens on the DMS and
-  opt-in direct-INT8 routes; concurrent-request shapes on 24 GB are not
-  qualified yet, so keep a conservative context limit there.
-- Automatic speculative decoding is bounded by implementation capability and
-  available memory. Qwen3.8 `Q4_K_M` on gfx1151 supports sampled MTP with BF16
-  KV for one through four active requests. Context is bounded by the target's
-  allocated capacity. Packed INT8 and compact-DMS MTP are not implemented.
-  See [Server API](docs/API.md) for admission and fallback behavior.
-- APIs and supported combinations can still change before 1.0.
+- hipEngine uses one GPU per process; multi-GPU inference is not implemented.
+  There is no desktop GUI or automatic model download, and CPU model inference
+  is not implemented.
+- The concurrency figures come from a 48 GB W7900. On a 24 GB card, single-request
+  context is qualified to 232,448 tokens on the DMS and opt-in direct-INT8 routes;
+  concurrent-request shapes at 24 GB are not qualified, so keep a conservative
+  context limit there.
+- Automatic speculative decoding covers a qualified set of model, GPU, storage,
+  and request shapes and is bounded by available memory; the server reports why
+  it skips a request. Packed INT8 and compact-DMS MTP are not implemented. See
+  [Server API](docs/API.md) for admission and fallback behavior.
 
 ## Hardware detection
 

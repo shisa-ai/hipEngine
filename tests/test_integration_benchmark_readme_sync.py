@@ -178,8 +178,16 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     assert "## Speculative decode (DFlash / MTP)" not in readme
     assert "H8C-H8Q" not in readme
     assert "SH14-C1" not in readme
-    assert "**93.644 tok/s public**" in readme
-    assert "**214.788**" in readme
+    # Retired from the product page: this detail belongs to the benchmark report,
+    # and repeating it here made the performance summary unreadable.
+    for retired_phrase in (
+        "AR measured",
+        "In these tests,",
+        "September 20: Framework Desktop",
+        "one adapted transcript",
+        "not a general agent-quality benchmark",
+    ):
+        assert retired_phrase not in readme
     project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     assert f"**Current release: v{project['project']['version']}.**" in readme
     assert "NVIDIA Blackwell (`sm_120a`)" in readme
