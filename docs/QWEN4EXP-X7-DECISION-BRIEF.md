@@ -1,9 +1,6 @@
 # The X-7 Decision Brief: the `prefill_last` scope and the compensated-T16 candidates
 
-Status: awaiting the human owner's decision (ledger row X-7). This brief is
-self-contained: it states the question, the evidence, both branches' exact
-consequences, and what does not change either way. Every number carries its
-artifact pointer.
+Status: **resolved 2026-10-13**. The owner admitted the reduced-precision Qwen4Exp composition to the opt-in `fast` profile; `production` keeps its calibrated envelope and remains the default. The compensated-T16 candidates below remain reference evidence and are not selected by either profile because their `prefill_last` mean-KL result exceeds the binding production floor.
 
 ## The question
 
