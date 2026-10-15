@@ -45,6 +45,7 @@ def main(argv=None) -> int:
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--budget", type=int, default=3)
     parser.add_argument("--execution-profile", default="production")
+    parser.add_argument("--max-sequence-length", type=int, default=1_024)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -70,7 +71,7 @@ def main(argv=None) -> int:
     generator = profile.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
         model_path=args.model_root, weight_index=index,
         model_plugin=resolve_model(index.architecture or ""), backend=QWEN4_EXP_BACKEND,
-        max_sequence_length=1024, prefill_chunk_size=1024))
+        max_sequence_length=args.max_sequence_length, prefill_chunk_size=1024))
     provider = Qwen4ExpMTPTextProvider(
         target_generator=generator,
         config=SpeculativeProviderConfig(
