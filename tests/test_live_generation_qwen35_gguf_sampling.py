@@ -491,25 +491,18 @@ def test_eager_model_load_prepare_without_hint_keeps_auto_bf16() -> None:
     )
 
 
-def test_gguf_without_int8_implementation_falls_back_to_bf16(monkeypatch) -> None:
+def test_gguf_without_int8_implementation_refuses_explicit_int8_without_override(monkeypatch) -> None:
     for name in qwen35_gguf._GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS:
         monkeypatch.delenv(name, raising=False)
     generator = _generator()
 
-    generator._prepare_kv_policy(
-        _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
-    )
+    with pytest.raises(ValueError, match="explicit kv_storage='int8_per_token_head'.*refusing to silently substitute BF16"):
+        generator._prepare_kv_policy(
+            _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
+        )
 
-    assert generator._prepared_kv_signature == (
-        "bf16",
-        "uniform",
-        "fp16",
-        "per_token_head",
-    )
-    assert generator._prepared_session_kv_kwargs() == {}
     assert generator.kv_capability_provenance["status"] == "unsupported"
     assert generator.kv_capability_provenance["runtime_action"] == "fallback_bf16"
-    assert generator.kv_capability_provenance["effective_kv_storage"] == "bf16"
 
 
 def test_gguf_exact_gfx1100_qwen38_artifact_admits_fp32_scale_int8(monkeypatch) -> None:
@@ -546,7 +539,7 @@ def test_gguf_exact_gfx1100_qwen38_artifact_admits_fp32_scale_int8(monkeypatch) 
     assert kwargs["kv_capability"]["evidence"]["max_serial_resident_rows"] == 4
 
 
-def test_gguf_exact_gfx1151_qwen38_rejected_artifact_falls_back_to_bf16(
+def test_gguf_exact_gfx1151_qwen38_rejected_artifact_refuses_explicit_int8(
     monkeypatch,
 ) -> None:
     for name in qwen35_gguf._GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS:
@@ -565,19 +558,13 @@ def test_gguf_exact_gfx1151_qwen38_rejected_artifact_falls_back_to_bf16(
         content_verified=True,
     )
 
-    generator._prepare_kv_policy(
-        _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
-    )
+    with pytest.raises(ValueError, match="explicit kv_storage='int8_per_token_head'.*refusing to silently substitute BF16"):
+        generator._prepare_kv_policy(
+            _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
+        )
 
-    assert generator._prepared_kv_signature == (
-        "bf16",
-        "uniform",
-        "fp16",
-        "per_token_head",
-    )
     assert generator.kv_capability_provenance["status"] == "rejected"
     assert generator.kv_capability_provenance["runtime_action"] == "fallback_bf16"
-    assert generator.kv_capability_provenance["promotion_eligible"] is False
 
 
 def test_gguf_mtp_hot_vocab_defaults_only_in_production_with_rollback(
@@ -2688,6 +2675,8 @@ def test_gguf_resident_full_prefill_uses_block_table_path_when_required(
     )
     runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
     runner._route_counts = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
     runner._refresh_prefix_cache = lambda candidate: None
     runner._mtp2_adapter = None
     runner._mtp2_adapter_resolved = True
@@ -2999,6 +2988,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
 
     observability = adapter.live_loop_snapshot()["runner"]
     assert observability["model_runner"] == {
+        "dms": None,
         "capacity": 2,
         "max_active_requests": 2,
         "max_context_tokens": None,
@@ -4202,6 +4192,8 @@ def test_gguf_resident_direct_int8_buffers_scheduler_chunks_for_exact_full_prefi
         qwen35_gguf.Qwen35GGUFResidentModelRunner
     )
     runner._fallback_reasons = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
 
     runner._prefill_native_chunk(row, (10, 11), final_chunk=False)
 
@@ -4258,6 +4250,8 @@ def test_gguf_resident_native_prefill_falls_back_when_packed_route_refuses_conte
     )
     runner._route_counts = Counter()
     runner._fallback_reasons = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
     runner._refresh_prefix_cache = lambda row: None
     runner._resolved_mtp2_adapter = lambda: None
     runner._finish_native_prefill = (
@@ -4316,6 +4310,8 @@ def test_gguf_resident_native_prefill_keeps_block_table_route_fail_closed() -> N
     )
     runner._route_counts = Counter()
     runner._fallback_reasons = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
     runner._refresh_prefix_cache = lambda row: None
     runner._resolved_mtp2_adapter = lambda: None
 
@@ -5175,6 +5171,8 @@ def test_resident_packed_prefill_falls_back_when_the_slab_hits_the_context_bound
     runner._packed_execution_owner = lambda session: owner
     runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(tuple(_rows))
     runner._finish_mtp2_prompt_streaming = lambda *args, **kwargs: None
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
     runner._refresh_prefix_cache = lambda _row: None
     runner._finish_native_prefill = lambda *args, **kwargs: None
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")

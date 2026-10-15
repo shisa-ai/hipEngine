@@ -286,7 +286,6 @@ def _torch_depthwise_causal_conv1d(
 
     del kwargs
     import torch.nn.functional as F
-    from transformers.activations import ACT2FN
 
     output_dtype = hidden_states.dtype
     x = hidden_states.to(weight.dtype)
@@ -296,6 +295,8 @@ def _torch_depthwise_causal_conv1d(
     if bias is not None:
         output = output + bias.reshape(1, -1, 1)
     if activation is not None:
+        from transformers.activations import ACT2FN
+
         output = ACT2FN[activation](output)
     return output.to(output_dtype)
 

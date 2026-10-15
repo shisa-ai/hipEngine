@@ -867,6 +867,19 @@ class EngineService:
             with self._lifecycle_lock:
                 self._closed = True
                 self._closing = True
+            # A caller can enqueue shutdown after fatal failure publication
+            # but before cleanup marks the service closed. No driver iteration
+            # remains to consume that command: acknowledge it after cleanup and
+            # fail other queued controls instead of leaving their callers hung.
+            while True:
+                try:
+                    pending = self._commands.get_nowait()
+                except queue.Empty:
+                    break
+                pending.response.finish(
+                    error=(close_error if pending.kind == "shutdown" else
+                           RuntimeError("engine service closed before command execution"))
+                )
             if shutdown_response is not None:
                 shutdown_response.finish(error=close_error)
 

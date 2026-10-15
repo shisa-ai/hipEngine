@@ -166,8 +166,8 @@ class _StreamingNextNPromptSink:
         capture_boundary: int = 0,
     ) -> None:
         tokens = tuple(int(token) for token in prompt_tokens)
-        if not tokens:
-            raise ValueError("streaming NextN prompt sink requires prompt tokens")
+        if not tokens and not (int(start_position) > 0 and initial_hidden is not None):
+            raise ValueError("streaming NextN prompt sink requires prompt tokens or a restored boundary")
         if int(request_id) < 0:
             raise ValueError("streaming NextN prompt sink request_id must be non-negative")
         if int(hidden_size) <= 0:
@@ -218,6 +218,7 @@ class _StreamingNextNPromptSink:
         # Absolute prefix length to capture at, in the same coordinates as
         # ``start_position``; 0 means no capture for this sink.
         self.capture_boundary = int(capture_boundary)
+        self.capture_boundaries: tuple[int, ...] = ()
         self._capture_failed = False
         self._capture_missed = False
         self._captured = False
@@ -294,6 +295,20 @@ class _StreamingNextNPromptSink:
             self._stream = stream
         elif stream != self._stream:
             raise RuntimeError("streaming NextN prompt chunks must use one stream")
+        if self.capture_boundaries:
+            absolute_start = self.start_position + start
+            absolute_end = absolute_start + count
+            cuts = [point for point in self.capture_boundaries if absolute_start < point < absolute_end]
+            if cuts:
+                points = [absolute_start, *cuts, absolute_end]
+                for a, b in zip(points, points[1:]):
+                    self.consume(request_id=request_id, chunk_start=a - self.start_position,
+                                 hidden_ptr=int(hidden_ptr) + (a - absolute_start) * self.hidden_nbytes,
+                                 rows=b - a, stream=stream)
+                return
+            if absolute_end in self.capture_boundaries:
+                self.capture_boundary = absolute_end
+                self._captured = False
         if self.checkpoint is not None:
             self.checkpoint()
 
@@ -1068,7 +1083,9 @@ class _DMSStoreJournal:
     journal is used. That ordering is what lets a commit keep the accepted
     prefix: restoring the selected row's snapshot is exactly "state as of the
     accepted prefix", and the rejected rows' writes go with it. Restoring the
-    initial snapshot undoes the whole cycle.
+    initial snapshot undoes the whole cycle. The final row can instead remain
+    in place while the accept-summary kernel runs: no further target writes
+    occur before commit/rollback, so accepting it needs no KV restore.
     """
 
     def __init__(
@@ -1094,6 +1111,7 @@ class _DMSStoreJournal:
         self._request_id: int | None = None
         self._initial: Any | None = None
         self._rows: dict[int, Any] = {}
+        self._final_row: int | None = None
         self.closed = False
 
     # -- binding and delegation -------------------------------------------
@@ -1119,7 +1137,11 @@ class _DMSStoreJournal:
     def _lease_row(self) -> Any:
         if self._request_id is None:
             raise RuntimeError("compact DMS journal has no bound request")
-        state = self.backend.state_for_request(self._request_id)
+        # The engine's request ID is not the private store's row ID. A
+        # singleton resident session owns row zero even after the engine has
+        # served earlier requests; the binding above still guards engine identity.
+        store_request_id = getattr(self.target, "dms_store_request_id", self._request_id)
+        state = self.backend.state_for_request(int(store_request_id))
         return SimpleNamespace(lease=state.lease)
 
     def _snapshot(self) -> Any:
@@ -1131,6 +1153,7 @@ class _DMSStoreJournal:
         self.backend.commit(self._initial, None)
         self._initial = None
         self._rows.clear()
+        self._final_row = None
 
     # -- journal interface -------------------------------------------------
 
@@ -1151,6 +1174,7 @@ class _DMSStoreJournal:
     ) -> None:
         self._initial = self._snapshot()
         self._rows.clear()
+        self._final_row = None
         self.resident.capture_initial(
             stream=stream,
             force_consumer_state=force_consumer_state,
@@ -1163,14 +1187,24 @@ class _DMSStoreJournal:
         self.resident.capture_hidden_rows(hidden_rows, stream=stream)
 
     def capture_row(self, row: int, *, stream: int = 0) -> None:
+        if self._final_row is not None:
+            raise RuntimeError("cannot capture another row after the final DMS row")
         self.resident.capture_row(row, stream=stream)
         self._rows[int(row)] = self._snapshot()
+
+    def capture_final_row(self, row: int, *, stream: int = 0) -> None:
+        """Keep final KV in place; accept-summary evaluation does not mutate it."""
+        if self._initial is None or self._final_row is not None:
+            raise RuntimeError("final DMS row requires an open unfinished cycle")
+        self.resident.capture_row(row, stream=stream)
+        self._final_row = int(row)
 
     def restore_initial(self, *, stream: int = 0) -> None:
         if self._initial is not None:
             self.backend.rollback(self._initial)
             self._initial = None
         self._rows.clear()
+        self._final_row = None
         self.resident.restore_initial(stream=stream)
 
     def restore_row(self, row: int, *, stream: int = 0) -> None:
@@ -1182,6 +1216,9 @@ class _DMSStoreJournal:
         self.resident.restore_native_row(row, position=position, stream=stream)
 
     def _restore_store_row(self, row: int) -> None:
+        if row == self._final_row:
+            self._retire_transaction()
+            return
         snapshot = self._rows.get(row)
         if snapshot is None:
             raise RuntimeError(
@@ -1704,7 +1741,10 @@ class Qwen35GGUFTransactionalVerifier:
                     top1.append(int(result.token_id))
                     if return_logits:
                         logits.append(result.logits)
-                    self.journal.capture_row(row, stream=stream)
+                    capture = self.journal.capture_row
+                    if row == batch.rows - 1:
+                        capture = getattr(self.journal, "capture_final_row", capture)
+                    capture(row, stream=stream)
 
             if gpu_summary is None:
                 buffers = graph_bucket.owner.bind(batch, transaction_id=int(transaction_id))

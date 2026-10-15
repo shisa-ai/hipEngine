@@ -31,8 +31,8 @@ _S = ctypes.c_void_p
 _ARGTYPES_GATHER_ADD = (_P, _P, _P, _P, _I, _I, _S)
 _ARGTYPES_ADD_BROADCAST = (_P, _P, _P, _I, _I, _S)
 _ARGTYPES_STATE_UPDATE = (_P, _P, _F, _P, _I, _I, _S)
-_ARGTYPES_ATTENTION = (_P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _F, _S)
-_ARGTYPES_ATTENTION_WMMA = (_P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _F, _S)
+_ARGTYPES_ATTENTION = (_P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _I, _F, _S)
+_ARGTYPES_ATTENTION_WMMA = (_P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _I, _F, _S)
 _ARGTYPES_ROPE = (_P, _P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _S)
 
 
@@ -160,6 +160,7 @@ def nar_attention_f32(
     head_dim: int,
     scale: float,
     *,
+    nar_rows: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -167,12 +168,13 @@ def nar_attention_f32(
     """Bidirectional GQA over ``[AR cache | NAR]`` keys; Q and out are FP32."""
     library = library or _library()
     runtime = runtime or get_hip_runtime()
+    nar_rows = rows if nar_rows is None else int(nar_rows)
     fn = signed_kernel_fn(
         library, "hipengine_yue2_nar_attention_f32", _ARGTYPES_ATTENTION, ctypes.c_int
     )
     err = fn(
         q_ptr, nar_k_ptr, nar_v_ptr, ar_k_ptr, ar_v_ptr, out_ptr,
-        rows, ar_rows, num_q_heads, num_kv_heads, head_dim, scale, stream,
+        rows, ar_rows, nar_rows, num_q_heads, num_kv_heads, head_dim, scale, stream,
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
@@ -192,6 +194,7 @@ def nar_attention_wmma(
     head_dim: int,
     scale: float,
     *,
+    nar_rows: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -204,13 +207,14 @@ def nar_attention_wmma(
     """
     library = library or _library()
     runtime = runtime or get_hip_runtime()
+    nar_rows = rows if nar_rows is None else int(nar_rows)
     fn = signed_kernel_fn(
         library, "hipengine_yue2_nar_attention_wmma",
         _ARGTYPES_ATTENTION_WMMA, ctypes.c_int,
     )
     err = fn(
         q_ptr, nar_k_ptr, nar_v_ptr, ar_k_ptr, ar_v_ptr, out_ptr,
-        rows, ar_rows, num_q_heads, num_kv_heads, head_dim, scale, stream,
+        rows, ar_rows, nar_rows, num_q_heads, num_kv_heads, head_dim, scale, stream,
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))

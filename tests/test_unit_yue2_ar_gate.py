@@ -242,11 +242,13 @@ def test_gate_requires_the_broad_floor(gate):
     assert not gate._gate_passes({"pooled_mean_kl": None, "top1_agreement": None})
 
 
-def test_artifact_provenance_names_the_machine_and_the_command(gate, request):
+def test_artifact_provenance_names_the_machine_and_the_command(gate, request, monkeypatch):
     """The evidence-policy fields are collected, never typed into the artifact."""
 
     if not run_in_clean_interpreter(request.node.nodeid):
         return
+    host = {"name": "fixture-host", "cpu": "fixture-cpu", "gpu": "fixture-gpu"}
+    monkeypatch.setattr(gate, "_host_identity", lambda: host)
     provenance = gate._provenance(
         ["--prefill-variant", "strict", "--json", "out.json"],
         REPO / "tests/fixtures/yue2",
@@ -257,10 +259,53 @@ def test_artifact_provenance_names_the_machine_and_the_command(gate, request):
     assert provenance["command"] == (
         "python3 scripts/yue2_ar_replay.py --prefill-variant strict --json out.json"
     )
-    assert provenance["host"]["name"]
-    assert provenance["host"]["gpu"]
+    assert provenance["host"] == host
     assert provenance["date"].endswith("+00:00")
     assert len(provenance["fixtures_integrity_sha256"]) == 64
     assert provenance["torch_imported"] is False
     assert provenance["correctness_gate"]["repeat"] == "bit-identical"
     assert provenance["correctness_gate"]["broad_floor"] == {"mean_kl_max": 0.05, "top1_min": 0.9}
+
+
+@pytest.mark.parametrize("device_type,marketing_name,expected", [
+    ("GPU", "AMD Instinct MI300X", "AMD Instinct MI300X"),
+    ("GPU", "AMD Radeon Graphics", "AMD Radeon Graphics"),
+    ("GPU", "", "gfx942"),
+    ("CPU", "Other CPU", ""),
+])
+def test_host_identity_selects_gpu_agents_not_cpu_brand(gate, monkeypatch, device_type, marketing_name, expected):
+    from types import SimpleNamespace
+
+    output = f"""Agent 1
+  Name: AMD Ryzen with Radeon Graphics
+  Marketing Name: AMD Ryzen with Radeon Graphics
+  Device Type: CPU
+Agent 2
+  Name: gfx942
+  Marketing Name: {marketing_name}
+  Device Type: {device_type}
+  ISA Info:
+      Name: amdgcn-amd-amdhsa--gfx942
+"""
+    def probe(command, **kwargs):
+        assert command == ["rocminfo"]
+        assert kwargs["timeout"] == 60
+        return SimpleNamespace(returncode=0, stdout=output)
+
+    monkeypatch.setattr(gate.subprocess, "run", probe)
+    assert gate._host_identity()["gpu"] == expected
+
+
+@pytest.mark.parametrize("failure", ["missing", "timeout", "nonzero"])
+def test_host_identity_does_not_invent_gpu_on_probe_failure(gate, monkeypatch, failure):
+    from types import SimpleNamespace
+
+    def probe(*args, **kwargs):
+        if failure == "missing":
+            raise FileNotFoundError("rocminfo")
+        if failure == "timeout":
+            raise gate.subprocess.TimeoutExpired("rocminfo", 60)
+        return SimpleNamespace(returncode=1, stdout="Agent 1\n  Name: gfx942\n  Marketing Name: AMD Instinct\n  Device Type: GPU\n")
+
+    monkeypatch.setattr(gate.subprocess, "run", probe)
+    assert gate._host_identity()["gpu"] == ""

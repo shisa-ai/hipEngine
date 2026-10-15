@@ -10,14 +10,21 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read the README."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read the README."
+          }
+        ],
         "tools": [
           {
             "type": "function",
             "function": {
               "name": "read",
               "description": "Read a file",
-              "parameters": {"type": "object"}
+              "parameters": {
+                "type": "object"
+              }
             }
           }
         ]
@@ -26,19 +33,32 @@
         "status_code": 200,
         "finish_reason": "tool_calls",
         "message_content": "",
-        "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
-        "prompt_contains": ["<tools>", "\"name\":\"read\""]
+        "tool_call": {
+          "name": "read",
+          "arguments": {
+            "path": "README.md"
+          }
+        },
+        "prompt_contains": [
+          "<tools>",
+          "\"name\":\"read\""
+        ]
       }
     },
     {
       "name": "tool_loop_turn_2_non_streaming_final_answer",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
-      "fake_outputs": ["The README says hello."],
+      "fake_outputs": [
+        "The README says hello."
+      ],
       "request": {
         "model": "fake-model",
         "messages": [
-          {"role": "user", "content": "Read the README."},
+          {
+            "role": "user",
+            "content": "Read the README."
+          },
           {
             "role": "assistant",
             "content": null,
@@ -46,11 +66,18 @@
               {
                 "id": "call_1",
                 "type": "function",
-                "function": {"name": "read", "arguments": "{\"path\":\"README.md\"}"}
+                "function": {
+                  "name": "read",
+                  "arguments": "{\"path\":\"README.md\"}"
+                }
               }
             ]
           },
-          {"role": "tool", "tool_call_id": "call_1", "content": "hello"}
+          {
+            "role": "tool",
+            "tool_call_id": "call_1",
+            "content": "hello"
+          }
         ],
         "tools": [
           {
@@ -58,7 +85,9 @@
             "function": {
               "name": "read",
               "description": "Read a file",
-              "parameters": {"type": "object"}
+              "parameters": {
+                "type": "object"
+              }
             }
           }
         ]
@@ -67,7 +96,9 @@
         "status_code": 200,
         "finish_reason": "stop",
         "message_content": "The README says hello.",
-        "prompt_contains": ["<tool_response>\nhello\n</tool_response>"]
+        "prompt_contains": [
+          "<tool_response>\nhello\n</tool_response>"
+        ]
       }
     },
     {
@@ -79,7 +110,12 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read after thinking."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read after thinking."
+          }
+        ],
         "tools": [
           {
             "type": "function",
@@ -88,8 +124,14 @@
               "description": "Read a file",
               "parameters": {
                 "type": "object",
-                "properties": {"path": {"type": "string"}},
-                "required": ["path"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
                 "additionalProperties": false
               },
               "strict": true
@@ -109,8 +151,15 @@
         },
         "message_content": "",
         "reasoning_content": "need file",
-        "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
-        "response_excludes": ["<tool_call>"]
+        "tool_call": {
+          "name": "read",
+          "arguments": {
+            "path": "README.md"
+          }
+        },
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     },
     {
@@ -122,7 +171,12 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read strictly."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read strictly."
+          }
+        ],
         "tools": [
           {
             "type": "function",
@@ -131,8 +185,14 @@
               "description": "Read a file",
               "parameters": {
                 "type": "object",
-                "properties": {"path": {"type": "string"}},
-                "required": ["path"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
                 "additionalProperties": false
               },
               "strict": true
@@ -143,10 +203,15 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "invalid_tool_call",
+          "cache_action": "append_none"
+        },
         "message_content": "",
         "no_tool_calls": true,
-        "response_excludes": ["<tool_call>"]
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     },
     {
@@ -158,14 +223,21 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read compatibly."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read compatibly."
+          }
+        ],
         "tools": [
           {
             "type": "function",
             "function": {
               "name": "read",
               "description": "Read a file",
-              "parameters": {"type": "object"},
+              "parameters": {
+                "type": "object"
+              },
               "strict": true
             }
           }
@@ -181,8 +253,15 @@
           "tool_call_tokens": 2
         },
         "message_content": "",
-        "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
-        "response_excludes": ["<tool_call>"]
+        "tool_call": {
+          "name": "read",
+          "arguments": {
+            "path": "README.md"
+          }
+        },
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     },
     {
@@ -194,14 +273,21 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read compatibly."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read compatibly."
+          }
+        ],
         "tools": [
           {
             "type": "function",
             "function": {
               "name": "read",
               "description": "Read a file",
-              "parameters": {"type": "object"}
+              "parameters": {
+                "type": "object"
+              }
             }
           }
         ]
@@ -209,20 +295,33 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "invalid_tool_call",
+          "cache_action": "append_none"
+        },
         "message_content": "",
         "no_tool_calls": true,
-        "response_excludes": ["<tool_call>", "write"]
+        "response_excludes": [
+          "<tool_call>",
+          "write"
+        ]
       }
     },
     {
       "name": "required_tool_missing_non_streaming",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
-      "fake_outputs": ["ordinary answer"],
+      "fake_outputs": [
+        "ordinary answer"
+      ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read strictly."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read strictly."
+          }
+        ],
         "tool_choice": "required",
         "tools": [
           {
@@ -230,7 +329,9 @@
             "function": {
               "name": "read",
               "description": "Read a file",
-              "parameters": {"type": "object"}
+              "parameters": {
+                "type": "object"
+              }
             }
           }
         ]
@@ -244,7 +345,9 @@
         },
         "message_content": "",
         "no_tool_calls": true,
-        "response_excludes": ["ordinary answer"]
+        "response_excludes": [
+          "ordinary answer"
+        ]
       }
     },
     {
@@ -256,15 +359,27 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read strictly."}],
-        "tool_choice": {"type": "function", "function": {"name": "read"}},
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read strictly."
+          }
+        ],
+        "tool_choice": {
+          "type": "function",
+          "function": {
+            "name": "read"
+          }
+        },
         "tools": [
           {
             "type": "function",
             "function": {
               "name": "read",
               "description": "Read a file",
-              "parameters": {"type": "object"}
+              "parameters": {
+                "type": "object"
+              }
             }
           },
           {
@@ -272,7 +387,9 @@
             "function": {
               "name": "write",
               "description": "Write a file",
-              "parameters": {"type": "object"}
+              "parameters": {
+                "type": "object"
+              }
             }
           }
         ]
@@ -280,10 +397,16 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "invalid_tool_call",
+          "cache_action": "append_none"
+        },
         "message_content": "",
         "no_tool_calls": true,
-        "response_excludes": ["<tool_call>", "write"]
+        "response_excludes": [
+          "<tool_call>",
+          "write"
+        ]
       }
     },
     {
@@ -295,7 +418,12 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Answer without tools."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Answer without tools."
+          }
+        ],
         "tool_choice": "none",
         "tools": [
           {
@@ -303,7 +431,9 @@
             "function": {
               "name": "read",
               "description": "Read a file",
-              "parameters": {"type": "object"}
+              "parameters": {
+                "type": "object"
+              }
             }
           }
         ]
@@ -311,10 +441,15 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "invalid_tool_call",
+          "cache_action": "append_none"
+        },
         "message_content": "",
         "no_tool_calls": true,
-        "response_excludes": ["<tool_call>"]
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     },
     {
@@ -326,7 +461,12 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read two files."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read two files."
+          }
+        ],
         "tools": [
           {
             "type": "function",
@@ -336,8 +476,14 @@
               "strict": true,
               "parameters": {
                 "type": "object",
-                "properties": {"path": {"type": "string"}},
-                "required": ["path"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
                 "additionalProperties": false
               }
             }
@@ -354,10 +500,22 @@
           "tool_call_tokens": 2
         },
         "tool_calls": [
-          {"name": "read", "arguments": {"path": "README.md"}},
-          {"name": "read", "arguments": {"path": "WORKLOG.md"}}
+          {
+            "name": "read",
+            "arguments": {
+              "path": "README.md"
+            }
+          },
+          {
+            "name": "read",
+            "arguments": {
+              "path": "WORKLOG.md"
+            }
+          }
         ],
-        "response_excludes": ["<tool_call>"]
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     },
     {
@@ -369,7 +527,12 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read two files."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read two files."
+          }
+        ],
         "parallel_tool_calls": false,
         "tools": [
           {
@@ -380,8 +543,14 @@
               "strict": true,
               "parameters": {
                 "type": "object",
-                "properties": {"path": {"type": "string"}},
-                "required": ["path"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
                 "additionalProperties": false
               }
             }
@@ -391,10 +560,15 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "invalid_tool_call",
+          "cache_action": "append_none"
+        },
         "message_content": "",
         "no_tool_calls": true,
-        "response_excludes": ["<tool_call>"]
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     },
     {
@@ -406,7 +580,12 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Run pwd."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Run pwd."
+          }
+        ],
         "stream": true,
         "tools": [
           {
@@ -414,7 +593,9 @@
             "function": {
               "name": "bash",
               "description": "Run a command",
-              "parameters": {"type": "object"}
+              "parameters": {
+                "type": "object"
+              }
             }
           }
         ]
@@ -422,7 +603,12 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "tool_calls",
-        "tool_call": {"name": "bash", "arguments": {"command": "pwd"}}
+        "tool_call": {
+          "name": "bash",
+          "arguments": {
+            "command": "pwd"
+          }
+        }
       }
     },
     {
@@ -434,7 +620,12 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Think, then run pwd."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Think, then run pwd."
+          }
+        ],
         "stream": true,
         "tools": [
           {
@@ -444,8 +635,14 @@
               "description": "Run a command",
               "parameters": {
                 "type": "object",
-                "properties": {"command": {"type": "string"}},
-                "required": ["command"],
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command"
+                ],
                 "additionalProperties": false
               },
               "strict": true
@@ -464,8 +661,15 @@
           "tool_call_tokens": 1
         },
         "reasoning_content": "need shell",
-        "tool_call": {"name": "bash", "arguments": {"command": "pwd"}},
-        "response_excludes": ["<tool_call>"]
+        "tool_call": {
+          "name": "bash",
+          "arguments": {
+            "command": "pwd"
+          }
+        },
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     },
     {
@@ -477,7 +681,12 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Read both files."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read both files."
+          }
+        ],
         "stream": true,
         "parallel_tool_calls": true,
         "tools": [
@@ -488,8 +697,14 @@
               "description": "Read a file",
               "parameters": {
                 "type": "object",
-                "properties": {"path": {"type": "string"}},
-                "required": ["path"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
                 "additionalProperties": false
               },
               "strict": true
@@ -507,20 +722,41 @@
           "tool_call_tokens": 2
         },
         "tool_calls": [
-          {"index": 0, "name": "read", "arguments": {"path": "README.md"}},
-          {"index": 1, "name": "read", "arguments": {"path": "WORKLOG.md"}}
+          {
+            "index": 0,
+            "name": "read",
+            "arguments": {
+              "path": "README.md"
+            }
+          },
+          {
+            "index": 1,
+            "name": "read",
+            "arguments": {
+              "path": "WORKLOG.md"
+            }
+          }
         ],
-        "response_excludes": ["<tool_call>"]
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     },
     {
       "name": "reasoning_split_non_streaming",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
-      "fake_outputs": ["<think>scratch pad</think>visible answer"],
+      "fake_outputs": [
+        "<think>scratch pad</think>visible answer"
+      ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Think briefly."}]
+        "messages": [
+          {
+            "role": "user",
+            "content": "Think briefly."
+          }
+        ]
       },
       "expected": {
         "status_code": 200,
@@ -533,10 +769,17 @@
       "name": "no_think_prompt_rendering",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
-      "fake_outputs": ["direct answer"],
+      "fake_outputs": [
+        "direct answer"
+      ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Answer directly."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Answer directly."
+          }
+        ],
         "enable_thinking": false
       },
       "expected": {
@@ -549,11 +792,21 @@
       "name": "reasoning_effort_low_prompt_budget",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
-      "fake_outputs": ["direct answer"],
+      "fake_outputs": [
+        "direct answer"
+      ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Think only if needed."}],
-        "reasoning": {"enabled": true, "effort": "low"},
+        "messages": [
+          {
+            "role": "user",
+            "content": "Think only if needed."
+          }
+        ],
+        "reasoning": {
+          "enabled": true,
+          "effort": "low"
+        },
         "max_tokens": 2048
       },
       "expected": {
@@ -565,17 +818,26 @@
           "reserve at least 512 tokens for the final answer or tool call",
           "begin closing during the final 128 hidden reasoning tokens"
         ],
-        "prompt_excludes": ["<tools>"]
+        "prompt_excludes": [
+          "<tools>"
+        ]
       }
     },
     {
       "name": "json_schema_violation_chat",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
-      "fake_outputs": ["{\"ok\":\"yes\",\"path\":\"README.md\"}"],
+      "fake_outputs": [
+        "{\"ok\":\"yes\",\"path\":\"README.md\"}"
+      ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Return structured output."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return structured output."
+          }
+        ],
         "response_format": {
           "type": "json_schema",
           "json_schema": {
@@ -583,10 +845,18 @@
             "schema": {
               "type": "object",
               "properties": {
-                "ok": {"type": "boolean"},
-                "path": {"type": "string", "minLength": 1}
+                "ok": {
+                  "type": "boolean"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                }
               },
-              "required": ["ok", "path"],
+              "required": [
+                "ok",
+                "path"
+              ],
               "additionalProperties": false
             }
           }
@@ -595,27 +865,47 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "schema_violation", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "schema_violation",
+          "cache_action": "append_none"
+        },
         "message_content": "",
-        "prompt_contains": ["Return only JSON that satisfies this JSON schema"]
+        "prompt_contains": [
+          "Return only JSON that satisfies this JSON schema"
+        ]
       }
     },
     {
       "name": "guided_json_schema_chat_reasoning_success",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
-      "fake_outputs": ["<think>shape</think>{\"ok\":true,\"path\":\"README.md\"}"],
+      "fake_outputs": [
+        "<think>shape</think>{\"ok\":true,\"path\":\"README.md\"}"
+      ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Return guided JSON."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return guided JSON."
+          }
+        ],
         "guided_json": {
           "schema": {
             "type": "object",
             "properties": {
-              "ok": {"type": "boolean"},
-              "path": {"type": "string", "minLength": 1}
+              "ok": {
+                "type": "boolean"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
             },
-            "required": ["ok", "path"],
+            "required": [
+              "ok",
+              "path"
+            ],
             "additionalProperties": false
           }
         }
@@ -623,33 +913,62 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
+        },
         "message_content": "{\"ok\":true,\"path\":\"README.md\"}",
         "reasoning_content": "shape",
-        "prompt_contains": ["Return only JSON that satisfies this JSON schema"],
-        "response_excludes": ["<think>"]
+        "prompt_contains": [
+          "Return only JSON that satisfies this JSON schema"
+        ],
+        "response_excludes": [
+          "<think>"
+        ]
       }
     },
     {
       "name": "guided_json_schema_local_ref_chat_reasoning_success",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
-      "fake_outputs": ["<think>shape</think>{\"path\":\"README.md\",\"result\":\"ok\"}"],
+      "fake_outputs": [
+        "<think>shape</think>{\"path\":\"README.md\",\"result\":\"ok\"}"
+      ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Return guided JSON with refs."}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return guided JSON with refs."
+          }
+        ],
         "guided_json": {
           "schema": {
             "type": "object",
             "$defs": {
-              "file_ref": {"type": "string", "pattern": "^[A-Z]+[.]md$"},
-              "result_tag": {"enum": ["ok", "skip"]}
+              "file_ref": {
+                "type": "string",
+                "pattern": "^[A-Z]+[.]md$"
+              },
+              "result_tag": {
+                "enum": [
+                  "ok",
+                  "skip"
+                ]
+              }
             },
             "properties": {
-              "path": {"$ref": "#/$defs/file_ref"},
-              "result": {"$ref": "#/$defs/result_tag"}
+              "path": {
+                "$ref": "#/$defs/file_ref"
+              },
+              "result": {
+                "$ref": "#/$defs/result_tag"
+              }
             },
-            "required": ["path", "result"],
+            "required": [
+              "path",
+              "result"
+            ],
             "additionalProperties": false
           }
         }
@@ -657,38 +976,64 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
+        },
         "message_content": "{\"path\":\"README.md\",\"result\":\"ok\"}",
         "reasoning_content": "shape",
-        "prompt_contains": ["Return only JSON that satisfies this JSON schema"],
-        "response_excludes": ["<think>"]
+        "prompt_contains": [
+          "Return only JSON that satisfies this JSON schema"
+        ],
+        "response_excludes": [
+          "<think>"
+        ]
       }
     },
     {
       "name": "guided_choice_chat_reasoning_success",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
-      "fake_outputs": ["<think>choose</think>no"],
+      "fake_outputs": [
+        "<think>choose</think>no"
+      ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Choose yes or no."}],
-        "guided_choice": ["yes", "no"]
+        "messages": [
+          {
+            "role": "user",
+            "content": "Choose yes or no."
+          }
+        ],
+        "guided_choice": [
+          "yes",
+          "no"
+        ]
       },
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
+        },
         "message_content": "no",
         "reasoning_content": "choose",
-        "prompt_contains": ["Return exactly one of these choices and no other text"],
-        "response_excludes": ["<think>"]
+        "prompt_contains": [
+          "Return exactly one of these choices and no other text"
+        ],
+        "response_excludes": [
+          "<think>"
+        ]
       }
     },
     {
       "name": "guided_regex_completion_rejects_mismatch",
       "kind": "http",
       "endpoint": "/v1/completions",
-      "fake_outputs": ["AB"],
+      "fake_outputs": [
+        "AB"
+      ],
       "request": {
         "model": "fake-model",
         "prompt": "Return an identifier.",
@@ -697,7 +1042,10 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "schema_violation", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "schema_violation",
+          "cache_action": "append_none"
+        },
         "text": ""
       }
     },
@@ -710,17 +1058,31 @@
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "edit README"}],
-        "guided_patch": {"format": "unified_diff"}
+        "messages": [
+          {
+            "role": "user",
+            "content": "edit README"
+          }
+        ],
+        "guided_patch": {
+          "format": "unified_diff"
+        }
       },
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
+        },
         "message_content": "```diff\ndiff --git a/README.md b/README.md\nindex 1111111..2222222 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n```",
         "reasoning_content": "patch",
-        "prompt_contains": ["Return only a valid unified diff patch"],
-        "response_excludes": ["<think>"]
+        "prompt_contains": [
+          "Return only a valid unified diff patch"
+        ],
+        "response_excludes": [
+          "<think>"
+        ]
       }
     },
     {
@@ -738,7 +1100,10 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "schema_violation", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "schema_violation",
+          "cache_action": "append_none"
+        },
         "text": ""
       }
     },
@@ -746,17 +1111,24 @@
       "name": "stateless_session_append_none_completion",
       "kind": "http",
       "endpoint": "/v1/completions",
-      "fake_outputs": ["stateless answer"],
+      "fake_outputs": [
+        "stateless answer"
+      ],
       "request": {
         "model": "fake-model",
         "prompt": "answer without retaining",
-        "session": {"commit": "append_none"}
+        "session": {
+          "commit": "append_none"
+        }
       },
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
         "text": "stateless answer",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"}
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
+        }
       }
     },
     {
@@ -771,7 +1143,12 @@
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "Read the README with hidden reasoning."}],
+            "messages": [
+              {
+                "role": "user",
+                "content": "Read the README with hidden reasoning."
+              }
+            ],
             "tools": [
               {
                 "type": "function",
@@ -780,15 +1157,23 @@
                   "description": "Read a file",
                   "parameters": {
                     "type": "object",
-                    "properties": {"path": {"type": "string"}},
-                    "required": ["path"],
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ],
                     "additionalProperties": false
                   },
                   "strict": true
                 }
               }
             ],
-            "session": {"id": "sess_reasoning_tool"}
+            "session": {
+              "id": "sess_reasoning_tool"
+            }
           },
           "expected": {
             "status_code": 200,
@@ -802,38 +1187,63 @@
             },
             "message_content": "",
             "reasoning_content": "hidden plan",
-            "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
+            "tool_call": {
+              "name": "read",
+              "arguments": {
+                "path": "README.md"
+              }
+            },
             "capture_tool_call_id": true,
-            "response_excludes": ["<think>", "<tool_call>"]
+            "response_excludes": [
+              "<think>",
+              "<tool_call>"
+            ]
           }
         },
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "tool", "tool_call_id": "$tool_call_id", "content": "hello from README"}],
+            "messages": [
+              {
+                "role": "tool",
+                "tool_call_id": "$tool_call_id",
+                "content": "hello from README"
+              }
+            ],
             "tools": [
               {
                 "type": "function",
                 "function": {
                   "name": "read",
                   "description": "Read a file",
-                  "parameters": {"type": "object"}
+                  "parameters": {
+                    "type": "object"
+                  }
                 }
               }
             ],
-            "session": {"id": "sess_reasoning_tool", "commit": "append_none"}
+            "session": {
+              "id": "sess_reasoning_tool",
+              "commit": "append_none"
+            }
           },
           "expected": {
             "status_code": 200,
             "finish_reason": "stop",
             "message_content": "README says hello from a session.",
-            "finish_details": {"reason": "stop", "cache_action": "append_none"},
+            "finish_details": {
+              "reason": "stop",
+              "cache_action": "append_none"
+            },
             "prompt_contains": [
               "Read the README with hidden reasoning.",
               "<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n</function>\n</tool_call>",
               "<tool_response>\nhello from README\n</tool_response>"
             ],
-            "prompt_excludes": ["hidden plan", "<think>"]
+            "prompt_excludes": [
+              "hidden plan",
+              "<think>"
+            ]
           }
         }
       ]
@@ -850,7 +1260,12 @@
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "Read the README with hidden reasoning."}],
+            "messages": [
+              {
+                "role": "user",
+                "content": "Read the README with hidden reasoning."
+              }
+            ],
             "tools": [
               {
                 "type": "function",
@@ -859,15 +1274,23 @@
                   "description": "Read a file",
                   "parameters": {
                     "type": "object",
-                    "properties": {"path": {"type": "string"}},
-                    "required": ["path"],
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ],
                     "additionalProperties": false
                   },
                   "strict": true
                 }
               }
             ],
-            "session": {"id": "sess_snapshot_tool"}
+            "session": {
+              "id": "sess_snapshot_tool"
+            }
           },
           "expected": {
             "status_code": 200,
@@ -881,9 +1304,17 @@
             },
             "message_content": "",
             "reasoning_content": "hidden plan",
-            "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
+            "tool_call": {
+              "name": "read",
+              "arguments": {
+                "path": "README.md"
+              }
+            },
             "capture_tool_call_id": true,
-            "response_excludes": ["<think>", "<tool_call>"]
+            "response_excludes": [
+              "<think>",
+              "<tool_call>"
+            ]
           }
         },
         {
@@ -893,7 +1324,10 @@
             "status_code": 200,
             "object": "hipengine.session.snapshot",
             "snapshot_messages": [
-              {"role": "user", "content": "Read the README with hidden reasoning."},
+              {
+                "role": "user",
+                "content": "Read the README with hidden reasoning."
+              },
               {
                 "role": "assistant",
                 "content": "",
@@ -910,7 +1344,10 @@
               }
             ],
             "capture_snapshot": true,
-            "response_excludes": ["hidden plan", "<think>"]
+            "response_excludes": [
+              "hidden plan",
+              "<think>"
+            ]
           }
         },
         {
@@ -935,30 +1372,47 @@
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "tool", "tool_call_id": "$tool_call_id", "content": "hello from README"}],
+            "messages": [
+              {
+                "role": "tool",
+                "tool_call_id": "$tool_call_id",
+                "content": "hello from README"
+              }
+            ],
             "tools": [
               {
                 "type": "function",
                 "function": {
                   "name": "read",
                   "description": "Read a file",
-                  "parameters": {"type": "object"}
+                  "parameters": {
+                    "type": "object"
+                  }
                 }
               }
             ],
-            "session": {"id": "sess_snapshot_tool", "commit": "append_none"}
+            "session": {
+              "id": "sess_snapshot_tool",
+              "commit": "append_none"
+            }
           },
           "expected": {
             "status_code": 200,
             "finish_reason": "stop",
             "message_content": "README says hello after snapshot restore.",
-            "finish_details": {"reason": "stop", "cache_action": "append_none"},
+            "finish_details": {
+              "reason": "stop",
+              "cache_action": "append_none"
+            },
             "prompt_contains": [
               "Read the README with hidden reasoning.",
               "<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n</function>\n</tool_call>",
               "<tool_response>\nhello from README\n</tool_response>"
             ],
-            "prompt_excludes": ["hidden plan", "<think>"]
+            "prompt_excludes": [
+              "hidden plan",
+              "<think>"
+            ]
           }
         }
       ]
@@ -976,8 +1430,15 @@
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "base prompt"}],
-            "session": {"id": "sess_rollback_trace"},
+            "messages": [
+              {
+                "role": "user",
+                "content": "base prompt"
+              }
+            ],
+            "session": {
+              "id": "sess_rollback_trace"
+            },
             "max_tokens": 4
           },
           "expected": {
@@ -993,8 +1454,15 @@
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "second turn"}],
-            "session": {"id": "sess_rollback_trace"},
+            "messages": [
+              {
+                "role": "user",
+                "content": "second turn"
+              }
+            ],
+            "session": {
+              "id": "sess_rollback_trace"
+            },
             "max_tokens": 4
           },
           "expected": {
@@ -1005,12 +1473,18 @@
               "reason": "stop",
               "cache_action": "append_visible_only"
             },
-            "prompt_contains": ["base prompt", "base answer", "second turn"]
+            "prompt_contains": [
+              "base prompt",
+              "base answer",
+              "second turn"
+            ]
           }
         },
         {
           "endpoint": "/v1/hipengine/sessions/sess_rollback_trace/rollback",
-          "request": {"message_count": 2},
+          "request": {
+            "message_count": 2
+          },
           "expected": {
             "status_code": 200,
             "object": "hipengine.session.rolled_back",
@@ -1029,8 +1503,16 @@
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "after rollback turn"}],
-            "session": {"id": "sess_rollback_trace", "commit": "append_none"},
+            "messages": [
+              {
+                "role": "user",
+                "content": "after rollback turn"
+              }
+            ],
+            "session": {
+              "id": "sess_rollback_trace",
+              "commit": "append_none"
+            },
             "max_tokens": 4
           },
           "expected": {
@@ -1046,7 +1528,10 @@
               "base answer",
               "after rollback turn"
             ],
-            "prompt_excludes": ["second turn", "second answer"]
+            "prompt_excludes": [
+              "second turn",
+              "second answer"
+            ]
           }
         }
       ]
@@ -1056,13 +1541,21 @@
       "kind": "http",
       "endpoint": "/v1/completions",
       "fake_detailed_outputs": [
-        {"text": "partial", "finish_details": {"reason": "length", "length_limit": 1}}
+        {
+          "text": "partial",
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 1
+          }
+        }
       ],
       "request": {
         "model": "fake-model",
         "prompt": "cut short",
         "max_tokens": 1,
-        "logit_bias": {"12": -1}
+        "logit_bias": {
+          "12": -1
+        }
       },
       "expected": {
         "status_code": 200,
@@ -1074,7 +1567,14 @@
           "cache_action": "append_none",
           "continuation_eligible": false
         },
-        "sampling": {"logit_bias": [[12, -1.0]]}
+        "sampling": {
+          "logit_bias": [
+            [
+              12,
+              -1.0
+            ]
+          ]
+        }
       }
     },
     {
@@ -1082,11 +1582,22 @@
       "kind": "http",
       "endpoint": "/v1/chat/completions",
       "fake_detailed_outputs": [
-        {"text": "<think>scratch", "finish_details": {"reason": "length", "length_limit": 5}}
+        {
+          "text": "<think>scratch",
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 5
+          }
+        }
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "think briefly"}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "think briefly"
+          }
+        ],
         "max_tokens": 5
       },
       "expected": {
@@ -1108,11 +1619,22 @@
       "kind": "http",
       "endpoint": "/v1/chat/completions",
       "fake_detailed_outputs": [
-        {"text": "<think>scratch</thi", "finish_details": {"reason": "length", "length_limit": 5}}
+        {
+          "text": "<think>scratch</thi",
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 5
+          }
+        }
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "think briefly"}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "think briefly"
+          }
+        ],
         "max_tokens": 5
       },
       "expected": {
@@ -1134,11 +1656,22 @@
       "kind": "http",
       "endpoint": "/v1/chat/completions",
       "fake_detailed_outputs": [
-        {"text": "partial answer", "finish_details": {"reason": "length", "length_limit": 5}}
+        {
+          "text": "partial answer",
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 5
+          }
+        }
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "answer briefly"}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "answer briefly"
+          }
+        ],
         "max_tokens": 5
       },
       "expected": {
@@ -1161,12 +1694,25 @@
       "kind": "http",
       "endpoint": "/v1/chat/completions",
       "fake_detailed_outputs": [
-        {"text": "{\"status\":", "finish_details": {"reason": "length", "length_limit": 6}}
+        {
+          "text": "{\"status\":",
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 6
+          }
+        }
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Return JSON."}],
-        "response_format": {"type": "json_object"},
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return JSON."
+          }
+        ],
+        "response_format": {
+          "type": "json_object"
+        },
         "max_tokens": 6
       },
       "expected": {
@@ -1189,14 +1735,31 @@
       "kind": "http_sequence",
       "endpoint": "/v1/chat/completions",
       "fake_detailed_outputs": [
-        {"text": "partial answer", "finish_details": {"reason": "length", "length_limit": 5}},
-        {"text": " complete.", "finish_details": {"reason": "eos", "eos_token_id": 151645}}
+        {
+          "text": "partial answer",
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 5
+          }
+        },
+        {
+          "text": " complete.",
+          "finish_details": {
+            "reason": "eos",
+            "eos_token_id": 151645
+          }
+        }
       ],
       "steps": [
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "answer briefly"}],
+            "messages": [
+              {
+                "role": "user",
+                "content": "answer briefly"
+              }
+            ],
             "max_tokens": 5
           },
           "expected": {
@@ -1239,15 +1802,34 @@
       "kind": "http_sequence",
       "endpoint": "/v1/chat/completions",
       "fake_detailed_outputs": [
-        {"text": "partial", "finish_details": {"reason": "length", "length_limit": 1}},
-        {"text": " answer", "finish_details": {"reason": "eos", "eos_token_id": 151645}}
+        {
+          "text": "partial",
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 1
+          }
+        },
+        {
+          "text": " answer",
+          "finish_details": {
+            "reason": "eos",
+            "eos_token_id": 151645
+          }
+        }
       ],
       "steps": [
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "continue"}],
-            "session": {"id": "sess_trace_continue"},
+            "messages": [
+              {
+                "role": "user",
+                "content": "continue"
+              }
+            ],
+            "session": {
+              "id": "sess_trace_continue"
+            },
             "max_tokens": 1
           },
           "expected": {
@@ -1269,7 +1851,9 @@
           "request": {
             "model": "fake-model",
             "continuation_id": "$continuation_id",
-            "session": {"id": "sess_trace_continue"},
+            "session": {
+              "id": "sess_trace_continue"
+            },
             "max_tokens": 4
           },
           "expected": {
@@ -1291,11 +1875,22 @@
       "kind": "http",
       "endpoint": "/v1/chat/completions",
       "fake_detailed_outputs": [
-        {"text": "<tool_call>{\"name\":\"read\"", "finish_details": {"reason": "length", "length_limit": 6}}
+        {
+          "text": "<tool_call>{\"name\":\"read\"",
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 6
+          }
+        }
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "read the readme"}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "read the readme"
+          }
+        ],
         "tool_choice": "required",
         "tools": [
           {
@@ -1303,7 +1898,9 @@
             "function": {
               "name": "read",
               "description": "Read a file",
-              "parameters": {"type": "object"}
+              "parameters": {
+                "type": "object"
+              }
             }
           }
         ]
@@ -1320,14 +1917,18 @@
           "phase": "tool_call",
           "continuation_eligible": false
         },
-        "response_excludes": ["<tool_call>"]
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     },
     {
       "name": "context_overflow_completion_error",
       "kind": "http",
       "endpoint": "/v1/completions",
-      "server_config": {"max_context_tokens": 5},
+      "server_config": {
+        "max_context_tokens": 5
+      },
       "request": {
         "model": "fake-model",
         "prompt": "one two three four",
@@ -1357,13 +1958,17 @@
       "name": "context_overflow_completion_stream_error",
       "kind": "http",
       "endpoint": "/v1/completions",
-      "server_config": {"max_context_tokens": 5},
+      "server_config": {
+        "max_context_tokens": 5
+      },
       "request": {
         "model": "fake-model",
         "prompt": "one two three four",
         "max_tokens": 2,
         "stream": true,
-        "stream_options": {"include_hipengine": true}
+        "stream_options": {
+          "include_hipengine": true
+        }
       },
       "expected": {
         "status_code": 200,
@@ -1459,16 +2064,35 @@
               "token_id": 1,
               "token_text": "alpha",
               "logprob": -0.25,
-              "top_logprobs": [[1, "alpha", -0.25], [2, "omega", -1.5]]
+              "top_logprobs": [
+                [
+                  1,
+                  "alpha",
+                  -0.25
+                ],
+                [
+                  2,
+                  "omega",
+                  -1.5
+                ]
+              ]
             },
             {
               "token_id": 3,
               "token_text": " beta",
               "logprob": -0.5,
-              "top_logprobs": [[3, " beta", -0.5]]
+              "top_logprobs": [
+                [
+                  3,
+                  " beta",
+                  -0.5
+                ]
+              ]
             }
           ],
-          "finish_details": {"reason": "stop"}
+          "finish_details": {
+            "reason": "stop"
+          }
         }
       ],
       "request": {
@@ -1481,14 +2105,37 @@
         "status_code": 200,
         "finish_reason": "stop",
         "text": "alpha beta",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"},
-        "logprobs": {
-          "tokens": ["alpha", " beta"],
-          "token_logprobs": [-0.25, -0.5],
-          "top_logprobs": [{"alpha": -0.25, "omega": -1.5}, {" beta": -0.5}],
-          "text_offset": [0, 5]
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
         },
-        "sampling": {"logprobs": true, "top_logprobs": 2}
+        "logprobs": {
+          "tokens": [
+            "alpha",
+            " beta"
+          ],
+          "token_logprobs": [
+            -0.25,
+            -0.5
+          ],
+          "top_logprobs": [
+            {
+              "alpha": -0.25,
+              "omega": -1.5
+            },
+            {
+              " beta": -0.5
+            }
+          ],
+          "text_offset": [
+            0,
+            5
+          ]
+        },
+        "sampling": {
+          "logprobs": true,
+          "top_logprobs": 2
+        }
       }
     },
     {
@@ -1499,10 +2146,20 @@
         {
           "text": "alpha beta",
           "token_logprobs": [
-            {"token_id": 1, "token_text": "alpha", "logprob": null},
-            {"token_id": 3, "token_text": " beta", "logprob": -0.5}
+            {
+              "token_id": 1,
+              "token_text": "alpha",
+              "logprob": null
+            },
+            {
+              "token_id": 3,
+              "token_text": " beta",
+              "logprob": -0.5
+            }
           ],
-          "finish_details": {"reason": "stop"}
+          "finish_details": {
+            "reason": "stop"
+          }
         }
       ],
       "request": {
@@ -1515,12 +2172,27 @@
         "status_code": 200,
         "finish_reason": "stop",
         "text": "alpha beta",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
+        },
         "logprobs": {
-          "tokens": ["alpha", " beta"],
-          "token_logprobs": [null, -0.5],
-          "top_logprobs": [null, null],
-          "text_offset": [0, 5],
+          "tokens": [
+            "alpha",
+            " beta"
+          ],
+          "token_logprobs": [
+            null,
+            -0.5
+          ],
+          "top_logprobs": [
+            null,
+            null
+          ],
+          "text_offset": [
+            0,
+            5
+          ],
           "hipengine": {
             "omitted_token_logprobs": [
               {
@@ -1532,7 +2204,10 @@
             ]
           }
         },
-        "sampling": {"logprobs": true, "top_logprobs": 1}
+        "sampling": {
+          "logprobs": true,
+          "top_logprobs": 1
+        }
       }
     },
     {
@@ -1543,9 +2218,15 @@
         {
           "text": " world",
           "token_logprobs": [
-            {"token_id": 7, "token_text": " world", "logprob": -0.125}
+            {
+              "token_id": 7,
+              "token_text": " world",
+              "logprob": -0.125
+            }
           ],
-          "finish_details": {"reason": "stop"}
+          "finish_details": {
+            "reason": "stop"
+          }
         }
       ],
       "request": {
@@ -1559,12 +2240,27 @@
         "status_code": 200,
         "finish_reason": "stop",
         "text": "hello world",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
+        },
         "logprobs": {
-          "tokens": ["hello", " world"],
-          "token_logprobs": [null, -0.125],
-          "top_logprobs": [null, null],
-          "text_offset": [0, 5],
+          "tokens": [
+            "hello",
+            " world"
+          ],
+          "token_logprobs": [
+            null,
+            -0.125
+          ],
+          "top_logprobs": [
+            null,
+            null
+          ],
+          "text_offset": [
+            0,
+            5
+          ],
           "hipengine": {
             "omitted_token_logprobs": [
               {
@@ -1576,7 +2272,10 @@
             ]
           }
         },
-        "sampling": {"logprobs": true, "top_logprobs": 0}
+        "sampling": {
+          "logprobs": true,
+          "top_logprobs": 0
+        }
       }
     },
     {
@@ -1591,16 +2290,33 @@
               "token_id": 4,
               "token_text": "assistant",
               "logprob": -0.1,
-              "top_logprobs": [[4, "assistant", -0.1]]
+              "top_logprobs": [
+                [
+                  4,
+                  "assistant",
+                  -0.1
+                ]
+              ]
             },
-            {"token_id": 5, "token_text": " reply", "logprob": -0.2}
+            {
+              "token_id": 5,
+              "token_text": " reply",
+              "logprob": -0.2
+            }
           ],
-          "finish_details": {"reason": "stop"}
+          "finish_details": {
+            "reason": "stop"
+          }
         }
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "hello"}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
         "max_tokens": 2,
         "logprobs": true,
         "top_logprobs": 1
@@ -1609,20 +2325,37 @@
         "status_code": 200,
         "finish_reason": "stop",
         "message_content": "assistant reply",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
+        },
         "logprobs": {
           "content": [
             {
               "token": "assistant",
               "logprob": -0.1,
               "bytes": null,
-              "top_logprobs": [{"token": "assistant", "logprob": -0.1, "bytes": null}]
+              "top_logprobs": [
+                {
+                  "token": "assistant",
+                  "logprob": -0.1,
+                  "bytes": null
+                }
+              ]
             },
-            {"token": " reply", "logprob": -0.2, "bytes": null, "top_logprobs": []}
+            {
+              "token": " reply",
+              "logprob": -0.2,
+              "bytes": null,
+              "top_logprobs": []
+            }
           ],
           "refusal": null
         },
-        "sampling": {"logprobs": true, "top_logprobs": 1}
+        "sampling": {
+          "logprobs": true,
+          "top_logprobs": 1
+        }
       }
     },
     {
@@ -1633,15 +2366,30 @@
         {
           "text": "assistant reply",
           "token_logprobs": [
-            {"token_id": 4, "token_text": "assistant", "logprob": null},
-            {"token_id": 5, "token_text": " reply", "logprob": -0.2}
+            {
+              "token_id": 4,
+              "token_text": "assistant",
+              "logprob": null
+            },
+            {
+              "token_id": 5,
+              "token_text": " reply",
+              "logprob": -0.2
+            }
           ],
-          "finish_details": {"reason": "stop"}
+          "finish_details": {
+            "reason": "stop"
+          }
         }
       ],
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "hello"}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
         "max_tokens": 2,
         "logprobs": true
       },
@@ -1649,11 +2397,24 @@
         "status_code": 200,
         "finish_reason": "stop",
         "message_content": "assistant reply",
-        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "finish_details": {
+          "reason": "stop",
+          "cache_action": "append_none"
+        },
         "logprobs": {
           "content": [
-            {"token": "assistant", "logprob": null, "bytes": null, "top_logprobs": []},
-            {"token": " reply", "logprob": -0.2, "bytes": null, "top_logprobs": []}
+            {
+              "token": "assistant",
+              "logprob": null,
+              "bytes": null,
+              "top_logprobs": []
+            },
+            {
+              "token": " reply",
+              "logprob": -0.2,
+              "bytes": null,
+              "top_logprobs": []
+            }
           ],
           "refusal": null,
           "hipengine": {
@@ -1667,14 +2428,19 @@
             ]
           }
         },
-        "sampling": {"logprobs": true, "top_logprobs": 0}
+        "sampling": {
+          "logprobs": true,
+          "top_logprobs": 0
+        }
       }
     },
     {
       "name": "completion_logprobs_missing_backend_metadata_error",
       "kind": "http",
       "endpoint": "/v1/completions",
-      "fake_outputs": ["alpha"],
+      "fake_outputs": [
+        "alpha"
+      ],
       "request": {
         "model": "fake-model",
         "prompt": "hello",
@@ -1692,27 +2458,48 @@
       "name": "engine_busy_chat_session_cap_sequence",
       "kind": "http_sequence",
       "endpoint": "/v1/chat/completions",
-      "server_config": {"max_chat_sessions": 1},
-      "fake_outputs": ["stored answer"],
+      "server_config": {
+        "max_chat_sessions": 1
+      },
+      "fake_outputs": [
+        "stored answer"
+      ],
       "steps": [
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "open first session"}],
-            "session": {"id": "sess_busy_one"}
+            "messages": [
+              {
+                "role": "user",
+                "content": "open first session"
+              }
+            ],
+            "session": {
+              "id": "sess_busy_one"
+            }
           },
           "expected": {
             "status_code": 200,
             "finish_reason": "stop",
             "message_content": "stored answer",
-            "finish_details": {"reason": "stop", "cache_action": "append_visible_only"}
+            "finish_details": {
+              "reason": "stop",
+              "cache_action": "append_visible_only"
+            }
           }
         },
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "open second session"}],
-            "session": {"id": "sess_busy_two"}
+            "messages": [
+              {
+                "role": "user",
+                "content": "open second session"
+              }
+            ],
+            "session": {
+              "id": "sess_busy_two"
+            }
           },
           "expected": {
             "status_code": 429,
@@ -1726,7 +2513,9 @@
       "name": "deadline_error_completion",
       "kind": "http",
       "endpoint": "/v1/completions",
-      "fake_outputs": ["late"],
+      "fake_outputs": [
+        "late"
+      ],
       "generate_delay_s": 0.03,
       "request": {
         "model": "fake-model",
@@ -1738,7 +2527,10 @@
         "status_code": 408,
         "error_code": "deadline_exceeded",
         "hipengine_error_code": "deadline_exceeded",
-        "finish_details": {"reason": "deadline_exceeded", "deadline_exceeded": true}
+        "finish_details": {
+          "reason": "deadline_exceeded",
+          "deadline_exceeded": true
+        }
       }
     },
     {
@@ -1755,7 +2547,10 @@
         "status_code": 499,
         "error_code": "cancelled",
         "hipengine_error_code": "cancelled",
-        "finish_details": {"reason": "cancelled", "cancelled": true}
+        "finish_details": {
+          "reason": "cancelled",
+          "cancelled": true
+        }
       }
     },
     {
@@ -1768,7 +2563,9 @@
         "prompt": "cancel",
         "max_tokens": 4,
         "stream": true,
-        "stream_options": {"include_hipengine": true}
+        "stream_options": {
+          "include_hipengine": true
+        }
       },
       "expected": {
         "status_code": 200,
@@ -1776,7 +2573,10 @@
         "error_code": "cancelled",
         "hipengine_error_code": "cancelled",
         "hipengine_event": "error",
-        "finish_details": {"reason": "cancelled", "cancelled": true}
+        "finish_details": {
+          "reason": "cancelled",
+          "cancelled": true
+        }
       }
     },
     {
@@ -1786,11 +2586,18 @@
       "fake_exception": "deadline",
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "slow chat"}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "slow chat"
+          }
+        ],
         "max_tokens": 4,
         "stream": true,
         "timeout_ms": 5000,
-        "stream_options": {"include_hipengine": true}
+        "stream_options": {
+          "include_hipengine": true
+        }
       },
       "expected": {
         "status_code": 200,
@@ -1799,7 +2606,10 @@
         "error_param": "timeout_ms",
         "hipengine_error_code": "deadline_exceeded",
         "hipengine_event": "error",
-        "finish_details": {"reason": "deadline_exceeded", "deadline_exceeded": true}
+        "finish_details": {
+          "reason": "deadline_exceeded",
+          "deadline_exceeded": true
+        }
       }
     },
     {
@@ -1809,10 +2619,17 @@
       "fake_exception": "cancelled",
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "cancel chat"}],
+        "messages": [
+          {
+            "role": "user",
+            "content": "cancel chat"
+          }
+        ],
         "max_tokens": 4,
         "stream": true,
-        "stream_options": {"include_hipengine": true}
+        "stream_options": {
+          "include_hipengine": true
+        }
       },
       "expected": {
         "status_code": 200,
@@ -1820,7 +2637,10 @@
         "error_code": "cancelled",
         "hipengine_error_code": "cancelled",
         "hipengine_event": "error",
-        "finish_details": {"reason": "cancelled", "cancelled": true}
+        "finish_details": {
+          "reason": "cancelled",
+          "cancelled": true
+        }
       }
     },
     {
@@ -1843,7 +2663,13 @@
       "kind": "http_sequence",
       "endpoint": "/v1/completions",
       "fake_detailed_outputs": [
-        {"text": "partial", "finish_details": {"reason": "length", "length_limit": 1}}
+        {
+          "text": "partial",
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 1
+          }
+        }
       ],
       "steps": [
         {
@@ -1892,7 +2718,77 @@
       "expected": {
         "status_code": 499,
         "error_code": "cancelled",
-        "finish_details": {"reason": "cancelled", "cancelled": true}
+        "finish_details": {
+          "reason": "cancelled",
+          "cancelled": true
+        }
+      }
+    },
+    {
+      "name": "parallel_tool_calls_without_opt_in_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call><tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"WORKLOG.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Read two files."
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "strict": true,
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "tool_calls",
+        "finish_details": {
+          "reason": "tool_calls",
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "tool_call_tokens": 2
+        },
+        "message_content": "",
+        "tool_calls": [
+          {
+            "name": "read",
+            "arguments": {
+              "path": "README.md"
+            }
+          },
+          {
+            "name": "read",
+            "arguments": {
+              "path": "WORKLOG.md"
+            }
+          }
+        ],
+        "response_excludes": [
+          "<tool_call>"
+        ]
       }
     }
   ]

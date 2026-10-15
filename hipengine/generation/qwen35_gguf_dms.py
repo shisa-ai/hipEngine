@@ -16,7 +16,7 @@ class Qwen35GGUFDMSModelRunner(Qwen35GGUFResidentModelRunner):
         self._engine_loop_config = config
         self._prefix_cache_mode = "off"
 
-    def _reserve_sessions(self):
+    def _reserve_sessions(self, *, max_sequence_length=None):
         config = self.generator.dms_config
         session = Qwen35GGUFResidentSession(
             self.generator.model_path, backend=self.generator.backend,

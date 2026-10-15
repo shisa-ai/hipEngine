@@ -4,10 +4,9 @@ hipEngine is a ROCm-native local inference engine built primarily for AMD
 Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.6.1.** This alpha fixes long-prompt prefix reuse, widens
-speculative decoding on INT8 KV, and adds `/bench` and prefix-cache accounting
-to the terminal chat client.
-See the [release notes](CHANGELOG.md#v061---2026-09-22) for scope and limitations.
+**Current release: v0.7.1.** This patch fixes long-song YuE2 generation and
+makes the default YuE2 song budget fit the resident AR context. See the [release
+notes](CHANGELOG.md#v071---2026-10-14) for scope and limitations.
 
 [Supported models](#supported-models) lists the current model families and
 hardware; the [model support reference](docs/MODELS.md) gives exact formats,
@@ -213,7 +212,7 @@ The 16-snapshot setting uses more memory and is opt-in.
 
 ## Status and limits
 
-v0.6.1 is alpha. Automatic performance routes remain scoped to qualified
+v0.7.1 is a patch release. Automatic performance routes remain scoped to qualified
 model, hardware, and workload combinations:
 
 - Qwen3.6-27B and Qwen3.8-27B GGUF generation and serving on both AMD backends.
