@@ -22,6 +22,7 @@ session reads. Start there, then come here for the document your task touches.
 | [`BENCHMARK.md`](BENCHMARK.md) | **normative** | Benchmark protocols, baselines to beat, required evidence fields, correctness thresholds, and artifact/rollup format. |
 | [`ENVS.md`](ENVS.md) | current | Complete environment-variable reference and the recommended profiles for normal use, ROCm setup, and profiling. |
 | [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) | **normative** | Strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and kernel-variant selection policy. |
+| [`HOWTO-README.md`](HOWTO-README.md) | **normative** | Rules for editing the root README product page: who it is for, what belongs there, and the failure patterns that have repeatedly made it unreadable. |
 | [`KERNELS.md`](KERNELS.md) | current | Kernel source catalog, model/quant and registry mappings, arithmetic variants, and fused fallback map. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | current | Architecture-independent porting, build, and runtime gotchas, plus historical integration case studies. |
 | [`MODELS.md`](MODELS.md) | current | Models, quantizations, and backends hipEngine has implemented and measured. |

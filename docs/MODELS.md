@@ -82,4 +82,3 @@ on a 24 GB GPU](../README.md#long-context-on-a-24-gb-gpu) section.
 - NVIDIA support is Maple-Preview only, through `backend="cuda_sm120a"`.
 - GPU results are host-specific. See the [benchmark report](../benchmarks/README.md)
   for the exact host and protocol behind every published number.
-- APIs and measured coverage can still change before 1.0.
