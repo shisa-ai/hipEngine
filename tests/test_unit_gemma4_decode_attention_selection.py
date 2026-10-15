@@ -778,6 +778,7 @@ def _drive_forward_with_stubs(monkeypatch: pytest.MonkeyPatch, runner, config) -
     return captured
 
 
+@_needs_hip
 def test_a_one_row_prefill_tail_stays_native_while_a_decode_step_takes_the_preference(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

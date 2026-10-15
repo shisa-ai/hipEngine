@@ -2254,6 +2254,7 @@ def test_windowed_attention_matches_the_reference_at_the_gate_shape(
     )
 
 
+@_needs_hip
 def test_attention_prefill_scale_is_not_assumed():
     """The kernel multiplies by the scale it is given, not head_dim**-0.5.
 
@@ -2592,6 +2593,7 @@ def test_layer_forward_matches_the_reference(k_eq_v):
     )
 
 
+@_needs_hip
 def test_layer_forward_routes_head_dim_512_to_the_tiled_prefill_kernel():
     """The global layers must actually execute the tiled kernel, not the fallback.
 
