@@ -382,9 +382,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/generation/qwen35_gguf_mtp2.py:2272:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
+      "key": "hipengine/generation/qwen35_gguf_mtp2.py:2278:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
       "title": "runtime branch on HIPENGINE_DEBUG_SAMPLED_QUALIFY: default-off with no removal condition recorded",
-      "location": "hipengine/generation/qwen35_gguf_mtp2.py:2272",
+      "location": "hipengine/generation/qwen35_gguf_mtp2.py:2278",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_DEBUG_SAMPLED_QUALIFY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_DEBUG_SAMPLED_QUALIFY`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -401,7 +401,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf_mtp2.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf_mtp2.py:2272:HIPENGINE_DEBUG_SAMPLED_QUALIFY"
+          "hipengine/generation/qwen35_gguf_mtp2.py:2278:HIPENGINE_DEBUG_SAMPLED_QUALIFY"
         ],
         "tokens": [
           "branch",
@@ -414,8 +414,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/generation/qwen35_gguf_mtp2.py:2272:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
-      "evidence_hash": "a05b36d55c92"
+      "id": "ungoverned-flag-branch/hipengine/generation/qwen35_gguf_mtp2.py:2278:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
+      "evidence_hash": "92a6956e43c9"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -1502,9 +1502,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:36415:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:37107:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
       "title": "runtime branch on HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:36415",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:37107",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -1521,7 +1521,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:36415:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
+          "hipengine/runtime/qwen35_gguf_runner.py:37107:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
         ],
         "tokens": [
           "branch",
@@ -1534,14 +1534,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:36415:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
-      "evidence_hash": "036438b5bf64"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:37107:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "evidence_hash": "7e475c636d87"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:3799:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:3813:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
       "title": "runtime branch on HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:3799",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:3813",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -1558,7 +1558,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:3799:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
+          "hipengine/runtime/qwen35_gguf_runner.py:3813:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
         ],
         "tokens": [
           "branch",
@@ -1571,8 +1571,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:3799:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
-      "evidence_hash": "8906f6146ef3"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:3813:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "evidence_hash": "a6d6b8e7384f"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -3872,9 +3872,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/api.py:2528:HIPENGINE_API_KEY",
+      "key": "hipengine/server/api.py:2537:HIPENGINE_API_KEY",
       "title": "runtime branch on HIPENGINE_API_KEY: default-off with no removal condition recorded",
-      "location": "hipengine/server/api.py:2528",
+      "location": "hipengine/server/api.py:2537",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_API_KEY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_API_KEY`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3891,7 +3891,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:2528:HIPENGINE_API_KEY"
+          "hipengine/server/api.py:2537:HIPENGINE_API_KEY"
         ],
         "tokens": [
           "branch",
@@ -3904,8 +3904,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/api.py:2528:HIPENGINE_API_KEY",
-      "evidence_hash": "ad93ce4a397f"
+      "id": "ungoverned-flag-branch/hipengine/server/api.py:2537:HIPENGINE_API_KEY",
+      "evidence_hash": "b4df57aa28f8"
     }
   ]
 }

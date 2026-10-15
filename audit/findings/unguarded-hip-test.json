@@ -327,7 +327,7 @@
       "kind": "unguarded-hip-test",
       "key": "tests/test_integration_server_api.py",
       "title": "test_integration_server_api.py touches the ROCm runtime with no availability guard",
-      "location": "tests/test_integration_server_api.py:4798",
+      "location": "tests/test_integration_server_api.py:4809",
       "evidence": {
         "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
         "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
@@ -350,7 +350,7 @@
         ]
       },
       "id": "unguarded-hip-test/tests/test_integration_server_api.py",
-      "evidence_hash": "9c52fd380aa1"
+      "evidence_hash": "2ff139f66648"
     },
     {
       "kind": "unguarded-hip-test",
@@ -1801,6 +1801,35 @@
       },
       "id": "unguarded-hip-test/tests/test_unit_summarize_native_context_gates.py",
       "evidence_hash": "471ca220d528"
+    },
+    {
+      "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_virtual_memory.py",
+      "title": "test_unit_virtual_memory.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_virtual_memory.py:3",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_virtual_memory.py",
+        "refs": [
+          "tests/test_unit_virtual_memory.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_virtual_memory",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_virtual_memory.py",
+      "evidence_hash": "fa9a9873600e"
     },
     {
       "kind": "unguarded-hip-test",

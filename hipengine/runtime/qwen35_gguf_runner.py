@@ -3810,7 +3810,7 @@ class Qwen35GGUFFullStackRunner:
         chains keep raw Q/K and normalization scales separate so their
         recurrent kernels preserve fused decode-order arithmetic. Whether the matching single-
         sequence or segment-aware recurrence runs is controlled by
-        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025), not a
+        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 256), not a
         per-quant/per-backend branch.
         """
 

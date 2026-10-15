@@ -1,8 +1,8 @@
 {
   "kind": "doc-path-drift",
   "meta": {
-    "paths_checked": 1832,
-    "skipped_as_illustrative": 1445,
+    "paths_checked": 1837,
+    "skipped_as_illustrative": 1454,
     "exempt": [
       "docs/campaigns/",
       "docs/archive/",
@@ -5434,108 +5434,6 @@
       },
       "id": "doc-path-drift/docs/PLAN.md:1130:loading/qwen35_gguf_execution.py",
       "evidence_hash": "a43012e24ac3"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "docs/PLAN.md:4277:kernels/cuda_sm86",
-      "title": "names `kernels/cuda_sm86`, which is actually at `hipengine/kernels/cuda_sm86`",
-      "location": "docs/PLAN.md:4277",
-      "evidence": {
-        "fix": "Change `kernels/cuda_sm86` to `hipengine/kernels/cuda_sm86`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "kernels/cuda_sm86",
-        "doc": "docs/PLAN.md",
-        "actual": [
-          "hipengine/kernels/cuda_sm86"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "docs/PLAN.md",
-        "refs": [
-          "docs/PLAN.md:4277:kernels/cuda_sm86"
-        ],
-        "tokens": [
-          "actually",
-          "cuda_sm86",
-          "hipengine",
-          "kernels",
-          "names",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/docs/PLAN.md:4277:kernels/cuda_sm86",
-      "evidence_hash": "14a8df233604"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "docs/PLAN.md:4330:kernels/hip_gfx1100",
-      "title": "names `kernels/hip_gfx1100`, which is actually at `hipengine/kernels/hip_gfx1100`",
-      "location": "docs/PLAN.md:4330",
-      "evidence": {
-        "fix": "Change `kernels/hip_gfx1100` to `hipengine/kernels/hip_gfx1100`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "kernels/hip_gfx1100",
-        "doc": "docs/PLAN.md",
-        "actual": [
-          "hipengine/kernels/hip_gfx1100"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "docs/PLAN.md",
-        "refs": [
-          "docs/PLAN.md:4330:kernels/hip_gfx1100"
-        ],
-        "tokens": [
-          "actually",
-          "hip_gfx1100",
-          "hipengine",
-          "kernels",
-          "names",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/docs/PLAN.md:4330:kernels/hip_gfx1100",
-      "evidence_hash": "12d7eeaa98c7"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "docs/PLAN.md:4337:kernels/cpu_reference",
-      "title": "names `kernels/cpu_reference`, which is actually at `hipengine/kernels/cpu_reference`",
-      "location": "docs/PLAN.md:4337",
-      "evidence": {
-        "fix": "Change `kernels/cpu_reference` to `hipengine/kernels/cpu_reference`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "kernels/cpu_reference",
-        "doc": "docs/PLAN.md",
-        "actual": [
-          "hipengine/kernels/cpu_reference"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "docs/PLAN.md",
-        "refs": [
-          "docs/PLAN.md:4337:kernels/cpu_reference"
-        ],
-        "tokens": [
-          "actually",
-          "cpu_reference",
-          "hipengine",
-          "kernels",
-          "names",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/docs/PLAN.md:4337:kernels/cpu_reference",
-      "evidence_hash": "7e973f30ec9a"
     },
     {
       "kind": "doc-path-drift",

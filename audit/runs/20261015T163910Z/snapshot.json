@@ -1,0 +1,43 @@
+{
+  "stamp": "20261015T163910Z",
+  "rows": 3770,
+  "open": 1501,
+  "triaged": 1014,
+  "stale": 1229,
+  "by_kind": {
+    "candidate": 250,
+    "flag": 766,
+    "kernel": 294,
+    "ledger": 430,
+    "worklog": 1413,
+    "axis-branch": 21,
+    "doc-path-drift": 202,
+    "stub": 225,
+    "ungoverned-flag-branch": 105,
+    "unguarded-hip-test": 64
+  },
+  "tags": {
+    "NOT-DEBT": 3030,
+    "DUP-DISPATCH": 10,
+    "TEST-GAP": 3,
+    "EXACTNESS-REJECT": 4,
+    "DOC-DRIFT": 373,
+    "LOST-OPT": 4,
+    "GATE-CATCH22": 4,
+    "UNREACHABLE": 15,
+    "ORPHAN-KERNEL": 2,
+    "STALE-LEDGER": 5,
+    "DEAD-FLAG": 1,
+    "DEAD-CODE": 2,
+    "SKELETON": 8
+  },
+  "dispositions": {
+    "keep": 2984,
+    "defer": 341,
+    "qualify": 17,
+    "wontfix": 32,
+    "document": 83,
+    "remove": 3,
+    "promote": 1
+  }
+}
