@@ -8452,6 +8452,21 @@ class Qwen35GGUFResidentModelRunner:
             return False
         return bool(supports(int(request_id)))
 
+    def staged_speculative_owner(self):
+        """Declare this runner's scheduler-facing staged speculative lifecycle.
+
+        Opting in routes the runner through the reusable staged seam: the
+        Generation-2 loop resolves the owner through
+        ``resolve_staged_speculative_runner`` and validates it before driving
+        one bounded target/provider cycle.
+        """
+
+        from hipengine.speculative.provider import (
+            validate_staged_speculative_runner,
+        )
+
+        return validate_staged_speculative_runner(self)
+
     def speculative_capability(self, request_semantics):
         adapter = self._resolved_mtp2_adapter()
         return None if adapter is None else adapter.capability(request_semantics)

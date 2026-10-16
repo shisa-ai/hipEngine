@@ -40,9 +40,11 @@ from hipengine.speculative import (
     SpeculativeMTPStaticEligibility,
     SpeculativeMTPStaticState,
     SpeculativeRequestSemantics,
+    StagedSpeculativeRunner,
     TargetAcceptSummary,
     TargetVerifyBatch,
     TargetVerifyBuffers,
+    resolve_staged_speculative_runner,
 )
 from hipengine.speculative.ngram_mod import NgramModConfig, RequestLocalNgramMod
 from hipengine.speculative.accounting import speculative_output_accounting
@@ -717,6 +719,57 @@ def test_resident_runner_delegates_staged_methods_without_backend_branches() -> 
         4,
     )
     assert runner.speculative_kv_live_spans_owner(SimpleNamespace(operation_id="op"))
+
+
+def test_qwen_runner_opts_into_the_staged_seam_and_preserves_delegation() -> None:
+    runner = _bare_runner()
+    adapter = _AdapterDouble()
+    runner._mtp2_adapter = adapter
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(target_arch="gfx1151")
+    runner._rows = {7: SimpleNamespace(mtp2_candidate_budget=0)}
+
+    owner = resolve_staged_speculative_runner(runner)
+
+    assert owner is runner
+    assert isinstance(owner, StagedSpeculativeRunner)
+    assert runner.staged_speculative_owner() is runner
+    assert owner.speculative_capability(("s",)) == "capability"
+    assert owner.speculative_claims_fit("plan") is True
+    assert owner.speculative_component_claims("plan") == {"plan": "plan"}
+    reservation = owner.reserve_speculative_claims("claims")
+    assert reservation == ("reservation", "claims")
+    owner.release_speculative_claims(reservation)
+    owner.prepare_speculative_requests("plan", ("s",), stream=1)
+    assert owner.propose_speculative_batch("plan", ("s",), stream=2) == (
+        "proposal",
+        "plan",
+        ("s",),
+        2,
+    )
+    assert owner.execute_target_frontier(
+        1, 2, 3, commit=True, cancelled_request_ids=()
+    ) == ((1, 2, 3), {"commit": True, "cancelled_request_ids": ()})
+    assert owner.speculative_kv_live_spans_owner(SimpleNamespace(operation_id="op"))
+    owner.rollback_speculative_cycle("plan", None, RuntimeError("boom"))
+    assert adapter.calls[-1][0] == "rollback"
+    assert adapter.calls[-1][1][0] == "plan"
+
+
+def test_dms_runner_keeps_its_named_unsupported_speculative_boundary() -> None:
+    from hipengine.generation.qwen35_gguf_dms import Qwen35GGUFDMSModelRunner
+
+    runner = object.__new__(Qwen35GGUFDMSModelRunner)
+    with pytest.raises(
+        ValueError, match="DMS compact KV has no speculative serving adapter"
+    ):
+        runner.configure_engine_loop(
+            SimpleNamespace(prefix_cache="off", speculative_mtp_serving="on")
+        )
+    with pytest.raises(ValueError, match="prefix-cache"):
+        runner.configure_engine_loop(
+            SimpleNamespace(prefix_cache="radix", speculative_mtp_serving="off")
+        )
 
 
 def test_resident_runner_bounds_cycle_intent_by_static_evidence_k() -> None:

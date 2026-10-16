@@ -55,7 +55,10 @@ from hipengine.speculative.frontier import (
     TargetFrontier,
 )
 from hipengine.speculative.policy import SpecRequestPlan, plan_speculative_requests
-from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.provider import (
+    SpeculativeRequestSemantics,
+    resolve_staged_speculative_runner,
+)
 from hipengine.speculative.transaction import (
     SpecCycleResult,
     SpecCycleStage,
@@ -582,7 +585,7 @@ class SubmitPollTextGenerator:
             return False
         capability = callable(getattr(self._runner, "speculative_capability", None))
         opaque = callable(getattr(self._runner, "execute_speculative_cycle", None))
-        staged = callable(getattr(self._runner, "execute_target_frontier", None))
+        staged = resolve_staged_speculative_runner(self._runner) is not None
         return capability and (opaque or staged)
 
     @property
@@ -3250,19 +3253,22 @@ class ResidentEngineLoop:
         semantics: tuple[SpeculativeRequestSemantics, ...],
         capability: SpeculativeCapability,
     ) -> SpecCycleResult | None:
+        staged_owner = resolve_staged_speculative_runner(self.runner)
+        if staged_owner is None:
+            return None
         frontier_available = getattr(
-            self.runner,
+            staged_owner,
             "speculative_frontier_available",
             None,
         )
         if callable(frontier_available) and not bool(frontier_available(plan)):
             return None
-        component_claims = getattr(self.runner, "speculative_component_claims", None)
-        reserve_claims = getattr(self.runner, "reserve_speculative_claims", None)
-        release_claims = getattr(self.runner, "release_speculative_claims", None)
-        prepare = getattr(self.runner, "prepare_speculative_requests", None)
-        propose = getattr(self.runner, "propose_speculative_batch", None)
-        execute_target = getattr(self.runner, "execute_target_frontier", None)
+        component_claims = getattr(staged_owner, "speculative_component_claims", None)
+        reserve_claims = getattr(staged_owner, "reserve_speculative_claims", None)
+        release_claims = getattr(staged_owner, "release_speculative_claims", None)
+        prepare = getattr(staged_owner, "prepare_speculative_requests", None)
+        propose = getattr(staged_owner, "propose_speculative_batch", None)
+        execute_target = getattr(staged_owner, "execute_target_frontier", None)
         required = (
             component_claims,
             reserve_claims,
@@ -3301,7 +3307,7 @@ class ResidentEngineLoop:
             if tuple(root_positions) != candidate_graph.root_positions:
                 raise ValueError("candidate graph root positions must match scheduler state")
             live_spans_owner = getattr(
-                self.runner,
+                staged_owner,
                 "speculative_kv_live_spans_owner",
                 None,
             )
@@ -3340,7 +3346,7 @@ class ResidentEngineLoop:
                 raise ValueError("target result must own the complete speculative claims")
             return result
         except BaseException as exc:
-            rollback = getattr(self.runner, "rollback_speculative_cycle", None)
+            rollback = getattr(staged_owner, "rollback_speculative_cycle", None)
             if callable(rollback):
                 rollback(plan, candidate_graph, exc)
             raise
