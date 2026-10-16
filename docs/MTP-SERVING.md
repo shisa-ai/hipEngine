@@ -83,14 +83,19 @@ governed separately and retains its automatic keys above.
 
 | Backend | KV | Width/depth | Sampling | Automatic today | Explicit today |
 | --- | --- | --- | --- | --- | --- |
-| gfx1100 | bf16 | C1–C2, K≤2 | greedy_fast, sampled | Q4_K_M C1/K2 and C2/K2 (dual-promotion rows) | yes |
+| gfx1100 | bf16 | C1–C2, K≤2 | greedy_fast, sampled | Q4_K_M C1/K2 and C2/K2 (dual-promotion rows) | yes; **sampled resolves at c1–c2** (c1 via the native-cycle device accept, c2 via the dense adapter's packed per-row sampled accept), c3+ refused by name (`moe_group_above_offered_width`) |
 | gfx1151 | bf16 | not declared | — | no (no declaration, no evidence) | refused by name until the capability is established — not assumed |
 
-Sampled MTP is served by the native device accept at **C1 only** today: the
-C1 cycle decides the drafted chain on the target's device sampled-accept graph
-(admission and execution share one predicate, with prefill warmup). A sampled
-row reaching the staged C2 target is refused by name rather than decided by
-argmax. Widening sampled to c=N is tracked work (gap list below).
+Sampled MTP at c=N runs through the dense adapter that serves MoE groups at
+capacity > 1: the packed target asks for each row's logits span and draws
+per-row tokens with the same sorted sampler as AR **before any commit**
+(`_sample_packed_target_rows`), with per-prefix state for history processors
+and a host fallback. A sampled row reaching a lane that cannot decide it
+raises by name (`MoeSampledRouteUnsupportedError` on the C1 adapter's own
+width-2 lane; `sampled physical verification requires resident device
+results` on the host-batch lane) and is contained, never silently decided by
+argmax. The c2 sampled cell's GPU qualification on gfx1100 is the recorded
+gate for promoting it beyond explicit-only.
 
 ### PARO (W4, `Qwen35ParoMoeModel`)
 
@@ -130,8 +135,11 @@ common scenario" — each is in flight, and this section shrinks as they land:
   `sampled_accept`/workspace machinery the dense/MoE lanes use) ports behind a
   graph-warmup gate, and qualification runs on the W7900 host because the
   PARO verifier is gfx1100-only. Owner: the PARO sampled-decider unit.
-- **MoE sampled at c=N (C2+)** — the packed target has no sampled decider;
-  C2+ sampled rows are refused by name today. Owner: the MoE c=N task.
+- **MoE sampled at c=N** — closed as misrecorded: the production c2 lane
+  (dense adapter) already decides sampled rows exactly per-row before commit;
+  the "C1-only" reading came from the C1 adapter's own width-2 lane, which
+  production never routes to. Remaining: GPU qualification of the c2 sampled
+  cell on gfx1100 before it is promoted beyond explicit-only.
 - **C8 speculative owner** — no qualified C8-width speculative frontier
   exists, so explicit MTP at concurrency 8 has no physical path; dense
   gfx1100 serves C8 via the retained explicit-only C8/K3 evidence row where

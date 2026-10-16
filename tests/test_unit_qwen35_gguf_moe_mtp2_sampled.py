@@ -533,3 +533,136 @@ def test_moe_staged_c2_refuses_a_sampled_row_by_name() -> None:
             commit=True,
             cancelled_request_ids=lambda: (),
         )
+
+
+# --------------------------------------------- sampled availability at c=N
+
+
+def test_moe_plugin_admits_explicit_sampled_through_c2_and_refuses_wider() -> None:
+    """Sampled MTP is contractually available at the server's c1-c2 widths.
+
+    The declaration bounds the offered width, so an explicit sampled request
+    resolves at c1 and c2 and a wider one is refused by name instead of being
+    silently clamped or downgraded to greedy.
+    """
+
+    from hipengine.models.qwen35 import Qwen35MoeGGUFModel
+    from hipengine.speculative.serving import SpeculativeMTPServingKey
+
+    plugin = Qwen35MoeGGUFModel()
+
+    def key(rows: int) -> SpeculativeMTPServingKey:
+        return SpeculativeMTPServingKey(
+            artifact_sha256=None,
+            artifact_size_bytes=None,
+            content_verified=False,
+            backend="hip_gfx1100",
+            target_arch="gfx1100",
+            weight_quant="gguf_q4_k_m",
+            kv_storage="bf16",
+            kv_layout="uniform",
+            realized_group_rows=rows,
+            resident_capacity=max(rows, 2),
+            candidate_budget=2,
+            sampling_mode="sampled",
+            memory_fit=True,
+        )
+
+    for rows in (1, 2):
+        decision = plugin.resolve_speculative_mtp_serving_plan(
+            key=key(rows), request_mode="explicit"
+        )
+        assert decision.admitted, rows
+        payload = decision.as_dict()
+        assert payload["admission_basis"] == "implementation"
+        assert payload["implementation_key"] == "gguf_moe_bf16_gfx1100_native_chain"
+
+    wider = plugin.resolve_speculative_mtp_serving_plan(
+        key=key(3), request_mode="explicit"
+    )
+    assert not wider.admitted
+    assert wider.as_dict()["reason"] == "moe_group_above_offered_width"
+
+
+def test_moe_c2_groups_route_to_the_dense_adapter_with_the_packed_sampler() -> None:
+    """Production c=N MoE execution runs the dense adapter's sampled decider.
+
+    ``create_qwen35_gguf_moe_mtp2_adapter`` resolves the C1 native-cycle adapter
+    only at capacity 1; wider capacities get the dense adapter, whose packed
+    target samples each row exactly before commit
+    (``_sample_packed_target_rows``). This pins the routing so the c=N sampled
+    story cannot regress into the C1-only adapter unnoticed.
+    """
+
+    from hipengine.generation.qwen35_gguf_moe_mtp2 import (
+        create_qwen35_gguf_moe_mtp2_adapter,
+    )
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+    c1_owner = SimpleNamespace(capacity=1, generator=None)
+    c1 = create_qwen35_gguf_moe_mtp2_adapter(
+        c1_owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    assert type(c1) is Qwen35GGUFMoEMTP2Adapter
+
+    c2_owner = SimpleNamespace(capacity=2, generator=None)
+    c2 = create_qwen35_gguf_moe_mtp2_adapter(
+        c2_owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    assert type(c2) is Qwen35GGUFMTP2Adapter
+
+
+def test_dense_adapter_qualifies_the_moe_sampled_route_only_where_declared() -> None:
+    """The packed lane's sampled admission follows the plugin declaration.
+
+    The dense adapter's sampled qualification is plugin- and backend-scoped:
+    the MoE declaration covers sampled at gfx1100, so the route qualifies
+    there and declines - with the recorded decline reason, not a silent greedy
+    downgrade - on a backend the declaration does not cover.
+    """
+
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+    from hipengine.models.qwen35 import Qwen35MoeGGUFModel
+
+    adapter = Qwen35GGUFMTP2Adapter.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.quant = "gguf_q4_k_m"
+
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        model_plugin=Qwen35MoeGGUFModel(),
+    )
+    assert adapter._sampled_route_qualified() is True
+
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        model_plugin=Qwen35MoeGGUFModel(),
+    )
+    assert adapter._sampled_route_qualified() is False
+
+
+def test_packed_batch_refuses_sampled_rows_without_device_results_by_name() -> None:
+    """A sampled row on a host-batch lane is a named refusal, never argmax.
+
+    The packed target can only decide a sampled row from resident device
+    results; the host-visible batch lane has no per-row logits span to draw
+    from. The guard must stay a named RuntimeError (contained by the shared
+    recovery boundary) rather than letting the greedy argmax decide the row.
+    """
+
+    import inspect
+
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+    source = inspect.getsource(Qwen35GGUFMTP2Adapter._execute_target_frontier_batch)
+    assert "any(self._sampled_route_request(rid) for rid in ids)" in source
+    assert (
+        "sampled physical verification requires resident device results" in source
+    )
