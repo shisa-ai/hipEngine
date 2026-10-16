@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11605,
-    "current": 4373,
+    "entries": 11610,
+    "current": 4378,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1414,
+    "rows": 1415,
     "by_rule": {
       "dependency": 52,
       "legacy-next": 109,
-      "status": 1253
+      "status": 1254
     }
   },
   "rows": [
@@ -44574,14 +44574,14 @@
         "written": "2026-09-28",
         "age_days": 18,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "1. **Find the remaining divergence.** The cosine is near zero rather than\n   strongly negative, so this looks like a stage that contributes noise rather\n   than a sign flip. The most efficient next step is to stop comparing the final\n   output and start comparing stages: run the backbone, then check whether the\n   head's *logits* argmax is a plausible next token at all, and whether\n   `nextn_pre_projection` alone tracks anything. A CPU reference for the head\n   (four blocks, numpy) would localize it in one pass and is probably the right\n   investment before more GPU round-trips.\n2. **Then** th",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T011304.865805Z-lhl-gemma4-assistant-forward-checkpoint-1b52bb.md",
@@ -44600,7 +44600,7 @@
         ]
       },
       "id": "worklog/20260928T011304.865805Z-lhl-gemma4-assistant-forward-checkpoint-1b52bb",
-      "evidence_hash": "c570fd063df9"
+      "evidence_hash": "8ffa5a891975"
     },
     {
       "kind": "worklog",
@@ -52634,14 +52634,14 @@
         "written": "2026-10-03",
         "age_days": 13,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "- Separate, newly exposed failure, not part of this repair:\n  `test_the_draft_chain_reproduces_llamacpps_candidates` now runs (it was\n  skipped while the artifact was unpinned) and fails **deterministically and\n  order-independently** -- it fails identically in isolation, targeted, and in\n  the ordered prefix. At draft step 3 the head ranks `623` (logit 15.24178)\n  above `3729` (14.93324); the recorded llama.cpp order is `[139, 3729, 623]`.\n  Steps 0-2 match exactly. `hipengine/runtime/gemma4_assistant.py` is unchanged\n  since the test last passed, and the head's projections route through\n  `h",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261003T172301.344614Z-lhl-gemma4-assistant-forward-artifact-guard-009bfc.md",
@@ -52663,7 +52663,7 @@
         ]
       },
       "id": "worklog/20261003T172301.344614Z-lhl-gemma4-assistant-forward-artifact-guard-009bfc",
-      "evidence_hash": "87feb9d28894"
+      "evidence_hash": "4919cdbbfe4c"
     },
     {
       "kind": "worklog",
@@ -53666,6 +53666,42 @@
       },
       "id": "worklog/20261015T214300.056529Z-lhl-gemma4-mtp-serving-audit-3bce52",
       "evidence_hash": "878b4b03880a"
+    },
+    {
+      "kind": "worklog",
+      "key": "20261016T052638.937179Z-lhl-specdec2-staged-runner-seam-1f3c47",
+      "title": "Reusable staged speculative-provider runner seam",
+      "location": "worklog/entries/20261016T052638.937179Z-lhl-specdec2-staged-runner-seam-1f3c47.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "specdec2-staged-runner-seam",
+        "written": "2026-10-16",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Not committed; parent owns the final commit if needed.\n- Optional follow-up: opt the PARO runner into the same accessor once its\n  lifecycle is reconciled with the seam, and consider a seam-level check that a\n  frontier's KV binding is satisfiable before an owner opens a cycle.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20261016T052638.937179Z-lhl-specdec2-staged-runner-seam-1f3c47.md",
+        "refs": [],
+        "tokens": [
+          "provider",
+          "reusable",
+          "runner",
+          "seam",
+          "speculative",
+          "staged"
+        ]
+      },
+      "id": "worklog/20261016T052638.937179Z-lhl-specdec2-staged-runner-seam-1f3c47",
+      "evidence_hash": "72c5bbe1f740"
     }
   ]
 }

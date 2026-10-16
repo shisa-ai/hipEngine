@@ -1,7 +1,7 @@
 {
   "kind": "ungoverned-flag-branch",
   "meta": {
-    "suspect_flags": 50,
+    "suspect_flags": 49,
     "cross_reference": "inventory/flags.json"
   },
   "rows": [
@@ -344,9 +344,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/generation/gemma4_gguf.py:643:HIPENGINE_HIP_ARCH",
+      "key": "hipengine/generation/gemma4_gguf.py:727:HIPENGINE_HIP_ARCH",
       "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
-      "location": "hipengine/generation/gemma4_gguf.py:643",
+      "location": "hipengine/generation/gemma4_gguf.py:727",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -364,7 +364,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:643:HIPENGINE_HIP_ARCH"
+          "hipengine/generation/gemma4_gguf.py:727:HIPENGINE_HIP_ARCH"
         ],
         "tokens": [
           "branch",
@@ -377,45 +377,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/generation/gemma4_gguf.py:643:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "b9e254487bbe"
-    },
-    {
-      "kind": "ungoverned-flag-branch",
-      "key": "hipengine/generation/qwen35_gguf_mtp2.py:2278:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
-      "title": "runtime branch on HIPENGINE_DEBUG_SAMPLED_QUALIFY: default-off with no removal condition recorded",
-      "location": "hipengine/generation/qwen35_gguf_mtp2.py:2278",
-      "evidence": {
-        "fix": "Decide the flag's fate: promote HIPENGINE_DEBUG_SAMPLED_QUALIFY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_DEBUG_SAMPLED_QUALIFY`.",
-        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
-        "flag": "HIPENGINE_DEBUG_SAMPLED_QUALIFY",
-        "default": "off",
-        "flag_signals": [
-          "reads as default-off",
-          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
-        ]
-      },
-      "signals": [
-        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
-      ],
-      "hints": {
-        "anchor": "hipengine/generation/qwen35_gguf_mtp2.py",
-        "refs": [
-          "hipengine/generation/qwen35_gguf_mtp2.py:2278:HIPENGINE_DEBUG_SAMPLED_QUALIFY"
-        ],
-        "tokens": [
-          "branch",
-          "condition",
-          "default",
-          "hipengine_debug_sampled_qualify",
-          "off",
-          "recorded",
-          "removal",
-          "runtime"
-        ]
-      },
-      "id": "ungoverned-flag-branch/hipengine/generation/qwen35_gguf_mtp2.py:2278:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
-      "evidence_hash": "92a6956e43c9"
+      "id": "ungoverned-flag-branch/hipengine/generation/gemma4_gguf.py:727:HIPENGINE_HIP_ARCH",
+      "evidence_hash": "25812455cc0c"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -1502,9 +1465,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:37107:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:37115:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
       "title": "runtime branch on HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:37107",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:37115",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -1521,7 +1484,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:37107:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
+          "hipengine/runtime/qwen35_gguf_runner.py:37115:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
         ],
         "tokens": [
           "branch",
@@ -1534,8 +1497,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:37107:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
-      "evidence_hash": "7e475c636d87"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:37115:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "evidence_hash": "2b49196f5eb0"
     },
     {
       "kind": "ungoverned-flag-branch",
