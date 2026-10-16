@@ -12896,7 +12896,7 @@ def _log_pretty_startup_summary(
     snapshot = _live_loop_snapshot(engine) or {}
     runner = _nested_mapping(snapshot, "runner")
     pool = _nested_mapping(runner, "kv_pool")
-    context = estimate.get("requested_context_tokens")
+    context = estimate.get("requested_context_tokens") or config.max_context_tokens
     model_max = estimate.get("model_max_context_tokens")
     storage = estimate.get("kv_storage_dtype") or config.kv_storage
     scale = estimate.get("kv_scale_dtype") or config.kv_scale_dtype
