@@ -3293,6 +3293,11 @@ class ResidentEngineLoop:
                 kv_storage_view_key=capability.kv_backend_key,
                 kv_live_spans_owner=str(owner),
                 execution_route=plan.execution_route,
+                kv_binding=(
+                    getattr(capability, "kv_binding", None).with_live_spans_owner(str(owner))
+                    if getattr(capability, "kv_binding", None) is not None
+                    else None
+                ),
             )
             result = execute_target(
                 plan,
