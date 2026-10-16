@@ -990,13 +990,35 @@ class LLM:
 
     @property
     def speculative_mtp_serving_capability(self):
-        """Resolve the loaded artifact against its model-plugin evidence scope."""
+        """Resolve the loaded artifact against its model-plugin serving scope.
+
+        Retained evidence is consulted first. A plugin that declares executable
+        implementations but keeps no evidence rows is answered from that
+        declaration, so the capability banner and the ``enabled`` default route
+        read the same capability answer the per-request resolver gives. This is
+        the same fallback ``speculative_mtp_sampling_modes`` already applies.
+        """
 
         _weight_index, model_plugin = self._load_model_metadata()
         evidence = tuple(
             getattr(model_plugin, "speculative_mtp_serving_evidence", ()) or ()
         )
         if not evidence:
+            declarations = tuple(
+                getattr(
+                    model_plugin, "speculative_mtp_serving_implementations", ()
+                )
+                or ()
+            )
+            for declaration in declarations:
+                decision = self.resolve_speculative_mtp_serving_plan(
+                    realized_group_rows=1,
+                    sampling_mode=str(declaration.sampling_modes[0]),
+                    kv_storage=str(self.kv_storage or declaration.kv_storage),
+                    memory_fit=True,
+                )
+                if decision is not None:
+                    return decision
             return None
         first_decision = None
         for row in evidence:

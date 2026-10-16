@@ -32,7 +32,7 @@ from hipengine.generation.registry import (
     GenerationStreamChunk,
     register_text_generator,
 )
-from hipengine.kernels.backends import resolve_backend
+from hipengine.kernels.backends import hip_target_arch_for_backend, resolve_backend
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.safetensors import WeightIndex
 from hipengine.runtime.gemma4 import (
@@ -558,6 +558,74 @@ class Gemma4GGUFGenerator:
         provider = self._speculative_provider
         return {} if provider is None else dict(provider.capabilities())
 
+    @property
+    def target_arch(self) -> str:
+        """The gfx target the resolved backend runs on."""
+
+        return hip_target_arch_for_backend(self.backend)
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        realized_group_rows: int,
+        resident_capacity: int,
+        candidate_budget: int,
+        sampling_mode: str,
+        kv_storage: str,
+        memory_fit: bool,
+        request_mode: str = "automatic",
+    ):
+        """Resolve the assistant-head serving scope before mutation.
+
+        The key is mechanical request and runtime identity only: backend, gfx
+        target, KV storage, realized group width, resident capacity, candidate
+        depth, sampling mode, and memory fit. The model plugin owns the
+        admission decision, which for Gemma 4 is a capability declaration rather
+        than a retained evidence row. There is no artifact hash or model-name
+        axis, so a newly resolvable artifact that fits the declaration runs.
+
+        ``auto`` storage resolves to the provider's BF16 contract, the way the
+        request validator resolves it before the runner is built. Any other
+        storage keeps its own value so the declaration refuses it by name rather
+        than silently routing to BF16.
+        """
+
+        from hipengine.speculative.serving import (
+            SpeculativeMTPServingKey,
+            resolve_speculative_mtp_serving_plan,
+        )
+
+        requested_kv = str(kv_storage or "auto")
+        effective_kv = "bf16" if requested_kv == "auto" else requested_kv
+        key = SpeculativeMTPServingKey(
+            artifact_sha256=None,
+            artifact_size_bytes=None,
+            content_verified=False,
+            backend=str(self.backend),
+            target_arch=str(self.target_arch),
+            weight_quant=str(
+                getattr(self.model_plugin, "default_quant", _GEMMA4_QUANT)
+                or _GEMMA4_QUANT
+            ),
+            kv_storage=effective_kv,
+            kv_layout="uniform",
+            realized_group_rows=int(realized_group_rows),
+            resident_capacity=int(resident_capacity),
+            candidate_budget=int(candidate_budget),
+            sampling_mode=str(sampling_mode),
+            memory_fit=bool(memory_fit),
+        )
+        resolver = getattr(
+            self.model_plugin, "resolve_speculative_mtp_serving_plan", None
+        )
+        if callable(resolver):
+            return resolver(key=key, request_mode=str(request_mode))
+        return resolve_speculative_mtp_serving_plan(
+            (),
+            key=key,
+            request_mode=str(request_mode),
+        )
+
     def generate_speculative_detailed(
         self,
         request: GenerationRequest,
@@ -589,6 +657,22 @@ class Gemma4GGUFGenerator:
             raise NotImplementedError("Gemma 4 speculative provider is not configured")
         for chunk in provider.stream_detailed(request):
             yield GenerationStreamChunk.from_value(chunk)
+
+    def stream_speculative_mtp_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> Iterator[GenerationStreamChunk]:
+        """The name the server's speculative-MTP streaming route calls.
+
+        The provider commits a whole draft/verify cycle at a time, so its
+        streaming output is the same buffered chunk the blocking route returns;
+        the streaming surface exists so a streamed MTP request reaches the
+        provider instead of failing with a missing-method error. The provider
+        itself refuses more than one prompt, which is the single-request
+        constraint the route carries.
+        """
+
+        return self.stream_speculative_detailed(request)
 
     @staticmethod
     def _validate_request(request: GenerationRequest) -> None:
