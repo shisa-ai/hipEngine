@@ -16,6 +16,7 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.speculative.delegation import StagedAdapterDelegation
 from hipengine.dispatch import (
     BatchWidthGroup,
     NativeBatchWidthProfile,
@@ -2205,7 +2206,7 @@ class _ParoResidentLoopRow:
     mtp2_candidate_d2h_after_target: int = 0
 
 
-class Qwen35ParoResidentModelRunner:
+class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
     """Single fixed-capacity PARO session owned by the shared engine loop.
 
     Scheduler slots are transient placement metadata. Each admitted request gets
@@ -2390,108 +2391,31 @@ class Qwen35ParoResidentModelRunner:
         if adapter is not None:
             adapter.register_request(request_id, candidate_budget)
 
+    # StagedAdapterDelegation hooks: this runner resolves the PARO C1 adapter
+    # lazily and counts every recovered cycle into its fallback-reason table.
+    def _staged_adapter(self):
+        return self._resolved_mtp2_adapter()
+
+    def _staged_adapter_missing_error(self) -> str:
+        return "PARO MTP2 adapter is unavailable"
+
+    def _on_staged_adapter_cycle_recovered(self, plan, error, recovered: bool) -> None:
+        if recovered:
+            reason = f"specdec2_mtp2_recovered:{type(error).__name__}:{error}"
+            self._fallback_reasons[reason] += len(plan.request_ids)
+
     def speculative_desired_candidate_count(self, request: GenerationRequest) -> int:
         return 1 if int(request.max_tokens) > 1 else 0
-
-    def speculative_capability(self, request_semantics):
-        adapter = self._resolved_mtp2_adapter()
-        return None if adapter is None else adapter.capability(request_semantics)
 
     def speculative_graph_available(self, work) -> bool:
         del work
         return False
-
-    def speculative_claims_fit(self, plan) -> bool:
-        adapter = self._resolved_mtp2_adapter()
-        return bool(adapter is not None and adapter.claims_fit(plan))
-
-    def prepare_speculative_k0(self, plan, request_semantics, *, stream=None) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is not None:
-            adapter.prepare_k0(plan, request_semantics, stream=stream)
-
-    def note_speculative_ar_commit(self, request_id, reason=None) -> None:
-        """Forward one emitted autoregressive token to the resolved adapter."""
-
-        adapter = self._resolved_mtp2_adapter()
-        observe = (
-            None
-            if adapter is None
-            else getattr(adapter, "note_speculative_ar_commit", None)
-        )
-        if callable(observe):
-            observe(request_id, reason)
-
-    def speculative_component_claims(self, plan):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("PARO MTP2 adapter is unavailable")
-        return adapter.component_claims(plan)
-
-    def reserve_speculative_claims(self, claims):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("PARO MTP2 adapter is unavailable")
-        return adapter.reserve_claims(claims)
-
-    def release_speculative_claims(self, reservation) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("PARO MTP2 adapter is unavailable")
-        adapter.release_claims(reservation)
-
-    def prepare_speculative_requests(self, plan, request_semantics, *, stream=None) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("PARO MTP2 adapter is unavailable")
-        adapter.prepare_requests(plan, request_semantics, stream=stream)
-
-    def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("PARO MTP2 adapter is unavailable")
-        return adapter.propose_batch(plan, request_semantics, stream=stream)
 
     def speculative_kv_live_spans_owner(self, plan) -> str:
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             return f"paro-resident:{id(self)}:{plan.operation_id}"
         return adapter.kv_live_spans_owner(plan)
-
-    def execute_target_frontier(
-        self,
-        plan,
-        frontier,
-        complete_claims,
-        *,
-        commit: bool,
-        cancelled_request_ids,
-    ):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("PARO MTP2 adapter is unavailable")
-        return adapter.execute_target_frontier(
-            plan,
-            frontier,
-            complete_claims,
-            commit=commit,
-            cancelled_request_ids=cancelled_request_ids,
-        )
-
-    def rollback_speculative_cycle(self, plan, candidate_graph, error) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is not None:
-            adapter.rollback_cycle(plan, candidate_graph, error)
-
-    def recover_speculative_cycle_failure(self, plan, error) -> bool:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            return False
-        recovered = bool(adapter.recover_cycle_failure(plan, error))
-        if recovered:
-            reason = f"specdec2_mtp2_recovered:{type(error).__name__}:{error}"
-            self._fallback_reasons[reason] += len(plan.request_ids)
-        return recovered
 
     def register_batch(
         self,
