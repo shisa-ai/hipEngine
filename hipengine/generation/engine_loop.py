@@ -601,6 +601,32 @@ class SubmitPollTextGenerator:
             )
         return list(self._inner.generate_speculative_mtp_detailed(request))
 
+    def stream_speculative_mtp_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> Iterator[GenerationStreamChunk]:
+        """Stream one committed speculative output from a non-resident driver.
+
+        A resident driver streams through the service table instead (its inner
+        generator has no per-request streaming hook); this is the exact
+        pre-launch fallback for a generator that owns its own streaming method,
+        the same shape ``generate_speculative_mtp_detailed`` uses for the
+        blocking call. A generator without it is refused by name rather than
+        silently downgraded to autoregressive streaming.
+        """
+
+        if not self.supports_speculative_mtp:
+            raise NotImplementedError(
+                "speculative MTP generation is not supported by the wrapped generator"
+            )
+        streamer = getattr(self._inner, "stream_speculative_mtp_detailed", None)
+        if not callable(streamer):
+            raise NotImplementedError(
+                "speculative MTP streaming is not supported by the wrapped generator"
+            )
+        for chunk in streamer(request):
+            yield GenerationStreamChunk.from_value(chunk)
+
     def submit_speculative_many_detailed(
         self,
         requests: Sequence[GenerationRequest],

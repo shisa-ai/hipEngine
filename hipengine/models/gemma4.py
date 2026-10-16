@@ -5,6 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from hipengine.models.registry import register_model
+from hipengine.speculative.serving import (
+    SpeculativeMTPServingDecision,
+    SpeculativeMTPServingImplementation,
+    SpeculativeMTPServingKey,
+    resolve_speculative_mtp_serving_plan,
+    unsupported_contract,
+)
 
 _FULL_ATTENTION = "full_attention"
 _SLIDING_ATTENTION = "sliding_attention"
@@ -23,6 +30,28 @@ class Gemma4GGUFModel:
     architectures: tuple[str, ...] = ("gemma4", "Gemma4ForCausalLM", "Gemma4ForConditionalGeneration")
     default_quant: str = "gguf_q4_k_m"
     default_backend: str = "auto"
+    # The assistant-head MTP provider is a separate GGUF sidecar that shares the
+    # backbone's BF16 KV, drafts with its own 4-block head, and verifies the
+    # whole draft in one backbone forward. It has no retained evidence rows, so
+    # this declaration is the whole admission scope: an artifact whose kernels
+    # can execute the route is admitted by capability, and only a genuine
+    # capability miss (storage, backend, width, depth, or sampling mode) refuses.
+    # There is no artifact hash, model name, or known-good list here. Depth is
+    # the provider's structural maximum (``_MAX_CANDIDATES`` in
+    # ``hipengine/generation/gemma4_mtp.py``) and the width is one row, because
+    # the provider serves a single request at a time.
+    speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
+        SpeculativeMTPServingImplementation(
+            name="gguf_gemma4_assistant_bf16_c1_chain",
+            kv_storage="bf16",
+            backends=(("hip_gfx1100", "gfx1100"), ("hip_gfx1151", "gfx1151")),
+            max_candidate_count=8,
+            max_group_rows=1,
+            group_rejection_reason="gemma4_assistant_group_above_offered_width",
+            sampling_modes=("greedy_fast", "sampled"),
+            automatic_eligible=True,
+        ),
+    )
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output_norm.weight",
@@ -108,6 +137,48 @@ class Gemma4GGUFModel:
             "gemma4_layer_scalar",
             "residual_add",
         )
+
+    def _speculative_mtp_serving_implementation(
+        self,
+        key: SpeculativeMTPServingKey,
+    ) -> SpeculativeMTPServingImplementation | None:
+        """The declaration covering this key's KV storage contract.
+
+        Storage is matched first because that is the contract a declaration
+        describes. A storage match on an unsupported backend or width is still
+        returned so the refusal names the real axis rather than a storage
+        mismatch.
+        """
+
+        for implementation in self.speculative_mtp_serving_implementations:
+            if implementation.kv_storage == key.kv_storage:
+                return implementation
+        return None
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        key: SpeculativeMTPServingKey,
+        request_mode: str = "automatic",
+    ) -> SpeculativeMTPServingDecision:
+        """Resolve the assistant-head serving scope before mutation.
+
+        The assistant head has no retained evidence rows, so the implementation
+        declaration is the admission scope in every request mode: a missing
+        measurement never withholds a path the kernels support, and only a
+        capability gap keeps it off. This is the same rule the Qwen plugins
+        apply when no row covers the cell.
+        """
+
+        evidence_decision = resolve_speculative_mtp_serving_plan(
+            (),
+            key=key,
+            request_mode=request_mode,
+        )
+        implementation = self._speculative_mtp_serving_implementation(key)
+        if implementation is not None:
+            return implementation.resolve(key, request_mode=request_mode)
+        return unsupported_contract(evidence_decision)
 
 
 GEMMA4_GGUF = register_model(Gemma4GGUFModel())
