@@ -32100,6 +32100,8 @@ class Qwen35GGUFResidentSession:
         defer_linear_state_commit: bool = False,
         device_accept_commit: bool = False,
         remaining_decode: int | None = None,
+        sampled_accept: bool = False,
+        sampled_accept_state: object | None = None,
     ):
         """Run reusable B1-B3 N1 or N2, else preserve eager fallback."""
 
@@ -32124,6 +32126,8 @@ class Qwen35GGUFResidentSession:
             defer_linear_state_commit=bool(defer_linear_state_commit),
             device_accept_commit=bool(device_accept_commit),
             remaining_decode=(None if remaining_decode is None else int(remaining_decode)),
+            sampled_accept=bool(sampled_accept),
+            sampled_accept_state=sampled_accept_state,
         )
 
     def verify_target_from_device_proposal(
@@ -32189,6 +32193,8 @@ class Qwen35GGUFResidentSession:
         native_proposal_graph: bool = False,
         target_bulk_attention_mode: str = "bulk",
         k1_disable_f32_verifier: bool = False,
+        sampled_accept: bool = False,
+        sampled_accept_state: object | None = None,
     ):
         """Run one complete strict GGUF MTP cycle through the N3 adapter."""
 
@@ -32223,6 +32229,8 @@ class Qwen35GGUFResidentSession:
             native_proposal_graph=bool(native_proposal_graph),
             target_bulk_attention_mode=str(target_bulk_attention_mode),
             k1_disable_f32_verifier=bool(k1_disable_f32_verifier),
+            sampled_accept=bool(sampled_accept),
+            sampled_accept_state=sampled_accept_state,
         )
 
     def capture_decode_graph(
