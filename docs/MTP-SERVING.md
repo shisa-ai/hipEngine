@@ -136,10 +136,17 @@ common scenario" — each is in flight, and this section shrinks as they land:
 
 ## Reprofile status
 
-- **gfx1151**: reprofile of the automatic cells on current head is in flight
-  (task #30); every retained automatic row above cites its artifact, and a
-  cell that stops winning is withdrawn with a recorded reason rather than
-  kept on hope.
+- **gfx1151**: reprofiled 2026-10-16 on the current head (Radeon 8060S;
+  artifacts in `benchmarks/results/2026-10-16-gfx1151-qwen38-udq4km-*`).
+  Measured: whole-request native MTP at C1/K3 on the host-resident
+  Qwen3.8-27B-UD-Q4_K_M runs **1.741x true AR** (17.32 vs 9.95 tok/s, greedy
+  IDs exact 30/30) — but automatic still selects AR for that artifact because
+  it has no gfx1151 evidence row (its plugin rows are gfx1100-scoped), and
+  the retained strict rows cannot engage because the gfx1151 cell table lists
+  production widths/depths only. The skip currently in force is
+  evidence-absence, not a measured loss. Follow-ups: a production-C1/K3
+  promotion packet for the resident UD artifact, and a strict cell-table
+  decision (add the entry or withdraw the strict rows).
 - **gfx1100**: separate reprofile on the W7900 host follows; no gfx1151 rate,
   threshold, or fingerprint transfers.
 
