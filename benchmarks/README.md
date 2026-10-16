@@ -1,20 +1,19 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-15**
+Last updated: **2026-10-16**
 
-## Gemma 4 on Radeon Pro W7900 — October 15
+## Gemma 4 on Radeon Pro W7900 — October 16
 
 Gemma 4 26B-A4B `UD-Q4_K_XL`, host **epyc / Radeon Pro W7900**, production
-profile, BF16 KV, 128 greedy outputs, one warmup and three samples per prompt
-length (two at 131072), measured through `scripts/gemma4_campaign_bench.py`
-with public-path parity true on every row. The llama.cpp columns were measured
-in the same session, back to back with each row, on llama.cpp `45451c3` (HIP,
-flash attention on, BF16 KV) with byte-identical prompt ids
-(`scripts/gemma4_llamacpp_reference_bench.py`).
+profile, BF16 KV, 512-token prompts and 128 fixed greedy outputs, one warmup
+and three samples, measured through `scripts/gemma4_campaign_bench.py`. The
+512-token row and MTP result were rerun on October 16; the longer prompt rows
+remain from October 15. The MTP result uses the Q8_0 assistant head, budget 4,
+18 prompts × 2 samples, and whole-call throughput including prompt processing.
 
 | Prompt tokens | Prefill tok/s | Decode tok/s | llama.cpp prefill | llama.cpp decode | Prefill ratio | Decode ratio |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512 | 3696.9 | 76.43 | 3165.2 | 69.25 | 1.17x | 1.10x |
+| 512 | **3805.6** | **75.76** | 3165.2 | 69.25 | 1.20x | 1.09x |
 | 2048 | 3665.4 | 74.30 | 3687.3 | 65.25 | 0.99x | 1.14x |
 | 8192 | 3336.1 | 70.04 | 3557.7 | 62.25 | 0.94x | 1.13x |
 | 32768 | 2646.9 | 58.80 | 2502.8 | 52.77 | 1.06x | 1.11x |
@@ -30,24 +29,10 @@ than the earlier `8cfc315` comparator on this model and device (3190.5 against
 3199.6 prefill and 69.6 against 71.6 decode tok/s at 512).
 
 With the `Q8_0` assistant head and a draft budget of 4, over 18 prompts and
-128 tokens, MTP is 1.45x plain decoding here (74.3 to 107.7 tok/s, greedy)
-against 2.01x for llama.cpp (68.4 to 137.4) at the same draft acceptance (73%
-against 72.5%). At temperature 0.8 it is 1.28x (70.0 to 89.8) against 1.77x
-(63.0 to 111.4). The difference is the verify block: five rows take 27.0 ms
-here and 18.6 ms in llama.cpp, whose one-row step is 14.6 ms against 14.0.
-After the selected expert projections moved to eight-input runs, the same
-greedy budget-4 measurement reaches 118.3 tok/s against 75.0 plain (1.58x); the
-root README row uses this figure
-([expert chunk8](results/2026-10-15-gemma4-gfx1100-expert-chunk8.json)).
-Artifacts:
-[comparison](results/2026-10-15-gemma4-gfx1100-llamacpp-latest-comparison.json),
-[long-row decode slicing](results/2026-10-15-gemma4-gfx1100-flash-long-rows.json),
-[MTP](results/2026-10-15-gemma4-gfx1100-mtp-small-block-dense.json),
-[expert down](results/2026-10-10-gemma4-gfx1100-expert-down-wmma-promotion.json),
-[prefill attention](results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json),
-[dense f16 weights](results/2026-10-10-gemma4-gfx1100-dense-f16w-prefill.json),
-[decode graph on this device](results/2026-10-12-gemma4-gfx1100-origin-merge-validation.json),
-[short-row flash decode](results/2026-10-12-gemma4-gfx1100-flash-decode-short-row.json).
+128 tokens, the fresh MTP rerun reaches **120.2 tok/s against 76.9 plain
+(1.56x)**. Draft acceptance is 74.1% and all 36 cases pass the production
+envelope check. The result includes the short prompt-processing phase.
+Artifacts: [plain 512-token rerun](results/2026-10-16-gemma4-gfx1100-plain-512-rerun.json), [MTP rerun](results/2026-10-16-gemma4-gfx1100-mtp-b4-rerun.json), [previous comparison](results/2026-10-15-gemma4-gfx1100-llamacpp-latest-comparison.json), [long-row decode slicing](results/2026-10-15-gemma4-gfx1100-flash-long-rows.json), [expert chunk8](results/2026-10-15-gemma4-gfx1100-expert-chunk8.json), [expert down](results/2026-10-10-gemma4-gfx1100-expert-down-wmma-promotion.json), [prefill attention](results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json), [dense f16 weights](results/2026-10-10-gemma4-gfx1100-dense-f16w-prefill.json), [decode graph on this device](results/2026-10-12-gemma4-gfx1100-origin-merge-validation.json), [short-row flash decode](results/2026-10-12-gemma4-gfx1100-flash-decode-short-row.json).
 
 ## Gemma 4 staged sliding prefill — October 6
 
@@ -183,7 +168,7 @@ context** is a capacity limit, not a full-length prefill.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — | **176,128** |
-| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3696.9** | **76.4** | **118.3** | — |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3805.6** | **75.8** | **120.2** | — |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
 ### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
