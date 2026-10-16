@@ -987,6 +987,7 @@ class Qwen35MoeGGUFModel:
             max_candidate_count=2,
             max_group_rows=2,
             group_rejection_reason="moe_group_above_offered_width",
+            sampling_modes=("greedy_fast", "sampled"),
             automatic_eligible=True,
         ),
     )

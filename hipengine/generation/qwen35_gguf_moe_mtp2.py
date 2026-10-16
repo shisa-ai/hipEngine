@@ -21,6 +21,15 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.core.specdec2_scope import moe_physical_c2_numerics_session
+from hipengine.generation.mtp_sampled_accept import observe_published_tokens
+from hipengine.generation.qwen35_gguf_mtp2 import (
+    _DeviceSampledAcceptPlan,
+    sampled_route_qualified_for,
+)
+from hipengine.generation.sampling import (
+    logprobs_requested,
+    speculative_sampling_mode,
+)
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
@@ -147,6 +156,20 @@ class _MoeMTP2RequestState:
     proposal_tokens: tuple[int, ...] = ()
     proposed_cache_len: int | None = None
     last_proposal_seconds: float = 0.0
+    sampled_accept_prepare_error: str | None = None
+
+
+class MoeSampledRouteUnsupportedError(RuntimeError):
+    """A sampled request the MoE native cycle cannot decide exactly.
+
+    The MoE C1 cycle decides the drafted chain on the target's device accept
+    graph. That graph uses the native sorted sampler and covers temperature,
+    top-p and min-p; it has no host logits readback, so a request that needs a
+    logits processor (bias, penalties, suppression, min-tokens), a bounded
+    top-k, a forced-token or text-keyed constraint, or logprob metadata cannot
+    be served. The adapter raises this instead of quietly accepting by argmax
+    or handing the request to the autoregressive path.
+    """
 
 
 class Qwen35GGUFMoEMTP2Adapter:
@@ -193,6 +216,11 @@ class Qwen35GGUFMoEMTP2Adapter:
         # charge is released with the buffers, so the budget sees them.
         self._resident_charge_tokens: dict[int, list[object]] = {}
         self._disabled_requests: set[int] = set()
+        # The planner's resolved sampling mode per request, recorded at
+        # capability resolution so the execute-time sampled-route decision reads
+        # the same answer the planner did.
+        self._sampling_mode_by_request: dict[int, str] = {}
+        self._last_sampled_decline_reason: str | None = None
         self._transaction_sequence = 0
         self._assets: Any | None = None
         self._active_claims: ResourceClaimSet | None = None
@@ -447,6 +475,28 @@ class Qwen35GGUFMoEMTP2Adapter:
                 target_hidden_ptr=int(target._last_target_hidden_ptr),
                 cache_len=int(cache_len),
             )
+            state = self._states[rid]
+            if self._sampled_accept_candidate(rid):
+                # Warm the sampled accept variant at prefill, its only capture
+                # site. The C1 cycle selects it on the device graph with no
+                # eager fallback, so an unwarmed row would refuse at execute
+                # time instead of staying on the sampled route. Every depth the
+                # row may be planned at is captured.
+                warm = getattr(target, "prepare_native_spec_target_graph", None)
+                if callable(warm):
+                    for warm_budget in range(
+                        1, int(self._intents.get(rid, 1)) + 1
+                    ):
+                        try:
+                            warm(
+                                (int(result.token_id), *((0,) * warm_budget)),
+                                request_id=rid,
+                                sampled_accept=True,
+                            )
+                        except Exception as exc:
+                            state.sampled_accept_prepare_error = (
+                                f"sampled-warmup {type(exc).__name__}:{exc}"
+                            )
             row.mtp2_prompt_streaming = True
             row.mtp2_prompt_prime_rows = len(prompt)
             row.mtp2_prompt_carried_bytes = (
@@ -474,6 +524,177 @@ class Qwen35GGUFMoEMTP2Adapter:
         )
         return "native" if int(target.position) <= limit else "serial_exact"
 
+    def _sampling_modes(self) -> dict[int, str]:
+        """Lazily materialize the planner-mode record (built via ``__new__`` in tests)."""
+
+        modes = getattr(self, "_sampling_mode_by_request", None)
+        if modes is None:
+            modes = {}
+            self._sampling_mode_by_request = modes
+        return modes
+
+    def _sampled_route_qualified(self) -> bool:
+        """Whether the loaded plugin declares the sampled accept route."""
+
+        return sampled_route_qualified_for(self.generator, self.quant)
+
+    @staticmethod
+    def _row_sampling_params(row: Any) -> Any:
+        """Return the live sampler parameters for a row, or None."""
+
+        return getattr(row, "sampling_request", None) or getattr(
+            row, "request", None
+        )
+
+    def _sampled_route_request(self, request_id: int) -> bool:
+        """Return whether this request's due cycle must use the sampled route.
+
+        The MoE device sampled accept is a C1 cycle. A wider group is served by
+        the dense adapter's packed sampled path instead, so this route is
+        selected only at capacity one; a sampled row in a wider MoE plan is
+        refused by name rather than decided by argmax.
+        """
+
+        if int(getattr(self.owner, "capacity", 1)) != 1:
+            return False
+        if not self._sampled_route_qualified():
+            return False
+        row = self.owner._row(int(request_id))
+        if row is None:
+            return False
+        recorded = self._sampling_modes().get(int(request_id))
+        if recorded is not None:
+            return recorded == "sampled"
+        params = self._row_sampling_params(row)
+        if params is None:
+            return False
+        return speculative_sampling_mode(params) == "sampled"
+
+    def _sampled_accept_candidate(self, request_id: int) -> bool:
+        """Whether this row may need the captured sampled accept variant.
+
+        The warmup runs at prefill, before the planner publishes a mode for the
+        row, so the predicate reads the row's raw request: a native-sampler row
+        with a temperature and no logits processor. The plan gate still decides
+        whether a cycle uses the variant.
+        """
+
+        if not self._sampled_route_qualified():
+            return False
+        row = self.owner._row(int(request_id))
+        if row is None or not bool(getattr(row, "native_sampler", False)):
+            return False
+        params = self._row_sampling_params(row)
+        if params is None:
+            return False
+        from hipengine.runtime.native_sampler import _needs_processors
+
+        return (
+            float(getattr(params, "temperature", 0.0)) > 0.0
+            and int(getattr(params, "top_k", 0)) == 0
+            and not _needs_processors(params)
+            and getattr(self.generator, "native_sampler_algorithm", "sorted")
+            == "sorted"
+        )
+
+    def _sampled_accept_refusal(
+        self,
+        row: Any,
+        target: Any,
+        *,
+        request_id: int,
+        params: Any,
+        state: Any,
+    ) -> str | None:
+        """Return why the device sampled accept cannot decide this row, or None.
+
+        The MoE C1 cycle has no host logits readback, so the sampled route is
+        exactly the target's native sorted sampler: temperature, top-p and
+        min-p over the full vocabulary, with no logits processor, no bounded
+        top-k, no forced token or text-keyed constraint, and no logprob
+        metadata. The same predicate answers admission (``capability``) and
+        execution (``_device_sampled_accept_plan``), so a request the runtime
+        cannot decide is never admitted and then failed.
+        """
+
+        from hipengine.runtime.native_sampler import _needs_processors
+
+        if row is None or not bool(getattr(row, "native_sampler", False)):
+            return "row does not use the native GPU sampler"
+        if getattr(target, "native_sampler_algorithm", "sorted") != "sorted":
+            return "strict native sampler algorithm"
+        if state is None or params is None:
+            return "row has no live sampler state or parameters"
+        recorded = self._sampling_modes().get(int(request_id))
+        if recorded is not None:
+            if recorded != "sampled":
+                return f"planner mode {recorded!r}"
+        elif speculative_sampling_mode(params) != "sampled":
+            return "request is not a sampled request"
+        if _needs_processors(params):
+            return "parameters need logits processors"
+        if int(getattr(params, "top_k", 0)) != 0:
+            return "bounded top-k needs the host sampler"
+        if getattr(state, "tool_call_constraint_state", None) is not None:
+            return "active tool-call constraint"
+        if getattr(state, "_json_object_constraint", None) is not None:
+            return "active json-object constraint"
+        if bool(getattr(state, "has_forced_tokens", False)):
+            return "pending forced tokens"
+        if logprobs_requested(params):
+            return "logprobs requested; the device accept has no host logits rows"
+        if not float(getattr(params, "temperature", 0.0)) > 0.0:
+            return "temperature is zero"
+        return None
+
+    @staticmethod
+    def _sampled_target_graph_name(candidate_budget: int) -> str:
+        """The session attribute the warmed sampled accept graph is cached under."""
+
+        return f"_native_spec_b{int(candidate_budget)}_target_graph_n2_sampled"
+
+    def _device_sampled_accept_plan(
+        self,
+        request_id: int,
+        target: Any,
+        candidate_budget: int,
+    ) -> _DeviceSampledAcceptPlan | None:
+        """Return a device sampled-accept plan for this row, or None.
+
+        A decline records its reason so the execute path can raise a named
+        capability error rather than silently decide by argmax. The captured
+        sampled graph must already exist: the eager verifier has no sampled
+        accept, so an unavailable graph is a refusal here, not a silent
+        fallback.
+        """
+
+        self._last_sampled_decline_reason = None
+        row = self.owner._row(int(request_id))
+        refusal = self._sampled_accept_refusal(
+            row,
+            target,
+            request_id=request_id,
+            params=None if row is None else self._row_sampling_params(row),
+            state=None if row is None else getattr(row, "sampling_state", None),
+        )
+        if refusal is not None:
+            self._last_sampled_decline_reason = refusal
+            return None
+        state = getattr(row, "sampling_state", None)
+        params = self._row_sampling_params(row)
+        budget = int(candidate_budget)
+        if getattr(target, self._sampled_target_graph_name(budget), None) is None:
+            self._last_sampled_decline_reason = (
+                f"sampled target graph for depth {budget} is not captured"
+            )
+            return None
+        return _DeviceSampledAcceptPlan(
+            params=params,
+            seed=int(state.seed),
+            step_index=int(state.step_index),
+            rows=budget + 1,
+        )
+
     def capability(
         self,
         request_semantics: Sequence[SpeculativeRequestSemantics],
@@ -489,20 +710,53 @@ class Qwen35GGUFMoEMTP2Adapter:
         targets = []
         max_context = 95
         modes = set()
+        sampled_qualified = capacity == 1 and self._sampled_route_qualified()
         for item in semantics:
             rid = int(item.request_id)
+            self._sampling_modes()[rid] = str(item.sampling_mode)
             state = self._states.get(rid)
             if state is None or rid in self._disabled_requests:
                 return None
             row = self.owner._row(rid)
             if (
-                not row.native_greedy
-                or not row.first_token_emitted
+                not row.first_token_emitted
                 or row.lease is None
                 or row.slot is None
             ):
                 return None
             target = row.lease.session
+            sampled_row = sampled_qualified and self._sampled_route_request(rid)
+            if not (row.native_greedy or sampled_row):
+                return None
+            if sampled_row:
+                # A sampled row is admitted only when the device sampled accept
+                # can decide it. The C1 cycle has no host logits readback, so a
+                # request needing a logits processor, a bounded top-k, a
+                # forced-token or text-keyed constraint, or logprob metadata is
+                # routed to autoregressive decoding here instead of being
+                # admitted and then failed at execute time.
+                refusal = self._sampled_accept_refusal(
+                    row,
+                    target,
+                    request_id=rid,
+                    params=self._row_sampling_params(row),
+                    state=getattr(row, "sampling_state", None),
+                )
+                if refusal is not None:
+                    return None
+                intent_budget = int(
+                    getattr(self, "_intents", {}).get(rid, self.candidate_budget)
+                )
+                if getattr(
+                    target,
+                    self._sampled_target_graph_name(intent_budget),
+                    None,
+                ) is None:
+                    # The sampled graph was not captured at prefill, so the C1
+                    # cycle has no exact decider for this row. Route it to
+                    # autoregressive decoding instead of admitting a route the
+                    # runtime cannot execute.
+                    return None
             request_max_context = min(
                 95,
                 int(target.target_layout.max_sequence_length)
@@ -535,7 +789,9 @@ class Qwen35GGUFMoEMTP2Adapter:
             attachment=ProviderAttachment.TARGET_ATTACHED,
             catchup_mode=ProviderCatchupMode.TARGET_OUTPUT,
             supported_modes=("verify_chain",),
-            supported_sampling_modes=("greedy",),
+            supported_sampling_modes=(
+                ("greedy", "sampled") if sampled_qualified else ("greedy",)
+            ),
             max_requests=capacity,
             max_candidates_per_request=self.candidate_budget,
             max_frontier_rows=capacity * (self.candidate_budget + 1),
@@ -992,6 +1248,16 @@ class Qwen35GGUFMoEMTP2Adapter:
         ids = tuple(int(value) for value in plan.speculative_request_ids)
         if len(ids) != 2 or frontier.target_batch is None:
             raise NotImplementedError("MoE staged target currently requires physical C2")
+        # The staged C2 target decides its chain by raw argmax and has no
+        # sampled accept. A sampled row reaching it must fail by name rather
+        # than be silently decided by argmax; the dense adapter serves a wider
+        # MoE group's sampled route instead.
+        if any(
+            self._sampling_modes().get(int(value)) == "sampled" for value in ids
+        ):
+            raise MoeSampledRouteUnsupportedError(
+                "MoE staged C2 target does not implement the sampled accept route"
+            )
         batch = frontier.target_batch
         states = tuple(self._states[request_id] for request_id in ids)
         rows = tuple(self.owner._row(request_id) for request_id in ids)
@@ -1288,6 +1554,20 @@ class Qwen35GGUFMoEMTP2Adapter:
         remaining = max(0, int(row.request.max_tokens) - len(slot.generated_ids))
         if remaining < 1:
             raise RuntimeError("MoE MTP2 complete cycle has no output room")
+        # The sampled route decides the drafted chain on the target's device
+        # accept graph. It is resolved before the cycle mutates any device
+        # state: a sampled request this cycle cannot serve fails here, by name,
+        # rather than being decided by argmax or handed back to the
+        # autoregressive path.
+        sampled_route = self._sampled_route_request(rid)
+        sampled_plan = None
+        if sampled_route:
+            sampled_plan = self._device_sampled_accept_plan(rid, target, budget)
+            if sampled_plan is None:
+                raise MoeSampledRouteUnsupportedError(
+                    f"MoE sampled MTP route cannot serve request {rid}: "
+                    f"{self._last_sampled_decline_reason or 'unknown reason'}"
+                )
         complete_claims = compose_speculative_claims(
             plan.operation_id,
             self.component_claims(plan),
@@ -1296,28 +1576,66 @@ class Qwen35GGUFMoEMTP2Adapter:
         transaction_id = self._transaction_sequence
         start_position = int(target.position)
         cache_before = int(state.cache_len)
-        native = target.run_native_spec_mtp_cycle(
-            state.draft,
-            state.context,
-            root_token=int(slot.generated_ids[-1]),
-            root_position=start_position,
-            candidate_budget=budget,
-            remaining_decode=remaining,
-            rope_cos=self._assets.rope_cos,
-            rope_sin=self._assets.rope_sin,
-            draft_key_cache=state.key_cache,
-            draft_value_cache=state.value_cache,
-            draft_cache_len=cache_before,
-            cycle_id=int(plan.cycle_id),
-            transaction_id=transaction_id,
-            target_bulk_attention_mode="bulk",
-            k1_disable_f32_verifier=True,
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            NativeSpecTargetGraphUnsupportedError,
         )
+
+        try:
+            native = target.run_native_spec_mtp_cycle(
+                state.draft,
+                state.context,
+                root_token=int(slot.generated_ids[-1]),
+                root_position=start_position,
+                candidate_budget=budget,
+                remaining_decode=remaining,
+                rope_cos=self._assets.rope_cos,
+                rope_sin=self._assets.rope_sin,
+                draft_key_cache=state.key_cache,
+                draft_value_cache=state.value_cache,
+                draft_cache_len=cache_before,
+                cycle_id=int(plan.cycle_id),
+                transaction_id=transaction_id,
+                target_bulk_attention_mode="bulk",
+                k1_disable_f32_verifier=True,
+                sampled_accept=bool(sampled_route),
+                sampled_accept_state=sampled_plan,
+            )
+        except NativeSpecTargetGraphUnsupportedError as exc:
+            if not sampled_route:
+                # A greedy row keeps its existing recovery: the adapter's
+                # failure path decides whether the window is provable and may
+                # fall back to autoregressive decoding.
+                raise
+            # The eager verifier has no sampled accept, so the device graph is
+            # the only exact decider for a sampled row. An unavailable sampled
+            # graph is a named contained refusal rather than a silent
+            # autoregressive downgrade of the claimed sampled route.
+            raise MoeSampledRouteUnsupportedError(
+                f"MoE sampled MTP route cannot serve request {rid}: "
+                f"sampled target graph unavailable ({exc})"
+            ) from exc
         state.cache_len = int(native.draft_cache_len_after)
         output_ids = tuple(int(token) for token in native.output_token_ids)
         accepted = int(native.accepted_draft_tokens)
         if not output_ids or int(native.end_position) != int(target.position):
             raise RuntimeError("MoE MTP2 native cycle returned inconsistent target state")
+        if sampled_route:
+            # The device accept drew from the request's own native sampler
+            # stream. Only the tokens the cycle committed advance that stream,
+            # exactly as the autoregressive route's per-token draws would.
+            sampling_state = getattr(row, "sampling_state", None)
+            if sampling_state is None:
+                raise RuntimeError(
+                    "MoE sampled MTP route lost the row's live sampler state"
+                )
+            observe_published_tokens(
+                sampling_state,
+                output_ids,
+                forced_positions=(False,) * len(output_ids),
+                observe_text=None,
+            )
+            row.full_vocab_logits_d2h = False
+            row.logits_d2h_bytes = 0
         slot.generated_ids.extend(output_ids)
         slot.prev_token = int(output_ids[-1])
         slot.seq_position = int(target.position)
@@ -1426,6 +1744,11 @@ class Qwen35GGUFMoEMTP2Adapter:
         plan: SpecRequestPlan,
         error: BaseException,
     ) -> bool:
+        if isinstance(error, MoeSampledRouteUnsupportedError):
+            # A sampled request the cycle cannot serve fails loudly rather than
+            # silently continuing on the autoregressive path: containment
+            # retires exactly the affected rows.
+            return False
         reason = f"{type(error).__name__}:{error}"
         rows = tuple(self.owner._row(int(value)) for value in plan.speculative_request_ids)
         if any(
@@ -1440,6 +1763,26 @@ class Qwen35GGUFMoEMTP2Adapter:
             row.mtp2_failure_reasons.extend(("precommit_failure_ar_fallback", reason))
             self._disabled_requests.add(int(row.request_id))
         return True
+
+    def containment_evidence(
+        self,
+        plan: SpecRequestPlan,
+        error: BaseException,
+    ) -> tuple[str, tuple[int, ...]] | None:
+        """Retirable rows for a failed MoE cycle the adapter can scope.
+
+        Only the sampled-route capability refusal is scoped here: it is raised
+        before the cycle touches device state, so the plan's rows are
+        canonical and may be retired. Every other MoE failure keeps its existing
+        path (adapter recovery, or fatal when that cannot prove the window).
+        """
+
+        if not isinstance(error, MoeSampledRouteUnsupportedError):
+            return None
+        return (
+            "none",
+            tuple(int(value) for value in plan.speculative_request_ids),
+        )
 
     @staticmethod
     def _detach_sink(sink: _MoeTargetHiddenSink) -> None:
@@ -1472,6 +1815,7 @@ class Qwen35GGUFMoEMTP2Adapter:
         if sink is not None:
             self._detach_sink(sink)
         self._intents.pop(rid, None)
+        getattr(self, "_sampling_mode_by_request", {}).pop(rid, None)
         self._disabled_requests.discard(rid)
 
     def _resident_charge_pool(self) -> Any | None:
@@ -1515,6 +1859,7 @@ class Qwen35GGUFMoEMTP2Adapter:
         for request_id in tuple(set(self._states) | set(self._prompt_sinks)):
             self.release_request(request_id)
         self._intents.clear()
+        getattr(self, "_sampling_mode_by_request", {}).clear()
         self._disabled_requests.clear()
         self._active_claims = None
         if self._batch_accept_workspace is not None:

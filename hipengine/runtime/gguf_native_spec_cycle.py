@@ -479,7 +479,9 @@ def _native_target_graph_context_limit(session: Any, *, rows: int) -> int | None
     return context_limit
 
 
-def _native_target_graph_cache(session: Any) -> dict[tuple[int, bool, int], Any]:
+def _native_target_graph_cache(
+    session: Any,
+) -> dict[tuple[int, bool, int, bool], Any]:
     cache = getattr(session, "_native_spec_target_graphs", None)
     if isinstance(cache, dict):
         return cache
@@ -490,7 +492,7 @@ def _native_target_graph_cache(session: Any) -> dict[tuple[int, bool, int], Any]
 
 def _cache_native_target_graph(
     session: Any,
-    key: tuple[int, bool, int],
+    key: tuple[int, bool, int, bool],
     graph: Any,
 ) -> None:
     cache = _native_target_graph_cache(session)
@@ -2270,6 +2272,8 @@ def run_qwen35_gguf_native_mtp_cycle(
     native_proposal_graph: bool = False,
     target_bulk_attention_mode: str = "bulk",
     k1_disable_f32_verifier: bool = False,
+    sampled_accept: bool = False,
+    sampled_accept_state: Any | None = None,
 ) -> Qwen35GGUFNativeCompleteCycleResult:
     """Own one strict llama-compatible GGUF MTP cycle behind one call.
 
@@ -2400,6 +2404,8 @@ def run_qwen35_gguf_native_mtp_cycle(
             device_accept_commit=True,
             remaining_decode=remaining,
             fallback=False,
+            sampled_accept=bool(sampled_accept),
+            sampled_accept_state=sampled_accept_state,
         ),
     )
     if not bool(getattr(target_result, "device_accept_commit", False)):
@@ -2494,9 +2500,22 @@ def verify_qwen35_gguf_native_b2_target(
     defer_linear_state_commit: bool = False,
     device_accept_commit: bool = False,
     remaining_decode: int | None = None,
+    sampled_accept: bool = False,
+    sampled_accept_state: Any | None = None,
 ):
-    """Run reusable N1/N2 when admitted, otherwise preserve the eager verifier."""
+    """Run reusable N1/N2 when admitted, otherwise preserve the eager verifier.
 
+    ``sampled_accept`` selects the sampled accept/commit variant of the N2
+    graph and consumes the request's native sampler seed/step in
+    ``sampled_accept_state``. The eager verifier has no sampled accept, so a
+    sampled launch never falls back: an unavailable sampled graph raises rather
+    than silently deciding the chain by argmax.
+    """
+
+    if sampled_accept:
+        if not device_accept_commit:
+            raise ValueError("sampled_accept requires device_accept_commit")
+        fallback = False
     session.last_native_spec_target_submitted = False
     session.last_native_spec_target_fallback_reason = None
     session.last_native_spec_target_capture_ms = 0.0
@@ -2538,8 +2557,15 @@ def verify_qwen35_gguf_native_b2_target(
             raise NativeSpecTargetGraphUnsupportedError(reason)
         return session.verify_target_block(input_token_ids, **eager_kwargs)
     cache_suffix = "_n2" if device_accept_commit else ""
+    if sampled_accept:
+        cache_suffix = f"{cache_suffix}_sampled"
     cache_name = f"_native_spec_b{rows - 1}_target_graph{cache_suffix}"
-    cache_key = (rows - 1, bool(device_accept_commit), int(context_limit))
+    cache_key = (
+        rows - 1,
+        bool(device_accept_commit),
+        int(context_limit),
+        bool(sampled_accept),
+    )
     short_alias_limit = _NATIVE_TARGET_SHORT_CONTEXT_LIMIT
     backend = getattr(session, "backend", None)
     if backend is not None:
@@ -2560,6 +2586,7 @@ def verify_qwen35_gguf_native_b2_target(
         capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         defer_linear_state_commit=bool(defer_linear_state_commit),
         device_accept_commit=bool(device_accept_commit),
+        sampled_accept=bool(sampled_accept),
     ):
         graph.close()
         cache.pop(cache_key, None)
@@ -2585,6 +2612,7 @@ def verify_qwen35_gguf_native_b2_target(
                 sync_stage_timings=sync_stage_timings,
                 defer_linear_state_commit=defer_linear_state_commit,
                 device_accept_commit=device_accept_commit,
+                sampled_accept=bool(sampled_accept),
             )
             _cache_native_target_graph(session, cache_key, graph)
             if int(context_limit) == short_alias_limit:
@@ -2606,6 +2634,8 @@ def verify_qwen35_gguf_native_b2_target(
             )
         if capture_lm_head_logits:
             launch_kwargs["capture_lm_head_logits"] = True
+        if sampled_accept:
+            launch_kwargs["sampled_accept_state"] = sampled_accept_state
         return graph.launch(input_token_ids, **launch_kwargs)
     except NativeSpecTargetGraphUnsupportedError as exc:
         session.last_native_spec_target_fallback_reason = str(exc)

@@ -820,13 +820,21 @@ def test_qwen36_moe_production_c2_k2_plan_is_exact_automatic_scope() -> None:
     for changed, reason in (
         ({"realized_group_rows": 3}, "moe_group_above_offered_width"),
         ({"candidate_budget": 3}, "mtp_candidate_depth_unsupported"),
-        ({"sampling_mode": "sampled"}, "mtp_sampling_unsupported"),
     ):
         rejected = Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
             key=replace(key, **changed)
         )
         assert rejected.admitted is False, changed
         assert rejected.reason == reason
+
+    # The MoE native chain now decides a sampled chain on the target's device
+    # accept graph, so the plugin's implementation declaration admits the
+    # sampled mode; the evidence row stays the greedy measurement.
+    sampled = Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
+        key=replace(key, sampling_mode="sampled")
+    )
+    assert sampled.admitted is True
+    assert sampled.as_dict()["admission_basis"] == "implementation"
 
     # A narrower physical cell is inside what the kernels implement, so it runs
     # even though this row measured the wider one.
