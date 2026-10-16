@@ -14,9 +14,17 @@ def test_staged_hooks_do_not_override_missing_model_mtp_weights(present):
     wrapper = object.__new__(SubmitPollTextGenerator)
     wrapper._inner = SimpleNamespace(supports_speculative_mtp=present)
     wrapper._has_resident_runner = True
+    # The complete staged lifecycle, not two probes: the seam resolves an owner
+    # only when every stage is present, so an incomplete runner cannot make the
+    # wrapper claim a staged route the runtime could not drive.
     wrapper._runner = SimpleNamespace(
         speculative_capability=lambda: None,
-        execute_target_frontier=lambda: None,
+        speculative_component_claims=lambda plan: {},
+        reserve_speculative_claims=lambda claims: object(),
+        release_speculative_claims=lambda reservation: None,
+        prepare_speculative_requests=lambda plan, semantics, stream=None: None,
+        propose_speculative_batch=lambda plan, semantics, stream=None: None,
+        execute_target_frontier=lambda plan, frontier, claims, commit, cancelled_request_ids: None,
     )
     assert wrapper.supports_speculative_mtp is present
 

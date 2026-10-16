@@ -255,8 +255,15 @@ def test_dense_declarations_list_sampled_and_static_mode_gate_is_storage_blind()
     gate = inspect.getsource(mtp2.Qwen35GGUFMTP2Adapter._sampled_route_qualified)
     for attribute in ("kv_storage", "storage_dtype", "effective_kv_storage"):
         assert attribute not in gate, attribute
-    assert "weight_quant" in gate
-    assert "artifact_size_bytes" in gate
+    # The gate is storage-blind and keys on the artifact's weight quant: it
+    # delegates to the shared qualification helper, passing the adapter's own
+    # ``quant`` (the loaded artifact's weight quantization) rather than any
+    # storage field.
+    assert "sampled_route_qualified_for" in gate
+    assert 'getattr(self, "quant", "")' in gate
+    helper = inspect.getsource(mtp2.sampled_route_qualified_for)
+    assert "weight_quant" in helper
+    assert "artifact_size_bytes" in helper
 
 
 def test_processed_argmax_stays_refused_on_every_storage():
