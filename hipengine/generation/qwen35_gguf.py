@@ -23,6 +23,7 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 import numpy as np
 
 from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
+from hipengine.speculative.delegation import StagedAdapterDelegation
 import hipengine.generation.qwen35_gguf_mtp2 as _qwen35_gguf_mtp2_module
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipError
@@ -6411,7 +6412,7 @@ def _compact_live_execution_manifest(manifest: Mapping[str, Any]) -> dict[str, A
     return compact
 
 
-class Qwen35GGUFResidentModelRunner:
+class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
     """Long-lived scheduler-facing owner of GGUF model and session state.
 
     The owner reserves a fixed session pool once, keeps stable request identity
@@ -8452,24 +8453,20 @@ class Qwen35GGUFResidentModelRunner:
             return False
         return bool(supports(int(request_id)))
 
-    def staged_speculative_owner(self):
-        """Declare this runner's scheduler-facing staged speculative lifecycle.
+    # StagedAdapterDelegation hooks: this runner resolves the dense/MoE MTP2
+    # adapter lazily and runs every device-touching stage under the loaded
+    # target's arch environment; cold plan/claim queries stay unwrapped.
+    def _staged_adapter(self):
+        return self._resolved_mtp2_adapter()
 
-        Opting in routes the runner through the reusable staged seam: the
-        Generation-2 loop resolves the owner through
-        ``resolve_staged_speculative_runner`` and validates it before driving
-        one bounded target/provider cycle.
-        """
+    def _staged_adapter_missing_error(self) -> str:
+        return "GGUF MTP2 adapter is unavailable"
 
-        from hipengine.speculative.provider import (
-            validate_staged_speculative_runner,
-        )
+    def _staged_adapter_arch_environment(self):
+        return hip_target_arch_environment(self.generator.target_arch)
 
-        return validate_staged_speculative_runner(self)
-
-    def speculative_capability(self, request_semantics):
-        adapter = self._resolved_mtp2_adapter()
-        return None if adapter is None else adapter.capability(request_semantics)
+    def _begin_staged_adapter_cycle(self, plan) -> None:
+        self._begin_speculative_cycle(plan)
 
     def speculative_post_reject_cooldown(self, request_ids):
         adapter = self._resolved_mtp2_adapter()
@@ -8504,17 +8501,6 @@ class Qwen35GGUFResidentModelRunner:
         adapter = self._resolved_mtp2_adapter()
         return None if adapter is None else int(adapter.physical_request_bound)
 
-    def speculative_claims_fit(self, plan) -> bool:
-        adapter = self._resolved_mtp2_adapter()
-        return bool(adapter is not None and adapter.claims_fit(plan))
-
-    def speculative_frontier_available(self, plan) -> bool:
-        adapter = self._resolved_mtp2_adapter()
-        return bool(
-            adapter is not None
-            and getattr(adapter, "staged_frontier", True)
-        )
-
     def execute_speculative_cycle(self, plan, *, commit: bool):
         self._begin_speculative_cycle(plan)
         adapter = self._resolved_mtp2_adapter()
@@ -8523,26 +8509,6 @@ class Qwen35GGUFResidentModelRunner:
             raise NotImplementedError("GGUF MTP2 adapter has no bounded complete cycle")
         with hip_target_arch_environment(self.generator.target_arch):
             return execute(plan, commit=bool(commit))
-
-    def prepare_speculative_k0(self, plan, request_semantics, *, stream=None) -> None:
-        self._begin_speculative_cycle(plan)
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is not None:
-            with hip_target_arch_environment(self.generator.target_arch):
-                adapter.prepare_k0(plan, request_semantics, stream=stream)
-
-    def note_speculative_ar_commit(self, request_id, reason=None) -> None:
-        """Forward one emitted autoregressive token to the resolved adapter."""
-
-        adapter = self._resolved_mtp2_adapter()
-        observe = (
-            None
-            if adapter is None
-            else getattr(adapter, "note_speculative_ar_commit", None)
-        )
-        if callable(observe):
-            with hip_target_arch_environment(self.generator.target_arch):
-                observe(request_id, reason)
 
     def note_speculative_plan(self, plan) -> None:
         """Publish the group-level plan decision on every row it planned.
@@ -8584,78 +8550,8 @@ class Qwen35GGUFResidentModelRunner:
             state_present=state_present,
         )
 
-    def speculative_component_claims(self, plan):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        return adapter.component_claims(plan)
-
-    def reserve_speculative_claims(self, claims):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        return adapter.reserve_claims(claims)
-
-    def release_speculative_claims(self, reservation) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        with hip_target_arch_environment(self.generator.target_arch):
-            adapter.release_claims(reservation)
-
-    def prepare_speculative_requests(self, plan, request_semantics, *, stream=None) -> None:
-        self._begin_speculative_cycle(plan)
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        with hip_target_arch_environment(self.generator.target_arch):
-            adapter.prepare_requests(plan, request_semantics, stream=stream)
-
-    def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
-        self._begin_speculative_cycle(plan)
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        with hip_target_arch_environment(self.generator.target_arch):
-            return adapter.propose_batch(plan, request_semantics, stream=stream)
-
     def speculative_kv_live_spans_owner(self, plan) -> str:
         return f"gguf-resident:{id(self)}:{plan.operation_id}"
-
-    def execute_target_frontier(
-        self,
-        plan,
-        frontier,
-        complete_claims,
-        *,
-        commit: bool,
-        cancelled_request_ids,
-    ):
-        self._begin_speculative_cycle(plan)
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        with hip_target_arch_environment(self.generator.target_arch):
-            return adapter.execute_target_frontier(
-                plan,
-                frontier,
-                complete_claims,
-                commit=commit,
-                cancelled_request_ids=cancelled_request_ids,
-            )
-
-    def rollback_speculative_cycle(self, plan, candidate_graph, error) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is not None:
-            with hip_target_arch_environment(self.generator.target_arch):
-                adapter.rollback_cycle(plan, candidate_graph, error)
-
-    def recover_speculative_cycle_failure(self, plan, error) -> bool:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            return False
-        with hip_target_arch_environment(self.generator.target_arch):
-            return bool(adapter.recover_cycle_failure(plan, error))
 
     def restore_speculative_target_rows(self, plan) -> bool:
         """Rebuild canonical target state after an uncertain selected commit."""
