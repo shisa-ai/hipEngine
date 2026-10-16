@@ -39,6 +39,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.speculative.frontier import (
     CandidateGraph,
+    SpeculativeKVBinding,
     ProviderAttachment,
     ProviderCatchupMode,
     SpecPlanReason,
@@ -810,6 +811,12 @@ class Qwen35GGUFMoEMTP2Adapter:
             strict_fallback_key="gguf_target_ar",
             max_context_tokens=max_context,
             terminal_zero_accept_supported=True,
+            kv_binding=SpeculativeKVBinding.for_resident_target(
+                target=targets[0],
+                storage_view_key=str(getattr(targets[0], "kv_storage_dtype", "bf16")),
+                topology_key="gguf_paged_dense",
+                transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+            ),
         )
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
