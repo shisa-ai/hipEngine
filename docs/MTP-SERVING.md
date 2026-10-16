@@ -141,9 +141,17 @@ common scenario" — each is in flight, and this section shrinks as they land:
   production never routes to. Remaining: GPU qualification of the c2 sampled
   cell on gfx1100 before it is promoted beyond explicit-only.
 - **C8 speculative owner** — no qualified C8-width speculative frontier
-  exists, so explicit MTP at concurrency 8 has no physical path; dense
-  gfx1100 serves C8 via the retained explicit-only C8/K3 evidence row where
-  the backend lists the cell. Owner: the C8-frontier task.
+  exists on gfx1151, so explicit MTP at concurrency 8 has no physical path
+  there. Current-head ladder (2026-10-16, 8060S, UD-Q4_K_M): AR c1 9.95 /
+  c4 11.05 / **c8 11.13 tok/s**, with the M5 production rule routing c5-c8
+  due batches to whole-batch AR before any priming - confirmed on current
+  head. No measurable C8 MTP path exists to evaluate (no native R16/R32
+  bucket; the legacy arm serves c1 only), so qualification is a kernel
+  campaign: develop the native bucket + oracle, then beat both the sweep
+  decomposition and the 11.13 baseline under the full S5/S6 gates. The
+  1.741x c1 MTP win on the same hardware is the campaign's opening signal.
+  gfx1100 is separate: its explicit-only C8/K3 row keeps explicit MTP at c8
+  forceable there. Owner: the C8 campaign.
 - **MoE on gfx1151** — no declaration or evidence; explicit stays refused by
   name until measured, per the no-transfer rule.
 
