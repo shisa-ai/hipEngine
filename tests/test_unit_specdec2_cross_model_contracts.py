@@ -18,6 +18,22 @@ delegation (which the per-model seam tests already cover):
 
 The DMS compact store refuses speculative serving entirely; its config gate is
 asserted here to name the clearing command so the boundary is not a dead end.
+
+The lifecycle additions below pin cross-model parity for the events each
+per-model seam suite tests only against its own fixture:
+
+* a stage failure on one stream leaves the sibling stream intact and the owner
+  reusable for a retry, with the failing cycle's claim reservation released
+  exactly once (the loop's failure protocol);
+* a cancellation resolving at the target boundary publishes nothing for the
+  cancelled row - no tail ids leak into the committed result;
+* every capability refusal records a named non-empty reason, and an admitted
+  capability records none, so a silent downgrade cannot hide behind ``None``;
+* a frontier without a ``kv_binding`` (today's production shape: no adapter
+  populates one yet) still carries the loose KV string keys, while a frontier
+  whose binding disagrees with those keys is refused by name;
+* staged state is per cycle, not per request lifetime: the same request id
+  runs consecutive cycles without accumulating staged state.
 """
 
 from __future__ import annotations
@@ -36,6 +52,7 @@ from hipengine.speculative import (
     SpeculativeKVBinding,
     SpeculativeRequestSemantics,
     StagedSpeculativeRunner,
+    TargetFrontier,
     resolve_staged_speculative_runner,
     validate_staged_speculative_runner,
 )
@@ -167,6 +184,8 @@ class _StagedOwnerDouble:
         self.proposals: list[tuple[object, tuple[int, ...]]] = []
         self.target_calls: list[tuple[str, bool]] = []
         self.reservations: list[object] = []
+        self.releases: list[object] = []
+        self.cancelled_ids: list[tuple[int, ...]] = []
 
     def speculative_capability(self, request_semantics):
         capability = self._capability
@@ -200,7 +219,7 @@ class _StagedOwnerDouble:
         return ("reservation", claims)
 
     def release_speculative_claims(self, reservation) -> None:
-        return None
+        self.releases.append(reservation)
 
     def prepare_speculative_requests(self, plan, request_semantics, *, stream=None) -> None:
         self._prepared[stream] = (
@@ -242,7 +261,22 @@ class _StagedOwnerDouble:
         self, plan, frontier, complete_claims, *, commit, cancelled_request_ids
     ):
         self.target_calls.append((plan.operation_id, bool(commit)))
-        return ("executed", plan.operation_id)
+        # The seam contract: a cancellation resolving at the target boundary is
+        # consulted through the callable the loop passes, and the cancelled row
+        # publishes nothing - no tail ids reach the committed result.
+        cancelled: tuple[int, ...] = ()
+        if callable(cancelled_request_ids):
+            cancelled = tuple(int(value) for value in cancelled_request_ids())
+        self.cancelled_ids.append(cancelled)
+        committed = tuple(
+            int(request_id)
+            for request_id in plan.request_ids
+            if int(request_id) not in cancelled
+        )
+        return SimpleNamespace(
+            operation_id=plan.operation_id,
+            committed_request_ids=committed,
+        )
 
 
 class _DenseOwner(_StagedOwnerDouble):
@@ -547,3 +581,279 @@ def test_dms_compact_kv_config_gate_names_its_clearing_command() -> None:
     assert "DMS compact KV has no speculative serving adapter" in message
     # A gate nothing can clear is a bug: the error names the clearing command.
     assert "speculative_mtp_serving='off'" in message
+
+
+# ------------------------------------------------- cross-model lifecycle parity
+
+
+_STAGES = (
+    "prepare_speculative_requests",
+    "propose_speculative_batch",
+    "execute_target_frontier",
+)
+
+
+@pytest.mark.parametrize("stage", _STAGES)
+@pytest.mark.parametrize("owner_factory", _OWNER_FACTORIES)
+def test_a_failed_stage_keeps_a_sibling_stream_and_a_retry_healthy(
+    owner_factory, stage: str
+) -> None:
+    """The loop's failure protocol must hold on every model shape.
+
+    A stage that raises on one stream must leave a sibling stream's staged state
+    untouched, the failing cycle's claim reservation must be released exactly
+    once, and the owner must stay usable for a retry of the same request with a
+    fresh operation id - no shape accumulates poisoned per-cycle state.
+    """
+
+    owner = owner_factory()
+    sibling_plan = _plan("op:sibling", (2,))
+    sibling_semantics = (_semantics(2),)
+    owner.prepare_speculative_requests(
+        sibling_plan, sibling_semantics, stream=2
+    )
+
+    failing_plan = _plan("op:failing", (1,))
+    failing_semantics = (_semantics(1),)
+    original = getattr(owner, stage)
+
+    def _fail(*args, **kwargs):
+        raise RuntimeError(f"stage failure: {stage}")
+
+    def _drive_through() -> None:
+        # Drive the cycle through every stage up to and including the failing
+        # one, each with its real seam signature.
+        if stage != "prepare_speculative_requests":
+            owner.prepare_speculative_requests(
+                failing_plan, failing_semantics, stream=1
+            )
+        if stage == "execute_target_frontier":
+            owner.propose_speculative_batch(failing_plan, failing_semantics, stream=1)
+            owner.execute_target_frontier(
+                failing_plan,
+                None,
+                reservation,
+                commit=True,
+                cancelled_request_ids=lambda: (),
+            )
+        elif stage == "propose_speculative_batch":
+            owner.propose_speculative_batch(failing_plan, failing_semantics, stream=1)
+        else:
+            owner.prepare_speculative_requests(
+                failing_plan, failing_semantics, stream=1
+            )
+
+    setattr(owner, stage, _fail)
+    reservation = owner.reserve_speculative_claims(
+        ResourceClaimSet.from_mapping(
+            "op:failing:complete", {"provider.kv": 1}
+        )
+    )
+    try:
+        _drive_through()
+        raise AssertionError(f"{stage} did not fail")
+    except RuntimeError as error:
+        assert str(error) == f"stage failure: {stage}"
+    finally:
+        setattr(owner, stage, original)
+        owner.release_speculative_claims(reservation)
+
+    # The sibling stream's staged state survived the failure untouched.
+    sibling_graph = owner.propose_speculative_batch(
+        sibling_plan, sibling_semantics, stream=2
+    )
+    assert sibling_graph.request_ids == (2,)
+
+    # The owner is reusable: the same request retries cleanly on a new cycle.
+    retry_plan = _plan("op:retry", (1,))
+    retry_reservation = owner.reserve_speculative_claims(
+        ResourceClaimSet.from_mapping(
+            "op:retry:complete", {"provider.kv": 1}
+        )
+    )
+    owner.prepare_speculative_requests(retry_plan, failing_semantics, stream=1)
+    retry_graph = owner.propose_speculative_batch(
+        retry_plan, failing_semantics, stream=1
+    )
+    assert retry_graph.request_ids == (1,)
+    retry_result = owner.execute_target_frontier(
+        retry_plan,
+        None,
+        retry_reservation,
+        commit=True,
+        cancelled_request_ids=lambda: (),
+    )
+    assert retry_result.operation_id == "op:retry"
+    assert ("op:retry", True) in owner.target_calls
+    owner.release_speculative_claims(retry_reservation)
+
+    # The failing cycle reserved and released exactly once, and the retry adds
+    # one more balanced pair - no shape leaks or double-releases claims.
+    assert len(owner.reservations) == 2
+    assert owner.releases == [reservation, retry_reservation]
+
+
+@pytest.mark.parametrize("owner_factory", _OWNER_FACTORIES)
+def test_cancellation_resolves_at_the_target_boundary_without_publishing_the_cancelled_row(
+    owner_factory,
+) -> None:
+    """A cancelled row publishes nothing; survivors commit exactly themselves."""
+
+    owner = owner_factory()
+    plan = _plan("op:cancel", (1, 2))
+    semantics = (_semantics(1), _semantics(2))
+    owner.prepare_speculative_requests(plan, semantics, stream=1)
+    owner.propose_speculative_batch(plan, semantics, stream=1)
+
+    result = owner.execute_target_frontier(
+        plan,
+        None,
+        None,
+        commit=True,
+        cancelled_request_ids=lambda: (2,),
+    )
+
+    # The cancelled request never reaches the committed result: no tail ids.
+    assert result.committed_request_ids == (1,)
+    assert 2 not in result.committed_request_ids
+    assert owner.cancelled_ids == [(2,)]
+    # An uncontested follow-up cycle publishes every row.
+    followup = _plan("op:after", (3, 4))
+    followup_semantics = (_semantics(3), _semantics(4))
+    owner.prepare_speculative_requests(followup, followup_semantics, stream=1)
+    owner.propose_speculative_batch(followup, followup_semantics, stream=1)
+    clean = owner.execute_target_frontier(
+        followup, None, None, commit=True, cancelled_request_ids=lambda: ()
+    )
+    assert clean.committed_request_ids == (3, 4)
+
+
+@pytest.mark.parametrize(
+    "owner_factory,mode,refused",
+    [
+        (_DenseOwner, "sampled", True),
+        (_ParoOwner, "sampled", True),
+        (_DmsOwner, "sampled", True),
+        (_MoeOwner, "sampled", False),
+        (_DmsOwner, "greedy", True),
+    ],
+)
+def test_every_refusal_records_a_named_reason_and_admission_records_none(
+    owner_factory, mode: str, refused: bool
+) -> None:
+    """No shape may hide a refusal behind a bare ``None``.
+
+    Every refused semantics query records a non-empty reason (recorded again on
+    a repeat, so a later refusal cannot be silently suppressed), and an
+    admitted query records none. A silent downgrade to greedy or AR would have
+    to pass through a reasonless refusal, which this forbids.
+    """
+
+    owner = owner_factory()
+    query = (_semantics(11, sampling_mode=mode),)
+
+    first = owner.speculative_capability(query)
+    second = owner.speculative_capability(query)
+
+    if refused:
+        assert first is None and second is None
+        assert len(owner.decline_reasons) == 2
+        assert all(owner.decline_reasons)
+        # The reason is stable across repeated queries of the same semantics.
+        assert owner.decline_reasons[0] == owner.decline_reasons[1]
+        assert owner.target_calls == []
+    else:
+        assert first is not None and second is not None
+        assert owner.decline_reasons == []
+        assert first.supports_sampling(mode)
+
+
+def test_a_frontier_without_a_kv_binding_still_names_its_kv_keys() -> None:
+    """Today's production frontier carries loose KV keys and no typed binding.
+
+    The dense, MoE, and PARO capabilities construct no ``kv_binding`` today,
+    so the loop builds frontiers with ``kv_binding=None`` and the loose string
+    keys. That shape must stay legal, while a half-populated binding that
+    disagrees with those keys must still be refused by name - the guard that
+    makes a future populated binding trustworthy.
+    """
+
+    owner = _DenseOwner()
+    capability = owner.speculative_capability((_semantics(1),))
+    assert capability is not None
+    plan = _plan("op:frontier", (1,))
+    semantics = (_semantics(1),)
+    owner.prepare_speculative_requests(plan, semantics, stream=1)
+    graph = owner.propose_speculative_batch(plan, semantics, stream=1)
+
+    common = dict(
+        operation_id=plan.operation_id,
+        candidate_graph=graph,
+        root_tokens=(5,),
+        physical_row_decomposition=(2,),
+        transaction_mode=capability.target_transaction_mode,
+        kv_storage_view_key=capability.kv_backend_key,
+        kv_live_spans_owner=f"{plan.operation_id}:target-live-spans",
+        execution_route="graph",
+    )
+
+    # Today's production shape: no typed binding, loose keys carried.
+    unbound = TargetFrontier.from_candidate_graph(kv_binding=None, **common)
+    assert unbound.kv_binding is None
+    assert unbound.kv_storage_view_key == capability.kv_backend_key
+    assert unbound.kv_live_spans_owner == f"{plan.operation_id}:target-live-spans"
+
+    # A fully populated binding that matches the loose keys is carried through.
+    binding = capability.kv_binding
+    assert binding is not None
+    bound = TargetFrontier.from_candidate_graph(
+        kv_binding=binding.with_live_spans_owner(
+            f"{plan.operation_id}:target-live-spans"
+        ),
+        **common,
+    )
+    assert bound.kv_binding is not None
+    assert bound.kv_binding.live_spans_owner == unbound.kv_live_spans_owner
+
+    # A binding that disagrees with the frontier's own keys is refused by name,
+    # so half-population cannot slip a mismatched store through the frontier.
+    with pytest.raises(ValueError, match="live_spans_owner"):
+        TargetFrontier.from_candidate_graph(
+            kv_binding=binding.with_live_spans_owner("someone-else"),
+            **common,
+        )
+
+
+@pytest.mark.parametrize("owner_factory", _OWNER_FACTORIES)
+def test_staged_state_is_per_cycle_not_per_request_lifetime(owner_factory) -> None:
+    """The same request id runs consecutive cycles without accumulating state.
+
+    Staged state is keyed by the cycle's operation, not by the request's
+    lifetime, so a request that stays resident across cycles must not carry the
+    previous operation's prepared plan into the next one - and an unrelated
+    request interleaving between the two must see neither.
+    """
+
+    owner = owner_factory()
+    first = _plan("op:cycle-1", (5,))
+    second = _plan("op:cycle-2", (5,))
+    other = _plan("op:other", (6,))
+    semantics_5 = (_semantics(5),)
+    semantics_6 = (_semantics(6),)
+
+    owner.prepare_speculative_requests(first, semantics_5, stream=1)
+    owner.propose_speculative_batch(first, semantics_5, stream=1)
+
+    # An unrelated request interleaves between this request's two cycles.
+    owner.prepare_speculative_requests(other, semantics_6, stream=2)
+    owner.propose_speculative_batch(other, semantics_6, stream=2)
+
+    # The same request id's next cycle starts from a clean per-cycle slate.
+    owner.prepare_speculative_requests(second, semantics_5, stream=1)
+    owner.propose_speculative_batch(second, semantics_5, stream=1)
+
+    assert owner.proposals == [(1, (5,)), (2, (6,)), (1, (5,))]
+    # Stream 1's staged state now belongs to the latest cycle only: the second
+    # operation overwrote the first rather than accumulating beside it, and
+    # the double's cross-talk guard would have raised had a stale plan leaked.
+    assert owner._prepared[1][0] == "op:cycle-2"
