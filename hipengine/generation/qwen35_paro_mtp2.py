@@ -16,6 +16,7 @@ from hipengine.runtime.qwen35_paro_runner import (
 )
 from hipengine.speculative.frontier import (
     CandidateGraph,
+    SpeculativeKVBinding,
     ProviderAttachment,
     ProviderCatchupMode,
     SpecRequestPlan,
@@ -257,6 +258,12 @@ class Qwen35ParoMTP2Adapter:
             eager_supported=True,
             strict_fallback_key="paro_target_c1_loop_exact",
             max_context_tokens=int(session.max_sequence_length) - 2,
+            kv_binding=SpeculativeKVBinding.for_resident_target(
+                target=session,
+                storage_view_key="paged_bf16_kv_live_spans",
+                topology_key="paro_paged_bf16",
+                transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
+            ),
         )
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:

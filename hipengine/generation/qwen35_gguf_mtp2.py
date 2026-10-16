@@ -76,6 +76,7 @@ from hipengine.runtime.qwen35_gguf_nextn import (
 )
 from hipengine.speculative.frontier import (
     CandidateGraph,
+    SpeculativeKVBinding,
     ProviderAttachment,
     ProviderCatchupMode,
     SpecK0Class,
@@ -3020,6 +3021,12 @@ class Qwen35GGUFMTP2Adapter:
             eager_supported=True,
             strict_fallback_key="gguf_target_ar",
             max_context_tokens=max_context,
+            kv_binding=SpeculativeKVBinding.for_resident_target(
+                target=target,
+                storage_view_key=str(getattr(target, "kv_storage_dtype", "bf16")),
+                topology_key="gguf_paged_dense",
+                transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+            ),
         )
 
     def partition_max_requests(self, request_ids: Sequence[int]) -> int:

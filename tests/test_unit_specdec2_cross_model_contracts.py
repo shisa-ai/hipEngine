@@ -769,13 +769,14 @@ def test_every_refusal_records_a_named_reason_and_admission_records_none(
 
 
 def test_a_frontier_without_a_kv_binding_still_names_its_kv_keys() -> None:
-    """Today's production frontier carries loose KV keys and no typed binding.
+    """K0/AR frontiers stay unbound; speculative capabilities now bind.
 
-    The dense, MoE, and PARO capabilities construct no ``kv_binding`` today,
-    so the loop builds frontiers with ``kv_binding=None`` and the loose string
-    keys. That shape must stay legal, while a half-populated binding that
-    disagrees with those keys must still be refused by name - the guard that
-    makes a future populated binding trustworthy.
+    A root-only K0/AR frontier carries no capability and therefore no typed
+    binding, so ``kv_binding=None`` plus the loose string keys remains the
+    legal shape for plain decode. Every speculative capability now populates
+    a binding built from its target session's declared store, and a binding
+    that disagrees with the frontier's own keys is still refused by name -
+    the guard that makes a populated binding trustworthy.
     """
 
     owner = _DenseOwner()

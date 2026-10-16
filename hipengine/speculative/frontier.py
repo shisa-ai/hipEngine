@@ -141,6 +141,59 @@ class SpeculativeKVBinding:
             live_spans_owner=_required_text(owner, "live_spans_owner"),
         )
 
+    @classmethod
+    def for_resident_target(
+        cls,
+        *,
+        target: object,
+        storage_view_key: str,
+        topology_key: str,
+        transaction_mode: SpecTransactionMode,
+        retention_key: str = "dense",
+        backend_fingerprint: str | None = None,
+        layout_fingerprint: str | None = None,
+    ) -> "SpeculativeKVBinding":
+        """Build a binding from a resident target session's declared KV store.
+
+        Reads the storage dtype and INT8 scale ABI the session already declares
+        (``kv_storage_dtype``, ``kv_scale_dtype``, ``kv_scale_granularity``), so
+        a capability's binding describes the store its frontier will actually
+        touch instead of restating a layout by hand. The generation stays 1
+        until resident sessions expose their pool epoch; the compatibility
+        key remains distinct across dtype, topology, retention, and scale
+        metadata, which is what the frontier and capability checks consume.
+        """
+
+        storage_dtype = str(getattr(target, "kv_storage_dtype", "bf16"))
+        scale_dtype: str | None = None
+        scale_granularity: str | None = None
+        if storage_dtype == "int8_per_token_head":
+            scale_dtype = str(getattr(target, "kv_scale_dtype", "fp16"))
+            scale_granularity = str(
+                getattr(target, "kv_scale_granularity", "per_token_head")
+            )
+        return cls(
+            backend_fingerprint=(
+                _required_text(backend_fingerprint, "backend_fingerprint")
+                if backend_fingerprint is not None
+                else f"resident:{type(target).__name__}:{storage_dtype}"
+            ),
+            generation=1,
+            topology_key=topology_key,
+            storage_view_key=storage_view_key,
+            layout_fingerprint=(
+                _required_text(layout_fingerprint, "layout_fingerprint")
+                if layout_fingerprint is not None
+                else f"{topology_key}:uniform"
+            ),
+            storage_dtype=storage_dtype,
+            storage_layout="uniform",
+            transaction_mode=transaction_mode,
+            scale_dtype=scale_dtype,
+            scale_granularity=scale_granularity,
+            retention_key=retention_key,
+        )
+
     @property
     def compatibility_key(self) -> tuple[str, ...]:
         return (

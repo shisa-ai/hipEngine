@@ -102,6 +102,60 @@ def test_kv_binding_rejects_incomplete_quantized_metadata() -> None:
         )
 
 
+def test_kv_binding_for_resident_target_reads_the_declared_store() -> None:
+    """``for_resident_target`` builds the binding from session-declared fields.
+
+    The dense/MoE/PARO capabilities bind their KV store through this
+    constructor: the storage dtype and INT8 scale ABI come from the target
+    session's own declarations, so the binding cannot drift from the store the
+    frontier will actually touch.
+    """
+
+    from types import SimpleNamespace
+
+    bf16_session = SimpleNamespace(kv_storage_dtype="bf16")
+    bf16 = SpeculativeKVBinding.for_resident_target(
+        target=bf16_session,
+        storage_view_key="bf16",
+        topology_key="gguf_paged_dense",
+        transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+    )
+    assert bf16.storage_dtype == "bf16"
+    assert bf16.scale_dtype is None and bf16.scale_granularity is None
+    assert bf16.compatibility_key[-1] == "dense"  # retention_key default
+
+    int8_session = SimpleNamespace(
+        kv_storage_dtype="int8_per_token_head",
+        kv_scale_dtype="fp32",
+        kv_scale_granularity="per_token_head",
+    )
+    int8 = SpeculativeKVBinding.for_resident_target(
+        target=int8_session,
+        storage_view_key="int8_per_token_head",
+        topology_key="gguf_paged_dense",
+        transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+    )
+    assert int8.storage_dtype == "int8_per_token_head"
+    assert (int8.scale_dtype, int8.scale_granularity) == ("fp32", "per_token_head")
+    # A quantized store is a different compatibility cell than the same
+    # topology at bf16, which is what a cross-shape mismatch check consumes.
+    assert int8.compatibility_key != bf16.compatibility_key
+
+    # The store's own session class and dtype name the backend fingerprint, so
+    # two owners of the same layout remain distinguishable.
+    other_owner = SimpleNamespace(kv_storage_dtype="bf16")
+    other = SpeculativeKVBinding.for_resident_target(
+        target=other_owner,
+        storage_view_key="bf16",
+        topology_key="paro_paged_bf16",
+        transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
+    )
+    assert other.backend_fingerprint != bf16.backend_fingerprint or (
+        other.topology_key != bf16.topology_key
+    )
+    assert other.transaction_mode is SpecTransactionMode.PACKED_SCRATCH
+
+
 def test_capability_validates_shape_and_execution_contract() -> None:
     capability = _capability()
 
