@@ -86,7 +86,10 @@ from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpSt
 from hipengine.speculative.provider import (
     SpeculativeRequestSemantics,
     StagedSpeculativeProvider,
+    StagedSpeculativeRunner,
+    resolve_staged_speculative_runner,
     validate_staged_speculative_provider,
+    validate_staged_speculative_runner,
 )
 from hipengine.speculative.registry import (
     SpeculativeProviderCapabilities,
@@ -254,7 +257,10 @@ __all__ = [
     "SpeculativeMTPStaticState",
     "resolve_speculative_mtp_serving_plan",
     "StagedSpeculativeProvider",
+    "StagedSpeculativeRunner",
     "validate_staged_speculative_provider",
+    "validate_staged_speculative_runner",
+    "resolve_staged_speculative_runner",
     "construct_staged_speculative_provider",
     "register_builtin_speculative_providers",
     "register_speculative_provider",

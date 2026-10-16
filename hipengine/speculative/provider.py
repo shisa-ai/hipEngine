@@ -10,6 +10,7 @@ from hipengine.speculative.frontier import (
     CandidateGraph,
     SpecRequestPlan,
     SpeculativeCapability,
+    TargetFrontier,
 )
 from hipengine.speculative.transaction import SpecCycleResult, SpecCycleTransaction
 
@@ -117,6 +118,121 @@ class StagedSpeculativeProvider(Protocol):
     def close_requests(self, request_ids: Sequence[int]) -> None: ...
 
 
+@runtime_checkable
+class StagedSpeculativeRunner(Protocol):
+    """Scheduler-facing staged target/provider lifecycle of a resident runner.
+
+    The Generation-2 loop owns planning, complete claim reservation, and the
+    transaction verdict.  A resident runner that advertises staged speculative
+    support exposes this bounded lifecycle: every call is one cold-plan query or
+    one stage of one engine cycle.  The runner owns target-frontier execution,
+    provider proposal, and the frontier's KV-liveness identity; it cannot
+    publish tokens, await a client, or run repeated cycles on its own.
+
+    Optional lifecycle hooks the loop consults when present are
+    ``speculative_claims_fit``, ``speculative_frontier_available``,
+    ``speculative_kv_live_spans_owner``, and ``rollback_speculative_cycle``.
+    They are not part of this protocol because the loop falls back cleanly when
+    they are absent, so requiring them would reject a working owner.
+    """
+
+    def speculative_capability(
+        self,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+    ) -> SpeculativeCapability | None: ...
+
+    def speculative_component_claims(
+        self,
+        plan: SpecRequestPlan,
+    ) -> Mapping[str, ResourceClaimSet]: ...
+
+    def reserve_speculative_claims(self, claims: ResourceClaimSet) -> object: ...
+
+    def release_speculative_claims(self, reservation: object) -> None: ...
+
+    def prepare_speculative_requests(
+        self,
+        plan: SpecRequestPlan,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+        *,
+        stream: int | None = None,
+    ) -> None: ...
+
+    def propose_speculative_batch(
+        self,
+        plan: SpecRequestPlan,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+        *,
+        stream: int | None = None,
+    ) -> CandidateGraph: ...
+
+    def execute_target_frontier(
+        self,
+        plan: SpecRequestPlan,
+        frontier: TargetFrontier,
+        complete_claims: ResourceClaimSet,
+        *,
+        commit: bool,
+        cancelled_request_ids: object,
+    ) -> SpecCycleResult: ...
+
+
+# The staged-frontier lifecycle the loop must be able to drive end to end.  A
+# runner missing any of these cannot own one bounded target/provider cycle, so
+# ``validate_staged_speculative_runner`` refuses it by name.
+_STAGED_RUNNER_METHODS = (
+    "speculative_capability",
+    "speculative_component_claims",
+    "reserve_speculative_claims",
+    "release_speculative_claims",
+    "prepare_speculative_requests",
+    "propose_speculative_batch",
+    "execute_target_frontier",
+)
+_STAGED_OWNER_ACCESSOR = "staged_speculative_owner"
+
+
+def validate_staged_speculative_runner(
+    runner: object,
+) -> StagedSpeculativeRunner:
+    """Fail construction if an object is not a bounded staged runner owner."""
+
+    missing = tuple(
+        name
+        for name in _STAGED_RUNNER_METHODS
+        if not callable(getattr(runner, name, None))
+    )
+    if missing:
+        raise TypeError(
+            "staged speculative runner is missing staged methods: "
+            + ", ".join(missing)
+        )
+    return runner  # type: ignore[return-value]
+
+
+def resolve_staged_speculative_runner(
+    runner: object,
+) -> StagedSpeculativeRunner | None:
+    """Resolve a runner's staged lifecycle owner, or None for target-only AR.
+
+    A runner opts into the seam by implementing ``staged_speculative_owner``;
+    the returned owner is validated, so an incomplete opt-in fails loudly
+    instead of silently falling back to autoregressive decoding.  A runner
+    without the accessor is accepted only when it already exposes the complete
+    staged lifecycle, which keeps a legacy duck-typed owner working without an
+    explicit opt-in.
+    """
+
+    accessor = getattr(runner, _STAGED_OWNER_ACCESSOR, None)
+    if callable(accessor):
+        return validate_staged_speculative_runner(accessor())
+    if all(
+        callable(getattr(runner, name, None)) for name in _STAGED_RUNNER_METHODS
+    ):
+        return validate_staged_speculative_runner(runner)
+    return None
+
+
 _STAGED_METHODS = (
     "capability",
     "resource_claims",
@@ -159,5 +275,8 @@ def validate_staged_speculative_provider(
 __all__ = [
     "SpeculativeRequestSemantics",
     "StagedSpeculativeProvider",
+    "StagedSpeculativeRunner",
+    "resolve_staged_speculative_runner",
     "validate_staged_speculative_provider",
+    "validate_staged_speculative_runner",
 ]

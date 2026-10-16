@@ -17,11 +17,14 @@ from hipengine.speculative import (
     SpeculativeProviderKey,
     SpeculativeRequestSemantics,
     StagedSpeculativeProvider,
+    StagedSpeculativeRunner,
     construct_staged_speculative_provider,
     register_staged_speculative_provider,
     registered_staged_speculative_providers,
     resolve_staged_speculative_provider,
+    resolve_staged_speculative_runner,
     validate_staged_speculative_provider,
+    validate_staged_speculative_runner,
 )
 
 
@@ -219,3 +222,67 @@ def test_staged_registry_constructs_and_validates_provider() -> None:
             backend="backend",
             quant="quant",
         )
+
+
+class _StagedRunner:
+    """A complete duck-typed scheduler-facing staged lifecycle owner."""
+
+    def speculative_capability(self, request_semantics):
+        return _capability()
+
+    def speculative_component_claims(self, plan):
+        return {"provider": ResourceClaimSet.from_mapping(
+            f"{plan.operation_id}:provider", {"provider.kv": 1}
+        )}
+
+    def reserve_speculative_claims(self, claims):
+        return claims.claim_id
+
+    def release_speculative_claims(self, reservation):
+        return None
+
+    def prepare_speculative_requests(self, plan, request_semantics, *, stream=None):
+        return None
+
+    def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
+        return None
+
+    def execute_target_frontier(
+        self, plan, frontier, complete_claims, *, commit, cancelled_request_ids
+    ):
+        return None
+
+
+class _IncompleteRunner:
+    """Exposes only the cold-plan hook, not the staged-frontier lifecycle."""
+
+    def speculative_capability(self, request_semantics):
+        return None
+
+
+class _OptInIncompleteRunner:
+    def staged_speculative_owner(self):
+        return _IncompleteRunner()
+
+
+def test_staged_runner_protocol_rejects_incomplete_owners() -> None:
+    runner = _StagedRunner()
+
+    assert isinstance(runner, StagedSpeculativeRunner)
+    assert validate_staged_speculative_runner(runner) is runner
+    with pytest.raises(TypeError, match="missing staged methods"):
+        validate_staged_speculative_runner(_IncompleteRunner())
+
+
+def test_staged_runner_resolver_prefers_explicit_opt_in_and_fails_closed() -> None:
+    # An explicit opt-in that cannot own a bounded cycle is rejected, not
+    # silently demoted to autoregressive decoding.
+    with pytest.raises(
+        TypeError, match="missing staged methods: speculative_component_claims"
+    ):
+        resolve_staged_speculative_runner(_OptInIncompleteRunner())
+    # A complete owner resolves by duck typing without an accessor.
+    runner = _StagedRunner()
+    assert resolve_staged_speculative_runner(runner) is runner
+    # A target-only runner with no staged methods is not a staged owner.
+    assert resolve_staged_speculative_runner(object()) is None
