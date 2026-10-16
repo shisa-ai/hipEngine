@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11611,
-    "current": 4379,
+    "entries": 11613,
+    "current": 4381,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1415,
@@ -53679,14 +53679,14 @@
         "written": "2026-10-16",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 2,
         "open_text": "- Not committed; parent owns the final commit if needed.\n- Optional follow-up: opt the PARO runner into the same accessor once its\n  lifecycle is reconciled with the seam, and consider a seam-level check that a\n  frontier's KV binding is satisfiable before an owner opens a cycle.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20261016T052638.937179Z-lhl-specdec2-staged-runner-seam-1f3c47.md",
@@ -53701,7 +53701,7 @@
         ]
       },
       "id": "worklog/20261016T052638.937179Z-lhl-specdec2-staged-runner-seam-1f3c47",
-      "evidence_hash": "72c5bbe1f740"
+      "evidence_hash": "834b08670eeb"
     }
   ]
 }
