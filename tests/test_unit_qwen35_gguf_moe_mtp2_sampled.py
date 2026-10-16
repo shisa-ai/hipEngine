@@ -619,12 +619,10 @@ def test_moe_c2_groups_route_to_the_dense_adapter_with_the_packed_sampler() -> N
 
 
 def test_dense_adapter_qualifies_the_moe_sampled_route_only_where_declared() -> None:
-    """The packed lane's sampled admission follows the plugin declaration.
+    """The packed lane's sampled qualification follows the plugin declaration.
 
     The dense adapter's sampled qualification is plugin- and backend-scoped:
-    the MoE declaration covers sampled at gfx1100, so the route qualifies
-    there and declines - with the recorded decline reason, not a silent greedy
-    downgrade - on a backend the declaration does not cover.
+    the MoE declaration covers sampled on both supported gfx backends.
     """
 
     from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
@@ -645,7 +643,7 @@ def test_dense_adapter_qualifies_the_moe_sampled_route_only_where_declared() -> 
         target_arch="gfx1151",
         model_plugin=Qwen35MoeGGUFModel(),
     )
-    assert adapter._sampled_route_qualified() is False
+    assert adapter._sampled_route_qualified() is True
 
 
 def test_packed_batch_refuses_sampled_rows_without_device_results_by_name() -> None:
