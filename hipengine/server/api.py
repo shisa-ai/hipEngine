@@ -1590,7 +1590,11 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         "automatic_route_promoted": automatic_promoted,
         "sampling_compatible": bool(serving_route),
         "compatibility_guard": "supports_speculative_mtp_sampling",
-        "allowed_execution_modes": ["greedy_fast"],
+        "allowed_execution_modes": sorted(
+            {"greedy_fast", *(
+                str(mode) for mode in getattr(engine, "speculative_mtp_sampling_modes", ())
+            )}
+        ),
         "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
         "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
         "thinking_policy": str(config.speculative_mtp_thinking),
@@ -15074,10 +15078,18 @@ def _speculative_provider_route_for_request(
         )
     configured_provider = config.speculative_provider
     if configured_provider is None:
+        # ``speculative: true`` is the generic client spelling for speculative
+        # decoding.  On a model with the native MTP route, map it to that route
+        # instead of rejecting a server-default request merely because no
+        # legacy external provider was configured.  If MTP is unavailable, the
+        # caller gets the typed 501 below rather than a misleading 400.
+        if _engine_supports_speculative_mtp(engine):
+            return _SPECULATIVE_MTP_BATCH_ROUTE
         raise OpenAIHTTPError(
-            400,
-            "speculative provider serving is not configured for this server",
-            code="unsupported_parameter",
+            501,
+            "speculative decoding is not supported by this model/backend",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
             param="speculative",
         )
     selected_provider = requested_provider or configured_provider

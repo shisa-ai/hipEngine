@@ -1039,17 +1039,24 @@ class Qwen35MoeGGUFModel:
     speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = (
         _QWEN36_MOE_Q4KM_MTP_SERVING_EVIDENCE
     )
-    # The MoE NextN chain is declared for the backend its kernels are built and
-    # exercised on.  gfx1151 has no MoE MTP evidence and no MoE prompt-streaming
-    # policy entry, so an explicit run there stays evidence-gated until the
-    # capability is established rather than assumed.  Depth and width are what
-    # the adapter serves rather than a wider claim: it clamps candidate depth to
-    # two, and its prompt streaming covers capacities 1 and 2 only.
+    # The MoE NextN chain is declared for both gfx1100 and gfx1151: the host
+    # ships the same executable MoE MTP contract on either backend.  Width and
+    # depth remain the adapter's structural limits, not evidence gates.
     speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
         SpeculativeMTPServingImplementation(
             name="gguf_moe_bf16_gfx1100_native_chain",
             kv_storage="bf16",
             backends=(("hip_gfx1100", "gfx1100"),),
+            max_candidate_count=2,
+            max_group_rows=2,
+            group_rejection_reason="moe_group_above_offered_width",
+            sampling_modes=("greedy_fast", "sampled"),
+            automatic_eligible=True,
+        ),
+        SpeculativeMTPServingImplementation(
+            name="gguf_moe_bf16_gfx1151_native_chain",
+            kv_storage="bf16",
+            backends=(("hip_gfx1151", "gfx1151"),),
             max_candidate_count=2,
             max_group_rows=2,
             group_rejection_reason="moe_group_above_offered_width",

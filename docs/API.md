@@ -151,11 +151,11 @@ Per-request deadlines are opt-in via request `timeout_ms`. Set
 deadline to requests that omit the field. A request-level `timeout_ms` overrides
 the server default.
 
-GGUF MTP serving defaults to the fail-closed `auto` policy: a request that does
-not ask for speculation itself receives it only from a plan the server is
-willing to select. Default routing requires an immutable model-plugin plan with
-`automatic_eligible=true`, supplied either by a retained serving-evidence row or
-by the model plugin's implementation declaration.
+GGUF MTP serving defaults to the capability-based `auto` policy: on gfx1151,
+a model with a declared MTP/NextN head receives MTP when a request omits
+`speculative_mtp`. Default routing uses the model plugin's executable
+implementation declaration; retained evidence describes measured cells but is
+not an admission gate.
 
 The implementation declaration is the automatic scope for every artifact the
 kernels implement, whether or not a measurement covers it. Admission is
@@ -185,16 +185,12 @@ the `enabled` policy. The summary marks admitted plans as `(unmeasured)` when
 they lack an evidence key, evidence fingerprint, or evidence artifacts. Reason
 names do not determine measurement status; sampled evidence counts too.
 
-Qwen3.8-27B Q4_K_M on gfx1151 additionally enables automatic sampled MTP for
-one through four active requests in a capacity-four server with BF16 KV and
-draft depth three.
-Leave native GPU sampling enabled (the default). Temperature, top-p and min-p
-use the same native sampler as ordinary decoding inside the target graph; only
-committed outputs advance the request's sampler counter. Bounded top-k and
-history-dependent processors use eager native selection. This sampled policy
-uses the packed target verifier for concurrent groups and does not change
-greedy MTP policy. Each request keeps its own seed, token counter, and history
-through admission, retirement, and cancellation.
+Qwen3.8-27B dense models and the declared Qwen3.6-35B-A3B and
+Qwen3.8-Flash-Next MoE lanes on gfx1151 use the same automatic sampled MTP
+route when their MTP head is available. Gemma 4 26B-A4B uses its external MTP
+head on the same capability-based route. Temperature, top-p, top-k, min-p,
+penalties, and seeds use the native sampled verifier; only committed outputs
+advance the request's sampler counter.
 The sampled route serves logprob responses, explicit token stops, and the
 min-token/EOS floor, and reports the same per-token logprob the autoregressive
 route reports for the request. Forced tokens and dynamic constraints retain
