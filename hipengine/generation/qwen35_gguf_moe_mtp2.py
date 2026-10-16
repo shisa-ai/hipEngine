@@ -1259,10 +1259,13 @@ class Qwen35GGUFMoEMTP2Adapter:
         ids = tuple(int(value) for value in plan.speculative_request_ids)
         if len(ids) != 2 or frontier.target_batch is None:
             raise NotImplementedError("MoE staged target currently requires physical C2")
-        # The staged C2 target decides its chain by raw argmax and has no
-        # sampled accept. A sampled row reaching it must fail by name rather
-        # than be silently decided by argmax; the dense adapter serves a wider
-        # MoE group's sampled route instead.
+        # This adapter's own C2 staged path is a width-2 physical lane kept
+        # for the direct packed execution; production MoE groups at capacity > 1
+        # resolve through ``create_qwen35_gguf_moe_mtp2_adapter`` to the dense
+        # adapter, whose packed target samples each row exactly before commit
+        # (``_sample_packed_target_rows``). This lane decides by raw argmax, so
+        # a sampled row reaching it fails by name rather than being silently
+        # decided by argmax.
         if any(
             self._sampling_modes().get(int(value)) == "sampled" for value in ids
         ):
