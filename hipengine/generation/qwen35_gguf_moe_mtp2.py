@@ -58,7 +58,10 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
 )
 from hipengine.speculative.accounting import record_speculative_outputs
-from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.provider import (
+    SpeculativeRequestSemantics,
+    validate_staged_target_adapter,
+)
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative.transaction import (
     SpecCycleResult,
@@ -229,6 +232,7 @@ class Qwen35GGUFMoEMTP2Adapter:
         self._batch_accept_remaining: Tensor | None = None
         self._batch_accept_payload: Tensor | None = None
         self._batch_accept_library: Any | None = None
+        validate_staged_target_adapter(self)
 
     def register_request(
         self,

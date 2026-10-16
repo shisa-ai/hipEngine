@@ -29,7 +29,10 @@ from hipengine.speculative.mtp_native import (
     NativeMtpStateSnapshot,
     NativeMtpW8A16Head,
 )
-from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.provider import (
+    SpeculativeRequestSemantics,
+    validate_staged_target_adapter,
+)
 from hipengine.speculative.transaction import (
     SpecCycleResult,
     SpecCycleStage,
@@ -80,6 +83,7 @@ class Qwen35ParoMTP2Adapter:
         self._transaction_sequence = 0
         self._proposer_builds = 0
         self._proposer_reuses = 0
+        validate_staged_target_adapter(self)
 
     def register_request(self, request_id: int, candidate_budget: int) -> None:
         rid = int(request_id)

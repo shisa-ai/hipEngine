@@ -87,9 +87,11 @@ from hipengine.speculative.provider import (
     SpeculativeRequestSemantics,
     StagedSpeculativeProvider,
     StagedSpeculativeRunner,
+    StagedTargetAdapter,
     resolve_staged_speculative_runner,
     validate_staged_speculative_provider,
     validate_staged_speculative_runner,
+    validate_staged_target_adapter,
 )
 from hipengine.speculative.registry import (
     SpeculativeProviderCapabilities,
@@ -258,8 +260,10 @@ __all__ = [
     "resolve_speculative_mtp_serving_plan",
     "StagedSpeculativeProvider",
     "StagedSpeculativeRunner",
+    "StagedTargetAdapter",
     "validate_staged_speculative_provider",
     "validate_staged_speculative_runner",
+    "validate_staged_target_adapter",
     "resolve_staged_speculative_runner",
     "construct_staged_speculative_provider",
     "register_builtin_speculative_providers",

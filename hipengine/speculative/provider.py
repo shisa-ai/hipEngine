@@ -233,6 +233,99 @@ def resolve_staged_speculative_runner(
     return None
 
 
+_STAGED_ADAPTER_METHODS = (
+    "capability",
+    "claims_fit",
+    "component_claims",
+    "reserve_claims",
+    "release_claims",
+    "prepare_requests",
+    "propose_batch",
+    "execute_target_frontier",
+    "rollback_cycle",
+    "recover_cycle_failure",
+    "prepare_k0",
+    "register_request",
+    "close",
+)
+
+
+@runtime_checkable
+class StagedTargetAdapter(Protocol):
+    """The runner-to-adapter face every staged target/provider adapter owns.
+
+    The resident runners (dense Qwen GGUF, MoE Qwen GGUF, PARO) forward the
+    scheduler's staged lifecycle to an adapter through exactly this surface.
+    The declared methods are the ones every production adapter implements;
+    hooks the runners consult only when present are deliberately absent so an
+    adapter without them keeps working: ``execute_cycle`` (opaque
+    complete-cycle execution), ``note_speculative_ar_commit``,
+    ``kv_live_spans_owner``, ``staged_frontier``, ``release_request``,
+    ``close_requests``, and ``containment_evidence``.
+    """
+
+    def capability(self, request_semantics) -> SpeculativeCapability | None: ...
+
+    def claims_fit(self, plan) -> bool: ...
+
+    def component_claims(self, plan) -> Mapping[str, ResourceClaimSet]: ...
+
+    def reserve_claims(self, claims: ResourceClaimSet) -> object: ...
+
+    def release_claims(self, reservation: object) -> None: ...
+
+    def prepare_requests(
+        self, plan, request_semantics, *, stream: int | None = None
+    ) -> None: ...
+
+    def propose_batch(
+        self, plan, request_semantics, *, stream: int | None = None
+    ) -> CandidateGraph: ...
+
+    def execute_target_frontier(
+        self,
+        plan,
+        frontier: TargetFrontier,
+        complete_claims: ResourceClaimSet,
+        *,
+        commit: bool,
+        cancelled_request_ids,
+    ) -> object: ...
+
+    def rollback_cycle(self, plan, *args) -> None: ...
+
+    def recover_cycle_failure(self, plan, error) -> bool: ...
+
+    def prepare_k0(
+        self, plan, request_semantics, *, stream: int | None = None
+    ) -> None: ...
+
+    def register_request(self, request_id, candidate_budget) -> None: ...
+
+    def close(self) -> None: ...
+
+
+def validate_staged_target_adapter(adapter: object) -> StagedTargetAdapter:
+    """Fail construction if an object is not a complete staged adapter.
+
+    Called once at adapter construction, so an incomplete owner fails loudly
+    with the names it is missing instead of surfacing as a mid-cycle
+    ``AttributeError`` the first time the scheduler reaches the absent stage.
+    """
+
+    missing = tuple(
+        name
+        for name in _STAGED_ADAPTER_METHODS
+        if not callable(getattr(adapter, name, None))
+    )
+    if missing:
+        raise TypeError(
+            "staged target adapter is missing staged lifecycle methods: "
+            + ", ".join(missing)
+        )
+    return adapter  # type: ignore[return-value]
+
+
 _STAGED_METHODS = (
     "capability",
     "resource_claims",
@@ -276,7 +369,9 @@ __all__ = [
     "SpeculativeRequestSemantics",
     "StagedSpeculativeProvider",
     "StagedSpeculativeRunner",
+    "StagedTargetAdapter",
     "resolve_staged_speculative_runner",
     "validate_staged_speculative_provider",
     "validate_staged_speculative_runner",
+    "validate_staged_target_adapter",
 ]

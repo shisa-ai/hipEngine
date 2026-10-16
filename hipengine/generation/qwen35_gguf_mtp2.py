@@ -106,7 +106,10 @@ from hipengine.speculative.ngram_mod import (
     NgramModProposal,
     RequestLocalNgramMod,
 )
-from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.provider import (
+    SpeculativeRequestSemantics,
+    validate_staged_target_adapter,
+)
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.core.specdec2_scope import (
@@ -1146,6 +1149,7 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_repair_hidden: Tensor | None = None
         self._cycle_ngram_tokens: Tensor | None = None
         self._cycle_workspace_shape: tuple[int, int] | None = None
+        validate_staged_target_adapter(self)
 
     def _physical_width_depth_policy(self) -> tuple[tuple[int, int], ...]:
         """Return policy cells that fit this adapter's resident capacity."""
