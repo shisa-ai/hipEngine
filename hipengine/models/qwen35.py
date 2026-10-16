@@ -1058,7 +1058,7 @@ class Qwen35MoeGGUFModel:
             kv_storage="bf16",
             backends=(("hip_gfx1151", "gfx1151"),),
             max_candidate_count=2,
-            max_group_rows=2,
+            max_group_rows=1,
             group_rejection_reason="moe_group_above_offered_width",
             sampling_modes=("greedy_fast", "sampled"),
             automatic_eligible=True,
