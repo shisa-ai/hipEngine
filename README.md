@@ -84,7 +84,7 @@ context** is a capacity limit, not a full-length prefill.
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — | **176,128** |
-| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3696.9** | **76.4** | **118.3** | — |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3805.6** | **75.8** | **120.2** | — |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
 
 ### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
