@@ -420,6 +420,15 @@ start without a GPU run.
 - [x] Reject staged objects that expose whole-request generation ownership.
 - [x] Define target-attached versus independent-provider catch-up semantics in
       the composed capability contract.
+- [x] **Superseded 2026-10-16:** the standalone staged provider protocol and its
+      registry had no production registrant — all production flow reaches
+      adapters through the runner seam
+      (`StagedSpeculativeRunner`/`StagedTargetAdapter`,
+      `hipengine/speculative/provider.py`) — so the duplicate dispatch route
+      was removed per the lead's cleanup directive. The whole-request oracle
+      registry is retained for Gemma 4 and unmigrated oracle drivers. The
+      staged provider contract's intent lives on in the adapter protocol's
+      optional-hook split.
 
 ### S1.3 Planner and simulator
 

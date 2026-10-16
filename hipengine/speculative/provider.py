@@ -12,7 +12,7 @@ from hipengine.speculative.frontier import (
     SpeculativeCapability,
     TargetFrontier,
 )
-from hipengine.speculative.transaction import SpecCycleResult, SpecCycleTransaction
+from hipengine.speculative.transaction import SpecCycleResult
 
 
 def _required_text(value: object, label: str) -> str:
@@ -62,60 +62,6 @@ class SpeculativeRequestSemantics:
             "stop_policy_key",
             _required_text(self.stop_policy_key, "stop_policy_key"),
         )
-
-
-@runtime_checkable
-class StagedSpeculativeProvider(Protocol):
-    """One bounded provider subordinate to the Generation-2 scheduler.
-
-    The protocol intentionally has no ``generate`` or ``stream`` method.  Every
-    call covers one cold-plan query or one bounded stage of one engine cycle.
-    """
-
-    provider_name: str
-
-    def capability(
-        self,
-        target_key: str,
-        request_semantics: Sequence[SpeculativeRequestSemantics],
-    ) -> SpeculativeCapability: ...
-
-    def resource_claims(
-        self,
-        plan: SpecRequestPlan,
-    ) -> Mapping[str, ResourceClaimSet]: ...
-
-    def prepare_requests(
-        self,
-        plan: SpecRequestPlan,
-        request_semantics: Sequence[SpeculativeRequestSemantics],
-        *,
-        stream: int | None = None,
-    ) -> None: ...
-
-    def propose_batch(
-        self,
-        plan: SpecRequestPlan,
-        request_semantics: Sequence[SpeculativeRequestSemantics],
-        *,
-        stream: int | None = None,
-    ) -> CandidateGraph: ...
-
-    def commit_batch(
-        self,
-        result: SpecCycleResult,
-        *,
-        stream: int | None = None,
-    ) -> None: ...
-
-    def rollback_batch(
-        self,
-        transaction: SpecCycleTransaction,
-        *,
-        stream: int | None = None,
-    ) -> None: ...
-
-    def close_requests(self, request_ids: Sequence[int]) -> None: ...
 
 
 @runtime_checkable
@@ -326,52 +272,11 @@ def validate_staged_target_adapter(adapter: object) -> StagedTargetAdapter:
     return adapter  # type: ignore[return-value]
 
 
-_STAGED_METHODS = (
-    "capability",
-    "resource_claims",
-    "prepare_requests",
-    "propose_batch",
-    "commit_batch",
-    "rollback_batch",
-    "close_requests",
-)
-_WHOLE_REQUEST_METHODS = (
-    "generate_detailed",
-    "stream_detailed",
-    "generate_speculative_mtp_detailed",
-)
-
-
-def validate_staged_speculative_provider(
-    provider: object,
-) -> StagedSpeculativeProvider:
-    """Fail construction if an object is not a bounded staged provider."""
-
-    missing = tuple(
-        name for name in _STAGED_METHODS if not callable(getattr(provider, name, None))
-    )
-    if missing:
-        raise TypeError(
-            "staged speculative provider is missing staged methods: "
-            + ", ".join(missing)
-        )
-    provider_name = _required_text(
-        getattr(provider, "provider_name", ""), "provider_name"
-    )
-    if any(callable(getattr(provider, name, None)) for name in _WHOLE_REQUEST_METHODS):
-        raise TypeError(
-            f"staged provider {provider_name} cannot expose whole-request generation"
-        )
-    return provider  # type: ignore[return-value]
-
-
 __all__ = [
     "SpeculativeRequestSemantics",
-    "StagedSpeculativeProvider",
     "StagedSpeculativeRunner",
     "StagedTargetAdapter",
     "resolve_staged_speculative_runner",
-    "validate_staged_speculative_provider",
     "validate_staged_speculative_runner",
     "validate_staged_target_adapter",
 ]
