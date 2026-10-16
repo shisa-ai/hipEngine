@@ -26,6 +26,7 @@ class Qwen4ExpGGUFModel:
     vision_supported: bool = True
     vision_scope: str = "one_32x32_rgb_image_to_one_token"
     mtp_supported: bool = True
+    speculative_mtp_provider: str = "qwen4_exp_mtp"
     speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
         SpeculativeMTPServingImplementation(
             name="qwen4_exp_mtp_gfx1151_c1_native_chain",
