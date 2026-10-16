@@ -3050,9 +3050,21 @@ class Qwen35GGUFBringupGenerator:
         return resolver(key=key)
 
     def speculative_candidate_budget_default(self) -> int:
-        """Depth this generator's own dense MTP path uses when unpinned."""
+        """Depth this generator's MTP path uses when unpinned."""
 
-        return int(_gguf_mtp_server_candidate_budget())
+        budget = int(_gguf_mtp_server_candidate_budget())
+        declarations = tuple(
+            getattr(self.model_plugin, "speculative_mtp_serving_implementations", ())
+            or ()
+        )
+        offered = [
+            int(declaration.max_candidate_count)
+            for declaration in declarations
+            if (self.backend, self.target_arch) in declaration.backends
+            and declaration.kv_storage == "bf16"
+            and declaration.automatic_eligible
+        ]
+        return min(budget, max(offered, default=budget))
 
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
