@@ -57,7 +57,12 @@ class _StubInner:
 
 
 class _StagedRunner:
-    """A runner exposing the staged hooks the engine looks for."""
+    """A runner exposing the complete staged lifecycle the seam validates.
+
+    ``resolve_staged_speculative_runner`` accepts an owner only when every
+    staged stage is present, so a routing stub must carry the whole lifecycle,
+    not just the two probes the pre-seam loop duck-typed.
+    """
 
     def __init__(self, *, capacity: int | None) -> None:
         # The engine passes whatever capacity it resolved, which is None when the
@@ -66,6 +71,21 @@ class _StagedRunner:
 
     def speculative_capability(self, request_semantics):
         return None
+
+    def speculative_component_claims(self, plan):
+        return {}
+
+    def reserve_speculative_claims(self, claims):
+        return object()
+
+    def release_speculative_claims(self, reservation) -> None:
+        return None
+
+    def prepare_speculative_requests(self, plan, request_semantics, *, stream=None) -> None:
+        return None
+
+    def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
+        raise AssertionError("not executed by these tests")
 
     def execute_target_frontier(self, plan, *, commit: bool):
         raise AssertionError("not executed by these tests")
