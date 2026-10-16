@@ -224,7 +224,10 @@ by itself prove a wider verifier. Compact-DMS serving supports singleton native
 NextN verification with transactional rollback; it does not support packed DMS
 ownership. See
 [INT8 MTP serving](reference/INT8-MTP-SERVER-READINESS.md) and
-[DMS serving](reference/DMS-SERVING.md) for their separate contracts.
+[DMS serving](reference/DMS-SERVING.md) for their separate contracts. The
+complete per-model/per-backend policy matrix — what is automatic, what is
+explicit-only, and the per-request force semantics — is
+[MTP-SERVING.md](MTP-SERVING.md).
 Explicit requests for missing implementation capabilities return HTTP 501 with
 the reason; automatic requests can use AR. MTP context is bounded by the
 target's allocated capacity, with no fixed 1,023-token admission cap.
