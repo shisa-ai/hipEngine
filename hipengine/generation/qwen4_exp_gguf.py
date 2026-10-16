@@ -374,8 +374,38 @@ class Qwen4ExpGGUFTextGenerator:
             )
         return outputs
 
-    @property
-    def supports_speculative(self) -> bool:
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        realized_group_rows: int,
+        resident_capacity: int,
+        candidate_budget: int,
+        sampling_mode: str,
+        kv_storage: str,
+        memory_fit: bool = True,
+        request_mode: str = "automatic",
+    ):
+        from hipengine.kernels.backends import hip_target_arch_for_backend
+        from hipengine.speculative.serving import SpeculativeMTPServingKey
+
+        key = SpeculativeMTPServingKey(
+            artifact_sha256=None,
+            artifact_size_bytes=None,
+            content_verified=False,
+            backend=self.backend,
+            target_arch=hip_target_arch_for_backend(self.backend),
+            weight_quant=str(getattr(self.model_plugin, "default_quant", "gguf_q4_k_m")),
+            kv_storage="bf16" if kv_storage == "auto" else str(kv_storage),
+            kv_layout="uniform",
+            realized_group_rows=int(realized_group_rows),
+            resident_capacity=int(resident_capacity),
+            candidate_budget=int(candidate_budget),
+            sampling_mode=str(sampling_mode),
+            memory_fit=bool(memory_fit),
+        )
+        resolver = getattr(self.model_plugin, "resolve_speculative_mtp_serving_plan", None)
+        return resolver(key=key, request_mode=str(request_mode)) if callable(resolver) else None
+
         return self._speculative_provider is not None
 
     @property
