@@ -26,6 +26,7 @@ session reads. Start there, then come here for the document your task touches.
 | [`KERNELS.md`](KERNELS.md) | current | Kernel source catalog, model/quant and registry mappings, arithmetic variants, and fused fallback map. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | current | Architecture-independent porting, build, and runtime gotchas, plus historical integration case studies. |
 | [`MODELS.md`](MODELS.md) | current | Models, quantizations, and backends hipEngine has implemented and measured. |
+| [`MTP-SERVING.md`](MTP-SERVING.md) | current | The what-works-where MTP serving policy matrix across models, backends, sampling modes, concurrency widths, and automatic-versus-explicit admission, plus the per-request force semantics. |
 | [`OPTIMIZATION.md`](OPTIMIZATION.md) | **normative** | Rules for kernel work, performance claims, and benchmark rows: evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling. |
 | [`PLAN.md`](PLAN.md) | **normative** | Architecture, plugin boundaries, phase roadmap, LoC budgets, and the invariants that define hipEngine. |
 | [`RDNA3-TUNING-GUIDE.md`](RDNA3-TUNING-GUIDE.md) | current | Externally-referenced RDNA3 tuning guide; the current respin of the kernel-level findings also recorded in LESSONS-LEARNED.md. |
