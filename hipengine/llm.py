@@ -1494,7 +1494,23 @@ class LLM:
                 raise ValueError("this model generator has no compact DMS serving adapter")
             configure_dms(self.dms)
         self._publish_candidate_budget(generator)
-        if self.speculative_provider is not None:
+        effective_provider = self.speculative_provider
+        effective_draft_model = self.draft_model
+        if effective_provider is None and effective_draft_model is None:
+            discover_head = getattr(
+                model_plugin, "resolve_speculative_mtp_draft_model", None
+            )
+            declared_provider = getattr(model_plugin, "speculative_mtp_provider", None)
+            if callable(discover_head) and declared_provider:
+                discovered_head = discover_head(self.model)
+                if discovered_head is not None:
+                    effective_provider = str(declared_provider)
+                    effective_draft_model = str(discovered_head)
+        if effective_provider is not None:
+            provider_budget = self.speculative_candidate_budget
+            if provider_budget is None:
+                provider_budget = int(DEFAULT_PROVIDER_CANDIDATE_BUDGET)
+            self.speculative_candidate_budget = provider_budget
             from hipengine.speculative.registry import (
                 SpeculativeProviderConfig,
                 register_builtin_speculative_providers,
@@ -1503,7 +1519,7 @@ class LLM:
 
             register_builtin_speculative_providers()
             provider_factory = resolve_speculative_provider(
-                provider=self.speculative_provider,
+                provider=effective_provider,
                 target_model=model_plugin.name,
                 backend=backend,
                 quant=quant,
@@ -1511,9 +1527,9 @@ class LLM:
             provider = provider_factory(
                 target_generator=generator,
                 config=SpeculativeProviderConfig(
-                    provider=self.speculative_provider,
-                    draft_model=self.draft_model or "",
-                    candidate_budget=self.speculative_candidate_budget,
+                    provider=effective_provider,
+                    draft_model=effective_draft_model or "",
+                    candidate_budget=provider_budget,
                 ),
             )
             attach = getattr(generator, "attach_speculative_provider", None)
