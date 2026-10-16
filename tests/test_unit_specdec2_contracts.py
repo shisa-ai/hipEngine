@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from hipengine.core.device import Device
@@ -13,6 +15,7 @@ from hipengine.speculative import (
     SpecRequestPlan,
     SpecTransactionMode,
     SpeculativeCapability,
+    SpeculativeKVBinding,
     TargetFrontier,
 )
 
@@ -39,10 +42,64 @@ def _capability(**overrides) -> SpeculativeCapability:
         "provider_transaction_mode": SpecTransactionMode.REVERSIBLE_JOURNAL,
         "graph_supported": True,
         "eager_supported": True,
-        "strict_fallback_key": "target_ar_strict",
     }
     values.update(overrides)
     return SpeculativeCapability(**values)
+
+
+def test_kv_binding_carries_codec_and_transaction_contract() -> None:
+    binding = SpeculativeKVBinding(
+        backend_fingerprint="backend:v1",
+        generation=3,
+        topology_key="dms_compact",
+        storage_view_key="dms:int8",
+        live_spans_owner="request:7",
+        layout_fingerprint="layout:v2",
+        storage_dtype="int8_per_token_head",
+        storage_layout="per_head_variable",
+        transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+        scale_dtype="fp32",
+        scale_granularity="per_token_head",
+        retention_key="dms",
+    )
+    assert binding.compatibility_key[:4] == (
+        "backend:v1",
+        "3",
+        "dms_compact",
+        "dms:int8",
+    )
+
+    capability = _capability(
+        kv_backend_key="dms:int8",
+        target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+        kv_binding=binding,
+    )
+    assert capability.kv_binding is binding
+
+    with pytest.raises(ValueError, match="transaction mode"):
+        _capability(
+            kv_backend_key="dms:int8",
+            target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+            kv_binding=replace(
+                binding,
+                transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
+            ),
+        )
+
+
+def test_kv_binding_rejects_incomplete_quantized_metadata() -> None:
+    with pytest.raises(ValueError, match="scale_dtype"):
+        SpeculativeKVBinding(
+            backend_fingerprint="backend:v1",
+            generation=1,
+            topology_key="paged_dense_global",
+            storage_view_key="dense:int8",
+            live_spans_owner="request:1",
+            layout_fingerprint="layout:v1",
+            storage_dtype="int8_per_token_head",
+            storage_layout="uniform",
+            transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
+        )
 
 
 def test_capability_validates_shape_and_execution_contract() -> None:

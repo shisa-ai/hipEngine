@@ -60,6 +60,7 @@ from hipengine.speculative.frontier import (
     SpecPlanReason,
     SpecRequestPlan,
     SpecTransactionMode,
+    SpeculativeKVBinding,
     SpeculativeCapability,
     TargetFrontier,
 )
@@ -280,6 +281,7 @@ __all__ = [
     "SpecPlanReason",
     "SpecRequestPlan",
     "SpecTransactionMode",
+    "SpeculativeKVBinding",
     "SpeculativeCapability",
     "TargetFrontier",
     "DFLASH_CHAIN_CANDIDATE_BUDGETS",
