@@ -17634,10 +17634,20 @@ def _mtp_accepted_rejected_counts(
     found = False
     for detail in (details or ()):
         timing, _, timing_owner = _mtp_telemetry_parts(detail)
-        if timing is None or not timing_owner:
+        if timing is not None and not timing_owner:
             continue
-        row_accepted = timing.get("mtp_accepted_draft_tokens")
-        row_generated = timing.get("mtp_generated_draft_tokens")
+        row_accepted = None if timing is None else timing.get("mtp_accepted_draft_tokens")
+        row_generated = None if timing is None else timing.get("mtp_generated_draft_tokens")
+        if row_accepted is None and row_generated is None:
+            telemetry = getattr(detail, "telemetry", None)
+            diagnostics = (
+                telemetry.get("diagnostics")
+                if isinstance(telemetry, Mapping)
+                else getattr(telemetry, "diagnostics", None)
+            )
+            if isinstance(diagnostics, Mapping) and diagnostics.get("speculative_provider"):
+                row_accepted = diagnostics.get("accepted_draft_tokens", 0)
+                row_generated = diagnostics.get("proposed_draft_tokens", 0)
         if row_accepted is None and row_generated is None:
             continue
         found = True
