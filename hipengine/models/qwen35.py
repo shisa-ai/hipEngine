@@ -599,6 +599,29 @@ class Qwen35ParoMoeModel:
     )
     default_quant: str = "w4_paro"
     default_backend: str = "auto"
+    # No retained PARO serving evidence rows exist: every measured scope lives
+    # in the per-arch campaign ledgers, and an automatic promotion packet has
+    # not been run for this artifact family.  The declaration below is the
+    # implementation contract an explicit request resolves against.
+    speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = ()
+    # The packed-PARO C1 chain is declared for the backend its verifier is
+    # qualified on: gfx1100, behind the ``PARO_SPECDEC2_MTP2_C1`` package gate.
+    # The fixed-capacity owner serves one row at depth 1, greedy only until a
+    # sampled decider lands - the adapter declines any other mode at
+    # capability, so the declaration is exactly the scope an explicit request
+    # may force and a wider request is refused by name.
+    speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
+        SpeculativeMTPServingImplementation(
+            name="paro_w4_gfx1100_c1_native_chain",
+            sampling_modes=("greedy_fast",),
+            kv_storage="bf16",
+            backends=(("hip_gfx1100", "gfx1100"),),
+            max_candidate_count=1,
+            max_group_rows=1,
+            group_rejection_reason="paro_group_above_offered_width",
+            automatic_eligible=True,
+        ),
+    )
     weight_name_templates: tuple[str, ...] = (
         "model.embed_tokens.weight",
         "model.layers.{layer}.input_layernorm.weight",
@@ -661,6 +684,49 @@ class Qwen35ParoMoeModel:
             "selected_pack8_gemv",
             "w8a16_linear",
             "weighted_sum+shared_gate+residual",
+        )
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        key: SpeculativeMTPServingKey,
+        request_mode: str = "automatic",
+    ) -> SpeculativeMTPServingDecision:
+        """Resolve the exact PARO serving scope before mutation.
+
+        No retained evidence row exists for the packed-PARO artifact, so the
+        implementation declaration admits in every request mode: a missing
+        measurement never withholds a path the kernels support, and only a
+        capability gap or a recorded bad cell keeps it off.  A mode, backend,
+        storage, width, or depth outside the declaration is refused by name
+        rather than silently downgraded.
+        """
+
+        evidence_decision = resolve_speculative_mtp_serving_plan(
+            self.speculative_mtp_serving_evidence,
+            key=key,
+            request_mode=request_mode,
+        )
+        if evidence_decision.admitted:
+            return evidence_decision
+        implementation = select_speculative_mtp_serving_implementation(
+            self.speculative_mtp_serving_implementations,
+            key=key,
+        )
+        if implementation is not None:
+            return implementation.resolve(key, request_mode=request_mode)
+        return unsupported_contract(evidence_decision)
+
+    def max_qualified_candidate_budget(
+        self,
+        *,
+        key: SpeculativeMTPServingKey,
+    ) -> int | None:
+        """Deepest speculative depth the retained PARO evidence qualifies."""
+
+        return resolve_max_qualified_candidate_budget(
+            self.speculative_mtp_serving_evidence,
+            key=key,
         )
 
 

@@ -94,9 +94,10 @@ argmax. Widening sampled to c=N is tracked work (gap list below).
 
 ### PARO (W4, `Qwen35ParoMoeModel`)
 
-| Backend | Width/depth | Sampling | Status |
-| --- | --- | --- | --- |
-| gfx1100 / gfx1151 | C1, K=1 | greedy only | Runner seam complete and tested (staged C1 adapter behind the `PARO_SPECDEC2_MTP2_C1` backend gate); **OpenAI-route explicit requests do not resolve today** because the model plugin declares no serving scope — the gap list owns this |
+| Backend | Width/depth | Sampling | Automatic | Explicit today |
+| --- | --- | --- | --- | --- |
+| gfx1100 | C1, K=1 | greedy only | declaration-scoped (no evidence rows yet) | **resolvable through the OpenAI route** via the `paro_w4_gfx1100_c1_native_chain` declaration; sampled is refused by name (`mtp_sampling_unsupported`) until the decider lands |
+| gfx1151 | — | — | no (verifier is gfx1100-only behind the `PARO_SPECDEC2_MTP2_C1` package gate) | refused by name (`mtp_backend_unsupported`) |
 
 ### Gemma 4 (assistant-head MTP)
 
@@ -120,11 +121,15 @@ not a missing implementation. Dense INT8 and BF16 KV are unaffected.
 These are the cells between "declared and working" and "every model, every
 common scenario" — each is in flight, and this section shrinks as they land:
 
-- **PARO explicit through the server** — the plugin declares no serving scope,
-  so an explicit PARO request has no resolvable plan even though the runner
-  seam is complete. Fix: declare the C1 scope (and sampled once implemented)
-  in the model plugin. Owner: the PARO sampled-MTP task.
-- **PARO sampled MTP** — capability declares greedy only. Owner: same task.
+- ~~**PARO explicit through the server**~~ — **closed 2026-10-16**: the
+  plugin now declares the C1 scope and the generator exposes the resolver, so
+  an explicit PARO request resolves through the OpenAI route (greedy, gfx1100)
+  and every out-of-scope axis is refused by name.
+- **PARO sampled MTP** — the declaration stays greedy-only until the sampled
+  decider is real: the device sampled accept (the shared native-spec
+  `sampled_accept`/workspace machinery the dense/MoE lanes use) ports behind a
+  graph-warmup gate, and qualification runs on the W7900 host because the
+  PARO verifier is gfx1100-only. Owner: the PARO sampled-decider unit.
 - **MoE sampled at c=N (C2+)** — the packed target has no sampled decider;
   C2+ sampled rows are refused by name today. Owner: the MoE c=N task.
 - **C8 speculative owner** — no qualified C8-width speculative frontier
