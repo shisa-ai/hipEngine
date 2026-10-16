@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from hipengine.models.registry import register_model
-from hipengine.speculative.serving import SpeculativeMTPServingImplementation
 
 
 @dataclass(frozen=True)
@@ -26,35 +25,6 @@ class Qwen4ExpGGUFModel:
     vision_supported: bool = True
     vision_scope: str = "one_32x32_rgb_image_to_one_token"
     mtp_supported: bool = True
-    speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
-        SpeculativeMTPServingImplementation(
-            name="qwen4_exp_mtp_gfx1151_c1_native_chain",
-            kv_storage="bf16",
-            backends=(("hip_gfx1151", "gfx1151"),),
-            max_candidate_count=4,
-            max_group_rows=1,
-            group_rejection_reason="qwen4_exp_group_above_offered_width",
-            sampling_modes=("greedy_fast", "sampled"),
-            automatic_eligible=True,
-        ),
-    )
-
-    @staticmethod
-    def resolve_speculative_mtp_draft_model(model_path: str):
-        from pathlib import Path
-
-        root = Path(model_path).expanduser().resolve()
-        search_roots = (root.parent, Path("/models/gguf"))
-        heads = tuple(
-            sorted(
-                candidate
-                for directory in search_roots
-                if directory.exists()
-                for candidate in directory.glob("*MTP*/*.gguf")
-                if "flash" in str(candidate).lower()
-            )
-        )
-        return heads[0] if len(heads) == 1 else None
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output.weight",
