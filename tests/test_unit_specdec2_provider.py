@@ -18,6 +18,7 @@ from hipengine.speculative import (
     SpeculativeRequestSemantics,
     StagedSpeculativeProvider,
     StagedSpeculativeRunner,
+    StagedTargetAdapter,
     construct_staged_speculative_provider,
     register_staged_speculative_provider,
     registered_staged_speculative_providers,
@@ -25,6 +26,7 @@ from hipengine.speculative import (
     resolve_staged_speculative_runner,
     validate_staged_speculative_provider,
     validate_staged_speculative_runner,
+    validate_staged_target_adapter,
 )
 
 
@@ -286,3 +288,130 @@ def test_staged_runner_resolver_prefers_explicit_opt_in_and_fails_closed() -> No
     assert resolve_staged_speculative_runner(runner) is runner
     # A target-only runner with no staged methods is not a staged owner.
     assert resolve_staged_speculative_runner(object()) is None
+
+
+# ------------------------------------------------------- staged adapter face
+
+
+class _AdapterDouble:
+    """The complete staged adapter face; no optional hooks."""
+
+    def capability(self, request_semantics):
+        return _capability()
+
+    def claims_fit(self, plan):
+        return True
+
+    def component_claims(self, plan):
+        return {}
+
+    def reserve_claims(self, claims):
+        return object()
+
+    def release_claims(self, reservation):
+        return None
+
+    def prepare_requests(self, plan, request_semantics, *, stream=None):
+        return None
+
+    def propose_batch(self, plan, request_semantics, *, stream=None):
+        raise AssertionError("not driven in this test")
+
+    def execute_target_frontier(
+        self, plan, frontier, complete_claims, *, commit, cancelled_request_ids
+    ):
+        raise AssertionError("not driven in this test")
+
+    def rollback_cycle(self, plan, *args):
+        return None
+
+    def recover_cycle_failure(self, plan, error):
+        return False
+
+    def prepare_k0(self, plan, request_semantics, *, stream=None):
+        return None
+
+    def register_request(self, request_id, candidate_budget):
+        return None
+
+    def close(self):
+        return None
+
+
+def test_staged_adapter_validator_accepts_the_complete_face_and_keeps_hooks_optional() -> None:
+    adapter = _AdapterDouble()
+
+    assert isinstance(adapter, StagedTargetAdapter)
+    assert validate_staged_target_adapter(adapter) is adapter
+
+    # Optional hooks are absent on the double and the adapter still validates,
+    # exactly as an adapter without execute_cycle / kv_live_spans_owner /
+    # staged_frontier / note_speculative_ar_commit / release_request keeps
+    # working through the runner seam.
+    for hook in (
+        "execute_cycle",
+        "kv_live_spans_owner",
+        "staged_frontier",
+        "note_speculative_ar_commit",
+        "release_request",
+        "close_requests",
+    ):
+        assert not callable(getattr(adapter, hook, None))
+
+
+def test_staged_adapter_validator_rejects_each_missing_lifecycle_method() -> None:
+    for name in (
+        "capability",
+        "claims_fit",
+        "component_claims",
+        "reserve_claims",
+        "release_claims",
+        "prepare_requests",
+        "propose_batch",
+        "execute_target_frontier",
+        "rollback_cycle",
+        "recover_cycle_failure",
+        "prepare_k0",
+        "register_request",
+        "close",
+    ):
+        broken = _AdapterDouble()
+        setattr(broken, name, None)
+        with pytest.raises(TypeError, match=f"missing staged lifecycle methods: {name}"):
+            validate_staged_target_adapter(broken)
+
+
+def test_every_production_adapter_class_declares_the_complete_staged_face() -> None:
+    """The three production adapters conform without needing a device.
+
+    Construction-time validation (``validate_staged_target_adapter(self)`` at
+    each adapter ``__init__`` tail) fails loudly on a GPU host; this pins the
+    same conformance CPU-only by checking the class-level method surface.
+    """
+
+    from hipengine.generation.qwen35_gguf_moe_mtp2 import Qwen35GGUFMoEMTP2Adapter
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+    from hipengine.generation.qwen35_paro_mtp2 import Qwen35ParoMTP2Adapter
+
+    for adapter_cls in (
+        Qwen35GGUFMTP2Adapter,
+        Qwen35GGUFMoEMTP2Adapter,
+        Qwen35ParoMTP2Adapter,
+    ):
+        for name in (
+            "capability",
+            "claims_fit",
+            "component_claims",
+            "reserve_claims",
+            "release_claims",
+            "prepare_requests",
+            "propose_batch",
+            "execute_target_frontier",
+            "rollback_cycle",
+            "recover_cycle_failure",
+            "prepare_k0",
+            "register_request",
+            "close",
+        ):
+            method = getattr(adapter_cls, name, None)
+            assert callable(method), f"{adapter_cls.__name__}.{name}"
