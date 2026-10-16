@@ -155,6 +155,64 @@ class Qwen35ParoOneTokenGenerator:
         self._resident_model_runner = owner
         return owner
 
+    # The packed-PARO C1/K1 adapter serves one candidate per cycle; an omitted
+    # server depth therefore publishes the adapter's own fixed budget instead
+    # of waiting for evidence rows that do not exist for this artifact family.
+    speculative_candidate_budget_default = 1
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        realized_group_rows: int,
+        sampling_mode: str,
+        kv_storage: str = "auto",
+        memory_fit: bool = True,
+        request_mode: str = "automatic",
+    ):
+        """Resolve one model-plugin PARO serving plan before request mutation."""
+
+        from hipengine.speculative.serving import (
+            SpeculativeMTPServingKey,
+            resolve_speculative_mtp_serving_plan,
+        )
+
+        plugin = self.model_plugin
+        requested_kv = str(kv_storage or "auto")
+        effective_kv = "bf16" if requested_kv == "auto" else requested_kv
+        backend = str(getattr(self, "backend", "") or "auto")
+        target_arch = ""
+        runner = self._resident_model_runner
+        if runner is not None:
+            generator = getattr(runner, "generator", None)
+            resolved_backend = getattr(generator, "backend", None)
+            if resolved_backend:
+                backend = str(resolved_backend)
+            target_arch = str(getattr(generator, "target_arch", "") or "")
+        key = SpeculativeMTPServingKey(
+            artifact_sha256=None,
+            artifact_size_bytes=None,
+            content_verified=False,
+            backend=backend or "auto",
+            target_arch=target_arch or backend or "auto",
+            weight_quant=str(getattr(plugin, "default_quant", "w4_paro")),
+            kv_storage=effective_kv,
+            kv_layout="uniform",
+            realized_group_rows=int(realized_group_rows),
+            resident_capacity=(
+                int(getattr(runner, "capacity", 1)) if runner is not None else 1
+            ),
+            candidate_budget=1,
+            sampling_mode=str(sampling_mode),
+            memory_fit=bool(memory_fit),
+        )
+        resolver = getattr(plugin, "resolve_speculative_mtp_serving_plan", None)
+        if callable(resolver):
+            try:
+                return resolver(key=key, request_mode=str(request_mode))
+            except TypeError:
+                return resolver(key=key)
+        return resolve_speculative_mtp_serving_plan((), key=key, request_mode=str(request_mode))
+
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
         return [output.text for output in outputs]
