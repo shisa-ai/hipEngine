@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-16**
+Last updated: **2026-10-18**
 
 ## Gemma 4 on Radeon Pro W7900 — October 16
 
@@ -2627,6 +2627,29 @@ to the production gates. Evidence:
 [`M7 attention packing`](results/yue2_m7_attention_packed_20260917.json),
 [`M7 tensor-core attention`](results/yue2_m7_attention_wmma_20260917.json). Profiling, block-geometry,
 projection-ceiling, and parity detail is archived in [`HISTORY.md`](HISTORY.md#radeon-8060s-yue2-3b-nar-attention-packing-and-projection-selection).
+
+### Radeon Pro W7900: YuE2 3B on gfx1100
+
+YuE2 on the default claim hardware, against the same committed fixtures that were recorded on
+`gfx1151`. Every gate passes and the product path generates unassisted through the registered
+plugin with no torch in the process.
+
+| Gate | Result | Artifact |
+| --- | --- | --- |
+| AR replay, 18 cases / 576 rows | mean KL **1.05e-3**, top-1 **95.31%**, top-8 **95.92%** | [`AR replay`](results/yue2_ar_replay_gfx1100_20261018.json) |
+| NAR solver, release / multi-chunk / restricted visibility | 4-step latents rel L2 **0.01114** / **0.01144** / **0.00865**, cosine 0.99994+ | [`NAR`](results/yue2_nar_gate_gfx1100_20261018.json), [`multi-chunk`](results/yue2_nar_gate_multichunk_gfx1100_20261018.json), [`cond_end`](results/yue2_nar_gate_condend_gfx1100_20261018.json) |
+| VAE decoder, 3-frame latent | max abs **1.27e-06**, rel L2 1.99e-06 | [`VAE gate`](results/yue2_vae_gate_gfx1100_20261018.json) |
+| Greedy session, 3 cases | prefix identity 3/3; teacher-forced ABC 99.08% / 99.83%, semantic 98.05% / 96.88% / 96.68% | [`session gate`](results/yue2_session_gate_gfx1100_20261018.json) |
+| End-to-end, 12 cases + live | **12/12** exact frame and sample counts, bit-identical repeat, 125.2 s | [`end-to-end gate`](results/yue2_e2e_gate_gfx1100_20261018.json) |
+
+The product path at its defaults (`cot="off"`, seed 20260916, 32 ODE steps, tiled decoder)
+produced 1 862 latent frames / 74.48 s of finite, non-silent 48 kHz stereo audio in **90.36 s
+(RTF 1.21)** once warm and byte-identical on a repeat, from semantic decode **69.56 s**
+(26.8 tok/s), solver **12.56 s** and decoder **8.22 s**. `hipengine serve` builds the pipeline in
+27.5 s at a 13.23 GiB peak and serves `POST /v1/audio/songs`. There is no torch oracle on this
+host, so these are absolute `gfx1100` measurements with no reference arm; the matched comparison
+remains the `gfx1151` one above. Evidence:
+[`product path`](results/yue2_product_gfx1100_20261018.json).
 
 ## Current concurrency scoreboards
 

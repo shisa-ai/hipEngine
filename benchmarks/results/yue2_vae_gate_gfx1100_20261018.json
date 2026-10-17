@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "case": "recorded small latent",
+      "frames": 3,
+      "full": {
+        "max_abs": 1.2665987014770508e-06,
+        "produced_peak": 0.4835410714149475,
+        "produced_rms": 0.1294491359548695,
+        "reference_peak": 0.48354101181030273,
+        "reference_rms": 0.12944913999318283,
+        "relative_l2": 1.9849353260247574e-06,
+        "rms": 2.569481708959929e-07
+      },
+      "full_seconds": 0.022959616035223007,
+      "natural_length": 5696,
+      "passed": true
+    }
+  ],
+  "decoder": {
+    "blocks": 6,
+    "bytes": 265424384,
+    "downsampling_ratio": 1920,
+    "latent_dim": 64,
+    "required_halo_core16": 12
+  },
+  "full_fixture_present": false,
+  "passed": true,
+  "provenance": {
+    "command_line": "scripts/yue2_vae_gate.py --json /tmp/yue2_vae_gate_gfx1100.json",
+    "fixture": "/home/lhl/hipEngine/tests/fixtures/yue2/vae/decode.npz",
+    "host": {
+      "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+      "gpu": "gfx1100",
+      "hostname": "epyc",
+      "platform": "linux"
+    },
+    "protocol": "yue2-vae-fixture-gate-v1",
+    "revision": "764eadde65f35a618d4fcdf0e58fe29ddbe25e11"
+  },
+  "thresholds": {
+    "max_abs": 0.0001
+  },
+  "worst_max_abs": 1.2665987014770508e-06
+}

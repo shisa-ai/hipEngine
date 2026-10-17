@@ -11,10 +11,12 @@ registered product session. M7 has measured the whole product path against the
 pinned upstream on identical work: **124.54 s / RTF 2.40** (median of three)
 against the reference's pinned 137.80 s, with the AR stage still **1.78x** and
 the solver **1.25x** behind on matched stages and the decoder at parity. M8
-(hardware qualification) is **gfx1151 only**: no gfx1100 gate has been run, and
-the kernels registering under `kernels/hip_gfx1100/` is a code path, not
-evidence. No realtime claim.
-Last reviewed 2026-09-17 on `gfx1151` (Radeon 8060S).
+(hardware qualification) now covers both RDNA3 hosts: every YuE2 correctness
+gate and the unassisted product path pass on `gfx1151` and on `gfx1100` (Radeon
+Pro W7900, 2026-10-18). The held-out task-quality suite and a matched reference
+arm are unrun on both, so M8 is not closed. No realtime claim.
+Last reviewed 2026-10-18 on `gfx1100` (Radeon Pro W7900); the `gfx1151` figures
+are from 2026-09-17.
 
 Implement `m-a-p/YuE2-3B` plus `m-a-p/YuE2-Vae` as a torch-free HIP pipeline:
 lyrics/style → optional symbolic composition → semantic tokens → acoustic flow
@@ -613,11 +615,39 @@ Milestone status:
   `benchmarks/results/yue2_m7_attention_wmma_geometry_20260917.json`,
   `benchmarks/results/yue2_solver_stage_profile_20260917.json`,
   `benchmarks/results/yue2_product_case_timing_20260917.json`.
-- **M8 status** (2026-09-17): gfx1151 only. Every YuE2 measurement in this campaign
-  was taken on zbook / gfx1151; no gfx1100 hardware was available, so gfx1100
-  correctness, capacity, task and performance gates are **unverified** rather than
-  passed. The kernels are registered under `kernels/hip_gfx1100/` and resolve through
-  the same backend registry, but that is a code path, not evidence.
+- **M8 gfx1100** (2026-10-18): run on `epyc` / Radeon Pro W7900 (96 CU, 48 GB,
+  `gfx1100`, ROCm 7.2) against the same committed fixtures, with the pinned
+  checkpoints downloaded at their pinned revisions and their payloads verified
+  against `weights_manifest.json`. Every gate passes: AR replay **18 cases /
+  576 rows** at pooled mean KL **1.05e-3** (worst case max 5.42e-3), top-1
+  **95.31%**, top-8 **95.92%**; NAR 4-step latents rel L2 **0.01114** /
+  **0.01144** / **0.00865** with cosine 0.99994+ on the release, multi-chunk and
+  restricted-visibility cases; VAE decoder **1.27e-06** max abs / **1.99e-06**
+  rel L2; greedy session **3/3** with prefix identity, teacher-forced ABC
+  99.08% / 99.83% and semantic 98.05% / 96.88% / 96.68%; end-to-end **12/12**
+  cases reproducing their recorded frame and sample counts, a bit-identical
+  repeat, and a torch-free live request. Against the `gfx1151` figures for the
+  same fixtures (1.16e-3, top-1 95.49%, NAR 0.01071 / 0.00885, VAE 1.27e-06,
+  session 99.1% / 99.7% / 98.2% / 97.1% / 96.7%) the differences are the 96-CU
+  device's GEMM tiling and accumulation order, not a behavior change. The
+  product path runs unassisted at its defaults (`cot="off"`, seed 20260916, 32
+  ODE steps): 1 862 latent frames / 74.48 s of finite, non-silent 48 kHz stereo
+  audio in **90.36 s (RTF 1.21)** once warm, byte-identical on a repeat, with
+  semantic decode 69.56 s (26.8 tok/s), solver 12.56 s and decoder 8.22 s, and
+  no torch import. `hipengine serve` builds the pipeline in 27.5 s at a
+  13.23 GiB peak and returns a valid WAV from `POST /v1/audio/songs`. The fixed
+  hipBLASLt index transfers: `scripts/hipblaslt_algo_scan.py` measures index 4
+  fastest for all four solver shapes here (0.105-0.507 ms, 4.5-6.4x faster than
+  index 0). Not run on gfx1100: the held-out task-quality suite and any matched
+  reference arm, so no gfx1100 quality-equivalence or speed ratio is claimed.
+  Artifacts: `benchmarks/results/yue2_ar_replay_gfx1100_20261018.json`,
+  `yue2_nar_gate_gfx1100_20261018.json`,
+  `yue2_nar_gate_multichunk_gfx1100_20261018.json`,
+  `yue2_nar_gate_condend_gfx1100_20261018.json`,
+  `yue2_vae_gate_gfx1100_20261018.json`,
+  `yue2_session_gate_gfx1100_20261018.json`,
+  `yue2_e2e_gate_gfx1100_20261018.json`, and
+  `yue2_product_gfx1100_20261018.json`.
 - **M6 product path complete** (2026-09-16): the staged session
   (`hipengine/runtime/yue2_session.py`) over one resident AR runtime, registered
   as the `yue2` model plugin, plus `scripts/yue2_e2e_gate.py`. Each committed case

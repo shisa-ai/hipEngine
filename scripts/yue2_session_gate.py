@@ -48,6 +48,7 @@ from hipengine.generation.yue2 import (  # noqa: E402
     negative_prefix,
     token_prefixes,
 )
+from hipengine.generation.yue2_song import DEFAULT_AR_CONTEXT  # noqa: E402
 from hipengine.loading.yue2 import load_yue2_weights  # noqa: E402
 from hipengine.runtime.yue2_ar import Yue2ArRuntime, bf16_bits_to_f32  # noqa: E402
 from hipengine.runtime.yue2_session import Yue2ArSession  # noqa: E402
@@ -251,7 +252,10 @@ def main() -> int:
     model_dir = args.model_dir or _cached_model_dir()
     weights = load_yue2_weights(model_dir)
     tokenizer = YuE2TextTokenizer(Path(model_dir) / "qwen.tiktoken")
-    runtime = Yue2ArRuntime(weights, branches=2)
+    # The product's resident context, so the gate replays the same allocation the
+    # song pipeline uses: the fixtures request the default 4096-token ABC budget,
+    # which does not fit a runtime left at the runtime's own smaller default.
+    runtime = Yue2ArRuntime(weights, branches=2, max_context=DEFAULT_AR_CONTEXT)
     session = Yue2ArSession(runtime, encode=tokenizer.encode, decode=tokenizer.decode)
 
     report: dict = {
