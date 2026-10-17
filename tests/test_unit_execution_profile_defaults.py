@@ -1,8 +1,8 @@
 """The shipped default execution profile is ``production`` where it is certified.
 
 An omitted profile resolves to ``production`` only for a combination with both a
-registered strict plan and a certified production plan. Everything else keeps
-the migration path, which is not a fourth named profile.
+registered strict plan and a certified production plan. A quarantined production
+plan defaults to strict; unregistered combinations keep the migration path.
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ CERTIFIED_COMBINATIONS = (
     ("qwen3_5_moe_gguf", "hip_gfx1100", "gguf_q4_k_m"),
     ("qwen3_5_moe_gguf", "hip_gfx1151", "gguf_q4_k_m"),
     ("qwen3_5_moe_paro", "hip_gfx1100", "w4_paro"),
-    ("qwen4_exp_gguf", "hip_gfx1151", "gguf_q4_k_m"),
     ("qwen4_exp_gguf", "hip_gfx1151", "gguf_ud_q4_k_xl"),
 )
 
@@ -70,6 +69,12 @@ def test_certified_combination_defaults_to_production(
         resolve_default_execution_profile(model=model, backend=backend, quant=quant)
         is ExecutionProfile.PRODUCTION
     )
+
+
+def test_failed_qwen4exp_plan_defaults_to_strict():
+    assert resolve_default_execution_profile(
+        model="qwen4_exp_gguf", backend="hip_gfx1151", quant="gguf_q4_k_m"
+    ) is ExecutionProfile.STRICT
 
 
 @pytest.mark.parametrize(("model", "backend", "quant"), UNCERTIFIED_COMBINATIONS)

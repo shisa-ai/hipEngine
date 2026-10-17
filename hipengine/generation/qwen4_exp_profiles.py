@@ -1346,6 +1346,11 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
                 kv_policy="paged_bf16_qsa_index_f32",
                 graph_policy="request_owned_exact_moe_graph_c1",
                 binder=_production_binder,
+                qualification_failure=(
+                    "Numerical envelope failed: "
+                    "benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-q4km/gate.json"
+                    if quant == "gguf_q4_k_m" else None
+                ),
             ),
         )
     for quant in FAST_QUANTS:

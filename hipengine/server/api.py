@@ -498,6 +498,9 @@ def _server_execution_profile(
         "strict_manifest_sha256": strict_manifest_hash,
         "fell_back_to_strict": fell_back,
         "migration_default_preserved": resolved is None,
+        **({"qualification_failure": reason} if (
+            reason := getattr(engine, "execution_profile_qualification_failure", None)
+        ) else {}),
     }
 
 

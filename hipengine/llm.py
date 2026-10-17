@@ -1159,6 +1159,13 @@ class LLM:
         resolution = self._resolve_execution_profile()
         return None if resolution is None else bool(resolution.fell_back_to_strict)
 
+    @property
+    def execution_profile_qualification_failure(self) -> str | None:
+        """Return the failed-plan evidence reason when an explicit plan fell back."""
+
+        resolution = self._resolve_execution_profile()
+        return None if resolution is None else resolution.qualification_failure
+
     def _load_model_metadata(self) -> tuple[Any, Any]:
         if self._weight_index is not None and self._model_plugin is not None:
             return self._weight_index, self._model_plugin

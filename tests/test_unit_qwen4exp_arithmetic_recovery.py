@@ -44,56 +44,17 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
                    for variant in variants)
 
 
-def test_other_quant_profile_binding_is_unchanged(monkeypatch):
+def test_failed_q4km_profile_binding_uses_strict(monkeypatch):
     monkeypatch.setattr(os, "environ", os.environ.copy())
     profile = resolve("gguf_q4_k_m")
     profile.binder(SimpleNamespace(), profile)
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "1"
+    assert profile.fell_back_to_strict
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "0"
 
 
-def _tile16_declaration(profile):
-    """Return the production manifest's declared owner for the tile16 scope."""
-    rows = [
-        row["selected_variant"]
-        for row in profile.manifest["selections"]
-        if row["layer"] == "gdn_recurrence_norm_gate"
-        and row["scope"] == "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47"
-    ]
-    assert len(rows) == 1, rows
-    return rows[0]
-
-
-def test_production_selects_the_multi_column_gdn_prefill_owner(monkeypatch):
-    """The multi-column GDN prefill route supersedes the DPP route, and the
-    manifest declares the route the binder dispatches.
-
-    The live selection is the ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` env var, so
-    the manifest row has to name the same variant the env names. An earlier version
-    made the row conditional on the quant and claimed that branch was inert; it was
-    not. The recovery pass only replaces rows for the quant that passes
-    ``recovery=True``, so the OTHER quant's conditional row reached its manifest
-    unchanged and declared ``qwen4exp_gdn_tiled16_prefill`` while the env dispatched
-    the multi-column route underneath it - a gate on that profile recorded one
-    manifest hash for two different kernels (1350 dispatches each).
-
-    The row is now unconditional, which is safe precisely because the recovery pass
-    deactivates tiled variants by NAME: for the recovery quant both candidate values
-    map to the same exact owner, so its manifest is unchanged byte for byte.
-
-    Pinned because that binding is a one-line change the recovery path would
-    silently undo: the recovery pass deactivates tiled variants by NAME, so the
-    multi-column route has to be listed there too or the recovery UD profile
-    starts selecting a tiled owner it must not use - which is what happened on the
-    first attempt at this promotion.
-
-    The binding is also pinned to the colwarps gate it feeds. The runner reads the
-    variant only inside ``if colwarps_prefill:``, and ``GDN_COLWARPS_PREFILL`` is in
-    ``PRODUCTION_ARITHMETIC_RECOVERY_FLAGS``, so the UD quant closes that gate. A
-    binding that named the multi-column route for UD therefore selected a variant
-    that could never dispatch: it measured as inert, and a probe that wraps the
-    registered callable observed zero dispatches with the predicate never reached.
-    """
+def test_production_ud_owner_and_quarantined_q4km_binding(monkeypatch):
+    """UD keeps its row-split owner; failed Q4_K_M uses strict serial recurrence."""
     from hipengine.kernels.registry import resolve as resolve_kernel
 
     monkeypatch.setattr(os, "environ", os.environ.copy())
@@ -118,20 +79,13 @@ def test_production_selects_the_multi_column_gdn_prefill_owner(monkeypatch):
     ]
     assert "qwen4exp_gdn_tiled16_multi_prefill" not in recovery_gdn, recovery_gdn
 
-    # The profile that keeps the column-warp suffix enabled is the one that
-    # selects the multi-column route, so the binding is reachable.
+    # The failed Q4_K_M composition is quarantined, so its tiled owner cannot run.
     other = resolve("gguf_q4_k_m")
     other.binder(SimpleNamespace(), other)
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
-        "qwen4exp_gdn_tiled16_multi_prefill")
-
-    # ...and the manifest must declare that same variant. A gate records the
-    # manifest hash as the candidate's provenance, so a declaration that disagrees
-    # with the binding gives two different kernels one hash - which is exactly what
-    # happened while this row was conditional on the quant.
-    assert _tile16_declaration(other) == os.environ[
-        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"]
+    assert other.fell_back_to_strict
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "0"
+    assert not any("tiled16" in row["selected_variant"]
+                   for row in other.manifest["selections"])
     # UD declares only its reachable serial scopes, not the disabled tile16
     # scope. The checked owner covers 2-4096 rows; wide remains above4096.
     recovery_scopes = {row["scope"]: row["selected_variant"]

@@ -131,10 +131,28 @@ def _selection_map(resolved):
     }
 
 
-def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
+def _enable_historical_q4km_plan_for_structure_test():
+    """Inspect quarantined implementation structure, never certify its arithmetic."""
+    from dataclasses import replace
+    from hipengine import execution_profiles as profiles
+
+    key = profiles.RuntimeProfileKey(
+        QWEN4_EXP_MODEL, QWEN4_EXP_BACKEND, "gguf_q4_k_m", ExecutionProfile.PRODUCTION
+    )
+    plan = profiles._RUNTIME_PROFILE_PLANS[key]
+    assert plan.qualification_failure is not None
+    assert _resolve(ExecutionProfile.PRODUCTION).fell_back_to_strict
+    profiles.register_runtime_profile_plan(
+        model=key.model, backend=key.backend, quant=key.quant, profile=key.profile,
+        plan=replace(plan, qualification_failure=None), replace=True,
+    )
+
+
+def test_historical_q4km_manifest_structure_not_qualification() -> None:
     register_gfx1151_kernels(replace=True)
     assert register_qwen4_exp_gfx1151_profiles()
     assert qwen4_exp_gfx1151_profiles_registered()
+    _enable_historical_q4km_plan_for_structure_test()
 
     strict = _resolve(ExecutionProfile.STRICT)
     production = _resolve(ExecutionProfile.PRODUCTION)
@@ -299,11 +317,12 @@ def test_ud_production_binds_the_promoted_gr_dpp_owner(
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == "1"
 
 
-def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
+def test_historical_q4km_binder_structure_not_qualification(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
+    _enable_historical_q4km_plan_for_structure_test()
     production = _resolve(ExecutionProfile.PRODUCTION)
     assert production.binder is not None
     configure_calls: list[bool] = []
@@ -784,7 +803,7 @@ def test_fast_is_opt_in_and_registered_only_for_the_in_envelope_quant() -> None:
             resolve_default_execution_profile(
                 model=QWEN4_EXP_MODEL, backend=QWEN4_EXP_BACKEND, quant=quant
             )
-            is ExecutionProfile.PRODUCTION
+            is (ExecutionProfile.STRICT if quant == "gguf_q4_k_m" else ExecutionProfile.PRODUCTION)
         )
     unregistered = _resolve(ExecutionProfile.FAST, quant="gguf_q4_k_m")
     assert unregistered.fell_back_to_strict
@@ -819,9 +838,8 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
     other.binder(SimpleNamespace(), other)
     for key in selectors:
         assert os.environ[key] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ",".join(
-        map(str, range(27, 48))
-    )
+    assert other.fell_back_to_strict
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ""
 
     production.binder(SimpleNamespace(), production)
     strict.binder(SimpleNamespace(), strict)

@@ -101,14 +101,16 @@ registered plan keeps the migration path, which remains tracked for removal in
 `qwen3_5_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
 `qwen3_5_moe_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
 `qwen3_5_moe_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
-`qwen3_5_moe_paro`/`hip_gfx1100`/`w4_paro`,
-`qwen4_exp_gguf`/`hip_gfx1151`/`gguf_q4_k_m`, and
+`qwen3_5_moe_paro`/`hip_gfx1100`/`w4_paro`, and
 `qwen4_exp_gguf`/`hip_gfx1151`/`gguf_ud_q4_k_xl`. Each one is covered by a
 decision section below and keeps a registered strict fallback, so
 `execution_profile="strict"` still selects exact arithmetic, and
 `batch_invariant` still falls back per scope wherever its composition gate has
-not passed. **One of those two `qwen4_exp_gguf` entries fails the numerical envelope; §2.9
-records which, why, and what it costs to change.**
+not passed. A registered plan with a recorded `qualification_failure` is
+quarantined: omitted profile selects `strict`, and explicitly requesting the
+failed profile selects its strict fallback with the failure reason in serving
+metadata. The failed `qwen4_exp_gguf`/`hip_gfx1151`/`gguf_q4_k_m` production
+plan is quarantined; §2.9 records its evidence.
 
 The §2.2 ZBook soak failure (87 completed and 33 rejected of 120) is present
 in both the migration arm and the production arm, so under the shared-failure
@@ -315,7 +317,8 @@ admission. Evidence:
 
 `qwen4_exp_gguf`/`hip_gfx1151` is registered for two quants, and **the two do
 not have the same certification status**. Both keep a registered strict
-fallback, and both resolve to `production` when the profile is omitted.
+fallback. Omitted profile selects `production` for `gguf_ud_q4_k_xl` and
+`strict` for the quarantined `gguf_q4_k_m` plan.
 
 **`gguf_ud_q4_k_xl` — numerical gates pass; task gate requires review.** Its
 production plan is the F16 route composition layered on the
@@ -399,10 +402,14 @@ not used to classify the layout. Unknown inventories fail before generator
 construction and require an explicit quant. The inventory fingerprint identifies
 storage representation, not weight identity or task-quality certification.
 
-Explicit quant choices are unchanged. In particular, explicitly selecting
-`gguf_q4_k_m` still selects the failed production composition documented above
-when the profile is omitted. Repairing that profile's default eligibility and
-admission is open campaign task 29; it is not made safe by the artifact resolver.
+Explicit quant choices are preserved, but an explicitly selected
+`gguf_q4_k_m` no longer defaults to the failed composition: omitted profile
+selects strict, and explicit production falls back to the registered strict
+binder and variants. The response profile metadata reports
+`fell_back_to_strict=true` and `qualification_failure` with the failed gate's
+artifact path. The historical failed composition remains registered only for
+diagnosis, not admitted for serving. This is fallback to an existing oracle,
+not numerical qualification of a repaired composition.
 The recognized UD layout selects the same manifest as explicit
 `quant="gguf_ud_q4_k_xl"`, with the numerical evidence and task-review limits
 stated in this section. No kernel composition was changed by the resolver.

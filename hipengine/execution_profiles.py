@@ -56,8 +56,13 @@ class RuntimeProfilePlan:
     graph_policy: str
     factory: Callable[..., Any] | None = None
     binder: Callable[[Any, "ResolvedRuntimeProfile"], None] | None = None
+    qualification_failure: str | None = None
 
     def __post_init__(self) -> None:
+        if self.qualification_failure is not None:
+            object.__setattr__(self, "qualification_failure", _nonempty(
+                self.qualification_failure, field="qualification_failure"
+            ))
         normalized = tuple(
             selection
             if isinstance(selection, VariantSelection)
@@ -97,6 +102,7 @@ class ResolvedRuntimeProfile:
     binder: Callable[[Any, "ResolvedRuntimeProfile"], None] | None
     fell_back_to_strict: bool
     source_profile: ExecutionProfile
+    qualification_failure: str | None = None
 
     def construct_generator(
         self,
@@ -115,6 +121,7 @@ class ResolvedRuntimeProfile:
             ("execution_profile_manifest_sha256", self.manifest_sha256),
             ("execution_profile_strict_manifest_sha256", self.strict_manifest_sha256),
             ("execution_profile_fell_back_to_strict", self.fell_back_to_strict),
+            ("execution_profile_qualification_failure", self.qualification_failure),
         ):
             existing = getattr(generator, name, None)
             if existing is not None and existing != value:
@@ -328,9 +335,9 @@ def resolve_default_execution_profile(
     """Return the shipped default profile for a registered combination.
 
     A combination with both a registered strict plan and a certified production
-    plan runs ``production`` when the caller requests no profile. Anything else
-    returns ``None``, which keeps the migration path: the pre-profile package
-    selection, which is not a fourth named profile.
+    plan runs ``production`` when the caller requests no profile. A recorded
+    production qualification failure selects ``strict`` instead. Unregistered
+    combinations return ``None`` and keep the pre-profile migration path.
     """
 
     model_key = _nonempty(model, field="model")
@@ -347,6 +354,12 @@ def resolve_default_execution_profile(
             not in _RUNTIME_PROFILE_PLANS
         ):
             return None
+    production = _RUNTIME_PROFILE_PLANS[RuntimeProfileKey(
+        model=model_key, backend=backend_key, quant=quant_key,
+        profile=ExecutionProfile.PRODUCTION,
+    )]
+    if production.qualification_failure is not None:
+        return ExecutionProfile.STRICT
     return ExecutionProfile.PRODUCTION
 
 
@@ -526,6 +539,11 @@ def resolve_runtime_profile(
             "no strict execution-profile plan registered for "
             f"({model_key}, {backend_key}, {quant_key})"
         )
+    if strict_plan.qualification_failure is not None:
+        raise MissingRuntimeProfilePlanError(
+            "strict execution-profile plan failed qualification: "
+            + strict_plan.qualification_failure
+        )
     strict_manifest = build_variant_manifest(
         profile=ExecutionProfile.STRICT,
         backend=backend_key,
@@ -544,6 +562,15 @@ def resolve_runtime_profile(
             profile=requested,
         )
     )
+    qualification_failure = (
+        None if requested_plan is None else requested_plan.qualification_failure
+    )
+    if qualification_failure is not None:
+        if requested is ExecutionProfile.STRICT:
+            raise MissingRuntimeProfilePlanError(
+                "strict execution-profile plan failed qualification: " + qualification_failure
+            )
+        requested_plan = None
     selections, fell_back = _resolved_selections(
         requested=requested,
         strict_plan=strict_plan,
@@ -572,6 +599,7 @@ def resolve_runtime_profile(
         factory=source_plan.factory,
         binder=source_plan.binder,
         fell_back_to_strict=fell_back,
+        qualification_failure=qualification_failure,
         source_profile=(
             requested if requested_plan is not None else ExecutionProfile.STRICT
         ),

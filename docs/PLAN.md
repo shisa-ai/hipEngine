@@ -345,7 +345,10 @@ hipEngine exposes exactly three execution profiles:
 
 An omitted profile resolves to `production` for a model, backend, and
 quantization combination with a certified production plan, and keeps the
-pre-profile migration path otherwise. `strict` stays the exact oracle and is
+pre-profile migration path otherwise. A registered production plan with an
+explicit qualification failure defaults to `strict`; an explicit request for
+that failed plan uses the strict binder/variants and reports the failure reason.
+`strict` stays the exact oracle and is
 always selectable. See [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md) §2.1 for
 the registered combinations and the default decision.
 

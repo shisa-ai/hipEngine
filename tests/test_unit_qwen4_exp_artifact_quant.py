@@ -58,7 +58,7 @@ def test_explicit_quant_does_not_infer_or_override(monkeypatch):
     assert llm.resolved_quant == 'gguf_q4_k_m'
 
 
-def test_auto_and_explicit_ud_select_identical_profile_manifest(monkeypatch):
+def _assert_auto_and_explicit_ud_select_identical_profile_manifest(monkeypatch):
     from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
 
     register_qwen4_exp_gfx1151_profiles()
@@ -70,6 +70,16 @@ def test_auto_and_explicit_ud_select_identical_profile_manifest(monkeypatch):
     assert engines[0].resolved_execution_profile == 'production'
     assert engines[0].execution_profile_manifest == engines[1].execution_profile_manifest
     assert engines[0].execution_profile_manifest_sha256 == engines[1].execution_profile_manifest_sha256
+
+
+def test_auto_and_explicit_ud_select_identical_profile_manifest():
+    import subprocess
+    import sys
+
+    subprocess.run([sys.executable, '-c',
+        "import runpy, pytest; ns = runpy.run_path(" + repr(__file__) + "); "
+        "ns['_assert_auto_and_explicit_ud_select_identical_profile_manifest'](pytest.MonkeyPatch())"
+    ], check=True, timeout=60)
 
 
 def test_mixed_architecture_shards_fail_closed(monkeypatch):
