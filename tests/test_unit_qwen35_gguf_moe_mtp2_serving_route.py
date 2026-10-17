@@ -38,7 +38,7 @@ def _moe_engine():
     return _serving_engine(*modes)
 
 
-def _request(*, explicit=True, stream=False):
+def _request(*, explicit: bool | None = True, stream=False):
     return SimpleNamespace(speculative_mtp=explicit, stream=stream)
 
 
@@ -76,6 +76,19 @@ def test_sampled_request_reaches_mtp() -> None:
         _route(sampling=_params(temperature=0.7, top_p=0.9, min_p=0.05))
         == _SPECULATIVE_MTP_BATCH_ROUTE
     )
+
+
+def test_gfx1151_moe_implementation_is_explicit_only_until_repaired() -> None:
+    declaration = next(
+        item
+        for item in Qwen35MoeGGUFModel().speculative_mtp_serving_implementations
+        if item.backends == (("hip_gfx1151", "gfx1151"),)
+    )
+    assert declaration.automatic_eligible is False
+
+
+def test_explicit_request_still_reaches_gfx1151_moe_mtp() -> None:
+    assert _route(explicit=True) == _SPECULATIVE_MTP_BATCH_ROUTE
 
 
 def test_explicit_false_reaches_the_autoregressive_default() -> None:
