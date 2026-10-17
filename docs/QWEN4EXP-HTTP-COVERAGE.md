@@ -1,8 +1,9 @@
 # Qwen3.8 Flash-Next HTTP coverage
 
-**Audit date: 2026-10-17. The grid is not complete.** Short greedy AR and
-explicit MTP work, but long-context MTP, hard thinking budgets, logprobs,
-true multi-request batching, and live MTP streaming are not ready to check off.
+**Updated: 2026-10-17. The grid is not complete.** Short greedy AR and
+explicit MTP work. The focused lifetime follow-up also passes approximately
+30K AR/MTP, cancellation and recovery. Hard thinking budgets, logprobs,
+true multi-request batching, and live MTP streaming are still open.
 A passing unit suite does not establish those product capabilities.
 
 Implementation and final qualification are tracked by the approved
@@ -31,7 +32,7 @@ quality, or automatic-admission qualification**.
 
 The baseline long-MTP failure and immediate recovery failure are superseded by
 an isolated lifecycle qualification at commit
-`f1ee044e5136bddd6ba477c6efacb6356fc7b080`. On the same zbook class of physical
+`f1ee044e5136bddd6ba477c6efacb6356fc7b080`. On the same physical zbook
 host, a 29,912-token archive prompt completed in both AR and explicit MTP. AR
 returned `VIOLET-7391` in 30.724 s; MTP returned the same answer in 91.979 s
 through `qwen4exp_mtp_batched_state_rows_verify` with 6 proposed and 6 accepted
@@ -52,7 +53,7 @@ incremental MTP SSE, multimodal serving, or production numerical/task gates.
 ## PS5 BF16 generic-provider follow-up
 
 The effective-KV admission repair is also live-qualified at commit
-`bd0775b2d`. With BF16 KV and the server's FP32 scale metadata, both
+`f1ee044e5`. With BF16 KV and the server's FP32 scale metadata, both
 `speculative_mtp=true` and generic `speculative=true` return HTTP 200 and run
 `qwen4exp_mtp_batched_state_rows_verify`. Each short 32-token probe reports 27
 proposed, 21 accepted, 6 rejected draft tokens and 9 cycles; the generic row

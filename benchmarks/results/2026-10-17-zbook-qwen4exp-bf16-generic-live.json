@@ -1,7 +1,7 @@
 {
   "schema": "hipengine.qwen4exp.bf16_generic_speculative_live.v1",
   "date": "2026-10-17",
-  "source_commit": "bd0775b2d",
+  "source_commit": "f1ee044e5136bddd6ba477c6efacb6356fc7b080",
   "host": {
     "name": "zbook",
     "identity": "87c566d30a5645cf8d12ed7ef6b6e1e8",
