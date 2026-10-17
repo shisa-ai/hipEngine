@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
 import math
@@ -120,6 +121,9 @@ class RowSamplingState:
     row_index: int = 0
     generated_tokens: Sequence[int] = ()
     step_index: int = 0
+    # None preserves legacy step-only reconstruction. New checkpoints carry
+    # actual draws: forced/greedy tokens advance step_index without drawing.
+    rng_draw_count: int | None = field(default=None, kw_only=True)
     stop_token_sequences: Sequence[Sequence[int]] = ()
     forced_tokens_pending: Sequence[int] | ForcedTokenQueue = ()
     forced_token_reason: str | None = None
@@ -208,11 +212,12 @@ class RowSamplingState:
             if self.tool_call_constraint is not None
             else None
         )
+        self.rng_draw_count = self.step_index if self.rng_draw_count is None else int(self.rng_draw_count)
+        if self.rng_draw_count < 0:
+            raise ValueError("rng_draw_count must be non-negative")
         self._rng = np.random.Generator(np.random.PCG64(self.seed))
-        if self.step_index:
-            # Keep reconstructed state deterministic when a caller restores a
-            # step index without serializing the bit-generator internals.
-            self._rng.random(self.step_index)
+        if self.rng_draw_count:
+            self._rng.random(self.rng_draw_count)
 
     @property
     def history_tokens(self) -> tuple[int, ...]:
@@ -222,7 +227,9 @@ class RowSamplingState:
         return Counter(int(token) for token in self.history_tokens)
 
     def random_unit(self) -> float:
-        return float(self._rng.random())
+        value = float(self._rng.random())
+        self.rng_draw_count += 1
+        return value
 
     def observe(self, token_id: int) -> None:
         token = int(token_id)
@@ -400,6 +407,7 @@ class RowSamplingState:
             row_index=self.row_index,
             generated_tokens=tuple(self.generated_tokens),
             step_index=self.step_index,
+            rng_draw_count=0,  # Restore exact generator state below, without replay.
             stop_token_sequences=self.stop_token_sequences,
             forced_tokens_pending=() if budget is not None else self.forced_tokens,
             forced_token_reason=None if budget is not None else self.forced_token_reason,
@@ -411,6 +419,8 @@ class RowSamplingState:
             tool_call_constraint=self.tool_call_constraint,
             thinking_budget=budget,
         )
+        cloned._rng.bit_generator.state = deepcopy(self._rng.bit_generator.state)
+        cloned.rng_draw_count = self.rng_draw_count
         cloned._stop_sequence_state = self._stop_sequence_state
         cloned._force_sequence_state = self._force_sequence_state
         if self._json_object_constraint is not None:

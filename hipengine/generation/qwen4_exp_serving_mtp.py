@@ -160,9 +160,7 @@ class Qwen4ExpServingMTP:
         """Return (progress, transaction) after commit or cancellation rollback."""
         target, draft = row.runner, row.draft
         sampling_checkpoint = None if row.sampling_state is None else row.sampling_state.clone()
-        # Admitted sampled requests have no forced tokens: one draw per output.
-        rng_counter = (sampling_checkpoint.step_index
-                       if sampling_checkpoint is not None and row.request.temperature > 0 else 0)
+        rng_counter = 0 if sampling_checkpoint is None else sampling_checkpoint.rng_draw_count
         target_checkpoint = target.begin_device_transaction(reuse_snapshot=True)
         draft_checkpoint = draft.snapshot()
         transaction = None
