@@ -1148,6 +1148,8 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             self._available.append(runner)
 
     def _finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:
+        if row.mtp_output is not None:
+            return row.mtp_output.finish_details
         details = self._raw_finish(row)
         if details is None:
             return None

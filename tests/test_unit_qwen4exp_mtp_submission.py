@@ -186,7 +186,7 @@ def test_two_mtp_rows_have_distinct_target_and_draft_owners(monkeypatch):
         driver.close()
 
 
-@pytest.mark.parametrize("controls", [{"stop_token_ids": (11,)}, {"min_tokens": 1, "eos_token_id": 99}, {"logit_bias": ((11, 1.0),)}])
+@pytest.mark.parametrize("controls", [{"stop_token_ids": (11,)}, {"min_tokens": 1, "eos_token_id": 99}, {"forced_tokens_pending": (11,)}])
 def test_unimplemented_mtp_controls_reject_before_model_work(controls):
     driver, target, draft = _driver()
     try:

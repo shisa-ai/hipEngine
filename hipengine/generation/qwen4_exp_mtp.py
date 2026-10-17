@@ -19,7 +19,7 @@ from hipengine.generation.registry import (
     GenerationTelemetry,
     TokenLogprob,
 )
-from hipengine.generation.sampling import plan_sampler
+from hipengine.generation.sampling import RowSamplingState, plan_sampler
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.loading.qwen4_exp_mtp_gguf import build_qwen4_exp_mtp_gguf_map
 from hipengine.loading.qwen4_exp_mtp_materialize import (
@@ -180,6 +180,7 @@ class Qwen4ExpMTPTextProvider:
         prefill_result: Any | None = None,
         draft_primed: bool = False,
         row_index: int = 0,
+        sampling_state: RowSamplingState | None = None,
     ) -> Generator[Qwen4ExpMTPProgress, int | None, GenerationOutput]:
         """Yield one committed MTP step at a time and return the final output.
 
@@ -196,7 +197,8 @@ class Qwen4ExpMTPTextProvider:
         ``draft_primed=True`` reuses an already primed draft cursor. After each
         yield, ``send(k)`` selects the next cycle's candidate budget (zero is a
         target-only step with draft catchup). ``next()`` retains the configured
-        budget. The scheduler owns cancellation rollback around a step.
+        budget. The scheduler owns cancellation rollback around a step and may
+        pass its request-owned ``sampling_state`` for transactional snapshots.
         """
 
         self._require_open()
@@ -223,7 +225,7 @@ class Qwen4ExpMTPTextProvider:
         # Shared AR sampler semantics, with one independent state per iterator.
         from hipengine.generation.qwen4_exp_gguf import _sampling_state
 
-        sampling_state = _sampling_state(request, token_ids, row_index)
+        sampling_state = sampling_state if sampling_state is not None else _sampling_state(request, token_ids, row_index)
         controlled = sampling_state is not None
         sampler_mode = (
             "sampled_speculative_mtp" if request.temperature > 0 else

@@ -78,22 +78,7 @@ class Qwen4ExpServingMTP:
         provider = self.generator._speculative_provider
         if provider is None:
             raise NotImplementedError("Flash-Next MTP provider is not attached")
-        if (request.grammar is not None or request.stop_token_ids or request.stop_token_sequences
-                or request.min_tokens or request.suppress_token_ids or request.logit_bias
-                or request.forced_tokens_pending or request.post_thinking_forced_tokens_pending
-                or request.force_sequence_completion_token_sequences
-                or request.json_object_close_forcing or request.tool_call_constraint
-                or request.thinking_hard_token_cap is not None
-                or request.thinking_soft_close_window
-                or request.resident_session_key
-                or request.repetition_penalty != 1.0 or request.presence_penalty
-                or request.frequency_penalty or request.logprobs or request.top_logprobs):
-            raise NotImplementedError("Flash-Next staged MTP does not yet support these token controls")
-        if (request.temperature != 0.0 or request.top_k not in (0, 1)
-                or request.top_p != 1.0 or request.min_p != 0.0):
-            raise NotImplementedError("Flash-Next staged MTP supports raw greedy controls only")
-        if request.eos_token_id not in (None, self.generator.tokenizer.eos_token_id):
-            raise NotImplementedError("Flash-Next MTP does not support an alternate EOS control")
+        provider._validate_sampling(request)
         if request.kv_storage not in ("auto", "bf16"):
             raise NotImplementedError("Flash-Next MTP requires BF16 KV")
         if len(row.prompt_ids) + request.max_tokens > min(
@@ -124,7 +109,7 @@ class Qwen4ExpServingMTP:
             execution_profile=str(getattr(self.generator, "execution_profile", None) or "unprofiled"),
             kv_backend_key="bf16", attachment=ProviderAttachment.TARGET_ATTACHED,
             catchup_mode=ProviderCatchupMode.TARGET_OUTPUT,
-            supported_modes=("verify_chain",), supported_sampling_modes=("greedy",),
+            supported_modes=("verify_chain",), supported_sampling_modes=("greedy", "processed"),
             max_requests=1, max_candidates_per_request=row.mtp_budget,
             max_frontier_rows=row.mtp_budget + 1, proposal_widths=(1,),
             target_row_buckets=tuple(range(1, row.mtp_budget + 2)),
@@ -168,11 +153,16 @@ class Qwen4ExpServingMTP:
             row.mtp_steps = self.generator._speculative_provider.iter_generate(
                 row.prompt_ids, request, target=row.runner, draft=row.draft,
                 prefill_result=result, draft_primed=True,
+                row_index=row.row_index, sampling_state=row.sampling_state,
             )
 
     def _advance_mtp(self, row, budget, *, plan=None):
         """Return (progress, transaction) after commit or cancellation rollback."""
         target, draft = row.runner, row.draft
+        sampling_checkpoint = None if row.sampling_state is None else row.sampling_state.clone()
+        # Admitted sampled requests have no forced tokens: one draw per output.
+        rng_counter = (sampling_checkpoint.step_index
+                       if sampling_checkpoint is not None and row.request.temperature > 0 else 0)
         target_checkpoint = target.begin_device_transaction(reuse_snapshot=True)
         draft_checkpoint = draft.snapshot()
         transaction = None
@@ -185,7 +175,7 @@ class Qwen4ExpServingMTP:
                     {f"qwen4exp.target.{id(target)}": 1, f"qwen4exp.draft.{id(draft)}": 1},
                     request_id=row.request_id, lifetime=ClaimLifetime.TRANSACTION,
                 ),
-                pre_target_cursors=(target_checkpoint.position,), pre_rng_counters=(0,),
+                pre_target_cursors=(target_checkpoint.position,), pre_rng_counters=(rng_counter,),
                 target_transaction_mode=plan.target_transaction_mode,
                 target_owner=f"qwen4exp.target.{id(target)}",
                 target_checkpoint_ids=(f"device:{id(target_checkpoint)}",),
@@ -222,11 +212,13 @@ class Qwen4ExpServingMTP:
             target.rollback_device_transaction(target_checkpoint)
             draft.restore(draft_checkpoint)
             row.mtp_steps.close()
+            row.sampling_state = sampling_checkpoint
             if not isinstance(error, _RequestRetired):
                 raise
             return None, None if transaction is None else replace(transaction, rolled_back=True)
         target.commit_device_transaction(target_checkpoint)
         row.generated_ids.extend(progress.token_ids)
+        row.token_logprobs.extend(progress.token_logprobs)
         row.mtp_output = terminal
         if transaction is not None:
             transaction = replace(transaction, target_committed=True, provider_committed=True)
