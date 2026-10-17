@@ -8,9 +8,10 @@ checks, including combined hard thinking/logprobs. C1 sampled MTP and its
 buffered-SSE logprobs also pass the full category/heldout functional audit.
 C1 controlled MTP passes 170 functional request checks and 82 blocking/SSE
 comparisons: stops, alternate EOS, minimum tokens, ignore-EOS, JSON Schema,
-required/automatic tools and hard-thinking controls. Stop-string SSE is
-buffered for both AR and MTP to prevent text leakage across tokenizer boundaries.
-True multi-request batching and incremental MTP streaming are still open.
+required/automatic tools and hard-thinking controls. C1 unstructured MTP SSE,
+including logprobs and text stops, now publishes committed output incrementally.
+Schema-validated and tool-enabled SSE intentionally buffers output until complete
+validation; it is not token-live. True multi-request batching remains open.
 A passing unit suite does not establish those product capabilities.
 
 Implementation and final qualification are tracked by the approved
@@ -134,8 +135,8 @@ CPU HTTP tests use the real resident MTP owner with analytic target logits and
 verify actual speculative work for completions/chat, blocking/SSE, with and
 without logprobs. The PS6 follow-up below qualifies structured controls, stops,
 alternate EOS and hard thinking through both MTP spellings. Resident sessions
-remain outside that qualification. SSE remains buffered and automatic MTP
-remains off for this provider; those capabilities require separate qualification.
+remain outside that qualification. Those captures used buffered SSE; PS7 below
+covers incremental text delivery. Automatic MTP remains off for this provider.
 
 The first [98-request sampled-MTP audit](../benchmarks/results/2026-10-17-zbook-qwen4exp-sampled-mtp-http-diagnostic.json)
 passes 75 request checks. Twenty SSE checks lacked the opt-in execution metadata
@@ -205,7 +206,8 @@ buffered response path in both endpoints. Eight completion SSE replays match the
 original blocking results, and two additional chat blocking/SSE pairs pass.
 When backend token matching misses such a stop, generation may reach its token
 limit before text trimming; usage correctly counts all generated tokens, not just
-visible text. Incremental text filtering and early termination remain PS7 work.
+visible text. PS7 below qualifies incremental text filtering; tokenization-mismatched
+stops still drain generation rather than terminating it early.
 
 All merged saved bodies and comparisons were revalidated. Lower-layer tests cover
 request-owned grammar and processor state, root/mid-verify/terminal cancellation,
@@ -214,6 +216,35 @@ logprobs. The final stop repair passes 782 affected CPU HTTP tests. Final live
 readiness passes, and the private audit server is stopped. This closes PS6/task 19
 for the stated functional scope, not task quality, numerical-envelope qualification,
 incremental streaming, physical concurrency, multimodal controls or automatic MTP.
+
+## PS7 streaming qualification
+
+C1 text MTP streaming is functionally qualified on zbook gfx1151 with production
+`UD-Q4_K_XL`, BF16 KV, Q8_0 MTP B3 and 8K capacity. This is completed-audit plus
+focused-repair evidence, not a fresh run of the full campaign on one source.
+
+| Requirement | Evidence |
+| --- | --- |
+| Incremental resident completion/chat output, logprobs and terminal accounting | [Eight blocking/SSE pairs](../benchmarks/results/2026-10-17-zbook-qwen4exp-chat-cycle-stream-diagnostic.json) match text, IDs, logprobs, usage and semantic finish; streams publish before completion. |
+| UTF-8 and stop boundaries | [Eight English/Japanese completion/chat pairs](../benchmarks/results/2026-10-17-zbook-qwen4exp-stop-stream-diagnostic.json) suppress stops and preserve complete-token probabilities. Partial-token suffixes have no invented logprob. |
+| Direct Python provider | [Four hardware cases](../benchmarks/results/2026-10-17-zbook-qwen4exp-direct-stream-functional.json) yield before completion, match blocking output and recover after early iterator closure. |
+| Disconnect and recovery | The chat and stop packets close streams early, then verify HTTP 200 recovery and healthy readiness. |
+| Slow-client backpressure | [Live TCP audit](../benchmarks/results/2026-10-17-zbook-qwen4exp-mtp-live-backpressure.json) establishes speculative scheduler work, stalls the receive window, receives `client_backpressure` and `[DONE]` after resuming reads, and verifies two subsequent MTP requests. |
+| Validated schema/tool/thinking responses | [Ten structured SSE cases](../benchmarks/results/2026-10-17-zbook-qwen4exp-structured-sse-timing.json) pass correctness but deliver only at completion. These are buffered responses, not incremental qualification. |
+
+The scope excludes removing buffers required by the [API validation contract](API.md).
+Tool arguments and schema answers are withheld until complete validation; reasoning
+in those request shapes is also buffered. Invalid calls must never appear as successful
+`tool_calls`. The task's earlier blanket instruction to eliminate full-response
+buffering is narrowed to unstructured C1 text, not permission to weaken this contract.
+PS7/task 20 is complete for this explicit scope. Incremental validated reasoning/tool
+output is not advertised or qualified. Final capability review must preserve that
+restriction. When a text-level stop does not match the backend's tokenized stop,
+the server filters visible output but drains generation for canonical accounting.
+
+These functional checks do not qualify concurrent widths, a latency SLO, production
+numerical/task quality, automatic MTP selection or other hardware. The final campaign
+regression and soak remain required.
 
 ## Baseline feature grid (before PS1/PS3/PS5 fixes)
 
@@ -274,13 +305,13 @@ verification work; candidate rows must not be called concurrent requests.
    [7.7K-context diagnostic](../benchmarks/results/2026-10-15-qwen4exp-mtp-long-context-economics/README.md)
    also measured a loss, not a default-promotion result. Do not select a slower
    exact verifier merely to remove isolated production token differences.
-5. **Implement and verify actual concurrency and incremental MTP output.**
-   The generator caps its resident runner pool at two. Its AR batch methods
-   loop over request-owned single-row runners, and the provider completes
-   prompts sequentially. Four HTTP clients do not establish width-four
-   kernels. MTP streaming calls complete generation before yielding one
-   chunk. Require measured backend widths, overlapping progress, cancellation,
-   and committed-token timing before changing these grid cells to pass.
+5. **Implement and verify actual concurrency.** The baseline generator caps
+   its resident runner pool at two, and its AR batch methods loop over
+   request-owned single-row runners. Four HTTP clients do not establish
+   width-four kernels. Require measured backend widths, overlapping progress,
+   cancellation and isolation before changing concurrency grid cells to pass.
+   C1 committed-token streaming is covered by PS7, with validation-buffered
+   schema/tool responses explicitly excluded from incremental claims.
 6. **Finish product-quality and observability gates.** The
    [October 15 combined production packet](../benchmarks/results/2026-10-15-qwen4exp-x10-final-quality/README.md)
    passes numerical/state-repeat/lifecycle checks but leaves task/scope review
