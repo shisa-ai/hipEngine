@@ -27,6 +27,28 @@ allow up to 128 output tokens and respect EOS: eight emitted 128, two emitted
 58 and 31. These are single-pass functional observations, **not a new speedup,
 quality, or automatic-admission qualification**.
 
+## PS1 lifetime follow-up
+
+The baseline long-MTP failure and immediate recovery failure are superseded by
+an isolated lifecycle qualification at commit
+`f1ee044e5136bddd6ba477c6efacb6356fc7b080`. On the same zbook class of physical
+host, a 29,912-token archive prompt completed in both AR and explicit MTP. AR
+returned `VIOLET-7391` in 30.724 s; MTP returned the same answer in 91.979 s
+through `qwen4exp_mtp_batched_state_rows_verify` with 6 proposed and 6 accepted
+draft tokens across 2 cycles. The MTP wall time is recorded for lifecycle
+evidence only; this is not a performance claim.
+
+The request-owned lifetime checks also returned HTTP 408 `deadline_exceeded`
+for both AR and MTP with `timeout_ms=5000`, logged an aborted MTP request as
+HTTP 499 `cancelled`, and completed six post-event recovery requests with HTTP
+200. Final readiness reported a live accepting service, zero active resident
+requests, 17 admissions, and 17 reclaims. The compact evidence is
+[`2026-10-17-zbook-qwen4exp-http-lifetime.json`](../benchmarks/results/2026-10-17-zbook-qwen4exp-http-lifetime.json);
+raw local captures are under `/tmp/he-qwen38fn-lifetime-f1ee044e5`.
+This closes PS1/task 15 for the tested configuration. It does not qualify
+automatic MTP, hard controls, sampled/logprob paths, physical concurrency,
+incremental MTP SSE, multimodal serving, or production numerical/task gates.
+
 ## Feature grid
 
 | Check | AR | Explicit MTP | Verdict |
@@ -62,7 +84,13 @@ verification work; candidate rows must not be called concurrent requests.
 
 ## What needs fixing first
 
-1. **Separate generation lifetime from administrative command timeout.**
+1. **Completed: separate generation lifetime from administrative command
+   timeout.** `f1ee044e5` gates generation on request-owned lifetime rather than
+   the legacy 30-second command wait and publishes truthful service readiness.
+   The slow fake/real service tests and the tracked live follow-up cover driver
+   failure, shutdown, 29,912-token AR/MTP, explicit deadlines, client
+   cancellation, and subsequent recovery. See the PS1 lifetime follow-up above.
+2. **Honor or reject hard controls before decoding.** The Qwen4Exp controlled
    `EngineService.generate_speculative_mtp_detailed()` uses the legacy
    `_control()` route when the driver lacks speculative submission support.
    `_control()` waits at most the default 30 seconds. The caller times out

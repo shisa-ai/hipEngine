@@ -1,0 +1,97 @@
+{
+  "schema": "hipengine.qwen4exp.http_lifetime.v1",
+  "date": "2026-10-17",
+  "source_commit": "f1ee044e5136bddd6ba477c6efacb6356fc7b080",
+  "host": {
+    "name": "zbook",
+    "identity": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "hardware": "Ryzen AI Max+ Pro 395; Radeon 8060S; gfx1151; 128 GiB unified memory"
+  },
+  "server": {
+    "model": "qwen38fn-grid",
+    "artifact": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "backend": "hip_gfx1151",
+    "quant": "gguf_ud_q4_k_xl",
+    "execution_profile": "production",
+    "kv_storage": "bf16",
+    "max_context_tokens": 32768,
+    "max_active_requests": 2,
+    "candidate_budget": 3,
+    "port": 18388
+  },
+  "qualification": {
+    "kind": "functional_lifetime_only",
+    "performance_claim": false,
+    "quality_claim": false,
+    "long_prompt_tokens": 29912,
+    "retrieval_answer": "VIOLET-7391",
+    "both_speculative_spellings_execute_mtp": true
+  },
+  "requests": [
+    {
+      "name": "long-ar",
+      "status": 200,
+      "wall_seconds": 30.724,
+      "route": "default",
+      "output": "VIOLET-7391",
+      "generated_tokens": 9
+    },
+    {
+      "name": "long-mtp",
+      "status": 200,
+      "wall_seconds": 91.979,
+      "route": "speculative_mtp",
+      "execution_path": "qwen4exp_mtp_batched_state_rows_verify",
+      "output": "VIOLET-7391",
+      "generated_tokens": 9,
+      "draft_tokens": 6,
+      "accepted_draft_tokens": 6,
+      "draft_cycles": 2
+    },
+    {
+      "name": "timeout-ar",
+      "status": 408,
+      "error_code": "deadline_exceeded",
+      "timeout_ms": 5000,
+      "wall_seconds": 5.761
+    },
+    {
+      "name": "timeout-mtp",
+      "status": 408,
+      "error_code": "deadline_exceeded",
+      "timeout_ms": 5000,
+      "wall_seconds": 5.026
+    },
+    {
+      "name": "client-disconnect",
+      "client_abort_after_seconds": 5.011,
+      "server_log_status": 499,
+      "server_log_code": "cancelled"
+    }
+  ],
+  "recovery": {
+    "after_long_ar": {"status": 200, "output": "ready", "wall_seconds": 0.251},
+    "after_long_mtp": {"status": 200, "output": "ready", "wall_seconds": 0.220},
+    "after_timeout_ar": {"status": 200, "output": "ready", "wall_seconds": 0.226},
+    "after_timeout_mtp": {"status": 200, "output": "ready", "wall_seconds": 0.326, "route": "speculative_mtp"},
+    "after_disconnect_ar": {"status": 200, "output": "ready", "wall_seconds": 0.236},
+    "after_disconnect_generic": {"status": 200, "output": "ready", "wall_seconds": 0.316, "route": "speculative_mtp"}
+  },
+  "service_after_audit": {
+    "ready": true,
+    "accepting_requests": true,
+    "driver_alive": true,
+    "closing": false,
+    "closed": false,
+    "resident_requests_admitted_total": 17,
+    "resident_requests_reclaimed_total": 17,
+    "resident_requests_active": 0,
+    "resident_work_reclaim_total": 17
+  },
+  "raw_artifacts": "/tmp/he-qwen38fn-lifetime-f1ee044e5",
+  "notes": [
+    "The long MTP request now completes beyond the former 30-second administrative command timeout.",
+    "The MTP wall time is recorded for lifecycle evidence only; this artifact makes no speedup claim.",
+    "Short and long probes use one retrieval prompt and do not qualify automatic MTP, task quality, concurrency, streaming, or production numerical gates."
+  ]
+}
