@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import types
+
 import numpy as np
 import pytest
 
+import scripts.gguf_mtp_native_state_attribution as attribution
 from scripts.gguf_mtp_forced_target_probe import ProbeError
 from scripts.gguf_mtp_native_state_attribution import (
     LANE_PACKED,
@@ -192,6 +195,7 @@ def _arms(
     ar_logits: np.ndarray,
     native_logits: np.ndarray,
     accepted: int,
+    input_token_ids: list[int] | None = None,
     ownership: dict[str, object] | None = None,
     native_state_digest: str = "ar_state",
     native_layer_digest: str = "layer",
@@ -201,6 +205,13 @@ def _arms(
     rows = int(ar_logits.shape[0])
     ar_top1 = [int(value) for value in np.argmax(ar_logits, axis=1)]
     native_top1 = [int(value) for value in np.argmax(native_logits, axis=1)]
+    tokens = (
+        [int(token) for token in input_token_ids]
+        if input_token_ids is not None
+        else [1000 + index for index in range(rows)]
+    )
+    # The graph consumes the root plus the accepted input drafts; the visible
+    # stream ends with the unconsumed bonus prediction.
     visible = [*native_top1[:accepted], native_top1[accepted]]
     position = 100 + accepted + 1
     return {
@@ -223,10 +234,12 @@ def _arms(
             "commit": {
                 "accepted": accepted,
                 "commit_row": accepted,
-                "commit_token": int(native_top1[0]),
+                "commit_token": int(tokens[accepted]),
                 "commit_position": 100 + accepted,
                 "end_position": position,
                 "cursor_after": position,
+                "input_token_ids": tokens,
+                "consumed_input_tokens": tokens[: accepted + 1],
             },
             "logits_digest": "logits",
             "ownership": (
@@ -235,19 +248,20 @@ def _arms(
             "state": _fingerprint(
                 label="native",
                 position=position,
-                current_prev=visible[-1],
+                current_prev=tokens[accepted],
                 digest=native_state_digest,
                 layer_digest=native_layer_digest,
             ),
             "state_digest": "state",
         },
         "ar_control": {
+            "consumed_input_tokens": tokens[: accepted + 1],
             "state": _fingerprint(
                 label="ar_control",
                 position=position,
-                current_prev=visible[-1],
+                current_prev=tokens[accepted],
                 digest=ar_state_digest,
-            )
+            ),
         },
         "serial": {
             "row_top1": ar_top1,
@@ -259,6 +273,135 @@ def _arms(
                 digest=serial_state_digest,
             ),
         },
+    }
+
+
+class _FakeScratch:
+    def __init__(self) -> None:
+        self.layer_conv_states: list[object] = []
+        self.layer_recurrent_states: list[object] = []
+
+
+class _FakeRunner:
+    def __init__(self, layer_types: tuple[str, ...] = ()) -> None:
+        self.weights = types.SimpleNamespace(
+            config=types.SimpleNamespace(layer_types=tuple(layer_types))
+        )
+
+
+class _FakeResidentSession:
+    """Record the token-serial calls one arm makes; no device, no HIP."""
+
+    def __init__(
+        self,
+        *,
+        position: int = 0,
+        prefill_token: int = 0,
+        layer_types: tuple[str, ...] = (),
+    ) -> None:
+        self.position = int(position)
+        self._prefill_token = int(prefill_token)
+        self.prefilled: list[int] = []
+        self.prefix_advanced: list[int] = []
+        self.stepped: list[int] = []
+        self.hidden_seed_captures: list[int] = []
+        self.scratch = _FakeScratch()
+        self.runner = _FakeRunner(layer_types)
+        self.closed = False
+
+    def prefill(self, tokens: object, **kwargs: object) -> types.SimpleNamespace:
+        self.prefilled = [int(token) for token in tokens]  # type: ignore[union-attr]
+        return types.SimpleNamespace(token_id=self._prefill_token)
+
+    def verify_target_block_serial_exact(
+        self, tokens: object, advance_state_only: bool = False
+    ) -> types.SimpleNamespace:
+        self.prefix_advanced = [int(token) for token in tokens]  # type: ignore[union-attr]
+        self.position += len(self.prefix_advanced)
+        return types.SimpleNamespace(token_ids=list(self.prefix_advanced))
+
+    def step(
+        self, token: int, return_logits: bool = False,
+        capture_hidden_seed_fp32: bool = False,
+    ) -> types.SimpleNamespace:
+        self.stepped.append(int(token))
+        if capture_hidden_seed_fp32:
+            self.hidden_seed_captures.append(int(token))
+        self.position += 1
+        return types.SimpleNamespace(
+            token_id=int(token) + 1,
+            logits=(
+                np.zeros((4,), dtype=np.float32) if bool(return_logits) else None
+            ),
+        )
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _FingerprintRecorder:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(
+        self,
+        session: _FakeResidentSession,
+        *,
+        current_prev: int,
+        label: str,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        self.calls.append(
+            {
+                "label": str(label),
+                "current_prev": int(current_prev),
+                "position": int(session.position),
+            }
+        )
+        return _fingerprint(
+            label=str(label),
+            position=int(session.position),
+            current_prev=int(current_prev),
+            digest="fake",
+        )
+
+
+def _arm_args() -> object:
+    return build_arg_parser().parse_args(["--record", "record.json", "--output-index", "1"])
+
+
+def _run_arm_with_fake_session(
+    arm: object, *, fake: _FakeResidentSession, recorder: _FingerprintRecorder, **kwargs: object
+) -> dict[str, object]:
+    return arm(
+        args=_arm_args(),
+        compiler_version=None,
+        prompt_tokens=[7, 8],
+        prefix_tokens=[],
+        initial_prev_token=101,
+        initial_prev_position=512,
+        max_sequence_length=600,
+        session_factory=lambda **_: fake,
+        fingerprint=recorder,
+        **kwargs,
+    )
+
+
+def _native_commit(
+    *,
+    input_token_ids: list[int],
+    commit_row: int,
+    token_ids: list[int],
+    start_position: int = 512,
+) -> dict[str, object]:
+    return {
+        "input_token_ids": list(input_token_ids),
+        "commit_row": int(commit_row),
+        "commit_token": int(input_token_ids[commit_row]),
+        "commit_position": int(start_position) + int(commit_row),
+        "end_position": int(start_position) + int(commit_row) + 1,
+        "token_ids": list(token_ids),
+        "start_position": int(start_position),
     }
 
 
@@ -301,6 +444,50 @@ def test_lane_auto_keeps_a_lone_request_on_the_singleton_native_cycle() -> None:
     assert lane["max_active_requests"] == 4
     assert lane["launch"].endswith("verify_target_block_native_cycle")
     assert "max-active-requests 4" in lane["reason"]
+
+
+def test_lane_auto_resolves_a_packed_request_group_to_the_packed_lane() -> None:
+    """Two requests in one group are packed work, never a relabelled singleton."""
+
+    lane = resolve_lane(
+        requested="auto",
+        request_count=2,
+        packed_c1_target=False,
+        max_active_requests=4,
+    )
+
+    assert lane["lane"] == LANE_PACKED
+    assert lane["reproduced_by_this_diagnostic"] is False
+    assert lane["launch"] == "verify_target_blocks_batch"
+    with pytest.raises(ProbeError):
+        require_reproducible_lane(lane)
+
+
+def test_lane_auto_resolves_the_packed_c1_evidence_row_to_the_packed_lane() -> None:
+    lane = resolve_lane(
+        requested="auto",
+        request_count=1,
+        packed_c1_target=True,
+        max_active_requests=1,
+    )
+
+    assert lane["lane"] == LANE_PACKED
+    assert lane["reproduced_by_this_diagnostic"] is False
+    with pytest.raises(ProbeError):
+        require_reproducible_lane(lane)
+
+
+def test_lane_singleton_refuses_a_packed_request_group() -> None:
+    """An explicit singleton claim cannot describe two packed requests."""
+
+    with pytest.raises(ProbeError) as error:
+        resolve_lane(
+            requested="singleton",
+            request_count=2,
+            packed_c1_target=False,
+            max_active_requests=4,
+        )
+    assert "packed" in str(error.value)
 
 
 def test_lane_packed_needs_a_packed_group_or_the_explicit_evidence_row() -> None:
@@ -347,6 +534,173 @@ def test_require_reproducible_lane_refuses_to_relabel_a_packed_run() -> None:
     require_reproducible_lane(
         resolve_lane(requested="auto", request_count=1, max_active_requests=4)
     )
+
+
+# ---------------------------------------------------------------------------
+# Consumed-input selection for the token-serial arms
+# ---------------------------------------------------------------------------
+
+
+def test_ar_control_replays_the_root_and_accepted_inputs_on_full_accept() -> None:
+    """Full acceptance consumes every verifier input, not the bonus prediction."""
+
+    commit = _native_commit(
+        input_token_ids=[101, 102, 103, 104],
+        commit_row=3,
+        token_ids=[102, 103, 104, 999],
+    )
+    consumed = attribution.ar_control_consumed_tokens(commit)
+    assert consumed == [101, 102, 103, 104]
+
+    fake = _FakeResidentSession(position=512, prefill_token=101)
+    recorder = _FingerprintRecorder()
+    arm = _run_arm_with_fake_session(
+        attribution._run_ar_control_arm,
+        fake=fake,
+        recorder=recorder,
+        consumed_input_tokens=consumed,
+    )
+
+    assert fake.prefilled == [7, 8]
+    assert fake.stepped == [101, 102, 103, 104]
+    assert fake.hidden_seed_captures == fake.stepped
+    assert 999 not in fake.stepped
+    assert arm["consumed_input_tokens"] == [101, 102, 103, 104]
+    assert recorder.calls == [
+        {"label": "ar_control", "current_prev": 104, "position": 516}
+    ]
+
+
+def test_ar_control_replays_the_root_and_accepted_prefix_on_partial_accept() -> None:
+    commit = _native_commit(
+        input_token_ids=[101, 102, 103, 104],
+        commit_row=1,
+        token_ids=[102, 103],
+    )
+    consumed = attribution.ar_control_consumed_tokens(commit)
+    assert consumed == [101, 102]
+
+    fake = _FakeResidentSession(position=512, prefill_token=101)
+    recorder = _FingerprintRecorder()
+    _run_arm_with_fake_session(
+        attribution._run_ar_control_arm,
+        fake=fake,
+        recorder=recorder,
+        consumed_input_tokens=consumed,
+    )
+
+    assert fake.stepped == [101, 102]
+    assert recorder.calls[0]["current_prev"] == 102
+    assert recorder.calls[0]["position"] == 514
+
+
+def test_ar_control_replays_only_the_root_when_no_draft_is_accepted() -> None:
+    commit = _native_commit(
+        input_token_ids=[101, 102, 103],
+        commit_row=0,
+        token_ids=[102],
+    )
+    consumed = attribution.ar_control_consumed_tokens(commit)
+    assert consumed == [101]
+
+    fake = _FakeResidentSession(position=512, prefill_token=101)
+    recorder = _FingerprintRecorder()
+    _run_arm_with_fake_session(
+        attribution._run_ar_control_arm,
+        fake=fake,
+        recorder=recorder,
+        consumed_input_tokens=consumed,
+    )
+
+    assert fake.stepped == [101]
+    assert recorder.calls[0]["current_prev"] == 101
+    assert recorder.calls[0]["position"] == 513
+
+
+def test_ar_control_consumed_tokens_refuse_an_out_of_range_commit_row() -> None:
+    commit = _native_commit(
+        input_token_ids=[101, 102, 103],
+        commit_row=0,
+        token_ids=[102],
+    )
+    commit["commit_row"] = 9
+    assert attribution.ar_control_consumed_tokens(commit) == []
+
+    commit["commit_row"] = -1
+    assert attribution.ar_control_consumed_tokens(commit) == []
+
+    commit["input_token_ids"] = []
+    commit["commit_row"] = 0
+    assert attribution.ar_control_consumed_tokens(commit) == []
+
+    with pytest.raises(ProbeError):
+        _run_arm_with_fake_session(
+            attribution._run_ar_control_arm,
+            fake=_FakeResidentSession(position=512, prefill_token=101),
+            recorder=_FingerprintRecorder(),
+            consumed_input_tokens=[],
+        )
+
+
+def test_ar_arm_names_the_last_consumed_input_not_the_prediction() -> None:
+    verifier_inputs = [101, 102, 103, 104]
+    fake = _FakeResidentSession(position=512, prefill_token=101)
+    recorder = _FingerprintRecorder()
+
+    arm = _run_arm_with_fake_session(
+        attribution._run_ar_arm,
+        fake=fake,
+        recorder=recorder,
+        verifier_inputs=verifier_inputs,
+    )
+
+    assert fake.stepped == verifier_inputs
+    assert fake.hidden_seed_captures == verifier_inputs
+    assert recorder.calls[0]["current_prev"] == 104
+    assert arm["row_top1"] == [102, 103, 104, 105]
+
+
+@pytest.mark.parametrize("shape", [(4,), (1, 4)])
+def test_ar_arm_normalizes_single_step_logits(shape) -> None:
+    fake = _FakeResidentSession(position=512, prefill_token=101)
+    original_step = fake.step
+
+    def step(token, return_logits=False, **kwargs):
+        result = original_step(token, return_logits=return_logits, **kwargs)
+        result.logits = np.zeros(shape, dtype=np.float32)
+        return result
+
+    fake.step = step
+    arm = _run_arm_with_fake_session(
+        attribution._run_ar_arm, fake=fake, recorder=_FingerprintRecorder(),
+        verifier_inputs=[101, 102, 103],
+    )
+    assert arm["row_logits"].shape == (3, 4)
+
+
+def test_serial_arm_names_the_last_consumed_input_not_the_prediction() -> None:
+    verifier_inputs = [101, 102, 103]
+    fake = _FakeResidentSession(position=512, prefill_token=101)
+    recorder = _FingerprintRecorder()
+
+    arm = _run_arm_with_fake_session(
+        attribution._run_serial_arm,
+        fake=fake,
+        recorder=recorder,
+        verifier_inputs=verifier_inputs,
+    )
+
+    assert fake.prefix_advanced == verifier_inputs
+    assert recorder.calls[0]["current_prev"] == 103
+    assert arm["row_top1"] == verifier_inputs
+
+
+def test_expected_linear_layers_reads_only_the_linear_attention_entries() -> None:
+    session = _FakeResidentSession(
+        layer_types=("linear_attention", "full_attention", "linear_attention")
+    )
+
+    assert attribution._expected_linear_layers(session) == [0, 2]
 
 
 # ---------------------------------------------------------------------------
@@ -556,6 +910,72 @@ def test_commit_ownership_proves_a_size_mismatch() -> None:
 
     assert check["status"] == "broken"
     assert check["mismatches"][0]["reason"] == "size"
+
+
+def test_commit_ownership_reports_an_out_of_range_commit_row_instead_of_raising() -> None:
+    """A device commit row past the captured rows is a defect, not a crash."""
+
+    record = _commit_record(accepted=2, rows=3, commit_row=7)
+
+    check = commit_ownership_check(record)
+
+    assert check["status"] == "broken"
+    mismatches = check["contracts"]["ownership"]["mismatches"]
+    row = next(item for item in mismatches if item["component"] == "accept.commit_row")
+    assert row["out_of_range"] is True
+    assert row["actual"] == 7
+    assert check["commit_row_in_range"] is False
+
+
+def test_commit_ownership_reports_a_missing_target_top1_row_instead_of_raising() -> None:
+    record = _commit_record(
+        accepted=2,
+        rows=3,
+        target_top1=[22, 33],
+        visible_tokens=[22, 33],
+    )
+
+    check = commit_ownership_check(record)
+
+    assert check["status"] == "broken"
+    mismatches = check["contracts"]["ownership"]["mismatches"]
+    assert any(item["component"] == "accept.target_top1_rows" for item in mismatches)
+    assert not any(item["component"] == "accept.committed_tokens" for item in mismatches)
+
+
+def test_commit_ownership_reports_a_linear_layer_that_was_not_captured() -> None:
+    record = _commit_record(accepted=1)
+    record["expected_layers"] = [0, 1]
+
+    check = commit_ownership_check(record)
+
+    assert check["status"] == "not_checked"
+    assert check["layers_expected"] == 2
+    reasons = {
+        (int(item["layer"]), item["reason"])
+        for item in check["contracts"]["strict_state_copy"]["missing_captures"]
+    }
+    assert reasons == {(1, "not_captured")}
+    assert check["contracts"]["strict_state_copy"]["mismatches"] == []
+
+
+def test_missing_required_hidden_capture_is_inconclusive_not_a_copy_failure():
+    record = _commit_record(accepted=1)
+    record["hidden_required"] = True
+    check = commit_ownership_check(record)
+    assert check["status"] == "not_checked"
+    assert check["contracts"]["strict_state_copy"]["status"] == "not_checked"
+    assert check["contracts"]["ownership"]["status"] == "exact"
+    assert check["mismatches"] == []
+
+
+def test_proven_wrong_copy_still_fails_with_another_capture_missing():
+    record = _commit_record(accepted=1, source=b"right", destination=b"wrong")
+    record["expected_layers"] = [0, 1]
+    check = commit_ownership_check(record)
+    assert check["status"] == "broken"
+    assert check["contracts"]["strict_state_copy"]["status"] == "broken"
+    assert check["contracts"]["strict_state_copy"]["missing_captures"]
 
 
 def test_commit_ownership_rejects_an_accept_outside_the_verifier_rows() -> None:

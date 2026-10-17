@@ -66,7 +66,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
@@ -145,11 +145,13 @@ def resolve_lane(
 ) -> dict[str, Any]:
     """Resolve which production target-verifier lane a request group runs.
 
-    ``max_active_requests`` is recorded, never used to pick the lane: a lone
-    speculative request keeps its per-request transactional verifier at any
-    capacity. The packed batch lane needs a packed request group, and the
-    one-request packed target needs an explicit ``packed_c1_target`` evidence
-    row.
+    ``auto`` follows the request group. Two or more speculative requests in one
+    group, or the explicit one-request ``packed_c1_target`` route, are packed
+    work and resolve to the packed lane; only a lone request with no packed C1
+    target resolves to the singleton native cycle. ``max_active_requests`` is
+    recorded, never used to pick the lane: serving capacity does not move a lone
+    request onto the packed batch lane. An explicit singleton claim on packed
+    work raises instead of relabelling it.
     """
 
     count = int(request_count)
@@ -165,11 +167,22 @@ def resolve_lane(
         LANE_PACKED_REQUEST,
     }:
         raise ProbeError(f"unknown lane request {requested_lane!r}")
-    if (
-        requested_lane == LANE_PACKED_REQUEST
-        and count < 2
-        and not bool(packed_c1_target)
-    ):
+    packed_group = count >= 2
+    packed_c1 = bool(packed_c1_target)
+    if requested_lane == LANE_SINGLETON_REQUEST:
+        if packed_group:
+            raise ProbeError(
+                f"a request group of {count} speculative requests runs the "
+                "packed target lane, so an explicit singleton claim would "
+                "relabel packed work as the per-request native cycle. Request "
+                "the packed lane and report it from the packed harness"
+            )
+        if packed_c1:
+            raise ProbeError(
+                "packed_c1_target selects the one-request packed target, not "
+                "the singleton native cycle"
+            )
+    if requested_lane == LANE_PACKED_REQUEST and not packed_group and not packed_c1:
         raise ProbeError(
             "the packed batch lane needs a packed request group; a lone "
             "speculative request runs the per-request "
@@ -178,20 +191,24 @@ def resolve_lane(
             "capability (gfx1100 declares it, gfx1151 does not) plus an "
             "explicit packed_c1_target evidence row"
         )
-    if requested_lane == LANE_SINGLETON_REQUEST and bool(packed_c1_target):
-        raise ProbeError(
-            "packed_c1_target selects the one-request packed target, not the "
-            "singleton native cycle"
-        )
-    if requested_lane == LANE_PACKED_REQUEST:
-        lane = LANE_PACKED
+    packed = bool(packed_group or packed_c1)
+    lane = LANE_PACKED if packed else LANE_SINGLETON
+    if packed_group and packed_c1:
         reason = (
-            "the packed batch lane was requested for a packed request group"
-            if count >= 2
-            else "the explicit packed_c1_target evidence row was requested"
+            f"a request group of {count} speculative requests on the explicit "
+            "packed_c1_target route runs the packed target lane"
+        )
+    elif packed_group:
+        reason = (
+            f"a request group of {count} speculative requests runs the packed "
+            "target lane, never the per-request singleton verifier"
+        )
+    elif packed_c1:
+        reason = (
+            "the explicit packed_c1_target evidence row selects the "
+            "one-request packed target"
         )
     else:
-        lane = LANE_SINGLETON
         reason = (
             "a lone speculative request runs the per-request "
             "Qwen35GGUFTransactionalVerifier, which launches "
@@ -415,8 +432,19 @@ def commit_ownership_check(record: Mapping[str, Any]) -> dict[str, Any]:
             f"accepted count {accepted} is outside the verifier rows {rows}"
         )
 
+    commit_row_in_range = 0 <= commit_row < rows
     ownership_mismatches: list[dict[str, Any]] = []
-    if commit_row != accepted:
+    if not commit_row_in_range:
+        ownership_mismatches.append(
+            {
+                "contract": "ownership",
+                "component": "accept.commit_row",
+                "expected": f"0 <= commit_row < {rows}",
+                "actual": int(commit_row),
+                "out_of_range": True,
+            }
+        )
+    elif commit_row != accepted:
         ownership_mismatches.append(
             {
                 "contract": "ownership",
@@ -425,16 +453,26 @@ def commit_ownership_check(record: Mapping[str, Any]) -> dict[str, Any]:
                 "actual": int(commit_row),
             }
         )
-    expected_token = input_tokens[commit_row]
-    if commit_token != expected_token:
+    if len(target_top1) != rows:
         ownership_mismatches.append(
             {
                 "contract": "ownership",
-                "component": "accept.commit_token",
-                "expected": int(expected_token),
-                "actual": int(commit_token),
+                "component": "accept.target_top1_rows",
+                "expected": int(rows),
+                "actual": len(target_top1),
             }
         )
+    if commit_row_in_range:
+        expected_token = input_tokens[commit_row]
+        if commit_token != expected_token:
+            ownership_mismatches.append(
+                {
+                    "contract": "ownership",
+                    "component": "accept.commit_token",
+                    "expected": int(expected_token),
+                    "actual": int(commit_token),
+                }
+            )
     expected_position = start_position + commit_row
     if commit_position != expected_position:
         ownership_mismatches.append(
@@ -473,7 +511,7 @@ def commit_ownership_check(record: Mapping[str, Any]) -> dict[str, Any]:
                 "actual": len(drafts),
             }
         )
-    else:
+    elif commit_row_in_range and commit_row < len(target_top1):
         expected_visible = [*drafts[:accepted], target_top1[commit_row]]
         if visible != expected_visible:
             ownership_mismatches.append(
@@ -499,8 +537,26 @@ def commit_ownership_check(record: Mapping[str, Any]) -> dict[str, Any]:
             )
             if mismatch is not None:
                 copy_mismatches.append(mismatch)
+    missing_captures: list[dict[str, Any]] = []
+    expected_layers = [int(layer) for layer in (record.get("expected_layers") or ())]
+    captured_layers = {
+        int(layer["layer"]) for layer in (record.get("layers") or ())
+    }
+    for layer_id in expected_layers:
+        if layer_id in captured_layers:
+            continue
+        missing_captures.append(
+            {
+                "contract": "strict_state_copy",
+                "component": "linear_state_capture",
+                "layer": int(layer_id),
+                "reason": "not_captured",
+            }
+        )
     hidden = record.get("hidden_row")
     hidden_checked = hidden is not None
+    if not hidden_checked and record.get("hidden_required", False):
+        missing_captures.append({"component": "hidden_seed", "reason": "not_captured"})
     if hidden is not None:
         mismatch = _copy_byte_mismatch(
             "hidden_seed",
@@ -515,7 +571,7 @@ def commit_ownership_check(record: Mapping[str, Any]) -> dict[str, Any]:
     mismatches = [*ownership_mismatches, *copy_mismatches]
     if mismatches:
         status = "broken"
-    elif not checked:
+    elif not checked or missing_captures:
         status = "not_checked"
     else:
         status = "exact"
@@ -528,16 +584,18 @@ def commit_ownership_check(record: Mapping[str, Any]) -> dict[str, Any]:
         "actual_commit_position": int(commit_position),
         "actual_end_position": int(end_position),
         "actual_cursor_after": int(cursor_after),
+        "commit_row_in_range": bool(commit_row_in_range),
         "layers_checked": layers_checked,
+        "layers_expected": len(expected_layers),
         "hidden_row_checked": bool(hidden_checked),
         "contracts": {
             "strict_state_copy": {
                 "status": (
-                    "not_checked"
-                    if not checked
-                    else ("broken" if copy_mismatches else "exact")
+                    "broken" if copy_mismatches else
+                    "not_checked" if not checked or missing_captures else "exact"
                 ),
                 "mismatches": copy_mismatches,
+                "missing_captures": missing_captures,
             },
             "ownership": {
                 "status": "broken" if ownership_mismatches else "exact",
@@ -1136,6 +1194,38 @@ def _fingerprint_digest(fingerprint: Mapping[str, Any]) -> str:
     return hashlib.blake2b(payload, digest_size=16).hexdigest()
 
 
+def ar_control_consumed_tokens(commit: Mapping[str, Any]) -> list[int]:
+    """Return the verifier inputs the native accept consumed, in order.
+
+    The N2 graph processes and commits rows ``0..commit_row``: the root input
+    plus the accepted drafts. ``commit["token_ids"]`` is
+    ``drafts[:accepted] + [target_top1[commit_row]]``, whose last element is the
+    bonus prediction at the committed row and was never consumed. An empty list
+    means the device reported a commit row outside the captured inputs.
+    """
+
+    input_tokens = [int(token) for token in (commit.get("input_token_ids") or ())]
+    commit_row = int(commit["commit_row"])
+    if not input_tokens or commit_row < 0 or commit_row >= len(input_tokens):
+        return []
+    return input_tokens[: commit_row + 1]
+
+
+def _expected_linear_layers(session: Any) -> list[int]:
+    """Return the layer ids whose Conv/GDN state the commit must copy."""
+
+    from hipengine.loading.qwen35_gguf import LINEAR_ATTENTION
+
+    if session.runner is None:
+        raise ProbeError("resident session is closed")
+    config = session.runner.weights.config
+    return [
+        int(layer_id)
+        for layer_id, layer_type in enumerate(config.layer_types)
+        if layer_type == LINEAR_ATTENTION
+    ]
+
+
 def _capture_hidden_commit_row(
     session: Any,
     *,
@@ -1208,24 +1298,30 @@ def _hidden_row_summary(
     }
 
 
-def _capture_commit_rows(session: Any, *, commit_row: int) -> list[dict[str, Any]]:
+def _capture_commit_rows(
+    session: Any,
+    *,
+    commit_row: int,
+    rows: int | None = None,
+) -> list[dict[str, Any]]:
     """Read the selected captured row and the committed destination per layer.
 
     The source rows are the verifier's own captured linear-state rows, the same
     buffers ``_ensure_verify_linear_state_commit_tables`` hands to
     ``linear_commit_kernel``. Row 0 is also read when it is not the selected
     row, so a wrong-row copy can be named instead of only detected.
-    """
 
-    from hipengine.loading.qwen35_gguf import LINEAR_ATTENTION
+    A ``commit_row`` outside the captured verifier rows reads nothing: the row
+    offset would address memory the verifier never captured. The ownership check
+    reports that out-of-range commit row instead.
+    """
 
     if session.runner is None or session.scratch is None:
         raise ProbeError("resident session is closed")
-    config = session.runner.weights.config
+    if rows is not None and not (0 <= int(commit_row) < int(rows)):
+        return []
     layers: list[dict[str, Any]] = []
-    for layer_id, layer_type in enumerate(config.layer_types):
-        if layer_type != LINEAR_ATTENTION:
-            continue
+    for layer_id in _expected_linear_layers(session):
         pair = session._verify_linear_state_row_pair(layer_id)
         destination_conv = session.scratch.layer_conv_states[layer_id]
         destination_recurrent = session.scratch.layer_recurrent_states[layer_id]
@@ -1417,7 +1513,13 @@ def _run_native_arm(
             )
         accepted = int(result.accepted_draft_tokens)
         commit_row = int(result.commit_row)
-        layers = _capture_commit_rows(session, commit_row=commit_row)
+        input_token_ids = [int(token) for token in result.input_token_ids]
+        expected_layers = _expected_linear_layers(session)
+        layers = _capture_commit_rows(
+            session,
+            commit_row=commit_row,
+            rows=len(input_token_ids),
+        )
         hidden_pair = _capture_hidden_commit_row(
             session,
             hidden_rows=getattr(result, "hidden_seeds", None),
@@ -1425,30 +1527,32 @@ def _run_native_arm(
         )
         ownership_record = {
             "accepted": accepted,
-            "rows": len(result.input_token_ids),
+            "rows": len(input_token_ids),
             "commit_row": commit_row,
             "commit_token": int(result.commit_token),
             "commit_position": int(result.commit_position),
             "start_position": int(result.start_position),
             "end_position": int(result.end_position),
             "cursor_after": int(session.position),
-            "input_token_ids": [int(token) for token in result.input_token_ids],
+            "input_token_ids": input_token_ids,
             "visible_tokens": [int(token) for token in result.token_ids],
             "draft_tokens": [int(token) for token in drafts],
             "target_top1": target_top1,
             "layers": layers,
+            "expected_layers": expected_layers,
+            "hidden_required": True,
             "hidden_row": hidden_pair,
         }
         ownership = commit_ownership_check(ownership_record)
         commit_rows = _commit_rows_summary(layers, commit_row=commit_row)
         hidden_row_summary = _hidden_row_summary(hidden_pair, commit_row=commit_row)
-        # ``current_prev`` names the token processed at ``position - 1`` so this
-        # fingerprint is comparable with the AR control, which steps the same
-        # committed tokens. ``result.next_token`` is the prediction at the
-        # committed row and belongs in the commit block, not here.
+        # ``current_prev`` names the token processed at ``position - 1``: the
+        # committed input ``input_token_ids[commit_row]``. ``result.token_ids``
+        # ends with the bonus prediction ``target_top1[commit_row]``, which was
+        # never consumed, so it cannot describe the committed cursor.
         state = _session_lifecycle_fingerprint(
             session,
-            current_prev=int(result.token_ids[-1]),
+            current_prev=int(result.commit_token),
             label="native",
         )
         linear_state_bytes = None
@@ -1473,6 +1577,13 @@ def _run_native_arm(
                 "accepted": accepted,
                 "commit_row": commit_row,
                 "commit_token": int(result.commit_token),
+                "input_token_ids": input_token_ids,
+                "consumed_input_tokens": ar_control_consumed_tokens(
+                    {
+                        "input_token_ids": input_token_ids,
+                        "commit_row": commit_row,
+                    }
+                ),
                 "commit_position": int(result.commit_position),
                 "end_position": int(result.end_position),
                 "cursor_after": int(session.position),
@@ -1521,8 +1632,17 @@ def _run_ar_arm(
     initial_prev_position: int,
     verifier_inputs: list[int],
     max_sequence_length: int,
+    session_factory: Callable[..., Any] | None = None,
+    fingerprint: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    session = _new_session(
+    """Token-serial AR over the whole verifier block.
+
+    ``session_factory`` and ``fingerprint`` exist so the CPU tests can run this
+    arm against a recording session; the GPU path leaves both at their
+    defaults.
+    """
+
+    session = (session_factory or _new_session)(
         args=args,
         compiler_version=compiler_version,
         max_sequence_length=max_sequence_length,
@@ -1540,14 +1660,19 @@ def _run_ar_arm(
         row_top1: list[int] = []
         row_logits: list[np.ndarray] = []
         for token in verifier_inputs:
-            step = session.step(int(token), return_logits=True)
-            row_top1.append(int(step.token_id))
-            row_logits.append(
-                np.ascontiguousarray(np.asarray(step.logits, dtype=np.float32))
+            step = session.step(
+                int(token), return_logits=True, capture_hidden_seed_fp32=True
             )
-        state = _session_lifecycle_fingerprint(
+            row_top1.append(int(step.token_id))
+            logits = _float32_rows(np.atleast_2d(step.logits), label="AR step")
+            if logits.shape[0] != 1:
+                raise ProbeError(f"AR step returned {logits.shape[0]} logit rows")
+            row_logits.append(logits[0])
+        # The block consumed every input row, so the token processed at
+        # ``position - 1`` is the last verifier input, not its prediction.
+        state = (fingerprint or _session_lifecycle_fingerprint)(
             session,
-            current_prev=int(row_top1[-1]),
+            current_prev=int(verifier_inputs[-1]),
             label="ar",
         )
         return {
@@ -1574,10 +1699,32 @@ def _run_ar_control_arm(
     prefix_tokens: list[int],
     initial_prev_token: int,
     initial_prev_position: int,
-    visible_tokens: Sequence[int],
+    consumed_input_tokens: Sequence[int],
     max_sequence_length: int,
+    session_factory: Callable[..., Any] | None = None,
+    fingerprint: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    session = _new_session(
+    """Replay the verifier inputs the native accept consumed.
+
+    The N2 graph processes and commits ``input_token_ids[:commit_row + 1]``: the
+    root row plus the accepted drafts. ``result.token_ids`` is
+    ``drafts[:accepted] + [target_top1[commit_row]]``; its last element is the
+    bonus prediction at the committed row, which the graph never fed back.
+    Stepping that stream would drop the root input and treat the prediction as
+    consumed, so the control would describe a different token sequence at the
+    same cursor.
+
+    ``session_factory`` and ``fingerprint`` exist so the CPU tests can run this
+    arm against a recording session; the GPU path leaves both at their defaults.
+    """
+
+    consumed = [int(token) for token in consumed_input_tokens]
+    if not consumed:
+        raise ProbeError(
+            "the AR control needs at least the root input token; an empty "
+            "consumed list means the commit row was outside the captured rows"
+        )
+    session = (session_factory or _new_session)(
         args=args,
         compiler_version=compiler_version,
         max_sequence_length=max_sequence_length,
@@ -1591,22 +1738,23 @@ def _run_ar_control_arm(
             initial_prev_position=initial_prev_position,
             prefix_advance_tokens=prefix_tokens,
         )
-        for token in visible_tokens:
-            session.step(int(token), return_logits=False)
-        state = _session_lifecycle_fingerprint(
+        for token in consumed:
+            session.step(token, return_logits=False, capture_hidden_seed_fp32=True)
+        state = (fingerprint or _session_lifecycle_fingerprint)(
             session,
-            current_prev=int(visible_tokens[-1]),
+            current_prev=consumed[-1],
             label="ar_control",
         )
         return {
             "arm": "ar_control",
-            "visible_tokens": [int(token) for token in visible_tokens],
+            "consumed_input_tokens": consumed,
             "state": state,
             "state_digest": _fingerprint_digest(state),
             "linear_state_bytes": _capture_linear_state_bytes(session),
             "notes": [
-                "token-serial AR over exactly the tokens the native cycle "
-                "committed; state baseline at the committed cursor",
+                "token-serial AR over exactly the verifier inputs the native "
+                "cycle consumed (root plus accepted drafts), never over its "
+                "output predictions; state baseline at the committed cursor",
             ],
         }
     finally:
@@ -1623,8 +1771,12 @@ def _run_serial_arm(
     initial_prev_position: int,
     verifier_inputs: list[int],
     max_sequence_length: int,
+    session_factory: Callable[..., Any] | None = None,
+    fingerprint: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    session = _new_session(
+    """Strict serial-exact control over the whole verifier block."""
+
+    session = (session_factory or _new_session)(
         args=args,
         compiler_version=compiler_version,
         max_sequence_length=max_sequence_length,
@@ -1640,9 +1792,10 @@ def _run_serial_arm(
         )
         result = session.verify_target_block_serial_exact(list(verifier_inputs))
         row_top1 = [int(token) for token in result.token_ids]
-        state = _session_lifecycle_fingerprint(
+        # As in the AR arm: the last processed token is the last input row.
+        state = (fingerprint or _session_lifecycle_fingerprint)(
             session,
-            current_prev=int(row_top1[-1]),
+            current_prev=int(verifier_inputs[-1]),
             label="serial",
         )
         return {
@@ -1971,13 +2124,23 @@ def main(argv: list[str] | None = None) -> int:
         ]
         native_arm = native_runs[0]
         ar_arm = _run_ar_arm(**shared, verifier_inputs=verifier_inputs)
-        ar_control_arm = _run_ar_control_arm(
-            **shared, visible_tokens=native_arm["visible"]
+        consumed_input_tokens = ar_control_consumed_tokens(native_arm["commit"])
+        ar_control_arm = (
+            None
+            if not consumed_input_tokens
+            else _run_ar_control_arm(
+                **shared,
+                consumed_input_tokens=consumed_input_tokens,
+            )
         )
         serial_arm = _run_serial_arm(**shared, verifier_inputs=verifier_inputs)
 
         native_state_bytes = native_arm.pop("linear_state_bytes", None)
-        ar_control_state_bytes = ar_control_arm.pop("linear_state_bytes", None)
+        ar_control_state_bytes = (
+            None
+            if ar_control_arm is None
+            else ar_control_arm.pop("linear_state_bytes", None)
+        )
         state_delta = state_numeric_delta(
             native_state_bytes or {}, ar_control_state_bytes or {}
         )
@@ -2043,6 +2206,14 @@ def main(argv: list[str] | None = None) -> int:
                 "use_gemv_decode": args.use_gemv_decode,
             },
             "attribution": attribution,
+            "ar_control_skipped": (
+                None
+                if ar_control_arm is not None
+                else (
+                    "the device commit row falls outside the captured verifier "
+                    "inputs, so no consumed prefix exists to replay"
+                )
+            ),
             "arms": {
                 "ar": {
                     "row_top1": ar_arm["row_top1"],
@@ -2067,11 +2238,17 @@ def main(argv: list[str] | None = None) -> int:
                     "native_launch": native_arm["native_launch"],
                     "notes": native_arm["notes"],
                 },
-                "ar_control": {
-                    "visible_tokens": ar_control_arm["visible_tokens"],
-                    "state": ar_control_arm["state"],
-                    "notes": ar_control_arm["notes"],
-                },
+                "ar_control": (
+                    None
+                    if ar_control_arm is None
+                    else {
+                        "consumed_input_tokens": ar_control_arm[
+                            "consumed_input_tokens"
+                        ],
+                        "state": ar_control_arm["state"],
+                        "notes": ar_control_arm["notes"],
+                    }
+                ),
                 "serial": {
                     "row_top1": serial_arm["row_top1"],
                     "state": serial_arm["state"],
@@ -2095,6 +2272,12 @@ def main(argv: list[str] | None = None) -> int:
                     "AR is a diagnostic signal, not a correctness failure. The "
                     "native row kernels may carry different numerics than the "
                     "token-serial path."
+                ),
+                (
+                    "The AR control replays the verifier inputs the native "
+                    "accept consumed (root plus accepted drafts). It is skipped, "
+                    "and the ownership contract decides the verdict, when the "
+                    "device commit row falls outside the captured inputs."
                 ),
                 (
                     "Draft tokens come from the record's AR trajectory because the "
