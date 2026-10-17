@@ -1,0 +1,916 @@
+{
+  "kind": "functional_streaming_diagnostic_not_performance",
+  "hardware": "Ryzen AI Max+ Pro 395 / Radeon 8060S gfx1151 / 128 GiB",
+  "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+  "server_command": "uv run python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --served-model-name qwen38fn-sampling --max-context-tokens 8192 --kv-storage bf16 --max-active-requests 1 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --metrics prometheus --host 127.0.0.1 --port 18389",
+  "probe_command": "uv run python /tmp/he-task20-live-stops.py",
+  "probe_source": "import sys, json, time, socket, subprocess\nfrom pathlib import Path\nsys.path.insert(0, '/home/lhl/hipEngine')\nimport httpx\nfrom scripts.qwen4exp_sampled_mtp_http_gate import extract, validate_route, fingerprint\nimport scripts.qwen4exp_sampled_mtp_http_gate as gate\n_original_unpack = gate.unpack\ndef unpack_allow_empty(choice, *, chat):\n    logs = choice.get('logprobs')\n    if not chat and logs is not None and not logs.get('tokens'):\n        assert all(not logs.get(k) for k in ('token_logprobs', 'top_logprobs', 'text_offset'))\n        return choice.get('text', ''), []\n    return _original_unpack(choice, chat=chat)\ngate.unpack = unpack_allow_empty\nr={'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'host':socket.gethostname(),'rows':[],'errors':[]}\np=Path('/tmp/he-task20-live-stops.json')\ndef save(): p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+'\\n')\nwith httpx.Client(base_url='http://127.0.0.1:18389',timeout=180) as c:\n    end=time.monotonic()+600\n    while True:\n        try:\n            ready=c.get('/ready',timeout=5)\n            if ready.status_code==200 and ready.json().get('ready'):break\n        except httpx.TransportError:pass\n        if time.monotonic()>end:raise TimeoutError('readiness')\n        time.sleep(1)\n    r['ready_before']=ready.json();r['models']=c.get('/v1/models').json();save()\n    for chat in (False,True):\n        for logs in (False,True):\n            for lang in ('en','ja'):\n                prompt='Explain why the sky is blue in several sentences.' if lang=='en' else '日本語で、空が青い理由を数文で説明してください。'\n                req={'model':'qwen38fn-sampling','max_tokens':48,'temperature':0.0,'seed':104,'speculative':True,'enable_thinking':False}\n                req.update({'messages':[{'role':'user','content':prompt}]} if chat else {'prompt':prompt})\n                if not chat:req.pop('enable_thinking')\n                req['stop'] = ('atmosphere' if lang == 'en' else '特に') if chat else 'Rayleigh'\n                if logs:req.update({'logprobs':True,'top_logprobs':3} if chat else {'logprobs':3})\n                endpoint='/v1/chat/completions' if chat else '/v1/completions'\n                pair=[]\n                for stream in (False,True):\n                    body=req|{'stream':stream}\n                    if stream:body['stream_options']={'include_usage':True,'include_hipengine':True}\n                    row={'chat':chat,'logs':logs,'lang':lang,'request':body};r['rows'].append(row)\n                    start=time.monotonic()\n                    try:\n                        if stream:\n                            events=[];times=[];done=False\n                            with c.stream('POST',endpoint,json=body) as response:\n                                row['status']=response.status_code;response.raise_for_status()\n                                for line in response.iter_lines():\n                                    if not line.startswith('data: '):continue\n                                    data=line[6:]\n                                    if data=='[DONE]':done=True;continue\n                                    event=json.loads(data);events.append(event)\n                                    for choice in event.get('choices',[]):\n                                        piece=(choice.get('delta') or {}).get('content','') if chat else choice.get('text','')\n                                        if piece:times.append(time.monotonic()-start)\n                            row.update(body=events,content_event_times=times,done=done)\n                            assert done\n                        else:\n                            response=c.post(endpoint,json=body);row['status']=response.status_code;row['body']=response.json();response.raise_for_status()\n                        row['wall_seconds']=time.monotonic()-start\n                        result=extract(row['body'],chat=chat);row['result']=result\n                        if logs:\n                            reconstructed = bytes(b for t in result['tokens'] for b in t['bytes']).decode('utf-8', errors='replace')\n                            # These selected stops cut either at a token boundary\n                            # or immediately after its leading space. Never allow\n                            # arbitrary missing logprob text in this diagnostic.\n                            assert result['text'] in (reconstructed, reconstructed + ' ')\n                            row['partial_token_suffix'] = result['text'][len(reconstructed):]\n                            validate_route(result | {'text': reconstructed},mtp=True,logs=True,full_mass=False)\n                        else:\n                            assert result['mtp']['used'] and result['mtp']['draft_cycles']>0\n                            assert result['usage']['completion_tokens']==len(result['ids'])\n                        assert req['stop'] not in result['text']\n                        assert result['finish_reason'] == 'stop'\n                        if stream:assert len(times)>1 and times[0]<row['wall_seconds']-.1, 'not incremental'\n                        pair.append(result);row['passed']=True\n                    except Exception as e:row['error']=repr(e);r['errors'].append({'chat':chat,'logs':logs,'lang':lang,'stream':stream,'error':repr(e)})\n                    save();print(chat,logs,lang,stream,row.get('error','PASS'),flush=True)\n                if len(pair)==2:\n                    def comparable(x):\n                        d=fingerprint(x)\n                        d['finish']={k:v for k,v in d['finish'].items() if k not in ('continuation_id','continuation_eligible')}\n                        return d\n                    if comparable(pair[0])!=comparable(pair[1]):r['errors'].append({'chat':chat,'logs':logs,'lang':lang,'error':'blocking/SSE mismatch'})\n                    save()\n    # Close a running response after the first visible token, then prove recovery.\n    req={'model':'qwen38fn-sampling','prompt':'Write a long explanation of how a computer works.','max_tokens':512,'temperature':0.0,'speculative':True,'stream':True}\n    with c.stream('POST','/v1/completions',json=req) as response:\n        response.raise_for_status()\n        for line in response.iter_lines():\n            if line.startswith('data: {'):\n                event=json.loads(line[6:])\n                if any(x.get('text') for x in event.get('choices',[])):break\n    response=c.post('/v1/completions',json=req|{'stream':False,'max_tokens':32})\n    r['recovery']={'status':response.status_code,'body':response.json()}\n    if response.status_code!=200:r['errors'].append({'error':'disconnect recovery failed'})\n    r['ready_after']=c.get('/ready').json();r['passed']=not r['errors'];save()\nprint('LIVE_NATIVE_COMPLETE',r['passed'],flush=True)\n",
+  "source_commit": "f73135346c85d43aba3f461197ce37ea50e9e51c",
+  "host": "zbook",
+  "errors": [],
+  "passed": true,
+  "rows": [
+    {
+      "chat": false,
+      "logs": false,
+      "lang": "en",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "Explain why the sky is blue in several sentences.",
+        "stop": "Rayleigh",
+        "stream": false
+      },
+      "status": 200,
+      "content_event_times": [],
+      "wall_seconds": 2.287053939886391,
+      "partial_token_suffix": null,
+      "result_sha256": "4e3df51c2e4b48233acd305b67e6d12147649eacb18027de717203195f0200af",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 47,
+        "accepted_draft_tokens": 30,
+        "rejected_draft_tokens": 17,
+        "acceptance_rate": 0.6382978723404256,
+        "draft_cycles": 16,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "passed": true
+    },
+    {
+      "chat": false,
+      "logs": false,
+      "lang": "en",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "Explain why the sky is blue in several sentences.",
+        "stop": "Rayleigh",
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "content_event_times": [
+        0.16467955498956144,
+        0.2828300248365849,
+        0.3962246209848672,
+        0.5146941498387605,
+        0.514984535984695,
+        0.5153862899169326,
+        0.6315375650301576,
+        0.6318624948617071,
+        0.7522018859162927,
+        0.7523930449970067,
+        0.752884317887947,
+        0.7534391798544675,
+        0.8728034689556807,
+        0.8731446599122137,
+        0.8737361510284245,
+        0.8742920248769224,
+        0.9939920348115265,
+        0.9942422949243337,
+        0.9948105229996145,
+        0.9952258130069822,
+        1.1107011779677123
+      ],
+      "wall_seconds": 2.086258473806083,
+      "partial_token_suffix": null,
+      "result_sha256": "4e3df51c2e4b48233acd305b67e6d12147649eacb18027de717203195f0200af",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 47,
+        "accepted_draft_tokens": 30,
+        "rejected_draft_tokens": 17,
+        "acceptance_rate": 0.6382978723404256,
+        "draft_cycles": 16,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp",
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "passed": true
+    },
+    {
+      "chat": false,
+      "logs": false,
+      "lang": "ja",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "日本語で、空が青い理由を数文で説明してください。",
+        "stop": "Rayleigh",
+        "stream": false
+      },
+      "status": 200,
+      "content_event_times": [],
+      "wall_seconds": 2.0236642700619996,
+      "partial_token_suffix": null,
+      "result_sha256": "f81fdad84b31a04d66f63fb86fb94cfeb4c7792a42b7433424c5d8257d36146f",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 42,
+        "accepted_draft_tokens": 32,
+        "rejected_draft_tokens": 10,
+        "acceptance_rate": 0.7619047619047619,
+        "draft_cycles": 14,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "passed": true
+    },
+    {
+      "chat": false,
+      "logs": false,
+      "lang": "ja",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "日本語で、空が青い理由を数文で説明してください。",
+        "stop": "Rayleigh",
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "content_event_times": [
+        0.19632715522311628,
+        0.3131979291792959,
+        0.4294994140509516,
+        0.5488426631782204,
+        0.5490341621916741,
+        0.5497127471026033,
+        0.5501010559964925,
+        0.6749180660117418,
+        0.675098906038329,
+        0.6755215190351009,
+        0.6758984972257167,
+        0.7989692671690136,
+        0.7993168700486422,
+        0.7997457850724459,
+        0.8002253160811961,
+        0.9221389121375978,
+        0.922269648173824,
+        0.9227089430205524,
+        0.9232751161325723,
+        1.042043284047395,
+        1.0421911422163248,
+        1.0422695490997285,
+        1.0424081401433796,
+        1.1640224740840495,
+        1.164296168135479,
+        1.1645377520471811,
+        1.2813449162058532,
+        1.2817063750699162,
+        1.2821017380338162,
+        1.2826419821940362,
+        1.4006474982015789,
+        1.4010748201981187,
+        1.4014164020773023,
+        1.4019431511405855,
+        1.5106607722118497
+      ],
+      "wall_seconds": 1.9203303891699761,
+      "partial_token_suffix": null,
+      "result_sha256": "f81fdad84b31a04d66f63fb86fb94cfeb4c7792a42b7433424c5d8257d36146f",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 42,
+        "accepted_draft_tokens": 32,
+        "rejected_draft_tokens": 10,
+        "acceptance_rate": 0.7619047619047619,
+        "draft_cycles": 14,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp",
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "passed": true
+    },
+    {
+      "chat": false,
+      "logs": true,
+      "lang": "en",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "Explain why the sky is blue in several sentences.",
+        "stop": "Rayleigh",
+        "logprobs": 3,
+        "stream": false
+      },
+      "status": 200,
+      "content_event_times": [],
+      "wall_seconds": 2.5874258410185575,
+      "partial_token_suffix": " ",
+      "result_sha256": "6a87801c003a41749f1da11172f31edb85fd31e7f165775930117a2edde7f1c5",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 47,
+        "accepted_draft_tokens": 30,
+        "rejected_draft_tokens": 17,
+        "acceptance_rate": 0.6382978723404256,
+        "draft_cycles": 16,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "passed": true
+    },
+    {
+      "chat": false,
+      "logs": true,
+      "lang": "en",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "Explain why the sky is blue in several sentences.",
+        "stop": "Rayleigh",
+        "logprobs": 3,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "content_event_times": [
+        0.18538054218515754,
+        0.30900896713137627,
+        0.4328826430719346,
+        0.5906134210526943,
+        0.59067752212286,
+        0.5909046481829137,
+        0.7204771679826081,
+        0.7205614761915058,
+        0.8837596431840211,
+        0.8838494920637459,
+        0.883915726095438,
+        0.8841621391475201,
+        1.0429224912077188,
+        1.042997231008485,
+        1.0432952111586928,
+        1.0435752670746297,
+        1.201837302185595,
+        1.202028081053868,
+        1.2023473200388253,
+        1.2027039101812989,
+        1.4696255151648074
+      ],
+      "wall_seconds": 2.5717925771605223,
+      "partial_token_suffix": " ",
+      "result_sha256": "6a87801c003a41749f1da11172f31edb85fd31e7f165775930117a2edde7f1c5",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 47,
+        "accepted_draft_tokens": 30,
+        "rejected_draft_tokens": 17,
+        "acceptance_rate": 0.6382978723404256,
+        "draft_cycles": 16,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp",
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "passed": true
+    },
+    {
+      "chat": false,
+      "logs": true,
+      "lang": "ja",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "日本語で、空が青い理由を数文で説明してください。",
+        "stop": "Rayleigh",
+        "logprobs": 3,
+        "stream": false
+      },
+      "status": 200,
+      "content_event_times": [],
+      "wall_seconds": 2.4264819968957454,
+      "partial_token_suffix": " ",
+      "result_sha256": "96b9cc0ef3b7728afc914c7a7f93ad6a6d3a71baf0a29966744bc16ee73a802e",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 42,
+        "accepted_draft_tokens": 32,
+        "rejected_draft_tokens": 10,
+        "acceptance_rate": 0.7619047619047619,
+        "draft_cycles": 14,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "passed": true
+    },
+    {
+      "chat": false,
+      "logs": true,
+      "lang": "ja",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "日本語で、空が青い理由を数文で説明してください。",
+        "stop": "Rayleigh",
+        "logprobs": 3,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "content_event_times": [
+        0.20729622105136514,
+        0.32347566401585937,
+        0.4446305511519313,
+        0.6194660440087318,
+        0.6195231610909104,
+        0.6197459700051695,
+        0.6199186339508742,
+        0.7786981291137636,
+        0.7787536131218076,
+        0.7789981220848858,
+        0.7792292260564864,
+        0.9395127759780735,
+        0.939584590960294,
+        0.9398074699565768,
+        0.9400489230174571,
+        1.1002557689789683,
+        1.100338303949684,
+        1.1004984751343727,
+        1.1007356201298535,
+        1.2616759440861642,
+        1.2617516659665853,
+        1.261977510061115,
+        1.262136738980189,
+        1.4062023181468248,
+        1.4062798139639199,
+        1.4063684800639749,
+        1.5645044459961355,
+        1.5645780039485544,
+        1.565088503062725,
+        1.5651322349440306,
+        1.7303101380821317,
+        1.73040526593104,
+        1.7304527249652892,
+        1.7306771769654006,
+        2.014033205108717
+      ],
+      "wall_seconds": 2.4032383910380304,
+      "partial_token_suffix": " ",
+      "result_sha256": "96b9cc0ef3b7728afc914c7a7f93ad6a6d3a71baf0a29966744bc16ee73a802e",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 42,
+        "accepted_draft_tokens": 32,
+        "rejected_draft_tokens": 10,
+        "acceptance_rate": 0.7619047619047619,
+        "draft_cycles": 14,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp",
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "passed": true
+    },
+    {
+      "chat": true,
+      "logs": false,
+      "lang": "en",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain why the sky is blue in several sentences."
+          }
+        ],
+        "stop": "atmosphere",
+        "stream": false
+      },
+      "status": 200,
+      "content_event_times": [],
+      "wall_seconds": 2.2207665001042187,
+      "partial_token_suffix": null,
+      "result_sha256": "0f2695db9cb9fdb23197374f21b6017f9bd7897f23e5d843340518bf9577b35f",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 45,
+        "accepted_draft_tokens": 31,
+        "rejected_draft_tokens": 14,
+        "acceptance_rate": 0.6888888888888889,
+        "draft_cycles": 15,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "passed": true
+    },
+    {
+      "chat": true,
+      "logs": false,
+      "lang": "en",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain why the sky is blue in several sentences."
+          }
+        ],
+        "stop": "atmosphere",
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "content_event_times": [
+        0.27710039517842233,
+        0.39582542702555656,
+        0.39619055297225714,
+        0.3966817860491574,
+        0.39730660896748304,
+        0.515750884078443,
+        0.5162420060951263,
+        0.5167383281514049,
+        0.5174410380423069,
+        0.635316955158487,
+        0.6357664591632783,
+        0.636317775119096,
+        0.636631925124675,
+        0.7555725211277604,
+        0.8746843701228499,
+        1.045395463006571,
+        1.0454719059634954,
+        1.1447306859772652,
+        1.1451930641196668,
+        1.1458204730879515
+      ],
+      "wall_seconds": 2.0962433021049947,
+      "partial_token_suffix": null,
+      "result_sha256": "0f2695db9cb9fdb23197374f21b6017f9bd7897f23e5d843340518bf9577b35f",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 45,
+        "accepted_draft_tokens": 31,
+        "rejected_draft_tokens": 14,
+        "acceptance_rate": 0.6888888888888889,
+        "draft_cycles": 15,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp",
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "passed": true
+    },
+    {
+      "chat": true,
+      "logs": false,
+      "lang": "ja",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、空が青い理由を数文で説明してください。"
+          }
+        ],
+        "stop": "特に",
+        "stream": false
+      },
+      "status": 200,
+      "content_event_times": [],
+      "wall_seconds": 1.775511777959764,
+      "partial_token_suffix": null,
+      "result_sha256": "74bf37f67f27825aadb28faf31ba2d7f5ebcf269f98f37dc169ac01434bf872c",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 36,
+        "accepted_draft_tokens": 10,
+        "rejected_draft_tokens": 26,
+        "acceptance_rate": 0.2777777777777778,
+        "draft_cycles": 12,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "passed": true
+    },
+    {
+      "chat": true,
+      "logs": false,
+      "lang": "ja",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、空が青い理由を数文で説明してください。"
+          }
+        ],
+        "stop": "特に",
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "content_event_times": [
+        0.29990115691907704,
+        0.4143733289092779,
+        0.5274981108959764,
+        0.6407927819527686,
+        0.7543173849117011,
+        0.8659836968872696,
+        0.9824035679921508,
+        0.982938552973792,
+        0.9833748119417578,
+        0.9837942398153245,
+        1.0964550299104303,
+        1.0967557749245316,
+        1.0970559290144593,
+        1.2074529470410198,
+        1.2079420159570873,
+        1.3171228389255702,
+        1.3176192620303482,
+        1.4284007018432021,
+        1.4289374698419124,
+        1.538278654916212,
+        1.538807117845863,
+        1.6510839159600437
+      ],
+      "wall_seconds": 1.6535134098958224,
+      "partial_token_suffix": null,
+      "result_sha256": "74bf37f67f27825aadb28faf31ba2d7f5ebcf269f98f37dc169ac01434bf872c",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 36,
+        "accepted_draft_tokens": 10,
+        "rejected_draft_tokens": 26,
+        "acceptance_rate": 0.2777777777777778,
+        "draft_cycles": 12,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp",
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "passed": true
+    },
+    {
+      "chat": true,
+      "logs": true,
+      "lang": "en",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain why the sky is blue in several sentences."
+          }
+        ],
+        "stop": "atmosphere",
+        "logprobs": true,
+        "top_logprobs": 3,
+        "stream": false
+      },
+      "status": 200,
+      "content_event_times": [],
+      "wall_seconds": 2.5663425740785897,
+      "partial_token_suffix": " ",
+      "result_sha256": "52eac1ac109d484de517eaa574a90afd17a1374fe4f52df526511864977c48c5",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 45,
+        "accepted_draft_tokens": 31,
+        "rejected_draft_tokens": 14,
+        "acceptance_rate": 0.6888888888888889,
+        "draft_cycles": 15,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "passed": true
+    },
+    {
+      "chat": true,
+      "logs": true,
+      "lang": "en",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain why the sky is blue in several sentences."
+          }
+        ],
+        "stop": "atmosphere",
+        "logprobs": true,
+        "top_logprobs": 3,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "content_event_times": [
+        0.28327530599199235,
+        0.45411899383179843,
+        0.4542900149244815,
+        0.45463274884968996,
+        0.454840790014714,
+        0.6153850129339844,
+        0.615789582952857,
+        0.6162698050029576,
+        0.7764468989335,
+        0.7766155749559402,
+        0.776941497810185,
+        0.7772475320380181,
+        0.8916378689464182,
+        1.0125655150040984,
+        1.1455683689564466,
+        1.1456486398819834,
+        1.3078471799381077,
+        1.3079362779390067,
+        1.308235729811713
+      ],
+      "wall_seconds": 2.5512930168770254,
+      "partial_token_suffix": " ",
+      "result_sha256": "52eac1ac109d484de517eaa574a90afd17a1374fe4f52df526511864977c48c5",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 45,
+        "accepted_draft_tokens": 31,
+        "rejected_draft_tokens": 14,
+        "acceptance_rate": 0.6888888888888889,
+        "draft_cycles": 15,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp",
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "passed": true
+    },
+    {
+      "chat": true,
+      "logs": true,
+      "lang": "ja",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、空が青い理由を数文で説明してください。"
+          }
+        ],
+        "stop": "特に",
+        "logprobs": true,
+        "top_logprobs": 3,
+        "stream": false
+      },
+      "status": 200,
+      "content_event_times": [],
+      "wall_seconds": 1.8248095891904086,
+      "partial_token_suffix": "",
+      "result_sha256": "262fe75adc4e6e09054eec3630afb8812bb5e2ce168fbda462c1c4aad611b1e3",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 36,
+        "accepted_draft_tokens": 10,
+        "rejected_draft_tokens": 26,
+        "acceptance_rate": 0.2777777777777778,
+        "draft_cycles": 12,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "passed": true
+    },
+    {
+      "chat": true,
+      "logs": true,
+      "lang": "ja",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 48,
+        "temperature": 0.0,
+        "seed": 104,
+        "speculative": true,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、空が青い理由を数文で説明してください。"
+          }
+        ],
+        "stop": "特に",
+        "logprobs": true,
+        "top_logprobs": 3,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "content_event_times": [
+        0.30967137892730534,
+        0.42197824199683964,
+        0.5411465808283538,
+        0.6582079029176384,
+        0.7732151669915766,
+        0.8908640828449279,
+        1.0572513579390943,
+        1.0573812020011246,
+        1.057626091875136,
+        1.057865631999448,
+        1.1973347899038345,
+        1.1976034848485142,
+        1.1979159808252007,
+        1.3190805399790406,
+        1.3192565208300948,
+        1.4449475009460002,
+        1.4450247059576213,
+        1.5753002259880304,
+        1.5753853858914226,
+        1.7010306799784303,
+        1.7013407619670033,
+        1.829825268825516
+      ],
+      "wall_seconds": 1.830857076914981,
+      "partial_token_suffix": "",
+      "result_sha256": "262fe75adc4e6e09054eec3630afb8812bb5e2ce168fbda462c1c4aad611b1e3",
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 36,
+        "accepted_draft_tokens": 10,
+        "rejected_draft_tokens": 26,
+        "acceptance_rate": 0.2777777777777778,
+        "draft_cycles": 12,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp",
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "passed": true
+    }
+  ],
+  "comparisons": [
+    {
+      "chat": false,
+      "logs": false,
+      "lang": "en",
+      "equal": true
+    },
+    {
+      "chat": false,
+      "logs": false,
+      "lang": "ja",
+      "equal": true
+    },
+    {
+      "chat": false,
+      "logs": true,
+      "lang": "en",
+      "equal": true
+    },
+    {
+      "chat": false,
+      "logs": true,
+      "lang": "ja",
+      "equal": true
+    },
+    {
+      "chat": true,
+      "logs": false,
+      "lang": "en",
+      "equal": true
+    },
+    {
+      "chat": true,
+      "logs": false,
+      "lang": "ja",
+      "equal": true
+    },
+    {
+      "chat": true,
+      "logs": true,
+      "lang": "en",
+      "equal": true
+    },
+    {
+      "chat": true,
+      "logs": true,
+      "lang": "ja",
+      "equal": true
+    }
+  ],
+  "recovery_status": 200,
+  "ready_after": true,
+  "service_after": {
+    "accepting_requests": true,
+    "driver_alive": true,
+    "closing": false,
+    "closed": false,
+    "failure": null
+  },
+  "queue_after": {
+    "depth": 0,
+    "max_depth": null,
+    "worker_active": false,
+    "active_requests": 0,
+    "max_active_requests": 1,
+    "scheduler_fairness": {
+      "policy": "fifo_compatible_sampling_key",
+      "compatible_sampling_coalescing": true,
+      "continuous_decode": true,
+      "preemptive_fairness": false
+    },
+    "batch_window_ms": 0.0
+  },
+  "limitations": [
+    "C1 greedy functional streaming diagnostic only, not performance or numerical qualification.",
+    "Direct-provider, structured streaming and backpressure remain unqualified.",
+    "Partial-token logprob omission allows only the single trailing space exposed by these selected stops; all complete-token records must match blocking responses.",
+    "Text stop mismatch drains backend generation; no early backend cancellation claim."
+  ]
+}
