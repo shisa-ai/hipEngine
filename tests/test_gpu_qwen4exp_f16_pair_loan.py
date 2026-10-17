@@ -18,11 +18,12 @@ except OSError:
 pytestmark = pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime unavailable")
 
 
-@pytest.mark.parametrize("rows,roles,ns", [
-    (1024, ("attn_qkv", "attn_gate"), (10240, 6144)),
-    (4096, ("shared_gate", "shared_up"), (640, 640)),
+@pytest.mark.parametrize("rows,roles,ns,pair_admitted", [
+    (1024, ("attn_qkv", "attn_gate"), (10240, 6144), False),
+    (4096, ("shared_gate", "shared_up"), (640, 640), True),
 ])
-def test_native_pair_nondefault_stream_exact_and_bounded(monkeypatch, rows, roles, ns):
+def test_native_pair_nondefault_stream_exact_and_bounded(monkeypatch, rows, roles, ns,
+                                                          pair_admitted):
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_dense_wide as wide
@@ -70,7 +71,8 @@ def test_native_pair_nondefault_stream_exact_and_bounded(monkeypatch, rows, role
                 runner._launch_qwen4_exp_dense_pair(*weights, xd.ptr, od[0].ptr, od[1].ptr,
                     rows, k, *ns, stream=stream, runtime=runtime)
                 runtime.stream_synchronize(stream)
-                assert len(casts) - start == (1 if enabled == "1" else 2)
+                expected_casts = 1 if pair_admitted and enabled == "1" else 2
+                assert len(casts) - start == expected_casts
                 assert all(c[2] == rows * k for c in casts[start:])
                 assert memory_stats()["current_allocated_bytes"] == live["current_allocated_bytes"]
                 snapshots.append([_download(d, (rows, n), np.float32, runtime).tobytes()
