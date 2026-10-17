@@ -4,8 +4,9 @@
 explicit MTP work. The focused lifetime follow-up also passes approximately
 30K AR/MTP, cancellation and recovery. Hard thinking controls pass on text AR
 and named MTP-to-AR fallback. Text AR sampling/logprobs pass focused live
-checks, including combined hard thinking/logprobs. True multi-request batching,
-sampled MTP and live MTP streaming are still open.
+checks, including combined hard thinking/logprobs. C1 sampled MTP and its
+buffered-SSE logprobs also pass the full category/heldout functional audit.
+True multi-request batching and incremental MTP streaming are still open.
 A passing unit suite does not establish those product capabilities.
 
 Implementation and final qualification are tracked by the approved
@@ -90,7 +91,7 @@ provide the functional evidence. This closes PS3/task 16 for those text routes;
 controlled speculation, multimodal controls and full task-quality qualification
 remain separate work.
 
-## PS4 sampling/logprob follow-up (partial)
+## PS4 sampling/logprob follow-up
 
 Text AR now supports request-owned seeded sampling and selected/top logprobs.
 The [byte-aware HTTP packet](../benchmarks/results/2026-10-17-zbook-qwen4exp-sampling-bytes-http.json)
@@ -129,8 +130,8 @@ CPU HTTP tests use the real resident MTP owner with analytic target logits and
 verify actual speculative work for completions/chat, blocking/SSE, with and
 without logprobs. Structured controls, stops, alternate EOS, hard thinking and
 resident sessions remain rejected on the generic route or use named explicit
-MTP-to-AR fallback. GPU sampled-MTP qualification is pending; PS4/task 17 stays
-open. SSE remains buffered and automatic MTP remains off for this provider.
+MTP-to-AR fallback. SSE remains buffered and automatic MTP remains off for
+this provider; those capabilities require separate qualification.
 
 The first [98-request sampled-MTP audit](../benchmarks/results/2026-10-17-zbook-qwen4exp-sampled-mtp-http-diagnostic.json)
 passes 75 request checks. Twenty SSE checks lacked the opt-in execution metadata
@@ -144,8 +145,26 @@ repairs with unchanged text, IDs and probabilities. Its 20 SSE requests expose
 a second defect: buffered logprob responses omit the documented compact MTP
 summary and route shape despite carrying actual execution telemetry. The
 buffered response paths now forward that summary, with CPU coverage for both
-endpoints/spellings and opt-in/opt-out metadata. Live SSE qualification remains
-pending; neither earlier attempt is a passing packet.
+endpoints/spellings and opt-in/opt-out metadata. Both earlier attempts are
+preserved as failed packets.
+
+The [functional qualification packet](../benchmarks/results/2026-10-17-zbook-qwen4exp-sampled-mtp-http.json)
+combines the original 75 passing requests, three repaired EOS requests, and
+20 passing SSE requests on server source `e2fd3bf87`: **98/98 request checks
+and 60/60 comparisons pass**. This is focused-repair evidence, not a fresh
+98-request run on one final source. All ten category-suite prompts and eight
+heldouts have true AR controls, both sampled-MTP spellings, buffered SSE and
+late same-seed repeats. Two completion cases also test changed seeds and
+logprob-disabled requests. Eighty requests execute actual MTP; 18 execute AR.
+The final SSE replay preserves text, IDs, probabilities and usage while adding
+the missing summary. Every merged body and comparison was revalidated.
+
+This closes PS4/task 17 for C1 text sampling/logprobs on the tested zbook
+production `UD-Q4_K_XL`, BF16 KV, Q8_0 MTP B3, 8K-capacity configuration with
+48-token outputs. CPU distribution and transaction tests complement the live
+functional checks. It does not qualify task quality, production numerical
+envelopes, constrained MTP, incremental SSE, concurrency, economics or
+automatic MTP. Final readiness passed and the private audit server was stopped.
 
 ## Baseline feature grid (before PS1/PS3/PS5 fixes)
 
@@ -188,11 +207,12 @@ verification work; candidate rows must not be called concurrent requests.
    The slow fake/real service tests and the tracked live follow-up cover driver
    failure, shutdown, 29,912-token AR/MTP, explicit deadlines, client
    cancellation, and subsequent recovery. See the PS1 lifetime follow-up above.
-2. **Thinking controls and sampling/logprobs pass on text AR; sampled MTP
-   remains open.** The PS3 follow-up verifies hard caps and answer reservation
-   in direct/resident AR, blocking and SSE, with honest hard-policy MTP fallback.
-   PS4 verifies functional AR sampling/logprobs, byte-accurate Japanese metadata
-   and combined thinking/logprob output. Actual sampled MTP remains open.
+2. **Completed for the tested text scope: thinking controls and sampling/logprobs.**
+   PS3 verifies hard caps and answer reservation in direct/resident AR,
+   blocking and SSE, with honest hard-policy MTP fallback. PS4 verifies AR and
+   actual sampled-MTP logprobs, byte-accurate Japanese metadata, seeded repeats,
+   request isolation, and combined AR thinking/logprob output. Controlled MTP
+   and full production task/numerical qualification remain separate gates.
 3. **Completed for BF16:** generic speculative admission now resolves the
    effective KV storage instead of rejecting irrelevant BF16 scale metadata.
    Both request spellings execute the intended service-owned MTP route with
