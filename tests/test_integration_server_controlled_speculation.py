@@ -113,6 +113,38 @@ def test_stops_and_eos_execute_mtp(monkeypatch, spelling, stream, temperature, l
         api.close()
 
 
+@pytest.mark.parametrize('chat', [False, True])
+@pytest.mark.parametrize('spelling', ['speculative', 'speculative_mtp'])
+@pytest.mark.parametrize('stream', [False, True])
+def test_text_stop_not_matching_standalone_tokenization_never_leaks(monkeypatch, chat, spelling, stream):
+    api, llm, target, draft, cfg = setup(monkeypatch, 'alphaENDignored')
+    tokenize = llm.tokenize
+    # Real BPE tokenization of a standalone stop can differ from its in-context
+    # token sequence. Force that case while keeping normal prompt tokenization.
+    llm.tokenize = lambda text, **kw: [259, 260] if text == 'END' else tokenize(text, **kw)
+    body = dict(model='fake-model', max_tokens=40, temperature=0, stop='END', stream=stream, **{spelling: True})
+    if chat:
+        body.update(messages=[dict(role='user', content='request')], enable_thinking=False)
+    else:
+        body['prompt'] = 'request'
+    if stream:
+        body['stream_options'] = dict(include_usage=True, include_hipengine=True)
+    try:
+        with TestClient(create_app(cfg, llm=llm)) as client:
+            response = client.post('/v1/chat/completions' if chat else '/v1/completions', json=body)
+        choice, extra, payloads = extract(response, stream)
+        prove_mtp(llm, target, draft, extra, spelling)
+        text = ''.join(((c.get('delta') or c.get('message') or {}).get('content') or '') if chat else c.get('text', '')
+                       for p in payloads for c in p.get('choices', []))
+        assert text == 'alpha'
+        assert choice['finish_reason'] == 'stop'
+        assert extra['generated_token_ids']
+        usage = next(p['usage'] for p in reversed(payloads) if p.get('usage'))
+        assert usage['completion_tokens'] == len(extra['generated_token_ids'])
+    finally:
+        api.close()
+
+
 def test_queue_does_not_coalesce_hard_and_hint_policies():
     from hipengine import SamplingParams
     from hipengine.server.api import _GenerationBatcher, _QueuedGeneration

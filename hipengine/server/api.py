@@ -6979,6 +6979,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             request.stream
             and len(expanded_prompts) == 1
             and not request.echo
+            # Standalone stop tokenization need not match in-context BPE.
+            # Buffer until a text-level incremental stop filter owns publication.
+            and not request.stop
             and (not _request_logprobs_enabled(request) or live_completion_logprobs)
             and not _structured_result_validation(request)
         ):
@@ -7344,6 +7347,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     stream_chat_completion_many
                     if _request_n(request) > 1
                     or (request.logprobs and not live_chat_logprobs)
+                    or bool(request.stop)
                     or _structured_result_validation(request)
                     else stream_chat_completion
                 )
