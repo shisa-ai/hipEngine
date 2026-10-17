@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 from pathlib import Path
 import time
@@ -161,16 +161,13 @@ class Qwen4ExpMTPTextProvider:
         plan_sampler(request)  # Validate before any model work, including max_tokens=0.
         if request.row_seeds and len(request.row_seeds) != len(request.prompts):
             raise ValueError("row_seeds must have one entry per prompt")
-        if (request.grammar is not None or request.stop_token_ids or request.stop_token_sequences
-                or request.min_tokens or request.forced_tokens_pending
+        if (request.grammar is not None or request.forced_tokens_pending
                 or request.post_thinking_forced_tokens_pending
                 or request.force_sequence_completion_token_sequences
                 or request.json_object_close_forcing or request.tool_call_constraint
                 or request.thinking_hard_token_cap is not None
                 or request.thinking_soft_close_window or request.resident_session_key):
             raise NotImplementedError("Qwen4Exp MTP does not yet support structured or thinking controls")
-        if request.eos_token_id not in (None, self.target_generator.tokenizer.eos_token_id):
-            raise NotImplementedError("Qwen4Exp MTP does not support alternate EOS")
 
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         self._require_open()
@@ -232,7 +229,7 @@ class Qwen4ExpMTPTextProvider:
                 f"capacity ({capacity} tokens)"
             )
         # Shared AR sampler semantics, with one independent state per iterator.
-        from hipengine.generation.qwen4_exp_gguf import _sampling_state
+        from hipengine.generation.qwen4_exp_gguf import _sampling_state, _token_finish
 
         sampling_state = sampling_state if sampling_state is not None else _sampling_state(request, token_ids, row_index)
         controlled = sampling_state is not None
@@ -291,15 +288,13 @@ class Qwen4ExpMTPTextProvider:
         root_token = generated[0]
         root_hidden = result.hidden_seed
         cycles: list[Qwen4ExpMTPCycle] = []
-        reason = "length"
-        eos = int(self.target_generator.tokenizer.eos_token_id)
-        if not request.ignore_eos and root_token == eos:
-            reason = "eos"
+        default_eos = int(self.target_generator.tokenizer.eos_token_id)
+        finish = _token_finish(request, generated, None, default_eos)
 
         next_budget = yield Qwen4ExpMTPProgress(
             token_ids=(root_token,),
             cycle=None,
-            finished=not (len(generated) < request.max_tokens and reason != "eos"),
+            finished=finish is not None,
             token_logprobs=tuple(token_logprobs),
         )
 
@@ -310,7 +305,7 @@ class Qwen4ExpMTPTextProvider:
         ) not in {"", "0", "false", "False"} and hasattr(
             target_runner, "verify_target_block_state_rows"
         )
-        while len(generated) < request.max_tokens and reason != "eos":
+        while finish is None:
             step_start = len(generated)
             raise_if_generation_deadline_expired(request)
             remaining = request.max_tokens - len(generated)
@@ -336,11 +331,10 @@ class Qwen4ExpMTPTextProvider:
                 root_token = select(verified)
                 root_hidden = verified.hidden_seed
                 generated.append(root_token)
-                if not request.ignore_eos and root_token == eos:
-                    reason = "eos"
+                finish = _token_finish(request, generated, None, default_eos)
                 next_budget = yield Qwen4ExpMTPProgress(
                     token_ids=(root_token,), cycle=None,
-                    finished=len(generated) >= request.max_tokens or reason == "eos",
+                    finished=finish is not None,
                     token_logprobs=tuple(token_logprobs[step_start:]),
                 )
                 continue
@@ -401,10 +395,8 @@ class Qwen4ExpMTPTextProvider:
                         mismatch = int(truth)
                     elif candidate is not None:
                         accepted += 1
-                    if not request.ignore_eos and int(truth) == eos:
-                        reason = "eos"
-                    if (mismatch is not None or reason == "eos"
-                            or len(generated) >= request.max_tokens):
+                    finish = _token_finish(request, generated, None, default_eos)
+                    if mismatch is not None or finish is not None:
                         break
                 target_runner.commit_target_block_rows(consumed)
                 assert block.hidden_seeds is not None
@@ -436,13 +428,8 @@ class Qwen4ExpMTPTextProvider:
                     accepted += 1
                 else:
                     mismatch = truth
-                if not request.ignore_eos and truth == eos:
-                    reason = "eos"
-                should_stop = (
-                    mismatch is not None
-                    or reason == "eos"
-                    or len(generated) >= request.max_tokens
-                )
+                finish = _token_finish(request, generated, None, default_eos)
+                should_stop = mismatch is not None or finish is not None
                 record_phase("acceptance_control", acceptance_started)
                 if should_stop:
                     break
@@ -461,9 +448,7 @@ class Qwen4ExpMTPTextProvider:
             next_budget = yield Qwen4ExpMTPProgress(
                 token_ids=tuple(generated[step_start:]),
                 cycle=cycles[-1],
-                finished=not (
-                    len(generated) < request.max_tokens and reason != "eos"
-                ),
+                finished=finish is not None,
                 token_logprobs=tuple(token_logprobs[step_start:]),
             )
         self.last_cycles = tuple(cycles)
@@ -556,12 +541,7 @@ class Qwen4ExpMTPTextProvider:
             generated_token_ids=tuple(generated),
             token_logprobs=tuple(token_logprobs),
             telemetry=telemetry,
-            finish_details=FinishDetails(
-                reason=reason,
-                eos_token_id=eos if reason == "eos" else None,
-                length_limit=request.max_tokens if reason == "length" else None,
-                sampler_mode=sampler_mode,
-            ),
+            finish_details=replace(finish, sampler_mode=sampler_mode),
         )
 
     def _generate_one(self, prompt: Any, request: GenerationRequest, *, row_index: int = 0) -> GenerationOutput:

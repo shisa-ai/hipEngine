@@ -8,9 +8,7 @@ from tests.test_unit_qwen4exp_mtp_steps import _provider, _request
 
 @pytest.mark.parametrize('method', ['blocking', 'iterator', 'stream'])
 @pytest.mark.parametrize('controls', [
-    {'stop_token_ids': (10,)}, {'stop_token_sequences': ((11, 12),)},
-    {'min_tokens': 2, 'eos_token_id': 99_999}, {'forced_tokens_pending': (10,)},
-    {'json_object_close_forcing': True}, {'eos_token_id': 42},
+    {'forced_tokens_pending': (10,)}, {'json_object_close_forcing': True},
     {'thinking_hard_token_cap': 0, 'thinking_close_token_ids': (42,)},
 ])
 def test_mtp_rejects_unimplemented_controls_before_prefill(method, controls):
