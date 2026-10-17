@@ -3,8 +3,9 @@
 **Updated: 2026-10-17. The grid is not complete.** Short greedy AR and
 explicit MTP work. The focused lifetime follow-up also passes approximately
 30K AR/MTP, cancellation and recovery. Hard thinking controls pass on text AR
-and named MTP-to-AR fallback. Logprobs, true multi-request batching, and live
-MTP streaming are still open.
+and named MTP-to-AR fallback. Text AR sampling/logprobs pass focused live
+checks; combined thinking/logprob qualification, true multi-request batching,
+and live MTP streaming are still open.
 A passing unit suite does not establish those product capabilities.
 
 Implementation and final qualification are tracked by the approved
@@ -89,6 +90,29 @@ provide the functional evidence. This closes PS3/task 16 for those text routes;
 controlled speculation, multimodal controls and full task-quality qualification
 remain separate work.
 
+## PS4 sampling/logprob follow-up (partial)
+
+Text AR now supports request-owned seeded sampling and selected/top logprobs.
+The [byte-aware HTTP packet](../benchmarks/results/2026-10-17-zbook-qwen4exp-sampling-bytes-http.json)
+at server source `e7d52091e` records 26 passing generation checks and four
+separate early-rejection checks. It covers English/Japanese completions and
+chat, greedy/sampled distributions, repeated and changed seeds, blocking/SSE,
+Japanese stop trimming and explicit-MTP-requested AR fallback. Japanese chat
+includes both UTF-8 fragments and the final punctuation's probability; all 12
+blocking cases matched against the earlier audit keep their generated IDs.
+See [token-byte metadata](TOKEN-LOGPROBS.md) for reconstruction and legacy
+completion candidate identity.
+
+The extra hard-thinking/logprob check found a blocking/SSE whitespace mismatch:
+blocking content removed the final generated newline while SSE and logprobs
+kept it. The CPU repair passes 633 focused tests, but its live recheck is still
+open. The initial probe also used an internal thinking field name; the corrected
+focused request uses public `hard_think_cap`. Both attempts are preserved.
+
+`speculative_mtp=true` with sampling takes named AR fallback; generic
+`speculative=true` rejects these controls before model execution. Those are
+admission observations, **not sampled MTP coverage**. PS4/task 17 stays open.
+
 ## Baseline feature grid (before PS1/PS3/PS5 fixes)
 
 | Check | AR | Explicit MTP | Verdict |
@@ -130,11 +154,11 @@ verification work; candidate rows must not be called concurrent requests.
    The slow fake/real service tests and the tracked live follow-up cover driver
    failure, shutdown, 29,912-token AR/MTP, explicit deadlines, client
    cancellation, and subsequent recovery. See the PS1 lifetime follow-up above.
-2. **Thinking controls complete on text AR; logprobs still open.** The PS3
-   follow-up verifies hard caps and answer reservation in direct/resident AR,
-   blocking and SSE, with honest hard-policy MTP fallback. Logprob collection
-   remains unsupported and its rejection is still too late; task 17 owns that
-   repair and sampled generation.
+2. **Thinking controls complete on text AR; combined sampling qualification
+   remains open.** The PS3 follow-up verifies hard caps and answer reservation
+   in direct/resident AR, blocking and SSE, with honest hard-policy MTP fallback.
+   PS4 adds functional AR sampling/logprobs and byte-accurate Japanese metadata.
+   Its thinking/logprob whitespace recheck and actual sampled MTP remain open.
 3. **Completed for BF16:** generic speculative admission now resolves the
    effective KV storage instead of rejecting irrelevant BF16 scale metadata.
    Both request spellings execute the intended service-owned MTP route with

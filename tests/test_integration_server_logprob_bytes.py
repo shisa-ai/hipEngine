@@ -10,7 +10,7 @@ from hipengine.generation.registry import GenerationOutput, GenerationStreamChun
 from hipengine.server.api import (
     ServerConfig, create_app, _chat_logprobs, _chat_visible_content_logprobs,
     _completion_logprobs, _coerce_token_logprobs, _stream_token_logprobs_for_text_span,
-    _trim_token_logprobs,
+    _trim_token_logprobs, _strip_chat_terminal_markers,
 )
 from tests.test_integration_server_api import FakeLLM, _sse_payloads
 from tests.test_unit_token_logprob_bytes import fragments
@@ -80,6 +80,32 @@ def test_http_byte_fragments_have_all_probabilities(chat, stream):
         assert [p for row in rows for p in row['token_logprobs']] == [-.25] * 3
         raw = [b for row in rows for piece in row['hipengine']['token_bytes'] for b in piece]
         assert bytes(raw).decode() == '舐。'
+
+
+@pytest.mark.parametrize('prefix', ['', '<think>hidden</think>'])
+def test_blocking_and_buffered_chat_preserve_generated_trailing_newline(prefix):
+    visible = '舐。\n'
+    tokens = fragments() + (TokenLogprob(3, '\n', -.5, token_bytes=(10,)),)
+    if prefix:
+        tokens = (TokenLogprob(99, prefix, -.9, token_bytes=tuple(prefix.encode())),) + tokens
+    fake = FakeLLM(detailed_outputs=[GenerationOutput(text=prefix + visible, token_logprobs=tokens)])
+    # Flash-Next's model-owned parser leaves plain text untouched without tools.
+    fake.chat_tool_parser = SimpleNamespace(parse=lambda *_: None, requires_declared_tools=True)
+    client = TestClient(create_app(ServerConfig(model='fake-path', served_model_name='fake-model'), llm=fake))
+    body = dict(model='fake-model', messages=[dict(role='user', content='hello')], logprobs=True, top_logprobs=1)
+    blocking = client.post('/v1/chat/completions', json=body).json()['choices'][0]
+    events = _sse_payloads(client.post('/v1/chat/completions', json=body | {'stream': True}).text)
+    chunks = [c for event in events for c in event.get('choices', [])]
+    streamed = ''.join(c.get('delta', {}).get('content', '') for c in chunks)
+    assert blocking['message']['content'] == streamed == visible
+    for logs in [blocking['logprobs']['content'], [t for c in chunks if c.get('logprobs') for t in c['logprobs']['content']]]:
+        assert bytes(b for t in logs for b in t['bytes']).decode() == visible
+        assert len(logs) == 4
+
+
+@pytest.mark.parametrize('text', ['answer\n', 'answer\n<|im_end|>', 'answer\n<|im_end|> \n'])
+def test_terminal_marker_cleanup_preserves_whitespace_generated_before_eos(text):
+    assert _strip_chat_terminal_markers(text) == 'answer\n'
 
 
 def test_completion_preserves_top_candidates_with_identical_replacement_text():

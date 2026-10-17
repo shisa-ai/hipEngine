@@ -16284,22 +16284,20 @@ def _tool_arguments_json(arguments: Any) -> str:
 
 
 def _strip_chat_terminal_markers(text: str) -> str:
-    """Remove trailing chat-template terminal markers (e.g. the EOS token).
+    """Remove terminal markers, not whitespace generated before them.
 
-    The decoded generation includes the terminating special token (for Qwen
-    ``<|im_end|>``) in visible content. This strips trailing terminal markers
-    and trailing whitespace so clients never see them.
+    Whitespace following an actual terminal marker is template residue. Without
+    that marker it is model output and must match streaming text and logprobs.
     """
 
     stripped = str(text)
-    changed = True
-    while changed:
-        changed = False
-        for marker in _CHAT_TEMPLATE_TERMINAL_MARKERS:
-            if marker and stripped.endswith(marker):
-                stripped = stripped[: -len(marker)]
-                changed = True
-    return stripped.rstrip()
+    while True:
+        candidate = stripped.rstrip()
+        marker = next((marker for marker in _CHAT_TEMPLATE_TERMINAL_MARKERS
+                       if marker and candidate.endswith(marker)), None)
+        if marker is None:
+            return stripped
+        stripped = candidate[:-len(marker)]
 
 
 def _chat_message_from_parsed(parsed: _ParsedChatOutput) -> tuple[dict[str, Any], str]:

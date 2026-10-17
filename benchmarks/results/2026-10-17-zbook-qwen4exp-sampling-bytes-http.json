@@ -1,0 +1,693 @@
+{
+  "schema": "hipengine.qwen4exp.byte_logprob_http.v1",
+  "date": "2026-10-17",
+  "source_commit": "e7d52091e0d37658d934a2d5e082e2219e4e4a71",
+  "host": {
+    "name": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "hardware": "Ryzen AI Max+ Pro 395 / Radeon 8060S gfx1151 / 128 GiB UMA"
+  },
+  "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "quant": "gguf_ud_q4_k_xl",
+  "profile": "production",
+  "kv": "bf16",
+  "context": 8192,
+  "active_requests": 1,
+  "sidecar": "/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+  "candidate_budget": 3,
+  "mtp_serving": "opt_in",
+  "mtp_thinking": "hard",
+  "server_command": "uv run python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --quant gguf_ud_q4_k_xl --execution-profile production --served-model-name qwen38fn-sampling --max-context-tokens 8192 --kv-storage bf16 --max-active-requests 1 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --metrics prometheus --host 127.0.0.1 --port 18389",
+  "reports": [
+    {
+      "path": "/tmp/he-qwen38fn-sampling-e7d52091e/report.json",
+      "sha256": "9a6e6bae964e9094180e796eacd1dcee26a435561efc611850251c99f22f0da8",
+      "probe_sha256": "5cd4acef65798c1027ed97d4c6ae772bb194ad4417070fa2f9d15592b70b3a34"
+    },
+    {
+      "path": "/tmp/he-qwen38fn-sampling-e7d52091e-thinking-repair/report.json",
+      "sha256": "3d691b3974704f32153b9872922aee40a0d5e2c9e69db6f4f447b2ed1a07ccb2",
+      "probe_sha256": "19382fe88a0db7255baf2fcb0c32191f3b49183973bc1c910eb94a5e59494317"
+    }
+  ],
+  "command": "uv run python scripts/qwen4exp_sampling_http_gate.py --source-commit e7d52091e0d37658d934a2d5e082e2219e4e4a71 --output /tmp/he-qwen38fn-sampling-e7d52091e --baseline-report /tmp/he-qwen38fn-sampling-7f397644c/report.json",
+  "focused_command": "uv run python scripts/qwen4exp_sampling_http_gate.py --source-commit e7d52091e0d37658d934a2d5e082e2219e4e4a71 --output /tmp/he-qwen38fn-sampling-e7d52091e-thinking-repair --case hard_thinking",
+  "rows": [
+    {
+      "name": "completion-greedy-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-greedy-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-sampled-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-sampled-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-repeat1-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-repeat1-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-other_seed-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-other_seed-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-ja-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-ja-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-mtp_requested-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-mtp_requested-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "completion-generic_requested-sse0",
+      "status": 400,
+      "passed": true,
+      "check_kind": "early_rejection_only"
+    },
+    {
+      "name": "completion-generic_requested-sse1",
+      "status": 400,
+      "passed": true,
+      "check_kind": "early_rejection_only"
+    },
+    {
+      "name": "chat-greedy-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-greedy-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-sampled-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-sampled-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-repeat1-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-repeat1-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-other_seed-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-other_seed-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-ja-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 31
+    },
+    {
+      "name": "chat-ja-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 31
+    },
+    {
+      "name": "chat-mtp_requested-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "baseline_ids_equal": true,
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-mtp_requested-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 32
+    },
+    {
+      "name": "chat-generic_requested-sse0",
+      "status": 400,
+      "passed": true,
+      "check_kind": "early_rejection_only"
+    },
+    {
+      "name": "chat-generic_requested-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "early_rejection_only"
+    },
+    {
+      "name": "chat-ja_stop-sse0",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 30
+    },
+    {
+      "name": "chat-ja_stop-sse1",
+      "status": 200,
+      "passed": true,
+      "check_kind": "sampling_logprobs",
+      "visible_tokens": 30
+    },
+    {
+      "name": "chat-hard_thinking-sse0",
+      "status": 400,
+      "passed": false,
+      "check_kind": "sampling_logprobs",
+      "diagnostic": "Initial probe used unsupported internal field thinking_hard_token_cap; see focused rerun."
+    },
+    {
+      "name": "chat-hard_thinking-sse1",
+      "status": 400,
+      "passed": false,
+      "check_kind": "sampling_logprobs",
+      "diagnostic": "Initial probe used unsupported internal field thinking_hard_token_cap; see focused rerun."
+    }
+  ],
+  "passing_generation_checks": 26,
+  "passing_rejection_checks": 4,
+  "japanese_chat": {
+    "text": "銀色の月を飲み込もうとした黒猫は、水面に映るその光を舐めると、静かに眠りにつきました。",
+    "generated_token_ids": [
+      101143,
+      183583,
+      96212,
+      28452,
+      178986,
+      151171,
+      159353,
+      172631,
+      246918,
+      98500,
+      14876,
+      5205,
+      105874,
+      19054,
+      97844,
+      28310,
+      55407,
+      96183,
+      28452,
+      96035,
+      238,
+      58852,
+      149671,
+      5205,
+      97026,
+      155563,
+      99018,
+      29342,
+      149808,
+      150679,
+      1710,
+      248046
+    ],
+    "logprob_tokens": [
+      [
+        "銀",
+        [
+          233,
+          138,
+          128
+        ],
+        -0.13623675245901673
+      ],
+      [
+        "色の",
+        [
+          232,
+          137,
+          178,
+          227,
+          129,
+          174
+        ],
+        -0.1149255419624492
+      ],
+      [
+        "月",
+        [
+          230,
+          156,
+          136
+        ],
+        -0.5576408214907004
+      ],
+      [
+        "を",
+        [
+          227,
+          130,
+          146
+        ],
+        -0.3883693630313247
+      ],
+      [
+        "飲み",
+        [
+          233,
+          163,
+          178,
+          227,
+          129,
+          191
+        ],
+        -0.3576964573621169
+      ],
+      [
+        "込",
+        [
+          232,
+          190,
+          188
+        ],
+        -0.05374239236241594
+      ],
+      [
+        "もう",
+        [
+          227,
+          130,
+          130,
+          227,
+          129,
+          134
+        ],
+        -0.012208825204812656
+      ],
+      [
+        "とした",
+        [
+          227,
+          129,
+          168,
+          227,
+          129,
+          151,
+          227,
+          129,
+          159
+        ],
+        -1.091230236676271
+      ],
+      [
+        "黒",
+        [
+          233,
+          187,
+          146
+        ],
+        -1.1187393852043401
+      ],
+      [
+        "猫",
+        [
+          231,
+          140,
+          171
+        ],
+        -0.0002586447220629154
+      ],
+      [
+        "は",
+        [
+          227,
+          129,
+          175
+        ],
+        -0.27496590689258943
+      ],
+      [
+        "、",
+        [
+          227,
+          128,
+          129
+        ],
+        -6.924437677842469e-06
+      ],
+      [
+        "水面",
+        [
+          230,
+          176,
+          180,
+          233,
+          157,
+          162
+        ],
+        -0.12230945199472675
+      ],
+      [
+        "に",
+        [
+          227,
+          129,
+          171
+        ],
+        -0.008050094438044702
+      ],
+      [
+        "映",
+        [
+          230,
+          152,
+          160
+        ],
+        -0.10723576802733492
+      ],
+      [
+        "る",
+        [
+          227,
+          130,
+          139
+        ],
+        -0.43487376931963395
+      ],
+      [
+        "その",
+        [
+          227,
+          129,
+          157,
+          227,
+          129,
+          174
+        ],
+        -0.2926094684992998
+      ],
+      [
+        "光",
+        [
+          229,
+          133,
+          137
+        ],
+        -0.14136948982572223
+      ],
+      [
+        "を",
+        [
+          227,
+          130,
+          146
+        ],
+        -0.25921117302705793
+      ],
+      [
+        "�",
+        [
+          232,
+          136
+        ],
+        -1.564569372101242
+      ],
+      [
+        "�",
+        [
+          144
+        ],
+        -2.8701984509987333e-06
+      ],
+      [
+        "め",
+        [
+          227,
+          130,
+          129
+        ],
+        -0.1772608715013995
+      ],
+      [
+        "ると",
+        [
+          227,
+          130,
+          139,
+          227,
+          129,
+          168
+        ],
+        -0.7980496261342084
+      ],
+      [
+        "、",
+        [
+          227,
+          128,
+          129
+        ],
+        -0.0014475661779220438
+      ],
+      [
+        "静",
+        [
+          233,
+          157,
+          153
+        ],
+        -0.36345740442154156
+      ],
+      [
+        "かに",
+        [
+          227,
+          129,
+          139,
+          227,
+          129,
+          171
+        ],
+        -0.006715460189044421
+      ],
+      [
+        "眠",
+        [
+          231,
+          156,
+          160
+        ],
+        -0.7124967081982893
+      ],
+      [
+        "り",
+        [
+          227,
+          130,
+          138
+        ],
+        -0.032475949832985115
+      ],
+      [
+        "につ",
+        [
+          227,
+          129,
+          171,
+          227,
+          129,
+          164
+        ],
+        -0.005614863867001413
+      ],
+      [
+        "きました",
+        [
+          227,
+          129,
+          141,
+          227,
+          129,
+          190,
+          227,
+          129,
+          151,
+          227,
+          129,
+          159
+        ],
+        -2.056488216681138
+      ],
+      [
+        "。",
+        [
+          227,
+          128,
+          130
+        ],
+        -7.335689996827205e-05
+      ]
+    ]
+  },
+  "focused_failures": [
+    {
+      "name": "chat-hard_thinking-sse0",
+      "status": 200,
+      "passed": false,
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "enable_thinking": true,
+        "hard_think_cap": 4,
+        "min_answer_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a list of invented names for a tiny moon robot."
+          }
+        ],
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": false
+      },
+      "error": "AssertionError(('byte alignment', '\\n\\n- Pebble\\n- Mote\\n- Crumb\\n- Speck\\n- Dusty\\n- Nano\\n- Bit', '\\n\\n- Pebble\\n- Mote\\n- Crumb\\n- Speck\\n- Dusty\\n- Nano\\n- Bit\\n'))"
+    },
+    {
+      "name": "chat-hard_thinking-sse1",
+      "status": 200,
+      "passed": false,
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "enable_thinking": true,
+        "hard_think_cap": 4,
+        "min_answer_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a list of invented names for a tiny moon robot."
+          }
+        ],
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "error": "AssertionError('blocking/SSE mismatch')"
+    }
+  ],
+  "ready_after": {
+    "accepting_requests": true,
+    "driver_alive": true,
+    "closing": false,
+    "closed": false,
+    "failure": null
+  },
+  "open_defect": "Blocking chat strips generated trailing newline while SSE and logprobs retain it; task17 remains open. Early generic rejection and explicit named AR fallback do not qualify actual sampled MTP.",
+  "performance_claim": false
+}
