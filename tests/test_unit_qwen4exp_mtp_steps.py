@@ -243,10 +243,10 @@ def test_iter_generate_is_lazy_until_the_first_step() -> None:
     assert first.finished is False
 
 
-def test_iter_generate_rejects_non_greedy_sampling_before_model_work():
+def test_iter_generate_rejects_structured_controls_before_model_work():
     provider, target, draft = _provider()
-    iterator = provider.iter_generate((1, 2), _request(temperature=0.7))
-    with pytest.raises(NotImplementedError, match="greedy"):
+    iterator = provider.iter_generate((1, 2), _request(stop_token_sequences=((11, 12),)))
+    with pytest.raises(NotImplementedError, match="controls"):
         next(iterator)
     assert target.runner.prefill_calls == draft.prime_calls == 0
 

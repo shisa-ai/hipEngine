@@ -1,4 +1,4 @@
-"""The raw-top1 MTP provider must reject processed requests before GPU work."""
+"""Unsupported MTP controls must reject before GPU work, not be ignored."""
 from dataclasses import replace
 
 import pytest
@@ -8,11 +8,12 @@ from tests.test_unit_qwen4exp_mtp_steps import _provider, _request
 
 @pytest.mark.parametrize('method', ['blocking', 'iterator', 'stream'])
 @pytest.mark.parametrize('controls', [
-    {'temperature': .7}, {'logprobs': True}, {'top_logprobs': 3},
-    {'frequency_penalty': 1.0}, {'logit_bias': {0: 5}},
-    {'suppress_token_ids': (10,)}, {'thinking_hard_token_cap': 0, 'thinking_close_token_ids': (42,)},
+    {'stop_token_ids': (10,)}, {'stop_token_sequences': ((11, 12),)},
+    {'min_tokens': 2, 'eos_token_id': 99_999}, {'forced_tokens_pending': (10,)},
+    {'json_object_close_forcing': True}, {'eos_token_id': 42},
+    {'thinking_hard_token_cap': 0, 'thinking_close_token_ids': (42,)},
 ])
-def test_raw_mtp_rejects_sampling_and_metadata_before_prefill(method, controls):
+def test_mtp_rejects_unimplemented_controls_before_prefill(method, controls):
     provider, target, draft = _provider()
     request = replace(_request(), **controls)
     try:
