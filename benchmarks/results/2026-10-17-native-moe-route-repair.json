@@ -1,0 +1,528 @@
+{
+  "schema": 1,
+  "kind": "native_mtp_route_and_capture_identity_regression",
+  "performance_claim": false,
+  "created_at": "2026-10-17T20:52:53.183621+00:00",
+  "host": "gfx1151",
+  "hardware": "AMD Ryzen AI Max+ 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv": "bf16"
+  },
+  "base_commit": "b53353ec51928d37bd5fd965bf10643511465b55",
+  "source_hashes": {
+    "hipengine/generation/qwen35_gguf_mtp2.py": "f98d8caf55832b0a4b45abb6bd2f7686637a2347772c90b23ca0a30be1152d95",
+    "hipengine/generation/qwen35_gguf.py": "fff0aac05ab7b2a742c606b66c2389ef75053156c5b67d9cdc8b669e26cad31e",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "24353660c34fb951644804eb119deab83a5ae895ceb86e0375818433c11e23c5",
+    "hipengine/models/qwen35.py": "9ed1aac4d0e70608c5f1b20f874466e41af7a19e3ec9bccb0be2197bf6f807f8"
+  },
+  "claim_scope": "Public-route regression, not throughput, numerical-envelope, or general acceptance-rate evidence. One prompt at C1 under capacity4. Native state attribution is separately recorded in 2026-10-17-qwen-native-commit-attribution.json.",
+  "server_command": [
+    "/home/lhl/hipEngine-main/.venv/bin/python",
+    "/tmp/mtp-repair/native_route_observer_server.py",
+    "--model",
+    "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--max-context-tokens",
+    "32768",
+    "--max-active-requests",
+    "4",
+    "--prefix-cache",
+    "off",
+    "--no-startup-chat-smoke",
+    "--no-startup-scratch-probe",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "19003",
+    "--log-color",
+    "never"
+  ],
+  "client_command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python /tmp/mtp-repair/native_restored_public_probe.py",
+  "postprocess_command": ".venv/bin/python /tmp/mtp-repair/check_native_restored_captures.py",
+  "environment": {
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "PYTHONPATH": ".",
+    "prefix_cache": "off",
+    "max_active_requests": 4,
+    "max_context_tokens": 32768
+  },
+  "observation": "Observer wraps real native-cycle/device-proposal/serial methods and error recovery without replacing results, selecting routes, or changing arithmetic. Client sends actual HTTP requests to hipengine.server.",
+  "root_cause": "The sampled target graph was captured without HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1, but the later device-proposal handoff used the staged-cycle environment with that setting. The environment tuple was the only differing graph configuration field. Separate CPU tests expose profile metadata binding after capture when provider creation is deferred.",
+  "before_sampled": {
+    "label": "native_sampled",
+    "request": {
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+        }
+      ],
+      "max_tokens": 256,
+      "temperature": 0.7,
+      "seed": 3001,
+      "speculative_mtp": true,
+      "top_p": 0.9
+    },
+    "status": 200,
+    "finish_reason": "length",
+    "completion_tokens": 256,
+    "token_ids_sha256": "9733baf733c2f9e4644b391541c67f749ceecfbbd6cf89ed10c975d42cfc213f",
+    "observed_calls": {
+      "verify_target_block_native_cycle": 1,
+      "target_graph_configuration_miss": 1,
+      "recover_cycle_failure": 1
+    },
+    "route_checks": [
+      "precommit_failure_ar_fallback"
+    ],
+    "requested_route": "speculative_mtp",
+    "effective_route": "speculative_mtp",
+    "decision_reason": "implemented_gguf_moe_bf16_gfx1151_native_chain",
+    "mtp_used": true,
+    "draft_cycles": 1,
+    "mtp_output_tokens": 3,
+    "ar_output_tokens": 253,
+    "fallback_event_counts": {
+      "no_provider": 251,
+      "precommit_failure_ar_fallback": 1
+    },
+    "output_accounting": {
+      "completion_tokens": 256,
+      "mtp_output_tokens": 3,
+      "ar_output_tokens": 253,
+      "ar_output_tokens_in_cycles": 251,
+      "mtp_coverage": 0.01171875,
+      "mtp_output_tokens_explained_by_cycles": 3,
+      "unexplained_mtp_output_tokens": 0,
+      "speculative_cycles": 1,
+      "reconciled": true,
+      "reconciled_reasons": []
+    }
+  },
+  "after_rows": [
+    {
+      "label": "ar",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": false
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "completion_tokens": 256,
+      "token_ids_sha256": "85dc2ce53ab7cd1bb7e8f7c7ae6c32309a2f39fc6d50e4c863deb9eec95ca175",
+      "observed_calls": {},
+      "route_checks": [],
+      "requested_route": null,
+      "effective_route": "default",
+      "decision_reason": null,
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "mtp_output_tokens": 0,
+      "ar_output_tokens": 256,
+      "fallback_event_counts": {},
+      "output_accounting": null
+    },
+    {
+      "label": "native_greedy",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": true
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "completion_tokens": 256,
+      "token_ids_sha256": "7c94fd84b1b206bb0bbadb265b33fea5cef34fb30095f584d1b0f6c99afe79ee",
+      "observed_calls": {
+        "verify_target_block_native_cycle": 2,
+        "verify_target_from_device_proposal": 104
+      },
+      "route_checks": [],
+      "requested_route": "speculative_mtp",
+      "effective_route": "speculative_mtp",
+      "decision_reason": "implemented_gguf_moe_bf16_gfx1151_native_chain",
+      "mtp_used": true,
+      "draft_cycles": 106,
+      "mtp_output_tokens": 255,
+      "ar_output_tokens": 1,
+      "fallback_event_counts": {
+        "no_provider": 1
+      },
+      "output_accounting": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 255,
+        "ar_output_tokens": 1,
+        "ar_output_tokens_in_cycles": 1,
+        "mtp_coverage": 0.99609375,
+        "mtp_output_tokens_explained_by_cycles": 255,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 106,
+        "reconciled": true,
+        "reconciled_reasons": []
+      }
+    },
+    {
+      "label": "native_sampled",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "top_p": 0.9
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "completion_tokens": 256,
+      "token_ids_sha256": "1ffd3d6c356c62d3b128cf4320eaa1805431bb0fa3bfd5a5653bc6bd6ddc635d",
+      "observed_calls": {
+        "verify_target_block_native_cycle": 1,
+        "verify_target_from_device_proposal": 103
+      },
+      "route_checks": [],
+      "requested_route": "speculative_mtp",
+      "effective_route": "speculative_mtp",
+      "decision_reason": "implemented_gguf_moe_bf16_gfx1151_native_chain",
+      "mtp_used": true,
+      "draft_cycles": 104,
+      "mtp_output_tokens": 254,
+      "ar_output_tokens": 2,
+      "fallback_event_counts": {
+        "no_provider": 1
+      },
+      "output_accounting": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 254,
+        "ar_output_tokens": 2,
+        "ar_output_tokens_in_cycles": 1,
+        "mtp_coverage": 0.9921875,
+        "mtp_output_tokens_explained_by_cycles": 254,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 104,
+        "reconciled": true,
+        "reconciled_reasons": []
+      }
+    },
+    {
+      "label": "native_stream",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "completion_tokens": 256,
+      "token_ids_sha256": "7c94fd84b1b206bb0bbadb265b33fea5cef34fb30095f584d1b0f6c99afe79ee",
+      "observed_calls": {
+        "verify_target_block_native_cycle": 1,
+        "verify_target_from_device_proposal": 105
+      },
+      "route_checks": [],
+      "requested_route": "speculative_mtp",
+      "effective_route": "speculative_mtp",
+      "decision_reason": "implemented_gguf_moe_bf16_gfx1151_native_chain",
+      "mtp_used": true,
+      "draft_cycles": 106,
+      "mtp_output_tokens": 255,
+      "ar_output_tokens": 1,
+      "fallback_event_counts": {
+        "no_provider": 1
+      },
+      "output_accounting": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 255,
+        "ar_output_tokens": 1,
+        "ar_output_tokens_in_cycles": 1,
+        "mtp_coverage": 0.99609375,
+        "mtp_output_tokens_explained_by_cycles": 255,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 106,
+        "reconciled": true,
+        "reconciled_reasons": []
+      }
+    },
+    {
+      "label": "automatic",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "seed": 3001
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "completion_tokens": 256,
+      "token_ids_sha256": "85dc2ce53ab7cd1bb7e8f7c7ae6c32309a2f39fc6d50e4c863deb9eec95ca175",
+      "observed_calls": {},
+      "route_checks": [],
+      "requested_route": "speculative_mtp_auto",
+      "effective_route": "default",
+      "decision_reason": "automatic_mtp_scope_not_promoted",
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "mtp_output_tokens": 0,
+      "ar_output_tokens": 256,
+      "fallback_event_counts": {},
+      "output_accounting": null
+    },
+    {
+      "label": "native_greedy_repeat",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": true
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "completion_tokens": 256,
+      "token_ids_sha256": "7c94fd84b1b206bb0bbadb265b33fea5cef34fb30095f584d1b0f6c99afe79ee",
+      "observed_calls": {
+        "verify_target_block_native_cycle": 1,
+        "verify_target_from_device_proposal": 105
+      },
+      "route_checks": [],
+      "requested_route": "speculative_mtp",
+      "effective_route": "speculative_mtp",
+      "decision_reason": "implemented_gguf_moe_bf16_gfx1151_native_chain",
+      "mtp_used": true,
+      "draft_cycles": 106,
+      "mtp_output_tokens": 255,
+      "ar_output_tokens": 1,
+      "fallback_event_counts": {
+        "no_provider": 1
+      },
+      "output_accounting": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 255,
+        "ar_output_tokens": 1,
+        "ar_output_tokens_in_cycles": 1,
+        "mtp_coverage": 0.99609375,
+        "mtp_output_tokens_explained_by_cycles": 255,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 106,
+        "reconciled": true,
+        "reconciled_reasons": []
+      }
+    },
+    {
+      "label": "native_sampled_repeat",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "top_p": 0.9
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "completion_tokens": 256,
+      "token_ids_sha256": "1ffd3d6c356c62d3b128cf4320eaa1805431bb0fa3bfd5a5653bc6bd6ddc635d",
+      "observed_calls": {
+        "verify_target_block_native_cycle": 1,
+        "verify_target_from_device_proposal": 103
+      },
+      "route_checks": [],
+      "requested_route": "speculative_mtp",
+      "effective_route": "speculative_mtp",
+      "decision_reason": "implemented_gguf_moe_bf16_gfx1151_native_chain",
+      "mtp_used": true,
+      "draft_cycles": 104,
+      "mtp_output_tokens": 254,
+      "ar_output_tokens": 2,
+      "fallback_event_counts": {
+        "no_provider": 1
+      },
+      "output_accounting": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 254,
+        "ar_output_tokens": 2,
+        "ar_output_tokens_in_cycles": 1,
+        "mtp_coverage": 0.9921875,
+        "mtp_output_tokens_explained_by_cycles": 254,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 104,
+        "reconciled": true,
+        "reconciled_reasons": []
+      }
+    },
+    {
+      "label": "native_sampled_stream",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "top_p": 0.9,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "completion_tokens": 256,
+      "token_ids_sha256": "1ffd3d6c356c62d3b128cf4320eaa1805431bb0fa3bfd5a5653bc6bd6ddc635d",
+      "observed_calls": {
+        "verify_target_block_native_cycle": 1,
+        "verify_target_from_device_proposal": 103
+      },
+      "route_checks": [],
+      "requested_route": "speculative_mtp",
+      "effective_route": "speculative_mtp",
+      "decision_reason": "implemented_gguf_moe_bf16_gfx1151_native_chain",
+      "mtp_used": true,
+      "draft_cycles": 104,
+      "mtp_output_tokens": 254,
+      "ar_output_tokens": 2,
+      "fallback_event_counts": {
+        "no_provider": 1
+      },
+      "output_accounting": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 254,
+        "ar_output_tokens": 2,
+        "ar_output_tokens_in_cycles": 1,
+        "mtp_coverage": 0.9921875,
+        "mtp_output_tokens_explained_by_cycles": 254,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 104,
+        "reconciled": true,
+        "reconciled_reasons": []
+      }
+    }
+  ],
+  "checks": {
+    "greedy_repeat_identical": true,
+    "greedy_stream_ids_identical": true,
+    "sampled_repeat_and_stream_ids_identical": true,
+    "route_checks_passed": true,
+    "driver_error": "KeyError: token_accounting in final check: SSE publishes choice generated_token_ids, unlike the blocking response. Corrected offline from the complete recorded responses; no GPU rerun.",
+    "source": "/tmp/mtp-repair/native-restored-public-requests.json"
+  },
+  "checks_note": "All eight requests completed and route assertions passed. The driver then raised KeyError during its new streaming ID check (SSE uses generated_token_ids, not the blocking token_accounting object). Offline checking of the complete responses passed repeat and streaming ID equality. Archived driver corrects only that final field extraction; no GPU rerun.",
+  "remaining_followup": "Streaming text assembly can emit replacement characters for UTF-8 split across token boundaries despite identical generated IDs; task18 owns its repair. The four-model acceptance matrix remains separate.",
+  "raw_artifacts": [
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/native-restored-public-requests-config-red.json",
+      "sha256": "87525aa0cb490289835f246ae32912b08606655c8422607b9e85fac6494ff322"
+    },
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/native-restored-route-trace-config-red.jsonl",
+      "sha256": "c95ae572c6ca36137916de763e7a5c32242cfad4809872d04a73993cd9e6cf02"
+    },
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/native-restored-server-config-red.log",
+      "sha256": "dae84598b160df11b13795d5905a2fe3808ead99b50713374c944f1a394f0854"
+    },
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/native-restored-public-requests.json",
+      "sha256": "1d5b98b49ffc52c493ee817dd060868d15ed7afdecb7e44e4513b3332340cd15"
+    },
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/native-restored-route-trace.jsonl",
+      "sha256": "1dafaa96565a2080558c2e99e3927279036f723670e8e41f8f21d40f27372af4"
+    },
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/native-restored-server.log",
+      "sha256": "f853d54904be6615b1d05b76465de7a4c3234ca9187349a6c526d489eec716c0"
+    },
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/native-restored-public-checks.json",
+      "sha256": "1c696d566ebb95e13b209460d0d54c1c4e5f4f3e7114e79931ad06cde9bdd4e9"
+    },
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/native_route_observer_server.py",
+      "sha256": "45a59e78ca8528e1989961e82f7d212d6410546e434638767092f1f95b3a388e"
+    },
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/native_restored_public_probe.py",
+      "sha256": "5cdb39d6e1b6f7562bfdf030038f966ae9747168bba79782d7ba07002289b147"
+    },
+    {
+      "path": "~/.local/state/hipengine/mtp-followup-20261017/native-route-repair/check_native_restored_captures.py",
+      "sha256": "2c056e41627401546e0c1a107eee2ea5267a3bb2489090812436bed501cd4101"
+    }
+  ],
+  "validation": {
+    "new_red_cases": 10,
+    "focused_passed": 227,
+    "affected_bundle_collected": 910,
+    "affected_bundle_exit": 0,
+    "prior_default_unit_suite_exit": 0,
+    "audit": "pass; no budget change",
+    "docs": "four gates pass"
+  }
+}

@@ -11072,7 +11072,10 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             return
-        adapter.observe_prefill_result(row.request_id, row.prompt_ids, result)
+        # This hook may capture the sampled target graph. Use the same scoped
+        # kernel/arch environment as every later speculative device stage.
+        with self._staged_adapter_arch_environment():
+            adapter.observe_prefill_result(row.request_id, row.prompt_ids, result)
 
     def _run_resident_fallback(self, row: _GGUFResidentLoopRow) -> None:
         if row.fallback_output is not None:

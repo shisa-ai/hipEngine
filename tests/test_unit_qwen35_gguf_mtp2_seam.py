@@ -119,7 +119,7 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
                 weights=SimpleNamespace(config=SimpleNamespace(is_moe=True)),
             ),
         ),
-    ) == "serial_exact"
+    ) == "native"
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=96,
         target=SimpleNamespace(
@@ -181,8 +181,14 @@ def test_gfx1151_dense_native_selection_ignores_quant_identity() -> None:
     ) is None
 
 
-def test_gfx1151_moe_native_containment_survives_quant_guard_removal() -> None:
-    """MoE containment is a geometry capability and stays in force."""
+@pytest.mark.parametrize("backend,end_position", [
+    ("hip_gfx1100", 17), ("hip_gfx1100", 64), ("hip_gfx1100", 95),
+    ("hip_gfx1151", 17), ("hip_gfx1151", 96), ("hip_gfx1151", 4096),
+])
+def test_moe_native_mode_is_not_blocked_by_cross_path_numerical_drift(
+    backend: str, end_position: int,
+) -> None:
+    """Generated-ID differences do not establish a state-ownership failure."""
 
     moe = SimpleNamespace(
         runner=SimpleNamespace(
@@ -193,19 +199,14 @@ def test_gfx1151_moe_native_containment_survives_quant_guard_removal() -> None:
         ),
     )
     assert backend_package_capability(
-        "hip_gfx1151", "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", True
-    ) is False
+        backend, "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", None
+    ) is None
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1151", end_position=96, target=moe,
-    ) == "serial_exact"
-    # The same MoE geometry on a backend that declares the native state path
-    # safe keeps the native row verifier.
-    assert backend_package_capability(
-        "hip_gfx1100", "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", True
-    ) is True
-    assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1100", end_position=95, target=moe,
+        "native", backend=backend, end_position=end_position, target=moe,
     ) == "native"
+    assert _target_verify_mode_for_context(
+        "serial_exact", backend=backend, end_position=end_position, target=moe,
+    ) == "serial_exact"
 
 
 def test_native_chain_accept_commits_the_accepted_row_for_every_bucket() -> None:
@@ -5596,7 +5597,7 @@ def test_sampled_prefill_hands_the_row_to_its_mtp_provider(monkeypatch) -> None:
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
     runner._mtp2_adapter = _Provider()
     runner._mtp2_adapter_resolved = True
-    runner.generator = SimpleNamespace(tokenizer=object())
+    runner.generator = SimpleNamespace(tokenizer=object(), target_arch="gfx1100")
     runner._route_counts = defaultdict(int)
     runner._fallback_reasons = defaultdict(int)
     runner._refresh_prefix_cache = lambda row: None

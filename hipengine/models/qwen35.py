@@ -1061,11 +1061,10 @@ class Qwen35MoeGGUFModel:
             max_group_rows=2,
             group_rejection_reason="moe_group_above_offered_width",
             sampling_modes=("greedy_fast", "sampled"),
-            # The gfx1151 C1/C2 implementation remains executable for explicit
-            # requests, but its observed production packet is slower than AR and
-            # diverges under the production-envelope verifier. Keep automatic
-            # selection on AR until that observed regression is cleared; an
-            # explicit ``speculative_mtp: true`` still reaches this capability.
+            # Automatic selection uses AR because the measured paired workload
+            # was slower with MTP. Explicit ``speculative_mtp: true`` still runs
+            # the native capability; generated-ID differences between arithmetic
+            # paths are not evidence of a state-ownership failure.
             automatic_eligible=False,
         ),
     )

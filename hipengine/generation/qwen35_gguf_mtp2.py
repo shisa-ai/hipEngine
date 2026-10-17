@@ -290,12 +290,11 @@ def _target_verify_mode_for_context(
     """Select the target verifier mode from execution context, not identity.
 
     The only inputs are the requested mode, the backend package's declared
-    capabilities, the target's execution contract (compact-DMS storage), the
-    target geometry's declared native-state capability, and the resulting
-    context position. Selection never reads a quant name, file-type string,
-    model name, artifact path, or digest: an unfamiliar artifact whose kernels
-    can execute the native row path runs it, and a native-state containment is
-    carried by a backend capability that names its concrete cause.
+    capabilities, the target's execution contract (compact-DMS storage), and the
+    resulting context position. Selection never reads a quant name, file-type
+    string, model name, artifact path, or digest: an unfamiliar artifact whose
+    kernels can execute the native row path runs it. Cross-path numerical or
+    generated-ID differences do not establish a state-ownership failure.
     """
 
     if target is not None and getattr(target, "_dms_backend", None) is not None:
@@ -303,24 +302,6 @@ def _target_verify_mode_for_context(
     selected = str(requested)
     if selected != "native":
         return selected
-    if target is not None:
-        config = getattr(
-            getattr(getattr(target, "runner", None), "weights", None),
-            "config",
-            None,
-        )
-        is_moe = bool(getattr(config, "is_moe", False))
-        if is_moe and not bool(
-            backend_package_capability(
-                str(backend), "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", True
-            )
-        ):
-            # Native MoE rows pass the short teacher-forced screen but their
-            # committed state diverges from AR after repeated partial accepts.
-            # Keep explicit MTP executable through the serial exact verifier
-            # until the backend package declares the native state path safe.
-            return "serial_exact"
-
     if target is None:
         native_context_limit = int(
             backend_package_capability(
@@ -2122,6 +2103,11 @@ class Qwen35GGUFMTP2Adapter:
         # capacity-1 warmup reuses the same names.
         row = self.owner._row(rid)
         target = None if row.lease is None else row.lease.session
+        if target is not None:
+            # Sampled graphs can be captured before provider creation. Bind the
+            # same immutable profile here so opening the provider cannot change
+            # the graph identity at its first device-proposal handoff.
+            self._bind_target_profile_metadata(target)
         token_id = getattr(result, "token_id", None)
         budget = int(self._intents[rid])
         state = self._states.get(rid)
