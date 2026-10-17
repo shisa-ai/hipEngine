@@ -1,0 +1,966 @@
+{
+  "schema": "hipengine.qwen4exp.sampling_http_diagnostic.v1",
+  "date": "2026-10-17",
+  "source_commit": "7f397644c12076c968e45b7e930e5bc633ab7d55",
+  "host": {
+    "name": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "hardware": "Ryzen AI Max+ Pro 395 / Radeon 8060S gfx1151 / 128 GiB UMA"
+  },
+  "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "quant": "gguf_ud_q4_k_xl",
+  "profile": "production",
+  "kv": "bf16",
+  "context": 8192,
+  "active_requests": 1,
+  "sidecar": "/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+  "candidate_budget": 3,
+  "serving": "opt_in",
+  "thinking": "hard",
+  "command": "uv run python /tmp/hipengine-qwen4exp-sampling-http.py",
+  "probe_sha256": "b5c8b0b1a97bbfcf93db8946ffa720b8d87c1e5145c7ef70dd8005bffd05b8f0",
+  "raw_report": "/tmp/he-qwen38fn-sampling-7f397644c/report.json",
+  "raw_sha256": "5bfade6fecf96d89e3dc6ee96bb00ff34ec1fc7e6a95982d94b83dede18425f3",
+  "passed": 30,
+  "total": 36,
+  "rows": [
+    {
+      "name": "completion-greedy-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-greedy-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-sampled-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-sampled-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-repeat1-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-repeat1-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-repeat2-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-repeat2-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-other_seed-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-other_seed-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-filters-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-filters-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-ja-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-ja-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-mtp_requested-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-mtp_requested-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "completion-generic_requested-sse0",
+      "status": 400,
+      "passed": false,
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "Write a list of invented names for a tiny moon robot.",
+        "logprobs": 5,
+        "stream": false
+      },
+      "response": {
+        "error": {
+          "message": "speculative provider requires raw greedy BF16 c=1 generation",
+          "type": "invalid_request_error",
+          "param": "speculative",
+          "code": "unsupported_parameter",
+          "hipengine": {
+            "code": "unsupported_parameter",
+            "status_code": 400,
+            "retryable": false,
+            "speculative": {
+              "provider": "qwen4_exp_mtp",
+              "candidate_budget": 3,
+              "blockers": [
+                "temperature",
+                "logprobs",
+                "top_logprobs",
+                "top_k"
+              ],
+              "compatibility_guard": "raw_greedy_bf16_c1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "completion-generic_requested-sse1",
+      "status": 400,
+      "passed": false,
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative": true,
+        "prompt": "Write a list of invented names for a tiny moon robot.",
+        "logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "parsed_sse_events": [],
+      "non_sse_error_body_not_captured": true
+    },
+    {
+      "name": "chat-greedy-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-greedy-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-sampled-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-sampled-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-repeat1-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-repeat1-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-repeat2-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-repeat2-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-other_seed-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-other_seed-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-filters-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-filters-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-ja-sse0",
+      "status": 200,
+      "passed": false,
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、猫と月について短い物語を一文だけ書いてください。"
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": false
+      },
+      "content": "銀色の月を飲み込もうとした黒猫は、水面に映るその光を舐めると、静かに眠りにつきました。",
+      "generated_token_ids": [
+        101143,
+        183583,
+        96212,
+        28452,
+        178986,
+        151171,
+        159353,
+        172631,
+        246918,
+        98500,
+        14876,
+        5205,
+        105874,
+        19054,
+        97844,
+        28310,
+        55407,
+        96183,
+        28452,
+        96035,
+        238,
+        58852,
+        149671,
+        5205,
+        97026,
+        155563,
+        99018,
+        29342,
+        149808,
+        150679,
+        1710,
+        248046
+      ],
+      "logprob_tokens": [
+        {
+          "token": "銀",
+          "logprob": -0.13623675245901673,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "銀",
+              "logprob": -0.13623675245901673,
+              "bytes": null
+            },
+            {
+              "token": "老",
+              "logprob": -2.0607062234368,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "色の",
+          "logprob": -0.1149255419624492,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "色の",
+              "logprob": -0.1149255419624492,
+              "bytes": null
+            },
+            {
+              "token": "の",
+              "logprob": -2.2203833247078104,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "月",
+          "logprob": -0.5576408214907004,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "月",
+              "logprob": -0.5576408214907004,
+              "bytes": null
+            },
+            {
+              "token": "月に",
+              "logprob": -0.849937231097634,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "を",
+          "logprob": -0.3883693630313247,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "を",
+              "logprob": -0.3883693630313247,
+              "bytes": null
+            },
+            {
+              "token": "が",
+              "logprob": -1.1337063724612564,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "飲み",
+          "logprob": -0.3576964573621169,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "飲み",
+              "logprob": -0.3576964573621169,
+              "bytes": null
+            },
+            {
+              "token": "捕",
+              "logprob": -1.2015933232068434,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "込",
+          "logprob": -0.05374239236241594,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "込",
+              "logprob": -0.05374239236241594,
+              "bytes": null
+            },
+            {
+              "token": "干",
+              "logprob": -2.950304014982045,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "もう",
+          "logprob": -0.012208825204812656,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "もう",
+              "logprob": -0.012208825204812656,
+              "bytes": null
+            },
+            {
+              "token": "みたい",
+              "logprob": -4.411694413278543,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "とした",
+          "logprob": -1.091230236676271,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "と",
+              "logprob": -0.40917667069726715,
+              "bytes": null
+            },
+            {
+              "token": "とした",
+              "logprob": -1.091230236676271,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "黒",
+          "logprob": -1.1187393852043401,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "猫",
+              "logprob": -0.3955514617729436,
+              "bytes": null
+            },
+            {
+              "token": "黒",
+              "logprob": -1.1187393852043401,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "猫",
+          "logprob": -0.0002586447220629154,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "猫",
+              "logprob": -0.0002586447220629154,
+              "bytes": null
+            },
+            {
+              "token": "い",
+              "logprob": -8.26018448700722,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "は",
+          "logprob": -0.27496590689258943,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "は",
+              "logprob": -0.27496590689258943,
+              "bytes": null
+            },
+            {
+              "token": "の",
+              "logprob": -1.4254428394182244,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "、",
+          "logprob": -6.924437677842469e-06,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "、",
+              "logprob": -6.924437677842469e-06,
+              "bytes": null
+            },
+            {
+              "token": "，",
+              "logprob": -11.88045717315594,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "水面",
+          "logprob": -0.12230945199472675,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "水面",
+              "logprob": -0.12230945199472675,
+              "bytes": null
+            },
+            {
+              "token": "その",
+              "logprob": -2.1617324408863285,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "に",
+          "logprob": -0.008050094438044702,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "に",
+              "logprob": -0.008050094438044702,
+              "bytes": null
+            },
+            {
+              "token": "の",
+              "logprob": -4.826093803239314,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "映",
+          "logprob": -0.10723576802733492,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "映",
+              "logprob": -0.10723576802733492,
+              "bytes": null
+            },
+            {
+              "token": "揺",
+              "logprob": -2.2858642126989657,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "る",
+          "logprob": -0.43487376931963395,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "る",
+              "logprob": -0.43487376931963395,
+              "bytes": null
+            },
+            {
+              "token": "った",
+              "logprob": -1.0422689414387745,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "その",
+          "logprob": -0.2926094684992998,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "その",
+              "logprob": -0.2926094684992998,
+              "bytes": null
+            },
+            {
+              "token": "自分の",
+              "logprob": -1.3716561947261063,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "光",
+          "logprob": -0.14136948982572223,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "光",
+              "logprob": -0.14136948982572223,
+              "bytes": null
+            },
+            {
+              "token": "美",
+              "logprob": -2.026230482257363,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "を",
+          "logprob": -0.25921117302705793,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "を",
+              "logprob": -0.25921117302705793,
+              "bytes": null
+            },
+            {
+              "token": "が",
+              "logprob": -1.4769197606735422,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "�",
+          "logprob": -1.564569372101242,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "爪",
+              "logprob": -0.23468245880168143,
+              "bytes": null
+            },
+            {
+              "token": "�",
+              "logprob": -1.564569372101242,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "�",
+          "logprob": -2.8701984509987333e-06,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "�",
+              "logprob": -2.8701984509987333e-06,
+              "bytes": null
+            },
+            {
+              "token": "�",
+              "logprob": -12.761130818959437,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "め",
+          "logprob": -0.1772608715013995,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "め",
+              "logprob": -0.1772608715013995,
+              "bytes": null
+            },
+            {
+              "token": "める",
+              "logprob": -1.8174543338732256,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "ると",
+          "logprob": -0.7980496261342084,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "取",
+              "logprob": -0.5982119415028607,
+              "bytes": null
+            },
+            {
+              "token": "ると",
+              "logprob": -0.7980496261342084,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "、",
+          "logprob": -0.0014475661779220438,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "、",
+              "logprob": -0.0014475661779220438,
+              "bytes": null
+            },
+            {
+              "token": "甘",
+              "logprob": -6.538595326569157,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "静",
+          "logprob": -0.36345740442154156,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "静",
+              "logprob": -0.36345740442154156,
+              "bytes": null
+            },
+            {
+              "token": "夜",
+              "logprob": -1.1883236992823814,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "かに",
+          "logprob": -0.006715460189044421,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "かに",
+              "logprob": -0.006715460189044421,
+              "bytes": null
+            },
+            {
+              "token": "かな",
+              "logprob": -5.006698770888507,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "眠",
+          "logprob": -0.7124967081982893,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "夜",
+              "logprob": -0.6741649611432355,
+              "bytes": null
+            },
+            {
+              "token": "眠",
+              "logprob": -0.7124967081982893,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "り",
+          "logprob": -0.032475949832985115,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "り",
+              "logprob": -0.032475949832985115,
+              "bytes": null
+            },
+            {
+              "token": "りに",
+              "logprob": -3.443449498722145,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "につ",
+          "logprob": -0.005614863867001413,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "につ",
+              "logprob": -0.005614863867001413,
+              "bytes": null
+            },
+            {
+              "token": "へと",
+              "logprob": -5.185144053930478,
+              "bytes": null
+            }
+          ]
+        },
+        {
+          "token": "きました",
+          "logprob": -2.056488216681138,
+          "bytes": null,
+          "top_logprobs": [
+            {
+              "token": "いた",
+              "logprob": -0.1368538744875343,
+              "bytes": null
+            },
+            {
+              "token": "きました",
+              "logprob": -2.056488216681138,
+              "bytes": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chat-ja-sse1",
+      "status": 200,
+      "passed": false,
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、猫と月について短い物語を一文だけ書いてください。"
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      }
+    },
+    {
+      "name": "chat-mtp_requested-sse0",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-mtp_requested-sse1",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "chat-generic_requested-sse0",
+      "status": 400,
+      "passed": false,
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a list of invented names for a tiny moon robot."
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": false
+      },
+      "response": {
+        "error": {
+          "message": "speculative provider requires raw greedy BF16 c=1 generation",
+          "type": "invalid_request_error",
+          "param": "speculative",
+          "code": "unsupported_parameter",
+          "hipengine": {
+            "code": "unsupported_parameter",
+            "status_code": 400,
+            "retryable": false,
+            "speculative": {
+              "provider": "qwen4_exp_mtp",
+              "candidate_budget": 3,
+              "blockers": [
+                "temperature",
+                "logprobs",
+                "top_logprobs",
+                "top_k"
+              ],
+              "compatibility_guard": "raw_greedy_bf16_c1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "chat-generic_requested-sse1",
+      "status": 200,
+      "passed": false,
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a list of invented names for a tiny moon robot."
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "response": [
+        {
+          "id": "chatcmpl-8a0a893de0a8439c8daa0046ac121c32",
+          "object": "chat.completion.chunk",
+          "created": 1792267865,
+          "model": "qwen38fn-sampling",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "content": ""
+              },
+              "finish_reason": "error"
+            }
+          ],
+          "error": {
+            "message": "speculative provider requires raw greedy BF16 c=1 generation",
+            "type": "invalid_request_error",
+            "param": "speculative",
+            "code": "unsupported_parameter",
+            "hipengine": {
+              "code": "unsupported_parameter",
+              "status_code": 400,
+              "retryable": false,
+              "speculative": {
+                "provider": "qwen4_exp_mtp",
+                "candidate_budget": 3,
+                "blockers": [
+                  "temperature",
+                  "logprobs",
+                  "top_logprobs",
+                  "top_k"
+                ],
+                "compatibility_guard": "raw_greedy_bf16_c1"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "findings": [
+    "Japanese split UTF-8 tokens lose byte identity; API text-based logprob trimming drops final punctuation.",
+    "Generic speculative=true rejects sampled/logprob controls early; explicit speculative_mtp=true runs sampled AR fallback. Four harness expectations therefore do not establish a runtime failure."
+  ],
+  "ready_after": {
+    "accepting_requests": true,
+    "driver_alive": true,
+    "closing": false,
+    "closed": false,
+    "failure": null
+  },
+  "performance_claim": false,
+  "qualification": "open"
+}
