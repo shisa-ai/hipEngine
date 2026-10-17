@@ -1,0 +1,172 @@
+{
+  "hardware": "Ryzen AI Max+ Pro 395 / Radeon 8060S gfx1151 / 128 GiB",
+  "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+  "host": "zbook",
+  "server_command": "uv run python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --served-model-name qwen38fn-sampling --max-context-tokens 8192 --kv-storage bf16 --max-active-requests 1 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --metrics prometheus --host 127.0.0.1 --port 18389",
+  "kind": "functional_live_mtp_backpressure",
+  "source_commit": "ba78da0af7b9cec3fb38b7c3b19891fe2aebed67",
+  "command": "uv run python /tmp/he-socket-mtp-backpressure.py",
+  "probe_source": "import sys,json,time,socket,subprocess\nfrom pathlib import Path\nsys.path.insert(0,'/home/lhl/hipEngine')\nimport httpx\nfrom scripts.qwen4exp_sampled_mtp_http_gate import extract\nr={'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'snapshots':[]}\np=Path('/tmp/he-socket-mtp-backpressure-report.json')\ndef save():p.write_text(json.dumps(r,indent=2)+'\\n')\nwith httpx.Client(base_url='http://127.0.0.1:18389',timeout=180) as c:\n deadline=time.monotonic()+600\n while True:\n  try:\n   ready=c.get('/ready',timeout=5)\n   if ready.status_code==200 and ready.json().get('ready'):break\n  except httpx.TransportError:pass\n  if time.monotonic()>deadline:raise TimeoutError('ready')\n  time.sleep(1)\n c.post('/v1/completions',json=dict(model='qwen38fn-sampling',prompt='Hello',max_tokens=8,temperature=0,speculative=False)).raise_for_status()\n r['metrics_before']=c.get('/metrics').text\n assert 'last_work_kind=\"decode\"' in r['metrics_before']\n body=dict(model='qwen38fn-sampling',messages=[dict(role='user',content='Print every integer from 1 through 1000, one per line. Do not skip any numbers and do not abbreviate the list.')],enable_thinking=False,temperature=0,max_tokens=7800,speculative=True,stream=True,logprobs=True,top_logprobs=20,stream_options=dict(include_usage=True,include_hipengine=True))\n r['request']=body\n s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,1024);s.settimeout(30);s.connect(('127.0.0.1',18389));r['client_port']=s.getsockname()[1]\n raw=json.dumps(body).encode();s.sendall(b'POST /v1/chat/completions HTTP/1.1\\r\\nHost: localhost\\r\\nContent-Type: application/json\\r\\nContent-Length: '+str(len(raw)).encode()+b'\\r\\n\\r\\n'+raw)\n # Read only enough to establish SSE admission, then stop draining entirely.\n headers=b''\n while b'\\r\\n\\r\\n' not in headers:headers+=s.recv(1)\n r['headers']=headers.decode();assert b'200 OK' in headers,headers\n start=time.monotonic()\n try:\n  for i in range(8):\n   time.sleep(5)\n   snap=subprocess.check_output(['ss','-tn','sport = :18389'],text=True)\n   r['snapshots'].append(dict(seconds=time.monotonic()-start,ss=snap));save()\n  r['metrics_before_drain']=c.get('/metrics').text\n  save()\n  assert 'last_work_kind=\"verify_chain\"' in r['metrics_before_drain'], r['metrics_before_drain']\n  s.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,1048576)\n  data=b''\n  deadline=time.monotonic()+90\n  while b'data: [DONE]' not in data:\n   block=s.recv(65536)\n   if not block:break\n   data+=block\n   if time.monotonic()>deadline:raise TimeoutError('drain')\n  r['drained_bytes']=len(data)\n  r['wire_tail']=data[-12000:].decode(errors='replace')\n  Path('/tmp/he-socket-mtp-backpressure-wire.txt').write_bytes(data)\n  r['mtp_verify_chain_observed']=True\n  assert b'data: [DONE]' in data, r['wire_tail']\n  assert b'client_backpressure' in data, r['wire_tail']\n  r['client_backpressure_terminal_proven']=True\n  save()\n finally:s.close()\n r['metrics_after_disconnect']=c.get('/metrics').text\n recovered=[]\n for i in range(2):\n  request=dict(model='qwen38fn-sampling',prompt='Explain a rainbow in one sentence.',temperature=0,max_tokens=16,speculative=True,logprobs=5)\n  response=c.post('/v1/completions',json=request);response.raise_for_status()\n  result=extract(response.json(),chat=False);recovered.append(result)\n  assert result['mtp']['used'] and result['mtp']['draft_cycles'] > 0, result\n assert recovered[0]['ids']==recovered[1]['ids']\n assert recovered[0]['text']==recovered[1]['text']\n r['recovery']=recovered;r['ready_after']=c.get('/ready').json();r['metrics_after_recovery']=c.get('/metrics').text\n r['recovery_passed']=True;save();print('Recovery passed; inspect ss snapshots and cancellation counters before qualifying backpressure',flush=True)\n",
+  "request": {
+    "model": "qwen38fn-sampling",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Print every integer from 1 through 1000, one per line. Do not skip any numbers and do not abbreviate the list."
+      }
+    ],
+    "enable_thinking": false,
+    "temperature": 0,
+    "max_tokens": 7800,
+    "speculative": true,
+    "stream": true,
+    "logprobs": true,
+    "top_logprobs": 20,
+    "stream_options": {
+      "include_usage": true,
+      "include_hipengine": true
+    }
+  },
+  "snapshots": [
+    {
+      "seconds": 5.006548288976774,
+      "ss": "State      Recv-Q Send-Q Local Address:Port  Peer Address:Port\nFIN-WAIT-1 0      1          127.0.0.1:18389    127.0.0.1:44558\nESTAB      0      270011     127.0.0.1:18389    127.0.0.1:44562\n"
+    },
+    {
+      "seconds": 10.012332655955106,
+      "ss": "State      Recv-Q Send-Q Local Address:Port  Peer Address:Port\nFIN-WAIT-2 0      0          127.0.0.1:18389    127.0.0.1:44558\nESTAB      0      555457     127.0.0.1:18389    127.0.0.1:44562\n"
+    },
+    {
+      "seconds": 15.018658249871805,
+      "ss": "State      Recv-Q Send-Q Local Address:Port  Peer Address:Port\nFIN-WAIT-2 0      0          127.0.0.1:18389    127.0.0.1:44558\nESTAB      0      850117     127.0.0.1:18389    127.0.0.1:44562\n"
+    },
+    {
+      "seconds": 20.02428428386338,
+      "ss": "State      Recv-Q Send-Q Local Address:Port  Peer Address:Port\nFIN-WAIT-2 0      0          127.0.0.1:18389    127.0.0.1:44558\nESTAB      0      986170     127.0.0.1:18389    127.0.0.1:44562\n"
+    },
+    {
+      "seconds": 25.030634427908808,
+      "ss": "State      Recv-Q Send-Q Local Address:Port  Peer Address:Port\nFIN-WAIT-2 0      0          127.0.0.1:18389    127.0.0.1:44558\nESTAB      0      986170     127.0.0.1:18389    127.0.0.1:44562\n"
+    },
+    {
+      "seconds": 30.036795248975977,
+      "ss": "State      Recv-Q Send-Q Local Address:Port  Peer Address:Port\nFIN-WAIT-2 0      0          127.0.0.1:18389    127.0.0.1:44558\nESTAB      0      986170     127.0.0.1:18389    127.0.0.1:44562\n"
+    },
+    {
+      "seconds": 35.042807031888515,
+      "ss": "State      Recv-Q Send-Q Local Address:Port  Peer Address:Port\nFIN-WAIT-2 0      0          127.0.0.1:18389    127.0.0.1:44558\nESTAB      0      986170     127.0.0.1:18389    127.0.0.1:44562\n"
+    },
+    {
+      "seconds": 40.04908915399574,
+      "ss": "State      Recv-Q Send-Q Local Address:Port  Peer Address:Port\nFIN-WAIT-2 0      0          127.0.0.1:18389    127.0.0.1:44558\nESTAB      0      986170     127.0.0.1:18389    127.0.0.1:44562\n"
+    }
+  ],
+  "drained_bytes": 1248650,
+  "metrics": {
+    "metrics_before": [
+      "hipengine_request_cancelled_total 3",
+      "hipengine_resident_requests_active 0",
+      "hipengine_generation_requests_active 0",
+      "hipengine_mtp_requests_total 4",
+      "hipengine_resident_bucket_info{active_mask=\"0\",fair_prefill_burst_chunks=\"1\",last_work_kind=\"decode\",policy=\"protect_decode\"} 1"
+    ],
+    "metrics_before_drain": [
+      "hipengine_request_cancelled_total 3",
+      "hipengine_resident_requests_active 0",
+      "hipengine_generation_requests_active 1",
+      "hipengine_mtp_requests_total 4",
+      "hipengine_resident_bucket_info{active_mask=\"0\",fair_prefill_burst_chunks=\"1\",last_work_kind=\"verify_chain\",policy=\"protect_decode\"} 1"
+    ],
+    "metrics_after_recovery": [
+      "hipengine_request_cancelled_total 4",
+      "hipengine_resident_requests_active 0",
+      "hipengine_generation_requests_active 0",
+      "hipengine_mtp_requests_total 6",
+      "hipengine_resident_bucket_info{active_mask=\"0\",fair_prefill_burst_chunks=\"1\",last_work_kind=\"verify_chain\",policy=\"protect_decode\"} 1"
+    ]
+  },
+  "terminal": {
+    "finish_reason": "error",
+    "finish_details": {
+      "reason": "cancelled",
+      "cancelled": true,
+      "budget_pressure": "client_backpressure"
+    },
+    "done": true
+  },
+  "recovery": [
+    {
+      "text": "\n\n<think>\nThe user wants a one-sentence explanation of a rainbow. I",
+      "ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        799,
+        1284,
+        17834,
+        15673,
+        314,
+        264,
+        46026,
+        13,
+        353
+      ],
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 16,
+        "accepted_draft_tokens": 9,
+        "rejected_draft_tokens": 7,
+        "acceptance_rate": 0.5625,
+        "draft_cycles": 6,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "execution_path": "qwen4exp_mtp_batched_state_rows_verify"
+    },
+    {
+      "text": "\n\n<think>\nThe user wants a one-sentence explanation of a rainbow. I",
+      "ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        799,
+        1284,
+        17834,
+        15673,
+        314,
+        264,
+        46026,
+        13,
+        353
+      ],
+      "mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 16,
+        "accepted_draft_tokens": 9,
+        "rejected_draft_tokens": 7,
+        "acceptance_rate": 0.5625,
+        "draft_cycles": 6,
+        "selected_route": "speculative",
+        "decision_reason": "resident_dynamic_mtp"
+      },
+      "execution_path": "qwen4exp_mtp_batched_state_rows_verify"
+    }
+  ],
+  "passed": true,
+  "ready_after": true,
+  "limitations": [
+    "C1 zbook gfx1151 production UD-Q4_K_XL BF16 KV Q8_0 MTP B3 8K capacity only; not a performance/numerical/task-quality gate.",
+    "Cancelled deltas use generic resident_scheduler metadata. Isolated decode-to-verify_chain telemetry proves speculative scheduler work; only completed recovery requests carry compact MTP totals.",
+    "Earlier probes used an invalid final-only execution-path assertion. The claim that ignore_eos caused AR fallback was incorrect; that guard applies to continuation admission."
+  ]
+}
