@@ -124,6 +124,31 @@ def test_interrupted_verification_publishes_no_candidates_and_recovers(monkeypat
         service.close()
 
 
+def test_mtp_slow_consumer_is_cancelled_and_next_request_recovers(monkeypatch):
+    from hipengine.generation.deadline import GenerationCancelled
+    api, target, draft = driver(monkeypatch)
+    service = EngineService(api, idle_wait_seconds=0, stream_queue_max_chunks=1)
+    try:
+        # Intentionally never drain this child's bounded output queue.
+        slow = service.submit_speculative_child(request(max_tokens=30), streaming=True)
+        with pytest.raises(GenerationCancelled) as overflow:
+            slow.result(timeout=5)
+        assert overflow.value.finish_details.budget_pressure == 'client_backpressure'
+        assert all(tx.state != 'open' for tx in target.transactions)
+        assert target.position == draft.position
+        survivor = service.submit_speculative_child(request(max_tokens=12))
+        output = survivor.result(timeout=5)
+        assert output.finish_details.reason == 'length'
+        assert output.telemetry.timing['mtp_cycles_count'] > 0
+        assert len(output.generated_token_ids) == 12
+        repeated = service.submit_speculative_child(request(max_tokens=12)).result(timeout=5)
+        assert repeated.generated_token_ids == output.generated_token_ids
+        assert repeated.token_logprobs == output.token_logprobs
+        assert not service.closed
+    finally:
+        service.close()
+
+
 def test_service_publishes_root_before_verification_finishes(monkeypatch):
     api, target, _ = driver(monkeypatch)
     release = Event()
