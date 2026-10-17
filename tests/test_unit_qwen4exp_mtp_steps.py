@@ -540,6 +540,61 @@ def test_iter_generate_observes_cancellation_between_steps() -> None:
     assert draft.propose_calls == 0
 
 
+def test_scheduler_can_interleave_provider_synced_k0_with_planned_cycles():
+    provider, target, draft = _provider(
+        draft=_DraftRunner(proposals=((12, 98), (14, 97))),
+    )
+    steps = provider.iter_generate((1, 2), _request())
+    assert next(steps).token_ids == (10,)
+    k0 = steps.send(0)
+    assert k0.token_ids == (11,) and k0.cycle is None
+    assert draft.propose_calls == 0
+    assert target.runner.position == draft.position == 3
+    k1 = steps.send(1)
+    assert k1.token_ids == (12,) and k1.cycle.candidates == (12,)
+    k0 = steps.send(0)
+    assert k0.token_ids == (13,) and k0.cycle is None
+    last = steps.send(1)
+    assert last.token_ids == (14,) and last.finished
+    with pytest.raises(StopIteration) as terminal:
+        next(steps)
+    output = terminal.value.value
+    assert output.generated_token_ids == (10, 11, 12, 13, 14)
+    assert output.telemetry.timing == {
+        "mtp_generated_draft_tokens": 2,
+        "mtp_accepted_draft_tokens": 2,
+        "mtp_cycles_count": 2,
+    }
+    assert draft.forward_calls == [10, 12]
+    assert target.runner.position == draft.position == 6
+
+
+def test_scheduler_k0_stops_on_eos_without_counting_a_proposal():
+    provider, target, draft = _provider(eos_token_id=11)
+    steps = provider.iter_generate((1, 2), _request(ignore_eos=False))
+    next(steps)
+    progress = steps.send(0)
+    assert progress.token_ids == (11,) and progress.finished
+    with pytest.raises(StopIteration) as terminal:
+        next(steps)
+    output = terminal.value.value
+    assert output.finish_details.reason == "eos"
+    assert output.telemetry.timing["mtp_cycles_count"] == 0
+    assert output.telemetry.diagnostics["phase_census"]["target_k0"]["calls"] == 1
+    assert draft.propose_calls == 0
+    assert target.runner.position == draft.position == 3
+
+
+@pytest.mark.parametrize("budget", [-1, 3])
+def test_scheduler_depth_is_validated_before_model_mutation(budget):
+    provider, target, draft = _provider(candidate_budget=2)
+    steps = provider.iter_generate((1, 2), _request())
+    next(steps)
+    with pytest.raises(ValueError, match="budget"):
+        steps.send(budget)
+    assert draft.propose_calls == target.runner.step_calls == 0
+
+
 def test_iter_generate_batched_verify_commits_the_bonus_row(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY", "1")
     runner = _BatchedTargetRunner(truth=(10, 11, 12, 13, 14))

@@ -50,9 +50,9 @@ class Qwen4ExpMTPProgress:
     """One committed step of a Qwen4Exp MTP generation.
 
     ``token_ids`` are the tokens this step newly committed, never the running
-    total. The initial root-token step carries ``cycle=None``; each later step
-    carries exactly one :class:`Qwen4ExpMTPCycle`. ``finished`` marks the last
-    step the iterator emits.
+    total. The initial root-token step and scheduler-selected K0 steps carry
+    ``cycle=None``; speculative steps carry one :class:`Qwen4ExpMTPCycle`.
+    ``finished`` marks the last step the iterator emits.
     """
 
     token_ids: tuple[int, ...]
@@ -153,12 +153,12 @@ class Qwen4ExpMTPTextProvider:
         draft: Any | None = None,
         prefill_result: Any | None = None,
         draft_primed: bool = False,
-    ) -> Generator[Qwen4ExpMTPProgress, None, GenerationOutput]:
+    ) -> Generator[Qwen4ExpMTPProgress, int | None, GenerationOutput]:
         """Yield one committed MTP step at a time and return the final output.
 
         Lazy: creating the iterator performs no model work. The first step is
-        the initial root token with ``cycle=None``; every later step is exactly
-        one existing verification cycle plus the tokens that cycle committed.
+        the initial root token with ``cycle=None``; by default each later step
+        is one existing verification cycle plus its committed tokens.
         After the step carrying ``finished=True``, the next ``next()`` raises
         ``StopIteration`` whose value is the complete ``GenerationOutput`` with
         the usual telemetry.
@@ -166,7 +166,10 @@ class Qwen4ExpMTPTextProvider:
         ``target`` and ``draft`` are request-owned overrides for the loaded
         owners; the provider never swaps ``target_generator.runner`` or
         ``draft``. ``prefill_result`` reuses an existing target prefill and
-        ``draft_primed=True`` reuses an already primed draft cursor.
+        ``draft_primed=True`` reuses an already primed draft cursor. After each
+        yield, ``send(k)`` selects the next cycle's candidate budget (zero is a
+        target-only step with draft catchup). ``next()`` retains the configured
+        budget. The scheduler owns cancellation rollback around a step.
         """
 
         self._require_open()
@@ -233,7 +236,7 @@ class Qwen4ExpMTPTextProvider:
         if not request.ignore_eos and root_token == eos:
             reason = "eos"
 
-        yield Qwen4ExpMTPProgress(
+        next_budget = yield Qwen4ExpMTPProgress(
             token_ids=(root_token,),
             cycle=None,
             finished=not (len(generated) < request.max_tokens and reason != "eos"),
@@ -250,11 +253,40 @@ class Qwen4ExpMTPTextProvider:
             step_start = len(generated)
             raise_if_generation_deadline_expired(request)
             remaining = request.max_tokens - len(generated)
+            selected_budget = self.candidate_budget if next_budget is None else int(next_budget)
+            if not 0 <= selected_budget <= self.candidate_budget:
+                raise ValueError("scheduler candidate budget exceeds provider bounds")
+            if selected_budget == 0:
+                if int(target_runner.position) != int(draft_runner.position):
+                    raise RuntimeError("Qwen4Exp target/draft cursors diverged before K0")
+                catchup_started = time.perf_counter()
+                draft_runner.forward(
+                    root_token, root_hidden, capture_logits=False,
+                    capture_hidden_seed=False, capture_token_id=False, run_head=False,
+                )
+                record_phase("draft_k0_catchup", catchup_started)
+                target_started = time.perf_counter()
+                verified = target_runner.step(root_token, capture_hidden_seed=True)
+                record_phase("target_k0", target_started)
+                if verified.hidden_seed is None:
+                    raise RuntimeError("Qwen4Exp target did not expose K0 hidden row")
+                if int(target_runner.position) != int(draft_runner.position):
+                    raise RuntimeError("Qwen4Exp target/draft cursors diverged after K0")
+                root_token = int(verified.token_id)
+                root_hidden = verified.hidden_seed
+                generated.append(root_token)
+                if not request.ignore_eos and root_token == eos:
+                    reason = "eos"
+                next_budget = yield Qwen4ExpMTPProgress(
+                    token_ids=(root_token,), cycle=None,
+                    finished=len(generated) >= request.max_tokens or reason == "eos",
+                )
+                continue
             # A batched cycle commits up to budget + 1 tokens (the row after the
             # last draft is a bonus), so leave that row of headroom.
             bonus_row = batched_verify and remaining >= 2
             budget = min(
-                self.candidate_budget, remaining - 1 if bonus_row else remaining,
+                selected_budget, remaining - 1 if bonus_row else remaining,
                 7 if bonus_row else remaining,
             )
             start_position = int(target_runner.position)
@@ -357,7 +389,7 @@ class Qwen4ExpMTPTextProvider:
                     committed_position=int(target_runner.position),
                 )
             )
-            yield Qwen4ExpMTPProgress(
+            next_budget = yield Qwen4ExpMTPProgress(
                 token_ids=tuple(generated[step_start:]),
                 cycle=cycles[-1],
                 finished=not (
@@ -422,6 +454,10 @@ class Qwen4ExpMTPTextProvider:
                         "calls": phase_calls.get("target_verify", 0),
                         "ms": phase_ms.get("target_verify", 0.0),
                         "includes_hidden_export": True,
+                    },
+                    "target_k0": {
+                        "calls": phase_calls.get("target_k0", 0),
+                        "ms": phase_ms.get("target_k0", 0.0),
                     },
                     "acceptance_control": {
                         "calls": phase_calls.get("acceptance_control", 0),
