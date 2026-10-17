@@ -1046,15 +1046,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                     row.generated_ids.pop()
                     continue
             visible = self._visible_ids(row, finish)
-            full_text = self.generator.tokenizer.decode(
-                visible, skip_special=False
-            )
-            delta = (
-                full_text[len(row.emitted_text) :]
-                if full_text.startswith(row.emitted_text)
-                else full_text
-            )
-            row.emitted_text = full_text
+            delta = self._stream_text_delta(row, visible, final=finish is not None)
             generated.append(
                 GeneratedToken(
                     int(request_id), token, finished=finish is not None,
@@ -1069,6 +1061,48 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                 )
             )
         return tuple(generated)
+
+    def _stream_text_delta(self, row, visible, *, final):
+        text = self.generator.tokenizer.decode(visible, skip_special=False)
+        if not final:
+            # Byte-fallback tokens may end inside a UTF-8 codepoint. Do not
+            # publish a replacement character that the next token will repair.
+            text = text.rstrip("\ufffd")
+        if text.startswith(row.emitted_text):
+            delta = text[len(row.emitted_text):]
+        elif final and row.emitted_text.startswith(text):
+            # A terminal stop suffix is held by the service's token filter.
+            delta = ""
+        else:
+            raise RuntimeError("Flash-Next tokenizer rewrote published text")
+        row.emitted_text = text
+        return delta
+
+    def prepare_speculative_stream_events(self, request_ids):
+        rows = {rid: self._row(rid) for rid in request_ids}
+        return lambda events: self._decorate_speculative_stream_events(events, rows)
+
+    def _decorate_speculative_stream_events(self, events, rows):
+        """Decode only scheduler-committed IDs, never provisional candidates."""
+        remaining = {}
+        for event in events:
+            remaining[event.request_id] = remaining.get(event.request_id, 0) + 1
+        decorated = []
+        for event in events:
+            row = rows[event.request_id]
+            index = len(row.generated_ids) - remaining[event.request_id]
+            remaining[event.request_id] -= 1
+            finish = self._finish(row) if event.finished else None
+            visible = self._visible_ids(row, finish) if event.finished else tuple(row.generated_ids[:index + 1])
+            delta = self._stream_text_delta(row, visible, final=event.finished)
+            chunk = replace(
+                event.stream_chunk,
+                text=delta,
+                token_logprobs=tuple(row.token_logprobs[index:index + 1]) if index < len(visible) else (),
+                finish_details=finish,
+            )
+            decorated.append(replace(event, stream_chunk=chunk))
+        return tuple(decorated)
 
     def compact_batch(self, moves: Sequence[SlotMove]) -> None:
         for move in moves:

@@ -2825,12 +2825,14 @@ class ResidentEngineLoop:
             raise RuntimeError(
                 "runner committed speculative output despite pending cancellation"
             )
-        generated_events = self.scheduler.record_speculative_cycle_result(result)
-        decorate_stream = getattr(
-            self.runner,
-            "decorate_speculative_stream_events",
-            None,
+        # Completion callbacks may reclaim runner rows while recording tokens.
+        # Capture tokenizer state first for runners whose decoration is row-owned.
+        prepare_stream = getattr(self.runner, "prepare_speculative_stream_events", None)
+        decorate_stream = (
+            prepare_stream(plan.request_ids) if callable(prepare_stream)
+            else getattr(self.runner, "decorate_speculative_stream_events", None)
         )
+        generated_events = self.scheduler.record_speculative_cycle_result(result)
         if callable(decorate_stream):
             generated_events = tuple(decorate_stream(generated_events))
         return self._decode_events(spec_work, generated_events)

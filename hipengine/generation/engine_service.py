@@ -195,7 +195,7 @@ class EngineService:
         capabilities = capabilities() if callable(capabilities) else capabilities
         self._buffer_speculative_stream = (
             isinstance(capabilities, Mapping)
-            and capabilities.get("streaming_mode") == "buffered_public"
+            and capabilities.get("resident_streaming_mode", capabilities.get("streaming_mode")) == "buffered_public"
         )
         self._canonical_token_events = bool(
             getattr(driver, "canonical_token_events", True)
@@ -1044,20 +1044,12 @@ class EngineService:
                 # complete text deltas. Publish its authoritative output only at
                 # terminal; a lone frontier delta must not suppress that text.
                 continue
-            stream_chunk = event.stream_chunk
-            if state.execution_mode in {"verify_chain", "verify_tree"} and (
-                stream_chunk.finish_details is not None
-                or stream_chunk.generated_token_ids is not None
-            ):
-                # One terminal service chunk owns final speculative IDs, finish,
-                # and authoritative backend telemetry. Live chunks own text only.
-                stream_chunk = replace(
-                    stream_chunk,
-                    finish_details=None,
-                    generated_token_ids=None,
-                )
-            chunks = _stop_safe_chunks(state, token_id=token_id, chunk=stream_chunk)
+            chunks = _stop_safe_chunks(state, token_id=token_id, chunk=event.stream_chunk)
             for chunk in chunks:
+                if state.execution_mode in {"verify_chain", "verify_tree"}:
+                    # Filter with the finish reason intact before removing the
+                    # metadata owned by the terminal service chunk.
+                    chunk = replace(chunk, finish_details=None, generated_token_ids=None)
                 accepted = state.collector.publish(
                     EngineOutput(
                         kind=OutputKind.CHUNK,

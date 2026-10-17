@@ -148,6 +148,7 @@ class Qwen4ExpMTPTextProvider:
             "candidate_budget": self.candidate_budget,
             "context_limit": int(self.draft.max_sequence_length),
             "streaming_mode": "buffered_public",
+            "resident_streaming_mode": "committed_tokens",
             "processed_target_verification": True,
             "compatibility_guard": "target_distribution_bf16_c1",
             "sampling_algorithm": "target_draw_match_deterministic_draft",
