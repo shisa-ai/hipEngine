@@ -6440,6 +6440,10 @@
       }
     }
   },
+  "followup": {
+    "artifact": "2026-10-17-moe-mtp-state-slot-repair.json",
+    "note": "Correctly concurrent MoE replays exposed wrong convolution-state slot addressing. The linked artifact preserves the failing output and validates the repair. HTTP success in this earlier route matrix is not a correctness verdict."
+  },
   "implementation_commits": [
     "06c25be33",
     "0ec4aa482"

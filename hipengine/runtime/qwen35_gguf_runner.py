@@ -8223,19 +8223,30 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         decode_scratch,
         linear_state_rows: tuple[object, object],
+        state_capacity: int,
+        state_indices: Sequence[int],
         stream: int = 0,
     ) -> None:
-        """Run one MoE C2 linear layer row-exact over transaction-local state."""
+        """Run MoE C2 rows using the resident slot map for initial state."""
 
         rows = int(rows)
         segments = int(getattr(scratch, "gdn_active_segments", 1))
         if rows != 6 or segments != 2:
             raise ValueError("MoE C2 exact linear owner requires two R3 segments")
+        state_capacity = int(state_capacity)
+        state_indices = tuple(int(index) for index in state_indices)
+        if (
+            state_capacity < segments
+            or len(state_indices) != segments
+            or any(index < 0 or index >= state_capacity for index in state_indices)
+        ):
+            raise ValueError("MoE C2 exact linear state indices exceed state capacity")
         conv_state = decode_scratch.layer_conv_states[layer_id]
         recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
         if conv_state is None or recurrent_state is None:
             raise RuntimeError("MoE C2 exact linear owner lost packed state")
-        state_capacity = int(getattr(scratch, "gdn_segment_capacity", segments))
+        # The state slab may have more resident slots than this packed group.
+        # Its stride and indices must not come from the verifier workspace.
         conv_nbytes, conv_remainder = divmod(int(conv_state.nbytes), state_capacity)
         recurrent_nbytes, recurrent_remainder = divmod(
             int(recurrent_state.nbytes), state_capacity
@@ -8293,7 +8304,7 @@ class Qwen35GGUFFullStackRunner:
             row_start = segment * segment_rows
             qwen35_linear_attn_chain_conv_decode_bf16_tloop(
                 scratch.linear_qkv.ptr + row_start * qkv_row_nbytes,
-                conv_state.ptr + segment * conv_nbytes,
+                conv_state.ptr + state_indices[segment] * conv_nbytes,
                 conv_rows.ptr + row_start * conv_nbytes,
                 layer.weight("ssm_conv1d").allocation().tensor.ptr,
                 scratch.conv_out.ptr + row_start * conv_out_row_nbytes,
@@ -22816,6 +22827,8 @@ class Qwen35GGUFResidentSession:
                             rows=rows,
                             decode_scratch=linear_decode_scratch,
                             linear_state_rows=linear_state_rows,
+                            state_capacity=int(linear_state_owner.slot_count),
+                            state_indices=layout.state_indices,
                             stream=stream,
                         )
                     else:
