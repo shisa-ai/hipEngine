@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation.engine_loop import EngineLoopConfig, SubmitPollTextGenerator
 from hipengine.generation.qwen4_exp_gguf import (
     Qwen4ExpGGUFTextGenerator,
@@ -34,9 +35,17 @@ class _FakeRunner:
         self.position = 0
         self.closed = False
         self.calls = []
+        self.prompt_ids = []
 
     def reset(self):
         self.position = 0
+        self.prompt_ids.clear()
+
+    def prefill_append(self, tokens, **kwargs):
+        self.prompt_ids.extend(tokens)
+        self.position += len(tokens)
+        self.calls.append(("prefill_append", dict(kwargs)))
+        return SimpleNamespace(token_id=sum(self.prompt_ids) % 50 + self.bias)
 
     def prefill(self, tokens, **kwargs):
         self.position = len(tokens)
@@ -133,7 +142,7 @@ def test_qwen4_exp_resident_c2_uses_compact_output_by_default(monkeypatch) -> No
             kwargs
             == (
                 {"capture_logits": False, "capture_target_hidden": False}
-                if method == "prefill"
+                if method == "prefill_append"
                 else {
                     "capture_logits": False,
                     "capture_target_hidden": False,
@@ -189,6 +198,64 @@ def test_qwen4_exp_resident_admission_rollback_and_cancellation(monkeypatch) -> 
         native = generator._resident_model_runner
         assert native is not None
         assert all(row.runner is None for row in native._rows.values())
+    finally:
+        driver.close()
+
+
+def test_native_prefill_executes_each_chunk_without_replaying_the_prompt():
+    generator = _generator()
+    native = generator.create_resident_model_runner(capacity=1)
+    request = GenerationRequest(
+        prompts=((1, 2, 3, 4),), max_tokens=2, temperature=0.0,
+        top_p=1.0, ignore_eos=True,
+    )
+    try:
+        native.register_batch((1,), request, prompt_rows=request.prompts)
+        native.reserve_admission(SimpleNamespace(request_id=1))
+        for chunk, position in [((1, 2), 2), ((3, 4), 4)]:
+            native.prefill_batch(WorkItem(
+                kind=WorkKind.PREFILL, request_ids=(1,),
+                row_to_request=(1, 1), token_rows=(chunk,),
+            ), commit=True)
+            assert generator.runner.position == position
+            assert native._row(1).prefill_tokens_seen == position
+        assert generator.runner.prompt_ids == [1, 2, 3, 4]
+        assert [method for method, _ in generator.runner.calls] == [
+            "prefill_append", "prefill_append",
+        ]
+        assert native._row(1).next_result.token_id == 10
+    finally:
+        native.close()
+
+
+def test_native_prefill_cancellation_stops_work_and_reuses_clean_owner():
+    generator = _generator()
+    driver = SubmitPollTextGenerator(
+        generator, config=EngineLoopConfig(
+            max_active_requests=1, max_prefill_chunk_tokens=2,
+        ),
+    )
+    request = GenerationRequest(
+        prompts=((1, 2, 3, 4, 5, 6),), max_tokens=2, temperature=0.0,
+        top_p=1.0, ignore_eos=True,
+    )
+    try:
+        submission = driver.submit_detailed(request)
+        assert generator.runner.calls == []
+        driver.poll(max_ticks=1)
+        assert generator.runner.prompt_ids == [1, 2]
+        assert not driver.generation_complete(submission)
+        driver.cancel_submission(submission)
+        output = driver.take_result(submission)[0]
+        assert output.generated_token_ids == ()
+        assert output.finish_details.cancelled
+        assert generator.runner.prompt_ids == [1, 2]
+        recovered = driver.generate_detailed(GenerationRequest(
+            prompts=((7, 8),), max_tokens=2, temperature=0.0,
+            top_p=1.0, ignore_eos=True,
+        ))[0]
+        assert recovered.generated_token_ids == (15, 16)
+        assert generator.runner.prompt_ids == [7, 8]
     finally:
         driver.close()
 

@@ -110,7 +110,13 @@ def exercise(pool, prompts, capture_fn=capture, *, checkpoint_each=True):
     for index, (name, prompt) in enumerate(prompts.items()):
         rid = index + 1
         register(pool, rid, prompt)
-        prefill(pool, rid, prompt)
+        # Isolation compares the same chunk schedule with and without a peer.
+        # Different chunk boundaries have their own production numerical gate.
+        if name in {"a", "b"}:
+            prefill(pool, rid, prompt[:1024])
+            prefill(pool, rid, prompt[1024:])
+        else:
+            prefill(pool, rid, prompt)
         samples = [capture_fn(pool._row(rid).runner)]
         for _ in range(8):
             token = pool.decode_batch(work(WorkKind.DECODE, (rid,)), commit=True)[0]
@@ -218,22 +224,28 @@ def exercise(pool, prompts, capture_fn=capture, *, checkpoint_each=True):
 def validate_traces(traces, prompts, *, chunk=2048):
     if chunk not in (2048, 4096):
         raise ValueError("unsupported c2 chunk")
-    expected = {index + 1: len(prompt) for index, prompt in enumerate(prompts.values())}
+    expected = {index + 1: ([1024, len(prompt) - 1024] if name in {"a", "b"}
+                            else [len(prompt)])
+                for index, (name, prompt) in enumerate(prompts.items())}
     for repeat in range(3):
         base = 100 + repeat * 10
-        expected.update({base: len(prompts["a"]), base + 1: len(prompts["b"]),
-                         base + 3: len(prompts["c"])})
+        expected.update({base: [1024, len(prompts["a"]) - 1024],
+                         base + 1: [1024, len(prompts["b"]) - 1024],
+                         base + 2: [1024], base + 3: [len(prompts["c"])]})
     observed = {}
     for event in traces:
         observed.setdefault(event["request_id"], []).append(event["rows"])
     if set(observed) != set(expected):
         raise ValueError("unexpected model-prefill request set")
-    for rid, length in expected.items():
-        count, tail = divmod(length, chunk)
-        if observed[rid] != [chunk] * count + ([tail] if tail else []):
+    for rid, lengths in expected.items():
+        rows = []
+        for length in lengths:
+            count, tail = divmod(length, chunk)
+            rows.extend([chunk] * count + ([tail] if tail else []))
+        if observed[rid] != rows:
             raise ValueError("actual c2 model chunk coverage differs")
     return dict(model_prefills=len(observed), chunk_calls=len(traces),
-                partial_cancellations_without_model_prefill=3)
+                partial_cancellations_with_model_prefill=3)
 
 
 def main():

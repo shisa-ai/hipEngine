@@ -887,20 +887,19 @@ class Qwen4ExpResidentServingRunner:
             start = row.prefill_tokens_seen
             if chunk != row.prompt_ids[start : start + len(chunk)]:
                 raise RuntimeError("Qwen4Exp native prefill chunk drift")
-            row.prefill_tokens_seen += len(chunk)
             if int(row.request.max_tokens) == 0:
+                row.prefill_tokens_seen += len(chunk)
                 continue
             if row.runner is None:
                 raise RuntimeError("Qwen4Exp admitted row has no runner")
+            prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
+            if row.controlled:
+                prefill_kwargs["capture_logits"] = True
+            result = row.runner.prefill_append(chunk, **prefill_kwargs)
+            row.prefill_tokens_seen += len(chunk)
             if row.prefill_tokens_seen == len(row.prompt_ids):
-                prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
-                if row.controlled:
-                    prefill_kwargs["capture_logits"] = True
-                row.next_result = row.runner.prefill(
-                    row.prompt_ids,
-                    **prefill_kwargs,
-                )
-                raise_if_generation_deadline_expired(row.request)
+                row.next_result = result
+            raise_if_generation_deadline_expired(row.request)
 
     def decode_batch(
         self, work: WorkItem, *, commit: bool

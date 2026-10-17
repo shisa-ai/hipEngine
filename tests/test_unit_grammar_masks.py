@@ -138,7 +138,7 @@ def test_controlled_runner_feeds_selected_token_not_raw_argmax(monkeypatch):
     def step(token,**kwargs):
         calls.append((token,kwargs))
         return SimpleNamespace(token_id=8,logits=np.zeros(100,np.float32))
-    generator.runner.prefill = prefill
+    generator.runner.prefill_append = prefill
     generator.runner.step = step
     driver = SubmitPollTextGenerator(generator,config=EngineLoopConfig(max_active_requests=1))
     try:

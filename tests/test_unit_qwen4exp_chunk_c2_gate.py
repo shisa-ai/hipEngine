@@ -22,12 +22,12 @@ class Runner:
         self.position = 0
         self.history = ()
 
-    def prefill(self, tokens, **kwargs):
+    def prefill_append(self, tokens, **kwargs):
         assert kwargs == {"capture_logits": False, "capture_target_hidden": False}
-        self.history = tuple(tokens)
-        self.position = len(tokens)
-        self.next_token = sum(tokens) % 50
-        self.calls.append("prefill")
+        self.history += tuple(tokens)
+        self.position += len(tokens)
+        self.next_token = sum(self.history) % 50
+        self.calls.append("prefill_append")
         return SimpleNamespace(token_id=self.next_token)
 
     def step(self, token, **kwargs):
@@ -69,7 +69,7 @@ def test_c2_sequence_uses_real_pool_and_keeps_compact_calls(monkeypatch):
         assert all(row["checkpoints"] == 28 for row in result["repeats"])
         assert {row["owners"]["a"] for row in result["repeats"]} == {0, 1}
         assert not native.active_request_ids
-        assert sum(r.calls.count("prefill") for r in native._all_runners) == 12
+        assert sum(r.calls.count("prefill_append") for r in native._all_runners) == 23
     finally:
         native.close()
 
@@ -132,20 +132,23 @@ def test_disjoint_ranges_allows_adjacency_but_not_partial_overlap():
     assert not gate.disjoint([(10, 20)], [(12, 15)])
 
 
-@pytest.mark.parametrize("chunk,expected_calls", [(2048, 28), (4096, 16)])
-def test_trace_gate_rejects_prefill_for_cancelled_partial_request(chunk, expected_calls):
-    expected = {1: 2052, 2: 4097, 3: 2049}
+@pytest.mark.parametrize("chunk,expected_calls", [(2048, 31), (4096, 23)])
+def test_trace_gate_requires_real_work_before_partial_cancellation(chunk, expected_calls):
+    expected = {1: [1024, 1028], 2: [1024, 3073], 3: [2049]}
     for repeat in range(3):
         base = 100 + repeat * 10
-        expected.update({base: 2052, base + 1: 4097, base + 3: 2049})
+        expected.update({base: [1024, 1028], base + 1: [1024, 3073],
+                         base + 2: [1024], base + 3: [2049]})
     traces = []
-    for rid, length in expected.items():
-        count, tail = divmod(length, chunk)
-        traces.extend({"request_id": rid, "rows": size}
-                      for size in [chunk] * count + ([tail] if tail else []))
+    for rid, lengths in expected.items():
+        for length in lengths:
+            count, tail = divmod(length, chunk)
+            traces.extend({"request_id": rid, "rows": size}
+                          for size in [chunk] * count + ([tail] if tail else []))
     assert gate.validate_traces(traces, PROMPTS, chunk=chunk)["chunk_calls"] == expected_calls
     with pytest.raises(ValueError, match="request set"):
-        gate.validate_traces(traces + [{"request_id": 102, "rows": 1024}], PROMPTS, chunk=chunk)
-    traces[0]["rows"] = 1024
+        gate.validate_traces([row for row in traces if row["request_id"] != 102],
+                             PROMPTS, chunk=chunk)
+    traces[0]["rows"] = 1023
     with pytest.raises(ValueError, match="coverage"):
         gate.validate_traces(traces, PROMPTS, chunk=chunk)
