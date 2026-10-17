@@ -1061,7 +1061,12 @@ class Qwen35MoeGGUFModel:
             max_group_rows=2,
             group_rejection_reason="moe_group_above_offered_width",
             sampling_modes=("greedy_fast", "sampled"),
-            automatic_eligible=True,
+            # The gfx1151 C1/C2 implementation remains executable for explicit
+            # requests, but its observed production packet is slower than AR and
+            # diverges under the production-envelope verifier. Keep automatic
+            # selection on AR until that observed regression is cleared; an
+            # explicit ``speculative_mtp: true`` still reaches this capability.
+            automatic_eligible=False,
         ),
     )
     weight_name_templates: tuple[str, ...] = (
