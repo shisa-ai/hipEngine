@@ -5707,6 +5707,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
 
         full_text: list[str] = []
+        pending_stream_logprobs: list[TokenLogprob] = []
         last_stream_chunk: GenerationStreamChunk | None = None
         try:
             _validate_generation_request(
@@ -5821,7 +5822,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 ),
                 control,
             ):
-                stream_chunk = _coerce_generation_stream_chunk(token)
+                stream_chunk = _coalesce_stream_logprobs(
+                    _coerce_generation_stream_chunk(token), pending_stream_logprobs,
+                )
                 last_stream_chunk = stream_chunk
                 text = stream_chunk.text
                 if not text:
@@ -8214,6 +8217,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
         full_text: list[str] = []
+        pending_stream_logprobs: list[TokenLogprob] = []
         last_stream_chunk: GenerationStreamChunk | None = None
         splitter_source_chunks: list[_LiveSourceChunk] = []
         splitter_source_offset = 0
@@ -8340,7 +8344,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 ),
                 control,
             ):
-                stream_chunk = _coerce_generation_stream_chunk(token)
+                stream_chunk = _coalesce_stream_logprobs(
+                    _coerce_generation_stream_chunk(token), pending_stream_logprobs,
+                )
                 last_stream_chunk = stream_chunk
                 text = stream_chunk.text
                 if not text:
@@ -15201,6 +15207,18 @@ def _completion_logprobs(detail: GenerationOutput, text: str, *, echo_text: str 
     if omitted:
         payload.setdefault("hipengine", {})["omitted_token_logprobs"] = omitted
     return payload
+
+
+def _coalesce_stream_logprobs(
+    chunk: GenerationStreamChunk, pending: list[TokenLogprob],
+) -> GenerationStreamChunk:
+    """Attach withheld UTF-8 fragment records to the next decoded text delta."""
+    pending.extend(chunk.token_logprobs)
+    if not chunk.text:
+        return chunk
+    result = replace(chunk, token_logprobs=tuple(pending))
+    pending.clear()
+    return result
 
 
 def _completion_stream_logprobs(stream_chunk: GenerationStreamChunk) -> dict[str, Any]:

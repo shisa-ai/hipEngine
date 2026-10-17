@@ -15,7 +15,9 @@ class ResidentLLM(_SpeculativeFakeLLM):
 
     def __init__(self, api):
         super().__init__()
-        self.api = api
+        from hipengine.generation.engine_service import EngineService
+        self.api = EngineService(api, idle_wait_seconds=0)
+        self._text_generator = self.api
         self.speculative_provider = 'qwen4_exp_mtp'
 
     def _get_text_generator(self):
@@ -92,17 +94,65 @@ def test_http_sampled_requests_execute_mtp_not_ar(monkeypatch, endpoint, spellin
             assert not llm.ar_calls, 'selected speculation must never run the direct AR logprob shortcut'
             assert any(call[0] == 'verify' for call in target.calls), response.text
             assert all(call[2] for call in target.calls)
-            assert llm.speculative_calls or stream and not logprobs
+            assert llm.speculative_calls or stream
             if logprobs:
                 entries = [p['choices'][0]['logprobs'] for p in payloads
                            if p.get('choices') and p['choices'][0].get('logprobs')]
                 assert entries, response.text
+                if stream:
+                    assert len(entries) > 1, 'logprobs must not force full-response buffering'
                 if endpoint == 'completions':
                     assert sum(len(e['tokens']) for e in entries) == 12
                 else:
                     assert sum(len(e['content']) for e in entries) == 12
     finally:
+        llm.api.close()
         api.close()
+
+
+@pytest.mark.parametrize('endpoint', ['completions', 'chat/completions'])
+@pytest.mark.parametrize('max_tokens', [1, 2, 3, 4, 7])
+def test_live_logprobs_preserve_utf8_fragments(monkeypatch, endpoint, max_tokens):
+    import numpy as np
+    from hipengine.generation.sampling import RowSamplingState
+    from scripts.qwen4exp_sampled_mtp_http_gate import extract, fingerprint
+
+    api, target, _ = driver(monkeypatch)
+    target.constant = np.zeros(4)
+    parts = (b'\xe3', b'\x81', b'\x82', b'X')
+    monkeypatch.setattr(api.inner.tokenizer, 'decode',
+                        lambda ids, **kw: b''.join(parts[i] for i in ids).decode('utf-8', errors='replace'))
+    monkeypatch.setattr(api.inner.tokenizer, 'decode_token_bytes', lambda i: parts[i], raising=False)
+    llm = ResidentLLM(api)
+    monkeypatch.setattr(api.inner, 'render_chat_prompt', llm.render_chat_prompt)
+    cfg = _config(speculative_provider='qwen4_exp_mtp', speculative_candidate_budget=3,
+                  speculative_mtp_serving='opt_in', speculative_mtp_thinking='hard')
+    chat = endpoint == 'chat/completions'
+    body = dict(model='fake-model', max_tokens=max_tokens, temperature=1, speculative=True)
+    body.update(dict(messages=[dict(role='user', content='one')], enable_thinking=False,
+                     logprobs=True, top_logprobs=4) if chat else dict(prompt='one', logprobs=4))
+    results = []
+    try:
+        with TestClient(create_app(cfg, llm=llm)) as client:
+            for stream in (False, True):
+                draws = iter([.1, .3, .6, .9] * 4)
+                monkeypatch.setattr(RowSamplingState, 'random_unit', lambda self: next(draws))
+                req = body | dict(stream=stream)
+                if stream:
+                    req['stream_options'] = dict(include_usage=True, include_hipengine=True)
+                response = client.post('/v1/' + endpoint, json=req)
+                assert response.status_code == 200, response.text
+                payload = ([json.loads(line[6:]) for line in response.text.splitlines()
+                            if line.startswith('data: {')] if stream else response.json())
+                if stream:
+                    assert not any('error' in p for p in payload), response.text
+                result = fingerprint(extract(payload, chat=chat))
+                result['finish'] = {k: v for k, v in result['finish'].items()
+                                    if k not in ('continuation_id', 'continuation_eligible')}
+                results.append(result)
+        assert results[0] == results[1]
+    finally:
+        llm.api.close()
 
 
 def test_logprob_requests_preserve_operator_mtp_rollback(monkeypatch):
@@ -121,4 +171,5 @@ def test_logprob_requests_preserve_operator_mtp_rollback(monkeypatch):
             assert not any(call[0] == 'verify' for call in target.calls)
             assert response.json()['hipengine']['speculative_mtp']['decision_reason'] == 'mtp_operator_rollback'
     finally:
+        llm.api.close()
         api.close()

@@ -15,6 +15,17 @@ from tests.test_unit_qwen4exp_mtp_submission import _finish
 from tests.test_unit_qwen4exp_sampling import request
 
 
+def test_logprob_stream_capability_is_resident_owned(monkeypatch):
+    api, _, _ = driver(monkeypatch)
+    try:
+        assert api.supports_stream_token_logprobs
+        assert not getattr(api.inner, 'supports_stream_token_logprobs', False)
+        monkeypatch.setattr(api._runner, 'supports_stream_token_logprobs', False)
+        assert not api.supports_stream_token_logprobs
+    finally:
+        api.close()
+
+
 def test_committed_cycle_events_carry_text_and_target_logprobs(monkeypatch):
     api, target, _ = driver(monkeypatch)
     req = request(max_tokens=15)

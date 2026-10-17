@@ -1167,6 +1167,11 @@ class SubmitPollTextGenerator:
         )
 
     @property
+    def supports_stream_token_logprobs(self) -> bool:
+        owner = self._runner if self._has_resident_runner else self._inner
+        return bool(getattr(owner, "supports_stream_token_logprobs", False))
+
+    @property
     def supports_controlled_streaming(self) -> bool:
         return self._has_resident_runner
 

@@ -837,6 +837,8 @@ class _Qwen4ExpServingRow:
 class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
     """Request-owned c2 runner pool over one shared Qwen4Exp weight layout."""
 
+    supports_stream_token_logprobs = True
+
     def __init__(self, generator: Qwen4ExpGGUFTextGenerator, *, capacity: int) -> None:
         self.generator = generator
         self.capacity = int(capacity)
