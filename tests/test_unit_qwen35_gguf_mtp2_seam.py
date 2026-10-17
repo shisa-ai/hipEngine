@@ -28,7 +28,7 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
     PRIMING_SOURCE_RESTORED,
 )
 from hipengine.kernels.backends import backend_package_capability
-from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY, QWEN35_MOE_H2048_E256_GEOMETRY
 from hipengine.runtime import qwen35_gguf_runner as runner_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
@@ -158,7 +158,9 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
         "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
         {},
     ) == {
+        (QWEN35_DENSE_H5120_GEOMETRY, None, "production"): (1, 2, 3, 4),
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3, 4),
+        (QWEN35_MOE_H2048_E256_GEOMETRY, None, "production"): (1, 2),
     }
     assert backend_package_capability(
         "hip_gfx1151",

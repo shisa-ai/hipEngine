@@ -2459,7 +2459,9 @@ GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS: dict[str, int] = {"production": 4
 # with acceptance trajectory an observational diagnostic. Strict C1,
 # other models/quants/profiles, and peers retain replay.
 GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, None, "production"): (1, 2, 3, 4),
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3, 4),
+    (QWEN35_MOE_H2048_E256_GEOMETRY, None, "production"): (1, 2),
 }
 # E1b reuses the exact Q6 F32 small-B rowtile only for physical proposal-head
 # dimensions/rows2-4 that have actual Qwen3.8 evidence. Wide request groups

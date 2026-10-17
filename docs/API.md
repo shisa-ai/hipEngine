@@ -185,8 +185,7 @@ the `enabled` policy. The summary marks admitted plans as `(unmeasured)` when
 they lack an evidence key, evidence fingerprint, or evidence artifacts. Reason
 names do not determine measurement status; sampled evidence counts too.
 
-Qwen3.8-27B dense models and the declared Qwen3.6-35B-A3B and
-Qwen3.8-Flash-Next MoE lanes on gfx1151 use the same automatic sampled MTP
+Qwen3.8-27B dense models and the declared Qwen3.6-35B-A3B MoE lane
 route when their MTP head is available. Gemma 4 26B-A4B uses its external MTP
 head on the same capability-based route. Temperature, top-p, top-k, min-p,
 penalties, and seeds use the native sampled verifier; only committed outputs
