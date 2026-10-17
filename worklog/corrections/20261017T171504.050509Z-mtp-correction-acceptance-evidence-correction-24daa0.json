@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261017T171504.050509Z-mtp-correction-acceptance-evidence-correction-24daa0.md",
+  "sha256": "c4fe19c05e2021ef916bdb4098fdb6dfa1cb2accd2249a8c2f147b89ec1bc39e",
+  "defects": [
+    "abbreviated_base_commit",
+    "missing_required_sections"
+  ],
+  "reason": "base_commit recorded the 9-character abbreviation aaf510a7c, and the body uses '## Corrections' and '## Evidence and gates' instead of the required '## Changes', '## Validation', and '## Next' headings.",
+  "base_commit": "aaf510a7c355b7e05c01a0d2bd344dd62211550f",
+  "superseded_by": "worklog/entries/20261017T182736.596748Z-worklog-compat-correct-acceptance-evidence-correction-cbea31.md"
+}

@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261016T172927.897355Z-overnight-mtp-gfx1151-qwen-moe-flash-835de1.md",
+  "sha256": "4a820d59136b35d890fd0c3085e8475718b76f6ed737301e8962193af7f6b95e",
+  "defects": [
+    "abbreviated_base_commit"
+  ],
+  "reason": "base_commit recorded the 9-character abbreviation 75c64f7a1; it resolves to 75c64f7a1185188d7e79efe054c150de905a9c69 in this repository's history.",
+  "base_commit": "75c64f7a1185188d7e79efe054c150de905a9c69",
+  "superseded_by": null
+}

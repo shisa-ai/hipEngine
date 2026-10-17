@@ -8,11 +8,20 @@ the tree; its exact bytes stay pinned by the history ref recorded in
 ``worklog/legacy-port-manifest.json``. ``WORKLOG.md`` remains a tracked
 navigation page; generated local views go under the ignored ``.worklog``
 directory.
+
+A historical entry that never satisfied the current schema is repaired
+without editing its bytes by one immutable, hash-bound record under
+``worklog/corrections``. The record names the exact entry path, the sha256 of
+its commit-tree bytes, the specific defect it is allowed to have, and either
+the resolved full ``base_commit`` or the new immutable entry that supersedes
+it. New entries never take that route: they are validated strictly, and an
+entry with no matching record is still rejected for the same defects.
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import os
@@ -27,15 +36,17 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRY_DIR = ROOT / "worklog" / "entries"
+CORRECTIONS_DIR = ROOT / "worklog" / "corrections"
 LEGACY_PATH = ROOT / "WORKLOG-LEGACY.md"
 LEGACY_MANIFEST_PATH = ROOT / "worklog" / "legacy-manifest.json"
 TRACKED_NAVIGATION_PATH = ROOT / "WORKLOG.md"
 DEFAULT_OUTPUT = ROOT / ".worklog" / "WORKLOG.md"
 ENTRY_DIR_REL = str(ENTRY_DIR.relative_to(ROOT))
+CORRECTIONS_DIR_REL = str(CORRECTIONS_DIR.relative_to(ROOT))
 LEGACY_REL = str(LEGACY_PATH.relative_to(ROOT))
 LEGACY_MANIFEST_REL = str(LEGACY_MANIFEST_PATH.relative_to(ROOT))
 # Every path whose tracked content is immutable and whose index state is gated.
-WORKLOG_PATHS = (ENTRY_DIR_REL, LEGACY_REL, LEGACY_MANIFEST_REL)
+WORKLOG_PATHS = (ENTRY_DIR_REL, CORRECTIONS_DIR_REL, LEGACY_REL, LEGACY_MANIFEST_REL)
 SCHEMA_VERSION = "1"
 REQUIRED_FIELDS = (
     "schema",
@@ -64,6 +75,19 @@ LEGACY_MANIFEST_FIELDS = (
     "first_heading",
     "last_heading",
 )
+CORRECTION_FIELDS = (
+    "schema",
+    "path",
+    "sha256",
+    "defects",
+    "reason",
+    "base_commit",
+    "superseded_by",
+)
+# The only schema rules a hash-bound correction may relax. Each defect name has
+# exactly one companion field that carries the repair.
+CORRECTION_DEFECTS = ("abbreviated_base_commit", "missing_required_sections")
+SUPERSEDING_STATUSES = frozenset({"decision", "checkpoint"})
 MANAGED_HOOK = """#!/bin/sh
 # hipEngine Worklog2 managed pre-commit hook.
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
@@ -155,6 +179,13 @@ def read_index_blobs(paths: list[str]) -> dict[str, bytes]:
         blobs[path] = output[cursor : cursor + size]
         cursor += size + 1
     return blobs
+
+
+def _path_in_head(relpath: str) -> bool:
+    """Whether `relpath` is already committed in HEAD, i.e. is historical."""
+    if run_git("rev-parse", "--verify", "HEAD", check=False) == "":
+        return False
+    return bool(run_git("ls-tree", "--name-only", "HEAD", "--", relpath, check=False))
 
 
 def slugify(value: str, *, fallback: str) -> str:
@@ -329,7 +360,20 @@ def _line_conflict_marker(body: str) -> str | None:
     return None
 
 
-def parse_entry_text(text: str) -> tuple[dict[str, str], str]:
+def parse_entry_text(
+    text: str,
+    *,
+    base_commit_override: str | None = None,
+    allow_missing_sections: bool = False,
+) -> tuple[dict[str, str], str]:
+    """Parse one entry, optionally under a hash-bound correction record.
+
+    The two keyword arguments are only ever supplied from a bound
+    `EntryCorrection`; every other caller parses strictly. `base_commit_override`
+    must extend the recorded abbreviation, and `allow_missing_sections` relaxes
+    exactly the required-heading presence and non-empty-body rules while keeping
+    heading order, the title, frontmatter, placeholder, and conflict-marker rules.
+    """
     lines = text.splitlines()
     if not lines or lines[0] != "---":
         raise WorklogError("missing opening frontmatter delimiter")
@@ -377,7 +421,26 @@ def parse_entry_text(text: str) -> tuple[dict[str, str], str]:
     if fields["status"] not in ALLOWED_STATUSES:
         raise WorklogError(f"unsupported status: {fields['status']}")
     if not re.fullmatch(r"[0-9a-f]{40}", fields["base_commit"]):
-        raise WorklogError("base_commit must be a full 40-character lowercase commit hash")
+        recorded_commit = fields["base_commit"]
+        if base_commit_override is None:
+            raise WorklogError(
+                "base_commit must be a full 40-character lowercase commit hash"
+            )
+        if not re.fullmatch(r"[0-9a-f]{4,39}", recorded_commit):
+            raise WorklogError(
+                "recorded base_commit is not an abbreviated lowercase commit prefix: "
+                f"{recorded_commit!r}"
+            )
+        if not re.fullmatch(r"[0-9a-f]{40}", base_commit_override):
+            raise WorklogError(
+                "corrected base_commit must be a full 40-character lowercase commit hash"
+            )
+        if not base_commit_override.startswith(recorded_commit):
+            raise WorklogError(
+                f"corrected base_commit {base_commit_override!r} does not extend the "
+                f"recorded value {recorded_commit!r}"
+            )
+        fields["base_commit"] = base_commit_override
     if slugify(fields["topic"], fallback="") != fields["topic"]:
         raise WorklogError(
             "topic must be a lowercase kebab-case slug of at most 48 characters "
@@ -396,17 +459,22 @@ def parse_entry_text(text: str) -> tuple[dict[str, str], str]:
     for section in REQUIRED_SECTIONS:
         section_lines = section_map[section]
         if len(section_lines) != 1:
+            if allow_missing_sections and section != "## Summary" and not section_lines:
+                continue
             raise WorklogError(
                 f"expected exactly one {section!r} heading, found {len(section_lines)}"
             )
         positions.append(section_lines[0])
     if positions != sorted(positions):
         raise WorklogError("required sections are out of order")
-    for index, section in enumerate(REQUIRED_SECTIONS):
-        content_start = positions[index] + 1
-        content_end = positions[index + 1] if index + 1 < len(positions) else len(body_lines)
-        if not "\n".join(body_lines[content_start:content_end]).strip():
-            raise WorklogError(f"{section!r} section is empty")
+    if not allow_missing_sections:
+        for index, section in enumerate(REQUIRED_SECTIONS):
+            content_start = positions[index] + 1
+            content_end = (
+                positions[index + 1] if index + 1 < len(positions) else len(body_lines)
+            )
+            if not "\n".join(body_lines[content_start:content_end]).strip():
+                raise WorklogError(f"{section!r} section is empty")
     for placeholder in PLACEHOLDERS:
         if placeholder in body:
             raise WorklogError(f"unfinished placeholder remains: {placeholder}")
@@ -432,21 +500,287 @@ def filename_errors(relpath: str, fields: dict[str, str]) -> list[str]:
     return []
 
 
+@dataclasses.dataclass(frozen=True)
+class EntryCorrection:
+    """One hash-bound compatibility record for a historical invalid entry."""
+
+    source: str
+    path: str
+    sha256: str
+    defects: tuple[str, ...]
+    reason: str
+    base_commit: str | None
+    superseded_by: str | None
+
+
+def entry_path_error(relpath: str) -> str | None:
+    """Why `relpath` is not a plain entry file directly under worklog/entries."""
+    prefix = f"{ENTRY_DIR_REL}/"
+    if not relpath.startswith(prefix):
+        return f"must name a path under {ENTRY_DIR_REL}/"
+    name = relpath[len(prefix) :]
+    if "/" in name:
+        return f"must name a file directly under {ENTRY_DIR_REL}/"
+    if not FILENAME_RE.fullmatch(name):
+        return "must name a worklog entry filename"
+    return None
+
+
+def parse_correction_text(relpath: str, text: str) -> EntryCorrection:
+    """Strictly parse one immutable correction record.
+
+    A record is accepted only when every field is present, ordered, and typed as
+    documented, when the defect it names has its companion repair, and when its
+    own filename is the corrected entry's filename with a `.json` extension. The
+    sha256 is checked against the commit-tree bytes by `bind_corrections`.
+    """
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise WorklogError(f"{relpath}: correction record is not valid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise WorklogError(f"{relpath}: correction record must be a JSON object")
+    if tuple(value) != CORRECTION_FIELDS:
+        missing = [field for field in CORRECTION_FIELDS if field not in value]
+        extra = [field for field in value if field not in CORRECTION_FIELDS]
+        detail: list[str] = []
+        if missing:
+            detail.append(f"missing {', '.join(missing)}")
+        if extra:
+            detail.append(f"unknown {', '.join(extra)}")
+        if not detail:
+            detail.append("fields are out of order")
+        raise WorklogError(f"{relpath}: correction fields invalid: {'; '.join(detail)}")
+
+    schema = value["schema"]
+    if isinstance(schema, bool) or schema != 1:
+        raise WorklogError(f"{relpath}: correction schema must be 1")
+
+    path = value["path"]
+    if not isinstance(path, str):
+        raise WorklogError(f"{relpath}: path must be a string")
+    path_error = entry_path_error(path)
+    if path_error:
+        raise WorklogError(f"{relpath}: path {path_error}")
+    expected_name = f"{Path(path).stem}.json"
+    if Path(relpath).name != expected_name:
+        raise WorklogError(
+            f"{relpath}: correction filename must be {expected_name!r} "
+            "(the corrected entry filename with a .json extension)"
+        )
+
+    digest = value["sha256"]
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise WorklogError(
+            f"{relpath}: sha256 must be the 64-character lowercase hash of the entry's "
+            "commit-tree bytes"
+        )
+
+    defects = value["defects"]
+    if (
+        not isinstance(defects, list)
+        or not defects
+        or not all(isinstance(item, str) for item in defects)
+    ):
+        raise WorklogError(f"{relpath}: defects must be a non-empty list of defect names")
+    if sorted(set(defects)) != defects:
+        raise WorklogError(f"{relpath}: defects must be sorted and free of duplicates")
+    unknown = [item for item in defects if item not in CORRECTION_DEFECTS]
+    if unknown:
+        raise WorklogError(
+            f"{relpath}: unknown defect(s) {', '.join(unknown)}; "
+            f"known defects are {', '.join(CORRECTION_DEFECTS)}"
+        )
+
+    reason = value["reason"]
+    if not isinstance(reason, str) or not reason.strip() or "\n" in reason:
+        raise WorklogError(f"{relpath}: reason must be one non-empty line")
+
+    base_commit = value["base_commit"]
+    if base_commit is not None and (
+        not isinstance(base_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", base_commit)
+    ):
+        raise WorklogError(
+            f"{relpath}: base_commit amendment must be a full 40-character lowercase "
+            "commit hash or null"
+        )
+    if ("abbreviated_base_commit" in defects) != (base_commit is not None):
+        raise WorklogError(
+            f"{relpath}: base_commit must carry the resolved full hash exactly when "
+            "defects lists abbreviated_base_commit, and be null otherwise"
+        )
+
+    superseded_by = value["superseded_by"]
+    if superseded_by is not None:
+        if not isinstance(superseded_by, str):
+            raise WorklogError(f"{relpath}: superseded_by must be a string or null")
+        superseded_error = entry_path_error(superseded_by)
+        if superseded_error:
+            raise WorklogError(f"{relpath}: superseded_by {superseded_error}")
+        if superseded_by == path:
+            raise WorklogError(f"{relpath}: superseded_by must name a different entry")
+    if ("missing_required_sections" in defects) != (superseded_by is not None):
+        raise WorklogError(
+            f"{relpath}: superseded_by must name the new correcting entry exactly when "
+            "defects lists missing_required_sections, and be null otherwise"
+        )
+
+    return EntryCorrection(
+        source=relpath,
+        path=path,
+        sha256=digest,
+        defects=tuple(defects),
+        reason=reason,
+        base_commit=base_commit,
+        superseded_by=superseded_by,
+    )
+
+
+def load_corrections(blobs: dict[str, bytes]) -> tuple[dict[str, EntryCorrection], list[str]]:
+    """Parse every staged correction record, keyed by the entry it corrects.
+
+    The filename rule (`<entry stem>.json`) makes the directory hold at most one
+    record per corrected entry, so a second record for the same entry path cannot
+    be staged without colliding on the path itself.
+    """
+    corrections: dict[str, EntryCorrection] = {}
+    errors: list[str] = []
+    for relpath in sorted(blobs):
+        try:
+            text = blobs[relpath].decode("utf-8")
+        except UnicodeError as exc:
+            errors.append(f"{relpath}: {exc}")
+            continue
+        try:
+            correction = parse_correction_text(relpath, text)
+        except WorklogError as exc:
+            errors.append(str(exc))
+            continue
+        corrections[correction.path] = correction
+    return corrections, errors
+
+
+def bind_corrections(
+    corrections: dict[str, EntryCorrection],
+    entry_blobs: dict[str, bytes],
+) -> tuple[dict[str, EntryCorrection], list[str]]:
+    """Keep only corrections whose entry bytes and HEAD membership match exactly.
+
+    A record that names an untracked entry, an entry that is not already
+    committed, or bytes whose sha256 differs is an error and is not applied, so
+    the entry it names still faces the full strict schema.
+    """
+    bound: dict[str, EntryCorrection] = {}
+    errors: list[str] = []
+    for path, correction in corrections.items():
+        if path not in entry_blobs:
+            errors.append(f"{correction.source}: corrected entry is not tracked: {path}")
+            continue
+        actual = hashlib.sha256(entry_blobs[path]).hexdigest()
+        if actual != correction.sha256:
+            errors.append(
+                f"{correction.source}: sha256 mismatch for {path}: "
+                f"recorded {correction.sha256}, commit tree has {actual}"
+            )
+            continue
+        if not _path_in_head(path):
+            errors.append(
+                f"{correction.source}: corrected entry must already be committed in HEAD, "
+                f"so a correction cannot exempt a new entry: {path}"
+            )
+            continue
+        bound[path] = correction
+    return bound, errors
+
+
+def supersession_errors(
+    corrections: dict[str, EntryCorrection],
+    parsed: list[tuple[Path, dict[str, str], str]],
+) -> list[str]:
+    """A structural correction must be carried by a valid, linked new entry."""
+    entries = {str(path.relative_to(ROOT)): (fields, text) for path, fields, text in parsed}
+    errors: list[str] = []
+    for path, correction in corrections.items():
+        target = correction.superseded_by
+        if target is None:
+            continue
+        if target in corrections:
+            errors.append(
+                f"{correction.source}: superseded_by must pass the strict schema "
+                f"without a correction: {target}"
+            )
+            continue
+        record = entries.get(target)
+        if record is None:
+            errors.append(
+                f"{correction.source}: superseded_by is not a valid entry in the commit tree: "
+                f"{target}"
+            )
+            continue
+        fields, text = record
+        if fields["status"] not in SUPERSEDING_STATUSES:
+            allowed = " or ".join(sorted(SUPERSEDING_STATUSES))
+            errors.append(
+                f"{correction.source}: superseded_by entry {target} must have status "
+                f"{allowed}, got {fields['status']!r}"
+            )
+        if path not in text:
+            errors.append(
+                f"{correction.source}: superseded_by entry {target} must name the "
+                f"corrected path {path}"
+            )
+    return errors
+
+
 def validate_records(
     records: list[tuple[str, str]],
+    *,
+    corrections: dict[str, EntryCorrection] | None = None,
 ) -> tuple[list[tuple[Path, dict[str, str], str]], list[str]]:
-    """Validate (path, text) pairs; return the parsed entries plus every error found."""
+    """Validate (path, text) pairs; return the parsed entries plus every error found.
+
+    `corrections` carries only records already bound to an exact sha256 of these
+    bytes. An entry with no bound record faces the full strict schema, and a bound
+    record that is not needed (the entry already parses strictly) is itself an
+    error so a correction cannot quietly broaden the schema.
+    """
     parsed: list[tuple[Path, dict[str, str], str]] = []
     errors: list[str] = []
+    bound = corrections or {}
     for relpath, text in records:
         if not FILENAME_RE.fullmatch(Path(relpath).name):
             errors.append(f"{relpath}: invalid filename")
             continue
-        try:
-            fields, body = parse_entry_text(text)
-        except (UnicodeError, WorklogError) as exc:
-            errors.append(f"{relpath}: {exc}")
-            continue
+        correction = bound.get(relpath)
+        if correction is None:
+            try:
+                fields, body = parse_entry_text(text)
+            except (UnicodeError, WorklogError) as exc:
+                errors.append(f"{relpath}: {exc}")
+                continue
+        else:
+            try:
+                parse_entry_text(text)
+            except (UnicodeError, WorklogError):
+                pass
+            else:
+                errors.append(
+                    f"{relpath}: correction record {correction.source} is unnecessary; "
+                    "the entry already passes strict validation"
+                )
+                continue
+            try:
+                fields, body = parse_entry_text(
+                    text,
+                    base_commit_override=correction.base_commit,
+                    allow_missing_sections="missing_required_sections" in correction.defects,
+                )
+            except (UnicodeError, WorklogError) as exc:
+                errors.append(
+                    f"{relpath}: correction record {correction.source} does not make this "
+                    f"entry valid: {exc}"
+                )
+                continue
         mismatch = filename_errors(relpath, fields)
         if mismatch:
             errors.extend(f"{relpath}: {reason}" for reason in mismatch)
@@ -461,6 +795,15 @@ def entry_directory_errors(index_paths: list[str]) -> list[str]:
     for path in index_paths:
         if "/" in path[len(ENTRY_DIR_REL) + 1 :] or not path.endswith(".md"):
             errors.append(f"unexpected path under worklog entries: {path}")
+    return errors
+
+
+def correction_directory_errors(index_paths: list[str]) -> list[str]:
+    """Tracked paths under `worklog/corrections` must be plain `*.json` files there."""
+    errors: list[str] = []
+    for path in index_paths:
+        if "/" in path[len(CORRECTIONS_DIR_REL) + 1 :] or not path.endswith(".json"):
+            errors.append(f"unexpected path under worklog corrections: {path}")
     return errors
 
 
@@ -611,6 +954,9 @@ def validate_entries(*, enforce_append_only: bool = True) -> list[tuple[Path, di
     Only tracked and staged content is validated. An untracked working-tree file
     is somebody's unfinished entry rather than part of this commit, so it never
     fails the gate; `check_entries` and `render` report those files separately.
+
+    Correction records come from the same commit tree, so an unstaged correction
+    cannot exempt a tracked entry either.
     """
     errors: list[str] = []
     unmerged_paths = set(index_listing(unmerged_only=True))
@@ -622,16 +968,31 @@ def validate_entries(*, enforce_append_only: bool = True) -> list[tuple[Path, di
         for path in index_listing()
         if path.startswith(f"{ENTRY_DIR_REL}/") and path not in unmerged_paths
     ]
+    correction_index_paths = [
+        path
+        for path in index_listing()
+        if path.startswith(f"{CORRECTIONS_DIR_REL}/") and path not in unmerged_paths
+    ]
     errors.extend(entry_directory_errors(entry_index_paths))
+    errors.extend(correction_directory_errors(correction_index_paths))
 
+    corrections, correction_errors = load_corrections(
+        read_index_blobs(correction_index_paths)
+    )
+    errors.extend(correction_errors)
+
+    entry_blobs = read_index_blobs(entry_index_paths)
     records: list[tuple[str, str]] = []
-    for path, payload in read_index_blobs(entry_index_paths).items():
+    for path, payload in entry_blobs.items():
         try:
             records.append((path, payload.decode("utf-8")))
         except UnicodeError as exc:
             errors.append(f"{path}: {exc}")
-    parsed, record_errors = validate_records(records)
+    bound, binding_errors = bind_corrections(corrections, entry_blobs)
+    errors.extend(binding_errors)
+    parsed, record_errors = validate_records(records, corrections=bound)
     errors.extend(record_errors)
+    errors.extend(supersession_errors(bound, parsed))
 
     errors.extend(legacy_errors())
     if enforce_append_only:

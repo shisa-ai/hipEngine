@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261016T171722.665234Z-overnight-mtp-gfx1151-qwen36-moe-682ac5.md",
+  "sha256": "ba9fe1e01782e7a003f915ca6273e5c4fc8a52df568f4896835af71b72768c86",
+  "defects": [
+    "abbreviated_base_commit"
+  ],
+  "reason": "base_commit recorded the 9-character abbreviation 51de7ec34; it resolves to 51de7ec34a8dd44453c35af35471be94af3268d5 in this repository's history.",
+  "base_commit": "51de7ec34a8dd44453c35af35471be94af3268d5",
+  "superseded_by": null
+}

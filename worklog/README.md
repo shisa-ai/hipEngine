@@ -13,6 +13,7 @@ The approved design and migration gates are in
 | Path | Role |
 | --- | --- |
 | `worklog/entries/*.md` | Tracked immutable current entries. |
+| `worklog/corrections/*.json` | Tracked immutable hash-bound correction records for malformed historical entries. |
 | `worklog/legacy-port-manifest.json` | Entry-to-commit mapping for the ported pre-cutoff entries; pins the retired journal's sha256 and Git history ref. |
 | `WORKLOG.md` | Tracked GitHub/navigation page; never generated or appended per unit. |
 | `.worklog/WORKLOG.md` | Ignored local generated chronological view. |
@@ -70,6 +71,67 @@ staged/working-tree divergence, or unexpected tracked paths under
 `worklog/entries/`. It gates staged and tracked content only; see "Validate"
 below.
 
+## Malformed historical entries
+
+A malformed committed entry keeps its bytes. When it cannot pass strict
+validation, one immutable record under `worklog/corrections/` binds
+a specific exemption to that exact entry:
+
+```json
+{
+  "schema": 1,
+  "path": "worklog/entries/<historical-entry>.md",
+  "sha256": "<sha256 of the entry's commit-tree bytes>",
+  "defects": ["abbreviated_base_commit", "missing_required_sections"],
+  "reason": "one line saying why the historical entry has this defect",
+  "base_commit": "<full 40-character commit hash>",
+  "superseded_by": "worklog/entries/<new-entry>.md"
+}
+```
+
+Rules:
+
+- Fields are exactly the seven above, in that order. `defects` is a non-empty,
+  sorted, duplicate-free list of the two known defect names, and `reason` is one
+  non-empty line.
+- The record filename must be the corrected entry's filename with `.json`
+  instead of `.md`, so there is at most one record per entry.
+- `sha256` must equal the sha256 of the entry's bytes **in the commit tree**:
+
+  ```bash
+  git cat-file blob :worklog/entries/<historical-entry>.md | sha256sum
+  ```
+
+- `abbreviated_base_commit` requires `base_commit`; `superseded_by` stays `null`
+  unless the entry also lacks required headings. The corrected hash must be the
+  full 40-character hash and must extend the value the entry recorded; resolve
+  the abbreviation against real history with
+  `git rev-parse <abbreviation>^{commit}`.
+- `missing_required_sections` requires `superseded_by`; `base_commit` stays
+  `null` unless the entry also has an abbreviated hash. That entry must be
+  tracked in the same commit, pass the full strict schema, have status
+  `decision` or `checkpoint`, and name the corrected entry's path in its body. It
+  carries the section content the historical entry cannot be edited to supply.
+- Both defects together set both fields.
+
+The exemption is narrow on purpose. A record is an error and is not applied when
+its sha256 does not match the entry, when the entry is untracked or not yet
+committed in `HEAD` (so the route cannot exempt a new entry), or when the entry
+already passes strict validation (so a record cannot broaden the schema).
+`missing_required_sections` permits missing non-summary headings and empty section
+bodies; heading order, frontmatter, title, placeholder, conflict-marker,
+and filename rules still apply. Every other entry, and every new entry, faces the
+full schema.
+
+Records are read from the Git index, gated as immutable tracked content, and
+committed with the entries they describe. Stage a new record before running
+`check`:
+
+```bash
+git add worklog/corrections/<historical-entry>.json worklog/entries/<new-entry>.md
+python3 scripts/worklog.py check
+```
+
 ## Validate
 
 `check` validates the **commit tree** — what Git tracks or stages — not the
@@ -89,9 +151,10 @@ progress before staging it with:
 python3 scripts/worklog.py check --include-unstaged
 ```
 
-The check also rejects any change to an already-tracked entry, and it rejects a
-staged entry whose working-tree copy has moved on (re-run `git add` to commit
-the final text). Staged deletion of the retired legacy journal pair
+The check also rejects any change to an already-tracked entry or correction
+record, and it rejects a staged entry whose working-tree copy has moved on
+(re-run `git add` to commit the final text). Staged deletion of the retired
+legacy journal pair
 (`WORKLOG-LEGACY.md` and `worklog/legacy-manifest.json`) is the one sanctioned
 removal: it is allowed once, and the exact journal bytes stay pinned by the
 history ref in `worklog/legacy-port-manifest.json`.
