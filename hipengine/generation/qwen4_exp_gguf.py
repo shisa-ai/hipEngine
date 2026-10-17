@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 import threading
 import time
@@ -11,6 +11,10 @@ from typing import Any, Sequence
 from hipengine.dispatch import RequestState, SlotMove, WorkItem
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.finish import finish_details_with_sampling_state
+from hipengine.generation.sampling import (
+    RowSamplingState, select_token, thinking_budget_state_from_params,
+)
 from hipengine.generation.qwen4_exp_serving_mtp import Qwen4ExpServingMTP, _RequestRetired
 from hipengine.generation.qwen4_exp_multimodal import (
     qwen4_exp_multimodal_token_control,
@@ -160,6 +164,19 @@ def _qwen4_exp_compact_step_kwargs() -> dict[str, bool]:
         "capture_target_hidden": False,
         "token_id_resident": True,
     }
+
+
+def _thinking_sampling_state(request, prompt_ids):
+    budget = thinking_budget_state_from_params(request)
+    if budget is None:
+        return None
+    return RowSamplingState(
+        prompt_tokens=prompt_ids, thinking_budget=budget,
+        forced_tokens_pending=request.forced_tokens_pending,
+        forced_token_reason=request.forced_token_reason,
+        post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
+        post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
+    )
 
 
 class Qwen4ExpGGUFTextGenerator:
@@ -353,8 +370,21 @@ class Qwen4ExpGGUFTextGenerator:
                 self._grammar_tokenizer = make_tokenizer(self.tokenizer)
             return self._grammar_tokenizer
 
-    @staticmethod
-    def _controlled_token(result,request,grammar):
+    def _controlled_token(self, result, request, grammar, sampling_state=None):
+        if sampling_state is not None:
+            # Resolve tokenizer EOS so the shared thinking controller can
+            # suppress it during reasoning even when HTTP omitted eos_token_id.
+            params = request if request.eos_token_id is not None else replace(
+                request, eos_token_id=self.tokenizer.eos_token_id,
+            )
+            scores = result.logits if grammar is None else grammar.mask_logits(result.logits)
+            sampled = select_token(scores, params, sampling_state)
+            if grammar is not None:
+                import numpy as np
+                if not np.isfinite(scores[sampled.token_id]):
+                    raise ValueError("thinking close token violates output grammar")
+                grammar.accept_token(sampled.token_id)
+            return sampled.token_id
         if grammar is not None:
             return grammar.select(result.logits,suppress=request.suppress_token_ids,
                                   logit_bias=request.logit_bias)
@@ -485,7 +515,8 @@ class Qwen4ExpGGUFTextGenerator:
             if len(token_ids) + request.max_tokens > self.runner.max_sequence_length:
                 raise ValueError("Qwen4Exp request exceeds admitted sequence capacity")
             grammar = self._grammar_session(request)
-            controlled = grammar is not None or bool(request.suppress_token_ids or request.logit_bias)
+            sampling_state = _thinking_sampling_state(request, token_ids)
+            controlled = sampling_state is not None or grammar is not None or bool(request.suppress_token_ids or request.logit_bias)
             prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
             step_kwargs = _qwen4_exp_compact_step_kwargs()
             if controlled:
@@ -500,7 +531,7 @@ class Qwen4ExpGGUFTextGenerator:
             reason = "length"
             for index in range(request.max_tokens):
                 raise_if_generation_deadline_expired(request)
-                token = self._controlled_token(result,request,grammar)
+                token = self._controlled_token(result,request,grammar,sampling_state)
                 generated.append(token)
                 if grammar is not None and grammar.done:
                     reason = "eos" if token == self.tokenizer.eos_token_id else "stop"
@@ -517,14 +548,14 @@ class Qwen4ExpGGUFTextGenerator:
                 GenerationOutput(
                     text=self.tokenizer.decode(generated, skip_special=False),
                     generated_token_ids=tuple(generated),
-                    finish_details=FinishDetails(
+                    finish_details=finish_details_with_sampling_state(FinishDetails(
                         reason=reason,
                         eos_token_id=(
                             self.tokenizer.eos_token_id if reason == "eos" else None
                         ),
                         length_limit=(request.max_tokens if reason == "length" else None),
                         sampler_mode="greedy",
-                    ),
+                    ), sampling_state),
                 )
             )
         return outputs
@@ -757,10 +788,11 @@ class _Qwen4ExpServingRow:
     mtp_steps: Any | None = None
     mtp_output: GenerationOutput | None = None
     previous_hidden: Any | None = None
+    sampling_state: RowSamplingState | None = None
 
     @property
     def controlled(self):
-        return self.grammar is not None or bool(self.request.suppress_token_ids or self.request.logit_bias)
+        return self.sampling_state is not None or self.grammar is not None or bool(self.request.suppress_token_ids or self.request.logit_bias)
 
 
 class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
@@ -869,6 +901,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             self._rows[request_id] = _Qwen4ExpServingRow(
                 request_id, row_index, request, prompt_ids, now,
                 grammar=self.generator._grammar_session(request),
+                sampling_state=_thinking_sampling_state(request, prompt_ids),
             )
 
     def reserve_admission(self, request: RequestState) -> None:
@@ -961,7 +994,9 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                     raise RuntimeError("Flash-Next root/K0 must emit one token")
                 token = progress.token_ids[0]
             else:
-                token = self.generator._controlled_token(row.next_result, row.request, row.grammar)
+                token = self.generator._controlled_token(
+                    row.next_result, row.request, row.grammar, row.sampling_state,
+                )
                 row.generated_ids.append(token)
             finish = self._finish(row)
             if finish is None and not row.mtp_budget:
@@ -1077,6 +1112,10 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             self._available.append(runner)
 
     def _finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:
+        details = self._raw_finish(row)
+        return None if details is None else finish_details_with_sampling_state(details, row.sampling_state)
+
+    def _raw_finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:
         ids = tuple(row.generated_ids)
         request = row.request
         if row.grammar is not None and row.grammar.done:

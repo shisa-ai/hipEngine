@@ -88,7 +88,7 @@ def test_grammar_completion_only_strips_actual_eos(last_token,expected_reason,vi
     owner.generator = SimpleNamespace(tokenizer=SimpleNamespace(eos_token_id=256))
     row = SimpleNamespace(
         generated_ids=[ord("{"),last_token],request=SimpleNamespace(),
-        grammar=SimpleNamespace(done=True))
+        grammar=SimpleNamespace(done=True), sampling_state=None)
     finish = owner._finish(row)
     assert finish.reason==expected_reason
     assert owner._visible_ids(row,finish)==visible

@@ -143,12 +143,23 @@ class GrammarSession:
         self.eos = set(tokenizer.eos_tokens)
         self.done = False
 
-    def select(self, logits, *, suppress=(), logit_bias=()):
+    def mask_logits(self, logits):
+        """Return a masked copy without consuming a token or advancing state."""
         scores = np.asarray(logits,dtype=np.float32).copy()
         allowed = np.frombuffer(self.matcher.compute_logit_bias(),dtype=np.uint8)
         if self.matcher.is_error() or len(allowed)!=len(scores):
             raise ValueError("grammar mask failed: "+self.matcher.get_error())
         scores[allowed==0] = -np.inf
+        return scores
+
+    def accept_token(self, token):
+        """Advance the matcher after the caller has selected an allowed token."""
+        if not self.matcher.consume_token(int(token)):
+            raise ValueError("grammar rejected selected token: "+self.matcher.get_error())
+        self.done = token in self.eos or self.matcher.is_stopped()
+
+    def select(self, logits, *, suppress=(), logit_bias=()):
+        scores = self.mask_logits(logits)
         for token,bias in logit_bias:
             scores[int(token)] += float(bias)
         for token in suppress:
@@ -156,9 +167,7 @@ class GrammarSession:
         if not np.isfinite(scores).any():
             raise ValueError("grammar and token controls allow no finite token")
         token = int(np.argmax(scores))
-        if not self.matcher.consume_token(token):
-            raise ValueError("grammar rejected selected token: "+self.matcher.get_error())
-        self.done = token in self.eos or self.matcher.is_stopped()
+        self.accept_token(token)
         return token
 
 
