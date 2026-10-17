@@ -2,8 +2,9 @@
 
 **Updated: 2026-10-17. The grid is not complete.** Short greedy AR and
 explicit MTP work. The focused lifetime follow-up also passes approximately
-30K AR/MTP, cancellation and recovery. Hard thinking budgets, logprobs,
-true multi-request batching, and live MTP streaming are still open.
+30K AR/MTP, cancellation and recovery. Hard thinking controls pass on text AR
+and named MTP-to-AR fallback. Logprobs, true multi-request batching, and live
+MTP streaming are still open.
 A passing unit suite does not establish those product capabilities.
 
 Implementation and final qualification are tracked by the approved
@@ -65,7 +66,30 @@ This closes PS5/task 18 for the tested BF16 configuration only. It does not
 qualify INT8, sampled speculation, automatic MTP selection, concurrency, or
 streaming.
 
-## Baseline feature grid (before PS1/PS5 fixes)
+## PS3 thinking-control follow-up
+
+Text AR now enforces tokenized hard-thinking controls. A 29-request check on
+server source `d3bc73256`, production `UD-Q4_K_XL`, BF16 KV, 8K context and
+one active slot verifies zero/small caps, max-think-only and reserve-only
+requests, custom close delimiters and JSON Schema. Each case runs blocking
+and SSE, with AR explicitly selected and with MTP requested under `hard`
+policy. The latter takes the named AR fallback; this is not controlled MTP.
+
+All seven AR/fallback token-ID pairs agree. All 14 blocking/SSE pairs agree
+on reasoning text, answer text, finish details and usage. Closing tokens are
+consumed by the model; the reasoning counter includes them. Answer reservation
+leaves space after closing but does not force a minimum answer length before
+EOS. A separate `hint` override executes raw MTP and reports
+`prompt_hint_only`. Impossible close/reserve budgets reject before generation
+in the focused API tests. The final service is ready and accepting requests.
+
+[Commands, request shapes, IDs and results](../benchmarks/results/2026-10-17-zbook-qwen4exp-thinking-http.json)
+and [`scripts/qwen4exp_thinking_http_gate.py`](../scripts/qwen4exp_thinking_http_gate.py)
+provide the functional evidence. This closes PS3/task 16 for those text routes;
+controlled speculation, multimodal controls and full task-quality qualification
+remain separate work.
+
+## Baseline feature grid (before PS1/PS3/PS5 fixes)
 
 | Check | AR | Explicit MTP | Verdict |
 | --- | --- | --- | --- |
@@ -106,12 +130,11 @@ verification work; candidate rows must not be called concurrent requests.
    The slow fake/real service tests and the tracked live follow-up cover driver
    failure, shutdown, 29,912-token AR/MTP, explicit deadlines, client
    cancellation, and subsequent recovery. See the PS1 lifetime follow-up above.
-2. **Honor or reject hard controls before decoding.** The Qwen4Exp controlled
-   token path applies grammar/suppression/logit bias, not the requested
-   thinking state machine or logprob collection. An explicit budget must not
-   receive a successful unbounded answer. Unsupported logprobs must fail
-   before spending a decode. Capability reporting must distinguish prompt
-   hints from enforced budgets. Test both blocking and streaming requests.
+2. **Thinking controls complete on text AR; logprobs still open.** The PS3
+   follow-up verifies hard caps and answer reservation in direct/resident AR,
+   blocking and SSE, with honest hard-policy MTP fallback. Logprob collection
+   remains unsupported and its rejection is still too late; task 17 owns that
+   repair and sampled generation.
 3. **Completed for BF16:** generic speculative admission now resolves the
    effective KV storage instead of rejecting irrelevant BF16 scale metadata.
    Both request spellings execute the intended service-owned MTP route with

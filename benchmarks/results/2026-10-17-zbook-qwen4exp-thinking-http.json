@@ -1,0 +1,564 @@
+{
+  "schema": "hipengine.qwen4exp.thinking_http.v1",
+  "date": "2026-10-17",
+  "source_commit": "d3bc73256335651b776759d414c75cabf9337e0d",
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "hardware": "Ryzen AI Max+ Pro 395; Radeon 8060S/gfx1151;128 GiB unified memory"
+  },
+  "server_command": "uv run python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --quant gguf_ud_q4_k_xl --execution-profile production --served-model-name qwen38fn-hardthink --max-context-tokens 8192 --kv-storage bf16 --max-active-requests 1 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --metrics prometheus --host 127.0.0.1 --port 18389",
+  "probe_command": "uv run python /tmp/hipengine-qwen4exp-thinking-gate.py --source d3bc73256335651b776759d414c75cabf9337e0d --output /tmp/he-qwen38fn-thinking-green-d3bc73256",
+  "reproduction": "Use scripts/qwen4exp_thinking_http_gate.py (identical to the executed /tmp script) with the same arguments after launching the server.",
+  "probe_sha256": "3a5aa9a0ad36fb9f3de7baf029f0ac16648a87e944c59f4fb1c7c0134ab3cded",
+  "raw_capture": {
+    "path": "/tmp/he-qwen38fn-thinking-green-d3bc73256/report.json",
+    "sha256": "1ae59ac4d9d6edc43c652580557a38f9befb76f29d285d61c43a14cf119b00dd"
+  },
+  "claims": {
+    "functional_controls": true,
+    "performance": false,
+    "production_numerical_promotion": false,
+    "hard_mtp": "named AR fallback, not controlled speculation"
+  },
+  "cases": [
+    {
+      "case": "cap4",
+      "request": {
+        "model": "qwen38fn-hardthink",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Think briefly about 2 + 2, then answer with only the number 4."
+          }
+        ],
+        "enable_thinking": true,
+        "temperature": 0,
+        "top_p": 1,
+        "max_tokens": 32,
+        "hard_think_cap": 4,
+        "min_answer_tokens": 8,
+        "soft_close_window": 0,
+        "speculative_mtp": false,
+        "stream": false
+      },
+      "close_token_ids": [
+        248069
+      ],
+      "generated_token_ids": [
+        1596,
+        1144,
+        310,
+        5707,
+        248069,
+        271,
+        19,
+        248046
+      ],
+      "content": "\n\n4",
+      "reasoning_content": "We need to respond",
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "forced_close": true,
+        "reasoning_tokens": 5,
+        "answer_tokens": 3,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "greedy",
+        "phase": "answer",
+        "cache_action": "append_none"
+      },
+      "usage": {
+        "prompt_tokens": 70,
+        "completion_tokens": 8,
+        "total_tokens": 78,
+        "reasoning_tokens": 5,
+        "completion_tokens_details": {
+          "reasoning_tokens": 5
+        }
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "ar_mtp_fallback_ids_equal": true,
+      "sse_text_finish_usage_equal": true
+    },
+    {
+      "case": "cap0",
+      "request": {
+        "model": "qwen38fn-hardthink",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Think briefly about 2 + 2, then answer with only the number 4."
+          }
+        ],
+        "enable_thinking": true,
+        "temperature": 0,
+        "top_p": 1,
+        "max_tokens": 32,
+        "hard_think_cap": 0,
+        "speculative_mtp": false,
+        "stream": false
+      },
+      "close_token_ids": [
+        248069
+      ],
+      "generated_token_ids": [
+        248069,
+        271,
+        19,
+        248046
+      ],
+      "content": "\n\n4",
+      "reasoning_content": null,
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "forced_close": true,
+        "reasoning_tokens": 1,
+        "answer_tokens": 3,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "greedy",
+        "phase": "answer",
+        "cache_action": "append_none"
+      },
+      "usage": {
+        "prompt_tokens": 70,
+        "completion_tokens": 4,
+        "total_tokens": 74,
+        "reasoning_tokens": 1,
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "ar_mtp_fallback_ids_equal": true,
+      "sse_text_finish_usage_equal": true
+    },
+    {
+      "case": "cap1",
+      "request": {
+        "model": "qwen38fn-hardthink",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Think briefly about 2 + 2, then answer with only the number 4."
+          }
+        ],
+        "enable_thinking": true,
+        "temperature": 0,
+        "top_p": 1,
+        "max_tokens": 32,
+        "hard_think_cap": 1,
+        "speculative_mtp": false,
+        "stream": false
+      },
+      "close_token_ids": [
+        248069
+      ],
+      "generated_token_ids": [
+        1596,
+        248069,
+        271,
+        19,
+        248046
+      ],
+      "content": "\n\n4",
+      "reasoning_content": "We",
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "forced_close": true,
+        "reasoning_tokens": 2,
+        "answer_tokens": 3,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "greedy",
+        "phase": "answer",
+        "cache_action": "append_none"
+      },
+      "usage": {
+        "prompt_tokens": 70,
+        "completion_tokens": 5,
+        "total_tokens": 75,
+        "reasoning_tokens": 2,
+        "completion_tokens_details": {
+          "reasoning_tokens": 2
+        }
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "ar_mtp_fallback_ids_equal": true,
+      "sse_text_finish_usage_equal": true
+    },
+    {
+      "case": "max_only",
+      "request": {
+        "model": "qwen38fn-hardthink",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Think briefly about 2 + 2, then answer with only the number 4."
+          }
+        ],
+        "enable_thinking": true,
+        "temperature": 0,
+        "top_p": 1,
+        "max_tokens": 32,
+        "max_think_tokens": 2,
+        "speculative_mtp": false,
+        "stream": false
+      },
+      "close_token_ids": [
+        248069
+      ],
+      "generated_token_ids": [
+        1596,
+        1144,
+        248069,
+        271,
+        19,
+        248046
+      ],
+      "content": "\n\n4",
+      "reasoning_content": "We need",
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "forced_close": true,
+        "reasoning_tokens": 3,
+        "answer_tokens": 3,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "greedy",
+        "phase": "answer",
+        "cache_action": "append_none"
+      },
+      "usage": {
+        "prompt_tokens": 70,
+        "completion_tokens": 6,
+        "total_tokens": 76,
+        "reasoning_tokens": 3,
+        "completion_tokens_details": {
+          "reasoning_tokens": 3
+        }
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "ar_mtp_fallback_ids_equal": true,
+      "sse_text_finish_usage_equal": true
+    },
+    {
+      "case": "reserve_only",
+      "request": {
+        "model": "qwen38fn-hardthink",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Think briefly about 2 + 2, then answer with only the number 4."
+          }
+        ],
+        "enable_thinking": true,
+        "temperature": 0,
+        "top_p": 1,
+        "max_tokens": 16,
+        "min_answer_tokens": 8,
+        "speculative_mtp": false,
+        "stream": false
+      },
+      "close_token_ids": [
+        248069
+      ],
+      "generated_token_ids": [
+        1596,
+        1144,
+        310,
+        5707,
+        310,
+        1156,
+        25,
+        248069,
+        271,
+        19,
+        248046
+      ],
+      "content": "\n\n4",
+      "reasoning_content": "We need to respond to user:",
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "forced_close": true,
+        "reasoning_tokens": 8,
+        "answer_tokens": 3,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "greedy",
+        "phase": "answer",
+        "cache_action": "append_none"
+      },
+      "usage": {
+        "prompt_tokens": 70,
+        "completion_tokens": 11,
+        "total_tokens": 81,
+        "reasoning_tokens": 8,
+        "completion_tokens_details": {
+          "reasoning_tokens": 8
+        }
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "ar_mtp_fallback_ids_equal": true,
+      "sse_text_finish_usage_equal": true
+    },
+    {
+      "case": "custom_close",
+      "request": {
+        "model": "qwen38fn-hardthink",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Think briefly about 2 + 2, then answer with only the number 4."
+          }
+        ],
+        "enable_thinking": true,
+        "temperature": 0,
+        "top_p": 1,
+        "max_tokens": 32,
+        "hard_think_cap": 3,
+        "hard_close_sequence": "\n</think>\n\n",
+        "speculative_mtp": false,
+        "stream": false
+      },
+      "close_token_ids": [
+        198,
+        248069,
+        271
+      ],
+      "generated_token_ids": [
+        1596,
+        1144,
+        310,
+        198,
+        248069,
+        271,
+        19,
+        248046
+      ],
+      "content": "\n\n4",
+      "reasoning_content": "We need to\n",
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "forced_close": true,
+        "reasoning_tokens": 6,
+        "answer_tokens": 2,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "greedy",
+        "phase": "answer",
+        "cache_action": "append_none"
+      },
+      "usage": {
+        "prompt_tokens": 70,
+        "completion_tokens": 8,
+        "total_tokens": 78,
+        "reasoning_tokens": 6,
+        "completion_tokens_details": {
+          "reasoning_tokens": 6
+        }
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "ar_mtp_fallback_ids_equal": true,
+      "sse_text_finish_usage_equal": true
+    },
+    {
+      "case": "json",
+      "request": {
+        "model": "qwen38fn-hardthink",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Calculate 2+2. Return a JSON object with answer equal to the result."
+          }
+        ],
+        "enable_thinking": true,
+        "temperature": 0,
+        "top_p": 1,
+        "max_tokens": 64,
+        "hard_think_cap": 3,
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "answer",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "answer": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "answer"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "speculative_mtp": false,
+        "stream": false
+      },
+      "close_token_ids": [
+        248069
+      ],
+      "generated_token_ids": [
+        1596,
+        1144,
+        4087,
+        248069,
+        90,
+        198,
+        1,
+        8944,
+        763,
+        220,
+        19,
+        198,
+        92
+      ],
+      "content": "{\n\"answer\": 4\n}",
+      "reasoning_content": "We need answer",
+      "finish_details": {
+        "reason": "stop",
+        "forced_close": true,
+        "reasoning_tokens": 4,
+        "answer_tokens": 9,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "grammar_greedy",
+        "phase": "answer",
+        "cache_action": "append_none"
+      },
+      "usage": {
+        "prompt_tokens": 102,
+        "completion_tokens": 13,
+        "total_tokens": 115,
+        "reasoning_tokens": 4,
+        "completion_tokens_details": {
+          "reasoning_tokens": 4
+        }
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "ar_mtp_fallback_ids_equal": true,
+      "sse_text_finish_usage_equal": true
+    }
+  ],
+  "hint_override": {
+    "status": 200,
+    "request": {
+      "model": "qwen38fn-hardthink",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Think briefly about 2 + 2, then answer with only the number 4."
+        }
+      ],
+      "enable_thinking": true,
+      "temperature": 0,
+      "top_p": 1,
+      "max_tokens": 32,
+      "hard_think_cap": 1,
+      "speculative_mtp": {
+        "enabled": true,
+        "thinking": "hint"
+      }
+    },
+    "route": {
+      "effective_route": "speculative_mtp",
+      "used": true,
+      "draft_tokens": 25,
+      "accepted_draft_tokens": 22,
+      "rejected_draft_tokens": 3,
+      "acceptance_rate": 0.88,
+      "draft_cycles": 9,
+      "thinking_policy": "hint",
+      "thinking_controls": "prompt_hint_only"
+    },
+    "generated_ids": [
+      1596,
+      1144,
+      310,
+      5707,
+      310,
+      1156,
+      25,
+      328,
+      37405,
+      25899,
+      883,
+      220,
+      17,
+      478,
+      220,
+      17,
+      11,
+      1179,
+      4087,
+      440,
+      1132,
+      279,
+      1324,
+      220,
+      19,
+      1149,
+      14235,
+      1534,
+      1132,
+      1324,
+      220,
+      19
+    ]
+  },
+  "ready_after": {
+    "accepting_requests": true,
+    "driver_alive": true,
+    "closing": false,
+    "closed": false,
+    "failure": null
+  },
+  "passed_cases": 29,
+  "tests": {
+    "command": "uv run pytest -o addopts='' -q tests/test_integration_server_thinking_reserve.py tests/test_integration_server_api.py tests/test_unit_qwen4exp_thinking_budget.py tests/test_unit_grammar_masks.py",
+    "passed": 620
+  },
+  "limitations": [
+    "Reasoning counter includes generated closing tokens.",
+    "Answer reserve guarantees room, not minimum emitted answer length before EOS.",
+    "No automatic-MTP, task-quality, concurrent-batching or incremental-MTP-stream qualification."
+  ]
+}
