@@ -1431,6 +1431,26 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         payload["certified_explicit_scope"] = deepcopy(serving_plan)
     if not serving_route:
         return payload
+    provider = _engine_speculative_capabilities(engine)
+    supported_fields = _provider_supported_sampling_fields(provider)
+    if supported_fields:
+        payload.update({
+            "processed_target_verification": True,
+            "compatibility_guard": provider.get("compatibility_guard", "provider_sampling_fields"),
+            "sampling_algorithm": provider.get("sampling_algorithm"),
+            "supported_sampling_fields": sorted(supported_fields),
+            "allowed_execution_modes": ["greedy_fast", "processed_argmax"] + (
+                ["sampled"] if "temperature" in supported_fields else []
+            ),
+            "incompatible_fields": [
+                field for field in SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
+                if field not in supported_fields
+            ] + ["grammar", "resident_session_key"],
+            "incompatible_conditions": {
+                field: condition for field, condition in SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS.items()
+                if field not in supported_fields
+            },
+        })
     default_enabled = bool(
         configured_mode in {"auto", "enabled"} and automatic_promoted
     )
@@ -1541,7 +1561,7 @@ def _speculative_provider_capability(
             "default_enabled": False,
             "streaming_compatible": _engine_supports_speculative_streaming(engine),
             "candidate_budget": int(config.speculative_candidate_budget),
-            "compatibility_guard": "raw_greedy_bf16_c1",
+            "compatibility_guard": capabilities.get("compatibility_guard", "raw_greedy_bf16_c1"),
         }
     )
     return payload
@@ -2361,6 +2381,7 @@ def _resolve_realized_generation_route(
     group_rows: int,
     sampling: SamplingParams,
     precomputed_decision: Mapping[str, Any] | None = None,
+    engine: Any | None = None,
 ) -> tuple[str, dict[str, Any] | None]:
     """Resolve automatic routing only after the batcher's group is known.
 
@@ -2452,7 +2473,7 @@ def _resolve_realized_generation_route(
             output_horizon_tokens=int(sampling.max_tokens),
         )
     if route == _SPECULATIVE_MTP_K0_ROUTE:
-        blockers = tuple(speculative_mtp_sampling_blockers(sampling))
+        blockers = _provider_speculative_sampling_blockers(engine, sampling)
         reason = (
             "unsupported_sampling_k0"
             if blockers
@@ -3469,6 +3490,7 @@ class _GenerationBatcher:
                 group_rows=len(prompts),
                 sampling=group_sampling,
                 precomputed_decision=precomputed_decision,
+                engine=self._engine_factory(),
             )
             breaker = self._mtp_circuit_breaker
             if (
@@ -3572,10 +3594,9 @@ class _GenerationBatcher:
                         }
                     },
                 )
-            # The raw-argmax MTP verifier is exact only for the greedy fast
-            # path.  Under the hint thinking policy, host-sampler thinking
-            # enforcement is relaxed (prompt hints stay) so thinking requests
-            # can still use the MTP route.
+            # Admission keeps hard thinking controls on AR for providers that
+            # cannot enforce them. Hint policy retains prompt hints but clears
+            # sampler enforcement before entering the provider.
             mtp_sampling = relax_thinking_budget_for_mtp(sampling)
             try:
                 raw_outputs = await _generate_speculative_mtp_detailed(
@@ -5484,13 +5505,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     prompts,
                     (time.perf_counter() - admission_started) * 1_000.0,
                 )
-            if _request_logprobs_enabled(request):
+            if _request_logprobs_enabled(request) and generation_route not in {
+                _SPECULATIVE_PROVIDER_ROUTE, _SPECULATIVE_MTP_BATCH_ROUTE,
+                _SPECULATIVE_MTP_AUTO_ROUTE,
+            }:
                 generation_route, generation_route_decision = (
                     _resolve_realized_generation_route(
                         generation_route,
                         group_rows=len(prompts),
                         sampling=sampling,
                         precomputed_decision=generation_route_decision,
+                        engine=engine,
                     )
                 )
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
@@ -5710,6 +5735,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             group_rows=1,
                             sampling=sampling,
                             precomputed_decision=generation_route_decision,
+                            engine=engine,
                         )
                     )
                     await ensure_resident_context(
@@ -8206,6 +8232,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             group_rows=1,
                             sampling=sampling,
                             precomputed_decision=generation_route_decision,
+                            engine=engine,
                         )
                     )
                     await ensure_resident_context(
@@ -11270,6 +11297,43 @@ def _engine_speculative_capabilities(engine: Any | None) -> dict[str, Any]:
     return deepcopy(dict(capabilities))
 
 
+def _provider_supported_sampling_fields(capabilities: Mapping[str, Any]) -> frozenset[str]:
+    """A processed-verifier flag alone cannot remove a request's guards."""
+
+    fields = capabilities.get("supported_sampling_fields")
+    if capabilities.get("processed_target_verification") is not True or not isinstance(fields, (list, tuple)):
+        return frozenset()
+    return frozenset(field for field in fields if isinstance(field, str))
+
+
+def _provider_speculative_sampling_blockers(
+    engine: Any | None, sampling: SamplingParams, *, generic: bool = False,
+) -> tuple[str, ...]:
+    """Extend raw verification only by the loaded provider's declared controls.
+
+    Legacy generic providers own stop filtering. Processed providers must
+    explicitly declare it; accepting temperature does not imply support for
+    structured decoding, thinking budgets, sessions, or alternate EOS.
+    """
+
+    capabilities = _engine_speculative_capabilities(engine)
+    supported = _provider_supported_sampling_fields(capabilities)
+    processed = capabilities.get("processed_target_verification") is True
+    blockers = list(speculative_mtp_sampling_blockers(sampling))
+    if generic and not processed:
+        blockers = [field for field in blockers if field not in {"stop_token_ids", "stop_token_sequences"}]
+    if generic or processed:
+        for field, default in (("top_p", 1.0), ("top_k", 0), ("min_p", 0.0)):
+            if getattr(sampling, field) != default:
+                blockers.append(field)
+    if processed:
+        if sampling.grammar is not None:
+            blockers.append("grammar")
+        if sampling.resident_session_key:
+            blockers.append("resident_session_key")
+    return tuple(dict.fromkeys(field for field in blockers if field not in supported))
+
+
 def _engine_speculative_mtp_callable(engine: Any | None) -> Callable[[tuple[str, ...], SamplingParams], Any] | None:
     if engine is None:
         return None
@@ -13045,11 +13109,12 @@ def _speculative_mtp_route_for_request(
         # request is raw-greedy-exact again.  Under the hard policy the
         # thinking budget stays a hard blocker and MTP falls back to AR.
         sampling = relax_thinking_budget_for_mtp(sampling)
-    blockers = speculative_mtp_sampling_blockers(sampling)
+    blockers = (
+        _provider_speculative_sampling_blockers(engine, sampling)
+        if explicit_requested else speculative_mtp_sampling_blockers(sampling)
+    )
     if blockers:
         return _SPECULATIVE_MTP_K0_ROUTE
-    if not supports_speculative_mtp_sampling(sampling):
-        return _SPECULATIVE_MTP_DEFAULT_ROUTE
     if explicit_requested:
         return _SPECULATIVE_MTP_BATCH_ROUTE
     if configured_mode == "enabled":
@@ -13130,17 +13195,9 @@ def _speculative_provider_route_for_request(
             code="unsupported_parameter",
             param="speculative",
         )
-    blockers = [
-        blocker
-        for blocker in speculative_mtp_sampling_blockers(sampling)
-        if blocker not in {"stop_token_ids", "stop_token_sequences"}
-    ]
-    if float(sampling.top_p) != 1.0:
-        blockers.append("top_p")
-    if int(sampling.top_k) != 0:
-        blockers.append("top_k")
-    if float(sampling.min_p) != 0.0:
-        blockers.append("min_p")
+    blockers = list(_provider_speculative_sampling_blockers(engine, sampling, generic=True))
+    capabilities = _engine_speculative_capabilities(engine)
+    guard = capabilities.get("compatibility_guard", "raw_greedy_bf16_c1")
     if str(sampling.kv_storage) not in {"auto", "bf16"}:
         blockers.append("kv_storage")
     # This provider route is BF16-only. BF16 KV stores no scales, so the fixed
@@ -13160,7 +13217,11 @@ def _speculative_provider_route_for_request(
     if blockers:
         raise OpenAIHTTPError(
             400,
-            "speculative provider requires raw greedy BF16 c=1 generation",
+            (
+                "speculative provider does not support the requested controls for BF16 c=1 generation"
+                if _provider_supported_sampling_fields(capabilities)
+                else "speculative provider requires raw greedy BF16 c=1 generation"
+            ),
             code="unsupported_parameter",
             param="speculative",
             extra={
@@ -13169,7 +13230,7 @@ def _speculative_provider_route_for_request(
                         "provider": selected_provider,
                         "candidate_budget": candidate_budget,
                         "blockers": blockers,
-                        "compatibility_guard": "raw_greedy_bf16_c1",
+                        "compatibility_guard": guard,
                     }
                 }
             },

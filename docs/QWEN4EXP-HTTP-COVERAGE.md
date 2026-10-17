@@ -113,9 +113,24 @@ newline. Greedy, Japanese and stop cases also pass blocking/SSE checks. The
 initial probe used an internal thinking field name; the corrected request uses
 public `hard_think_cap`. Both earlier attempts are preserved.
 
-`speculative_mtp=true` with sampling takes named AR fallback; generic
-`speculative=true` rejects these controls before model execution. Those are
-admission observations, **not sampled MTP coverage**. PS4/task 17 stays open.
+`speculative_mtp=true` with sampling took named AR fallback in those live
+captures; generic `speculative=true` rejected the controls before execution.
+Those are historical admission observations, **not sampled MTP coverage**.
+
+The implementation now admits the Flash-Next provider's declared temperature,
+top-k/top-p/min-p, seed, penalties, bias, suppression, ignore-EOS and logprob
+controls through either spelling. Its deterministic proposals are accepted
+only when they match a draw from the processed target distribution. Capability
+metadata reports `processed_target_verification=true`,
+`sampling_algorithm=target_draw_match_deterministic_draft`, and the enumerated
+`supported_sampling_fields`; this does not relax other providers' guards.
+Logprob requests execute the selected provider instead of a direct-AR shortcut.
+CPU HTTP tests use the real resident MTP owner with analytic target logits and
+verify actual speculative work for completions/chat, blocking/SSE, with and
+without logprobs. Structured controls, stops, alternate EOS, hard thinking and
+resident sessions remain rejected on the generic route or use named explicit
+MTP-to-AR fallback. GPU sampled-MTP qualification is pending; PS4/task 17 stays
+open. SSE remains buffered and automatic MTP remains off for this provider.
 
 ## Baseline feature grid (before PS1/PS3/PS5 fixes)
 

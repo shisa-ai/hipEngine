@@ -146,6 +146,15 @@ class Qwen4ExpMTPTextProvider:
             "candidate_budget": self.candidate_budget,
             "context_limit": int(self.draft.max_sequence_length),
             "streaming_mode": "buffered_public",
+            "processed_target_verification": True,
+            "compatibility_guard": "target_distribution_bf16_c1",
+            "sampling_algorithm": "target_draw_match_deterministic_draft",
+            "supported_sampling_fields": [
+                "temperature", "top_k", "top_p", "min_p", "seed", "row_seeds",
+                "logit_bias", "repetition_penalty", "presence_penalty",
+                "frequency_penalty", "suppress_token_ids", "ignore_eos",
+                "logprobs", "top_logprobs",
+            ],
         }
 
     def _validate_sampling(self, request: GenerationRequest) -> None:
