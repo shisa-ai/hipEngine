@@ -718,13 +718,13 @@ def test_realized_re_resolution_keeps_screening_closed_on_a_structural_rejection
     assert wider["reason"] == "candidate_budget_not_qualified"
     assert "insufficient_memory" in wider["failed_axes"]
 
-    realized_route, _decision = _resolve_realized_generation_route(
-        route,
-        group_rows=2,
-        sampling=sampling,
-        precomputed_decision=wider,
-    )
-    assert realized_route == _SPECULATIVE_MTP_DEFAULT_ROUTE
+    with pytest.raises(OpenAIHTTPError, match="candidate_budget_not_qualified"):
+        _resolve_realized_generation_route(
+            route,
+            group_rows=2,
+            sampling=sampling,
+            precomputed_decision=wider,
+        )
 
 
 class PromotedArtifactScopedSpeculativeMTPFakeLLM(
@@ -6198,7 +6198,7 @@ class FailingSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
         yield  # pragma: no cover - makes this a generator, like the real streamer
 
 
-def test_generation_batcher_open_mtp_breaker_serves_ar_without_a_third_launch() -> None:
+def test_generation_batcher_open_mtp_breaker_rejects_explicit_third_launch() -> None:
     async def run() -> None:
         fake = FailingSpeculativeMTPFakeLLM()
         breaker = _MTPCircuitBreaker(threshold=2)
@@ -6214,24 +6214,21 @@ def test_generation_batcher_open_mtp_breaker_serves_ar_without_a_third_launch() 
                     SamplingParams(max_tokens=2),
                     route="speculative_mtp",
                 )
-        # An open scope breaker is the same condition as an operator rollback:
-        # MTP cannot run, and AR is the exact fallback. Serving the request beats
-        # a 503 that withholds a completion AR could have produced.
-        outputs = await batcher.submit(
-            ("prompt",),
-            SamplingParams(max_tokens=2),
-            route="speculative_mtp",
-        )
+        with pytest.raises(OpenAIHTTPError, match="mtp_circuit_breaker_open"):
+            await batcher.submit(
+                ("prompt",),
+                SamplingParams(max_tokens=2),
+                route="speculative_mtp",
+            )
 
-        assert outputs == ["generated:prompt"]
         assert len(fake.mtp_calls) == 2
-        assert len(fake.calls) == 1
+        assert fake.calls == []
         assert fake.mtp_circuit_breaker_state["state"] == "open"
 
     asyncio.run(run())
 
 
-def test_open_mtp_breaker_serves_ar_and_reports_the_breaker_state() -> None:
+def test_open_mtp_breaker_rejects_explicit_request_and_reports_state() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -6259,30 +6256,18 @@ def test_open_mtp_breaker_serves_ar_and_reports_the_breaker_state() -> None:
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     body = response.json()
-    shape = body["hipengine"]["generation_shape"]
-    assert shape["route"] == "default"
-    assert shape["route_decision"]["reason"] == "mtp_circuit_breaker_open"
-    assert shape["route_decision"]["circuit_breaker"]["state"] == "open"
-    assert body["choices"][0]["text"] == "generated:hello"
-    assert body["hipengine"]["speculative_mtp"] == {
-        "effective_route": "default",
-        "used": False,
-        "requested_route": "speculative_mtp",
-        "decision_reason": "mtp_circuit_breaker_open",
-        "draft_tokens": 0,
-        "accepted_draft_tokens": 0,
-        "rejected_draft_tokens": 0,
-        "acceptance_rate": None,
-        "draft_cycles": 0,
-    }
+    assert body["error"]["param"] == "speculative_mtp"
+    assert body["error"]["code"] == "engine_unavailable"
+    assert body["error"]["hipengine"]["speculative_mtp"]["reason"] == "mtp_circuit_breaker_open"
+    assert body["error"]["hipengine"]["speculative_mtp"]["circuit_breaker"]["state"] == "open"
     assert fake.mtp_calls == []
-    assert len(fake.calls) == 1
+    assert fake.calls == []
 
 
 @pytest.mark.parametrize("endpoint", ["/v1/completions", "/v1/chat/completions"])
-def test_open_mtp_breaker_serves_ar_for_streaming_requests(endpoint: str) -> None:
+def test_open_mtp_breaker_rejects_explicit_streaming_requests(endpoint: str) -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -6313,26 +6298,15 @@ def test_open_mtp_breaker_serves_ar_for_streaming_requests(endpoint: str) -> Non
 
     assert response.status_code == 200
     payloads = _sse_payloads(response.text)
-    assert not any(item.get("error") for item in payloads)
-    done = next(
-        item["choices"][0]
-        for item in payloads
-        if item.get("choices") and item["choices"][0].get("finish_reason") is not None
-    )
-    shape = done["hipengine"]["generation_shape"]
-    assert shape["route"] == "default"
-    assert shape["route_decision"]["reason"] == "mtp_circuit_breaker_open"
-    assert shape["route_decision"]["circuit_breaker"]["state"] == "open"
-    assert done["hipengine"]["speculative_mtp"]["effective_route"] == "default"
-    assert (
-        done["hipengine"]["speculative_mtp"]["decision_reason"]
-        == "mtp_circuit_breaker_open"
-    )
+    error = next(item["error"] for item in payloads if item.get("error"))
+    assert error["code"] == "engine_unavailable"
+    assert "mtp_circuit_breaker_open" in error["message"]
+    assert not any(item.get("choices", [{}])[0].get("text") for item in payloads if item.get("choices"))
     assert fake.mtp_calls == []
-    assert len(fake.calls) == 1
+    assert fake.calls == []
 
 
-def test_operator_mtp_rollback_routes_new_requests_to_ar_until_restart() -> None:
+def test_operator_mtp_rollback_rejects_new_explicit_requests_until_restart() -> None:
     fake = SpeculativeMTPFakeLLM()
     config = ServerConfig(
         model="fake-path",
@@ -6353,17 +6327,15 @@ def test_operator_mtp_rollback_routes_new_requests_to_ar_until_restart() -> None
     rollback = client.post("/v1/hipengine/speculative_mtp/rollback")
     after = client.post("/v1/completions", json=payload)
 
-    assert before.status_code == rollback.status_code == after.status_code == 200
+    assert before.status_code == rollback.status_code == 200
+    assert after.status_code == 503
     assert before.json()["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
     assert rollback.json()["new_requests_route"] == "default"
     assert rollback.json()["circuit_breaker"]["state"] == "operator_disabled"
-    assert after.json()["hipengine"]["generation_shape"]["route"] == "default"
-    assert after.json()["hipengine"]["generation_shape"]["route_decision"]["reason"] == "mtp_operator_rollback"
-    assert after.json()["hipengine"]["generation_shape"]["route_decision"]["circuit_breaker"][
-        "state"
-    ] == "operator_disabled"
+    assert after.json()["error"]["hipengine"]["speculative_mtp"]["reason"] == "mtp_operator_rollback"
+    assert after.json()["error"]["hipengine"]["speculative_mtp"]["circuit_breaker"]["state"] == "operator_disabled"
     assert len(fake.mtp_calls) == 1
-    assert len(fake.calls) == 1
+    assert fake.calls == []
 
     restarted_fake = SpeculativeMTPFakeLLM()
     restarted = TestClient(create_app(config, llm=restarted_fake))
@@ -7557,21 +7529,18 @@ def test_explicit_c1_plan_drops_intent_when_rejection_is_not_a_width_miss() -> N
         temperature=0.4,
         speculative_mtp=True,
     )
-    outside_route, outside_plan = _generation_route_for_request(
-        ServerConfig(
-            model="fake-path",
-            served_model_name="fake-model",
-            speculative_mtp_serving="opt_in",
-        ),
-        request,
-        engine=fake,
-        sampling=SamplingParams(max_tokens=25, temperature=0.4),
-        prompts=("one",),
-    )
-    assert outside_route != _SPECULATIVE_MTP_BATCH_ROUTE
-    assert outside_plan is not None
-    assert outside_plan["admitted"] is False
-    assert outside_plan["reason"] == "sampling_mode_not_qualified"
+    with pytest.raises(OpenAIHTTPError, match="temperature"):
+        _generation_route_for_request(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                speculative_mtp_serving="opt_in",
+            ),
+            request,
+            engine=fake,
+            sampling=SamplingParams(max_tokens=25, temperature=0.4),
+            prompts=("one",),
+        )
 
 
 def test_screening_override_keeps_explicit_intent_for_an_unqualified_cell(
@@ -7591,19 +7560,14 @@ def test_screening_override_keeps_explicit_intent_for_an_unqualified_cell(
     )
 
     monkeypatch.delenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False)
-    closed_route, closed_plan = _generation_route_for_request(
-        config,
-        request,
-        engine=fake,
-        sampling=sampling,
-        prompts=("one",),
-    )
-    assert closed_route == _SPECULATIVE_MTP_K0_ROUTE
-    assert closed_plan is not None
-    assert closed_plan["admitted"] is False
-    assert closed_plan["reason"] == "candidate_budget_not_qualified"
-    assert closed_plan["static_intent_allowed"] is False
-    assert closed_plan.get("screening") is None
+    with pytest.raises(OpenAIHTTPError, match="candidate_budget_not_qualified"):
+        _generation_route_for_request(
+            config,
+            request,
+            engine=fake,
+            sampling=sampling,
+            prompts=("one",),
+        )
 
     monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
     route, plan = _generation_route_for_request(
@@ -7690,20 +7654,18 @@ def test_screening_override_refuses_a_sampling_mode_rejection(monkeypatch) -> No
         speculative_mtp=True,
     )
 
-    route, plan = _generation_route_for_request(
-        config,
-        request,
-        engine=fake,
-        sampling=sampling,
-        prompts=("one",),
-    )
-    assert route != _SPECULATIVE_MTP_BATCH_ROUTE
-    assert plan is not None
+    with pytest.raises(OpenAIHTTPError, match="temperature"):
+        _generation_route_for_request(
+            config,
+            request,
+            engine=fake,
+            sampling=sampling,
+            prompts=("one",),
+        )
+    plan = fake._plan(realized_group_rows=1, sampling_mode="sampled", kv_storage="bf16", memory_fit=True)
     assert plan["reason"] == "candidate_budget_not_qualified"
-    assert plan["reason"] in _MTP_SCREENING_REASONS
     assert "sampling_mode_unmeasured" in plan["failed_axes"]
-    assert plan["static_intent_allowed"] is False
-    assert plan.get("screening") is None
+    assert _mtp_screening_static_eligibility(plan, physical_max_rows=4) is None
 
 
 def test_realized_re_resolution_carries_screening_intent(monkeypatch) -> None:
@@ -9090,7 +9052,7 @@ def test_artifact_scoped_explicit_mtp_uses_one_plan_in_capability_route_and_resp
     assert rollback["serving_plan"]["plan_fingerprint"] == plan["plan_fingerprint"]
 
 
-def test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation() -> None:
+def test_artifact_scoped_explicit_mtp_rejects_unsupported_sampling_before_mutation() -> None:
     fake = ArtifactScopedSpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -9118,18 +9080,13 @@ def test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation() -> N
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     body = response.json()
-    shape = body["hipengine"]["generation_shape"]
-    summary = body["hipengine"]["speculative_mtp"]
-    assert shape["route"] == "default"
-    assert shape["route_decision"]["reason"] == "sampling_mode_not_qualified"
-    assert shape["route_decision"]["selected_candidate_count"] == 0
-    assert summary["effective_route"] == "default"
-    assert summary["used"] is False
-    assert summary["decision_reason"] == "sampling_mode_not_qualified"
+    assert body["error"]["code"] == "unsupported_parameter"
+    assert body["error"]["param"] == "speculative_mtp"
+    assert "temperature" in body["error"]["message"]
     assert fake.mtp_calls == []
-    assert len(fake.calls) == 1
+    assert fake.calls == []
 
 
 def test_auto_and_enabled_share_explicit_only_plan_fingerprint_and_k0() -> None:
@@ -9868,10 +9825,9 @@ def test_mtp_summary_separates_the_four_refusal_facts_from_the_folded_reason() -
     assert engaged_summary["cycle_timing_ms"]["target"] == 40.0
     assert engaged_summary["cycle_timing_ms"]["proposal"] == 1.0
 
-    # No admission refusal was recorded, so the fold falls back to the most
-    # frequent autoregressive reason -- which is exactly why the activation
-    # reason has to be reported separately rather than inferred from it.
-    assert engaged_summary["fallback_reason"] == "no_provider"
+    # A ready provider with no fallback position must not publish the planner's
+    # root bookkeeping reason as if the request fell back.
+    assert "fallback_reason" not in engaged_summary
     assert engaged_summary["execution"] == {
         "activation_reason": None,
         "provider_readiness": "ready",
@@ -10277,7 +10233,7 @@ def test_completions_enabled_mode_requires_model_plugin_default_evidence() -> No
     assert len(fake.mtp_calls) == 1
 
 
-def test_completions_endpoint_routes_explicit_non_greedy_mtp_to_k0() -> None:
+def test_completions_endpoint_rejects_unsupported_explicit_non_greedy_mtp() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -10300,15 +10256,12 @@ def test_completions_endpoint_routes_explicit_non_greedy_mtp_to_k0() -> None:
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     body = response.json()
-    assert body["choices"][0]["text"] == "generated:one"
-    decision = body["hipengine"]["generation_shape"]["route_decision"]
-    assert decision["selected_route"] == "default"
-    assert decision["reason"] == "unsupported_sampling_k0"
-    assert decision["selected_candidate_count"] == 0
-    assert decision["sampling_blockers"] == ["temperature"]
-    assert len(fake.calls) == 1
+    assert body["error"]["code"] == "unsupported_parameter"
+    assert body["error"]["param"] == "speculative_mtp"
+    assert "temperature" in body["error"]["message"]
+    assert fake.calls == []
     assert fake.mtp_calls == []
 
 
@@ -10325,18 +10278,12 @@ def test_completions_endpoint_routes_explicit_non_greedy_mtp_to_k0() -> None:
         ({"suppress_token_ids": [7]}, None, "suppress_token_ids"),
     ],
 )
-def test_explicit_mtp_keeps_stop_semantics_on_the_autoregressive_route(
+def test_explicit_mtp_rejects_unimplemented_finish_semantics(
     payload: dict[str, object], token_map: dict[str, list[int]] | None, blocker: str | None
 ) -> None:
-    """An explicit MTP request whose finish rule MTP cannot reproduce stays AR.
+    """A greedy-only provider refuses controls instead of substituting AR.
 
-    The cycle commit implements one finish rule -- EOS on the last visible token
-    of a greedy chain.  Token stops, multi-token stops, an EOS finish policy,
-    and the min-token floor that couples to it are therefore advertised
-    blockers, and the response has to name the blocker it hit rather than
-    silently serving a different finish rule.  A stop string the tokenizer
-    cannot lower stays a text-level post-trim, which does not change the
-    runtime finish rule, so that request keeps MTP.
+    An unlowerable text stop is handled after generation and keeps MTP.
     """
 
     fake = SpeculativeMTPFakeLLM(token_map=token_map)
@@ -10356,17 +10303,18 @@ def test_explicit_mtp_keeps_stop_semantics_on_the_autoregressive_route(
         | payload,
     )
 
-    assert response.status_code == 200
-    shape = response.json()["hipengine"]["generation_shape"]
     if blocker is None:
-        assert shape["route"] == "speculative_mtp"
+        assert response.status_code == 200
+        assert response.json()["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
         assert fake.mtp_calls
         return
-    decision = shape["route_decision"]
-    assert decision["selected_route"] == "default"
-    assert decision["reason"] == "unsupported_sampling_k0"
-    assert blocker in decision["sampling_blockers"]
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "unsupported_parameter"
+    assert error["param"] == "speculative_mtp"
+    assert blocker in error["message"]
     assert fake.mtp_calls == []
+    assert fake.calls == []
 
 
 def test_chat_completion_hint_thinking_policy_routes_through_mtp_and_relaxes_sampling() -> None:
@@ -10476,8 +10424,8 @@ def test_chat_completion_thinking_policy_request_override_selects_policy() -> No
     assert response.json()["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
     assert len(fake.mtp_calls) == 1
 
-    # Config is hint but the request opts in to hard -> thinking stays a hard
-    # blocker and deterministically selects K0 before provider mutation.
+    # Config is hint but the explicit request opts in to hard; this greedy-only
+    # fake must refuse rather than discard enforcement or substitute AR.
     fake2 = SpeculativeMTPFakeLLM(token_map={_THINKING_CLOSE_MARKER: [42, 43]})
     app2 = create_app(
         ServerConfig(
@@ -10503,14 +10451,12 @@ def test_chat_completion_thinking_policy_request_override_selects_policy() -> No
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     body = response.json()
-    assert body["hipengine"]["generation_shape"]["route"] == "default"
-    assert body["hipengine"]["generation_shape"]["route_decision"]["sampling_blockers"] == [
-        "thinking_budget"
-    ]
+    assert body["error"]["code"] == "unsupported_parameter"
+    assert "thinking_budget" in body["error"]["message"]
     assert fake2.mtp_calls == []
-    assert len(fake2.calls) == 1
+    assert fake2.calls == []
 
 
 def test_completions_preserve_structured_finish_details() -> None:

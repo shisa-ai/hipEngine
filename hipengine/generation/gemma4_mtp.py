@@ -57,8 +57,11 @@ from typing import Any
 import numpy as np
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.finish import finish_details_with_sampling_state
+from hipengine.generation.gemma4_gguf import gemma4_token_logprob
 from hipengine.generation.gemma4_sampling import (
     Gemma4Distribution,
+    Gemma4RowLaw,
     Gemma4Sampler,
     speculative_accept,
 )
@@ -259,11 +262,20 @@ class Gemma4MTPTextProvider:
         drafter = self._ensure_drafter()
         runner = generator._ensure_runner()
         stop_ids = set(request.stop_token_ids)
-        if not request.ignore_eos:
-            stop_ids.update(
-                getattr(tokenizer, "stop_token_ids", (tokenizer.eos_token_id,))
-                if request.eos_token_id is None else (int(request.eos_token_id),)
+        configured_eos = (
+            set(
+                getattr(tokenizer, "stop_token_ids", ())
+                or (
+                    ()
+                    if tokenizer.eos_token_id is None
+                    else (int(tokenizer.eos_token_id),)
+                )
             )
+            if request.eos_token_id is None
+            else {int(request.eos_token_id)}
+        )
+        if not request.ignore_eos:
+            stop_ids.update(configured_eos)
 
         phase_ms: dict[str, float] = {}
         phase_calls: dict[str, int] = {}
@@ -288,15 +300,30 @@ class Gemma4MTPTextProvider:
         logits = runner.forward(token_ids)
         record("target_prefill", prefill_started)
 
-        sampler = Gemma4Sampler(request, token_ids)
+        sampler = Gemma4Sampler(
+            request, token_ids, eos_token_ids=tuple(sorted(configured_eos))
+        )
         sampled_drafts = self.draft_sampling and not sampler.greedy
-        token = sampler.select(logits)
+        wants_logprobs = sampler.wants_logprobs
+        selection = sampler.select_row(logits)
+        token = selection.token_id
         generated: list[int] = [token]
+        token_logprobs: list[Any] = (
+            [
+                gemma4_token_logprob(
+                    tokenizer, token, selection.logprob, selection.top_logprobs
+                )
+            ]
+            if wants_logprobs
+            else []
+        )
         # The prefill's own last row produced `token`.
         seed_row = -1
         cycles: list[Gemma4MTPCycle] = []
         reason = "length"
-        if token in stop_ids:
+        stop_sequence = sampler.stop_sequence_matched
+        sampler.discard_undo_history()
+        if token in stop_ids or stop_sequence:
             reason = "stop"
 
         while len(generated) < request.max_tokens and reason != "stop":
@@ -314,6 +341,7 @@ class Gemma4MTPTextProvider:
 
             proposal_started = time.perf_counter()
             draft_laws: list[Gemma4Distribution] = []
+            controls_before_cycle = sampler.checkpoint_controls()
 
             def propose(head_logits: np.ndarray) -> int:
                 # The law is the request's own sampler applied to the head's
@@ -327,6 +355,8 @@ class Gemma4MTPTextProvider:
                     drafted = int(law.token_ids[int(np.argmax(law.probabilities))])
                     law = Gemma4Distribution.point_mass(drafted)
                 draft_laws.append(law)
+                if sampler.pending_forced_token() is not None:
+                    sampler.pop_forced_token()
                 sampler.observe(drafted)
                 return drafted
 
@@ -338,6 +368,7 @@ class Gemma4MTPTextProvider:
             # the accept walk observes the ones it keeps.
             for drafted in reversed(drafts):
                 sampler.unobserve(drafted)
+            sampler.restore_controls(controls_before_cycle)
             record("proposal", proposal_started)
             if not drafts and budget > 0:
                 break
@@ -364,22 +395,53 @@ class Gemma4MTPTextProvider:
 
             accept_started = time.perf_counter()
             observed = 0
+            # Row ``r`` predicts the token after the prefix ending at ``r``, so
+            # the override governing the token this cycle commits at position
+            # ``r`` is the head of the queue once ``drafts[:r]`` are accepted.
+            # The queue drains as the walk descends, exactly as one
+            # autoregressive step per accepted token would drain it.
+            forced_at_row: list[int | None] = []
+            row_laws: list[Gemma4RowLaw] = []
+            # The stop matcher is immutable, so the state before this cycle's
+            # commits is what locates a sequence that completes inside the
+            # committed group -- including one that straddles the boundary from
+            # the previous cycle's last token.
+            stop_before = sampler.stop_state
 
             def target_law(index: int) -> Gemma4Distribution:
                 # Row ``index`` is asked for once ``drafts[:index]`` are
                 # accepted, so its law sees exactly the committed history.
                 nonlocal observed
                 while observed < index:
+                    override = forced_at_row[observed]
+                    if override is not None:
+                        sampler.pop_forced_token()
                     sampler.observe(drafts[observed])
                     observed += 1
-                return sampler.distribution(rows[index])
+                row = sampler.row_law(rows[index])
+                forced_at_row.append(row.forced_token_id)
+                row_laws.append(row)
+                return row.law
 
             accepted, token = speculative_accept(
                 drafts, draft_laws, target_law, sampler.random_unit
             )
+            # The position the walk settled on carries its own override: a
+            # thinking budget that reached its cap at this row made the row a
+            # point mass, so the walk can only have committed that token.
+            settled_override = forced_at_row[accepted]
+            if settled_override is not None:
+                consumed = sampler.pop_forced_token()
+                if consumed != token:
+                    raise RuntimeError(
+                        f"cycle committed token {token} but the pending forced "
+                        f"token is {consumed}"
+                    )
             sampler.observe(token)
             record("accept", accept_started)
             committed = [*drafts[:accepted], token]
+            observed_tokens = list(committed)
+            stop_state = stop_before
             for index, committed_token in enumerate(committed):
                 if committed_token in stop_ids:
                     # A stop can be an accepted draft, not only the bonus.
@@ -387,7 +449,61 @@ class Gemma4MTPTextProvider:
                     accepted = min(accepted, len(committed))
                     reason = "stop"
                     break
+                stop_state = stop_state.observe(committed_token)
+                if stop_state.matched:
+                    # A multi-token stop can complete on any committed token,
+                    # and the tokens after it in the same group are not part of
+                    # the reply.
+                    committed = committed[:index + 1]
+                    accepted = min(accepted, len(committed))
+                    stop_sequence = stop_state.matched_sequence
+                    reason = "stop"
+                    break
+            if len(committed) < len(observed_tokens):
+                # The walk had to observe every accepted draft and its bonus token
+                # to find where the stop landed, but only the published prefix
+                # exists for the request. Rewind the sampler to the state before
+                # the walk and re-observe exactly the published tokens, so the
+                # thinking-budget counts, the phase, the budget pressure and the
+                # stop matcher report what was published -- the state the
+                # autoregressive route leaves when it stops on the token it just
+                # emitted. Without this, a stop inside one group reports
+                # reasoning or answer tokens the reply never carried, and a
+                # discarded tail that reached the cap closes the reasoning phase
+                # of a reply that never got there.
+                for observed_token in reversed(observed_tokens):
+                    sampler.unobserve(observed_token)
+                sampler.restore_controls(controls_before_cycle)
+                for index, published_token in enumerate(committed):
+                    # One autoregressive step per published token: prepare the
+                    # row's control transitions, consume the override that row
+                    # carried, then observe the token it emitted.
+                    sampler.prepare_selection()
+                    override = forced_at_row[index]
+                    if override is not None:
+                        consumed = sampler.pop_forced_token()
+                        if consumed != published_token:
+                            raise RuntimeError(
+                                f"cycle row {index} emitted {published_token} but "
+                                f"the pending forced token is {consumed}"
+                            )
+                    sampler.observe(published_token)
+            if wants_logprobs:
+                for index, committed_token in enumerate(committed):
+                    row = row_laws[index]
+                    if row.report is not None:
+                        logprob, top_logprobs = row.report
+                    else:
+                        logprob, top_logprobs = sampler.reported_logprob(
+                            row.law, committed_token
+                        )
+                    token_logprobs.append(
+                        gemma4_token_logprob(
+                            tokenizer, committed_token, logprob, top_logprobs
+                        )
+                    )
             generated.extend(committed)
+            sampler.discard_undo_history()
             token = committed[-1]
 
             # Keep the previously sampled seed and the committed prefix except
@@ -472,15 +588,28 @@ class Gemma4MTPTextProvider:
                 },
             },
         )
+        # A matched multi-token stop is held back from the reply; the generated
+        # ids keep the whole emitted run, as the AR route and the shared
+        # stop-sequence handling report it.
+        visible = len(generated) - len(stop_sequence) if stop_sequence else len(generated)
         return GenerationOutput(
-            text=tokenizer.decode(generated, skip_special=False),
+            text=tokenizer.decode(generated[:visible], skip_special=False),
+            token_logprobs=tuple(token_logprobs[:visible]),
             generated_token_ids=tuple(generated),
             telemetry=telemetry,
-            finish_details=FinishDetails(
-                reason=reason,
-                eos_token_id=generated[-1] if reason == "stop" else None,
-                length_limit=request.max_tokens if reason == "length" else None,
-                sampler_mode=_sampler_mode(sampler),
+            finish_details=finish_details_with_sampling_state(
+                FinishDetails(
+                    reason=reason,
+                    eos_token_id=(
+                        generated[-1]
+                        if reason == "stop" and not stop_sequence
+                        else None
+                    ),
+                    stop_sequence=stop_sequence,
+                    length_limit=request.max_tokens if reason == "length" else None,
+                    sampler_mode=_sampler_mode(sampler),
+                ),
+                sampler,
             ),
         )
 
@@ -491,6 +620,7 @@ class Gemma4MTPTextProvider:
         output = self.generate_detailed(request)[0]
         yield GenerationStreamChunk(
             text=output.text,
+            token_logprobs=output.token_logprobs,
             finish_details=output.finish_details,
             telemetry=output.telemetry,
             generated_token_ids=output.generated_token_ids,

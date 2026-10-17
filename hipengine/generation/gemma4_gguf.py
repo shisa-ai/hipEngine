@@ -7,11 +7,15 @@ delegates every forward pass to the runner.
 
 A greedy request with no logit processors takes the device argmax and never
 brings a logits row to the host. A request with a temperature, top-k, top-p,
-min-p, a repetition, presence or frequency penalty, a logit bias or suppressed
-tokens copies each step's row home and draws from it through
-:class:`hipengine.generation.gemma4_sampling.Gemma4Sampler`. ``_validate_request``
-names every other sampler control rather than silently ignoring it, so a
-request that asks for one fails loudly instead of quietly dropping it.
+min-p, a repetition, presence or frequency penalty, a logit bias, suppressed
+tokens, a ``min_tokens`` floor, a thinking budget, or a logprob request copies
+each step's row home and draws from it through
+:class:`hipengine.generation.gemma4_sampling.Gemma4Sampler`. Multi-token stop
+sequences are matched against the emitted history on both this route and the
+speculative one. Every other control is named by ``_validate_request`` rather
+than silently ignored, so a request that asks for one fails loudly instead of
+quietly dropping it - and ``validate_request`` exposes that same answer to a
+serving front end before it schedules the request.
 """
 
 from __future__ import annotations
@@ -21,17 +25,20 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.gemma4_sampling import Gemma4Sampler
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
     GenerationRequest,
     GenerationStreamChunk,
+    TokenLogprob,
     register_text_generator,
 )
+from hipengine.generation.sampling import validate_sampling_params
 from hipengine.kernels.backends import hip_target_arch_for_backend, resolve_backend
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.safetensors import WeightIndex
@@ -63,6 +70,35 @@ def _gemma4_decode_graph_enabled() -> bool:
     return os.environ.get("HIPENGINE_GEMMA4_DECODE_GRAPH", "1") != "0"
 
 
+def gemma4_token_logprob(
+    tokenizer: Any,
+    token_id: int,
+    logprob: float | None,
+    top_logprobs: tuple[tuple[int, float], ...],
+) -> TokenLogprob:
+    """One generated token's host-visible logprob metadata.
+
+    ``logprob`` and ``top_logprobs`` come from
+    :class:`hipengine.generation.gemma4_sampling.Gemma4Sampler`, which reports
+    them the way the shared host sampler does; this turns token ids into the text
+    the OpenAI schema carries beside them.
+    """
+
+    return TokenLogprob(
+        token_id=int(token_id),
+        token_text=tokenizer.decode([int(token_id)], skip_special=False),
+        logprob=None if logprob is None else float(logprob),
+        top_logprobs=tuple(
+            (
+                int(top_id),
+                tokenizer.decode([int(top_id)], skip_special=False),
+                float(top_logprob),
+            )
+            for top_id, top_logprob in top_logprobs
+        ),
+    )
+
+
 def _resolve_kv_storage(request: GenerationRequest) -> tuple[str, str, str]:
     """Map a request's KV storage controls onto the runner's constructor args.
 
@@ -91,6 +127,18 @@ def _resolve_kv_storage(request: GenerationRequest) -> tuple[str, str, str]:
     if scale_dtype not in {"fp16", "fp32"}:
         raise NotImplementedError("Gemma 4 INT8 KV storage implements fp16 or fp32 scales only")
     return storage, scale_dtype, granularity
+
+
+def _ar_sampler_mode(host_sampler: bool, sampler: Gemma4Sampler) -> str:
+    """The sampler mode the decode loop reports for one row.
+
+    ``greedy`` is the device argmax route, which never processes a row on the
+    host; the two host modes split on whether the request samples at all.
+    """
+
+    if not host_sampler:
+        return "greedy"
+    return "processed_argmax" if sampler.greedy else "host_logits_sample"
 
 
 @dataclass
@@ -149,10 +197,44 @@ class Gemma4GGUFGenerator:
     # speculative registry and attaches it here before materialization.
     supports_stream_many = False
     supports_resident_session_kv = False
-    supports_stream_logprobs = False
+    # Both routes publish one buffered chunk that carries the whole published
+    # run, logprobs included: this generator's stream is the engine loop's
+    # ``generate_detailed`` fallback chunk, and the MTP provider's
+    # ``stream_detailed`` builds its chunk from the same output. The server maps
+    # those chunk logprobs through the same helpers the blocking response uses,
+    # so a streamed ``logprobs`` request reports what the blocking one does.
+    supports_stream_logprobs = True
     chat_template_family = "gemma"
     reasoning_parser_name = "gemma_tags"
     tool_parser_name = "unsupported"
+
+    @property
+    def server_mtp_batch_max_active_requests(self) -> int | None:
+        """The explicit-MTP batch-route width this generator can serve.
+
+        The Gemma 4 MTP provider commits one draft/verify cycle for exactly one
+        prompt: its ``stream_detailed`` refuses more than one row, and a cycle's
+        KV rewind is expressed in one request's positions. Publishing ``1`` says
+        that, so the server groups explicit-MTP requests one at a time instead of
+        handing the provider a batch it cannot run.
+
+        This is a request-width declaration, not a concurrency limit: every
+        queued client still runs on the MTP route, one group at a time.
+        """
+
+        return 1
+
+    def validate_request(self, request: GenerationRequest) -> None:
+        """Public pre-admission validation for this generator's requests.
+
+        ``SubmitPollTextGenerator`` calls this before it schedules a request, so a
+        control this generator cannot execute is refused with a 4xx instead of
+        failing inside a decode step. The single source of truth stays
+        :meth:`_validate_request`, which :meth:`generate_detailed` also runs, so
+        the pre-admission answer and the in-generation answer cannot drift.
+        """
+
+        self._validate_request(request)
 
     def __post_init__(self) -> None:
         self.model_path = Path(self.model_path).expanduser().resolve()
@@ -247,6 +329,21 @@ class Gemma4GGUFGenerator:
     def generate_detailed(self, request: GenerationRequest) -> tuple[GenerationOutput, ...]:
         self._validate_request(request)
         storage, scale_dtype, granularity = _resolve_kv_storage(request)
+        if request.max_tokens == 0:
+            # A zero-token request decodes nothing, so it costs no device work:
+            # no weight load, no runner reset, no prefill, no selection. The MTP
+            # route returns the same empty output before it touches the device,
+            # and a request that asks for no tokens must not pay for a prefill
+            # on one route and not the other. The context ceiling is a KV-capacity
+            # bound and this path allocates no KV, so it is not consulted.
+            with self._lock:
+                self._require_open()
+                outputs = tuple(
+                    self._empty_output(request, row_index)
+                    for row_index in range(len(request.prompts))
+                )
+                self.last_generation_outputs = outputs
+            return outputs
         with self._lock:
             self._require_open()
             runner = self._ensure_runner(
@@ -266,28 +363,50 @@ class Gemma4GGUFGenerator:
                 started = time.perf_counter()
                 runner.reset()
                 graph_session = self._decode_graph_session_for(runner)
-                sampler = Gemma4Sampler(request, prompt_ids, row_index=row_index)
+                stop_ids = set(request.stop_token_ids)
+                configured_eos = self._configured_eos_ids(request)
+                sampler = self._row_sampler(request, prompt_ids, row_index)
                 host_sampler = sampler.processes_logits
+                wants_logprobs = sampler.wants_logprobs
                 if host_sampler:
-                    token_id = sampler.select(runner.forward(list(prompt_ids)))
+                    selection = sampler.select_row(runner.forward(list(prompt_ids)))
+                    token_id = selection.token_id
                 else:
                     # The device argmax route (D10) brings home the token
                     # directly; identical tokens to np.argmax(forward(...)),
                     # pinned by the argmax battery and the campaign bench's
-                    # public/instrumented path parity.
+                    # public/instrumented path parity. The token is still
+                    # observed: the stop matcher and the row's history advance
+                    # on either route.
+                    selection = None
                     token_id = runner.forward_argmax(list(prompt_ids))
+                    sampler.observe(token_id)
                 generated: list[int] = []
+                token_logprobs: list[TokenLogprob] = []
                 finish_reason = "length"
                 eos_id: int | None = None
-                stop_ids = set(request.stop_token_ids)
-                configured_eos = (
-                    set(self.tokenizer.stop_token_ids)
-                    if request.eos_token_id is None
-                    else {int(request.eos_token_id)}
-                )
+                stop_sequence: tuple[int, ...] = ()
                 for step in range(request.max_tokens):
                     raise_if_generation_deadline_expired(request)
                     generated.append(token_id)
+                    sampler.discard_undo_history()
+                    if wants_logprobs:
+                        token_logprobs.append(
+                            gemma4_token_logprob(
+                                self.tokenizer,
+                                token_id,
+                                None if selection is None else selection.logprob,
+                                () if selection is None else selection.top_logprobs,
+                            )
+                        )
+                    matched = sampler.stop_sequence_matched
+                    if matched:
+                        # A multi-token stop is matched against the emitted
+                        # history, so it can complete on any step; the sequence
+                        # itself is not part of the reply.
+                        finish_reason = "stop"
+                        stop_sequence = matched
+                        break
                     if token_id in stop_ids:
                         finish_reason = "stop"
                         eos_id = token_id
@@ -307,37 +426,108 @@ class Gemma4GGUFGenerator:
                         # first step is that warm step.
                         replay = graph_session is not None and step >= 1
                         if host_sampler:
-                            token_id = sampler.select(
+                            selection = sampler.select_row(
                                 graph_session.step(token_id)
                                 if replay
                                 else runner.forward([token_id])
                             )
+                            token_id = selection.token_id
                         elif replay:
+                            selection = None
                             token_id = graph_session.step_argmax(token_id)
+                            sampler.observe(token_id)
                         else:
+                            selection = None
                             token_id = runner.forward_argmax([token_id])
+                            sampler.observe(token_id)
+                # The matched stop sequence is held back from the reply; the
+                # generated ids keep the whole emitted run, which is what the
+                # shared stop-sequence handling reports too.
+                visible = (
+                    len(generated) - len(stop_sequence) if stop_sequence else len(generated)
+                )
                 outputs.append(
                     GenerationOutput(
-                        text=self.tokenizer.decode(generated, skip_special=False),
+                        text=self.tokenizer.decode(generated[:visible], skip_special=False),
+                        token_logprobs=tuple(token_logprobs[:visible]),
                         generated_token_ids=tuple(generated),
-                        finish_details=FinishDetails(
-                            reason=finish_reason,
-                            eos_token_id=eos_id,
-                            length_limit=(
-                                request.max_tokens if finish_reason == "length" else None
+                        finish_details=finish_details_with_sampling_state(
+                            FinishDetails(
+                                reason=finish_reason,
+                                eos_token_id=eos_id,
+                                stop_sequence=stop_sequence,
+                                length_limit=(
+                                    request.max_tokens if finish_reason == "length" else None
+                                ),
+                                sampler_mode=_ar_sampler_mode(host_sampler, sampler),
+                                phase="decode" if sampler.thinking_budget is None else None,
                             ),
-                            sampler_mode=(
-                                "greedy" if not host_sampler
-                                else "processed_argmax" if sampler.greedy
-                                else "host_logits_sample"
-                            ),
-                            phase="decode",
+                            sampler,
                         ),
                     )
                 )
                 self.last_generation_seconds = time.perf_counter() - started
             self.last_generation_outputs = tuple(outputs)
             return self.last_generation_outputs
+
+    def _configured_eos_ids(self, request: GenerationRequest) -> set[int]:
+        """The end-of-generation ids this request stops on.
+
+        Gemma 4 stops on a set rather than one id, so an unset ``eos_token_id``
+        means the tokenizer's own set. Both routes resolve it here so the
+        sampler's ``min_tokens`` floor and thinking-budget suppression hold back
+        the same ids on either route.
+        """
+
+        return (
+            set(self.tokenizer.stop_token_ids)
+            if request.eos_token_id is None
+            else {int(request.eos_token_id)}
+        )
+
+    def _row_sampler(
+        self,
+        request: GenerationRequest,
+        prompt_ids: Sequence[int],
+        row_index: int,
+    ) -> Gemma4Sampler:
+        """One row's sampler, with the request's whole stop set resolved.
+
+        The decode loop and the zero-token path build their sampler here, so the
+        sampler mode a request reports does not depend on which path answered it.
+        """
+
+        return Gemma4Sampler(
+            request,
+            prompt_ids,
+            row_index=row_index,
+            eos_token_ids=tuple(sorted(self._configured_eos_ids(request))),
+        )
+
+    def _empty_output(
+        self, request: GenerationRequest, row_index: int
+    ) -> GenerationOutput:
+        """The reply to a request that asks for no tokens.
+
+        The shape is the MTP route's zero-token reply: no text, no generated ids,
+        no logprobs, and a ``length`` finish whose limit is the requested zero.
+        The sampler is built only to name the sampler mode the same request would
+        report from the decode loop, which is host-side work with no device call.
+        """
+
+        prompt_ids = request.prompt_token_ids(row_index, self.tokenize)
+        if not prompt_ids:
+            raise ValueError("Gemma 4 prompt produced no token IDs")
+        sampler = self._row_sampler(request, prompt_ids, row_index)
+        return GenerationOutput(
+            text="",
+            generated_token_ids=(),
+            finish_details=FinishDetails(
+                reason="length",
+                length_limit=0,
+                sampler_mode=_ar_sampler_mode(sampler.processes_logits, sampler),
+            ),
+        )
 
     def close(self) -> None:
         with self._lock:
@@ -676,9 +866,18 @@ class Gemma4GGUFGenerator:
 
     @staticmethod
     def _validate_request(request: GenerationRequest) -> None:
+        """Refuse a control this generator cannot execute, before any mutation.
+
+        Every refusal here is a capability miss, not a missing measurement, and
+        the check runs before the runner is built or reset, so a request that
+        asks for one costs no device work and leaves no state behind. The
+        sampler's own field preconditions are validated here too: they are part
+        of the request, and discovering a bad one after a multi-gigabyte weight
+        load would charge the user for the refusal.
+        """
+
+        validate_sampling_params(request)
         blockers: list[str] = []
-        if request.stop_token_sequences:
-            blockers.append("multi-token stop sequences are not implemented")
         if request.forced_tokens_pending or request.post_thinking_forced_tokens_pending:
             blockers.append("forced-token queues are not implemented")
         if (
@@ -689,10 +888,6 @@ class Gemma4GGUFGenerator:
             blockers.append("structured constraints are not implemented")
         if request.force_sequence_completion_token_sequences:
             blockers.append("forced sequence completion is not implemented")
-        if request.thinking_hard_token_cap is not None or request.thinking_soft_close_window:
-            blockers.append("thinking budget controls are not implemented")
-        if request.min_tokens or request.logprobs or request.top_logprobs:
-            blockers.append("min_tokens/logprobs are not implemented")
         if request.kv_storage not in {"auto", "bf16", "int8_per_token_head"}:
             blockers.append(
                 f"KV storage {request.kv_storage!r} is not implemented "

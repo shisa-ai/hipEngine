@@ -434,6 +434,7 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
         _SPECULATIVE_MTP_AUTO_ROUTE,
         _SPECULATIVE_MTP_BATCH_ROUTE,
         _SPECULATIVE_MTP_K0_ROUTE,
+        OpenAIHTTPError,
         _speculative_mtp_route_for_request,
     )
 
@@ -462,9 +463,11 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
         route(_serving_engine("greedy_fast", "sampled"), sampled)
         == _SPECULATIVE_MTP_BATCH_ROUTE
     )
-    # An artifact whose row does not list the sampled mode still ends at K0
-    # before provider mutation.
-    assert route(_serving_engine("greedy_fast"), sampled) == _SPECULATIVE_MTP_K0_ROUTE
+    # A provider without sampled acceptance refuses explicit sampling before
+    # mutation; automatic selection may still use AR.
+    with pytest.raises(OpenAIHTTPError, match="temperature"):
+        route(_serving_engine("greedy_fast"), sampled)
+    assert route(_serving_engine("greedy_fast"), sampled, explicit=None) == _SPECULATIVE_MTP_K0_ROUTE
     # A servable field keeps the route the row lists for it.
     assert (
         route(_serving_engine("greedy_fast", "sampled"), text_hook)

@@ -2605,18 +2605,11 @@ def _mtp_unavailable_route_fallback(
     group_rows: int,
     output_horizon_tokens: int,
 ) -> tuple[str, dict[str, Any] | None]:
-    """Report an unavailable MTP route instead of failing the request.
+    """Refuse explicit MTP when unavailable; report automatic AR fallback.
 
-    An open scope breaker and an operator rollback are the same condition: the
-    promoted MTP route cannot run for this scope.  Both degrade the request to
-    AR, which is the exact fallback for every admitted MTP scope (the promoted
-    route emits the same greedy tokens), and both say so in the response's
-    route decision.  A 503 would instead withhold a completion AR could have
-    produced and leave the client to rediscover the downgrade itself.
-
-    ``route`` is the realized route and ``requested_route`` the one the client
-    asked for; only a realized MTP route is inspected, so a request that
-    already resolved to AR keeps its decision untouched.
+    Client validation errors do not open the breaker. A genuine runtime failure
+    or operator rollback may close the route, but cannot change an explicit
+    request into an autoregressive request.
     """
 
     if str(route) not in {
@@ -2637,6 +2630,20 @@ def _mtp_unavailable_route_fallback(
         reason = "mtp_circuit_breaker_open"
         evidence = "circuit_breaker_scope_open"
     breaker.attach(engine)
+    if (
+        str(requested_route) == _SPECULATIVE_MTP_BATCH_ROUTE
+        and (route_decision or {}).get("request_mode") != "automatic"
+    ):
+        raise OpenAIHTTPError(
+            503,
+            f"requested speculative_mtp cannot execute: {reason}; restart the server to reset",
+            error_type="server_error",
+            code="engine_unavailable",
+            param="speculative_mtp",
+            extra={"hipengine": {"speculative_mtp": {
+                "reason": reason, "circuit_breaker": breaker.snapshot(),
+            }}},
+        )
     return _SPECULATIVE_MTP_DEFAULT_ROUTE, {
         "requested_route": str(requested_route),
         "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
@@ -2735,6 +2742,20 @@ def _serving_plan_route_decision(
     ):
         admitted = False
         reason = _SPECULATIVE_MTP_AUTO_REJECTION_REASON
+    if (
+        not admitted
+        and not static_intent_allowed
+        and route == _SPECULATIVE_MTP_BATCH_ROUTE
+        and copied.get("request_mode") != "automatic"
+    ):
+        raise OpenAIHTTPError(
+            501,
+            f"requested speculative_mtp cannot execute: {reason}",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative_mtp",
+            extra={"hipengine": {"speculative_mtp": {"reason": reason, "key": key}}},
+        )
     selected_route = (
         _SPECULATIVE_MTP_BATCH_ROUTE
         if admitted
@@ -2759,6 +2780,7 @@ def _serving_plan_route_decision(
     )
     return selected_route, {
         "requested_route": reported_requested_route,
+        "request_mode": copied.get("request_mode", "explicit" if route == _SPECULATIVE_MTP_BATCH_ROUTE else "automatic"),
         "selected_route": selected_route,
         "reason": reason,
         "k0_class": k0_class,
@@ -3002,6 +3024,7 @@ def _resolve_realized_generation_route(
             )
             return route, {
                 "requested_route": route,
+                "request_mode": precomputed_decision.get("request_mode", "explicit"),
                 "selected_route": route,
                 "reason": (
                     "unqualified_cell_deferred_to_resident_owner"
@@ -3080,7 +3103,7 @@ def _resolve_realized_generation_route(
             },
         )
     if route != _SPECULATIVE_MTP_AUTO_ROUTE:
-        return route, None
+        return route, None if precomputed_decision is None else dict(precomputed_decision)
     rows = int(group_rows)
     if rows < 1:
         raise ValueError("automatic generation route requires a positive realized group")
@@ -3506,6 +3529,8 @@ class _MTPCircuitBreaker:
         scope: tuple[str, str, str, str],
         exc: BaseException,
     ) -> None:
+        if isinstance(exc, (NotImplementedError, ValueError, GenerationCancelled, GenerationDeadlineExceeded, OpenAIHTTPError)):
+            return
         failures = self._failures.get(scope, 0) + 1
         self._failures[scope] = failures
         if failures >= self.threshold and scope not in self._opened:
@@ -3959,7 +3984,11 @@ class _GenerationBatcher:
                 self._launch_controlled_stream(first, engine)
                 return
         elif (
-            str(first.route) == _SPECULATIVE_MTP_DEFAULT_ROUTE
+            str(first.route) in {
+                _SPECULATIVE_MTP_DEFAULT_ROUTE,
+                _SPECULATIVE_MTP_BATCH_ROUTE,
+                _SPECULATIVE_MTP_AUTO_ROUTE,
+            }
             and _engine_supports_independent_generation(engine)
         ):
             active_limit = self._route_request_cap(first.route)
@@ -3990,6 +4019,14 @@ class _GenerationBatcher:
                         "independent generation capacity is full without an active producer"
                     )
                 await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
+                return
+            if str(first.route) != _SPECULATIVE_MTP_DEFAULT_ROUTE:
+                # Each client keeps its sampling/control state. The resident
+                # service owns physical MTP grouping; waiting for a whole HTTP
+                # call here prevents other clients from ever reaching it.
+                # The ready-cohort API below is AR-only, so MTP uses its own
+                # normal submission path instead.
+                self._launch_independent_generation(first)
                 return
             submit_ready = getattr(
                 engine,
@@ -4350,6 +4387,9 @@ class _GenerationBatcher:
                     )
                 else:
                     _finish_queued_generation(item, outputs=item_outputs)
+        except OpenAIHTTPError as exc:
+            for item in group:
+                _finish_queued_generation(item, exception=exc)
         finally:
             if manage_active:
                 for item in group:
@@ -4365,21 +4405,8 @@ class _GenerationBatcher:
         thinking_policy: str | None = None,
     ) -> _QueuedBatchResult:
         engine = self._engine_factory()
-        # ``_run_group`` resolves an unavailable MTP route (operator rollback or
-        # an open scope breaker) to AR before dispatch and reports the decision
-        # to the client.  Re-checking here keeps the breaker authoritative if a
-        # future caller ever dispatches the batch route directly: the request
-        # degrades to AR instead of launching a route the breaker closed.
-        route, _ = _mtp_unavailable_route_fallback(
-            route,
-            requested_route=route,
-            route_decision=None,
-            breaker=self._mtp_circuit_breaker,
-            engine=engine,
-            prompts=prompts,
-            group_rows=len(prompts),
-            output_horizon_tokens=int(sampling.max_tokens),
-        )
+        # _run_group resolves availability before dispatch and preserves the
+        # request's explicit/automatic intent in the response route decision.
         if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
             breaker = self._mtp_circuit_breaker
             scope = None if breaker is None else breaker.scope(engine, prompts)
@@ -14990,8 +15017,13 @@ def _speculative_mtp_route_for_request(
         supports_sampled_speculative_mtp(sampling)
         and _engine_supports_sampled_mtp(engine)
     ):
-        # Only an artifact whose evidence admits the sampled route keeps typed
-        # intent for a request the argmax route cannot serve.
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                400,
+                "requested speculative_mtp does not support these sampling controls: " + ", ".join(blockers),
+                code="unsupported_parameter",
+                param="speculative_mtp",
+            )
         return _SPECULATIVE_MTP_K0_ROUTE
     if not blockers and not supports_speculative_mtp_sampling(sampling):
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
@@ -15319,8 +15351,11 @@ def _generation_route_for_request(
         prompts=prompts,
     )
     if plan is None:
+        if route == _SPECULATIVE_MTP_BATCH_ROUTE and _request_speculative_mtp_enabled(request) is not True:
+            return route, {"request_mode": "automatic"}
         return route, None
     explicit_requested = _request_speculative_mtp_enabled(request) is True
+    plan["request_mode"] = "explicit" if explicit_requested else "automatic"
     plan_reason = str(plan.get("reason") or "")
     if (
         explicit_requested
@@ -15364,6 +15399,14 @@ def _generation_route_for_request(
         plan["screening"] = True
         plan["qualification"] = _MTP_SCREENING_QUALIFICATION
         plan["unqualified_reason"] = plan_reason
+    if explicit_requested and not plan.get("admitted") and not defer_physical_group and screening_payload is None:
+        raise OpenAIHTTPError(
+            501,
+            f"requested speculative_mtp cannot execute: {plan_reason}",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative_mtp",
+        )
     static_payload = plan.get("static_eligibility")
     static_eligible = bool(
         isinstance(static_payload, Mapping)
@@ -18047,6 +18090,18 @@ def _mtp_response_summary(
             primary_fallback_reason = sorted(
                 fallback_reason_counts.items(), key=lambda item: (-item[1], item[0])
             )[0][0]
+        if (
+            primary_fallback_reason == "no_provider"
+            and used
+            and provider_readiness == "ready"
+            and not plan_ar_only
+            and first_fallback_position is None
+        ):
+            # ``no_provider`` can describe the target-root/K0 bookkeeping that
+            # surrounds an otherwise engaged provider. It is not a fallback
+            # reason when the provider was ready and no output position left
+            # speculative execution. Do not publish it beside ``used: true``.
+            primary_fallback_reason = None
         if primary_fallback_reason is not None:
             summary["fallback_reason"] = primary_fallback_reason
         # ``None`` means speculation covered every token after the prompt root;

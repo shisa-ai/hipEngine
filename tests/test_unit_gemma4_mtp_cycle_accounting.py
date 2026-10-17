@@ -335,7 +335,26 @@ def test_default_stop_set_and_eos_override_match_plain_semantics() -> None:
     {"min_tokens": 1, "eos_token_id": 1},
     {"stop_token_sequences": ((1, 2),)},
 ])
-def test_mtp_rejects_unsupported_request_controls(options) -> None:
+def test_mtp_serves_request_controls_that_used_to_be_refused(options) -> None:
+    """``min_tokens`` and multi-token stops run on this route now.
+
+    Both were refused by the target generator's request validator while the
+    controls did not exist. They live on the shared sampler, so the speculative
+    route serves them instead of rejecting the request; their semantics are
+    pinned against the autoregressive route in
+    ``test_unit_gemma4_generation_controls.py``.
+    """
+
+    run = _run_cycle(budget=2, max_tokens=8, request_options=options)
+    assert run.tokens
+    assert run.finish_reason in {"length", "stop"}
+
+
+@pytest.mark.parametrize("options", [
+    {"forced_tokens_pending": (1, 2)},
+    {"json_object_close_forcing": True},
+])
+def test_mtp_still_refuses_controls_it_cannot_execute(options) -> None:
     with pytest.raises(NotImplementedError):
         _run_cycle(budget=2, max_tokens=8, request_options=options)
 
