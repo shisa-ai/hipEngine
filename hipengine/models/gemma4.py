@@ -29,6 +29,7 @@ class Gemma4GGUFModel:
     name: str = "gemma4_gguf"
     architectures: tuple[str, ...] = ("gemma4", "Gemma4ForCausalLM", "Gemma4ForConditionalGeneration")
     default_quant: str = "gguf_q4_k_m"
+    default_backend: str = "auto"
     speculative_mtp_provider: str = "gemma4_mtp"
 
     @staticmethod
@@ -41,6 +42,7 @@ class Gemma4GGUFModel:
         heads = tuple(sorted(mtp_dir.glob("mtp-*.gguf")))
         return heads[0] if len(heads) == 1 else None
 
+    # The assistant-head MTP provider is a separate GGUF sidecar that shares the
     # backbone's BF16 KV, drafts with its own 4-block head, and verifies the
     # whole draft in one backbone forward. It has no retained evidence rows, so
     # this declaration is the whole admission scope: an artifact whose kernels

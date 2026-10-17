@@ -811,6 +811,11 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     if not isinstance(policies, Mapping):
         raise RuntimeError("backend prompt-streaming policies must be a mapping")
     raw = policies.get((geometry, file_type_name, profile), ())
+    if not raw:
+        # Physical prompt streaming is a geometry/profile capability. A
+        # quantization file-type label must not turn an otherwise executable
+        # Qwen lane into an admission miss.
+        raw = policies.get((geometry, None, profile), ())
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
         raise RuntimeError("backend prompt-streaming widths must be a sequence")
     widths = tuple(sorted({int(value) for value in raw}))
