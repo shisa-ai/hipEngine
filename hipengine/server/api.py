@@ -17879,6 +17879,46 @@ def _mtp_response_summary(
             generated += _mtp_counted_int(block.get("generated_draft_tokens"))
             cycles += _mtp_counted_int(block.get("cycles"))
             continue
+        timing_generated = (
+            None if timing is None else timing.get("mtp_generated_draft_tokens")
+        )
+        timing_accepted = (
+            None if timing is None else timing.get("mtp_accepted_draft_tokens")
+        )
+        if timing_generated is None and timing_accepted is None:
+            # Gemma's assistant-head provider predates the normalized
+            # ``specdec2_mtp2`` block and publishes its counts directly in
+            # provider diagnostics. Keep the response extension truthful for
+            # that route instead of returning draft_tokens=0 while usage has
+            # already reported the same counts.
+            telemetry = getattr(detail, "telemetry", None)
+            diagnostics = (
+                telemetry.get("diagnostics")
+                if isinstance(telemetry, Mapping)
+                else getattr(telemetry, "diagnostics", None)
+            )
+            if (
+                isinstance(diagnostics, Mapping)
+                and diagnostics.get("speculative_provider")
+            ):
+                provider_cycles = diagnostics.get("cycles")
+                if isinstance(provider_cycles, Sequence) and not isinstance(
+                    provider_cycles, (str, bytes, bytearray)
+                ):
+                    provider_cycle_count = len(provider_cycles)
+                else:
+                    provider_cycle_count = _mtp_counted_int(
+                        diagnostics.get("cycle_count")
+                    )
+                accepted += _mtp_counted_int(
+                    diagnostics.get("accepted_draft_tokens")
+                )
+                generated += _mtp_counted_int(
+                    diagnostics.get("proposed_draft_tokens")
+                )
+                cycles += provider_cycle_count
+                used = True
+                continue
         if timing is None or not timing_owner:
             continue
         row_accepted = timing.get("mtp_accepted_draft_tokens")

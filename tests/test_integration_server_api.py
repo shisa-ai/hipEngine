@@ -9596,6 +9596,35 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
     }
 
 
+def test_mtp_summary_uses_provider_diagnostics_when_no_normalized_timing_exists() -> None:
+    details = [
+        GenerationOutput(
+            text="done",
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=4,
+                generated_tokens=7,
+                execution_path="gemma4_mtp_batched_exact_verify",
+                diagnostics={
+                    "speculative_provider": "gemma4_mtp",
+                    "proposed_draft_tokens": 7,
+                    "accepted_draft_tokens": 4,
+                    "cycles": [{"accepted": 2}, {"accepted": 2}],
+                },
+            ),
+        )
+    ]
+
+    assert _mtp_response_summary("speculative_mtp", details) == {
+        "effective_route": "speculative_mtp",
+        "used": True,
+        "draft_tokens": 7,
+        "accepted_draft_tokens": 4,
+        "rejected_draft_tokens": 3,
+        "acceptance_rate": 4 / 7,
+        "draft_cycles": 2,
+    }
+
+
 def test_mtp_summary_treats_owned_zero_draft_timing_as_realized_mtp() -> None:
     details = [
         GenerationOutput(
