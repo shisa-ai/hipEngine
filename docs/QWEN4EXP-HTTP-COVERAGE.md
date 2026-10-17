@@ -5,6 +5,11 @@ explicit MTP work, but long-context MTP, hard thinking budgets, logprobs,
 true multi-request batching, and live MTP streaming are not ready to check off.
 A passing unit suite does not establish those product capabilities.
 
+Implementation and final qualification are tracked by the approved
+[production-serving campaign](QWEN4EXP-PRODUCTION-SERVING.md). The observations
+below remain the October 17 starting audit; implementation progress does not
+retroactively turn its failing requests into passes.
+
 This audit used branch `qwen3.8-flash-next` at `e7eca661c` on physical host
 `zbook` (`87c566d30a5645cf8d12ed7ef6b6e1e8`), Ryzen AI Max+ Pro 395,
 Radeon 8060S / gfx1151, 128 GiB unified memory. The model was the four-shard

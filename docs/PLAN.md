@@ -1146,6 +1146,15 @@ Phase-0 targets (driven by the current research focus):
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
+Qwen3.8-Flash-Next serving priority (October 17): the approved
+[production-serving campaign](QWEN4EXP-PRODUCTION-SERVING.md) repairs the live
+[HTTP grid](QWEN4EXP-HTTP-COVERAGE.md) through the existing Generation-2
+lifecycle and scheduler. It covers cancellation/recovery, artifact/profile
+defaults, hard controls, sampling/logprobs, constrained MTP, incremental SSE,
+real request batching, long-context/multimodal admission, and final numerical,
+task, economics and serving gates. Failed or unmeasured cells stay open;
+this plan does not change arithmetic policy or promote automatic MTP.
+
 Qwen3.8-Flash-Next priority (September 13): follow the
 [Strix journey plan and punchlist](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md) for the
 dated campaign record and the
