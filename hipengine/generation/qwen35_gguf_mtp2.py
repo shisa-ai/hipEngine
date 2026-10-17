@@ -4032,8 +4032,11 @@ class Qwen35GGUFMTP2Adapter:
                     and not row.native_sampler
                 ),
                 **(
+                    # A staged sampled plan can still take an eager verifier
+                    # path (for example when the final cycle shrinks depth).
+                    # Keep its resident logits available for the accept walk.
                     {"return_device_logits": True}
-                    if sampled_route and sampled_device_plan is None and row.native_sampler
+                    if sampled_route and row.native_sampler
                     else {}
                 ),
                 device_proposal=(
@@ -4436,9 +4439,20 @@ class Qwen35GGUFMTP2Adapter:
             session = row.lease.session
             workspace = session._native_sampler()
             device = getattr(prepared, "target_logits_device", None)
+            expected_shape = (int(batch.rows), int(workspace.vocab_size))
+            expected_bytes = expected_shape[0] * expected_shape[1] * 4
             if device is None:
                 logits = np.ascontiguousarray(prepared.target_logits, dtype=np.float32)
+                if logits.shape != expected_shape:
+                    raise RuntimeError(
+                        f"sampled MTP requires logits shaped {expected_shape}, "
+                        f"received {logits.shape}"
+                    )
                 device = workspace._upload("mtp_eager_logits", logits)
+            if int(device.ptr) <= 0 or int(device.nbytes) < expected_bytes:
+                raise RuntimeError(
+                    f"sampled MTP requires {expected_bytes} bytes of resident logits"
+                )
             prefixes = row_prefix_states(
                 batch,
                 {int(batch.request_ids[0]): sampling_state},
