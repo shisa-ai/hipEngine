@@ -342,6 +342,7 @@ def _target_verify_mode_for_context(
     backend: str,
     end_position: int,
     target: Any | None = None,
+    quant: str | None = None,
 ) -> str:
     if target is not None and getattr(target, "_dms_backend", None) is not None:
         return "serial_exact"
@@ -354,7 +355,10 @@ def _target_verify_mode_for_context(
             "config",
             None,
         )
+        weights = getattr(getattr(target, "runner", None), "weights", None)
         is_moe = bool(getattr(config, "is_moe", False))
+        file_type_name = str(getattr(weights, "file_type_name", "")).upper()
+        is_q4ks = "Q4_K_S" in file_type_name or "q4_k_s" in str(quant or "").lower()
         if is_moe and not bool(
             backend_package_capability(
                 str(backend), "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", True
@@ -365,6 +369,16 @@ def _target_verify_mode_for_context(
             # Keep explicit MTP executable through the serial exact verifier
             # until the backend package declares the native state path safe.
             return "serial_exact"
+        if is_q4ks and not bool(
+            backend_package_capability(
+                str(backend), "GGUF_SPECDEC2_Q4KS_NATIVE_STATE_SAFE", True
+            )
+        ):
+            # Q4_K_S native C1 diverged near the end of the same 128-token
+            # public trajectory; use the exact verifier while this quant route
+            # is repaired and revalidated.
+            return "serial_exact"
+
     if target is None:
         native_context_limit = int(
             backend_package_capability(
@@ -2032,6 +2046,7 @@ class Qwen35GGUFMTP2Adapter:
                             self.target_verify_mode,
                             backend=self.generator.backend,
                             target=target,
+                            quant=self.quant,
                             end_position=(
                                 len(row.prompt_ids) + self.candidate_budget + 1
                             ),
@@ -3496,6 +3511,7 @@ class Qwen35GGUFMTP2Adapter:
                 self.target_verify_mode,
                 backend=self.generator.backend,
                 target=target,
+                quant=self.quant,
                 end_position=(
                     int(target.position) + self.candidate_budget + 1
                 ),
@@ -7026,6 +7042,7 @@ class Qwen35GGUFMTP2Adapter:
                     self.target_verify_mode,
                     backend=self.generator.backend,
                     target=target,
+                    quant=self.quant,
                     end_position=len(row.prompt_ids) + self.candidate_budget + 1,
                 ),
             )

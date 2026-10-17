@@ -122,9 +122,24 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
     ) == "serial_exact"
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=96,
+        quant="gguf_q4_k_s",
         target=SimpleNamespace(
             runner=SimpleNamespace(
-                weights=SimpleNamespace(config=SimpleNamespace(is_moe=False)),
+                weights=SimpleNamespace(
+                    config=SimpleNamespace(is_moe=False),
+                    file_type_name="MOSTLY_Q4_K_M",
+                ),
+            ),
+        ),
+    ) == "serial_exact"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1151", end_position=96,
+        target=SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(
+                    config=SimpleNamespace(is_moe=False),
+                    file_type_name="MOSTLY_Q4_K_M",
+                ),
             ),
         ),
     ) == "native"
