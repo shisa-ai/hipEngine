@@ -1,3 +1,17 @@
+## Generic speculative service lifecycle
+
+- `EngineService` admits the generic spelling through existing speculative
+  child submission only when the driver declares both generic and model-attached
+  MTP support. Generic-only whole-request providers (Laguna DFlash) fail closed;
+  they no longer execute on a frontend thread. This is a serving restriction,
+  not completion of generic-provider lifecycle support.
+- Replace the MTP compatibility gate with explicit generic child admission once
+  generic-only providers expose bounded request-owned work. Do not restore
+  frontend execution or put whole generation inside an administrative command.
+  Keep generic and model-attached provider semantics separate in that SPI.
+- Evidence: `tests/test_integration_engine_service_speculative_ownership.py` and
+  `worklog/entries/20261017T190456.513027Z-lhl-speculative-service-ownership-3d661c.md`.
+
 ## Dense Q8_0 checked-int32/full-four-row DPP coltile screen
 
 - `coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out`

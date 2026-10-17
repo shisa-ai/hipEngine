@@ -205,6 +205,7 @@ class EngineService:
         self._output_condition = threading.Condition()
         self._speculative_route_counts: Counter[str] = Counter()
         self._last_speculative_route: str | None = None
+        self._generic_speculative_children = 0
         self._closing = False
         self._closed = False
         self._driver_thread_id: int | None = None
@@ -246,6 +247,17 @@ class EngineService:
     @property
     def supports_speculative_mtp(self) -> bool:
         return bool(getattr(self._driver, "supports_speculative_mtp", False))
+
+    @property
+    def supports_speculative(self) -> bool:
+        """Whether this service can own the generic speculative-provider spelling.
+
+        The generic spelling is served only through a driver that admits
+        speculative children. Reporting the driver's own whole-request flag here
+        would advertise a route whose model work has no service-owned lifecycle.
+        """
+
+        return self._generic_speculative_child_blocker() is None
 
     @property
     def stream_queue_max_chunks(self) -> int:
@@ -479,6 +491,44 @@ class EngineService:
     def detokenize(self, token_ids: Sequence[int], **kwargs: Any) -> str:
         return str(self._control("detokenize", tuple(int(token) for token in token_ids), **kwargs))
 
+    def generate_speculative_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> list[GenerationOutput]:
+        """Serve the generic speculative-provider spelling as service children.
+
+        Provider model work must never run on a frontend thread. A driver that
+        admits speculative children owns admission, collectors, cancellation,
+        and terminal output for this spelling, exactly as it does for
+        ``generate_speculative_mtp_detailed``. A driver that only exposes a
+        whole-request generic method fails closed here instead of generating on
+        the caller's thread.
+        """
+
+        children = _split_generation_request(request)
+        self._require_generic_speculative_child_admission(
+            "generate_speculative_detailed"
+        )
+        handles = self.submit_speculative_children(children)
+        self._record_generic_speculative_children(len(children))
+        return self._collect_speculative_handles(handles)
+
+    def stream_speculative_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> Iterator[GenerationStreamChunk]:
+        """Stream the generic speculative-provider spelling from one child."""
+
+        children = _split_generation_request(request)
+        if len(children) != 1:
+            raise ValueError("speculative streaming requires exactly one prompt")
+        self._require_generic_speculative_child_admission(
+            "stream_speculative_detailed"
+        )
+        handle = self.submit_speculative_child(children[0], streaming=True)
+        self._record_generic_speculative_children(1)
+        yield from self._iter_speculative_chunks(handle)
+
     def generate_speculative_mtp_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         """Run guarded MTP through the shared child lifecycle when supported.
 
@@ -495,18 +545,7 @@ class EngineService:
             self._record_speculative_route("legacy_prelaunch_fallback")
             return outputs
         handles = self.submit_speculative_children(children)
-        outputs: list[GenerationOutput] = []
-        first_error: BaseException | None = None
-        for handle in handles:
-            try:
-                outputs.append(handle.result())
-            except BaseException as exc:
-                if first_error is None:
-                    first_error = exc
-                outputs.append(GenerationOutput(text=""))
-        if first_error is not None:
-            raise first_error
-        return outputs
+        return self._collect_speculative_handles(handles)
 
     def stream_speculative_mtp_detailed(
         self,
@@ -521,6 +560,53 @@ class EngineService:
                 "speculative streaming has no legacy out-of-band fallback"
             )
         handle = self.submit_speculative_child(children[0], streaming=True)
+        yield from self._iter_speculative_chunks(handle)
+
+    def _generic_speculative_child_blocker(self) -> str | None:
+        """Explain why this driver cannot own the generic speculative spelling."""
+
+        driver = self._driver
+        if not callable(getattr(driver, "generate_speculative_detailed", None)):
+            return "the driver exposes no generic speculative provider spelling"
+        if not callable(getattr(driver, "submit_speculative_detailed", None)):
+            return "the driver admits no speculative child submission"
+        if not self.supports_speculative_mtp:
+            return (
+                "speculative child admission executes the driver's model-owned "
+                "speculative spelling, which this driver does not declare"
+            )
+        return None
+
+    def _require_generic_speculative_child_admission(self, method_name: str) -> None:
+        blocker = self._generic_speculative_child_blocker()
+        if blocker is None:
+            return
+        raise NotImplementedError(
+            f"{method_name} requires sole-driver child ownership, but {blocker}; "
+            "whole-request provider generation is not run on the calling thread"
+        )
+
+    def _collect_speculative_handles(
+        self,
+        handles: Sequence[EngineServiceHandle],
+    ) -> list[GenerationOutput]:
+        outputs: list[GenerationOutput] = []
+        first_error: BaseException | None = None
+        for handle in handles:
+            try:
+                outputs.append(handle.result())
+            except BaseException as exc:
+                if first_error is None:
+                    first_error = exc
+                outputs.append(GenerationOutput(text=""))
+        if first_error is not None:
+            raise first_error
+        return outputs
+
+    def _iter_speculative_chunks(
+        self,
+        handle: EngineServiceHandle,
+    ) -> Iterator[GenerationStreamChunk]:
         consumed = False
         try:
             yield from handle.iter_chunks()
@@ -553,6 +639,7 @@ class EngineService:
                 ),
             },
             "last_speculative_route": self._last_speculative_route,
+            "generic_speculative_children": int(self._generic_speculative_children),
             "last_speculative_work_kind": (
                 None if last_submission is None else last_submission.work_kind
             ),
@@ -628,6 +715,12 @@ class EngineService:
         with self._lifecycle_lock:
             self._speculative_route_counts[str(route)] += 1
             self._last_speculative_route = str(route)
+
+    def _record_generic_speculative_children(self, count: int) -> None:
+        """Count children admitted through the generic provider spelling."""
+
+        with self._lifecycle_lock:
+            self._generic_speculative_children += int(count)
 
     def _allocate_service_request_id(self) -> int:
         with self._request_id_lock:
