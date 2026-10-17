@@ -709,6 +709,35 @@ def test_resident_runner_resolves_model_plugin_mtp2_adapter_without_model_branch
         unregister_gguf_mtp2_adapter(key)
 
 
+@pytest.mark.parametrize("pinned_budget", [None, 1, 2])
+def test_resident_adapter_uses_generator_default_before_budget_publication(pinned_budget):
+    key = "test_prepublication_nextn"
+    calls = []
+
+    def factory(owner, **kwargs):
+        calls.append(kwargs["candidate_budget"])
+        return _AdapterDouble()
+
+    register_gguf_mtp2_adapter(key, factory)
+    try:
+        runner = object.__new__(Qwen35GGUFResidentModelRunner)
+        runner._mtp2_adapter = None
+        runner._mtp2_adapter_resolved = False
+        runner.capacity = 4
+        runner.generator = SimpleNamespace(
+            backend="hip_gfx1151", target_arch="gfx1151",
+            supports_speculative_mtp=True,
+            speculative_candidate_budget_default=lambda: 2,
+            model_plugin=SimpleNamespace(speculative_mtp2_adapter=key),
+        )
+        if pinned_budget is not None:
+            runner.generator.speculative_candidate_budget = pinned_budget
+        runner._resolved_mtp2_adapter()
+        assert calls == [2 if pinned_budget is None else pinned_budget]
+    finally:
+        unregister_gguf_mtp2_adapter(key)
+
+
 def _bare_runner() -> Qwen35GGUFResidentModelRunner:
     """A runner built without ``__init__``, carrying its cycle accounting."""
 

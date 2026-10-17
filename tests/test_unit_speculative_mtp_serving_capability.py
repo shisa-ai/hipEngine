@@ -759,6 +759,34 @@ def test_qwen36_dense_production_c2_k2_plan_is_exact_automatic_scope() -> None:
         assert rejected.reason == reason
 
 
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+def test_moe_default_depth_uses_capability_not_automatic_policy(monkeypatch, backend):
+    from hipengine.generation import qwen35_gguf as module
+
+    monkeypatch.setattr(module, "_gguf_mtp_server_candidate_budget", lambda: 3)
+    generator = SimpleNamespace(
+        model_plugin=Qwen35MoeGGUFModel(), backend=backend,
+        target_arch=backend.removeprefix("hip_"),
+    )
+    assert Qwen35GGUFBringupGenerator.speculative_candidate_budget_default(generator) == 2
+
+
+def test_gfx1151_moe_automatic_ar_keeps_explicit_mtp_capability():
+    from hipengine.server.api import _serving_plan_route_decision
+
+    plugin = Qwen35MoeGGUFModel()
+    key = _key(candidate_budget=2, resident_capacity=4, artifact_sha256=None,
+               artifact_execution_fingerprint=None, content_verified=False)
+    plan = plugin.resolve_speculative_mtp_serving_plan(key=key).as_dict()
+    assert plan["admitted"] and not plan["automatic_eligible"]
+    for requested, expected in (("speculative_mtp_auto", "default"),
+                                ("speculative_mtp", "speculative_mtp")):
+        route, _ = _serving_plan_route_decision(
+            plan, requested_route=requested, group_rows=1, output_horizon_tokens=128,
+        )
+        assert route == expected
+
+
 def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     evidence = Qwen35MoeGGUFModel().speculative_mtp_serving_evidence[0]
     key = SpeculativeMTPServingKey(

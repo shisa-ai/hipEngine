@@ -3057,12 +3057,13 @@ class Qwen35GGUFBringupGenerator:
             getattr(self.model_plugin, "speculative_mtp_serving_implementations", ())
             or ()
         )
+        # Default depth describes what the adapter can execute, including when
+        # MTP is explicit-only. Automatic eligibility must not raise that depth.
         offered = [
             int(declaration.max_candidate_count)
             for declaration in declarations
             if (self.backend, self.target_arch) in declaration.backends
             and declaration.kv_storage == "bf16"
-            and declaration.automatic_eligible
         ]
         return min(budget, max(offered, default=budget))
 
@@ -8318,19 +8319,22 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             if callable(quant_resolver)
             else str(getattr(self.generator.model_plugin, "default_quant", ""))
         )
+        # The adapter may be built before LLM publishes a resident-cell budget.
+        # Use the generator's capability-bounded default, not the dense global
+        # default: a K3 adapter serving K2 rows disables graph verification.
+        budget = getattr(self.generator, "speculative_candidate_budget", None)
+        if budget is None:
+            resolve_budget = getattr(
+                self.generator, "speculative_candidate_budget_default",
+                _gguf_mtp_server_candidate_budget,
+            )
+            budget = resolve_budget()
         self._mtp2_adapter = factory(
             self,
             enabled=True,
             target_verify_mode=_gguf_mtp_server_target_verify_mode(),
             candidate_budget=min(
-                _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH,
-                int(
-                    getattr(
-                        self.generator,
-                        "speculative_candidate_budget",
-                        _gguf_mtp_server_candidate_budget(),
-                    )
-                ),
+                _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH, int(budget),
             ),
             quant=quant,
         )
