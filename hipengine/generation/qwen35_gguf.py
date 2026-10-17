@@ -6071,6 +6071,7 @@ class Qwen35GGUFBringupGenerator:
         tokenize_ms: float,
     ) -> Iterator[GenerationStreamChunk]:
         generated_ids: list[int] = []
+        decoder = _GGUFStreamDecoder(self.tokenizer)
         telemetry_timing = {"tokenize_ms": max(0.0, float(tokenize_ms))}
         raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=False)
@@ -6078,7 +6079,7 @@ class Qwen35GGUFBringupGenerator:
         generated_ids.append(int(result.token_id))
         finished = _gguf_finished(generated_ids, self.tokenizer, request)
         yield GenerationStreamChunk(
-            self.tokenizer.decode([generated_ids[-1]]),
+            decoder.feed(generated_ids[-1], final=finished or len(generated_ids) >= request.max_tokens),
             finish_details=(
                 _gguf_finish_details(generated_ids, self.tokenizer, request)
                 if finished or len(generated_ids) >= request.max_tokens
@@ -6107,7 +6108,7 @@ class Qwen35GGUFBringupGenerator:
             generated_ids.append(int(step.token_id))
             finished = _gguf_finished(generated_ids, self.tokenizer, request)
             yield GenerationStreamChunk(
-                self.tokenizer.decode([generated_ids[-1]]),
+                decoder.feed(generated_ids[-1], final=finished or len(generated_ids) >= request.max_tokens),
                 finish_details=(
                     _gguf_finish_details(generated_ids, self.tokenizer, request)
                     if finished or len(generated_ids) >= request.max_tokens
@@ -6144,6 +6145,7 @@ class Qwen35GGUFBringupGenerator:
         state = _gguf_row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
         generated_ids: list[int] = []
         live_phase = None if state.thinking_budget is not None else "answer"
+        decoder = _GGUFStreamDecoder(self.tokenizer)
         raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=True)
         raise_if_generation_deadline_expired(request)
@@ -6158,7 +6160,7 @@ class Qwen35GGUFBringupGenerator:
         )
         finished = _gguf_finished(generated_ids, self.tokenizer, sampling_request)
         yield GenerationStreamChunk(
-            self.tokenizer.decode([generated_ids[-1]]),
+            decoder.feed(generated_ids[-1], final=finished or len(generated_ids) >= sampling_request.max_tokens),
             token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
             finish_details=(
                 _gguf_finish_details(generated_ids, self.tokenizer, sampling_request, state)
@@ -6200,7 +6202,7 @@ class Qwen35GGUFBringupGenerator:
             )
             finished = _gguf_finished(generated_ids, self.tokenizer, sampling_request)
             yield GenerationStreamChunk(
-                self.tokenizer.decode([generated_ids[-1]]),
+                decoder.feed(generated_ids[-1], final=finished or len(generated_ids) >= sampling_request.max_tokens),
                 token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
                 finish_details=(
                     _gguf_finish_details(generated_ids, self.tokenizer, sampling_request, state)
@@ -6227,6 +6229,34 @@ class Qwen35GGUFBringupGenerator:
             )
             if finished:
                 return
+
+
+class _GGUFStreamDecoder:
+    """One request's text state, shared by AR and speculative publication."""
+
+    def __init__(
+        self, tokenizer: Any, *, suppress_after_special: bool = False, ignore_eos: bool = False
+    ) -> None:
+        self.tokenizer = tokenizer
+        self.suppress_after_special = suppress_after_special
+        self.ignore_eos = ignore_eos
+        self.suppressed = False
+        factory = getattr(tokenizer, "incremental_decoder", None)
+        self.decoder = factory(skip_special=suppress_after_special) if callable(factory) else None
+
+    def feed(self, token_id: int, *, final: bool) -> str:
+        if self.suppressed:
+            return ""
+        ids = (int(token_id),)
+        ignored_eos = self.ignore_eos and token_id == getattr(self.tokenizer, "eos_token_id", None)
+        if self.suppress_after_special and not ignored_eos:
+            visible = self.tokenizer.decode(ids, skip_special=True)
+            if not visible and self.tokenizer.decode(ids):
+                self.suppressed = True
+                return self.decoder.feed((), final=True) if self.decoder is not None else ""
+        if self.decoder is not None:
+            return self.decoder.feed(ids, final=final)
+        return self.tokenizer.decode(ids, skip_special=self.suppress_after_special)
 
 
 @dataclass(frozen=True, slots=True)
@@ -6476,6 +6506,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         # output reads the row's own sample list during reclaim; these events
         # need a record that outlives the row.
         self._cycle_token_samples: dict[int, list[Any]] = {}
+        self._stream_decoders: dict[int, _GGUFStreamDecoder] = {}
         self._completed_metadata: dict[int, dict[str, Any]] = {}
         self._next_batch_id = 0
         self._kv_pool: Any | None = None
@@ -9431,6 +9462,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             # The blocking output is the last reader of a cycle's recorded
             # metadata; stream events were decorated while the cycle published.
             self._cycle_token_samples.pop(rid, None)
+            getattr(self, "_stream_decoders", {}).pop(rid, None)
             outputs.append(self._outputs.pop(rid))
         return outputs
 
@@ -9438,6 +9470,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         for request_id in request_ids:
             rid = int(request_id)
             self._cycle_token_samples.pop(rid, None)
+            getattr(self, "_stream_decoders", {}).pop(rid, None)
             row = self._rows.pop(rid, None)
             if row is not None:
                 adapter = self._mtp2_adapter
@@ -9527,6 +9560,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 for row in tuple(self._rows.values()):
                     self._release_row_resources(row)
                 self._rows.clear()
+                getattr(self, "_stream_decoders", {}).clear()
                 self._outputs.clear()
                 self._completed_metadata.clear()
                 self._clear_prefix_snapshots()
@@ -11860,6 +11894,26 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         if slots:
             self.generator._flush_ar_packed_decode_owners(slots)
 
+    def _stream_token_text(self, request_id: int, token_id: int, *, final: bool) -> str:
+        # Speculative events can arrive after reclaim removed the row. Keep the
+        # decoder alongside the published samples, not on the resident slot.
+        decoders = getattr(self, "_stream_decoders", None)
+        if decoders is None:
+            self._stream_decoders = decoders = {}
+        decoder = decoders.get(request_id)
+        if decoder is None:
+            row = getattr(self, "_rows", {}).get(request_id)
+            request = (row.sampling_request or row.request) if row is not None else None
+            decoder = decoders[request_id] = _GGUFStreamDecoder(
+                self.generator.tokenizer,
+                suppress_after_special=True,
+                ignore_eos=bool(request is not None and request.ignore_eos),
+            )
+        text = decoder.feed(token_id, final=final)
+        if final:
+            decoders.pop(request_id, None)
+        return text
+
     def decorate_speculative_stream_events(
         self,
         events: Sequence[GeneratedTokenEvent],
@@ -11867,19 +11921,14 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         """Attach tokenizer-owned text to canonical speculative token events."""
 
         decorated: list[GeneratedTokenEvent] = []
-        suppress_after_special = False
         for event in events:
             chunk = event.stream_chunk
             if chunk is None:
                 decorated.append(event)
                 continue
-            raw_text = self.generator.tokenizer.decode((int(event.token_id),))
-            visible_text = self.generator.tokenizer.decode(
-                (int(event.token_id),), skip_special=True
+            text = self._stream_token_text(
+                int(event.request_id), int(event.token_id), final=event.finished
             )
-            text = "" if suppress_after_special else visible_text
-            if raw_text and not visible_text:
-                suppress_after_special = True
             token_logprob = self._take_cycle_token_logprob(
                 int(event.request_id),
                 int(event.token_id),
@@ -11953,12 +12002,8 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             )
         )
         return GenerationStreamChunk(
-            text=(
-                _gguf_token_text(self.generator.tokenizer, sample)
-                if sample is not None
-                else self.generator.tokenizer.decode(
-                    (generated_ids[-1],), skip_special=True
-                )
+            text=self._stream_token_text(
+                int(row.request_id), generated_ids[-1], final=slot.done
             ),
             token_logprobs=(
                 _gguf_stream_token_logprobs(self.generator.tokenizer, sample, request)
@@ -12115,11 +12160,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 }
             )
         return GenerationOutput(
-            text=(
-                "".join(token.token_text for token in token_logprobs)
-                if token_logprobs
-                else self.generator.tokenizer.decode(generated_ids)
-            ),
+            text=self.generator.tokenizer.decode(generated_ids),
             token_logprobs=token_logprobs,
             generated_token_ids=generated_ids,
             finish_details=finish_details,
@@ -12379,7 +12420,7 @@ def _gguf_generation_output(
 ) -> GenerationOutput:
     token_logprobs = tuple(_gguf_token_logprob(tokenizer, sample) for sample in samples)
     return GenerationOutput(
-        text="".join(token.token_text for token in token_logprobs),
+        text=tokenizer.decode(tuple(token.token_id for token in token_logprobs)),
         token_logprobs=token_logprobs,
         generated_token_ids=tuple(token.token_id for token in token_logprobs),
         finish_details=finish_details,

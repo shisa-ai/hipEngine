@@ -1,0 +1,736 @@
+{
+  "schema": 1,
+  "kind": "qwen_utf8_output_regression",
+  "performance_claim": false,
+  "created_at": "2026-10-17T21:09:15.850387+00:00",
+  "host": "gfx1151",
+  "hardware": "AMD Ryzen AI Max+ 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv": "bf16"
+  },
+  "base_commit": "2a96d5d46eae801991961ce05584ea2ea2723e56",
+  "gpu_source_sha256": {
+    "hipengine/generation/qwen35_gguf.py": "730b0c18b440d31bbff869c4abcea268f67bf1d33e76ce7407ebe6d299a36f6e",
+    "hipengine/tokenization/gguf.py": "99f5a2153f214353efbc574fb39aba65b19a001028374ac047f3899eb852f281"
+  },
+  "final_source_sha256": {
+    "hipengine/generation/qwen35_gguf.py": "bcbee5bc241f9e68024cf39bdb86b5e77e9b0bb26076b76f4cde4b64ed3ef30d",
+    "hipengine/tokenization/gguf.py": "99f5a2153f214353efbc574fb39aba65b19a001028374ac047f3899eb852f281"
+  },
+  "post_gpu_change": "Added ignore_eos preservation, proven RED/GREEN by a focused regression. All HTTP requests used ignore_eos=false, whose decoding is unchanged. The affected 221-test focused bundle passed after this addition.",
+  "claim_scope": "Text reconstruction and route regression only. One Qwen MoE artifact, C1 under capacity4, two prompts, AR/MTP, greedy/sampled, blocking/SSE. No arithmetic, quality, performance, or general acceptance-rate claim.",
+  "server_command": [
+    ".venv/bin/python",
+    "-m",
+    "hipengine.cli",
+    "serve",
+    "--model",
+    "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--max-context-tokens",
+    "32768",
+    "--max-active-requests",
+    "4",
+    "--prefix-cache",
+    "off",
+    "--no-startup-chat-smoke",
+    "--no-startup-scratch-probe",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "19003",
+    "--log-color",
+    "never"
+  ],
+  "client_command": "mamba run -n therock10-staging-20260828 env PYTHONPATH=\"$PWD\" .venv/bin/python ~/.local/state/hipengine/mtp-followup-20261017/utf8-streaming/utf8_public_probe.py",
+  "prior_failure": "benchmarks/results/2026-10-17-native-moe-route-repair.json",
+  "root_causes": [
+    "Per-token decoding replaced split UTF-8 fragments before their remaining bytes arrived.",
+    "The speculative event decorator shared special-token suppression across request IDs.",
+    "Sampled blocking output concatenated singleton token strings instead of decoding the committed ID sequence."
+  ],
+  "text_comparison": "Exact reasoning and token IDs; chat content compared after SSE rstrip, matching existing blocking _strip_chat_terminal_markers policy.",
+  "pairs": [
+    {
+      "labels": [
+        "regression_ar_0.0_blocking",
+        "regression_ar_0.0_sse"
+      ],
+      "ids_equal": true,
+      "content_equal": true,
+      "content_equal_chat_trim": true,
+      "reasoning_equal": true,
+      "passed": true
+    },
+    {
+      "labels": [
+        "regression_ar_0.7_blocking",
+        "regression_ar_0.7_sse"
+      ],
+      "ids_equal": true,
+      "content_equal": true,
+      "content_equal_chat_trim": true,
+      "reasoning_equal": true,
+      "passed": true
+    },
+    {
+      "labels": [
+        "regression_mtp_0.0_blocking",
+        "regression_mtp_0.0_sse"
+      ],
+      "ids_equal": true,
+      "content_equal": true,
+      "content_equal_chat_trim": true,
+      "reasoning_equal": true,
+      "passed": true
+    },
+    {
+      "labels": [
+        "regression_mtp_0.7_blocking",
+        "regression_mtp_0.7_sse"
+      ],
+      "ids_equal": true,
+      "content_equal": false,
+      "content_equal_chat_trim": true,
+      "reasoning_equal": true,
+      "passed": true
+    },
+    {
+      "labels": [
+        "unicode_ar_0.0_blocking",
+        "unicode_ar_0.0_sse"
+      ],
+      "ids_equal": true,
+      "content_equal": true,
+      "content_equal_chat_trim": true,
+      "reasoning_equal": true,
+      "passed": true
+    },
+    {
+      "labels": [
+        "unicode_ar_0.7_blocking",
+        "unicode_ar_0.7_sse"
+      ],
+      "ids_equal": true,
+      "content_equal": true,
+      "content_equal_chat_trim": true,
+      "reasoning_equal": true,
+      "passed": true
+    },
+    {
+      "labels": [
+        "unicode_mtp_0.0_blocking",
+        "unicode_mtp_0.0_sse"
+      ],
+      "ids_equal": true,
+      "content_equal": true,
+      "content_equal_chat_trim": true,
+      "reasoning_equal": true,
+      "passed": true
+    },
+    {
+      "labels": [
+        "unicode_mtp_0.7_blocking",
+        "unicode_mtp_0.7_sse"
+      ],
+      "ids_equal": true,
+      "content_equal": true,
+      "content_equal_chat_trim": true,
+      "reasoning_equal": true,
+      "passed": true
+    }
+  ],
+  "rows": [
+    {
+      "label": "regression_ar_0.0_blocking",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": false,
+        "stream": false
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 256,
+      "generated_ids_sha256": "e4f2b31ba9a118800c09267f114e98f9da4ce610730efd18d289e2921832ea4d",
+      "content_sha256": "ddaa8221d6dc203eaada3f235b130156a301d99f18eba706b080c5847139365c",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": false,
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "fallback_event_counts": {}
+    },
+    {
+      "label": "regression_ar_0.0_sse",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": false,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 256,
+      "generated_ids_sha256": "e4f2b31ba9a118800c09267f114e98f9da4ce610730efd18d289e2921832ea4d",
+      "content_sha256": "ddaa8221d6dc203eaada3f235b130156a301d99f18eba706b080c5847139365c",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": false,
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "fallback_event_counts": {}
+    },
+    {
+      "label": "regression_ar_0.7_blocking",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": false,
+        "stream": false,
+        "top_p": 0.9
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 256,
+      "generated_ids_sha256": "44aa2b76c9dbfc97e97350001fb8977d12903b7cc8638cb078163b474670ecd5",
+      "content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reasoning_sha256": "d01dc65512e43320afe022c35144794b6aa262d03d0f382c106e572468eb038b",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": false,
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "fallback_event_counts": {}
+    },
+    {
+      "label": "regression_ar_0.7_sse",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": false,
+        "stream": true,
+        "top_p": 0.9,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 256,
+      "generated_ids_sha256": "44aa2b76c9dbfc97e97350001fb8977d12903b7cc8638cb078163b474670ecd5",
+      "content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reasoning_sha256": "d01dc65512e43320afe022c35144794b6aa262d03d0f382c106e572468eb038b",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": false,
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "fallback_event_counts": {}
+    },
+    {
+      "label": "regression_mtp_0.0_blocking",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "stream": false
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 256,
+      "generated_ids_sha256": "6238e8518d2d5bb022631544feb4e19581d48a5b4b4753bbc9273166a54ed2c1",
+      "content_sha256": "28482ec4b1ffb91abd730a75c2e7c8d09a96dcb3d1f6ebf3cc6dc011fb094a13",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": false,
+      "mtp_used": true,
+      "draft_cycles": 106,
+      "fallback_event_counts": {
+        "no_provider": 1
+      }
+    },
+    {
+      "label": "regression_mtp_0.0_sse",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 256,
+      "generated_ids_sha256": "6238e8518d2d5bb022631544feb4e19581d48a5b4b4753bbc9273166a54ed2c1",
+      "content_sha256": "28482ec4b1ffb91abd730a75c2e7c8d09a96dcb3d1f6ebf3cc6dc011fb094a13",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": false,
+      "mtp_used": true,
+      "draft_cycles": 106,
+      "fallback_event_counts": {
+        "no_provider": 1
+      }
+    },
+    {
+      "label": "regression_mtp_0.7_blocking",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "stream": false,
+        "top_p": 0.9
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 256,
+      "generated_ids_sha256": "b0a308a56252858371dc2ccc1c3a44583617f281182c75198cb6b270ae53ebfa",
+      "content_sha256": "21832016cc6a7dcccba541afe8741c93dcf512228a76407835aadfbdb29564e2",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": false,
+      "mtp_used": true,
+      "draft_cycles": 104,
+      "fallback_event_counts": {
+        "no_provider": 1
+      }
+    },
+    {
+      "label": "regression_mtp_0.7_sse",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "max_tokens": 256,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "stream": true,
+        "top_p": 0.9,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 256,
+      "generated_ids_sha256": "b0a308a56252858371dc2ccc1c3a44583617f281182c75198cb6b270ae53ebfa",
+      "content_sha256": "a15c7e8865258942d63a3e19ab3201b9c3ab72aa093009dbf7d66f924f38f40a",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": false,
+      "mtp_used": true,
+      "draft_cycles": 104,
+      "fallback_event_counts": {
+        "no_provider": 1
+      }
+    },
+    {
+      "label": "unicode_ar_0.0_blocking",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Repeat exactly this text and nothing else: ┌日本語🙂 café┐"
+          }
+        ],
+        "max_tokens": 64,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": false,
+        "stream": false
+      },
+      "status": 200,
+      "finish_reason": "stop",
+      "generated_tokens": 12,
+      "generated_ids_sha256": "6af41893cb1ee576e45b56e07c32c7577ebc4ffc31795d3593686abf5487db4d",
+      "content_sha256": "45db834f97114ee7f108f81c7c768567085caacf22239939f96d573cb0bd5340",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": true,
+      "unicode_in_reasoning": false,
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "fallback_event_counts": {}
+    },
+    {
+      "label": "unicode_ar_0.0_sse",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Repeat exactly this text and nothing else: ┌日本語🙂 café┐"
+          }
+        ],
+        "max_tokens": 64,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": false,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "stop",
+      "generated_tokens": 12,
+      "generated_ids_sha256": "6af41893cb1ee576e45b56e07c32c7577ebc4ffc31795d3593686abf5487db4d",
+      "content_sha256": "45db834f97114ee7f108f81c7c768567085caacf22239939f96d573cb0bd5340",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": true,
+      "unicode_in_reasoning": false,
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "fallback_event_counts": {}
+    },
+    {
+      "label": "unicode_ar_0.7_blocking",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Repeat exactly this text and nothing else: ┌日本語🙂 café┐"
+          }
+        ],
+        "max_tokens": 64,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": false,
+        "stream": false,
+        "top_p": 0.9
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 64,
+      "generated_ids_sha256": "7f3bdbfc99dfdaa0e271311b44678f9a1fe13ab9c2646b7a0a6c27c070ad2b81",
+      "content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reasoning_sha256": "abe4e653bc6b12d282741a3a7fd1b6a97be3ac5740f41c2212f57762fe916081",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": true,
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "fallback_event_counts": {}
+    },
+    {
+      "label": "unicode_ar_0.7_sse",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Repeat exactly this text and nothing else: ┌日本語🙂 café┐"
+          }
+        ],
+        "max_tokens": 64,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": false,
+        "stream": true,
+        "top_p": 0.9,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "length",
+      "generated_tokens": 64,
+      "generated_ids_sha256": "7f3bdbfc99dfdaa0e271311b44678f9a1fe13ab9c2646b7a0a6c27c070ad2b81",
+      "content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reasoning_sha256": "abe4e653bc6b12d282741a3a7fd1b6a97be3ac5740f41c2212f57762fe916081",
+      "replacement_characters": 0,
+      "unicode_in_content": false,
+      "unicode_in_reasoning": true,
+      "mtp_used": false,
+      "draft_cycles": 0,
+      "fallback_event_counts": {}
+    },
+    {
+      "label": "unicode_mtp_0.0_blocking",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Repeat exactly this text and nothing else: ┌日本語🙂 café┐"
+          }
+        ],
+        "max_tokens": 64,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "stream": false
+      },
+      "status": 200,
+      "finish_reason": "stop",
+      "generated_tokens": 12,
+      "generated_ids_sha256": "6af41893cb1ee576e45b56e07c32c7577ebc4ffc31795d3593686abf5487db4d",
+      "content_sha256": "45db834f97114ee7f108f81c7c768567085caacf22239939f96d573cb0bd5340",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": true,
+      "unicode_in_reasoning": false,
+      "mtp_used": true,
+      "draft_cycles": 4,
+      "fallback_event_counts": {
+        "no_provider": 1
+      }
+    },
+    {
+      "label": "unicode_mtp_0.0_sse",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Repeat exactly this text and nothing else: ┌日本語🙂 café┐"
+          }
+        ],
+        "max_tokens": 64,
+        "temperature": 0.0,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "stop",
+      "generated_tokens": 12,
+      "generated_ids_sha256": "6af41893cb1ee576e45b56e07c32c7577ebc4ffc31795d3593686abf5487db4d",
+      "content_sha256": "45db834f97114ee7f108f81c7c768567085caacf22239939f96d573cb0bd5340",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": true,
+      "unicode_in_reasoning": false,
+      "mtp_used": true,
+      "draft_cycles": 4,
+      "fallback_event_counts": {
+        "no_provider": 1
+      }
+    },
+    {
+      "label": "unicode_mtp_0.7_blocking",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Repeat exactly this text and nothing else: ┌日本語🙂 café┐"
+          }
+        ],
+        "max_tokens": 64,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "stream": false,
+        "top_p": 0.9
+      },
+      "status": 200,
+      "finish_reason": "stop",
+      "generated_tokens": 12,
+      "generated_ids_sha256": "6af41893cb1ee576e45b56e07c32c7577ebc4ffc31795d3593686abf5487db4d",
+      "content_sha256": "45db834f97114ee7f108f81c7c768567085caacf22239939f96d573cb0bd5340",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": true,
+      "unicode_in_reasoning": false,
+      "mtp_used": true,
+      "draft_cycles": 4,
+      "fallback_event_counts": {
+        "no_provider": 1
+      }
+    },
+    {
+      "label": "unicode_mtp_0.7_sse",
+      "request": {
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Repeat exactly this text and nothing else: ┌日本語🙂 café┐"
+          }
+        ],
+        "max_tokens": 64,
+        "temperature": 0.7,
+        "seed": 3001,
+        "speculative_mtp": true,
+        "stream": true,
+        "top_p": 0.9,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "finish_reason": "stop",
+      "generated_tokens": 12,
+      "generated_ids_sha256": "6af41893cb1ee576e45b56e07c32c7577ebc4ffc31795d3593686abf5487db4d",
+      "content_sha256": "45db834f97114ee7f108f81c7c768567085caacf22239939f96d573cb0bd5340",
+      "reasoning_sha256": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "replacement_characters": 0,
+      "unicode_in_content": true,
+      "unicode_in_reasoning": false,
+      "mtp_used": true,
+      "draft_cycles": 4,
+      "fallback_event_counts": {
+        "no_provider": 1
+      }
+    }
+  ],
+  "driver_result": {
+    "exit_code": 1,
+    "reason": "Sampled AR contains the requested Unicode string in reasoning_content, not content. This still exercises multibyte detokenization. All eight original pair comparisons passed; only the content-only coverage assertion failed. Raw capture is unchanged.",
+    "offline_verified_passed": true
+  },
+  "validation": {
+    "red": "Six of seven original byte/suppression cases failed; terminal incomplete replacement already passed. A separate ignore_eos regression failed before its repair.",
+    "affected_bundle": {
+      "passed": 6540,
+      "skipped": 11,
+      "log": "qwen-stream-bundle.log"
+    },
+    "final_focused_bundle": {
+      "passed": 221,
+      "skipped": 1,
+      "log": "qwen-stream-focused4.log"
+    },
+    "new_regressions": 32,
+    "cpu_deterministic": "compileall, fixtures, registry/cpu-fixtures/smoke-add-plan passed",
+    "public_requests": 16,
+    "public_passed": true
+  },
+  "raw_directory": "~/.local/state/hipengine/mtp-followup-20261017/utf8-streaming",
+  "raw_files": [
+    {
+      "name": "public-checked.json",
+      "sha256": "5b30be2078419eca650e064240f74de5a4f1268c33224f173018ffa4facda2d8",
+      "size_bytes": 5335
+    },
+    {
+      "name": "public-requests.json",
+      "sha256": "0535bba9e8395d83b531a809bd1638916613af0cf0d61cf23fa028bc306605b3",
+      "size_bytes": 2289931
+    },
+    {
+      "name": "qwen-stream-bundle.log",
+      "sha256": "48ac18fc5e0833a42be43add53e7bc3d978452a8681a3082e7bc4007f53082dd",
+      "size_bytes": 8175
+    },
+    {
+      "name": "qwen-stream-focused4.log",
+      "sha256": "fad987bb229d489c7ee1b57159d55a7a827e2380a12bb7f7bb62f664fd366171",
+      "size_bytes": 351
+    },
+    {
+      "name": "qwen-stream-ignore-eos-red.log",
+      "sha256": "97e1c1c63bcdb34df17ffa7ff5c91e146a5563c4cda282e79a6e93a8034516eb",
+      "size_bytes": 1400
+    },
+    {
+      "name": "qwen-stream-utf8-red.log",
+      "sha256": "8053606ab83132153b0a759ebdc685fbb32d8f3d42dd67d16b8d574d21a03202",
+      "size_bytes": 5118
+    },
+    {
+      "name": "server.log",
+      "sha256": "dd751e5bbabbc70a940fdcdff5a92d471d8741b102317b351d94bef691ee367c",
+      "size_bytes": 4331
+    },
+    {
+      "name": "utf8_public_probe.py",
+      "sha256": "dbbdf3bc0b47873bffd0550d316550c891ef949c4ff0a31da415f3de5945d98f",
+      "size_bytes": 5732
+    }
+  ]
+}

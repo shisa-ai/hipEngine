@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -116,6 +117,11 @@ class Qwen35GGUFTokenizer:
             ).ids
         ]
 
+    def incremental_decoder(self, *, skip_special: bool = False) -> _IncrementalByteDecoder:
+        """Create request-owned UTF-8 state with the same policy as ``decode``."""
+
+        return _IncrementalByteDecoder(self, skip_special=skip_special)
+
     def decode(self, token_ids: Sequence[int], *, skip_special: bool = False) -> str:
         pieces: list[str] = []
         literal: list[str] = []
@@ -139,6 +145,40 @@ class Qwen35GGUFTokenizer:
         if pieces:
             literal.append(_decode_byte_pieces(pieces, self.byte_decoder))
         return "".join(literal)
+
+
+class _IncrementalByteDecoder:
+    """Retain incomplete byte-BPE characters until another token or final flush."""
+
+    def __init__(self, tokenizer: Qwen35GGUFTokenizer, *, skip_special: bool) -> None:
+        self.tokenizer = tokenizer
+        self.skip_special = skip_special
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+
+    def feed(self, token_ids: Sequence[int], *, final: bool = False) -> str:
+        output: list[str] = []
+        tokenizer = self.tokenizer
+        for token_id in token_ids:
+            idx = int(token_id)
+            if idx < 0 or idx >= len(tokenizer.tokens):
+                raise ValueError(
+                    f"token id {idx} is outside vocabulary size {len(tokenizer.tokens)}"
+                )
+            if self.skip_special and tokenizer.token_types[idx] == 3:
+                continue
+            token = tokenizer.tokens[idx]
+            if all(char in tokenizer.byte_decoder for char in token):
+                data = bytes(tokenizer.byte_decoder[char] for char in token)
+                output.append(self._decoder.decode(data, final=False))
+            else:
+                # A literal token is a byte-sequence boundary, just as in decode.
+                output.append(self._decoder.decode(b"", final=True))
+                self._decoder.reset()
+                if not self.skip_special:
+                    output.append(token)
+        if final:
+            output.append(self._decoder.decode(b"", final=True))
+        return "".join(output)
 
 
 @dataclass

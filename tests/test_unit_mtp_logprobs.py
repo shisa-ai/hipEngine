@@ -264,6 +264,7 @@ class _StreamDecorator:
         Qwen35GGUFResidentModelRunner.decorate_speculative_stream_events
     )
     _take_cycle_token_logprob = Qwen35GGUFResidentModelRunner._take_cycle_token_logprob
+    _stream_token_text = Qwen35GGUFResidentModelRunner._stream_token_text
 
     def __init__(self, samples=None):
         self.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
