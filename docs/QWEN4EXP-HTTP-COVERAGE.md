@@ -6,6 +6,10 @@ explicit MTP work. The focused lifetime follow-up also passes approximately
 and named MTP-to-AR fallback. Text AR sampling/logprobs pass focused live
 checks, including combined hard thinking/logprobs. C1 sampled MTP and its
 buffered-SSE logprobs also pass the full category/heldout functional audit.
+C1 controlled MTP passes 170 functional request checks and 82 blocking/SSE
+comparisons: stops, alternate EOS, minimum tokens, ignore-EOS, JSON Schema,
+required/automatic tools and hard-thinking controls. Stop-string SSE is
+buffered for both AR and MTP to prevent text leakage across tokenizer boundaries.
 True multi-request batching and incremental MTP streaming are still open.
 A passing unit suite does not establish those product capabilities.
 
@@ -128,10 +132,10 @@ metadata reports `processed_target_verification=true`,
 Logprob requests execute the selected provider instead of a direct-AR shortcut.
 CPU HTTP tests use the real resident MTP owner with analytic target logits and
 verify actual speculative work for completions/chat, blocking/SSE, with and
-without logprobs. Structured controls, stops, alternate EOS, hard thinking and
-resident sessions remain rejected on the generic route or use named explicit
-MTP-to-AR fallback. SSE remains buffered and automatic MTP remains off for
-this provider; those capabilities require separate qualification.
+without logprobs. The PS6 follow-up below qualifies structured controls, stops,
+alternate EOS and hard thinking through both MTP spellings. Resident sessions
+remain outside that qualification. SSE remains buffered and automatic MTP
+remains off for this provider; those capabilities require separate qualification.
 
 The first [98-request sampled-MTP audit](../benchmarks/results/2026-10-17-zbook-qwen4exp-sampled-mtp-http-diagnostic.json)
 passes 75 request checks. Twenty SSE checks lacked the opt-in execution metadata
@@ -165,6 +169,51 @@ production `UD-Q4_K_XL`, BF16 KV, Q8_0 MTP B3, 8K-capacity configuration with
 functional checks. It does not qualify task quality, production numerical
 envelopes, constrained MTP, incremental SSE, concurrency, economics or
 automatic MTP. Final readiness passed and the private audit server was stopped.
+
+## PS6 controlled-MTP follow-up
+
+The [controlled-MTP evidence packet](../benchmarks/results/2026-10-17-zbook-qwen4exp-controlled-mtp-http.json)
+qualifies C1 text controls on zbook with production `UD-Q4_K_XL`, BF16 KV,
+Q8_0 MTP B3 and 8K capacity. All **170 request checks and 82 blocking/SSE
+comparisons pass**. Every request proves actual MTP through the execution path,
+target-draw algorithm, nonzero draft/cycle counters and canonical token usage;
+AR fallback is not counted.
+
+The checks comprise 80 schema/tool/thinking requests, 84 completion boundary
+requests, and six additional chat/hint checks. Both `speculative=true` and
+`speculative_mtp=true` run at temperatures 0 and 0.8, with blocking and buffered
+SSE. Structured cases run with and without logprobs. English/Japanese multi-token
+stops cover both forms; alternate EOS, `min_tokens` and `ignore_eos` cover
+termination and masking. Tool cases include required calls, automatic calls
+and automatic direct answers. Tool logprobs describe raw model tool syntax,
+not probabilities of parsed or reserialized arguments.
+
+This is completed-audit plus focused-repair evidence, **not a fresh full run on
+one final source**. The original structured audit exposed missing pure-tool SSE
+logprobs; stronger review also found that explicit-MTP queue submission relaxed
+hard thinking despite the server's hard policy. Sixteen tool and sixteen thinking
+requests were replayed after their respective repairs. Hard-thinking verification
+checks the four-token cap, tokenizer-derived closing ID, phase and answer counters,
+not merely the presence of reasoning text. Intentional request-level `hint`
+override still reports `prompt_hint_only` without forced hard closure.
+
+The boundary audit found four no-logprob SSE failures: an in-context token sequence
+need not match a stop string's standalone BPE encoding. The live path published
+text past the stop before applying its final text filter, then lost canonical
+accounting. Server source `f69838726` routes nonempty stop strings through the
+buffered response path in both endpoints. Eight completion SSE replays match their
+original blocking results, and two additional chat blocking/SSE pairs pass.
+When backend token matching misses such a stop, generation may reach its token
+limit before text trimming; usage correctly counts all generated tokens, not just
+visible text. Incremental text filtering and early termination remain PS7 work.
+
+All merged saved bodies and comparisons were revalidated. Lower-layer tests cover
+request-owned grammar and processor state, root/mid-verify/terminal cancellation,
+exact RNG checkpoints, target/draft rollback and withholding uncommitted IDs and
+logprobs. The final stop repair passes 782 affected CPU HTTP tests. Final live
+readiness passes, and the private audit server is stopped. This closes PS6/task 19
+for the stated functional scope, not task quality, numerical-envelope qualification,
+incremental streaming, physical concurrency, multimodal controls or automatic MTP.
 
 ## Baseline feature grid (before PS1/PS3/PS5 fixes)
 
@@ -211,8 +260,8 @@ verification work; candidate rows must not be called concurrent requests.
    PS3 verifies hard caps and answer reservation in direct/resident AR,
    blocking and SSE, with honest hard-policy MTP fallback. PS4 verifies AR and
    actual sampled-MTP logprobs, byte-accurate Japanese metadata, seeded repeats,
-   request isolation, and combined AR thinking/logprob output. Controlled MTP
-   and full production task/numerical qualification remain separate gates.
+   request isolation, and combined AR thinking/logprob output. PS6 verifies
+   controlled MTP; full production task/numerical qualification remains open.
 3. **Completed for BF16:** generic speculative admission now resolves the
    effective KV storage instead of rejecting irrelevant BF16 scale metadata.
    Both request spellings execute the intended service-owned MTP route with
