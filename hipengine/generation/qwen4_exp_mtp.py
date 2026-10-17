@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import time
-from typing import Any
+from typing import Any, Generator
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.registry import (
@@ -43,6 +43,21 @@ class Qwen4ExpMTPCycle:
     accepted: int
     mismatch_token: int | None
     committed_position: int
+
+
+@dataclass(frozen=True)
+class Qwen4ExpMTPProgress:
+    """One committed step of a Qwen4Exp MTP generation.
+
+    ``token_ids`` are the tokens this step newly committed, never the running
+    total. The initial root-token step carries ``cycle=None``; each later step
+    carries exactly one :class:`Qwen4ExpMTPCycle`. ``finished`` marks the last
+    step the iterator emits.
+    """
+
+    token_ids: tuple[int, ...]
+    cycle: Qwen4ExpMTPCycle | None
+    finished: bool
 
 
 class Qwen4ExpMTPTextProvider:
@@ -129,7 +144,34 @@ class Qwen4ExpMTPTextProvider:
         outputs = [self._generate_one(prompt, request) for prompt in request.prompts]
         return outputs
 
-    def _generate_one(self, prompt: Any, request: GenerationRequest) -> GenerationOutput:
+    def iter_generate(
+        self,
+        prompt: Any,
+        request: GenerationRequest,
+        *,
+        target: Any | None = None,
+        draft: Any | None = None,
+        prefill_result: Any | None = None,
+        draft_primed: bool = False,
+    ) -> Generator[Qwen4ExpMTPProgress, None, GenerationOutput]:
+        """Yield one committed MTP step at a time and return the final output.
+
+        Lazy: creating the iterator performs no model work. The first step is
+        the initial root token with ``cycle=None``; every later step is exactly
+        one existing verification cycle plus the tokens that cycle committed.
+        After the step carrying ``finished=True``, the next ``next()`` raises
+        ``StopIteration`` whose value is the complete ``GenerationOutput`` with
+        the usual telemetry.
+
+        ``target`` and ``draft`` are request-owned overrides for the loaded
+        owners; the provider never swaps ``target_generator.runner`` or
+        ``draft``. ``prefill_result`` reuses an existing target prefill and
+        ``draft_primed=True`` reuses an already primed draft cursor.
+        """
+
+        self._require_open()
+        if request.temperature != 0.0 or request.top_k not in (0, 1):
+            raise NotImplementedError("Qwen4Exp MTP supports greedy generation only")
         raise_if_generation_deadline_expired(request)
         token_ids = (
             [int(token) for token in prompt]
@@ -138,9 +180,11 @@ class Qwen4ExpMTPTextProvider:
         )
         if not token_ids:
             raise ValueError("Qwen4Exp MTP prompt produced no token IDs")
+        target_runner = self.target_generator.runner if target is None else target
+        draft_runner = self.draft if draft is None else draft
         capacity = min(
-            int(self.target_generator.runner.max_sequence_length),
-            int(self.draft.max_sequence_length),
+            int(target_runner.max_sequence_length),
+            int(draft_runner.max_sequence_length),
         )
         if len(token_ids) + request.max_tokens > capacity:
             raise ValueError(
@@ -156,7 +200,6 @@ class Qwen4ExpMTPTextProvider:
                 ),
             )
 
-        target = self.target_generator.runner
         phase_ms: dict[str, float] = {}
         phase_calls: dict[str, int] = {}
 
@@ -167,12 +210,18 @@ class Qwen4ExpMTPTextProvider:
             phase_calls[name] = phase_calls.get(name, 0) + 1
 
         prefill_started = time.perf_counter()
-        result = target.prefill(token_ids, capture_hidden_seeds=True)
-        record_phase("target_prefill_hidden_export", prefill_started)
+        if prefill_result is None:
+            result = target_runner.prefill(token_ids, capture_hidden_seeds=True)
+            record_phase("target_prefill_hidden_export", prefill_started)
+        else:
+            # The caller already prefilled this prompt; reuse those hidden rows
+            # and the cursor they left behind instead of prefilling twice.
+            result = prefill_result
         if result.hidden_seeds is None or result.hidden_seed is None:
             raise RuntimeError("Qwen4Exp target did not expose MTP hidden rows")
-        self.draft.prime_prompt(token_ids, result.hidden_seeds)
-        if int(target.position) != int(self.draft.position):
+        if not draft_primed:
+            draft_runner.prime_prompt(token_ids, result.hidden_seeds)
+        if int(target_runner.position) != int(draft_runner.position):
             raise RuntimeError("Qwen4Exp target/draft prompt cursors diverged")
 
         generated: list[int] = [int(result.token_id)]
@@ -184,14 +233,21 @@ class Qwen4ExpMTPTextProvider:
         if not request.ignore_eos and root_token == eos:
             reason = "eos"
 
+        yield Qwen4ExpMTPProgress(
+            token_ids=(root_token,),
+            cycle=None,
+            finished=not (len(generated) < request.max_tokens and reason != "eos"),
+        )
+
         # One prefill-shaped verify pass per cycle, committing the accepted
         # rows' states (no replay); otherwise serial target steps.
         batched_verify = os.environ.get(
             "HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY", "1"
         ) not in {"", "0", "false", "False"} and hasattr(
-            target, "verify_target_block_state_rows"
+            target_runner, "verify_target_block_state_rows"
         )
         while len(generated) < request.max_tokens and reason != "eos":
+            step_start = len(generated)
             raise_if_generation_deadline_expired(request)
             remaining = request.max_tokens - len(generated)
             # A batched cycle commits up to budget + 1 tokens (the row after the
@@ -201,11 +257,11 @@ class Qwen4ExpMTPTextProvider:
                 self.candidate_budget, remaining - 1 if bonus_row else remaining,
                 7 if bonus_row else remaining,
             )
-            start_position = int(target.position)
-            if int(self.draft.position) != start_position:
+            start_position = int(target_runner.position)
+            if int(draft_runner.position) != start_position:
                 raise RuntimeError("Qwen4Exp target/draft cursors diverged before proposal")
             proposal_started = time.perf_counter()
-            proposal = self.draft.propose_chain(
+            proposal = draft_runner.propose_chain(
                 start_token=root_token,
                 target_hidden_seed=root_hidden,
                 draft_n_max=budget,
@@ -217,7 +273,7 @@ class Qwen4ExpMTPTextProvider:
             )
             record_phase("proposal", proposal_started)
             for name, elapsed_ms in getattr(
-                self.draft, "last_proposal_stage_timings_ms", {}
+                draft_runner, "last_proposal_stage_timings_ms", {}
             ).items():
                 phase_ms[name] = phase_ms.get(name, 0.0) + float(elapsed_ms)
             candidates = tuple(int(row.token_id) for row in proposal)
@@ -232,7 +288,7 @@ class Qwen4ExpMTPTextProvider:
                 serial_candidates = ()
                 inputs = (root_token, *candidates)
                 verify_started = time.perf_counter()
-                block = target.verify_target_block_state_rows(inputs)
+                block = target_runner.verify_target_block_state_rows(inputs)
                 record_phase("target_verify", verify_started)
                 acceptance_started = time.perf_counter()
                 consumed = 0
@@ -249,13 +305,13 @@ class Qwen4ExpMTPTextProvider:
                     if (mismatch is not None or reason == "eos"
                             or len(generated) >= request.max_tokens):
                         break
-                target.commit_target_block_rows(consumed)
+                target_runner.commit_target_block_rows(consumed)
                 assert block.hidden_seeds is not None
                 if consumed == len(inputs):
                     # Every draft matched and the bonus row was committed: the
                     # draft has consumed root .. c(n-1), so it also takes cn,
                     # with the target's hidden row that produced it.
-                    self.draft.forward(
+                    draft_runner.forward(
                         candidates[-1], block.hidden_seeds[len(candidates) - 1],
                         capture_logits=False, capture_hidden_seed=False,
                         capture_token_id=False, run_head=False,
@@ -266,7 +322,7 @@ class Qwen4ExpMTPTextProvider:
             for candidate in serial_candidates:
                 raise_if_generation_deadline_expired(request)
                 verify_started = time.perf_counter()
-                verified = target.step(root_token, capture_hidden_seed=True)
+                verified = target_runner.step(root_token, capture_hidden_seed=True)
                 record_phase("target_verify", verify_started)
                 acceptance_started = time.perf_counter()
                 if verified.hidden_seed is None:
@@ -290,7 +346,7 @@ class Qwen4ExpMTPTextProvider:
                 if should_stop:
                     break
             trim_started = time.perf_counter()
-            self.draft.trim(int(target.position))
+            draft_runner.trim(int(target_runner.position))
             record_phase("draft_commit_or_rollback", trim_started)
             cycles.append(
                 Qwen4ExpMTPCycle(
@@ -298,8 +354,15 @@ class Qwen4ExpMTPTextProvider:
                     candidates=candidates,
                     accepted=accepted,
                     mismatch_token=mismatch,
-                    committed_position=int(target.position),
+                    committed_position=int(target_runner.position),
                 )
+            )
+            yield Qwen4ExpMTPProgress(
+                token_ids=tuple(generated[step_start:]),
+                cycle=cycles[-1],
+                finished=not (
+                    len(generated) < request.max_tokens and reason != "eos"
+                ),
             )
         self.last_cycles = tuple(cycles)
         proposed = sum(len(cycle.candidates) for cycle in cycles)
@@ -391,6 +454,14 @@ class Qwen4ExpMTPTextProvider:
             ),
         )
 
+    def _generate_one(self, prompt: Any, request: GenerationRequest) -> GenerationOutput:
+        steps = self.iter_generate(prompt, request)
+        while True:
+            try:
+                next(steps)
+            except StopIteration as stop:
+                return stop.value
+
     def stream_detailed(self, request: GenerationRequest):
         self._require_open()
         if len(request.prompts) != 1:
@@ -447,6 +518,7 @@ register_qwen4_exp_mtp_providers()
 
 __all__ = [
     "Qwen4ExpMTPCycle",
+    "Qwen4ExpMTPProgress",
     "Qwen4ExpMTPTextProvider",
     "make_qwen4_exp_mtp_provider",
     "register_qwen4_exp_mtp_providers",
