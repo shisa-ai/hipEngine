@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -389,3 +390,131 @@ def test_server_cli_accepts_speculative_provider_owner(monkeypatch) -> None:
     assert cli_args.speculative_provider == "other"
     assert cli_args.draft_model == "/models/cli-drafter"
     assert cli_args.speculative_candidate_budget == 7
+
+
+def _int8_resident(fake: _SpeculativeFakeLLM) -> _SpeculativeFakeLLM:
+    """Mark the fake engine as an INT8-qualified, INT8-resident generator."""
+
+    fake._text_generator = SimpleNamespace(
+        kv_capability_provenance={
+            "schema_version": 1,
+            "status": "qualified",
+            "runtime_action": "admit",
+            "promotion_eligible": True,
+            "diagnostic_override": False,
+            "requested": {"kv_storage": "int8_per_token_head"},
+            "effective_kv_storage": "int8_per_token_head",
+            "artifact": {"sha256": "a" * 64, "content_verified": True},
+            "evidence": {"quality_artifact": "benchmarks/results/fake.json"},
+            "reason": "qualified fixture",
+        }
+    )
+    return fake
+
+
+@pytest.mark.parametrize("kv_storage", ["bf16", "auto"])
+def test_bf16_kv_admits_generic_speculation_with_fp32_scale_metadata(
+    kv_storage: str,
+) -> None:
+    """The normal server CLI defaults (--kv-scale-dtype fp32) must not reject BF16 KV."""
+
+    fake = _SpeculativeFakeLLM()
+    client = TestClient(
+        create_app(
+            _config(kv_storage=kv_storage, kv_scale_dtype="fp32"),
+            llm=fake,
+        )
+    )
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "two", "max_tokens": 2, "speculative": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["text"] == "spec:two"
+    assert response.json()["hipengine"]["generation_shape"]["route"] == "speculative"
+    assert len(fake.speculative_calls) == 1
+    assert fake.speculative_calls[0][1].kv_scale_dtype == "fp32"
+    assert fake.ar_calls == []
+
+
+def test_chat_bf16_kv_admits_generic_speculation_with_fp32_scale_metadata() -> None:
+    fake = _SpeculativeFakeLLM()
+    client = TestClient(
+        create_app(
+            _config(kv_storage="bf16", kv_scale_dtype="fp32"),
+            llm=fake,
+        )
+    )
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 2,
+            "enable_thinking": False,
+            "speculative": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["message"]["content"] == "spec:chat:hello"
+    assert len(fake.speculative_calls) == 1
+
+
+def test_int8_resident_kv_still_rejects_fp32_scale_metadata() -> None:
+    fake = _int8_resident(_SpeculativeFakeLLM())
+    client = TestClient(
+        create_app(
+            _config(kv_storage="int8_per_token_head", kv_scale_dtype="fp32"),
+            llm=fake,
+        )
+    )
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "two", "max_tokens": 2, "speculative": True},
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "unsupported_parameter"
+    speculative = error["hipengine"]["speculative"]
+    assert "kv_scale_dtype" in speculative["blockers"]
+    assert speculative["compatibility_guard"] == "raw_greedy_bf16_c1"
+    assert fake.prepare_calls == 0
+    assert fake.speculative_calls == []
+
+
+def test_effective_int8_resident_kv_rejects_generic_speculation_with_valid_scales() -> None:
+    """The BF16-only route must reject a resident INT8 engine, not its spelling.
+
+    ``--kv-storage auto`` plus a qualified INT8 engine leaves the request
+    spelling at ``auto`` with valid fp16/per_token_head scales. Neither is an
+    admission argument for a route that only runs on BF16 KV.
+    """
+
+    fake = _int8_resident(_SpeculativeFakeLLM())
+    client = TestClient(
+        create_app(
+            _config(kv_storage="auto", kv_scale_dtype="fp16"),
+            llm=fake,
+        )
+    )
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "two", "max_tokens": 2, "speculative": True},
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "unsupported_parameter"
+    speculative = error["hipengine"]["speculative"]
+    assert "kv_storage" in speculative["blockers"]
+    assert "kv_scale_dtype" not in speculative["blockers"]
+    assert speculative["compatibility_guard"] == "raw_greedy_bf16_c1"
+    assert fake.prepare_calls == 0
+    assert fake.speculative_calls == []

@@ -12927,6 +12927,31 @@ def _speculative_mtp_route_for_request(
     return _SPECULATIVE_MTP_AUTO_ROUTE
 
 
+def _speculative_provider_effective_kv_storage(
+    engine: Any | None,
+    sampling: SamplingParams,
+) -> str:
+    """Return the KV storage format the loaded engine really uses.
+
+    A fixed server KV policy carries INT8 scale metadata even when the resident
+    format is BF16, and an INT8 policy that fails closed on an unqualified
+    artifact is resident BF16 as well. Report the allocated format the same way
+    request KV validation does, falling back to the resolved request policy for
+    engines that expose no capability provenance.
+    """
+
+    reported = _kv_capability_provenance(engine).get("effective_kv_storage")
+    if isinstance(reported, str) and reported:
+        return reported
+    from hipengine.kvcache import resolve_kv_policy
+
+    requested = str(getattr(sampling, "kv_storage", "") or "auto")
+    try:
+        return resolve_kv_policy(requested).storage_dtype.value
+    except ValueError:
+        return requested
+
+
 def _speculative_provider_route_for_request(
     config: ServerConfig,
     request: CompletionRequest | ChatCompletionRequest,
@@ -12988,10 +13013,17 @@ def _speculative_provider_route_for_request(
         blockers.append("min_p")
     if str(sampling.kv_storage) not in {"auto", "bf16"}:
         blockers.append("kv_storage")
-    if str(sampling.kv_scale_dtype) != "fp16":
-        blockers.append("kv_scale_dtype")
-    if str(sampling.kv_scale_granularity) != "per_token_head":
-        blockers.append("kv_scale_granularity")
+    # This provider route is BF16-only. BF16 KV stores no scales, so the fixed
+    # server's INT8 scale metadata cannot make a BF16-resident request
+    # incompatible. A resident INT8 engine stays rejected even when the
+    # requested spelling is "auto" and its scale metadata looks qualified,
+    # because the route cannot run on INT8 KV.
+    if _speculative_provider_effective_kv_storage(engine, sampling) != "bf16":
+        blockers.append("kv_storage")
+        if str(sampling.kv_scale_dtype) != "fp16":
+            blockers.append("kv_scale_dtype")
+        if str(sampling.kv_scale_granularity) != "per_token_head":
+            blockers.append("kv_scale_granularity")
     if int(prompt_count) != 1 or _request_n(request) != 1:
         blockers.append("c")
     blockers = list(dict.fromkeys(blockers))
