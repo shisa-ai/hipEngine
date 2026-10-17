@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import inspect
+import os
 from types import SimpleNamespace
 
 import numpy as np
@@ -835,6 +836,26 @@ def test_resident_runner_delegates_bounded_complete_cycle_when_plugin_selects_it
 
     assert runner.speculative_frontier_available("plan") is False
     assert runner.execute_speculative_cycle("plan", commit=True) == ("plan", True)
+
+
+def test_resident_runner_delegates_bounded_complete_cycle_with_gdn_capture(monkeypatch) -> None:
+    observed: list[str | None] = []
+
+    def execute(plan, commit):
+        observed.append(os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"))
+        return plan, commit
+
+    adapter = SimpleNamespace(staged_frontier=False, execute_cycle=execute)
+    runner = _bare_runner()
+    runner._mtp2_adapter = adapter
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(target_arch="gfx1100")
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
+
+    assert runner.speculative_frontier_available("plan") is False
+    assert runner.execute_speculative_cycle("plan", commit=True) == ("plan", True)
+    assert observed == ["1"]
+    assert "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN" not in os.environ
 
 
 def test_physical_specdec2_uses_qualified_eager_when_graph_is_uncached() -> None:

@@ -8474,8 +8474,11 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
     def _staged_adapter_missing_error(self) -> str:
         return "GGUF MTP2 adapter is unavailable"
 
+    @contextmanager
     def _staged_adapter_arch_environment(self):
-        return hip_target_arch_environment(self.generator.target_arch)
+        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+            with hip_target_arch_environment(self.generator.target_arch):
+                yield
 
     def _begin_staged_adapter_cycle(self, plan) -> None:
         self._begin_speculative_cycle(plan)
@@ -8519,8 +8522,9 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         execute = None if adapter is None else getattr(adapter, "execute_cycle", None)
         if not callable(execute):
             raise NotImplementedError("GGUF MTP2 adapter has no bounded complete cycle")
-        with hip_target_arch_environment(self.generator.target_arch):
-            return execute(plan, commit=bool(commit))
+        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+            with hip_target_arch_environment(self.generator.target_arch):
+                return execute(plan, commit=bool(commit))
 
     def note_speculative_plan(self, plan) -> None:
         """Publish the group-level plan decision on every row it planned.
