@@ -99,6 +99,16 @@ class Qwen35GGUFTokenizer:
             ).ids
         ]
 
+    def decode_token_bytes(self, token_id: int) -> bytes:
+        """Return a token's original bytes, including incomplete UTF-8 pieces."""
+        idx = int(token_id)
+        if idx < 0 or idx >= len(self.tokens):
+            raise ValueError(f"token id {idx} is outside vocabulary size {len(self.tokens)}")
+        token = self.tokens[idx]
+        if all(char in self.byte_decoder for char in token):
+            return bytes(self.byte_decoder[char] for char in token)
+        return token.encode("utf-8")
+
     def decode(self, token_ids: Sequence[int], *, skip_special: bool = False) -> str:
         pieces: list[str] = []
         literal: list[str] = []

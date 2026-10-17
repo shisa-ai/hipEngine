@@ -70,6 +70,7 @@ from hipengine.generation import (
     supports_speculative_mtp_sampling,
 )
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
+from hipengine.generation.logprobs import logprob_text, logprob_text_spans
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import resolve_prefix_cache_mode
@@ -11421,6 +11422,8 @@ def _coerce_token_logprobs(value: Any) -> tuple[TokenLogprob, ...]:
                     token_text=str(item.get("token_text", item.get("token", ""))),
                     logprob=(None if item.get("logprob") is None else float(item.get("logprob"))),
                     top_logprobs=top_logprobs,
+                    token_bytes=item.get("token_bytes"),
+                    top_token_bytes=item.get("top_token_bytes", ()) or (),
                 )
             )
             continue
@@ -11430,6 +11433,8 @@ def _coerce_token_logprobs(value: Any) -> tuple[TokenLogprob, ...]:
                 token_text=str(getattr(item, "token_text", getattr(item, "token", ""))),
                 logprob=getattr(item, "logprob", None),
                 top_logprobs=tuple(getattr(item, "top_logprobs", ()) or ()),
+                token_bytes=getattr(item, "token_bytes", None),
+                top_token_bytes=tuple(getattr(item, "top_token_bytes", ()) or ()),
             )
         )
     return tuple(tokens)
@@ -15073,23 +15078,32 @@ def _completion_logprobs(detail: GenerationOutput, text: str, *, echo_text: str 
         offsets.append(0)
         omitted.append(_prompt_logprob_omission(echo_text, 0))
         cursor = len(echo_text)
-    for token in tokens:
+    for token, (start, _end) in zip(tokens, logprob_text_spans(tokens), strict=True):
         response_index = len(response_tokens)
         response_tokens.append(token.token_text)
         token_logprobs.append(token.logprob)
         top_logprobs.append(_completion_top_logprobs(token))
-        offsets.append(cursor)
+        offsets.append(cursor + start)
         if token.logprob is None:
             omitted.append(_logprob_omission(token, response_index))
-        cursor += len(token.token_text)
     payload: dict[str, Any] = {
         "tokens": response_tokens,
         "token_logprobs": token_logprobs,
         "top_logprobs": top_logprobs,
         "text_offset": offsets,
     }
+    if any(token.token_bytes is not None for token in tokens):
+        # Legacy completion top_logprobs is a text-keyed map, so two byte
+        # fragments can collide as "�". Keep lossless candidates separately.
+        extra = payload.setdefault("hipengine", {})
+        extra["token_bytes"] = ([None] if echo_text else []) + [
+            None if token.token_bytes is None else list(token.token_bytes) for token in tokens
+        ]
+        extra["top_logprob_tokens"] = ([None] if echo_text else []) + [
+            _chat_logprob_token(token, include_token_ids=True)["top_logprobs"] for token in tokens
+        ]
     if omitted:
-        payload["hipengine"] = {"omitted_token_logprobs": omitted}
+        payload.setdefault("hipengine", {})["omitted_token_logprobs"] = omitted
     return payload
 
 
@@ -15107,20 +15121,28 @@ def _completion_top_logprobs(token: TokenLogprob) -> dict[str, float] | None:
     return {text: float(logprob) for _token_id, text, logprob in token.top_logprobs}
 
 
+def _chat_logprob_token(token: TokenLogprob, *, include_token_ids: bool = False) -> dict[str, Any]:
+    top_bytes = token.top_token_bytes or (None,) * len(token.top_logprobs)
+    top = []
+    for (token_id, text, probability), raw_bytes in zip(token.top_logprobs, top_bytes, strict=True):
+        item = {"token": text, "logprob": float(probability), "bytes": None if raw_bytes is None else list(raw_bytes)}
+        if include_token_ids:
+            item["token_id"] = int(token_id)
+        top.append(item)
+    item = {
+        "token": token.token_text,
+        "logprob": token.logprob,
+        "bytes": None if token.token_bytes is None else list(token.token_bytes),
+        "top_logprobs": top,
+    }
+    if include_token_ids:
+        item["token_id"] = int(token.token_id)
+    return item
+
+
 def _chat_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
     tokens = _trim_token_logprobs(detail.token_logprobs, text)
-    content = [
-        {
-            "token": token.token_text,
-            "logprob": token.logprob,
-            "bytes": None,
-            "top_logprobs": [
-                {"token": top_text, "logprob": float(top_logprob), "bytes": None}
-                for _top_id, top_text, top_logprob in token.top_logprobs
-            ],
-        }
-        for token in tokens
-    ]
+    content = [_chat_logprob_token(token) for token in tokens]
     omitted = [_logprob_omission(token, index) for index, token in enumerate(tokens) if token.logprob is None]
     payload: dict[str, Any] = {
         "content": content,
@@ -15140,7 +15162,7 @@ def _chat_visible_content_logprobs(
     split = _split_reasoning(text, initially_open=initially_open)
     if split.content == text:
         return _chat_logprobs(detail, text)
-    tokens = _visible_content_token_logprobs(detail.token_logprobs, text, split.content)
+    tokens = _visible_content_token_logprobs(detail.token_logprobs, text, split.content, initially_open=initially_open)
     return _chat_logprobs(GenerationOutput(text=split.content, token_logprobs=tokens), split.content)
 
 
@@ -15148,38 +15170,26 @@ def _visible_content_token_logprobs(
     tokens: Sequence[TokenLogprob],
     raw_text: str,
     visible_text: str,
+    *,
+    initially_open: bool = False,
 ) -> tuple[TokenLogprob, ...]:
     if not tokens or not visible_text:
         return ()
     spans = tuple(
         (start, end)
-        for field, start, end in _reasoning_text_segments(raw_text)
+        for field, start, end in _reasoning_text_segments(raw_text, initially_open=initially_open)
         if field == "content" and start < end
     )
     selected = _token_logprobs_for_spans(tokens, spans)
-    if "".join(token.token_text for token in selected) == visible_text:
+    if logprob_text(selected) == visible_text:
         return selected
     return ()
 
 
-def _reasoning_text_segments(text: str) -> tuple[tuple[str, int, int], ...]:
-    segments: list[tuple[str, int, int]] = []
-    cursor = 0
-    in_reasoning = False
-    while cursor < len(text):
-        tag = _REASONING_CLOSE_TAG if in_reasoning else _REASONING_OPEN_TAG
-        index = text.find(tag, cursor)
-        if index < 0:
-            if cursor < len(text):
-                field = "reasoning_content" if in_reasoning else "content"
-                segments.append((field, cursor, len(text)))
-            break
-        if index > cursor:
-            field = "reasoning_content" if in_reasoning else "content"
-            segments.append((field, cursor, index))
-        cursor = index + len(tag)
-        in_reasoning = not in_reasoning
-    return tuple(segments)
+def _reasoning_text_segments(text: str, *, initially_open: bool = False) -> tuple[tuple[str, int, int], ...]:
+    splitter = _ReasoningSplitter(initially_open=initially_open)
+    return tuple((part.field, part.source_start, part.source_end)
+                 for part in (*splitter.feed_parts(text), *splitter.finish_parts()))
 
 
 def _token_logprobs_for_spans(
@@ -15190,11 +15200,7 @@ def _token_logprobs_for_spans(
         return ()
     selected: list[TokenLogprob] = []
     span_index = 0
-    cursor = 0
-    for token in tokens:
-        token_start = cursor
-        token_end = token_start + len(token.token_text)
-        cursor = token_end
+    for token, (token_start, token_end) in zip(tokens, logprob_text_spans(tokens), strict=True):
         while span_index < len(spans) and spans[span_index][1] <= token_start:
             span_index += 1
         if span_index >= len(spans):
@@ -15241,24 +15247,7 @@ def _chat_reasoning_stream_logprobs(
     tokens = _stream_token_logprobs_for_text(stream_chunk, stream_chunk.text)
     if public_text and not tokens:
         raise _unsupported_stream_logprobs_error()
-    content = [
-        {
-            "token_id": int(token.token_id),
-            "token": token.token_text,
-            "logprob": token.logprob,
-            "bytes": None,
-            "top_logprobs": [
-                {
-                    "token_id": int(top_id),
-                    "token": top_text,
-                    "logprob": float(top_logprob),
-                    "bytes": None,
-                }
-                for top_id, top_text, top_logprob in token.top_logprobs
-            ],
-        }
-        for token in tokens
-    ]
+    content = [_chat_logprob_token(token, include_token_ids=True) for token in tokens]
     payload: dict[str, Any] = {
         "content": content,
         "public_text": str(public_text),
@@ -15388,37 +15377,20 @@ def _stream_token_logprobs_for_text_span(
         or start == end
     ):
         return ()
-    cursor = 0
-    selected: list[TokenLogprob] = []
-    for token in stream_chunk.token_logprobs:
-        token_start = cursor
-        token_end = token_start + len(token.token_text)
-        cursor = token_end
-        if token_end <= start:
-            continue
-        if token_start < start or token_end > end:
-            return ()
-        selected.append(token)
-        if token_end == end:
-            break
-    if "".join(token.token_text for token in selected) != stream_chunk.text[start:end]:
+    selected = _token_logprobs_for_spans(stream_chunk.token_logprobs, ((start, end),))
+    if logprob_text(selected) != stream_chunk.text[start:end]:
         return ()
-    return tuple(selected)
+    return selected
 
 
 def _trim_token_logprobs(tokens: Sequence[TokenLogprob], text: str) -> tuple[TokenLogprob, ...]:
     if not tokens or not text:
         return ()
     selected: list[TokenLogprob] = []
-    cursor = 0
-    for token in tokens:
-        next_cursor = cursor + len(token.token_text)
-        if next_cursor > len(text):
+    for token, (start, end) in zip(tokens, logprob_text_spans(tokens), strict=True):
+        if start >= len(text) or end > len(text):
             break
         selected.append(token)
-        cursor = next_cursor
-        if cursor >= len(text):
-            break
     return tuple(selected)
 
 

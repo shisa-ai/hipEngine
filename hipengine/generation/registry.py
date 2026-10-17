@@ -259,6 +259,10 @@ class TokenLogprob:
     token_text: str
     logprob: float | None = None
     top_logprobs: tuple[tuple[int, str, float], ...] = ()
+    # Original tokenizer bytes, not UTF-8 re-encoding of token_text (which may
+    # contain replacement characters). None means the producer has no bytes.
+    token_bytes: tuple[int, ...] | None = None
+    top_token_bytes: tuple[tuple[int, ...] | None, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "token_id", int(self.token_id))
@@ -268,6 +272,12 @@ class TokenLogprob:
             "top_logprobs",
             tuple((int(token_id), str(text), float(logprob)) for token_id, text, logprob in self.top_logprobs),
         )
+        if self.token_bytes is not None:
+            object.__setattr__(self, "token_bytes", tuple(bytes(self.token_bytes)))
+        top_bytes = tuple(None if value is None else tuple(bytes(value)) for value in self.top_token_bytes)
+        if top_bytes and len(top_bytes) != len(self.top_logprobs):
+            raise ValueError("top_token_bytes must align with top_logprobs")
+        object.__setattr__(self, "top_token_bytes", top_bytes)
 
 
 class DecodePhase(str, Enum):

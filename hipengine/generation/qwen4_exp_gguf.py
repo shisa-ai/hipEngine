@@ -21,6 +21,7 @@ from hipengine.generation.qwen4_exp_multimodal import (
     qwen4_exp_multimodal_token_control,
     render_qwen4_exp_multimodal_prompt,
 )
+from hipengine.generation.logprobs import token_bytes_for_id
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -434,6 +435,8 @@ class Qwen4ExpGGUFTextGenerator:
                     token_id=sampled.token_id, token_text=token_text(sampled.token_id),
                     logprob=sampled.logprob,
                     top_logprobs=tuple((token, token_text(token), lp) for token, lp in sampled.top_logprobs),
+                    token_bytes=token_bytes_for_id(self.tokenizer, sampled.token_id),
+                    top_token_bytes=tuple(token_bytes_for_id(self.tokenizer, token) for token, _ in sampled.top_logprobs),
                 ))
             return sampled.token_id
         return int(result.token_id)
