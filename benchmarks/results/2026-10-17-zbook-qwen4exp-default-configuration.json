@@ -1,0 +1,496 @@
+{
+  "schema": 1,
+  "kind": "functional_default_configuration_only",
+  "date": "2026-10-17",
+  "source_commit": "6810feb9fcb947a5d6d75b402fea218e46469d3a",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI Max+ PRO 395 / Radeon 8060S gfx1151",
+  "server_command": "uv run python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --served-model-name qwen38fn-sampling --max-context-tokens 8192 --kv-storage bf16 --max-active-requests 1 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --metrics prometheus --host 127.0.0.1 --port 18389",
+  "probe_command": "uv run python /tmp/he-task29-live-defaults.py",
+  "probe_source": "import sys, time, json, subprocess, socket\nfrom pathlib import Path\nsys.path.insert(0, '/home/lhl/hipEngine')\nimport httpx\nfrom hipengine import LLM\nfrom scripts.qwen4exp_sampled_mtp_http_gate import extract\nfrom scripts.qwen4exp_controlled_mtp_http_gate import SCHEMA, EXPECTED\nout=Path('/tmp/he-task29-live-defaults.json')\nr={'source_commit': subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), 'host':socket.gethostname(), 'requests':[], 'passed':False}\ndef save(): out.write_text(json.dumps(r,indent=2)+'\\n')\ntry:\n    explicit=LLM('/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL',backend='hip_gfx1151',quant='gguf_ud_q4_k_xl')\n    explicit._load_model_metadata()\n    from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles\n    register_qwen4_exp_gfx1151_profiles()\n    r['explicit_manifest_sha256']=explicit.execution_profile_manifest_sha256\n    assert r['explicit_manifest_sha256'] is not None\n    with httpx.Client(base_url='http://127.0.0.1:18389', timeout=600) as c:\n        deadline=time.monotonic()+900\n        while True:\n            try:\n                ready=c.get('/ready',timeout=5)\n                if ready.status_code==200 and ready.json().get('ready'): break\n            except httpx.TransportError: pass\n            if time.monotonic()>deadline: raise TimeoutError('server readiness')\n            time.sleep(2)\n        models=c.get('/v1/models');models.raise_for_status()\n        r['models']=models.json();save()\n        info=r['models']['data'][0]['hipengine'];profile=info['execution_profile']\n        assert info['quant']=='gguf_ud_q4_k_xl',info\n        assert profile['resolved']=='production',profile\n        assert profile['manifest_sha256']==r['explicit_manifest_sha256'],profile\n        assert not profile['fell_back_to_strict'],profile\n        for mtp in (False,True):\n            req={'model':'qwen38fn-sampling','max_tokens':64,'seed':104,'enable_thinking':False,'messages':[{'role':'user','content':'Return the requested JSON object.'}],'response_format':SCHEMA,'temperature':0.0,'stream':False,'speculative':mtp}\n            response=c.post('/v1/chat/completions',json=req)\n            row={'request':req,'status':response.status_code,'body':response.json()};r['requests'].append(row);save()\n            response.raise_for_status()\n            result=extract(row['body'],chat=True);row['result']=result;save()\n            assert json.loads(result['text'])==EXPECTED,result\n            assert result['mtp']['used'] is mtp,result\n            print('MTP' if mtp else 'AR','PASS',flush=True)\n        r['ready_after']=c.get('/ready').json()\n        assert r['ready_after'].get('ready') is True\n        r['passed']=True;save();print('DEFAULT_CONFIG_PASS',flush=True)\nexcept Exception as e:\n    r['error']=repr(e);save();raise\n",
+  "explicit_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+  "server_model": {
+    "id": "qwen38fn-sampling",
+    "object": "model",
+    "created": 1792277428,
+    "owned_by": "hipengine",
+    "hipengine": {
+      "path": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "backend": "hip_gfx1151",
+      "quant": "gguf_ud_q4_k_xl",
+      "execution_profile": {
+        "requested": null,
+        "resolved": "production",
+        "manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+        "strict_manifest_sha256": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+        "fell_back_to_strict": false,
+        "migration_default_preserved": false
+      },
+      "loaded": true,
+      "resident_context": true,
+      "context": {
+        "configured_max_context_tokens": 8192,
+        "effective_max_context_tokens": 8192,
+        "chat_default_max_tokens": 4096
+      },
+      "kv_capacity": {
+        "storage": "bf16",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "estimate": null,
+        "capability": {
+          "schema_version": 1,
+          "status": "unavailable",
+          "runtime_action": "not_applicable",
+          "promotion_eligible": false,
+          "diagnostic_override": false,
+          "requested": null,
+          "effective_kv_storage": null,
+          "artifact": null,
+          "evidence": null,
+          "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+        }
+      },
+      "capabilities": {
+        "completions": true,
+        "chat_completions": true,
+        "streaming": true,
+        "tools": true,
+        "reasoning_controls": true,
+        "structured_outputs": true,
+        "continuations": true,
+        "sessions": true,
+        "grammars": false,
+        "speculative_mtp": true,
+        "speculative": true,
+        "tensor_parallel": false,
+        "multiple_models": false
+      },
+      "capabilities_url": "/v1/hipengine/capabilities",
+      "routing": {
+        "loaded_model_count": 1,
+        "multiple_models": false
+      }
+    }
+  },
+  "rows": [
+    {
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 64,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return the requested JSON object."
+          }
+        ],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "result",
+            "strict": true,
+            "schema": {
+              "const": {
+                "answer": "alpha beta gamma",
+                "number": 42
+              }
+            }
+          }
+        },
+        "temperature": 0.0,
+        "stream": false,
+        "speculative": false
+      },
+      "status": 200,
+      "result": {
+        "text": "{\"answer\": \"alpha beta gamma\", \"number\": 42}",
+        "tokens": [],
+        "ids": [
+          4754,
+          8944,
+          763,
+          328,
+          6918,
+          13053,
+          20956,
+          487,
+          328,
+          3946,
+          763,
+          220,
+          19,
+          17,
+          92
+        ],
+        "finish": {
+          "reason": "stop",
+          "sampler_mode": "grammar_greedy",
+          "cache_action": "append_none"
+        },
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 46,
+          "completion_tokens": 15,
+          "total_tokens": 61
+        },
+        "mtp": {
+          "effective_route": "default",
+          "used": false,
+          "draft_tokens": 0,
+          "accepted_draft_tokens": 0,
+          "rejected_draft_tokens": 0,
+          "acceptance_rate": null,
+          "draft_cycles": 0
+        },
+        "generation_shape": {
+          "schema_version": 1,
+          "route": "default",
+          "route_cap": {
+            "scope": "queue_requests",
+            "value": 1,
+            "applied": true
+          },
+          "queue_group": {
+            "id": "queue-48ea208468324c118e2d5f6d6eb4c566",
+            "request_count": 1,
+            "prompt_rows": 1,
+            "item_index": 0,
+            "item_prompt_offset": 0,
+            "item_prompt_rows": 1
+          },
+          "backend_groups": [
+            {
+              "id": "backend-5caa1c2baf864046aa02f5174ac62303",
+              "call_index": 0,
+              "prompt_offset": 0,
+              "input_rows": 1,
+              "actual_group_rows": [
+                1
+              ],
+              "max_actual_group_rows": 1,
+              "verifier_rows": 0
+            }
+          ],
+          "verifier_rows": 0
+        },
+        "sampling_algorithm": null,
+        "execution_path": null
+      }
+    },
+    {
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 64,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return the requested JSON object."
+          }
+        ],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "result",
+            "strict": true,
+            "schema": {
+              "const": {
+                "answer": "alpha beta gamma",
+                "number": 42
+              }
+            }
+          }
+        },
+        "temperature": 0.0,
+        "stream": false,
+        "speculative": true
+      },
+      "status": 200,
+      "result": {
+        "text": "{\"answer\": \"alpha beta gamma\", \"number\": 42}",
+        "tokens": [],
+        "ids": [
+          4754,
+          8944,
+          763,
+          328,
+          6918,
+          13053,
+          20956,
+          487,
+          328,
+          3946,
+          763,
+          220,
+          19,
+          17,
+          92
+        ],
+        "finish": {
+          "reason": "stop",
+          "sampler_mode": "processed_speculative_mtp",
+          "cache_action": "append_none"
+        },
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 46,
+          "completion_tokens": 15,
+          "total_tokens": 61,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 10,
+            "rejected_prediction_tokens": 2
+          }
+        },
+        "mtp": {
+          "effective_route": "speculative_mtp",
+          "used": true,
+          "draft_tokens": 12,
+          "accepted_draft_tokens": 10,
+          "rejected_draft_tokens": 2,
+          "acceptance_rate": 0.8333333333333334,
+          "draft_cycles": 4,
+          "selected_route": "speculative",
+          "decision_reason": "resident_dynamic_mtp"
+        },
+        "generation_shape": {
+          "schema_version": 1,
+          "route": "speculative",
+          "route_cap": {
+            "scope": "queue_requests",
+            "value": 1,
+            "applied": true
+          },
+          "queue_group": {
+            "id": "queue-42e3ea6b1cd24dc495e01d95a3b74af4",
+            "request_count": 1,
+            "prompt_rows": 1,
+            "item_index": 0,
+            "item_prompt_offset": 0,
+            "item_prompt_rows": 1
+          },
+          "backend_groups": [
+            {
+              "id": "backend-dd9b414dfeb049239a664ed939285b14",
+              "call_index": 0,
+              "prompt_offset": 0,
+              "input_rows": 1,
+              "actual_group_rows": [
+                1
+              ],
+              "max_actual_group_rows": 1,
+              "verifier_rows": 0
+            }
+          ],
+          "verifier_rows": 0
+        },
+        "sampling_algorithm": "target_draw_match_deterministic_draft",
+        "execution_path": "qwen4exp_mtp_batched_state_rows_verify"
+      }
+    }
+  ],
+  "ready_after": {
+    "object": "hipengine.readiness",
+    "status": "ready",
+    "ready": true,
+    "diagnostics": [],
+    "model": {
+      "id": "qwen38fn-sampling",
+      "backend": "hip_gfx1151",
+      "quant": "gguf_ud_q4_k_xl",
+      "loaded": true,
+      "loaded_model_count": 1,
+      "kv_capability": {
+        "schema_version": 1,
+        "status": "unavailable",
+        "runtime_action": "not_applicable",
+        "promotion_eligible": false,
+        "diagnostic_override": false,
+        "requested": null,
+        "effective_kv_storage": null,
+        "artifact": null,
+        "evidence": null,
+        "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+      }
+    },
+    "startup": {
+      "eager_load": true,
+      "warmup_complete": true,
+      "last_timings_s": {
+        "engine_create_s": 0.000813,
+        "resident_prepare_s": 19.224453,
+        "warmup_s": 0.190046,
+        "scratch_probe_s": 0.000498,
+        "chat_smoke_s": 0.166534,
+        "startup_total_s": 19.614475
+      },
+      "checks": {
+        "raw_warmup": {
+          "status": "passed",
+          "max_tokens": 1
+        },
+        "scratch_probe": {
+          "enabled": true,
+          "status": "passed",
+          "max_prompt_tokens": 8191,
+          "probe_prompt_tokens": 8191,
+          "context_unknown": false,
+          "result": {
+            "schema": 1,
+            "backend": "hip_gfx1151",
+            "execution_path": "qwen4exp_request_owned_runner_pool",
+            "max_batch_size": 1,
+            "max_sequence_length": 8191,
+            "released_after_probe": false
+          }
+        },
+        "chat_smoke": {
+          "enabled": true,
+          "status": "passed",
+          "prompt_tokens": 13,
+          "max_tokens": 1
+        }
+      },
+      "memory": {
+        "startup_begin": {
+          "free_bytes": 130570309632,
+          "total_bytes": 133143986176,
+          "used_bytes": 2573676544,
+          "free_gib": 121.603077,
+          "used_gib": 2.396923
+        },
+        "after_resident_prepare": {
+          "free_bytes": 36970442752,
+          "total_bytes": 133143986176,
+          "used_bytes": 96173543424,
+          "free_gib": 34.431408,
+          "used_gib": 89.568592
+        },
+        "after_raw_warmup": {
+          "free_bytes": 36878553088,
+          "total_bytes": 133143986176,
+          "used_bytes": 96265433088,
+          "free_gib": 34.345829,
+          "used_gib": 89.654171
+        },
+        "after_scratch_probe": {
+          "free_bytes": 36878553088,
+          "total_bytes": 133143986176,
+          "used_bytes": 96265433088,
+          "free_gib": 34.345829,
+          "used_gib": 89.654171
+        },
+        "after_chat_smoke": {
+          "free_bytes": 36876455936,
+          "total_bytes": 133143986176,
+          "used_bytes": 96267530240,
+          "free_gib": 34.343876,
+          "used_gib": 89.656124
+        },
+        "guard": {
+          "free_bytes": 36876455936,
+          "total_bytes": 133143986176,
+          "used_bytes": 96267530240,
+          "free_gib": 34.343876,
+          "used_gib": 89.656124
+        }
+      },
+      "error": null
+    },
+    "context": {
+      "configured_max_context_tokens": 8192,
+      "effective_max_context_tokens": 8192,
+      "chat_default_max_tokens": 4096
+    },
+    "kv_capacity": {
+      "storage": "bf16",
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "estimate": null,
+      "pool": {
+        "current_bytes": 0.0,
+        "high_water_observed_bytes": 0.0,
+        "current_pages": 0.0,
+        "high_water_observed_pages": 0.0,
+        "grow_events": 0.0,
+        "grow_failures": 0.0,
+        "shrink_events": 0.0,
+        "free_pages": 0.0,
+        "refcounted_pages": 0.0,
+        "pinned_pages": 0.0,
+        "max_pages": 0.0,
+        "budget_bytes": 0.0,
+        "retired_pages": 0.0,
+        "retired_bytes": 0.0
+      }
+    },
+    "prefix_cache": {
+      "mode": "off",
+      "block_size_tokens": 256,
+      "snapshot_entries": 0,
+      "snapshot_limit": 0,
+      "retained_snapshot_entries": 0,
+      "snapshot_bytes": 0,
+      "retained_kv_pages": 0,
+      "retained_kv_bytes": 0,
+      "resident_bytes": 0,
+      "resident_limit_bytes": 0
+    },
+    "graph_cache": {
+      "entries": 0.0,
+      "hits": 0.0,
+      "misses": 0.0,
+      "replay_hit_rate": 0.0
+    },
+    "device": {
+      "backend": "hip_gfx1151",
+      "hip_visible_devices": null,
+      "rocr_visible_devices": null,
+      "visible_devices": [],
+      "selected_visible_device": null,
+      "selection_source": null
+    },
+    "queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 1,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": true,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 0.0
+    },
+    "sessions": {
+      "resident_context": true,
+      "active": 0,
+      "pending_creations": 0,
+      "max_active": null,
+      "storage": "app_local_transcript",
+      "resident_state_reuse": false,
+      "total_messages": 0,
+      "continuations": {
+        "active": 0,
+        "ttl_seconds": 900
+      }
+    },
+    "service": {
+      "accepting_requests": true,
+      "driver_alive": true,
+      "closing": false,
+      "closed": false,
+      "failure": null
+    }
+  },
+  "passed": true,
+  "limitations": [
+    "Two short schema-constrained requests only; not numerical, task-quality, performance or multi-prompt acceptance evidence.",
+    "Initial harness comparison failed before any inference because explicit cold LLM metadata/profile registration was missing; initialized these and reran. No server code changed.",
+    "Q4_K_M quarantine and strict selector ownership verified by CPU tests, not by this UD live run."
+  ]
+}

@@ -419,8 +419,13 @@ Experimental harnesses must apply overrides after binding and record the modifie
 candidate separately; the original manifest does not certify those overrides.
 
 The recognized UD layout selects the same manifest as explicit
-`quant="gguf_ud_q4_k_xl"`, with the numerical evidence and task-review limits
-stated in this section. No kernel composition was changed by the resolver.
+`quant="gguf_ud_q4_k_xl"`. A live C1 BF16/8192-context check on zbook/gfx1151
+omitted both quant and execution profile, verified this manifest equality, and
+passed one AR and one actual-MTP structured request. This is configuration
+coverage, not a numerical or task-quality gate; see
+[`2026-10-17-zbook-qwen4exp-default-configuration.json`](../benchmarks/results/2026-10-17-zbook-qwen4exp-default-configuration.json).
+The numerical evidence and task-review limits stated in this section still apply.
+No kernel composition was changed by the resolver.
 
 ## 3. Profile is orthogonal to model representation
 
