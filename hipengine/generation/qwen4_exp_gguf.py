@@ -11,6 +11,7 @@ from typing import Any, Sequence
 from hipengine.dispatch import RequestState, SlotMove, WorkItem
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.qwen4_exp_serving_mtp import Qwen4ExpServingMTP, _RequestRetired
 from hipengine.generation.qwen4_exp_multimodal import (
     qwen4_exp_multimodal_token_control,
     render_qwen4_exp_multimodal_prompt,
@@ -750,13 +751,19 @@ class _Qwen4ExpServingRow:
     generated_ids: list[int] = field(default_factory=list)
     emitted_text: str = ""
     grammar: Any | None = None
+    lifetime_request: GenerationRequest | None = None
+    mtp_budget: int = 0
+    draft: Any | None = None
+    mtp_steps: Any | None = None
+    mtp_output: GenerationOutput | None = None
+    previous_hidden: Any | None = None
 
     @property
     def controlled(self):
         return self.grammar is not None or bool(self.request.suppress_token_ids or self.request.logit_bias)
 
 
-class Qwen4ExpResidentServingRunner:
+class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
     """Request-owned c2 runner pool over one shared Qwen4Exp weight layout."""
 
     def __init__(self, generator: Qwen4ExpGGUFTextGenerator, *, capacity: int) -> None:
@@ -767,6 +774,7 @@ class Qwen4ExpResidentServingRunner:
         self._all_runners = [generator.runner]
         self._available = [generator.runner]
         self._closed = False
+        self._init_mtp()
 
     @property
     def active_request_ids(self) -> tuple[int, ...]:
@@ -794,6 +802,7 @@ class Qwen4ExpResidentServingRunner:
             )
             self._all_runners.append(runner)
             self._available.append(runner)
+        self._prepare_mtp()
         return required
 
     def prepare_request_scratch(
@@ -870,7 +879,12 @@ class Qwen4ExpResidentServingRunner:
         if not self._available:
             raise RuntimeError("Qwen4Exp scheduler has no free request runner")
         row.runner = self._available.pop()
-        row.runner.reset()
+        try:
+            row.runner.reset()
+            self._reserve_mtp(row)
+        except BaseException:
+            self._release_runner(row)
+            raise
 
     def rollback_admission(self, request: RequestState) -> None:
         self._release_runner(self._row(request.request_id))
@@ -882,24 +896,36 @@ class Qwen4ExpResidentServingRunner:
             work.request_ids, work.token_rows, strict=True
         ):
             row = self._row(request_id)
-            raise_if_generation_deadline_expired(row.request)
-            chunk = tuple(int(token) for token in token_row)
-            start = row.prefill_tokens_seen
-            if chunk != row.prompt_ids[start : start + len(chunk)]:
-                raise RuntimeError("Qwen4Exp native prefill chunk drift")
-            if int(row.request.max_tokens) == 0:
-                row.prefill_tokens_seen += len(chunk)
+            try:
+                self._prefill_row(row, token_row)
+            except _RequestRetired:
+                # The engine probes request_cancel_reason and reclaims this row
+                # after the bounded work item; a peer remains runnable.
                 continue
-            if row.runner is None:
-                raise RuntimeError("Qwen4Exp admitted row has no runner")
-            prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
-            if row.controlled:
-                prefill_kwargs["capture_logits"] = True
-            result = row.runner.prefill_append(chunk, **prefill_kwargs)
+
+    def _prefill_row(self, row, token_row):
+        self._check_request_live(row)
+        chunk = tuple(int(token) for token in token_row)
+        start = row.prefill_tokens_seen
+        if chunk != row.prompt_ids[start : start + len(chunk)]:
+            raise RuntimeError("Qwen4Exp native prefill chunk drift")
+        if int(row.request.max_tokens) == 0:
             row.prefill_tokens_seen += len(chunk)
-            if row.prefill_tokens_seen == len(row.prompt_ids):
-                row.next_result = result
-            raise_if_generation_deadline_expired(row.request)
+            return
+        if row.runner is None:
+            raise RuntimeError("Qwen4Exp admitted row has no runner")
+        prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
+        if row.controlled:
+            prefill_kwargs["capture_logits"] = True
+        if row.mtp_budget:
+            prefill_kwargs["capture_hidden_seeds"] = True
+        result = row.runner.prefill_append(chunk, **prefill_kwargs)
+        self._check_request_live(row)
+        if row.mtp_budget:
+            self._prefill_mtp(row, chunk, result)
+        row.prefill_tokens_seen += len(chunk)
+        if row.prefill_tokens_seen == len(row.prompt_ids):
+            row.next_result = result
 
     def decode_batch(
         self, work: WorkItem, *, commit: bool
@@ -909,7 +935,8 @@ class Qwen4ExpResidentServingRunner:
         generated: list[GeneratedToken] = []
         for request_id in work.request_ids:
             row = self._row(request_id)
-            raise_if_generation_deadline_expired(row.request)
+            if self.request_cancel_reason(request_id) is not None:
+                continue
             if int(row.request.max_tokens) == 0:
                 finish = FinishDetails(
                     reason="length", length_limit=0, sampler_mode="greedy"
@@ -926,9 +953,25 @@ class Qwen4ExpResidentServingRunner:
                 continue
             if row.next_result is None or row.runner is None:
                 raise RuntimeError("Qwen4Exp native row is not prefilled")
-            token = self.generator._controlled_token(row.next_result,row.request,row.grammar)
-            row.generated_ids.append(token)
+            if row.mtp_budget:
+                progress, _ = self._advance_mtp(row, 0)
+                if progress is None:
+                    continue
+                if len(progress.token_ids) != 1:
+                    raise RuntimeError("Flash-Next root/K0 must emit one token")
+                token = progress.token_ids[0]
+            else:
+                token = self.generator._controlled_token(row.next_result, row.request, row.grammar)
+                row.generated_ids.append(token)
             finish = self._finish(row)
+            if finish is None and not row.mtp_budget:
+                step_kwargs = _qwen4_exp_compact_step_kwargs()
+                if row.controlled:
+                    step_kwargs.update(capture_logits=True, token_id_resident=False)
+                row.next_result = row.runner.step(token, **step_kwargs)
+                if self.request_cancel_reason(request_id) is not None:
+                    row.generated_ids.pop()
+                    continue
             visible = self._visible_ids(row, finish)
             full_text = self.generator.tokenizer.decode(
                 visible, skip_special=False
@@ -951,15 +994,6 @@ class Qwen4ExpResidentServingRunner:
                     ),
                 )
             )
-            if finish is None:
-                step_kwargs = _qwen4_exp_compact_step_kwargs()
-                if row.controlled:
-                    step_kwargs.update(capture_logits=True,token_id_resident=False)
-                row.next_result = row.runner.step(
-                    token,
-                    **step_kwargs,
-                )
-                raise_if_generation_deadline_expired(row.request)
         return tuple(generated)
 
     def compact_batch(self, moves: Sequence[SlotMove]) -> None:
@@ -971,13 +1005,19 @@ class Qwen4ExpResidentServingRunner:
         if row is None:
             return
         finish = completed.finish_details
-        if completed.finish_reason not in {"cancel", "disconnect", "timeout"}:
+        if completed.finish_reason in {"cancel", "disconnect", "timeout"}:
+            # A cancellation can arrive between native work and the engine's
+            # publication check. Only scheduler-committed IDs are observable.
+            row.generated_ids[:] = completed.generated_tokens
+            row.mtp_output = None
+        else:
             finish = self._finish(row) or completed.finish_details
         visible = self._visible_ids(row, finish)
         self._outputs[row.request_id] = GenerationOutput(
             text=self.generator.tokenizer.decode(visible, skip_special=False),
             generated_token_ids=tuple(row.generated_ids),
             finish_details=finish,
+            telemetry=None if row.mtp_output is None else row.mtp_output.telemetry,
         )
         self._release_runner(row)
 
@@ -1014,6 +1054,7 @@ class Qwen4ExpResidentServingRunner:
             self._release_runner(row)
         self._rows.clear()
         self._outputs.clear()
+        self._close_mtp()
         primary = self.generator.runner
         for runner in reversed(self._all_runners):
             if runner is not primary:
@@ -1030,6 +1071,7 @@ class Qwen4ExpResidentServingRunner:
             raise KeyError(f"unknown Qwen4Exp request_id {request_id}") from exc
 
     def _release_runner(self, row: _Qwen4ExpServingRow) -> None:
+        self._release_mtp(row)
         runner, row.runner = row.runner, None
         if runner is not None and runner in self._all_runners and runner not in self._available:
             self._available.append(runner)

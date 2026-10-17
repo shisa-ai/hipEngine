@@ -1,3 +1,18 @@
+## Flash-Next staged MTP physical width and controls
+
+- `Qwen4ExpServingMTP` uses exclusive target/draft pool owners and reversible
+  device snapshots for one scheduler-selected cycle at a time. The Python
+  iterator cannot restore a surviving peer's internal state, so physical
+  speculative width is one; the existing scheduler partitions logical C2 work.
+  Replace this limit only with a snapshotable multi-request frontier and
+  cancellation/isolation evidence. Do not label candidate rows as request width.
+- Token processors beyond model EOS (stops, grammar, penalties, thinking caps,
+  forced tokens, logprobs and resident session reuse) are rejected at staged
+  registration until their MTP commit/rollback contracts are implemented.
+  Remove each guard with its full behavior gate, not by silently using K0.
+- Evidence: `tests/test_unit_qwen4exp_mtp_submission.py` and
+  `worklog/entries/20261017T192055.400855Z-lhl-qwen4exp-staged-mtp-serving-0ed770.md`.
+
 ## Generic speculative service lifecycle
 
 - `EngineService` admits the generic spelling through existing speculative

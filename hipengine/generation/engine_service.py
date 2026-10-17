@@ -208,6 +208,7 @@ class EngineService:
         self._generic_speculative_children = 0
         self._closing = False
         self._closed = False
+        self._failure: str | None = None
         self._driver_thread_id: int | None = None
         self._driver_ready = threading.Event()
         self._thread = threading.Thread(
@@ -232,6 +233,17 @@ class EngineService:
     @property
     def closed(self) -> bool:
         return self._closed
+
+    def service_health(self) -> dict[str, Any]:
+        """Nonblocking lifetime status; never queues behind model work."""
+        alive = self._thread.is_alive()
+        return {
+            "accepting_requests": alive and not self._closing and not self._closed and self._failure is None,
+            "driver_alive": alive,
+            "closing": self._closing,
+            "closed": self._closed,
+            "failure": self._failure,
+        }
 
     @property
     def supports_controlled_streaming(self) -> bool:
@@ -280,7 +292,9 @@ class EngineService:
         )
         response = _CommandResponse()
         self._enqueue(_ServiceCommand("submit", response, state=state))
-        response.result(timeout=self._command_timeout_seconds)
+        # Once queued, request ownership lasts until admission or retirement.
+        # A slow preceding tick must not abandon a command that can still run.
+        response.result()
         return EngineServiceHandle(self, state)
 
     def submit_children(
@@ -299,7 +313,7 @@ class EngineService:
             return ()
         response = _CommandResponse()
         self._enqueue(_ServiceCommand("submit_many", response, states=states))
-        response.result(timeout=self._command_timeout_seconds)
+        response.result()
         return tuple(EngineServiceHandle(self, state) for state in states)
 
     def submit_request_batches(
@@ -342,7 +356,7 @@ class EngineService:
                 states=(state,),
             )
         )
-        response.result(timeout=self._command_timeout_seconds)
+        response.result()
         self._record_speculative_route("engine_service_verify_chain")
         return EngineServiceHandle(self, state)
 
@@ -366,7 +380,7 @@ class EngineService:
         self._enqueue(
             _ServiceCommand("submit_speculative_many", response, states=states)
         )
-        response.result(timeout=self._command_timeout_seconds)
+        response.result()
         self._record_speculative_route("engine_service_verify_chain")
         return tuple(EngineServiceHandle(self, state) for state in states)
 
@@ -380,7 +394,7 @@ class EngineService:
                 reason=str(reason),
             )
         )
-        return bool(response.result(timeout=self._command_timeout_seconds))
+        return bool(response.result())
 
     def generate(self, request: GenerationRequest) -> list[str]:
         return [output.text for output in self.generate_detailed(request)]
@@ -665,16 +679,14 @@ class EngineService:
                 thread = self._thread
                 response = None
             else:
-                self._closing = True
                 response = _CommandResponse()
                 self._put_command(_ServiceCommand("shutdown", response))
+                self._closing = True
                 thread = self._thread
         if response is not None:
-            response.result(timeout=self._command_timeout_seconds)
+            response.result()
         if thread is not threading.current_thread():
-            thread.join(timeout=self._command_timeout_seconds)
-            if thread.is_alive():
-                raise RuntimeError("engine service driver did not stop")
+            thread.join()
 
     def _new_child_state(
         self,
@@ -765,6 +777,7 @@ class EngineService:
         self._driver_thread_id = threading.get_ident()
         self._driver_ready.set()
         shutdown_response: _CommandResponse | None = None
+        driver_error: BaseException | None = None
         try:
             while shutdown_response is None:
                 if not self._states_by_service_id:
@@ -795,6 +808,8 @@ class EngineService:
                 if not events and self._states_by_service_id and self._idle_wait_seconds:
                     time.sleep(self._idle_wait_seconds)
         except BaseException as exc:
+            driver_error = exc
+            self._failure = type(exc).__name__
             import os
             import sys
             import traceback
@@ -806,6 +821,11 @@ class EngineService:
                 shutdown_response.finish(error=exc)
                 shutdown_response = None
         finally:
+            with self._lifecycle_lock:
+                self._closing = True
+            # Commands queued behind a failed tick or a shutdown must resolve;
+            # there will be no next owner to admit or reject them.
+            self._fail_pending_commands(driver_error or RuntimeError("engine service is closed"))
             for state in tuple(self._states_by_service_id.values()):
                 self._cancel_state(state, reason="shutdown")
             closer = getattr(self._driver, "close", None)
@@ -885,6 +905,7 @@ class EngineService:
             admitted: list[_ChildState] = []
             batch_submissions: tuple[GenerationSubmission, ...] = ()
             try:
+                states = tuple(state for state in states if not self._retire_expired_state(state))
                 batch_submit = (
                     getattr(self._driver, "submit_speculative_many_detailed", None)
                     if command.kind == "submit_speculative_many" and len(states) > 1
@@ -1202,6 +1223,30 @@ class EngineService:
     def _notify_output(self) -> None:
         with self._output_condition:
             self._output_condition.notify_all()
+
+    def _retire_expired_state(self, state: _ChildState) -> bool:
+        request = state.request
+        if generation_deadline_expired(request.deadline_at):
+            self._cancel_state(state, reason="timeout")
+            return True
+        token = request.cancellation_token
+        if token is not None and (getattr(token, "cancel_requested", False) or getattr(token, "cancelled", False)):
+            details = FinishDetails.from_value(getattr(token, "finish_details", None))
+            reason = "timeout" if details.deadline_exceeded else "disconnect"
+            self._cancel_state(state, reason=reason)
+            return True
+        return False
+
+    def _fail_pending_commands(self, error: BaseException) -> None:
+        while True:
+            try:
+                command = self._commands.get_nowait()
+            except queue.Empty:
+                return
+            states = (command.state,) if command.state is not None else command.states
+            for state in states:
+                self._cancel_state(state, reason="driver_error", error=error)
+            command.response.finish(error=error)
 
     def _fail_all(self, error: BaseException) -> None:
         for state in tuple(self._states_by_service_id.values()):

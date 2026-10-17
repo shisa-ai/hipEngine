@@ -83,6 +83,10 @@ DEFAULT_ROUND_DECODE_ROW_BUDGET = 32
 # Internal cross-thread routing absorbs transient scheduler bursts; the HTTP
 # client-facing queue remains independently bounded by ServerConfig (default 16).
 DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS = 64
+# The only reasons a native runner may report through ``request_cancel_reason``.
+# They are exactly the scheduler's cancel vocabulary, so one row's native
+# lifetime state maps onto the ordinary reclaim path without a new finish mode.
+_REQUEST_LIFETIME_CANCEL_REASONS = frozenset({"cancel", "disconnect", "timeout"})
 
 
 def _speculative_sampling_mode(runner, request_id, params):
@@ -276,6 +280,17 @@ class EngineLoopRunner(Protocol):
     Native runners implement the batch-shaped methods.  The historical
     ``prefill``/``decode`` pair remains an explicit serial bridge for simple
     host fakes and non-native generators.
+
+    A native runner may also implement two optional request-lifetime hooks.
+    ``bind_request_lifetime(request_ids, request)`` receives the original
+    generation request after ``register_batch``, including the deadline and
+    cancellation token that the scheduler-facing request deliberately drops.
+    ``request_cancel_reason(request_id)`` returns ``None`` or one of
+    ``"cancel"``, ``"disconnect"``, ``"timeout"`` for a row the scheduler
+    still owns.  The loop probes it before admission and after prefill, AR
+    decode, and opaque speculative cycles, then reclaims only that row through
+    the ordinary scheduler cancel path.  Runners without the hooks keep the
+    scheduler-only lifetime contract.
     """
 
     def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
@@ -690,6 +705,7 @@ class SubmitPollTextGenerator:
                 runner_request,
                 prompt_rows=(prompt_row,),
             )
+            self._bind_runner_request_lifetime_locked((request_id,), request)
             register_speculative = getattr(
                 self._runner,
                 "register_speculative_request",
@@ -736,6 +752,26 @@ class SubmitPollTextGenerator:
         submission: GenerationSubmission,
     ) -> bool:
         return submission.execution_route == "engine_service_specdec2"
+
+    def _bind_runner_request_lifetime_locked(
+        self,
+        request_ids: Sequence[int],
+        request: GenerationRequest,
+    ) -> None:
+        """Hand the original request to a native runner that owns row lifetimes.
+
+        The scheduler-facing ``register_batch`` request has its deadline
+        stripped so one expired row cannot raise through a shared physical
+        batch.  A native runner that skips request-local cancelled rows needs
+        the original request (deadline plus cancellation token) instead, and
+        reports the resulting row state back through
+        ``request_cancel_reason``.  Runners without the hook are unchanged.
+        """
+
+        bind = getattr(self._runner, "bind_request_lifetime", None)
+        if not callable(bind):
+            return
+        bind(tuple(int(request_id) for request_id in request_ids), request)
 
     def __getattr__(self, name: str):
         return getattr(self._inner, name)
@@ -844,6 +880,7 @@ class SubmitPollTextGenerator:
                 runner_request,
                 prompt_rows=prompt_rows,
             )
+            self._bind_runner_request_lifetime_locked(request_ids, normalized)
             timing_observer = getattr(
                 self._runner,
                 "record_prompt_tokenize_ms",
@@ -1602,6 +1639,14 @@ def _resident_stream_suppressed_suffix(
     return 0
 
 
+def _generated_token_request_id(item: GeneratedToken | Sequence[int]) -> int:
+    """Return the owner of one decode result in either accepted token shape."""
+
+    if isinstance(item, GeneratedToken):
+        return int(item.request_id)
+    return int(tuple(item)[0])
+
+
 def _events_advance_submission_tick(
     events: Sequence[EngineLoopEvent],
     request_ids: Sequence[int],
@@ -2128,11 +2173,117 @@ class ResidentEngineLoop:
     def cancel(self, request_id: int, *, reason: str = "cancel") -> bool:
         """Cancel a pending or active request and reclaim active scheduler state."""
 
-        completed = self.scheduler.cancel(request_id, reason=reason)
+        return self._cancel_request(request_id, reason=reason) is not None
+
+    def _cancel_request(
+        self,
+        request_id: int,
+        *,
+        reason: str,
+    ) -> CompletedRequest | None:
+        """Reclaim one row through the scheduler and drop its speculative intent."""
+
+        rid = int(request_id)
+        completed = self.scheduler.cancel(rid, reason=reason)
         if completed is not None:
-            self._speculative_candidate_counts.pop(int(request_id), None)
-            self._speculative_cancel_probes.pop(int(request_id), None)
-        return completed is not None
+            self._speculative_candidate_counts.pop(rid, None)
+            self._speculative_cancel_probes.pop(rid, None)
+        return completed
+
+    def _scheduled_request_ids(self) -> tuple[int, ...]:
+        """Return the request ids the scheduler still owns in a runnable state."""
+
+        return (
+            tuple(
+                int(request.request_id)
+                for request in self.scheduler.pending_requests
+            )
+            + tuple(
+                int(request_id)
+                for request_id in self.scheduler.active_batch.requests
+            )
+        )
+
+    def _request_cancel_reason_probe(self) -> Callable[[int], Any] | None:
+        """Return the runner's optional request-local lifetime probe."""
+
+        probe = getattr(self.runner, "request_cancel_reason", None)
+        return probe if callable(probe) else None
+
+    def _request_cancel_reason(self, request_id: int) -> str | None:
+        """Return the native runner's request-local cancellation reason, if any."""
+
+        probe = self._request_cancel_reason_probe()
+        if probe is None:
+            return None
+        reason = probe(int(request_id))
+        if reason is None:
+            return None
+        reason = str(reason)
+        if reason not in _REQUEST_LIFETIME_CANCEL_REASONS:
+            raise ValueError(
+                "runner request_cancel_reason must return None, 'cancel', "
+                f"'disconnect', or 'timeout' (got {reason!r})"
+            )
+        return reason
+
+    def _request_lifetime_cancellations(
+        self,
+        request_ids: Sequence[int],
+    ) -> tuple[tuple[int, str], ...]:
+        """Probe request-local cancellation for still-scheduled rows only."""
+
+        if self._request_cancel_reason_probe() is None:
+            return ()
+        extant = frozenset(self._scheduled_request_ids())
+        cancelled: list[tuple[int, str]] = []
+        for request_id in request_ids:
+            rid = int(request_id)
+            if rid not in extant:
+                # A reclaimed row owns no runner state; never probe it.
+                continue
+            reason = self._request_cancel_reason(rid)
+            if reason is not None:
+                cancelled.append((rid, reason))
+        return tuple(cancelled)
+
+    def _probe_request_lifetime(
+        self,
+        request_ids: Sequence[int] | None = None,
+    ) -> tuple[EngineLoopEvent, ...]:
+        """Reclaim every scheduled row the runner reports as cancelled."""
+
+        if self._request_cancel_reason_probe() is None:
+            return ()
+        candidates = (
+            self._scheduled_request_ids()
+            if request_ids is None
+            else tuple(int(request_id) for request_id in request_ids)
+        )
+        return self._reclaim_request_lifetime_cancellations(
+            self._request_lifetime_cancellations(candidates)
+        )
+
+    def _reclaim_request_lifetime_cancellations(
+        self,
+        cancelled: Sequence[tuple[int, str]],
+    ) -> tuple[EngineLoopEvent, ...]:
+        """Cancel one row per reported reason without raising through poll."""
+
+        events: list[EngineLoopEvent] = []
+        for request_id, reason in cancelled:
+            completed = self._cancel_request(int(request_id), reason=reason)
+            if completed is None:
+                continue
+            events.append(
+                EngineLoopEvent(
+                    kind="completed",
+                    request_id=completed.request_id,
+                    request_ids=(completed.request_id,),
+                    completed=completed,
+                )
+            )
+        return tuple(events)
 
     def compact(self, order: Sequence[int] | None = None) -> tuple[SlotMove, ...]:
         """Compact scheduler slots and commit the same moves to the runner."""
@@ -2183,6 +2334,11 @@ class ResidentEngineLoop:
 
     def _tick_once(self) -> tuple[EngineLoopEvent, ...]:
         events: list[EngineLoopEvent] = []
+        # A native runner owns request-local lifetime state (deadline, client
+        # disconnect, cancel flag) that the scheduler-facing request does not
+        # carry.  Reclaim such rows before admission so a row cancelled while
+        # queued never consumes a resident slot or publishes a token.
+        events.extend(self._probe_request_lifetime())
         reserve_admission = getattr(self.runner, "reserve_admission", None)
         rollback_admission = getattr(self.runner, "rollback_admission", None)
         plan_admission = getattr(self.runner, "plan_admission", None)
@@ -2357,7 +2513,16 @@ class ResidentEngineLoop:
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         self._last_work_kind = work.kind
         self._consecutive_prefill_chunks += 1
-        return (EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind),)
+        return (
+            EngineLoopEvent(
+                kind="work",
+                request_ids=work.request_ids,
+                work_kind=work.kind,
+            ),
+            # Prompt work is the first point where a native runner can observe
+            # a deadline/cancel that arrived while the prompt chunk ran.
+            *self._probe_request_lifetime(work.request_ids),
+        )
 
     def _run_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
         desired = tuple(
@@ -2487,8 +2652,28 @@ class ResidentEngineLoop:
         else:
             generated = tuple(self.runner.decode(work))
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
+        cancelled = self._request_lifetime_cancellations(work.request_ids)
+        if cancelled:
+            # A row that cancelled while its decode step ran must not publish
+            # the token that step produced.  The native runner already skipped
+            # or rolled back its own output for that row; the loop keeps the
+            # surviving rows' tokens and reclaims the cancelled row itself.
+            cancelled_ids = frozenset(
+                request_id for request_id, _ in cancelled
+            )
+            generated = tuple(
+                item
+                for item in generated
+                if _generated_token_request_id(item) not in cancelled_ids
+            )
         generated_events = self.scheduler.record_generated_events(generated)
-        return self._decode_events(work, generated_events)
+        events = self._decode_events(work, generated_events)
+        if not cancelled:
+            return events
+        return (
+            *events,
+            *self._reclaim_request_lifetime_cancellations(cancelled),
+        )
 
     def _maybe_run_speculative_cycle(
         self,
@@ -2674,8 +2859,20 @@ class ResidentEngineLoop:
                 work_kind=work.kind,
             )
         ]
+        extant = frozenset(self._scheduled_request_ids())
         for request_id in result.cancelled_request_ids:
-            completed = self.scheduler.cancel(int(request_id), reason="cancel")
+            rid = int(request_id)
+            if rid not in extant:
+                # The result owns this row's cancellation, but a row the
+                # scheduler no longer owns has no runner lifetime state left
+                # to probe and nothing to reclaim.
+                continue
+            # The native runner knows why the cycle was cancelled (deadline,
+            # disconnect, or explicit cancel).  Fall back to a plain cancel
+            # only when the runner has no hook or already dropped the reason
+            # while rolling the cycle back.
+            reason = self._request_cancel_reason(rid) or "cancel"
+            completed = self._cancel_request(rid, reason=reason)
             if completed is not None:
                 events.append(
                     EngineLoopEvent(
