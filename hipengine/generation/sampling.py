@@ -1207,10 +1207,11 @@ def _constraint_candidate_ids(
         return finite_ids
     if limit <= 0 or finite_ids.size <= max(64, int(limit) * 4):
         ordered_ids = finite_ids[np.lexsort((finite_ids, -values[finite_ids]))]
-        return np.asarray(
+        selected = np.asarray(
             [int(token_id) for token_id in ordered_ids if token_allowed(int(token_id))],
             dtype=np.int64,
         )
+        return selected[:limit] if limit > 0 else selected
 
     pool_size = min(int(finite_ids.size), max(64, int(limit) * 4))
     while True:
@@ -1259,12 +1260,17 @@ def _logprob_summary(
     finite_ids = np.flatnonzero(np.isfinite(logits)).astype(np.int64, copy=False)
     if finite_ids.size == 0:
         raise ValueError("no finite logits remain after processing")
-    probs = _softmax(logits[finite_ids])
+    values = logits[finite_ids]
+    # Stay in log space: a finite tail logit can have exp(logprob) == 0 in
+    # float64, especially for forced tokens. Clamping would invent probability.
+    shifted = values - np.max(values)
+    logprobs = shifted - np.log(np.exp(shifted).sum())
     token_positions = np.flatnonzero(finite_ids == int(token_id))
     if token_positions.size == 0:
         raise ValueError("selected token has no finite logit")
-    selected_prob = float(probs[int(token_positions[0])])
-    return float(math.log(selected_prob)), _top_logprob_pairs(finite_ids, probs, top_logprobs)
+    order = np.lexsort((finite_ids, -values))[:max(0, int(top_logprobs))]
+    pairs = tuple((int(finite_ids[i]), float(logprobs[i])) for i in order)
+    return float(logprobs[int(token_positions[0])]), pairs
 
 
 def _top_logprob_pairs(
