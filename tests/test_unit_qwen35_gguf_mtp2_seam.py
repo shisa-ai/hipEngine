@@ -207,8 +207,6 @@ def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c4() 
     assert adapter._physical_prompt_streaming_admitted(5) is False
 
 
-
-
 def test_qwen38_q4ks_prompt_streaming_uses_geometry_capability() -> None:
     owner = SimpleNamespace(
         generator=SimpleNamespace(
@@ -232,6 +230,8 @@ def test_qwen38_q4ks_prompt_streaming_uses_geometry_capability() -> None:
 
     assert adapter.physical_prompt_streaming_widths == (1, 2, 3, 4)
 
+
+def test_qwen_gguf_plugins_select_distinct_mtp2_adapters() -> None:
     assert Qwen35GGUFModel().speculative_mtp2_adapter == "dense_nextn"
     assert Qwen35MoeGGUFModel().speculative_mtp2_adapter == "moe_nextn"
 
