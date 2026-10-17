@@ -7050,7 +7050,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine=engine,
                 )
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
-            async for token in _iterate_with_request_control(
+            literal_stops = _LiteralStopStream(request.stop)
+            async for token in _iterate_with_literal_stops(
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
@@ -7068,6 +7069,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 ),
                 control,
+                literal_stops,
             ):
                 stream_chunk = _coerce_generation_stream_chunk(token)
                 last_stream_chunk = stream_chunk
@@ -7335,11 +7337,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
 
-        raw_text = "".join(full_text)
+        raw_text = literal_stops.raw_text if literal_stops.stops else "".join(full_text)
         text, finish_reason = _apply_stop(raw_text, request.stop)
-        server_stop = text != raw_text
-        backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
-        done_stream_chunk = None if server_stop else last_stream_chunk
+        server_stop = literal_stops.matched
+        done_stream_chunk = _literal_stop_terminal_chunk(last_stream_chunk, server_stop)
+        backend_detail = _output_from_stream_chunk(done_stream_chunk, raw_text)
         finish_reason = _finish_reason_for_output(backend_detail, finish_reason, server_stop=server_stop)
         usage = _usage(
             engine,
@@ -9915,7 +9917,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
             )
-            async for token in _iterate_with_request_control(
+            literal_stops = _LiteralStopStream(request.stop)
+            async for token in _iterate_with_literal_stops(
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
@@ -9933,6 +9936,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 ),
                 control,
+                literal_stops,
             ):
                 stream_chunk = _coerce_generation_stream_chunk(token)
                 last_stream_chunk = stream_chunk
@@ -10284,17 +10288,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
 
-        raw_text = "".join(full_text)
+        raw_text = literal_stops.raw_text if literal_stops.stops else "".join(full_text)
         text, finish_reason = _apply_stop(raw_text, request.stop)
-        server_stop = text != raw_text
-        backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
-        done_stream_chunk = None if server_stop else last_stream_chunk
-        if server_stop:
-            # Stop strings can split across yielded chunks; current streaming keeps
-            # transport simple and reports the stop after generation completes.
-            finish_reason = "stop"
-        else:
-            finish_reason = _finish_reason_for_output(backend_detail, finish_reason)
+        server_stop = literal_stops.matched
+        done_stream_chunk = _literal_stop_terminal_chunk(last_stream_chunk, server_stop)
+        backend_detail = _output_from_stream_chunk(done_stream_chunk, raw_text)
+        finish_reason = _finish_reason_for_output(backend_detail, finish_reason, server_stop=server_stop)
         usage = _usage(
             engine,
             (generation_prompt,),
@@ -16716,6 +16715,103 @@ def _message_content_text(content: str | list[Any] | None, message_index: int) -
             )
         text_parts.append(text)
     return "".join(text_parts)
+
+
+class _LiteralStopStream:
+    """Hold possible stop prefixes before publishing any response text.
+
+    Keep original chunk boundaries where possible, and drain the backend after
+    a match so its terminal IDs, usage and speculative attribution survive.
+    """
+
+    def __init__(self, stop: str | list[str] | None) -> None:
+        self.stops = tuple(s for s in _stop_strings(stop) if s)
+        self.matched = False
+        self.raw_parts: list[str] = []
+        self.pending: list[GenerationStreamChunk] = []
+
+    @property
+    def raw_text(self) -> str:
+        return "".join(self.raw_parts)
+
+    def feed(self, chunk: GenerationStreamChunk) -> list[GenerationStreamChunk]:
+        self.raw_parts.append(chunk.text)
+        if self.matched or not chunk.text:
+            return [replace(chunk, text="", token_logprobs=())]
+        self.pending.append(chunk)
+        text = "".join(item.text for item in self.pending)
+        positions = [text.find(stop) for stop in self.stops if stop in text]
+        if positions:
+            self.matched = True
+            result = self._drain(min(positions), partial=True)
+            self.pending.clear()
+            return result
+        held = max((n for stop in self.stops
+                    for n in range(1, min(len(stop), len(text) + 1))
+                    if text.endswith(stop[:n])), default=0)
+        return self._drain(len(text) - held, partial=False)
+
+    def _drain(self, count: int, *, partial: bool) -> list[GenerationStreamChunk]:
+        result = []
+        while self.pending and count > 0:
+            chunk = self.pending[0]
+            if len(chunk.text) > count:
+                if partial:
+                    # A stop inside a token has no probability for the visible
+                    # fragment. Preserve its ID, but report that logprob omitted.
+                    records = []
+                    left = count
+                    for token in chunk.token_logprobs:
+                        if left <= 0:
+                            break
+                        if len(token.token_text) <= left:
+                            records.append(token)
+                        else:
+                            records.append(replace(token, token_text=token.token_text[:left],
+                                                   logprob=None, top_logprobs=()))
+                        left -= len(token.token_text)
+                    result.append(replace(chunk, text=chunk.text[:count], token_logprobs=tuple(records)))
+                break
+            self.pending.pop(0)
+            result.append(chunk)
+            count -= len(chunk.text)
+        return result
+
+    def finish(self) -> list[GenerationStreamChunk]:
+        result, self.pending = self.pending, []
+        return result
+
+
+async def _iterate_with_literal_stops(iterator, control, stops):
+    source = _iterate_with_request_control(iterator, control)
+    last = None
+    try:
+        async for token in source:
+            if not stops.stops:
+                yield token
+                continue
+            last = _coerce_generation_stream_chunk(token)
+            for chunk in stops.feed(last):
+                yield chunk
+        if stops.stops:
+            for chunk in stops.finish():
+                yield chunk
+            if last is not None:
+                # Buffered text can outlive the backend's terminal chunk. The
+                # final metadata must still come from that terminal chunk.
+                yield replace(last, text="", token_logprobs=())
+    finally:
+        await source.aclose()
+
+
+def _literal_stop_terminal_chunk(chunk, matched):
+    if chunk is None or not matched:
+        return chunk
+    finish = chunk.finish_details or FinishDetails(reason="stop")
+    return replace(chunk, finish_details=replace(
+        finish, reason="stop", length_limit=None, eos_token_id=None,
+        continuation_eligible=False,
+    ))
 
 
 def _apply_stop(text: str, stop: str | list[str] | None) -> tuple[str, str]:
