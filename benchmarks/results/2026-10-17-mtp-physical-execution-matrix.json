@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "mtp_physical_execution_matrix_diagnostic",
-  "status": "http_route_and_physical_execution_verified_not_acceptance",
+  "status": "diagnostic_partial_concurrency_matrix",
   "date": "2026-10-17",
   "performance_claim": false,
   "speed_claim_eligible": false,
@@ -31,7 +31,7 @@
       "MTP physical proposal/target counters",
       "Qwen3.6 MoE MTP route and physical counters"
     ],
-    "note": "Physical-width diagnostics only. Queue_group/backend_groups are not treated as physical verifier width. No throughput or numerical acceptance claim."
+    "note": "Physical-route diagnostic, not numerical acceptance or throughput evidence. MoE greedy C2/C3 inputs were posted sequentially by the replay harness; their absence of batching is not a capability finding."
   },
   "models": {
     "qwen38_q4km": {
@@ -43,7 +43,51 @@
           "rows": 1,
           "statuses": [
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c1-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c1-physical-final.json"
+          ],
+          "submission_mode": "singleton",
+          "native_packed_decode_steps_delta": 0.0
         },
         "ar_c2": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c2-physical-final.json",
@@ -53,7 +97,51 @@
           "statuses": [
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c2-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c2-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 31.0
         },
         "ar_c3": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c3-physical-final.json",
@@ -64,7 +152,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c3-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c3-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 31.0
         },
         "ar_c4": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c4-physical-final.json",
@@ -76,7 +208,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c4-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-ar-c4-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 31.0
         },
         "mtp_c1": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c1-physical-final.json",
@@ -85,7 +261,51 @@
           "rows": 1,
           "statuses": [
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c1-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c1-physical-final.json"
+          ],
+          "submission_mode": "singleton",
+          "native_packed_decode_steps_delta": 0.0
         },
         "mtp_c2": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c2-physical-final.json",
@@ -95,7 +315,51 @@
           "statuses": [
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c2-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c2-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 0.0
         },
         "mtp_c3": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c3-physical-final.json",
@@ -106,7 +370,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c3-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c3-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 1.0
         },
         "mtp_c4": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c4-physical-final.json",
@@ -118,7 +426,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c4-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_m-mtp-c4-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 1.0
         }
       },
       "ready_max_packed_rows": [
@@ -130,7 +482,80 @@
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "1",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": false,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "ar_c2": [
@@ -138,13 +563,159 @@
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "2",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_1",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "3",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "ar_c3": [
@@ -152,19 +723,238 @@
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "4",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_1",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "5",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_2",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "6",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "ar_c4": [
@@ -172,25 +962,317 @@
             "label": "c4_ar_3",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3003,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "10",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_1",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "8",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "7",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_2",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "9",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "mtp_c1": [
@@ -204,6 +1286,84 @@
               "target_pass_count": 9,
               "target_batch_calls": 0,
               "target_rows_histogram": {}
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "11",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           }
         ],
@@ -224,6 +1384,84 @@
                 "6": 1,
                 "8": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              303,
+              279,
+              2193,
+              314,
+              7262,
+              264,
+              3370,
+              5165,
+              11,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "13",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -242,6 +1480,84 @@
                 "6": 1,
                 "8": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "12",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           }
         ],
@@ -262,6 +1578,84 @@
                 "10": 1,
                 "12": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              303,
+              279,
+              2193,
+              314,
+              7262,
+              264,
+              3370,
+              5165,
+              11,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "16",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -281,6 +1675,84 @@
                 "10": 1,
                 "12": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "14",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -300,6 +1772,84 @@
                 "10": 1,
                 "12": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "15",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           }
         ],
@@ -320,6 +1870,84 @@
                 "15": 1,
                 "16": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3003,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              11,
+              44457,
+              303,
+              279,
+              2193,
+              314,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1149,
+              6558,
+              728,
+              1683
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "20",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -339,6 +1967,84 @@
                 "15": 1,
                 "16": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "18",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -358,6 +2064,84 @@
                 "15": 1,
                 "16": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "19",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -377,6 +2161,84 @@
                 "15": 1,
                 "16": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              303,
+              279,
+              2193,
+              314,
+              7262,
+              264,
+              3370,
+              5165,
+              11,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "17",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           }
         ]
@@ -391,7 +2253,51 @@
           "rows": 1,
           "statuses": [
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c1-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c1-physical-final.json"
+          ],
+          "submission_mode": "singleton",
+          "native_packed_decode_steps_delta": 0.0
         },
         "ar_c2": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c2-physical-final.json",
@@ -401,7 +2307,51 @@
           "statuses": [
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c2-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c2-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 31.0
         },
         "ar_c3": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c3-physical-final.json",
@@ -412,7 +2362,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c3-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c3-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 31.0
         },
         "ar_c4": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c4-physical-final.json",
@@ -424,7 +2418,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c4-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-ar-c4-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 31.0
         },
         "mtp_c1": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c1-physical-final.json",
@@ -433,7 +2471,51 @@
           "rows": 1,
           "statuses": [
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c1-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c1-physical-final.json"
+          ],
+          "submission_mode": "singleton",
+          "native_packed_decode_steps_delta": 0.0
         },
         "mtp_c2": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c2-physical-final.json",
@@ -443,7 +2525,51 @@
           "statuses": [
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c2-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c2-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 0.0
         },
         "mtp_c3": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c3-physical-final.json",
@@ -454,7 +2580,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c3-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c3-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 0.0
         },
         "mtp_c4": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c4-physical-final.json",
@@ -466,7 +2636,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c4-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.8-27b-ud-q4_k_s-mtp-c4-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 1.0
         }
       },
       "ready_max_packed_rows": [
@@ -478,7 +2692,80 @@
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "1",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": false,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "ar_c2": [
@@ -486,13 +2773,159 @@
             "label": "c4_ar_1",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "2",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "3",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "ar_c3": [
@@ -500,19 +2933,238 @@
             "label": "c4_ar_2",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "6",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "5",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_1",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "4",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "ar_c4": [
@@ -520,25 +3172,317 @@
             "label": "c4_ar_3",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3003,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "10",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_1",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "8",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "9",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_2",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "7",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "mtp_c1": [
@@ -552,6 +3496,84 @@
               "target_pass_count": 9,
               "target_batch_calls": 0,
               "target_rows_histogram": {}
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "11",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           }
         ],
@@ -572,6 +3594,84 @@
                 "6": 1,
                 "8": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              303,
+              279,
+              2193,
+              314,
+              7262,
+              264,
+              3370,
+              5165,
+              11,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "13",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -590,6 +3690,84 @@
                 "6": 1,
                 "8": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "12",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           }
         ],
@@ -608,6 +3786,84 @@
               "target_rows_histogram": {
                 "12": 9
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "14",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -624,6 +3880,84 @@
               "target_rows_histogram": {
                 "12": 9
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "16",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -640,6 +3974,84 @@
               "target_rows_histogram": {
                 "12": 9
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              303,
+              279,
+              2193,
+              314,
+              7262,
+              264,
+              3370,
+              5165,
+              11,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "15",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           }
         ],
@@ -660,6 +4072,84 @@
                 "15": 1,
                 "16": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3003,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              11,
+              44457,
+              303,
+              279,
+              2193,
+              314,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1149,
+              6558,
+              728,
+              1683
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "20",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -679,6 +4169,84 @@
                 "15": 1,
                 "16": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "18",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -698,6 +4266,84 @@
                 "15": 1,
                 "16": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262,
+              264,
+              3370,
+              5165,
+              13,
+              6558,
+              728,
+              1683,
+              883,
+              1092
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "19",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           },
           {
@@ -717,6 +4363,84 @@
                 "15": 1,
                 "16": 8
               }
+            },
+            "request": {
+              "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "gpu_sample",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              760,
+              1156,
+              369,
+              9859,
+              883,
+              449,
+              328,
+              10024,
+              663,
+              5979,
+              1,
+              303,
+              279,
+              2193,
+              314,
+              7262,
+              264,
+              3370,
+              5165,
+              11,
+              321,
+              6587,
+              728,
+              310,
+              10033,
+              799,
+              14542,
+              2029,
+              883,
+              7262
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "17",
+              "sampler_fast_path_blockers": [
+                "temperature"
+              ],
+              "sampler_mode": "gpu_sample",
+              "full_vocab_logits_d2h": false,
+              "logits_d2h_bytes": 0,
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": true
             }
           }
         ]
@@ -731,7 +4455,51 @@
           "rows": 1,
           "statuses": [
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c1-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c1-physical-final.json"
+          ],
+          "submission_mode": "singleton",
+          "native_packed_decode_steps_delta": 0.0
         },
         "ar_c2": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c2-physical-final.json",
@@ -741,7 +4509,51 @@
           "statuses": [
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c2-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c2-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 31.0
         },
         "ar_c3": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c3-physical-final.json",
@@ -752,7 +4564,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c3-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c3-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 31.0
         },
         "ar_c4": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c4-physical-final.json",
@@ -764,7 +4620,51 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": {
+            "hipengine/runtime/qwen35_gguf_runner.py": "acd9db0a4f53dc4a4aca496f086851bf3d39b1a5863e2ed692e6a05946101905",
+            "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+            "hipengine/speculative/accounting.py": "a95a09a83bd294c6ba834c2ba5e7d7e4e25f64e4459388950c71fcc33b1baa92"
+          },
+          "server_command": [
+            "/home/lhl/hipEngine-main/.venv/bin/python",
+            "-m",
+            "hipengine.server",
+            "--model",
+            "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--max-context-tokens",
+            "32768",
+            "--max-active-requests",
+            "4",
+            "--generation-batch-window-ms",
+            "0",
+            "--prefix-cache",
+            "off",
+            "--metrics",
+            "prometheus",
+            "--no-startup-chat-smoke",
+            "--no-startup-scratch-probe",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "19002",
+            "--log-color",
+            "never"
+          ],
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c4-requests.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen3.6-35b-a3b-ud-q4_k_m-ar-c4-physical-final.json"
+          ],
+          "submission_mode": "concurrent",
+          "native_packed_decode_steps_delta": 31.0
         },
         "mtp_c1": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c1-physical-final.json",
@@ -773,7 +4673,20 @@
           "rows": 1,
           "statuses": [
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": null,
+          "server_command": null,
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c1-final-input.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c1-physical-final.json"
+          ],
+          "submission_mode": "singleton"
         },
         "mtp_c2": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c2-physical-final.json",
@@ -783,7 +4696,20 @@
           "statuses": [
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": null,
+          "server_command": null,
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c2-final-input.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c2-physical-final.json"
+          ],
+          "submission_mode": "sequential"
         },
         "mtp_c3": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c3-physical-final.json",
@@ -794,7 +4720,20 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": null,
+          "server_command": null,
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c3-final-input.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c3-physical-final.json"
+          ],
+          "submission_mode": "sequential"
         },
         "mtp_c4": {
           "path": "~/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c4-physical-final.json",
@@ -806,7 +4745,20 @@
             200,
             200,
             200
-          ]
+          ],
+          "capture_git_head": "042c384e6d172504e0001e919cad19de6a654b2e",
+          "source_hashes": null,
+          "server_command": null,
+          "replay_command": [
+            "scripts/mtp_http_replay.py",
+            "--input",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c4-final-input.json",
+            "--base-url",
+            "http://127.0.0.1:19002",
+            "--output",
+            "/home/lhl/.local/state/hipengine/mtp-followup-20261017/qwen36-moe-mtp-c4-physical-final.json"
+          ],
+          "submission_mode": "concurrent"
         }
       },
       "ready_max_packed_rows": [
@@ -818,7 +4770,80 @@
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "1",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": false,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "ar_c2": [
@@ -826,13 +4851,159 @@
             "label": "c4_ar_1",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "3",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "2",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "ar_c3": [
@@ -840,19 +5011,238 @@
             "label": "c4_ar_2",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "6",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_1",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "5",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "4",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "ar_c4": [
@@ -860,25 +5250,317 @@
             "label": "c4_ar_0",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3000,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "9",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_3",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3003,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "10",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_1",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3001,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "7",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           },
           {
             "label": "c4_ar_2",
             "generated_tokens": 32,
             "mtp_used": false,
-            "physical_execution": null
+            "physical_execution": null,
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 0.9,
+              "seed": 3002,
+              "speculative_mtp": false
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "8",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_packed_ar_server_decode",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
+            }
           }
         ],
         "mtp_c1": [
@@ -892,6 +5574,79 @@
               "target_pass_count": 11,
               "target_batch_calls": 0,
               "target_rows_histogram": {}
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "1",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           }
         ],
@@ -906,6 +5661,79 @@
               "target_pass_count": 11,
               "target_batch_calls": 0,
               "target_rows_histogram": {}
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "2",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           },
           {
@@ -918,6 +5746,79 @@
               "target_pass_count": 11,
               "target_batch_calls": 0,
               "target_rows_histogram": {}
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3001,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "3",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           }
         ],
@@ -932,6 +5833,79 @@
               "target_pass_count": 11,
               "target_batch_calls": 0,
               "target_rows_histogram": {}
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "4",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           },
           {
@@ -944,6 +5918,79 @@
               "target_pass_count": 11,
               "target_batch_calls": 0,
               "target_rows_histogram": {}
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3001,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "5",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           },
           {
@@ -956,6 +6003,79 @@
               "target_pass_count": 11,
               "target_batch_calls": 0,
               "target_rows_histogram": {}
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3002,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "6",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           }
         ],
@@ -974,6 +6094,79 @@
               "target_rows_histogram": {
                 "6": 20
               }
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3003,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "10",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           },
           {
@@ -990,6 +6183,79 @@
               "target_rows_histogram": {
                 "6": 20
               }
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3002,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              7047,
+              1817,
+              25,
+              271,
+              16,
+              13,
+              220,
+              2972,
+              2014,
+              53983,
+              2570,
+              5396,
+              64700,
+              198,
+              256,
+              471,
+              2972,
+              25562,
+              64700,
+              20195,
+              663,
+              5979,
+              198,
+              256,
+              471,
+              2972,
+              1835
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "9",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           },
           {
@@ -1006,6 +6272,79 @@
               "target_rows_histogram": {
                 "6": 23
               }
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3001,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              3370,
+              5165,
+              7262,
+              264,
+              14542,
+              2029,
+              25,
+              561,
+              1156,
+              6587,
+              264,
+              13,
+              2972,
+              1421,
+              6587,
+              310,
+              1366,
+              1092,
+              369,
+              449,
+              24693,
+              5979,
+              25,
+              10033,
+              799,
+              14542,
+              2029
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "8",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           },
           {
@@ -1022,11 +6361,87 @@
               "target_rows_histogram": {
                 "6": 23
               }
+            },
+            "request": {
+              "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Acceptance matrix: explain one practical fact about testing a web API."
+                }
+              ],
+              "max_tokens": 32,
+              "stream": false,
+              "temperature": 0.0,
+              "top_p": 1.0,
+              "seed": 3000,
+              "speculative_mtp": true
+            },
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 32,
+              "sampler_mode": "greedy_fast",
+              "cache_action": "append_none",
+              "phase": "reasoning",
+              "continuation_eligible": false
+            },
+            "generated_token_ids": [
+              248068,
+              198,
+              8160,
+              579,
+              264,
+              3370,
+              5165,
+              7262,
+              264,
+              14542,
+              2029,
+              25,
+              561,
+              1156,
+              6587,
+              264,
+              13,
+              2972,
+              1421,
+              6587,
+              310,
+              1366,
+              1092,
+              369,
+              449,
+              24693,
+              5979,
+              25,
+              10033,
+              799,
+              14542,
+              2029
+            ],
+            "decode_state": {
+              "row_index": 0,
+              "step_index": 32,
+              "prompt_tokens": 22,
+              "generated_tokens": 32,
+              "phase": "done",
+              "continuation_eligible": false,
+              "request_id": "7",
+              "sampler_mode": "greedy_fast",
+              "execution_path": "gguf_specdec2_mtp2",
+              "native_compact_prefill": true,
+              "native_caware_decode": true,
+              "serial_decode_fallback": false,
+              "native_sampler_rows": false
             }
           }
         ]
       }
     }
   },
-  "source_commit": "0ec4aa482"
+  "implementation_commits": [
+    "06c25be33",
+    "0ec4aa482"
+  ]
 }
