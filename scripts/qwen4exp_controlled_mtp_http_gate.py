@@ -67,6 +67,16 @@ def validate_control(result, *, kind, logs):
         assert not result['reasoning'], result
 
 
+def validate_hard_thinking(result, *, cap, close_ids):
+    assert close_ids, 'missing tokenized close delimiter'
+    details = result['finish']
+    assert details.get('phase') == 'answer', details
+    count = details.get('reasoning_tokens')
+    assert isinstance(count, int) and len(close_ids) <= count <= cap + len(close_ids), details
+    assert result['ids'][count - len(close_ids):count] == close_ids, result
+    assert details.get('answer_tokens', 0) > 0, details
+
+
 def cases(model):
     for kind in ('schema', 'required_tool', 'auto_tool', 'auto_answer', 'hard_thinking'):
         base = dict(model=model, max_tokens=128, seed=104, enable_thinking=False,
@@ -136,6 +146,9 @@ async def run(args):
                 raise TimeoutError('server not ready')
             await asyncio.sleep(1)
         report['capabilities'] = (await client.get('/v1/hipengine/capabilities')).json()
+        close_response = await client.post('/v1/hipengine/tokenize', json={'text': '</think>'})
+        close_response.raise_for_status()
+        report['thinking_close_ids'] = close_response.json()['token_ids']
         for row in selected:
             report['rows'].append(row)
             started = time.monotonic()
@@ -149,6 +162,9 @@ async def run(args):
                 result = extract(row['body'], chat=True) | structured(row['body'])
                 row['result'] = result
                 validate_control(result, kind=row['kind'], logs=bool(row['request'].get('logprobs')))
+                if row['kind'] == 'hard_thinking':
+                    validate_hard_thinking(result, cap=row['request']['hard_think_cap'],
+                                           close_ids=report['thinking_close_ids'])
                 row['passed'] = True
             except Exception as error:
                 row.update(passed=False, error=repr(error))

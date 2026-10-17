@@ -2785,6 +2785,7 @@ class _QueuedGeneration:
     cancelled: bool = False
     finished: bool = False
     producer_task: asyncio.Task[None] | None = None
+    mtp_thinking_policy: str = "hint"
 
 
 class _CompositeGenerationCancellationToken:
@@ -2948,6 +2949,7 @@ class _GenerationBatcher:
             route,
             (
                 decision.get("plan_fingerprint"),
+                item.mtp_thinking_policy,
                 _sampling_key(
                     item.sampling,
                     include_cancellation_token=False,
@@ -3003,6 +3005,7 @@ class _GenerationBatcher:
         *,
         detailed: bool = False,
         include_batch_metadata: bool = False,
+        mtp_thinking_policy: str = "hint",
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         route_decision: Mapping[str, Any] | None = None,
         error_extra: Mapping[str, Any] | None = None,
@@ -3018,6 +3021,7 @@ class _GenerationBatcher:
                 future=future,
                 detailed=bool(detailed),
                 include_batch_metadata=bool(include_batch_metadata),
+                mtp_thinking_policy=mtp_thinking_policy,
                 route=str(route),
                 route_decision=(
                     None if route_decision is None else deepcopy(dict(route_decision))
@@ -3040,6 +3044,7 @@ class _GenerationBatcher:
         prompts: Sequence[PromptInput],
         sampling: SamplingParams,
         *,
+        mtp_thinking_policy: str = "hint",
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         route_decision: Mapping[str, Any] | None = None,
         error_extra: Mapping[str, Any] | None = None,
@@ -3054,6 +3059,7 @@ class _GenerationBatcher:
             prompts=prompt_tuple,
             sampling=sampling,
             stream_queue=queue,
+            mtp_thinking_policy=mtp_thinking_policy,
             route=str(route),
             route_decision=(
                 None if route_decision is None else deepcopy(dict(route_decision))
@@ -3522,6 +3528,7 @@ class _GenerationBatcher:
                     tuple(prompts),
                     group_sampling,
                     route=execution_route,
+                    mtp_thinking_policy=group[0].mtp_thinking_policy,
                 )
             except Exception as exc:
                 for item in group:
@@ -3571,6 +3578,7 @@ class _GenerationBatcher:
         prompts: tuple[PromptInput, ...],
         sampling: SamplingParams,
         *,
+        mtp_thinking_policy: str = "hint",
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
     ) -> _QueuedBatchResult:
         engine = self._engine_factory()
@@ -3594,10 +3602,12 @@ class _GenerationBatcher:
                         }
                     },
                 )
-            # Admission keeps hard thinking controls on AR for providers that
-            # cannot enforce them. Hint policy retains prompt hints but clears
-            # sampler enforcement before entering the provider.
-            mtp_sampling = relax_thinking_budget_for_mtp(sampling)
+            # Admission has already checked whether this provider can enforce
+            # hard controls. Only an explicit hint policy clears enforcement.
+            mtp_sampling = (
+                relax_thinking_budget_for_mtp(sampling)
+                if mtp_thinking_policy == "hint" else sampling
+            )
             try:
                 raw_outputs = await _generate_speculative_mtp_detailed(
                     engine,
@@ -5542,6 +5552,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     sampling,
                     detailed=True,
                     include_batch_metadata=True,
+                    mtp_thinking_policy=_request_speculative_mtp_thinking(config, request),
                     route=generation_route,
                     route_decision=generation_route_decision,
                     error_extra=route_rejection_extra(
@@ -5792,6 +5803,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
+                    mtp_thinking_policy=_request_speculative_mtp_thinking(config, request),
                     route=generation_route,
                     route_decision=generation_route_decision,
                     error_extra=route_rejection_extra(
@@ -8306,6 +8318,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
+                    mtp_thinking_policy=_request_speculative_mtp_thinking(config, request),
                     route=generation_route,
                     route_decision=generation_route_decision,
                     error_extra=route_rejection_extra(

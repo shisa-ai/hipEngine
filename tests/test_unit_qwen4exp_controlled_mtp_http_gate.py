@@ -16,6 +16,16 @@ def test_replay_includes_failed_comparison_even_when_rows_pass():
         replay_cases(previous, ['missing'])
 
 
+def test_hard_cap_validator_checks_counter_and_consumed_delimiter():
+    from scripts.qwen4exp_controlled_mtp_http_gate import validate_hard_thinking
+    valid = dict(ids=[1, 2, 9, 3], finish=dict(phase='answer', reasoning_tokens=3, answer_tokens=1))
+    validate_hard_thinking(valid, cap=2, close_ids=[9])
+    for bad in (valid | dict(finish={}), valid | dict(ids=[1, 2, 8, 3]),
+                valid | dict(finish=dict(phase='answer', reasoning_tokens=4, answer_tokens=1))):
+        with pytest.raises(AssertionError):
+            validate_hard_thinking(bad, cap=2, close_ids=[9])
+
+
 def result():
     return dict(mtp=dict(used=True, draft_tokens=3, draft_cycles=1,
                          accepted_draft_tokens=2, rejected_draft_tokens=1),

@@ -113,6 +113,15 @@ def test_stops_and_eos_execute_mtp(monkeypatch, spelling, stream, temperature, l
         api.close()
 
 
+def test_queue_does_not_coalesce_hard_and_hint_policies():
+    from hipengine import SamplingParams
+    from hipengine.server.api import _GenerationBatcher, _QueuedGeneration
+    batcher = _GenerationBatcher(engine_factory=lambda: None, batch_window_seconds=0)
+    hard = _QueuedGeneration(('prompt',), SamplingParams(), route='speculative_mtp', mtp_thinking_policy='hard')
+    hint = _QueuedGeneration(('prompt',), SamplingParams(), route='speculative_mtp', mtp_thinking_policy='hint')
+    assert batcher._group_key(hard) != batcher._group_key(hint)
+
+
 @pytest.mark.parametrize('text', ['', 'Calling tools now.'])
 def test_buffered_tool_logprobs_publish_once_across_calls_and_fragments(text):
     from hipengine.server.api import _chat_stream_parsed, _ParsedChatOutput, _ParsedToolCall
@@ -171,5 +180,8 @@ def test_structured_chat_controls_execute_mtp(monkeypatch, spelling, stream, tem
             assert choice['finish_reason'] == 'stop'
         if kind == 'hard_thinking':
             assert ''.join(m.get('reasoning_content') or '' for m in messages) == 'ab'
+            details = extra['finish_details']
+            assert details['reasoning_tokens'] <= 3
+            assert details['phase'] == 'answer'
     finally:
         api.close()
