@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-07-23
+Last updated: 2026-10-17
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -179,8 +179,12 @@ requests fall back to plain AR. A request can override the server policy with
 capabilities manifest reports the active policy as
 `sampling.speculative_mtp.thinking_policy`.
 
-Generic draft-model providers are a separate explicit-only route. For the
-pinned Poolside Laguna B4 DFlash owner, start the server with:
+Generic draft-model providers are a separate explicit-only route. The
+model-owned Laguna B4 DFlash provider has direct-library evidence, but its
+HTTP service route is disabled until it supports bounded child submission.
+`EngineService` rejects generic-only whole-request providers rather than
+executing model work on a frontend thread. The configuration below identifies
+the pinned provider; it does not enable its service route:
 
 ```bash
 hipengine serve \
@@ -195,8 +199,9 @@ hipengine serve \
 Ordinary completion/chat requests still use target-only AR. Select the retained
 provider per request with `"speculative": true`, or with the explicit object
 `{"enabled":true,"provider":"dflash","candidate_budget":4}`. Both blocking
-and streaming c=1 routes are supported for the pinned Laguna target/drafter on
-gfx1151; the canonical ten-prompt public gate is exact against true AR
+and streaming c=1 provider calls were validated for the pinned Laguna target/drafter on
+gfx1151; that evidence does not qualify the disabled service route. The
+canonical ten-prompt public gate was exact against true AR
 ([artifact](../benchmarks/results/2026-07-23-gfx1151-laguna-dflash-public-e2e.json)). The current Laguna adapter admits only raw
 greedy target top-1 with BF16 KV; sampled/processed logits, logprobs, thinking
 budget controls, forced/suppressed tool controls, structured processors, custom
@@ -219,7 +224,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | Endpoint | Status | Notes |
 | --- | --- | --- |
 | `GET /health` | Built in | Unauthenticated liveness probe; does not imply model readiness. |
-| `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready; loaded-model metadata includes artifact-scoped approximate-KV capability provenance. |
+| `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready or the engine service cannot accept work; loaded-model metadata includes artifact-scoped approximate-KV capability provenance. |
 | `GET /v1/models` | Built in | Returns the single served model id plus `hipengine` status metadata: backend/quant, loaded state, compact capability summary, context defaults, KV policy/estimate and artifact-scoped capability decision, routing count, and capabilities URL. |
 | `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, immutable approximate-KV capability identity/decision, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP/generic speculative-provider status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, and unsupported fields. |
 | `POST /v1/hipengine/speculative_mtp/rollback` | Built in | Authenticated runtime rollback: routes every new MTP request to AR until server restart, while in-flight owned cycles retire through the RF3 lifecycle contract. Returns direct circuit-breaker state. |
@@ -1400,8 +1405,9 @@ The same table is advertised programmatically under
 model id and should not be used to infer that eager warmup has completed.
 
 `GET /ready` is the readiness probe for local harnesses and process managers. It
-returns HTTP 200 with `ready=true` after startup is ready, or HTTP 503 with
-`ready=false` while startup is not ready. The payload includes non-sensitive
+returns HTTP 200 with `ready=true` when startup is ready and the loaded engine
+service can accept work. It returns HTTP 503 with `ready=false` when either
+condition fails. The payload includes non-sensitive
 diagnostics for model loaded state, eager warmup completion, last startup timing,
 configured/effective context, KV policy/capacity estimate, artifact SHA-256 and
 artifact/backend/target/quant/layout/scale capability decision when approximate
@@ -1421,6 +1427,14 @@ HTTP 503 with `status: "error"`, a redacted `startup.error` containing the
 failed stage, exception type, generic message, and operator guidance, plus a
 matching diagnostics entry. Raw exception text is kept in server logs, not the
 readiness payload.
+
+For engines exposing service health, the `service` object reports
+`accepting_requests`, `driver_alive`, `closing`, `closed`, and `failure`
+(exception type or null). A failed, closing, or closed service returns
+`status: "unavailable"` even after successful warmup. Startup evidence is kept;
+live scheduler metrics are not queried from an unavailable service. This probe
+does not load a model. Engines without the health hook retain startup-only
+readiness and omit `service`.
 
 ## Diagnostics
 
@@ -1549,8 +1563,9 @@ generated text.
   by `--speculative-provider`, `--draft-model`, and
   `--speculative-candidate-budget`. It remains explicit-only through the
   top-level `speculative` request extension; `speculative_mtp` is a separate,
-  mutually exclusive compatibility route. The admitted Laguna DFlash adapter is
-  streaming-compatible and target-corrected, but B4/c=1/raw-greedy/BF16-only.
+  mutually exclusive compatibility route. The Laguna DFlash provider is
+  B4/c=1/raw-greedy/BF16-only, but its service route is disabled pending bounded
+  child admission; capabilities report it unavailable through `EngineService`.
   D4 measured `0.9469x` full-suite decode versus true AR, so capability and
   per-choice telemetry deliberately advertise no performance claim and AR stays
   default.

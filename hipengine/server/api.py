@@ -28,6 +28,7 @@ from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 from urllib.parse import unquote
 
@@ -6061,9 +6062,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         model_identity = _server_model_identity(config, engine)
         readiness: _ReadinessState = app.state.hipengine_readiness
         effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
-        live_snapshot = _live_loop_snapshot(engine)
-        graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
-        pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
+        service_health = _engine_service_health(engine)
+        service_ready = _service_health_accepts_requests(service_health)
+        if service_ready:
+            live_snapshot = _live_loop_snapshot(engine)
+            graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
+            pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
+        else:
+            # A failed or closed service can block or raise on its live loop, so
+            # report static metric defaults instead of probing it.
+            live_snapshot = None
+            graph = _graph_bucket_metric_values(None, live_snapshot=_STATIC_METRIC_SNAPSHOT)
+            pool = _pool_metric_values(None, live_snapshot=_STATIC_METRIC_SNAPSHOT)
         prefix_cache = _prefix_cache_metric_values(live_snapshot)
         diagnostics: list[str] = []
         if not readiness.ready:
@@ -6072,10 +6082,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 diagnostics.append(
                     f"{readiness.startup_error.get('message')}: {readiness.startup_error.get('guidance')}"
                 )
-        return {
+        if service_health is not None and not service_ready:
+            diagnostics.extend(_service_health_diagnostics(service_health))
+        payload: dict[str, Any] = {
             "object": "hipengine.readiness",
-            "status": readiness.status,
-            "ready": bool(readiness.ready),
+            "status": (
+                readiness.status
+                if service_health is None or service_ready
+                else "unavailable"
+            ),
+            "ready": bool(readiness.ready) and service_ready,
             "diagnostics": diagnostics,
             "model": {
                 **model_identity,
@@ -6126,6 +6142,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
             "sessions": chat_session_summary(),
         }
+        if service_health is not None:
+            payload["service"] = service_health
+        return payload
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -8737,6 +8756,9 @@ def _metrics_mode(raw: str | None) -> str:
     return value
 
 
+_STATIC_METRIC_SNAPSHOT: Mapping[str, Any] = MappingProxyType({})
+
+
 def _live_loop_snapshot(engine: Any | None) -> Mapping[str, Any] | None:
     if engine is None:
         return None
@@ -8748,6 +8770,72 @@ def _live_loop_snapshot(engine: Any | None) -> Mapping[str, Any] | None:
     except Exception:
         return None
     return payload if isinstance(payload, Mapping) else None
+
+
+def _engine_service_health(engine: Any | None) -> dict[str, Any] | None:
+    """Return nonblocking service lifetime health for the loaded model, if exposed.
+
+    Only an already-loaded text generator is inspected so readiness never triggers
+    a lazy model load. Engines without a health hook keep the startup-only
+    contract and report no ``service`` payload.
+    """
+    if engine is None:
+        return None
+    for target in (getattr(engine, "_text_generator", None), engine):
+        if target is None:
+            continue
+        probe = getattr(target, "service_health", None)
+        if not callable(probe):
+            continue
+        try:
+            payload = probe()
+        except Exception as exc:
+            # An unreadable health probe is not evidence of a usable service.
+            return {
+                "accepting_requests": False,
+                "driver_alive": False,
+                "closing": False,
+                "closed": False,
+                "failure": type(exc).__name__,
+            }
+        data = payload if isinstance(payload, Mapping) else {}
+        failure = data.get("failure")
+        return {
+            "accepting_requests": bool(data.get("accepting_requests", False)),
+            "driver_alive": bool(data.get("driver_alive", False)),
+            "closing": bool(data.get("closing", False)),
+            "closed": bool(data.get("closed", False)),
+            "failure": None if failure is None else str(failure),
+        }
+    return None
+
+
+def _service_health_accepts_requests(health: Mapping[str, Any] | None) -> bool:
+    if health is None:
+        return True
+    return bool(
+        health.get("accepting_requests")
+        and health.get("driver_alive")
+        and not health.get("closing")
+        and not health.get("closed")
+        and health.get("failure") is None
+    )
+
+
+def _service_health_diagnostics(health: Mapping[str, Any]) -> list[str]:
+    diagnostics = [
+        "engine service is not accepting requests; check server logs and restart the server"
+    ]
+    failure = health.get("failure")
+    if failure is not None:
+        diagnostics.append(f"engine service failed: {failure}")
+    if health.get("closing"):
+        diagnostics.append("engine service is closing")
+    if health.get("closed"):
+        diagnostics.append("engine service is closed")
+    if not health.get("driver_alive"):
+        diagnostics.append("engine service driver thread is not running")
+    return diagnostics
 
 
 def _nested_mapping(owner: Mapping[str, Any] | None, key: str) -> Mapping[str, Any]:
