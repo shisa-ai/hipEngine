@@ -4,8 +4,8 @@
 explicit MTP work. The focused lifetime follow-up also passes approximately
 30K AR/MTP, cancellation and recovery. Hard thinking controls pass on text AR
 and named MTP-to-AR fallback. Text AR sampling/logprobs pass focused live
-checks; combined thinking/logprob qualification, true multi-request batching,
-and live MTP streaming are still open.
+checks, including combined hard thinking/logprobs. True multi-request batching,
+sampled MTP and live MTP streaming are still open.
 A passing unit suite does not establish those product capabilities.
 
 Implementation and final qualification are tracked by the approved
@@ -105,9 +105,13 @@ completion candidate identity.
 
 The extra hard-thinking/logprob check found a blocking/SSE whitespace mismatch:
 blocking content removed the final generated newline while SSE and logprobs
-kept it. The CPU repair passes 633 focused tests, but its live recheck is still
-open. The initial probe also used an internal thinking field name; the corrected
-focused request uses public `hard_think_cap`. Both attempts are preserved.
+kept it. The repair passes 633 focused tests and a
+[12-case live recheck](../benchmarks/results/2026-10-17-zbook-qwen4exp-sampling-whitespace-http.json)
+on server source `67fb29d55`. Thinking text, generated IDs, probabilities and
+finish accounting are unchanged; blocking content now includes the generated
+newline. Greedy, Japanese and stop cases also pass blocking/SSE checks. The
+initial probe used an internal thinking field name; the corrected request uses
+public `hard_think_cap`. Both earlier attempts are preserved.
 
 `speculative_mtp=true` with sampling takes named AR fallback; generic
 `speculative=true` rejects these controls before model execution. Those are
@@ -154,11 +158,11 @@ verification work; candidate rows must not be called concurrent requests.
    The slow fake/real service tests and the tracked live follow-up cover driver
    failure, shutdown, 29,912-token AR/MTP, explicit deadlines, client
    cancellation, and subsequent recovery. See the PS1 lifetime follow-up above.
-2. **Thinking controls complete on text AR; combined sampling qualification
+2. **Thinking controls and sampling/logprobs pass on text AR; sampled MTP
    remains open.** The PS3 follow-up verifies hard caps and answer reservation
    in direct/resident AR, blocking and SSE, with honest hard-policy MTP fallback.
-   PS4 adds functional AR sampling/logprobs and byte-accurate Japanese metadata.
-   Its thinking/logprob whitespace recheck and actual sampled MTP remain open.
+   PS4 verifies functional AR sampling/logprobs, byte-accurate Japanese metadata
+   and combined thinking/logprob output. Actual sampled MTP remains open.
 3. **Completed for BF16:** generic speculative admission now resolves the
    effective KV storage instead of rejecting irrelevant BF16 scale metadata.
    Both request spellings execute the intended service-owned MTP route with

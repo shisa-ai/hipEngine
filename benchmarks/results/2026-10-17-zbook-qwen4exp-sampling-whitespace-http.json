@@ -1,0 +1,674 @@
+{
+  "date": "2026-10-17",
+  "host": {
+    "name": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "hardware": "Ryzen AI Max+ Pro 395 / Radeon 8060S gfx1151 / 128 GiB UMA"
+  },
+  "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "quant": "gguf_ud_q4_k_xl",
+  "profile": "production",
+  "kv": "bf16",
+  "context": 8192,
+  "active_requests": 1,
+  "sidecar": "/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+  "candidate_budget": 3,
+  "mtp_serving": "opt_in",
+  "mtp_thinking": "hard",
+  "server_command": "uv run python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --quant gguf_ud_q4_k_xl --execution-profile production --served-model-name qwen38fn-sampling --max-context-tokens 8192 --kv-storage bf16 --max-active-requests 1 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --metrics prometheus --host 127.0.0.1 --port 18389",
+  "schema": "hipengine.qwen4exp.sampling_whitespace_http.v1",
+  "source_commit": "67fb29d5533f573e7f5a0d8cbbe31df4a6c2d586",
+  "kind": "functional_sampling_only",
+  "command": "uv run python scripts/qwen4exp_sampling_http_gate.py --source-commit 67fb29d5533f573e7f5a0d8cbbe31df4a6c2d586 --output /tmp/he-qwen38fn-sampling-67fb29d55 --baseline-report /tmp/he-qwen38fn-sampling-e7d52091e/report.json --case greedy --case ja --case ja_stop --case hard_thinking",
+  "report": {
+    "path": "/tmp/he-qwen38fn-sampling-67fb29d55/report.json",
+    "sha256": "8ed2fd8a0f8d774bd95c409854664de63045752247bcd7e57ab1524445fdc062",
+    "probe_sha256": "19382fe88a0db7255baf2fcb0c32191f3b49183973bc1c910eb94a5e59494317"
+  },
+  "baseline_artifact": "2026-10-17-zbook-qwen4exp-sampling-bytes-http.json",
+  "checks": {
+    "all_12_http_cases_pass": true,
+    "five_baseline_ids_equal": true,
+    "thinking_ids_unchanged": true,
+    "thinking_logprobs_unchanged": true,
+    "thinking_finish_unchanged": true,
+    "thinking_text_unchanged": true,
+    "only_generated_final_newline_restored": true
+  },
+  "rows": [
+    {
+      "name": "completion-greedy-sse0",
+      "endpoint": "/v1/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0,
+        "top_p": 1,
+        "top_k": 0,
+        "seed": 104,
+        "speculative_mtp": false,
+        "prompt": "Write a list of invented names for a tiny moon robot.",
+        "logprobs": 5,
+        "stream": false
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 32,
+      "visible_text": "\n\n<think>\nThe user wants me to create a list of invented names for a tiny moon robot. Let me think about what makes good names for this concept:",
+      "baseline_ids_equal": true,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        728,
+        310,
+        1791,
+        264,
+        1103,
+        314,
+        34319,
+        4874,
+        364,
+        264,
+        13280,
+        17257,
+        11952,
+        13,
+        6558,
+        728,
+        1683,
+        883,
+        1092,
+        3520,
+        1603,
+        4874,
+        364,
+        411,
+        7059,
+        25
+      ],
+      "finish_details": {
+        "reason": "length",
+        "length_limit": 32,
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none",
+        "continuation_eligible": false
+      },
+      "usage": {
+        "prompt_tokens": 12,
+        "completion_tokens": 32,
+        "total_tokens": 44
+      }
+    },
+    {
+      "name": "completion-greedy-sse1",
+      "endpoint": "/v1/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0,
+        "top_p": 1,
+        "top_k": 0,
+        "seed": 104,
+        "speculative_mtp": false,
+        "prompt": "Write a list of invented names for a tiny moon robot.",
+        "logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 32,
+      "visible_text": "\n\n<think>\nThe user wants me to create a list of invented names for a tiny moon robot. Let me think about what makes good names for this concept:"
+    },
+    {
+      "name": "completion-ja-sse0",
+      "endpoint": "/v1/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "prompt": "日本語で、猫と月について短い物語を一文だけ書いてください。",
+        "logprobs": 5,
+        "stream": false
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 32,
+      "visible_text": "\n\n<think>\nThe user is asking me to write a short story in Japanese about a cat and the moon, in just one sentence. Let me craft a poetic",
+      "baseline_ids_equal": true,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        728,
+        310,
+        3165,
+        264,
+        2716,
+        3255,
+        303,
+        10452,
+        883,
+        264,
+        7993,
+        321,
+        279,
+        17257,
+        11,
+        303,
+        1066,
+        799,
+        11316,
+        13,
+        6558,
+        728,
+        10453,
+        264,
+        72860
+      ],
+      "finish_details": {
+        "reason": "length",
+        "length_limit": 32,
+        "sampler_mode": "host_logits_sample",
+        "cache_action": "append_none",
+        "continuation_eligible": false
+      },
+      "usage": {
+        "prompt_tokens": 15,
+        "completion_tokens": 32,
+        "total_tokens": 47
+      }
+    },
+    {
+      "name": "completion-ja-sse1",
+      "endpoint": "/v1/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "prompt": "日本語で、猫と月について短い物語を一文だけ書いてください。",
+        "logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 32,
+      "visible_text": "\n\n<think>\nThe user is asking me to write a short story in Japanese about a cat and the moon, in just one sentence. Let me craft a poetic"
+    },
+    {
+      "name": "chat-greedy-sse0",
+      "endpoint": "/v1/chat/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0,
+        "top_p": 1,
+        "top_k": 0,
+        "seed": 104,
+        "speculative_mtp": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a list of invented names for a tiny moon robot."
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": false
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 32,
+      "visible_text": "Here is a list of invented names for a tiny moon robot, categorized by the \"vibe\" or personality you might want to give it:\n\n### Cute",
+      "baseline_ids_equal": true,
+      "generated_token_ids": [
+        8160,
+        369,
+        264,
+        1103,
+        314,
+        34319,
+        4874,
+        364,
+        264,
+        13280,
+        17257,
+        11952,
+        11,
+        68471,
+        539,
+        279,
+        328,
+        85,
+        22814,
+        1,
+        466,
+        16784,
+        488,
+        2493,
+        1318,
+        310,
+        2873,
+        424,
+        25,
+        271,
+        13962,
+        55613
+      ],
+      "finish_details": {
+        "reason": "length",
+        "length_limit": 32,
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none",
+        "phase": "answer",
+        "continuation_eligible": false
+      },
+      "usage": {
+        "prompt_tokens": 24,
+        "completion_tokens": 32,
+        "total_tokens": 56
+      }
+    },
+    {
+      "name": "chat-greedy-sse1",
+      "endpoint": "/v1/chat/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0,
+        "top_p": 1,
+        "top_k": 0,
+        "seed": 104,
+        "speculative_mtp": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a list of invented names for a tiny moon robot."
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 32,
+      "visible_text": "Here is a list of invented names for a tiny moon robot, categorized by the \"vibe\" or personality you might want to give it:\n\n### Cute"
+    },
+    {
+      "name": "chat-ja-sse0",
+      "endpoint": "/v1/chat/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、猫と月について短い物語を一文だけ書いてください。"
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": false
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 31,
+      "visible_text": "銀色の月を飲み込もうとした黒猫は、水面に映るその光を舐めると、静かに眠りにつきました。",
+      "baseline_ids_equal": true,
+      "generated_token_ids": [
+        101143,
+        183583,
+        96212,
+        28452,
+        178986,
+        151171,
+        159353,
+        172631,
+        246918,
+        98500,
+        14876,
+        5205,
+        105874,
+        19054,
+        97844,
+        28310,
+        55407,
+        96183,
+        28452,
+        96035,
+        238,
+        58852,
+        149671,
+        5205,
+        97026,
+        155563,
+        99018,
+        29342,
+        149808,
+        150679,
+        1710,
+        248046
+      ],
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "sampler_mode": "host_logits_sample",
+        "cache_action": "append_none"
+      },
+      "usage": {
+        "prompt_tokens": 27,
+        "completion_tokens": 32,
+        "total_tokens": 59
+      }
+    },
+    {
+      "name": "chat-ja-sse1",
+      "endpoint": "/v1/chat/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、猫と月について短い物語を一文だけ書いてください。"
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 31,
+      "visible_text": "銀色の月を飲み込もうとした黒猫は、水面に映るその光を舐めると、静かに眠りにつきました。"
+    },
+    {
+      "name": "chat-ja_stop-sse0",
+      "endpoint": "/v1/chat/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "stop": [
+          "。"
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、猫と月について短い物語を一文だけ書いてください。"
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": false
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 30,
+      "visible_text": "銀色の月を飲み込もうとした黒猫は、水面に映るその光を舐めると、静かに眠りにつきました",
+      "baseline_ids_equal": true,
+      "generated_token_ids": [
+        101143,
+        183583,
+        96212,
+        28452,
+        178986,
+        151171,
+        159353,
+        172631,
+        246918,
+        98500,
+        14876,
+        5205,
+        105874,
+        19054,
+        97844,
+        28310,
+        55407,
+        96183,
+        28452,
+        96035,
+        238,
+        58852,
+        149671,
+        5205,
+        97026,
+        155563,
+        99018,
+        29342,
+        149808,
+        150679,
+        1710
+      ],
+      "finish_details": {
+        "reason": "stop",
+        "stop_sequence": [
+          1710
+        ],
+        "sampler_mode": "host_logits_sample",
+        "cache_action": "append_none"
+      },
+      "usage": {
+        "prompt_tokens": 27,
+        "completion_tokens": 31,
+        "total_tokens": 58
+      }
+    },
+    {
+      "name": "chat-ja_stop-sse1",
+      "endpoint": "/v1/chat/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "stop": [
+          "。"
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本語で、猫と月について短い物語を一文だけ書いてください。"
+          }
+        ],
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 30,
+      "visible_text": "銀色の月を飲み込もうとした黒猫は、水面に映るその光を舐めると、静かに眠りにつきました"
+    },
+    {
+      "name": "chat-hard_thinking-sse0",
+      "endpoint": "/v1/chat/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "enable_thinking": true,
+        "hard_think_cap": 4,
+        "min_answer_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a list of invented names for a tiny moon robot."
+          }
+        ],
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": false
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 27,
+      "visible_text": "\n\n- Pebble\n- Mote\n- Crumb\n- Speck\n- Dusty\n- Nano\n- Bit\n",
+      "generated_token_ids": [
+        1596,
+        1144,
+        310,
+        5707,
+        248069,
+        271,
+        12,
+        85848,
+        863,
+        198,
+        12,
+        380,
+        1227,
+        198,
+        12,
+        4404,
+        3434,
+        198,
+        12,
+        11954,
+        372,
+        198,
+        12,
+        30939,
+        88,
+        198,
+        12,
+        60829,
+        198,
+        12,
+        6292,
+        198
+      ],
+      "finish_details": {
+        "reason": "length",
+        "length_limit": 32,
+        "forced_close": true,
+        "reasoning_tokens": 5,
+        "answer_tokens": 27,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "host_logits_sample",
+        "phase": "answer",
+        "cache_action": "append_none",
+        "continuation_eligible": false
+      },
+      "usage": {
+        "prompt_tokens": 64,
+        "completion_tokens": 32,
+        "total_tokens": 96,
+        "reasoning_tokens": 5,
+        "completion_tokens_details": {
+          "reasoning_tokens": 5
+        }
+      }
+    },
+    {
+      "name": "chat-hard_thinking-sse1",
+      "endpoint": "/v1/chat/completions",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 32,
+        "temperature": 0.8,
+        "top_p": 1,
+        "top_k": 2,
+        "seed": 104,
+        "speculative_mtp": false,
+        "enable_thinking": true,
+        "hard_think_cap": 4,
+        "min_answer_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a list of invented names for a tiny moon robot."
+          }
+        ],
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 200,
+      "check_kind": "sampling_logprobs",
+      "passed": true,
+      "visible_tokens": 27,
+      "visible_text": "\n\n- Pebble\n- Mote\n- Crumb\n- Speck\n- Dusty\n- Nano\n- Bit\n"
+    }
+  ],
+  "ready_after": {
+    "accepting_requests": true,
+    "driver_alive": true,
+    "closing": false,
+    "closed": false,
+    "failure": null
+  },
+  "scope": "Focused text AR sampling/logprob repair qualification, not sampled MTP, concurrency, task quality or performance evidence."
+}
