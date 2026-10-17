@@ -147,6 +147,15 @@ def test_qwen4_exp_mtp_provider_keeps_exact_target_output_and_trims_draft() -> N
     assert output.telemetry.diagnostics["proposed_draft_tokens"] == 4
     assert output.telemetry.diagnostics["accepted_draft_tokens"] == 3
     assert output.telemetry.diagnostics["draft_acceptance"] == 0.75
+    from hipengine.server.api import _mtp_response_summary, _mtp_accepted_rejected_counts
+
+    summary = _mtp_response_summary("speculative_mtp", [output])
+    assert summary["used"] is True
+    assert summary["draft_tokens"] == 4
+    assert summary["accepted_draft_tokens"] == 3
+    assert summary["rejected_draft_tokens"] == 1
+    assert summary["draft_cycles"] == 2
+    assert _mtp_accepted_rejected_counts([output]) == (3, 1)
     phase = output.telemetry.diagnostics["phase_census"]
     assert phase["cycles"] == 2
     assert phase["target_verify_rows"] == 4
@@ -169,6 +178,7 @@ def test_qwen4_exp_mtp_provider_keeps_exact_target_output_and_trims_draft() -> N
 
     chunks = list(provider.stream_detailed(_request()))
     assert len(chunks) == 1
+    assert chunks[0].telemetry.timing == output.telemetry.timing
 
 
 def test_qwen4_exp_mtp_crosses_the_old_1k_boundary() -> None:

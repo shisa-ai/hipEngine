@@ -1,5 +1,12 @@
 # Qwen3.8-Flash-Next (Qwen4Exp) Optimization Status
 
+**2026-10-17 served-feature audit:** [HTTP coverage grid](QWEN4EXP-HTTP-COVERAGE.md).
+On zbook, short explicit MTP executes, but approximately 30K HTTP MTP times out,
+hard thinking budgets are ignored, logprobs are unsupported, C4 requests run
+sequentially, and MTP streaming is buffered. The grid separates these product
+gaps from the historical optimization evidence below; it is not a new
+performance or numerical qualification.
+
 - **Status date:** 2026-10-13 (refreshed; the pre-2026-10-09 narrative below is
   preserved as history where later sections do not supersede it)
 - **Model / quant:** unsloth `Qwen3.8-Flash-Next` `UD-Q4_K_XL`, fingerprint

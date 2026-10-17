@@ -316,6 +316,11 @@ class Qwen4ExpMTPTextProvider:
                 ),
             ),
             event="generation_complete",
+            timing={
+                "mtp_generated_draft_tokens": proposed,
+                "mtp_accepted_draft_tokens": accepted,
+                "mtp_cycles_count": len(cycles),
+            },
             diagnostics={
                 "speculative_provider": self.provider_name,
                 "candidate_budget": self.candidate_budget,
