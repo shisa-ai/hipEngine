@@ -75,6 +75,37 @@ class Qwen4ExpGGUFModel:
         "blk.{layer}.ple_conv1d.weight",
     )
 
+    def resolve_default_quant(self, weight_index, *, model_path: str) -> str:
+        """Identify a known storage layout, never infer it from a vendor filename.
+
+        The UD artifact also declares MOSTLY_Q4_K_M and can have a metadata-only
+        first shard. Scan the complete runtime file set without reading weights.
+        This fingerprint identifies representation, not weight identity or quality.
+        Unrecognized layouts require an explicit quant rather than a guessed plan.
+        """
+        import hashlib
+        import json
+
+        from hipengine.loading import discover_gguf_files, load_gguf_index
+
+        rows = []
+        for path in discover_gguf_files(model_path):
+            info = weight_index if path == weight_index.path else load_gguf_index(path)
+            if info.architecture not in (None, "qwen4exp"):
+                raise ValueError("Mixed GGUF architectures; pass an explicit quant after checking the artifact")
+            rows.extend((t.name, t.ggml_type, list(t.shape)) for t in info.tensors)
+        digest = hashlib.sha256(
+            json.dumps(sorted(rows), separators=(",", ":")).encode()
+        ).hexdigest()
+        # All 1,224 tensor names/types/shapes of the supported Unsloth UD layout.
+        # Fixture: tests/fixtures/qwen4exp_ud_q4_k_xl_inventory.json.
+        if digest == "9e8483de46161c4cf75b9805c6a072b7c12fa98e12c0598be37323916eb6cacf":
+            return "gguf_ud_q4_k_xl"
+        raise ValueError(
+            "Unrecognized qwen4exp GGUF storage layout " + digest
+            + "; pass an explicit quant after checking the artifact and execution-profile qualification"
+        )
+
     def layer_sequence(self) -> tuple[str, ...]:
         """Return representative GDN/PLE and QSA paths for fusion planning."""
 

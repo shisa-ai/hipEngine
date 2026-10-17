@@ -1047,7 +1047,13 @@ class LLM:
         if requested != AUTO_QUANT:
             self._resolved_quant = requested
             return requested
-        default_quant = str(getattr(model_plugin, "default_quant", "") or "").strip()
+        resolver = getattr(model_plugin, "resolve_default_quant", None)
+        default_value = (
+            resolver(self._weight_index, model_path=self.model)
+            if callable(resolver)
+            else getattr(model_plugin, "default_quant", "")
+        )
+        default_quant = str(default_value or "").strip()
         if not default_quant or default_quant == AUTO_QUANT:
             raise RuntimeError(
                 f"model plugin {getattr(model_plugin, 'name', '<unknown>')!r} does not "

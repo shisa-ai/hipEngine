@@ -390,22 +390,22 @@ KV ABI and other backends are unchanged."* Evidence:
 [`attribution control`](../benchmarks/results/2026-09-30-qwen4exp-gdn-tiled16-control/gate.json),
 [`2026-09-14 numerics`](../benchmarks/results/2026-09-14-q8-prefill-numerics/README.md).
 
-**What this means for a caller, stated plainly.** The `qwen4_exp_gguf` model
-plugin declares `default_quant = "gguf_q4_k_m"`, so loading a UD-Q4_K_XL GGUF
-with the quant omitted resolves to the composition above that fails the
-envelope; the in-envelope recovery arithmetic requires naming
-`quant="gguf_ud_q4_k_xl"`. Both are registered, both keep strict fallbacks, and
-neither is hidden.
+**Artifact-aware automatic quant selection.** Omitted/`auto` quant on
+`qwen4_exp_gguf` scans the complete runtime GGUF file set and matches the known
+UD-Q4_K_XL tensor-name/type/shape inventory to `gguf_ud_q4_k_xl`. The GGUF
+`MOSTLY_Q4_K_M` file-type label is insufficient: the UD artifact uses that label,
+and its first shard can contain metadata only. Filenames and vendor strings are
+not used to classify the layout. Unknown inventories fail before generator
+construction and require an explicit quant. The inventory fingerprint identifies
+storage representation, not weight identity or task-quality certification.
 
-**No default was changed by this decision, and that is deliberate.** The two
-profiles differ by a measured 40-55% of prefill, so choosing between
-"in-envelope at recovery cost" and "out-of-envelope at full speed" is a
-product policy call rather than a documentation correction. What this section
-fixes is the contract's claim: `gguf_q4_k_m` is listed in §2.1 among
-combinations eligible for the production default, and until now no decision
-section covered either `qwen4_exp_gguf` entry at all. A reader who needs the
-numerical envelope should name the quant; a reader who needs the rate should
-know what it costs numerically.
+Explicit quant choices are unchanged. In particular, explicitly selecting
+`gguf_q4_k_m` still selects the failed production composition documented above
+when the profile is omitted. Repairing that profile's default eligibility and
+admission is open campaign task 29; it is not made safe by the artifact resolver.
+The recognized UD layout selects the same manifest as explicit
+`quant="gguf_ud_q4_k_xl"`, with the numerical evidence and task-review limits
+stated in this section. No kernel composition was changed by the resolver.
 
 ## 3. Profile is orthogonal to model representation
 
