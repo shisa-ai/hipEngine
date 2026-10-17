@@ -19753,9 +19753,10 @@ def test_streaming_chat_completion_prefers_backend_chunk_decode_state() -> None:
         "group_rows": 1,
         "timing_owner": True,
         "tokens": {
-            "streamed_tokens": 2,
-            "delta_tokens": 2,
-            "answer_tokens": 2,
+            # Backend committed count, not re-tokenized display words.
+            "streamed_tokens": 3,
+            "delta_tokens": 3,
+            "answer_tokens": 3,
         },
     }
     assert content["hipengine"]["timing"]["backend_prefill_ms"] == 4.0

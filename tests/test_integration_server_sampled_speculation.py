@@ -51,6 +51,12 @@ class ResidentLLM(_SpeculativeFakeLLM):
 def test_http_sampled_requests_execute_mtp_not_ar(monkeypatch, endpoint, spelling, stream, logprobs, include_hipengine):
     api, target, _ = driver(monkeypatch)
     llm = ResidentLLM(api)
+    counted_texts = []
+    original_count = llm.count_tokens
+    def count(text):
+        counted_texts.append(text)
+        return original_count(text)
+    monkeypatch.setattr(llm, 'count_tokens', count)
     monkeypatch.setattr(api.inner, 'render_chat_prompt', llm.render_chat_prompt)
     cfg = _config(speculative_provider='qwen4_exp_mtp', speculative_candidate_budget=3,
                   speculative_mtp_serving='opt_in', speculative_mtp_thinking='hard')
@@ -95,6 +101,10 @@ def test_http_sampled_requests_execute_mtp_not_ar(monkeypatch, endpoint, spellin
             assert any(call[0] == 'verify' for call in target.calls), response.text
             assert all(call[2] for call in target.calls)
             assert llm.speculative_calls or stream
+            if stream and include_hipengine:
+                assert not any(text in ('A', 'B', 'C', 'D') for text in counted_texts), (
+                    'committed chunk accounting must not enqueue per-token tokenizer controls'
+                )
             if logprobs:
                 entries = [p['choices'][0]['logprobs'] for p in payloads
                            if p.get('choices') and p['choices'][0].get('logprobs')]

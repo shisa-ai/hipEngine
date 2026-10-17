@@ -8389,7 +8389,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         else None
                     )
                     token_payload = (
-                        token_accounting.observe(phase, part.text) if token_accounting is not None else None
+                        token_accounting.observe_stream_chunk(phase, phase_stream_chunk)
+                        if token_accounting is not None else None
                     )
                     yield _chat_stream_delta(
                         response_id,
@@ -8435,7 +8436,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         else None
                     )
                     token_payload = (
-                        token_accounting.observe(phase, part.text) if token_accounting is not None else None
+                        token_accounting.observe_stream_chunk(phase, finish_stream_chunk)
+                        if token_accounting is not None and finish_stream_chunk is not None
+                        else token_accounting.observe(phase, part.text)
+                        if token_accounting is not None else None
                     )
                     yield _chat_stream_delta(
                         response_id,
