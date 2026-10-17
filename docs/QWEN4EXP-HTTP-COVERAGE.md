@@ -139,7 +139,13 @@ requests expose a service bug when model-default EOS is exactly the last allowed
 token: finish normalization replaces EOS with length and drops sampler metadata.
 The CPU repair preserves the provider's resolved EOS while honoring explicit
 EOS/ignore-EOS controls. The probe now requests telemetry and can replay only
-failed rows. Live repair qualification is pending; this attempt is not a pass.
+failed rows. The 23-case live replay on `6d158ad7b` confirms all three EOS
+repairs with unchanged text, IDs and probabilities. Its 20 SSE requests expose
+a second defect: buffered logprob responses omit the documented compact MTP
+summary and route shape despite carrying actual execution telemetry. The
+buffered response paths now forward that summary, with CPU coverage for both
+endpoints/spellings and opt-in/opt-out metadata. Live SSE qualification remains
+pending; neither earlier attempt is a passing packet.
 
 ## Baseline feature grid (before PS1/PS3/PS5 fixes)
 

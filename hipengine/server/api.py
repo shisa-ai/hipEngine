@@ -7114,6 +7114,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     final_texts,
                     choices,
                     details=batch.details,
+                    generation_shape=batch.generation_shape,
+                    thinking_policy=_request_speculative_mtp_thinking(config, request),
                     usage=batch.usage if _stream_include_usage(request) else None,
                     token_accounting=token_accounting,
                     include_hipengine=include_hipengine,
@@ -7952,7 +7954,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         raw_text=text,
                         scheduler_chunks=scheduler_chunks,
                     )
-                final_hipengine = {}
+                final_hipengine = _stream_speculative_mtp_metadata(
+                    (batch.generation_shape or {}).get("route", _SPECULATIVE_MTP_DEFAULT_ROUTE),
+                    detail,
+                    route_decision=(batch.generation_shape or {}).get("route_decision"),
+                    thinking_policy=_request_speculative_mtp_thinking(config, request),
+                )
                 for payload in (withheld_scheduler_tool_chunks, withheld_scheduler_logprob_chunks):
                     if payload is not None:
                         final_hipengine.update(payload)
@@ -7980,6 +7987,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         token_accounting=token_accounting,
                         final_stream_chunk=_stream_chunk_from_detail("", detail),
                         include_hipengine=include_hipengine,
+                        final_hipengine=final_hipengine or None,
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
@@ -8003,6 +8011,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         finish_details=finish_details,
                         token_accounting=token_accounting,
                         include_hipengine=include_hipengine,
+                        final_hipengine=final_hipengine or None,
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
@@ -17936,6 +17945,8 @@ def _completion_stream(
     choices: Sequence[dict[str, Any]],
     *,
     details: Sequence[GenerationOutput] | None = None,
+    generation_shape: Mapping[str, Any] | None = None,
+    thinking_policy: str = "hard",
     usage: Mapping[str, int] | None = None,
     token_accounting: _StreamTokenAccounting | None = None,
     include_hipengine: bool = False,
@@ -18031,6 +18042,12 @@ def _completion_stream(
             tokens=final_tokens,
             stream_chunk=_stream_chunk_from_detail("", details_by_index.get(int(choice["index"]))),
             include_hipengine=include_hipengine,
+            extra_hipengine=_stream_speculative_mtp_metadata(
+                (generation_shape or {}).get("route", _SPECULATIVE_MTP_DEFAULT_ROUTE),
+                details_by_index.get(int(choice["index"])),
+                route_decision=(generation_shape or {}).get("route_decision"),
+                thinking_policy=thinking_policy,
+            ),
             stream_started_at=stream_started_at,
             routing=routing,
             kv_pool=kv_pool,
@@ -18614,6 +18631,7 @@ def _chat_stream_scheduler_tool_call_chunks(
     token_accounting: _StreamTokenAccounting | None = None,
     final_stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
+    final_hipengine: Mapping[str, Any] | None = None,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
@@ -18666,6 +18684,7 @@ def _chat_stream_scheduler_tool_call_chunks(
         tokens=final_tokens,
         stream_chunk=done_stream_chunk,
         include_hipengine=include_hipengine,
+        extra_hipengine=final_hipengine,
         stream_started_at=stream_started_at,
         routing=routing,
         kv_pool=kv_pool,
@@ -18687,6 +18706,7 @@ def _chat_stream_scheduler_text_chunks(
     finish_details: Mapping[str, Any] | None = None,
     token_accounting: _StreamTokenAccounting | None = None,
     include_hipengine: bool = False,
+    final_hipengine: Mapping[str, Any] | None = None,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
@@ -18776,6 +18796,7 @@ def _chat_stream_scheduler_text_chunks(
         tokens=final_tokens,
         stream_chunk=done_stream_chunk,
         include_hipengine=include_hipengine,
+        extra_hipengine=final_hipengine,
         stream_started_at=stream_started_at,
         routing=routing,
         kv_pool=kv_pool,

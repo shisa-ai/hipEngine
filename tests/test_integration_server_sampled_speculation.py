@@ -41,11 +41,12 @@ class ResidentLLM(_SpeculativeFakeLLM):
     stream_speculative_mtp_detailed = stream_speculative_detailed
 
 
+@pytest.mark.parametrize('include_hipengine', [False, True])
 @pytest.mark.parametrize('endpoint', ['completions', 'chat/completions'])
 @pytest.mark.parametrize('spelling', ['speculative', 'speculative_mtp'])
 @pytest.mark.parametrize('stream', [False, True])
 @pytest.mark.parametrize('logprobs', [False, True])
-def test_http_sampled_requests_execute_mtp_not_ar(monkeypatch, endpoint, spelling, stream, logprobs):
+def test_http_sampled_requests_execute_mtp_not_ar(monkeypatch, endpoint, spelling, stream, logprobs, include_hipengine):
     api, target, _ = driver(monkeypatch)
     llm = ResidentLLM(api)
     monkeypatch.setattr(api.inner, 'render_chat_prompt', llm.render_chat_prompt)
@@ -53,6 +54,8 @@ def test_http_sampled_requests_execute_mtp_not_ar(monkeypatch, endpoint, spellin
                   speculative_mtp_serving='opt_in', speculative_mtp_thinking='hard')
     body = dict(model='fake-model', max_tokens=12, temperature=.8, top_k=2,
                 seed=41, stream=stream, **{spelling: True})
+    if stream:
+        body['stream_options'] = dict(include_usage=True, include_hipengine=include_hipengine)
     if endpoint == 'completions':
         body.update(prompt='one')
         if logprobs:
@@ -69,6 +72,21 @@ def test_http_sampled_requests_execute_mtp_not_ar(monkeypatch, endpoint, spellin
                 payloads = [json.loads(line[6:]) for line in response.text.splitlines()
                             if line.startswith('data: {')]
                 assert payloads and not any('error' in p for p in payloads), response.text
+                terminal, = [c for p in payloads for c in p.get('choices', []) if c.get('finish_reason')]
+                if include_hipengine:
+                    extra = terminal['hipengine']
+                    assert extra['generation_shape']['route'] == spelling
+                    summary = extra['speculative_mtp']
+                    assert summary['used'] is True
+                    assert summary['draft_tokens'] == extra['timing']['mtp_generated_draft_tokens'] > 0
+                    assert summary['accepted_draft_tokens'] == extra['timing']['mtp_accepted_draft_tokens']
+                    assert summary['draft_cycles'] == extra['timing']['mtp_cycles_count'] > 0
+                    usage, = [p['usage'] for p in payloads if p.get('usage')]
+                    assert usage['completion_tokens_details']['accepted_prediction_tokens'] == summary['accepted_draft_tokens']
+                    assert usage['completion_tokens_details']['rejected_prediction_tokens'] == summary['rejected_draft_tokens']
+                else:
+                    assert all('hipengine' not in p for p in payloads)
+                    assert all('hipengine' not in c for p in payloads for c in p.get('choices', []))
             else:
                 payloads = [response.json()]
             assert not llm.ar_calls, 'selected speculation must never run the direct AR logprob shortcut'
