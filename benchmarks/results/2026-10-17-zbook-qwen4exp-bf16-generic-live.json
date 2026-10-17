@@ -1,0 +1,80 @@
+{
+  "schema": "hipengine.qwen4exp.bf16_generic_speculative_live.v1",
+  "date": "2026-10-17",
+  "source_commit": "bd0775b2d",
+  "host": {
+    "name": "zbook",
+    "identity": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "hardware": "Ryzen AI Max+ Pro 395; Radeon 8060S; gfx1151; 128 GiB unified memory"
+  },
+  "server": {
+    "model": "qwen38fn-grid",
+    "artifact": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "backend": "hip_gfx1151",
+    "quant": "gguf_ud_q4_k_xl",
+    "execution_profile": "production",
+    "kv_storage": "bf16",
+    "kv_scale_dtype": "fp32",
+    "max_context_tokens": 32768,
+    "max_active_requests": 2,
+    "candidate_budget": 3,
+    "port": 18388
+  },
+  "qualification": {
+    "kind": "functional_route_and_telemetry_only",
+    "performance_claim": false,
+    "quality_claim": false,
+    "prompt_tokens": 40,
+    "generated_token_count": 32,
+    "generated_token_ids_sha256": "3135e57fa70ce6a77a45abad074f47f87e7fceda46ddf6c65a650c4aaa6bf01a",
+    "ar_reference_route": "default",
+    "ar_used_speculation": false,
+    "both_speculative_spellings_used_mtp": true
+  },
+  "rows": [
+    {
+      "name": "explicit-mtp",
+      "request": {"speculative_mtp": true},
+      "status": 200,
+      "effective_route": "speculative_mtp",
+      "used": true,
+      "execution_path": "qwen4exp_mtp_batched_state_rows_verify",
+      "draft_tokens": 27,
+      "accepted_draft_tokens": 21,
+      "rejected_draft_tokens": 6,
+      "draft_cycles": 9,
+      "acceptance_rate": 0.7777777777777778
+    },
+    {
+      "name": "generic-spelling",
+      "request": {"speculative": true},
+      "status": 200,
+      "effective_route": "speculative_mtp",
+      "selected_route": "speculative",
+      "decision_reason": "resident_dynamic_mtp",
+      "used": true,
+      "execution_path": "qwen4exp_mtp_batched_state_rows_verify",
+      "draft_tokens": 27,
+      "accepted_draft_tokens": 21,
+      "rejected_draft_tokens": 6,
+      "draft_cycles": 9,
+      "acceptance_rate": 0.7777777777777778
+    }
+  ],
+  "recovery": {
+    "explicit_ar": {"status": 200, "effective_route": "default", "used": false},
+    "generated_token_ids_match_ar_reference": true,
+    "generated_token_ids_match_between_mtp_spellings": true
+  },
+  "cpu_and_mock_validation": {
+    "command": "uv run pytest -o addopts='' -q tests/test_unit_server_speculative_provider_kv_admission.py tests/test_integration_server_speculative_provider.py tests/test_integration_server_api.py",
+    "passed": 617,
+    "warnings": 1,
+    "warning": "Starlette/httpx deprecation"
+  },
+  "raw_artifacts": "/tmp/he-qwen38fn-lifetime-f1ee044e5",
+  "notes": [
+    "BF16 admission ignores irrelevant FP32 scale metadata while effective non-BF16/INT8 provenance remains guarded by the focused tests.",
+    "The live rows are one short functional probe and do not qualify automatic MTP, speed, task quality, concurrency, or streaming."
+  ]
+}

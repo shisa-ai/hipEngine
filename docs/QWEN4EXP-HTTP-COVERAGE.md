@@ -49,7 +49,22 @@ This closes PS1/task 15 for the tested configuration. It does not qualify
 automatic MTP, hard controls, sampled/logprob paths, physical concurrency,
 incremental MTP SSE, multimodal serving, or production numerical/task gates.
 
-## Feature grid
+## PS5 BF16 generic-provider follow-up
+
+The effective-KV admission repair is also live-qualified at commit
+`bd0775b2d`. With BF16 KV and the server's FP32 scale metadata, both
+`speculative_mtp=true` and generic `speculative=true` return HTTP 200 and run
+`qwen4exp_mtp_batched_state_rows_verify`. Each short 32-token probe reports 27
+proposed, 21 accepted, 6 rejected draft tokens and 9 cycles; the generic row
+also reports `selected_route: speculative` and
+`decision_reason: resident_dynamic_mtp`. Both speculative outputs match the AR
+reference token IDs. The compact evidence is
+[`2026-10-17-zbook-qwen4exp-bf16-generic-live.json`](../benchmarks/results/2026-10-17-zbook-qwen4exp-bf16-generic-live.json).
+This closes PS5/task 18 for the tested BF16 configuration only. It does not
+qualify INT8, sampled speculation, automatic MTP selection, concurrency, or
+streaming.
+
+## Baseline feature grid (before PS1/PS5 fixes)
 
 | Check | AR | Explicit MTP | Verdict |
 | --- | --- | --- | --- |
@@ -91,27 +106,17 @@ verification work; candidate rows must not be called concurrent requests.
    failure, shutdown, 29,912-token AR/MTP, explicit deadlines, client
    cancellation, and subsequent recovery. See the PS1 lifetime follow-up above.
 2. **Honor or reject hard controls before decoding.** The Qwen4Exp controlled
-   `EngineService.generate_speculative_mtp_detailed()` uses the legacy
-   `_control()` route when the driver lacks speculative submission support.
-   `_control()` waits at most the default 30 seconds. The caller times out
-   without proving that the sole-driver operation stopped. Qwen4Exp also
-   primes its draft token-by-token (`Qwen4ExpGGUFMTPDraftRunner.prime_prompt`).
-   A long request can therefore exceed the command timeout while still owning
-   the runner. Fix request deadline/cancellation and ownership retirement,
-   not just the timeout constant. Gate with a slow fake driver, long HTTP
-   AR/MTP, cancellation, a subsequent short request, and truthful readiness.
-2. **Honor or reject hard controls before decoding.** The Qwen4Exp controlled
    token path applies grammar/suppression/logit bias, not the requested
    thinking state machine or logprob collection. An explicit budget must not
    receive a successful unbounded answer. Unsupported logprobs must fail
    before spending a decode. Capability reporting must distinguish prompt
    hints from enforced budgets. Test both blocking and streaming requests.
-3. **Repair the generic provider's BF16 compatibility check.**
-   `_speculative_provider_route_for_request()` rejects FP32 scales even when
-   the selected KV format is BF16 and uses no scales. A per-request FP16
-   override also fails because the server fixes KV policy at startup. Resolve
-   capability by the effective KV format, preserve INT8 qualification guards,
-   and test both speculative spellings against the real server.
+3. **Completed for BF16:** generic speculative admission now resolves the
+   effective KV storage instead of rejecting irrelevant BF16 scale metadata.
+   Both request spellings execute the intended service-owned MTP route with
+   matching counters and token IDs. The effective non-BF16/INT8 guards and
+   fixed server KV policy remain covered by the focused tests. See the PS5
+   follow-up above.
 4. **Keep automatic MTP off until its served scope is qualified.** Short
    MTP execution is real, but this audit does not qualify task quality,
    determinism/isolation, longer-context economics, or controls. The prior
@@ -130,7 +135,8 @@ verification work; candidate rows must not be called concurrent requests.
    passes numerical/state-repeat/lifecycle checks but leaves task/scope review
    open (13/18 strict-exact task continuations). Review task validity under the
    production contract rather than using generated-ID equality as the sole
-   criterion. Correct verifier-row and capability telemetry alongside that work.
+   criterion. Correct verifier-row and capability telemetry alongside that
+   work.
 
 ## Additional scope limits
 
