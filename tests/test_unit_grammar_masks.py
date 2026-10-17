@@ -87,7 +87,7 @@ def test_grammar_completion_only_strips_actual_eos(last_token,expected_reason,vi
     owner = Qwen4ExpResidentServingRunner.__new__(Qwen4ExpResidentServingRunner)
     owner.generator = SimpleNamespace(tokenizer=SimpleNamespace(eos_token_id=256))
     row = SimpleNamespace(
-        generated_ids=[ord("{"),last_token],request=SimpleNamespace(),
+        generated_ids=[ord("{"),last_token],request=SimpleNamespace(temperature=0.0, eos_token_id=None),
         grammar=SimpleNamespace(done=True), sampling_state=None)
     finish = owner._finish(row)
     assert finish.reason==expected_reason
@@ -127,10 +127,12 @@ def test_controlled_runner_feeds_selected_token_not_raw_argmax(monkeypatch):
     calls = []
     class Matcher:
         done = False
-        def select(self,logits,**kwargs):
-            token = 99 if calls else 42
+        def mask_logits(self, logits):
+            scores = np.full_like(logits, -np.inf)
+            scores[99 if calls else 42] = 0
+            return scores
+        def accept_token(self, token):
             self.done = token == 99
-            return token
     monkeypatch.setattr(generator,"_grammar_session",lambda request: Matcher())
     def prefill(tokens,**kwargs):
         assert kwargs["capture_logits"] is True

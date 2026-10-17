@@ -265,7 +265,7 @@ def test_qwen4_exp_generator_accepts_exact_ids_and_length_finish() -> None:
     )
 
 
-def test_qwen4_exp_generator_rejects_unqualified_sampling_and_capacity() -> None:
+def test_qwen4_exp_generator_rejects_excess_capacity() -> None:
     generator = Qwen4ExpGGUFTextGenerator(
         model_path="unused",
         weight_index=SimpleNamespace(),
@@ -273,7 +273,5 @@ def test_qwen4_exp_generator_rejects_unqualified_sampling_and_capacity() -> None
         tokenizer=_Tokenizer(),
         runner=_Runner(),
     )
-    with pytest.raises(ValueError, match="greedy"):
-        generator.generate_detailed(_request(temperature=0.5))
     with pytest.raises(ValueError, match="capacity"):
         generator.generate_detailed(_request(prompts=((1, 2, 3, 4, 5, 6),), max_tokens=3))

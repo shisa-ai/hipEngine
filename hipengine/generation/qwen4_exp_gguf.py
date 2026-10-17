@@ -13,7 +13,8 @@ from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToke
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.sampling import (
-    RowSamplingState, select_token, thinking_budget_state_from_params,
+    RowSamplingState, SamplingMode, plan_sampler, row_seed_for_index,
+    select_token, thinking_budget_state_from_params,
 )
 from hipengine.generation.qwen4_exp_serving_mtp import Qwen4ExpServingMTP, _RequestRetired
 from hipengine.generation.qwen4_exp_multimodal import (
@@ -25,6 +26,7 @@ from hipengine.generation.registry import (
     GenerationOutput,
     GenerationRequest,
     GenerationStreamChunk,
+    TokenLogprob,
     register_text_generator,
 )
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
@@ -166,21 +168,59 @@ def _qwen4_exp_compact_step_kwargs() -> dict[str, bool]:
     }
 
 
-def _thinking_sampling_state(request, prompt_ids):
-    budget = thinking_budget_state_from_params(request)
-    if budget is None:
+def _sampling_state(request, prompt_ids, row_index=0):
+    if not plan_sampler(request).uses_host_logits and request.grammar is None:
         return None
     return RowSamplingState(
-        prompt_tokens=prompt_ids, thinking_budget=budget,
+        prompt_tokens=prompt_ids, seed=row_seed_for_index(request, row_index),
+        row_index=row_index, thinking_budget=thinking_budget_state_from_params(request),
+        stop_token_sequences=request.stop_token_sequences,
         forced_tokens_pending=request.forced_tokens_pending,
         forced_token_reason=request.forced_token_reason,
         post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
         post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
+        force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
+        force_sequence_completion_reason=request.force_sequence_completion_reason,
+        json_object_close_forcing=request.json_object_close_forcing,
+        tool_call_constraint=request.tool_call_constraint,
     )
 
 
+def _sampling_mode(request, grammar=None):
+    if grammar is not None:
+        return "grammar_greedy" if request.temperature == 0 else "grammar_host_logits_sample"
+    mode = plan_sampler(request).mode
+    return "greedy" if mode is SamplingMode.GREEDY_FAST else mode.value
+
+
+def _validate_row_seeds(request):
+    if request.row_seeds and len(request.row_seeds) != len(request.prompts):
+        raise ValueError("row_seeds must have one entry per prompt")
+
+
+def _token_finish(request, ids, grammar, default_eos):
+    ids = tuple(ids)
+    eos = default_eos if request.eos_token_id is None else request.eos_token_id
+    if grammar is not None and grammar.done:
+        is_eos = bool(ids and ids[-1] == eos)
+        return FinishDetails(reason="eos" if is_eos else "stop",
+                             eos_token_id=eos if is_eos else None,
+                             sampler_mode="grammar_greedy")
+    if len(ids) >= request.min_tokens and ids:
+        if not request.ignore_eos and ids[-1] == eos:
+            return FinishDetails(reason="eos", eos_token_id=eos, sampler_mode="greedy")
+        if ids[-1] in request.stop_token_ids:
+            return FinishDetails(reason="stop", stop_sequence=(ids[-1],), sampler_mode="greedy")
+        for sequence in request.stop_token_sequences:
+            if len(sequence) <= len(ids) and ids[-len(sequence):] == sequence:
+                return FinishDetails(reason="stop", stop_sequence=sequence, sampler_mode="greedy")
+    if len(ids) >= request.max_tokens:
+        return FinishDetails(reason="length", length_limit=request.max_tokens, sampler_mode="greedy")
+    return None
+
+
 class Qwen4ExpGGUFTextGenerator:
-    """F5 strict c1/greedy text generator with serial multi-prompt ownership."""
+    """Flash-Next text generation with request-owned host sampling controls."""
 
     def __init__(
         self,
@@ -370,34 +410,32 @@ class Qwen4ExpGGUFTextGenerator:
                 self._grammar_tokenizer = make_tokenizer(self.tokenizer)
             return self._grammar_tokenizer
 
-    def _controlled_token(self, result, request, grammar, sampling_state=None):
+    def _controlled_token(self, result, request, grammar, sampling_state=None, token_logprobs=None):
         if sampling_state is not None:
-            # Resolve tokenizer EOS so the shared thinking controller can
-            # suppress it during reasoning even when HTTP omitted eos_token_id.
             params = request if request.eos_token_id is not None else replace(
                 request, eos_token_id=self.tokenizer.eos_token_id,
             )
             scores = result.logits if grammar is None else grammar.mask_logits(result.logits)
-            sampled = select_token(scores, params, sampling_state)
+            token_text = lambda token: self.tokenizer.decode((int(token),), skip_special=False)
+            sampled = select_token(scores, params, sampling_state, token_text_for_id=token_text)
             if grammar is not None:
                 import numpy as np
                 if not np.isfinite(scores[sampled.token_id]):
                     raise ValueError("thinking close token violates output grammar")
                 grammar.accept_token(sampled.token_id)
+            if sampling_state.has_token_text_constraint:
+                sampling_state.observe_selected_token_text(
+                    token_text(sampled.token_id),
+                    remaining_tokens=request.max_tokens - sampling_state.step_index,
+                    encode_text=self.tokenizer.encode,
+                )
+            if token_logprobs is not None and (request.logprobs or request.top_logprobs):
+                token_logprobs.append(TokenLogprob(
+                    token_id=sampled.token_id, token_text=token_text(sampled.token_id),
+                    logprob=sampled.logprob,
+                    top_logprobs=tuple((token, token_text(token), lp) for token, lp in sampled.top_logprobs),
+                ))
             return sampled.token_id
-        if grammar is not None:
-            return grammar.select(result.logits,suppress=request.suppress_token_ids,
-                                  logit_bias=request.logit_bias)
-        if request.suppress_token_ids or request.logit_bias:
-            import numpy as np
-            scores = result.logits.copy()
-            for token,bias in request.logit_bias:
-                scores[int(token)] += float(bias)
-            for token in request.suppress_token_ids:
-                scores[int(token)] = -np.inf
-            if not np.isfinite(scores).any():
-                raise ValueError("token controls allow no finite token")
-            return int(np.argmax(scores))
         return int(result.token_id)
 
     def render_chat_prompt(self, messages, *, tools=None, enable_thinking=False,
@@ -502,10 +540,9 @@ class Qwen4ExpGGUFTextGenerator:
 
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         self._require_open()
-        if request.temperature != 0.0 or request.top_k not in (0, 1):
-            raise ValueError("Qwen4Exp F5 supports greedy generation only")
+        _validate_row_seeds(request)
         outputs: list[GenerationOutput] = []
-        for prompt in request.prompts:
+        for row_index, prompt in enumerate(request.prompts):
             raise_if_generation_deadline_expired(request)
             token_ids = (
                 [int(token) for token in prompt]
@@ -515,29 +552,27 @@ class Qwen4ExpGGUFTextGenerator:
             if len(token_ids) + request.max_tokens > self.runner.max_sequence_length:
                 raise ValueError("Qwen4Exp request exceeds admitted sequence capacity")
             grammar = self._grammar_session(request)
-            sampling_state = _thinking_sampling_state(request, token_ids)
+            sampling_state = _sampling_state(request, token_ids, row_index)
+            token_logprobs: list[TokenLogprob] = []
             controlled = sampling_state is not None or grammar is not None or bool(request.suppress_token_ids or request.logit_bias)
             prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
             step_kwargs = _qwen4_exp_compact_step_kwargs()
             if controlled:
                 prefill_kwargs["capture_logits"] = True
                 step_kwargs.update(capture_logits=True,token_id_resident=False)
-            result = self.runner.prefill(
+            result = None if request.max_tokens == 0 else self.runner.prefill(
                 token_ids,
                 **prefill_kwargs,
             )
             raise_if_generation_deadline_expired(request)
             generated: list[int] = []
-            reason = "length"
+            finish = FinishDetails(reason="length", length_limit=request.max_tokens)
             for index in range(request.max_tokens):
                 raise_if_generation_deadline_expired(request)
-                token = self._controlled_token(result,request,grammar,sampling_state)
+                token = self._controlled_token(result, request, grammar, sampling_state, token_logprobs)
                 generated.append(token)
-                if grammar is not None and grammar.done:
-                    reason = "eos" if token == self.tokenizer.eos_token_id else "stop"
-                    break
-                if not request.ignore_eos and token == self.tokenizer.eos_token_id:
-                    reason = "eos"
+                finish = _token_finish(request, generated, grammar, self.tokenizer.eos_token_id)
+                if finish is not None:
                     break
                 if index + 1 < request.max_tokens:
                     result = self.runner.step(
@@ -548,14 +583,10 @@ class Qwen4ExpGGUFTextGenerator:
                 GenerationOutput(
                     text=self.tokenizer.decode(generated, skip_special=False),
                     generated_token_ids=tuple(generated),
-                    finish_details=finish_details_with_sampling_state(FinishDetails(
-                        reason=reason,
-                        eos_token_id=(
-                            self.tokenizer.eos_token_id if reason == "eos" else None
-                        ),
-                        length_limit=(request.max_tokens if reason == "length" else None),
-                        sampler_mode="greedy",
-                    ), sampling_state),
+                    token_logprobs=tuple(token_logprobs),
+                    finish_details=finish_details_with_sampling_state(
+                        replace(finish, sampler_mode=_sampling_mode(request, grammar)), sampling_state,
+                    ),
                 )
             )
         return outputs
@@ -664,8 +695,8 @@ class Qwen4ExpGGUFTextGenerator:
             raise NotImplementedError("Qwen4Exp vision model is not attached")
         if len(request.prompts) != 1:
             raise ValueError("Qwen4Exp multimodal generation supports one request")
-        if request.temperature != 0.0 or request.top_k not in (0, 1):
-            raise ValueError("Qwen4Exp multimodal generation supports greedy sampling")
+        if plan_sampler(request).uses_host_logits:
+            raise NotImplementedError("Qwen4Exp multimodal sampling and logprobs are not supported")
         features = self._encode_multimodal_input(image)
         multimodal = render_qwen4_exp_multimodal_prompt(prompt, features)
         token_ids = [int(token) for token in self.tokenizer.encode(multimodal.rendered)]
@@ -789,6 +820,7 @@ class _Qwen4ExpServingRow:
     mtp_output: GenerationOutput | None = None
     previous_hidden: Any | None = None
     sampling_state: RowSamplingState | None = None
+    token_logprobs: list[TokenLogprob] = field(default_factory=list)
 
     @property
     def controlled(self):
@@ -883,8 +915,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         *,
         prompt_rows: Sequence[Sequence[int]],
     ) -> None:
-        if request.temperature != 0.0 or request.top_k not in (0, 1):
-            raise ValueError("Qwen4Exp native serving supports greedy generation only")
+        _validate_row_seeds(request)
         ids = tuple(int(value) for value in request_ids)
         prompts = tuple(tuple(int(token) for token in row) for row in prompt_rows)
         if len(ids) != len(request.prompts) or len(prompts) != len(ids):
@@ -901,7 +932,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             self._rows[request_id] = _Qwen4ExpServingRow(
                 request_id, row_index, request, prompt_ids, now,
                 grammar=self.generator._grammar_session(request),
-                sampling_state=_thinking_sampling_state(request, prompt_ids),
+                sampling_state=_sampling_state(request, prompt_ids, row_index),
             )
 
     def reserve_admission(self, request: RequestState) -> None:
@@ -995,7 +1026,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                 token = progress.token_ids[0]
             else:
                 token = self.generator._controlled_token(
-                    row.next_result, row.request, row.grammar, row.sampling_state,
+                    row.next_result, row.request, row.grammar, row.sampling_state, row.token_logprobs,
                 )
                 row.generated_ids.append(token)
             finish = self._finish(row)
@@ -1022,6 +1053,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                     int(request_id), token, finished=finish is not None,
                     stream_chunk=GenerationStreamChunk(
                         text=delta,
+                        token_logprobs=tuple(row.token_logprobs[-1:]) if len(visible) == len(row.generated_ids) else (),
                         finish_details=finish,
                         generated_token_ids=(
                             tuple(row.generated_ids) if finish is not None else None
@@ -1051,6 +1083,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         self._outputs[row.request_id] = GenerationOutput(
             text=self.generator.tokenizer.decode(visible, skip_special=False),
             generated_token_ids=tuple(row.generated_ids),
+            token_logprobs=tuple(row.token_logprobs[:len(visible)]),
             finish_details=finish,
             telemetry=None if row.mtp_output is None else row.mtp_output.telemetry,
         )
@@ -1113,37 +1146,13 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
 
     def _finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:
         details = self._raw_finish(row)
-        return None if details is None else finish_details_with_sampling_state(details, row.sampling_state)
+        if details is None:
+            return None
+        details = replace(details, sampler_mode=_sampling_mode(row.request, row.grammar))
+        return finish_details_with_sampling_state(details, row.sampling_state)
 
     def _raw_finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:
-        ids = tuple(row.generated_ids)
-        request = row.request
-        if row.grammar is not None and row.grammar.done:
-            eos = bool(ids and ids[-1] == self.generator.tokenizer.eos_token_id)
-            return FinishDetails(reason="eos" if eos else "stop",
-                                 eos_token_id=self.generator.tokenizer.eos_token_id if eos else None,
-                                 sampler_mode="grammar_greedy")
-        enough = len(ids) >= int(request.min_tokens)
-        if enough and ids and not request.ignore_eos and ids[-1] == self.generator.tokenizer.eos_token_id:
-            return FinishDetails(
-                reason="eos", eos_token_id=self.generator.tokenizer.eos_token_id,
-                sampler_mode="greedy",
-            )
-        if enough and ids and ids[-1] in set(int(value) for value in request.stop_token_ids):
-            return FinishDetails(
-                reason="stop", stop_sequence=(ids[-1],), sampler_mode="greedy"
-            )
-        if enough:
-            for sequence in request.stop_token_sequences:
-                stop = tuple(int(value) for value in sequence)
-                if stop and len(stop) <= len(ids) and ids[-len(stop) :] == stop:
-                    return FinishDetails(reason="stop", stop_sequence=stop, sampler_mode="greedy")
-        if len(ids) >= int(request.max_tokens):
-            return FinishDetails(
-                reason="length", length_limit=int(request.max_tokens),
-                sampler_mode="greedy",
-            )
-        return None
+        return _token_finish(row.request, row.generated_ids, row.grammar, self.generator.tokenizer.eos_token_id)
 
     def _visible_ids(
         self, row: _Qwen4ExpServingRow, finish: FinishDetails | None
@@ -1151,7 +1160,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         ids = tuple(row.generated_ids)
         if finish is None or finish.reason == "length":
             return ids
-        if finish.sampler_mode == "grammar_greedy" and finish.reason == "stop":
+        if finish.sampler_mode in {"grammar_greedy", "grammar_host_logits_sample"} and finish.reason == "stop":
             return ids
         if finish.stop_sequence:
             return ids[: -len(finish.stop_sequence)]
