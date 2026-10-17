@@ -42,7 +42,7 @@ def test_stop_stream_holds_only_possible_stop_prefix(parts, stops, expected):
 
 @pytest.mark.parametrize('tail,expected', [('x', 'alphaEx'), ('NDtail', 'alpha')])
 def test_stop_inside_token_does_not_publish_partial_token_probability(tail, expected):
-    from hipengine.server.api import _completion_stream_logprobs
+    from hipengine.server.api import _completion_stream_logprobs, _chat_stream_logprobs
     async def run():
         async def source():
             for index, text in enumerate(('alphaE', tail)):
@@ -51,6 +51,9 @@ def test_stop_inside_token_does_not_publish_partial_token_probability(tail, expe
         assert ''.join(c.text for c in chunks) == expected
         logs = [t for c in chunks if c.text for t in _completion_stream_logprobs(c)['tokens']]
         assert logs == (['alphaE', tail] if tail == 'x' else [])
+        chat_logs = [t['token'] for c in chunks if c.text
+                     for t in _chat_stream_logprobs(c, c.text)['content']]
+        assert chat_logs == logs
     asyncio.run(run())
 
 

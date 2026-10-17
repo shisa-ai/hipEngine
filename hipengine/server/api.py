@@ -15419,9 +15419,18 @@ def _prompt_logprob_omission(token_text: str, index: int) -> dict[str, Any]:
 
 def _chat_stream_logprobs(stream_chunk: GenerationStreamChunk, text: str) -> dict[str, Any]:
     tokens = _stream_token_logprobs_for_text(stream_chunk, text)
-    if text and not tokens:
+    if text and not tokens and not _has_partial_token_prefix(stream_chunk, text):
         raise _unsupported_stream_logprobs_error()
     return _chat_logprobs(GenerationOutput(text=text, token_logprobs=tokens), text)
+
+
+def _has_partial_token_prefix(chunk: GenerationStreamChunk, text: str) -> bool:
+    """A text stop may expose a prefix with no whole-token probability."""
+    return bool(
+        chunk.token_logprobs and text == chunk.text
+        and logprob_text(chunk.token_logprobs).startswith(text)
+        and len(logprob_text(chunk.token_logprobs)) > len(text)
+    )
 
 
 def _chat_reasoning_stream_logprobs(
@@ -15429,7 +15438,7 @@ def _chat_reasoning_stream_logprobs(
     public_text: str,
 ) -> dict[str, Any]:
     tokens = _stream_token_logprobs_for_text(stream_chunk, stream_chunk.text)
-    if public_text and not tokens:
+    if public_text and not tokens and not _has_partial_token_prefix(stream_chunk, stream_chunk.text):
         raise _unsupported_stream_logprobs_error()
     content = [_chat_logprob_token(token, include_token_ids=True) for token in tokens]
     payload: dict[str, Any] = {
