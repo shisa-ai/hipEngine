@@ -17,6 +17,7 @@ from hipengine.generation.registry import (
     GenerationStreamChunk,
     GenerationTelemetry,
 )
+from hipengine.generation.sampling import plan_sampler
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.loading.qwen4_exp_mtp_gguf import build_qwen4_exp_mtp_gguf_map
 from hipengine.loading.qwen4_exp_mtp_materialize import (
@@ -137,10 +138,17 @@ class Qwen4ExpMTPTextProvider:
             "streaming_mode": "buffered_public",
         }
 
+    def _validate_sampling(self, request: GenerationRequest) -> None:
+        if request.temperature != 0.0 or request.top_k not in (0, 1):
+            raise NotImplementedError("Qwen4Exp MTP supports greedy generation only")
+        if plan_sampler(request).uses_host_logits or request.grammar is not None:
+            raise NotImplementedError("Qwen4Exp raw-top1 MTP does not support processed sampling or logprobs")
+        if request.eos_token_id not in (None, self.target_generator.tokenizer.eos_token_id):
+            raise NotImplementedError("Qwen4Exp MTP does not support alternate EOS")
+
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         self._require_open()
-        if request.temperature != 0.0 or request.top_k not in (0, 1):
-            raise NotImplementedError("Qwen4Exp MTP bring-up supports greedy generation only")
+        self._validate_sampling(request)
         outputs = [self._generate_one(prompt, request) for prompt in request.prompts]
         return outputs
 
@@ -173,8 +181,7 @@ class Qwen4ExpMTPTextProvider:
         """
 
         self._require_open()
-        if request.temperature != 0.0 or request.top_k not in (0, 1):
-            raise NotImplementedError("Qwen4Exp MTP supports greedy generation only")
+        self._validate_sampling(request)
         raise_if_generation_deadline_expired(request)
         token_ids = (
             [int(token) for token in prompt]
