@@ -2162,8 +2162,8 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
         "phase": "think",
         "reasoning_tokens": 0,
         "answer_tokens": 0,
-        "hard_token_cap": 16,
-        "remaining_think_tokens": 16,
+        "hard_token_cap": 13,
+        "remaining_think_tokens": 13,
         "soft_close_window": 4,
         "close_sequence": [42, 43, 44],
     }
@@ -2226,6 +2226,8 @@ def test_token_diagnostics_report_unbounded_nested_reasoning_control() -> None:
             "phase": "think",
             "reasoning_tokens": 0,
             "answer_tokens": 0,
+            "hard_token_cap": 30,
+            "remaining_think_tokens": 30,
             "close_sequence": [42, 43],
         }
 
@@ -7781,8 +7783,8 @@ def test_chat_completion_hard_thinking_policy_falls_back_to_ar_and_keeps_enforce
     # Hard policy keeps full host-sampler thinking enforcement on the AR path.
     sampling = fake.calls[-1][1]
     assert sampling.thinking_close_token_ids == (42, 43)
-    assert sampling.thinking_hard_token_cap == 50
-    assert sampling.thinking_soft_close_window == 50
+    assert sampling.thinking_hard_token_cap == 48
+    assert sampling.thinking_soft_close_window == 48
 
 
 def test_chat_completion_thinking_policy_request_override_selects_policy() -> None:
@@ -14114,9 +14116,10 @@ def test_chat_completion_allow_unbounded_skips_default_hard_thinking_cap() -> No
     assert "close </think> before exceeding" not in prompt
     assert "begin closing during the final" not in prompt
     sampling = fake.calls[-1][1]
-    assert sampling.thinking_hard_token_cap is None
-    assert sampling.thinking_close_token_ids == ()
-    assert fake.tokenize_calls == []
+    # Effort cap is disabled, but the promised answer reserve remains binding.
+    assert sampling.thinking_hard_token_cap == 48
+    assert sampling.thinking_close_token_ids == (42, 43)
+    assert fake.tokenize_calls == ["</think>"]
 
 
 def test_chat_completion_allow_unbounded_preserves_explicit_hard_cap() -> None:

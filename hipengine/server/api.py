@@ -5298,6 +5298,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         resident_session_key: str | None = None,
     ) -> SamplingParams:
         stop_token_ids, stop_token_sequences = _stop_tokens_from_stop(request.stop, engine)
+        max_tokens = _request_max_tokens(
+            request, prompts, engine, effective_max_context_tokens(engine),
+            chat_default_max_tokens=config.chat_default_max_tokens,
+        )
         uses_stored_chat_prompt = isinstance(request, ChatCompletionRequest) and request.continuation_id is not None
         thinking_budget = (
             _thinking_budget_sampling_kwargs(
@@ -5306,6 +5310,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 engine=engine,
                 max_context_tokens=effective_max_context_tokens(engine),
                 prepared_thinking=prepared_thinking,
+                generation_budget=max_tokens,
             )
             if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
             else {}
@@ -5353,13 +5358,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         )
         return SamplingParams(
-            max_tokens=_request_max_tokens(
-                request,
-                prompts,
-                engine,
-                effective_max_context_tokens(engine),
-                chat_default_max_tokens=config.chat_default_max_tokens,
-            ),
+            max_tokens=max_tokens,
             logprobs=_request_logprobs_enabled(request),
             top_logprobs=_request_top_logprobs(request),
             temperature=float(request.temperature if request.temperature is not None else 0.0),
@@ -9815,6 +9814,10 @@ def _thinking_control_from_request(
 
     if _effort_disables_thinking(effort):
         enabled = False
+    # With no separately declared hard cap, max_think_tokens is an enforceable
+    # limit, not just a sentence in the prompt. Explicit hard caps still win.
+    if hard_think_cap is None and max_think_tokens is not None:
+        hard_think_cap = max_think_tokens
     if enabled is not False and not _effort_disables_thinking(effort):
         if generation_budget is _THINKING_BUDGET_UNSET:
             generation_budget = _thinking_generation_budget(
@@ -10107,7 +10110,7 @@ def _clamp_thinking_budget_hints(
         return hard_think_cap, min_answer_tokens, soft_close_window
     budget = max(0, int(generation_budget))
     if hard_think_cap == 0:
-        min_answer_tokens = budget if min_answer_tokens is None else min(int(min_answer_tokens), budget)
+        min_answer_tokens = None if min_answer_tokens is None else min(int(min_answer_tokens), budget)
         return 0, min_answer_tokens, 0 if soft_close_window is not None else soft_close_window
     if min_answer_tokens is not None:
         min_answer_tokens = min(int(min_answer_tokens), max(0, budget // 2))
@@ -12404,10 +12407,17 @@ def _diagnostic_thinking_budget_payload(
     except OpenAIHTTPError:
         payload["lowering_supported"] = False
         return {key: value for key, value in payload.items() if value is not None}
+    cap = _effective_thinking_token_cap(
+        thinking, close_token_ids,
+        _thinking_generation_budget_for_prompt(
+            chat_request, _prompt, engine, max_context_tokens,
+            chat_default_max_tokens=config.chat_default_max_tokens,
+        ),
+    )
     state = ThinkingBudgetState(
         close_sequence=close_token_ids,
-        hard_token_cap=thinking.hard_think_cap,
-        soft_close_window=0 if thinking.soft_close_window is None else thinking.soft_close_window,
+        hard_token_cap=cap,
+        soft_close_window=min(int(thinking.soft_close_window or 0), cap or 0),
     )
     payload.update(
         {
@@ -12488,6 +12498,23 @@ def _context_policy_session_prefix_payload(
     return payload
 
 
+def _effective_thinking_token_cap(thinking, close_token_ids, generation_budget):
+    """Leave space for the full closing sequence and the admitted answer reserve."""
+    cap = thinking.hard_think_cap
+    reserve = int(thinking.min_answer_tokens or 0)
+    if cap is None and reserve == 0:
+        return None
+    if generation_budget is not None:
+        available = int(generation_budget) - reserve - len(close_token_ids)
+        if available < 0:
+            raise OpenAIHTTPError(
+                400, "generation budget cannot fit the thinking close sequence and answer reserve",
+                code="invalid_request", param="max_tokens",
+            )
+        cap = available if cap is None else min(int(cap), available)
+    return cap
+
+
 def _thinking_budget_sampling_kwargs(
     config: ServerConfig,
     request: ChatCompletionRequest,
@@ -12495,6 +12522,7 @@ def _thinking_budget_sampling_kwargs(
     engine: Any,
     max_context_tokens: int | None,
     prepared_thinking: _ThinkingControl | None = None,
+    generation_budget: Any = _THINKING_BUDGET_UNSET,
 ) -> dict[str, Any]:
     if prepared_thinking is None:
         _prompt, thinking = _render_chat_prompt_for_request(
@@ -12506,8 +12534,14 @@ def _thinking_budget_sampling_kwargs(
         )
     else:
         thinking = prepared_thinking
-    if thinking.enabled is False or thinking.hard_think_cap is None:
+    if thinking.enabled is False or (thinking.hard_think_cap is None and not thinking.min_answer_tokens):
         return {}
+    if generation_budget is _THINKING_BUDGET_UNSET:
+        generation_budget = _thinking_generation_budget(
+            request, chat_default_max_tokens=config.chat_default_max_tokens,
+        )
+    if generation_budget == 0:
+        return {}  # No tokens will be selected, including closing tokens.
     close_text = thinking.hard_close_sequence or _THINKING_CLOSE_MARKER
     try:
         close_token_ids = _tokenize_text(engine, close_text)
@@ -12515,10 +12549,13 @@ def _thinking_budget_sampling_kwargs(
         return {}
     if not close_token_ids:
         return {}
+    cap = _effective_thinking_token_cap(thinking, close_token_ids, generation_budget)
+    if cap is None:
+        return {}
     return {
         "thinking_close_token_ids": close_token_ids,
-        "thinking_hard_token_cap": thinking.hard_think_cap,
-        "thinking_soft_close_window": 0 if thinking.soft_close_window is None else thinking.soft_close_window,
+        "thinking_hard_token_cap": cap,
+        "thinking_soft_close_window": min(int(thinking.soft_close_window or 0), cap),
     }
 
 

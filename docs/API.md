@@ -1137,11 +1137,18 @@ Chat requests accept common OpenAI/Qwen thinking controls:
   `thinking_token_budget`, `chat_template_kwargs.thinking_budget`, and
   `thinking.budget_tokens` / `thinking.max_tokens` map to the effective hard
   thinking cap.
-- Explicit hint fields are accepted on chat requests:
+- Explicit control fields are accepted on chat requests:
   `max_think_tokens`, `min_answer_tokens`, `hard_think_cap`,
   `soft_close_window`, `hard_close_message`, and `hard_close_sequence`.
-  Numeric hard/min/soft hints are clamped to the same effective generation
-  budget.
+  `max_think_tokens` supplies the hard cap when no separate hard cap is set;
+  with an explicit hard cap it remains a soft prompt target. Numeric hard/min/
+  soft controls are clamped to the effective generation budget. Tokenizer-backed
+  lowering also subtracts the complete close sequence and the admitted answer
+  reserve before deciding the enforced cap. `min_answer_tokens` reserves room
+  rather than requiring the model to emit that many answer tokens before EOS.
+  A positive reserve alone activates close control. If the close sequence plus
+  reserve cannot fit, admission fails before generation (an error event for an
+  SSE response whose headers have already been sent).
 - Nested `thinking` or `reasoning` objects with `type`, `enabled`, or `effort`
   are accepted for OpenAI-compatible proxy variants; nested `thinking` and
   `reasoning` also accept the budget fields above plus `allow_unbounded`.
@@ -1150,7 +1157,9 @@ Chat requests accept common OpenAI/Qwen thinking controls:
   set an explicit hard cap. Explicit `thinking.max_tokens`,
   `reasoning.max_tokens`, `*.budget_tokens`, `*.hard_think_cap`, top-level
   `thinking_token_budget`, or top-level `hard_think_cap` still set a hard cap
-  and are enforced as usual.
+  and are enforced as usual. An answer reserve still limits reasoning to leave
+  space for closing and answer tokens; set `min_answer_tokens=0` to disable
+  that reserve too.
 
 Budget fields are prompt hints plus host-sampler thinking-budget policy today. The
 server validates that any `hard_close_sequence` contains the parser-recognized
@@ -1160,7 +1169,12 @@ default `</think>` marker into token ids, applies a host-sampler sparse
 soft-close bias ramp to the first close token inside the soft window, suppresses
 EOS while the row is still in reasoning/closing phase when an EOS token id is
 available, and forces the full close sequence at the hard cap on host-sampled
-PARO/GGUF paths. Qwen PARO/GGUF host-sampled paths resolve tokenizer EOS into
+PARO/GGUF paths. Flash-Next direct and scheduler-owned AR use the same
+request-owned thinking state; closing tokens pass through ordinary model
+updates, and finish metadata reports the state and counts. The reasoning count
+includes generated closing tokens. Hard-policy MTP requests fall back to AR
+with a named thinking-budget blocker; the explicit `hint` policy intentionally
+keeps only prompt hints. Qwen PARO/GGUF host-sampled paths resolve tokenizer EOS into
 the sampler when the request does not supply `eos_token_id`. If a soft-biased
 first close token is selected, the remaining close suffix is forced through
 normal token selection so KV state remains consistent. If tokenization is
