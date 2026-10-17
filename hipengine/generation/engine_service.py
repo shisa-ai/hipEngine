@@ -1137,8 +1137,18 @@ class EngineService:
             stop_token_sequences=state.request.stop_token_sequences,
             ignore_eos=state.request.ignore_eos,
         )
-        if tail.token_ids == tuple(token_ids) and tail.finish_reason is None:
-            return output
+        if tail.token_ids == tuple(token_ids):
+            # A semantic terminal token can also exhaust the output bound.
+            # Preserve the provider's active-control finish only when no IDs
+            # were trimmed and the generic guard found nothing but length.
+            semantic_finish = details is not None and (
+                (state.request.grammar is not None and details.reason == "stop"
+                 and not details.stop_sequence)
+                or (state.request.thinking_hard_token_cap is not None
+                    and details.reason == "thinking_budget_exhausted")
+            )
+            if tail.finish_reason is None or (tail.finish_reason == "length" and semantic_finish):
+                return output
         text = output.text
         if tail.token_ids != tuple(token_ids):
             detokenize = getattr(self._driver, "detokenize", None)
