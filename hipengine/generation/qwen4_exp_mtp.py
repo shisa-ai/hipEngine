@@ -147,7 +147,7 @@ class Qwen4ExpMTPTextProvider:
             "strict_fallback": row.strict_fallback,
             "candidate_budget": self.candidate_budget,
             "context_limit": int(self.draft.max_sequence_length),
-            "streaming_mode": "buffered_public",
+            "streaming_mode": "committed_tokens",
             "resident_streaming_mode": "committed_tokens",
             "processed_target_verification": True,
             "compatibility_guard": "target_distribution_bf16_c1",
@@ -563,16 +563,38 @@ class Qwen4ExpMTPTextProvider:
         self._require_open()
         if len(request.prompts) != 1:
             raise ValueError("Qwen4Exp MTP streaming requires exactly one prompt")
-        output = self.generate_detailed(request)[0]
-        # Correctness-first public SSE is explicitly buffered. Token-live
-        # streaming follows after the basic product gate, without relabeling ITL.
-        yield GenerationStreamChunk(
-            text=output.text,
-            finish_details=output.finish_details,
-            telemetry=output.telemetry,
-            generated_token_ids=output.generated_token_ids,
-            token_logprobs=output.token_logprobs,
-        )
+        steps = self.iter_generate(request.prompts[0], request)
+        generated: list[int] = []
+        emitted = ""
+        try:
+            while True:
+                try:
+                    progress = next(steps)
+                except StopIteration as stop:
+                    output = stop.value
+                    if not output.text.startswith(emitted):
+                        raise RuntimeError("Flash-Next tokenizer rewrote published text")
+                    yield GenerationStreamChunk(
+                        text=output.text[len(emitted):],
+                        finish_details=output.finish_details,
+                        telemetry=output.telemetry,
+                        generated_token_ids=output.generated_token_ids,
+                    )
+                    return
+                generated.extend(progress.token_ids)
+                text = self.target_generator.tokenizer.decode(
+                    generated, skip_special=False,
+                ).rstrip("\ufffd")
+                if not text.startswith(emitted):
+                    raise RuntimeError("Flash-Next tokenizer rewrote published text")
+                yield GenerationStreamChunk(
+                    text=text[len(emitted):],
+                    generated_token_ids=tuple(generated),
+                    token_logprobs=progress.token_logprobs,
+                )
+                emitted = text
+        finally:
+            steps.close()
 
     def close(self) -> None:
         if self.closed:

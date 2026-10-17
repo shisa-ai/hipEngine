@@ -236,7 +236,74 @@ def test_processed_prefill_requires_logits_and_zero_tokens_does_no_work():
     assert draft.calls == []
 
 
-def test_buffered_provider_stream_preserves_selected_logprobs():
+def test_provider_stream_is_lazy_and_closes_committed_iterator():
+    from hipengine.generation.qwen4_exp_mtp import Qwen4ExpMTPProgress
+    from hipengine.generation.registry import GenerationOutput
+    obj, _, _ = provider()
+    visited = []
+    def steps(*args, **kwargs):
+        try:
+            visited.append('root')
+            yield Qwen4ExpMTPProgress((1,), None, False)
+            visited.append('cycle')
+            yield Qwen4ExpMTPProgress((2,), None, True)
+            return GenerationOutput(text=obj.target_generator.tokenizer.decode((1, 2), skip_special=False),
+                                    generated_token_ids=(1, 2))
+        finally:
+            visited.append('closed')
+    obj.iter_generate = steps
+    stream = obj.stream_detailed(request(max_tokens=2))
+    assert visited == []
+    first = next(stream)
+    assert visited == ['root']
+    assert first.generated_token_ids == (1,)
+    assert first.finish_details is None
+    stream.close()
+    assert visited == ['root', 'closed']
+
+
+def test_provider_stream_zero_tokens_and_error_cleanup():
+    obj, target, draft = provider()
+    chunks = list(obj.stream_detailed(request(max_tokens=0)))
+    assert len(chunks) == 1
+    assert chunks[0].text == ''
+    assert chunks[0].finish_details.reason == 'length'
+    assert target.calls == draft.calls == []
+
+    from hipengine.generation.qwen4_exp_mtp import Qwen4ExpMTPProgress
+    closed = []
+    def steps(*args, **kwargs):
+        try:
+            yield Qwen4ExpMTPProgress((1,), None, False)
+            raise RuntimeError('verification failed')
+        finally:
+            closed.append(True)
+    obj.iter_generate = steps
+    stream = obj.stream_detailed(request(max_tokens=2))
+    assert next(stream).finish_details is None
+    with pytest.raises(RuntimeError, match='verification failed'):
+        next(stream)
+    assert closed == [True]
+
+
+@pytest.mark.parametrize('pieces', [('�', '日'), ('a�', 'a�')])
+def test_provider_stream_holds_unfinished_utf8_until_final_output(pieces):
+    from hipengine.generation.qwen4_exp_mtp import Qwen4ExpMTPProgress
+    from hipengine.generation.registry import GenerationOutput
+    obj, _, _ = provider()
+    obj.target_generator.tokenizer.decode = lambda ids, **kw: pieces[len(ids) - 1]
+    def steps(*args, **kwargs):
+        yield Qwen4ExpMTPProgress((1,), None, False)
+        yield Qwen4ExpMTPProgress((2,), None, True)
+        return GenerationOutput(text=pieces[-1], generated_token_ids=(1, 2))
+    obj.iter_generate = steps
+    chunks = list(obj.stream_detailed(request(max_tokens=2)))
+    assert ''.join(c.text for c in chunks) == pieces[-1]
+    assert '�' not in ''.join(c.text for c in chunks[:-1])
+    assert chunks[-1].generated_token_ids == (1, 2)
+
+
+def test_provider_stream_preserves_selected_logprobs():
     obj, _, _ = provider()
     req = request(max_tokens=8)
     expected = obj.generate_detailed(req)[0]

@@ -90,8 +90,14 @@ def test_real_grammar_and_tool_routes_use_mtp_and_preserve_all_visible_tokens(mo
         else:
             if route == 'stream':
                 chunks = list(api.stream_speculative_detailed(req))
-                assert len(chunks) == 1  # This API is still explicitly buffered.
-                actual = chunks[0]
+                assert len(chunks) > 1
+                assert all(c.finish_details is None for c in chunks[:-1])
+                actual = replace(
+                    chunks[-1],
+                    text=''.join(c.text for c in chunks),
+                    token_logprobs=tuple(t for c in chunks for t in c.token_logprobs),
+                )
+                assert actual.text == expected.text == text
             else:
                 actual = (api.generate_speculative_detailed(req) if route == 'direct' else api.generate_detailed(req))[0]
             assert actual.token_logprobs == expected.token_logprobs

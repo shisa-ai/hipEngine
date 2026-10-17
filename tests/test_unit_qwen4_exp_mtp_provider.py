@@ -173,12 +173,14 @@ def test_qwen4_exp_mtp_provider_keeps_exact_target_output_and_trims_draft() -> N
     assert draft.position == target.runner.position == 6
     capability = provider.capabilities()
     assert capability["strict_fallback"] == "target_ar"
-    assert capability["streaming_mode"] == "buffered_public"
+    assert capability["streaming_mode"] == "committed_tokens"
     assert capability["context_limit"] == 4_096
 
     chunks = list(provider.stream_detailed(_request()))
-    assert len(chunks) == 1
-    assert chunks[0].telemetry.timing == output.telemetry.timing
+    assert len(chunks) > 1
+    assert ''.join(chunk.text for chunk in chunks) == output.text
+    assert chunks[-1].generated_token_ids == output.generated_token_ids
+    assert chunks[-1].telemetry.timing == output.telemetry.timing
 
 
 def test_qwen4_exp_mtp_crosses_the_old_1k_boundary() -> None:
