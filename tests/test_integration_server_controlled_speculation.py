@@ -116,13 +116,16 @@ def test_stops_and_eos_execute_mtp(monkeypatch, spelling, stream, temperature, l
 @pytest.mark.parametrize('chat', [False, True])
 @pytest.mark.parametrize('spelling', ['speculative', 'speculative_mtp'])
 @pytest.mark.parametrize('stream', [False, True])
-def test_text_stop_not_matching_standalone_tokenization_never_leaks(monkeypatch, chat, spelling, stream):
+@pytest.mark.parametrize('logprobs', [False, True])
+def test_text_stop_not_matching_standalone_tokenization_never_leaks(monkeypatch, chat, spelling, stream, logprobs):
     api, llm, target, draft, cfg = setup(monkeypatch, 'alphaENDignored')
     tokenize = llm.tokenize
     # Real BPE tokenization of a standalone stop can differ from its in-context
     # token sequence. Force that case while keeping normal prompt tokenization.
     llm.tokenize = lambda text, **kw: [259, 260] if text == 'END' else tokenize(text, **kw)
     body = dict(model='fake-model', max_tokens=40, temperature=0, stop='END', stream=stream, **{spelling: True})
+    if logprobs:
+        body.update({'logprobs': True, 'top_logprobs': 2} if chat else {'logprobs': 2})
     if chat:
         body.update(messages=[dict(role='user', content='request')], enable_thinking=False)
     else:
@@ -137,6 +140,12 @@ def test_text_stop_not_matching_standalone_tokenization_never_leaks(monkeypatch,
         text = ''.join(((c.get('delta') or c.get('message') or {}).get('content') or '') if chat else c.get('text', '')
                        for p in payloads for c in p.get('choices', []))
         assert text == 'alpha'
+        if stream:
+            assert not llm.speculative_calls, 'text stops must not route to buffered generation'
+        if logprobs:
+            entries = [c['logprobs'] for p in payloads for c in p.get('choices', []) if c.get('logprobs')]
+            pieces = [t['bytes'] for e in entries for t in e['content']] if chat else [b for e in entries for b in e['hipengine']['token_bytes']]
+            assert b''.join(bytes(b) for b in pieces).decode() == text
         assert choice['finish_reason'] == 'stop'
         assert extra['generated_token_ids']
         usage = next(p['usage'] for p in reversed(payloads) if p.get('usage'))

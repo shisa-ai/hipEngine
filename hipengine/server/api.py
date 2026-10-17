@@ -5803,7 +5803,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine=engine,
                 )
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
-            async for token in _iterate_with_request_control(
+            async for token in _stop_filtered_stream(_iterate_with_request_control(
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
@@ -5821,7 +5821,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 ),
                 control,
-            ):
+            ), request.stop):
                 stream_chunk = _coalesce_stream_logprobs(
                     _coerce_generation_stream_chunk(token), pending_stream_logprobs,
                 )
@@ -6985,9 +6985,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             request.stream
             and len(expanded_prompts) == 1
             and not request.echo
-            # Standalone stop tokenization need not match in-context BPE.
-            # Buffer until a text-level incremental stop filter owns publication.
-            and not request.stop
             and (not _request_logprobs_enabled(request) or live_completion_logprobs)
             and not _structured_result_validation(request)
         ):
@@ -7353,7 +7350,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     stream_chat_completion_many
                     if _request_n(request) > 1
                     or (request.logprobs and not live_chat_logprobs)
-                    or bool(request.stop)
                     or _structured_result_validation(request)
                     else stream_chat_completion
                 )
@@ -8325,7 +8321,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
             )
-            async for token in _iterate_with_request_control(
+            async for token in _stop_filtered_stream(_iterate_with_request_control(
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
@@ -8343,7 +8339,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 ),
                 control,
-            ):
+            ), request.stop):
                 stream_chunk = _coalesce_stream_logprobs(
                     _coerce_generation_stream_chunk(token), pending_stream_logprobs,
                 )
@@ -15211,6 +15207,76 @@ def _completion_logprobs(detail: GenerationOutput, text: str, *, echo_text: str 
     if omitted:
         payload.setdefault("hipengine", {})["omitted_token_logprobs"] = omitted
     return payload
+
+
+async def _stop_filtered_stream(
+    source: AsyncIterator[Any], stops: str | Sequence[str] | None,
+) -> AsyncIterator[GenerationStreamChunk]:
+    """Publish safe text prefixes, retaining only possible stop suffixes.
+
+    Token stops still belong to the backend. If in-context tokenization misses
+    one, drain its remaining events to preserve authoritative commit accounting.
+    Do not manufacture partial-token logprobs at a text-stop boundary.
+    """
+    stops = tuple(s for s in ((stops,) if isinstance(stops, str) else stops or ()) if s)
+    pending = ""
+    records: list[TokenLogprob] = []
+    matched = False
+    last = None
+    try:
+        async for value in source:
+            chunk = _coerce_generation_stream_chunk(value)
+            if not stops:
+                yield chunk
+                continue
+            last = chunk
+            if matched:
+                continue
+            pending += chunk.text
+            records.extend(chunk.token_logprobs)
+            positions = [i for stop in stops if (i := pending.find(stop)) >= 0]
+            hold = max((size for stop in stops for size in range(1, min(len(stop), len(pending) + 1))
+                        if pending.endswith(stop[:size])), default=0)
+            safe_end = len(pending) - hold
+            if positions and min(positions) <= safe_end:
+                cut = min(positions)
+                matched = True
+            else:
+                # An earlier incomplete stop takes precedence over a later
+                # completed one if it completes on the next chunk.
+                cut = safe_end
+                # A token (or UTF-8 byte group) crossing the safe boundary must
+                # stay intact until the suffix is resolved.
+                for start, end in logprob_text_spans(records):
+                    if start < cut < end:
+                        cut = start
+                        break
+            if cut:
+                spans = tuple(logprob_text_spans(records))
+                selected = tuple(token for token, (start, _end) in zip(records, spans, strict=True)
+                                 if start < cut)
+                yield replace(chunk, text=pending[:cut], token_logprobs=selected,
+                              finish_details=None)
+                records = [token for token, (_start, end) in zip(records, spans, strict=True) if end > cut]
+                pending = pending[cut:]
+            if matched:
+                pending = ""
+                records.clear()
+        if stops and last is not None:
+            positions = [i for stop in stops if (i := pending.find(stop)) >= 0]
+            if positions:
+                pending = pending[:min(positions)]
+                matched = True
+            if pending:
+                yield replace(last, text=pending, token_logprobs=tuple(records), finish_details=None)
+            finish = last.finish_details
+            if matched:
+                finish = FinishDetails(reason="stop") if finish is None else replace(finish, reason="stop")
+            yield replace(last, text="", token_logprobs=(), finish_details=finish)
+    finally:
+        close = getattr(source, "aclose", None)
+        if close is not None:
+            await close()
 
 
 def _coalesce_stream_logprobs(
