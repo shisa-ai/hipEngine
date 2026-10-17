@@ -3431,6 +3431,85 @@ def test_gguf_resident_direct_int8_c4_uses_capability_qualified_packed_width(
     assert "serial_decode_fallback" not in runner._last_execution_manifest
 
 
+def test_gguf_resident_bf16_c4_uses_the_declared_standard_packed_width(
+    monkeypatch,
+) -> None:
+    """A BF16 session packs a c4 group instead of serializing one row per step.
+
+    The width comes from the session's own policy with the inputs its
+    constructor resolves for a BF16 KV policy, so this pins the policy-to-
+    consumer link rather than a hand-written session attribute.
+    """
+
+    from hipengine.core.dtype import DType
+    from hipengine.runtime.qwen35_gguf_runner import _gguf_packed_decode_max_rows
+
+    width = _gguf_packed_decode_max_rows(
+        kv_storage_dtype=DType.BF16,
+        direct_rows=1,
+        retained_decode_kernel=None,
+        bf16_full_attention_layer_indices=(),
+    )
+    assert width == 8
+    calls: list[tuple[tuple[int, ...], int, tuple[int, ...]]] = []
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(
+        kv_capability_provenance={
+            "status": "qualified",
+            "runtime_action": "admit",
+            "promotion_eligible": True,
+            "effective_kv_storage": "bf16",
+            "evidence": {
+                "max_direct_rows": 0,
+                "max_serial_resident_rows": 4,
+                "persistent_bf16_mirror": False,
+            },
+        }
+    )
+    runner._last_execution_manifest = {"mode": "native_bf16_batch"}
+    runner._last_physical_group_plan = {}
+
+    def step_chunk(rows, *, physical_rows, active_slot_indices, allow_graph=True):
+        calls.append(
+            (
+                tuple(int(row.request_id) for row in rows),
+                int(physical_rows),
+                tuple(int(index) for index in active_slot_indices),
+            )
+        )
+        return True
+
+    runner._step_native_chunk = step_chunk
+    runner._step_native_serial = lambda *args, **kwargs: pytest.fail(
+        "BF16 c4 must not serialize once the packed width is the declared standard"
+    )
+    rows = [
+        SimpleNamespace(
+            request_id=300 + index,
+            native_sampler=False,
+            native_sampled=False,
+            slot=SimpleNamespace(
+                session=SimpleNamespace(
+                    kv_attention_source="bf16",
+                    packed_decode_max_rows=width,
+                )
+            ),
+        )
+        for index in range(4)
+    ]
+    monkeypatch.delenv("HIPENGINE_GGUF_AR_PACKED_DECODE", raising=False)
+
+    runner._step_native_rows(rows)
+
+    assert calls == [((300, 301, 302, 303), 4, (0, 1, 2, 3))]
+    group = runner._last_physical_group_plan["groups"][0]
+    assert group["execution_path"] == "packed_native"
+    assert group["physical_rows"] == 4
+    assert "serial_decode_fallback" not in runner._last_execution_manifest
+
+
 def test_gguf_resident_runner_compaction_flushes_and_invalidates_slot_bound_graphs() -> None:
     events: list[tuple] = []
 

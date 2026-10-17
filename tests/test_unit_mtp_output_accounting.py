@@ -266,6 +266,35 @@ def test_accounting_publishes_the_cycle_phase_split_with_its_divisor() -> None:
     assert set(idle_accounting["cycle_timing_ms"].values()) == {0.0}
 
 
+def test_physical_mtp_execution_is_not_inferred_from_http_group_width() -> None:
+    row = _intent_row()
+    row.mtp2_plan_group_rows = 4
+    row.mtp2_proposal_batch_calls = 6
+    row.mtp2_proposal_physical_rows = [4, 4, 4, 2, 2, 2]
+    row.mtp2_target_batch_calls = 2
+    row.mtp2_target_physical_rows = [16, 8]
+    row.mtp2_target_pass_ms = [1.0, 2.0, 3.0]
+    accounting = speculative_output_accounting(row)
+    assert accounting["physical_execution"] == {
+        "proposal_batch_calls": 6,
+        "proposal_rows_histogram": {"2": 3, "4": 3},
+        "target_pass_count": 3,
+        "target_batch_calls": 2,
+        "target_rows_histogram": {"8": 1, "16": 1},
+    }
+    assert "physical_execution" not in speculative_output_accounting(_intent_row())
+
+    # Singleton target passes are real work even when no batched path ran.
+    row.mtp2_target_batch_calls = 0
+    row.mtp2_target_physical_rows = []
+    physical = speculative_output_accounting(row)["physical_execution"]
+    assert physical["target_pass_count"] == 3
+    assert physical["target_batch_calls"] == 0
+    assert physical["target_rows_histogram"] == {}
+    row.mtp2_target_pass_ms = []
+    assert speculative_output_accounting(row)["physical_execution"]["target_pass_count"] == 0
+
+
 def test_accounting_keeps_the_first_fallback_position_only() -> None:
     row = _intent_row()
     record_speculative_outputs(

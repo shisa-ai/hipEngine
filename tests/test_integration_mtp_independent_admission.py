@@ -2,12 +2,15 @@
 import asyncio
 import threading
 
+import pytest
+
 from hipengine.llm import SamplingParams
 from hipengine.server.api import _GenerationBatcher
 from tests.test_integration_server_api import SpeculativeMTPFakeLLM
 
 
-def test_mtp_clients_with_different_seeds_can_overlap_without_ar_submission():
+@pytest.mark.parametrize("batch_window_seconds", [0, 0.01])
+def test_mtp_clients_with_different_seeds_can_overlap_without_ar_submission(batch_window_seconds):
     class ResidentEngine(SpeculativeMTPFakeLLM):
         supports_independent_generation = True
         server_mtp_batch_max_active_requests = 4
@@ -31,7 +34,7 @@ def test_mtp_clients_with_different_seeds_can_overlap_without_ar_submission():
 
     async def run():
         engine = ResidentEngine()
-        batcher = _GenerationBatcher(engine_factory=lambda: engine, batch_window_seconds=0, max_active_requests=4)
+        batcher = _GenerationBatcher(engine_factory=lambda: engine, batch_window_seconds=batch_window_seconds, max_active_requests=4)
         slow = asyncio.create_task(batcher.submit(("slow",), SamplingParams(max_tokens=4, seed=1), route="speculative_mtp"))
         fast = None
         try:
