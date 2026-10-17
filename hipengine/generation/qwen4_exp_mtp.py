@@ -155,7 +155,11 @@ class Qwen4ExpMTPTextProvider:
                 "temperature", "top_k", "top_p", "min_p", "seed", "row_seeds",
                 "logit_bias", "repetition_penalty", "presence_penalty",
                 "frequency_penalty", "suppress_token_ids", "ignore_eos",
-                "logprobs", "top_logprobs",
+                "logprobs", "top_logprobs", "stop_token_ids", "stop_token_sequences",
+                "min_tokens", "eos_token_id", "grammar", "thinking_budget",
+                "forced_tokens_pending", "post_thinking_forced_tokens_pending",
+                "force_sequence_completion_token_sequences", "json_object_close_forcing",
+                "tool_call_constraint",
             ],
         }
 

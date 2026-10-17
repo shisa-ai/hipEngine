@@ -5,6 +5,7 @@ from __future__ import annotations
 import queue
 import threading
 from collections import Counter
+from collections.abc import Mapping
 import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Iterator, Sequence
@@ -190,6 +191,12 @@ class EngineService:
         if command_timeout <= 0.0:
             raise ValueError("command_timeout_seconds must be positive")
         self._driver = driver
+        capabilities = getattr(driver, "speculative_capabilities", {})
+        capabilities = capabilities() if callable(capabilities) else capabilities
+        self._buffer_speculative_stream = (
+            isinstance(capabilities, Mapping)
+            and capabilities.get("streaming_mode") == "buffered_public"
+        )
         self._canonical_token_events = bool(
             getattr(driver, "canonical_token_events", True)
         )
@@ -1032,6 +1039,11 @@ class EngineService:
                 self._cancel_state(state, reason="client_backpressure")
                 continue
             state.token_ids.append(token_id)
+            if self._buffer_speculative_stream and state.execution_mode in {"verify_chain", "verify_tree"}:
+                # A buffered provider's scheduler can emit token events without
+                # complete text deltas. Publish its authoritative output only at
+                # terminal; a lone frontier delta must not suppress that text.
+                continue
             stream_chunk = event.stream_chunk
             if state.execution_mode in {"verify_chain", "verify_tree"} and (
                 stream_chunk.finish_details is not None

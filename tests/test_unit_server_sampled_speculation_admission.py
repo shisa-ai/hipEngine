@@ -50,6 +50,13 @@ def route(engine, sampling, spelling='speculative'):
     dict(logprobs=True, top_logprobs=3), dict(logit_bias={0: 1}),
     dict(repetition_penalty=1.2, presence_penalty=.3, frequency_penalty=.2),
     dict(suppress_token_ids=(2,)), dict(ignore_eos=True),
+    dict(stop_token_ids=(2,)), dict(stop_token_sequences=((1, 2),)),
+    dict(eos_token_id=8), dict(min_tokens=1, eos_token_id=9),
+    dict(forced_tokens_pending=(1,)), dict(post_thinking_forced_tokens_pending=(1,), thinking_close_token_ids=(2,), thinking_hard_token_cap=2),
+    dict(thinking_close_token_ids=(2,), thinking_hard_token_cap=2),
+    dict(grammar={'format': 'json_schema', 'value': {'type': 'object'}}),
+    dict(force_sequence_completion_token_sequences=((1, 2),)),
+    dict(json_object_close_forcing=True),
 ])
 def test_admit_only_provider_declared_sampling(engine, spelling, controls):
     result = route(engine, SamplingParams(**controls), spelling)
@@ -57,14 +64,7 @@ def test_admit_only_provider_declared_sampling(engine, spelling, controls):
 
 
 @pytest.mark.parametrize('controls,blocker', [
-    (dict(stop_token_ids=(2,)), 'stop_token_ids'),
-    (dict(stop_token_sequences=((1, 2),)), 'stop_token_sequences'),
-    (dict(eos_token_id=8), 'eos_token_id'),
-    (dict(min_tokens=1, eos_token_id=9), 'min_tokens'),
-    (dict(forced_tokens_pending=(1,)), 'forced_tokens_pending'),
-    (dict(thinking_close_token_ids=(2,), thinking_hard_token_cap=2), 'thinking_budget'),
     (dict(resident_session_key='session'), 'resident_session_key'),
-    (dict(grammar={'kind': 'json_schema', 'schema': {'type': 'object'}}), 'grammar'),
 ])
 def test_unsupported_controls_remain_early_errors_or_named_fallback(engine, controls, blocker):
     sampling = SamplingParams(temperature=.8, logprobs=True, **controls)
@@ -84,6 +84,20 @@ def test_unsupported_controls_remain_early_errors_or_named_fallback(engine, cont
     assert 'temperature' not in decision['sampling_blockers']
 
 
+@pytest.mark.parametrize('controls,field', [
+    (dict(grammar={'format': 'json_schema', 'value': {'type': 'object'}}), 'grammar'),
+    (dict(thinking_close_token_ids=(2,), thinking_hard_token_cap=2), 'thinking_budget'),
+    (dict(stop_token_sequences=((1, 2),)), 'stop_token_sequences'),
+])
+def test_withdrawing_one_control_restores_only_its_guard(engine, controls, field):
+    caps = engine.speculative_capabilities
+    caps['supported_sampling_fields'] = [item for item in caps['supported_sampling_fields'] if item != field]
+    with pytest.raises(OpenAIHTTPError) as caught:
+        route(engine, SamplingParams(temperature=.8, **controls))
+    assert caught.value.extra['hipengine']['speculative']['blockers'] == [field]
+    assert route(engine, SamplingParams(temperature=.8, **controls), 'speculative_mtp') == 'speculative_mtp_k0'
+
+
 def test_sampling_capabilities_match_admission_and_do_not_promote_automatic(engine):
     generic = _speculative_provider_capability(config(), engine=engine)
     explicit = _speculative_mtp_capability(config(), engine=engine)
@@ -95,7 +109,8 @@ def test_sampling_capabilities_match_admission_and_do_not_promote_automatic(engi
         assert not payload['default_enabled']
     assert 'temperature' not in explicit['incompatible_fields']
     assert 'temperature' not in explicit['incompatible_conditions']
-    assert 'thinking_budget' in explicit['incompatible_fields']
+    assert 'thinking_budget' not in explicit['incompatible_fields']
+    assert 'grammar' in explicit['supported_sampling_fields']
     assert 'sampled' in explicit['allowed_execution_modes']
     req = CompletionRequest(model='target', prompt='one')
     assert _speculative_mtp_route_for_request(config(speculative_mtp_serving='enabled'),

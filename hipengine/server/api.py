@@ -8662,7 +8662,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             stream_finish_reason = "stop" if tool_validation.failed else "tool_calls" if parsed.tool_calls else finish_reason
             finish_details = _chat_finish_details_payload(
-                None,
+                backend_detail,
                 stream_finish_reason,
                 text,
                 reason_override=tool_validation.failure_reason if tool_validation.failed else None,
@@ -8736,6 +8736,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 token_accounting=token_accounting,
                 stream_chunk=done_stream_chunk,
                 include_hipengine=include_hipengine,
+                final_hipengine=_stream_speculative_mtp_metadata(
+                    generation_route,
+                    backend_detail,
+                    route_decision=generation_route_decision,
+                    thinking_policy=_request_speculative_mtp_thinking(config, request),
+                ),
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
                 kv_pool=final_kv_pool,
@@ -13114,9 +13120,9 @@ def _speculative_mtp_route_for_request(
     if thinking_policy == "hint":
         # The host-sampler thinking budget is relaxed to prompt-hint-only for
         # the raw-argmax MTP route: the rendered prompt keeps its thinking
-        # hints, but the sampler-level enforcement fields are cleared so the
-        # request is raw-greedy-exact again.  Under the hard policy the
-        # thinking budget stays a hard blocker and MTP falls back to AR.
+        # hints, but sampler-level enforcement is cleared for hint policy.
+        # Hard policy retains those fields and requires a provider that declares
+        # processed thinking-budget support; other providers fall back to AR.
         sampling = relax_thinking_budget_for_mtp(sampling)
     blockers = (
         _provider_speculative_sampling_blockers(engine, sampling)

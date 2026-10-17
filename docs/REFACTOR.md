@@ -6,10 +6,18 @@
   speculative width is one; the existing scheduler partitions logical C2 work.
   Replace this limit only with a snapshotable multi-request frontier and
   cancellation/isolation evidence. Do not label candidate rows as request width.
-- Token processors beyond model EOS (stops, grammar, penalties, thinking caps,
-  forced tokens, logprobs and resident session reuse) are rejected at staged
-  registration until their MTP commit/rollback contracts are implemented.
-  Remove each guard with its full behavior gate, not by silently using K0.
+- Sampling, stops, grammar, tool and thinking processors now have request-owned
+  MTP commit/rollback tests and provider-scoped HTTP admission. Resident session
+  reuse is still rejected before work; remove that guard only with a session
+  ownership/rollback gate, not by silently using K0.
+- Public streaming is declared `buffered_public`. EngineService withholds partial
+  scheduler text for this declaration and publishes the authoritative terminal
+  output. Replace the Flash-Next declaration only after every committed MTP token
+  has a stop-safe, Unicode-safe delta and cancellation/backpressure tests pass.
+  Keep the generic buffered-provider service contract for providers that need it.
+- Control HTTP evidence: `tests/test_integration_server_controlled_speculation.py`
+  and `worklog/entries/20261017T220002.030487Z-lhl-mtp-http-controls-e305ba.md`.
+  Live qualification remains PS6; incremental streaming remains PS7.
 - Evidence: `tests/test_unit_qwen4exp_mtp_submission.py` and
   `worklog/entries/20261017T192055.400855Z-lhl-qwen4exp-staged-mtp-serving-0ed770.md`.
 
