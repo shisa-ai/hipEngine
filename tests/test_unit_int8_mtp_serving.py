@@ -255,15 +255,80 @@ def test_dense_declarations_list_sampled_and_static_mode_gate_is_storage_blind()
     gate = inspect.getsource(mtp2.Qwen35GGUFMTP2Adapter._sampled_route_qualified)
     for attribute in ("kv_storage", "storage_dtype", "effective_kv_storage"):
         assert attribute not in gate, attribute
-    # The gate is storage-blind and keys on the artifact's weight quant: it
-    # delegates to the shared qualification helper, passing the adapter's own
-    # ``quant`` (the loaded artifact's weight quantization) rather than any
-    # storage field.
+    # The gate is storage-blind: it delegates to the shared qualification
+    # helper rather than reading a storage field.
     assert "sampled_route_qualified_for" in gate
-    assert 'getattr(self, "quant", "")' in gate
-    helper = inspect.getsource(mtp2.sampled_route_qualified_for)
-    assert "weight_quant" in helper
-    assert "artifact_size_bytes" in helper
+
+
+def test_sampled_capability_qualifies_an_artifact_no_evidence_row_describes():
+    """Qualification follows the declaration, not the artifact's identity.
+
+    The sampled route is qualified by what the loaded plugin declares it can
+    execute for this ``(backend, target_arch)``. An artifact whose quant name
+    and file size appear in no evidence row still qualifies, because admission
+    is not keyed on a model name, path, quant string, or digest.
+    """
+
+    import hipengine.generation.qwen35_gguf_mtp2 as mtp2
+    from hipengine.speculative.serving import SpeculativeMTPServingImplementation
+
+    for storage in ("bf16", "int8_per_token_head"):
+        declaration = SpeculativeMTPServingImplementation(
+            name=f"unmeasured_{storage}_sampled_chain",
+            kv_storage=storage,
+            backends=(("hip_gfx1151", "gfx1151"),),
+            max_candidate_count=2,
+            max_group_rows=1,
+            group_rejection_reason="group_above_offered_width",
+            sampling_modes=("greedy_fast", "sampled"),
+        )
+        generator = SimpleNamespace(
+            backend="hip_gfx1151",
+            target_arch="gfx1151",
+            # An artifact no evidence row mentions, at a path that does not
+            # exist, so an identity lookup cannot succeed either.
+            weight_index=SimpleNamespace(path="/nonexistent/unmeasured.gguf"),
+            model_plugin=SimpleNamespace(
+                speculative_mtp_serving_implementations=(declaration,),
+                speculative_mtp_serving_evidence=(),
+            ),
+        )
+
+        assert mtp2.sampled_route_qualified_for(generator) is True
+
+
+def test_sampled_capability_refuses_a_plugin_that_does_not_declare_it():
+    """A missing declaration is the only reason the static gate closes."""
+
+    import hipengine.generation.qwen35_gguf_mtp2 as mtp2
+    from hipengine.speculative.serving import SpeculativeMTPServingImplementation
+
+    greedy_only = SpeculativeMTPServingImplementation(
+        name="greedy_only_chain",
+        kv_storage="bf16",
+        backends=(("hip_gfx1151", "gfx1151"),),
+        max_candidate_count=2,
+        max_group_rows=1,
+        group_rejection_reason="group_above_offered_width",
+        sampling_modes=("greedy_fast",),
+    )
+    generator = SimpleNamespace(
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        weight_index=SimpleNamespace(path="/nonexistent/unmeasured.gguf"),
+        model_plugin=SimpleNamespace(
+            speculative_mtp_serving_implementations=(greedy_only,),
+            speculative_mtp_serving_evidence=(),
+        ),
+    )
+
+    assert mtp2.sampled_route_qualified_for(generator) is False
+    # A declaration for another backend does not transfer.
+    generator.backend = "hip_gfx1100"
+    generator.target_arch = "gfx1100"
+    assert mtp2.sampled_route_qualified_for(generator) is False
+    # No plugin at all is a refusal, not an exception.
+    assert mtp2.sampled_route_qualified_for(None) is False
 
 
 def test_processed_argmax_stays_refused_on_every_storage():

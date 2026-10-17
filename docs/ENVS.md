@@ -884,7 +884,6 @@ kernel R&D only, not normal use.
 | --- | --- | --- |
 | `HIPENGINE_ENGINE_SERVICE_TRACEBACK` | unset | When the engine-service driver thread fails, prints the full Python traceback to stderr before recording the service unhealthy. |
 | `HIPENGINE_DEBUG_SAMPLED_ROUTE` | unset | Prints one `[prefill-debug]`/route-debug line per request describing which sampler/speculation route resolved and why (engine loop and MTP2 adapter). |
-| `HIPENGINE_DEBUG_SAMPLED_QUALIFY` | unset | Prints the MTP2 qualification inputs (backend, arch, quant, artifact size) as the adapter decides whether a physical cell qualifies. |
 | `HIPENGINE_MTP2_TRACE_DECLINE` | unset | Prints one `[mtp2-resolve]`/`[mtp2-prefix-checkpoint]` line per declined MTP2 resolution, so an operator can tell the distinct decline reasons apart. |
 | `HIPENGINE_PARO_FFN_MEGAKERNEL_DEBUG` | unset | Prints a one-time line when the PARO FFN megakernel first fires (counts activations). |
 | `HIPENGINE_VK_OWNER_TRACE` | unset | Inside the generated Vulkan-owner build probe, prints `HE_NODES=` member lists during graph capture. |

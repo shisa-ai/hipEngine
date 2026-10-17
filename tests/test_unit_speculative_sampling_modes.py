@@ -1,10 +1,15 @@
 """The sampled MTP route's admission vocabulary.
 
 A request may only reach the sampled route when both sides agree: the request-time
-serving plan (keyed on the model-plugin evidence rows) and the engine loop's
-planner (keyed on the capability's ``supported_sampling_modes``). These tests pin
-the mapping for every processor class, so a request the sampled route cannot
-serve exactly keeps falling back to the autoregressive path.
+serving plan (keyed on the model-plugin implementation declarations) and the
+engine loop's planner (keyed on the capability's ``supported_sampling_modes``).
+These tests pin the mapping for every processor class, so a request the sampled
+route cannot serve exactly keeps falling back to the autoregressive path.
+
+Qualification is a capability question. It is answered by what the loaded plugin
+declares it can execute for this ``(backend, target_arch)``, never by an
+evidence row, artifact size, quant string, or digest, so an artifact no
+measurement describes still runs when the kernels cover it.
 """
 
 from __future__ import annotations
@@ -13,10 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hipengine.generation.qwen35_gguf_mtp2 import (
-    Qwen35GGUFMTP2Adapter,
-    _adapter_artifact_size,
-)
+from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.generation.sampling import (
     SAMPLED_MTP_SERVABLE_BLOCKERS,
     SAMPLED_MTP_UNSERVABLE_BLOCKERS,
@@ -125,7 +127,7 @@ def test_servable_requests_map_to_the_sampled_mode(name: str) -> None:
         return
     if name == "eos_only":
         # Unchanged behavior: an EOS-only request is not newly admitted by the
-        # sampled route's evidence row.
+        # sampled route's implementation declaration.
         assert speculative_serving_sampling_mode(params) == "processed_argmax"
         return
     assert supports_sampled_speculative_mtp(params)
@@ -164,17 +166,38 @@ def test_servable_and_unservable_blocker_sets_are_disjoint_and_cover_the_vocabul
     assert "thinking_budget" in SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
 
 
-def _adapter(*, plugin_evidence=(), artifact_size=None, row=None):
+def _declaration(
+    *,
+    kv_storage: str = "bf16",
+    backends: tuple[tuple[str, str], ...] = (("hip_gfx1151", "gfx1151"),),
+    sampling_modes: tuple[str, ...] = ("greedy_fast", "sampled"),
+):
+    from hipengine.speculative.serving import SpeculativeMTPServingImplementation
+
+    return SpeculativeMTPServingImplementation(
+        name=f"test_{kv_storage}_{'_'.join(sampling_modes)}_chain",
+        kv_storage=kv_storage,
+        backends=backends,
+        max_candidate_count=2,
+        max_group_rows=1,
+        group_rejection_reason="group_above_offered_width",
+        sampling_modes=sampling_modes,
+    )
+
+
+def _adapter(*, plugin_declarations=(), row=None):
     generator = SimpleNamespace(
         backend="hip_gfx1151",
         target_arch="gfx1151",
         execution_profile="production",
-        model_plugin=SimpleNamespace(speculative_mtp_serving_evidence=plugin_evidence),
+        # An artifact no evidence row describes, at a path that does not exist,
+        # so an identity lookup could not succeed either.
+        weight_index=SimpleNamespace(path="/nonexistent/unmeasured.gguf"),
+        model_plugin=SimpleNamespace(
+            speculative_mtp_serving_implementations=plugin_declarations,
+            speculative_mtp_serving_evidence=(),
+        ),
     )
-    if artifact_size is not None:
-        generator.weight_index = SimpleNamespace(
-            path=__file__ if artifact_size == "file" else "/nonexistent"
-        )
     owner = SimpleNamespace(generator=generator, capacity=4)
     adapter = Qwen35GGUFMTP2Adapter(
         owner,
@@ -188,65 +211,54 @@ def _adapter(*, plugin_evidence=(), artifact_size=None, row=None):
     return adapter
 
 
-def _evidence_row(**overrides):
-    values = {
-        "sampling_modes": ("greedy_fast", "sampled"),
-        "backend": "hip_gfx1151",
-        "target_arch": "gfx1151",
-        "weight_quant": "gguf_q4_k_m",
-        "artifact_size_bytes": 0,
-    }
-    values.update(overrides)
-    return SimpleNamespace(**values)
-
-
-def test_sampled_route_is_closed_without_an_evidence_row() -> None:
-    adapter = _adapter(plugin_evidence=())
+def test_sampled_route_is_closed_without_a_declaration() -> None:
+    adapter = _adapter(plugin_declarations=())
     assert adapter._sampled_route_qualified() is False
 
 
-def test_sampled_route_opens_only_for_a_matching_evidence_row() -> None:
-    assert _adapter(plugin_evidence=(_evidence_row(),))._sampled_route_qualified() is True
+def test_sampled_route_opens_only_for_a_matching_declaration() -> None:
+    assert _adapter(plugin_declarations=(_declaration(),))._sampled_route_qualified() is True
     assert (
         _adapter(
-            plugin_evidence=(_evidence_row(backend="hip_gfx1100"),)
+            plugin_declarations=(
+                _declaration(backends=(("hip_gfx1100", "gfx1100"),)),
+            )
         )._sampled_route_qualified()
         is False
     )
     assert (
         _adapter(
-            plugin_evidence=(_evidence_row(target_arch="gfx1100"),)
+            plugin_declarations=(
+                _declaration(backends=(("hip_gfx1151", "gfx1100"),)),
+            )
         )._sampled_route_qualified()
         is False
     )
     assert (
         _adapter(
-            plugin_evidence=(_evidence_row(weight_quant="gguf_q4_k_s"),)
-        )._sampled_route_qualified()
-        is False
-    )
-    assert (
-        _adapter(
-            plugin_evidence=(_evidence_row(sampling_modes=("greedy_fast",)),)
+            plugin_declarations=(_declaration(sampling_modes=("greedy_fast",)),)
         )._sampled_route_qualified()
         is False
     )
 
 
-def test_sampled_route_rejects_a_different_artifact_size() -> None:
-    adapter = _adapter(
-        plugin_evidence=(_evidence_row(artifact_size_bytes=1),),
-        artifact_size="file",
+def test_sampled_route_is_storage_blind_and_identity_blind() -> None:
+    """Both KV storages qualify, and no artifact identity participates.
+
+    The declaration lists the storage it was written for, but the accept path
+    samples from the target's own law over the verifier's row logits and never
+    reads KV, so qualification is the same for either storage. An unfamiliar
+    quant at a path that does not exist is still admitted: the question is what
+    the kernels can execute, not what has been measured.
+    """
+
+    for storage in ("bf16", "int8_per_token_head"):
+        adapter = _adapter(plugin_declarations=(_declaration(kv_storage=storage),))
+        assert adapter._sampled_route_qualified() is True, storage
+    # Two adapters differing only in the artifact's quant string agree.
+    assert _adapter(plugin_declarations=(_declaration(),))._sampled_route_qualified() is (
+        _adapter(plugin_declarations=(_declaration(),))._sampled_route_qualified()
     )
-    assert _adapter_artifact_size(adapter.generator) == __import__("os").path.getsize(__file__)
-    assert adapter._sampled_route_qualified() is False
-    matching = _adapter(
-        plugin_evidence=(
-            _evidence_row(artifact_size_bytes=__import__("os").path.getsize(__file__)),
-        ),
-        artifact_size="file",
-    )
-    assert matching._sampled_route_qualified() is True
 
 
 def test_sampled_route_request_follows_the_row_sampling_mode() -> None:
@@ -255,7 +267,7 @@ def test_sampled_route_request_follows_the_row_sampling_mode() -> None:
         request=_params(temperature=0.7, logit_bias={3: 1.0}),
         sampling_state=None,
     )
-    adapter = _adapter(plugin_evidence=(_evidence_row(),), row=row)
+    adapter = _adapter(plugin_declarations=(_declaration(),), row=row)
     assert adapter._sampled_route_request(1) is True
     # An EOS finish policy is served by the cycle commit's finish rule, so a
     # qualified row carrying one stays on the sampled route.
@@ -264,15 +276,15 @@ def test_sampled_route_request_follows_the_row_sampling_mode() -> None:
         request=_params(temperature=0.7, eos_token_id=9),
         sampling_state=None,
     )
-    assert _adapter(plugin_evidence=(_evidence_row(),), row=eos_row)._sampled_route_request(1) is True
+    assert _adapter(plugin_declarations=(_declaration(),), row=eos_row)._sampled_route_request(1) is True
     greedy_row = SimpleNamespace(
         sampling_request=_params(),
         request=_params(),
         sampling_state=None,
     )
-    greedy_adapter = _adapter(plugin_evidence=(_evidence_row(),), row=greedy_row)
+    greedy_adapter = _adapter(plugin_declarations=(_declaration(),), row=greedy_row)
     assert greedy_adapter._sampled_route_request(1) is False
-    unqualified = _adapter(plugin_evidence=(), row=row)
+    unqualified = _adapter(plugin_declarations=(), row=row)
     assert unqualified._sampled_route_request(1) is False
 
 
@@ -282,9 +294,9 @@ def test_sampled_route_request_falls_back_to_the_request_object() -> None:
         request=_params(temperature=0.9),
         sampling_state=None,
     )
-    adapter = _adapter(plugin_evidence=(_evidence_row(),), row=row)
+    adapter = _adapter(plugin_declarations=(_declaration(),), row=row)
     assert adapter._sampled_route_request(1) is True
-    empty = _adapter(plugin_evidence=(_evidence_row(),), row=SimpleNamespace())
+    empty = _adapter(plugin_declarations=(_declaration(),), row=SimpleNamespace())
     assert empty._sampled_route_request(1) is False
 
 
@@ -355,7 +367,7 @@ def test_adapter_capability_admits_a_qualified_sampled_row() -> None:
     A temperature row is not `native_greedy`, which used to end the capability
     before any sampled check ran - the route could never be reached in serving.
     The guard now admits a row exactly when `_sampled_route_request` says so, and
-    that answer is itself gated on the evidence row.
+    that answer is itself gated on the implementation declaration.
     """
 
     from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
@@ -368,7 +380,7 @@ def test_adapter_capability_admits_a_qualified_sampled_row() -> None:
         request=params,
         sampling_state=SimpleNamespace(),
     )
-    adapter = _adapter(plugin_evidence=(_evidence_row(),), row=row)
+    adapter = _adapter(plugin_declarations=(_declaration(),), row=row)
     assert adapter._sampled_route_request(1) is True
 
     # A device-sampler row uses target draws from the shared native sampler.
@@ -379,9 +391,9 @@ def test_adapter_capability_admits_a_qualified_sampled_row() -> None:
         request=params,
         sampling_state=None,
     )
-    assert _adapter(plugin_evidence=(_evidence_row(),), row=device_row)._sampled_route_request(1) is True
-    # No evidence row: the route stays closed even for a temperature row.
-    assert _adapter(plugin_evidence=(), row=row)._sampled_route_request(1) is False
+    assert _adapter(plugin_declarations=(_declaration(),), row=device_row)._sampled_route_request(1) is True
+    # No declaration: the route stays closed even for a temperature row.
+    assert _adapter(plugin_declarations=(), row=row)._sampled_route_request(1) is False
     # Greedy rows keep their own route.
     greedy = SimpleNamespace(
         native_greedy=True,
@@ -390,7 +402,7 @@ def test_adapter_capability_admits_a_qualified_sampled_row() -> None:
         request=_params(),
         sampling_state=None,
     )
-    assert _adapter(plugin_evidence=(), row=greedy)._sampled_route_request(1) is False
+    assert _adapter(plugin_declarations=(), row=greedy)._sampled_route_request(1) is False
     del Qwen35GGUFMTP2Adapter
 
 

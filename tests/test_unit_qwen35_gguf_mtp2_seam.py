@@ -122,18 +122,6 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
     ) == "serial_exact"
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=96,
-        quant="gguf_q4_k_s",
-        target=SimpleNamespace(
-            runner=SimpleNamespace(
-                weights=SimpleNamespace(
-                    config=SimpleNamespace(is_moe=False),
-                    file_type_name="MOSTLY_Q4_K_M",
-                ),
-            ),
-        ),
-    ) == "serial_exact"
-    assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1151", end_position=96,
         target=SimpleNamespace(
             runner=SimpleNamespace(
                 weights=SimpleNamespace(
@@ -146,6 +134,176 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=65545
     ) == "serial_exact"
+
+
+def test_gfx1151_dense_native_selection_ignores_quant_identity() -> None:
+    """Dense gfx1151 selects native from context, never from artifact identity.
+
+    A Q4_K_S target ran the native row verifier before a serial fallback was
+    keyed on its quant name. That fallback gated execution on artifact identity
+    rather than on a kernel capability, so a correctly executable route became
+    slower with no capability reason. Selection must stay identity-free.
+    """
+
+    def _target(*, file_type_name: str, is_moe: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(
+                    config=SimpleNamespace(is_moe=is_moe),
+                    file_type_name=file_type_name,
+                ),
+            ),
+        )
+
+    for file_type_name in (
+        "MOSTLY_Q4_K_M",
+        "MOSTLY_Q4_K_S",
+        "MOSTLY_Q4_K_S\x00garbage",
+        "",
+    ):
+        assert _target_verify_mode_for_context(
+            "native",
+            backend="hip_gfx1151",
+            end_position=96,
+            target=_target(file_type_name=file_type_name),
+        ) == "native", file_type_name
+    # The mode resolver has no quant/identity input at all, so no future
+    # quant-name containment can be reintroduced without changing this seam.
+    signature = inspect.signature(_target_verify_mode_for_context)
+    assert set(signature.parameters) == {
+        "requested",
+        "backend",
+        "end_position",
+        "target",
+    }
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_SPECDEC2_Q4KS_NATIVE_STATE_SAFE", None
+    ) is None
+
+
+def test_gfx1151_moe_native_containment_survives_quant_guard_removal() -> None:
+    """MoE containment is a geometry capability and stays in force."""
+
+    moe = SimpleNamespace(
+        runner=SimpleNamespace(
+            weights=SimpleNamespace(
+                config=SimpleNamespace(is_moe=True),
+                file_type_name="MOSTLY_Q4_K_M",
+            ),
+        ),
+    )
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", True
+    ) is False
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1151", end_position=96, target=moe,
+    ) == "serial_exact"
+    # The same MoE geometry on a backend that declares the native state path
+    # safe keeps the native row verifier.
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", True
+    ) is True
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1100", end_position=95, target=moe,
+    ) == "native"
+
+
+def test_native_chain_accept_commits_the_accepted_row_for_every_bucket() -> None:
+    """Pin the accepted-row offset contract the native accept kernel implements.
+
+    ``dflash_accept_chain_i32_native_cycle`` walks root-first candidate rows and
+    selects the last row whose target top-1 equals the next candidate token. The
+    committed row index, its position, and the published correction must follow
+    that walk for every B1-B7 bucket and at the decode-budget boundary; a
+    mismatch here installs the wrong linear/KV state and the wrong next-root
+    hidden while still emitting plausible tokens.
+    """
+
+    from hipengine.runtime.gguf_native_spec_cycle import build_native_b2_target_batch
+
+    start = 7
+    for rows in range(2, 9):
+        tokens = tuple(100 + index for index in range(rows))
+        batch = build_native_b2_target_batch(tokens, start_position=start, request_id=3)
+        assert batch.positions == tuple(range(start, start + rows))
+        assert batch.parent_rows == (-1, *tuple(range(rows - 1)))
+        assert batch.draft_depths == tuple(range(rows))
+        assert batch.root_rows == (0,)
+        assert batch.candidate_rows == tuple(range(1, rows))
+        # Row ``r`` predicts the token at position ``r + 1``, so full agreement
+        # commits the last candidate row and publishes one further token.
+        agreeing = (*tokens[1:], 999)
+        full = batch.accept_from_top1(agreeing, remaining_decode=(64,))
+        assert full.accepted_counts == (rows - 1,)
+        assert full.accepted_tokens == (tokens[1:],)
+        assert full.selected_candidate_rows == (rows - 1,)
+        assert full.next_tokens == (999,)
+        # A root mismatch commits row 0 and publishes the root row's own
+        # prediction, which is the correction the next root consumes.
+        rejected = batch.accept_from_top1(
+            (777, *agreeing[1:]), remaining_decode=(64,)
+        )
+        assert rejected.accepted_counts == (0,)
+        assert rejected.accepted_tokens == ((),)
+        assert rejected.selected_candidate_rows == (0,)
+        assert rejected.next_tokens == (777,)
+        # The remaining-decode budget caps acceptance at ``budget - 1`` drafts
+        # and never emits the exhausted sentinel, so every cycle publishes at
+        # least its correction token and the target cursor still advances by
+        # the visible count.
+        for budget in (1, 2, 3):
+            capped = batch.accept_from_top1(agreeing, remaining_decode=(budget,))
+            expected = min(budget - 1, rows - 1)
+            assert capped.accepted_counts == (expected,), (rows, budget)
+            assert capped.selected_candidate_rows == (expected,)
+            assert capped.next_tokens is not None
+            assert capped.next_tokens[0] == agreeing[expected]
+
+
+def test_native_accept_commit_result_refuses_a_commit_off_the_accepted_row() -> None:
+    """Pin the commit destination and next-root cursor of an N2 device result."""
+
+    from hipengine.runtime.gguf_native_spec_cycle import (
+        Qwen35GGUFNativeAcceptCommitResult,
+    )
+
+    base = {
+        "input_token_ids": [100, 101, 102],
+        "token_ids": [101, 102, 103],
+        "accepted_draft_tokens": 2,
+        "commit_row": 2,
+        "commit_token": 102,
+        "commit_position": 7,
+        "next_token": 103,
+        "full_accept": True,
+        "start_position": 5,
+        "end_position": 8,
+        "hidden_seed_rows_ptr": 0x1000,
+        "hidden_seed_row_count": 3,
+        "hidden_size": 8,
+        "target_top1": [101, 102, 103],
+    }
+    result = Qwen35GGUFNativeAcceptCommitResult(**base)
+    assert (result.commit_row, result.commit_position, result.end_position) == (2, 7, 8)
+
+    # Selecting an earlier row for the accepted prefix, or reporting a cursor
+    # that is not that row's position + 1, would commit another row's state.
+    with pytest.raises(ValueError, match="commit_row"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "commit_row": 1})
+    with pytest.raises(ValueError, match="commit_position"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "commit_position": 6})
+    with pytest.raises(ValueError, match="end_position"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "end_position": 9})
+    # The published correction is the committed row's own prediction, so a
+    # next-root token that is not the last visible token is a mismatch.
+    with pytest.raises(ValueError, match="next_token"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "next_token": 104})
+    with pytest.raises(ValueError, match="commit_token"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "commit_token": 101})
+    # The commit kernel indexes the hidden/linear row plane by commit_row, so
+    # the result must expose every verifier row, not just the accepted prefix.
+    with pytest.raises(ValueError, match="hidden rows"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "hidden_seed_row_count": 2})
 
 
 def test_backend_packages_expose_independently_qualified_adapter_scopes() -> None:

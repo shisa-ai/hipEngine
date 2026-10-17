@@ -541,7 +541,7 @@ class Qwen35GGUFMoEMTP2Adapter:
     def _sampled_route_qualified(self) -> bool:
         """Whether the loaded plugin declares the sampled accept route."""
 
-        return sampled_route_qualified_for(self.generator, self.quant)
+        return sampled_route_qualified_for(self.generator)
 
     @staticmethod
     def _row_sampling_params(row: Any) -> Any:

@@ -169,30 +169,18 @@ _NGRAM_MOD_N_MIN_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN"
 _NGRAM_MOD_PROBE_MAX_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX"
 
 
-def _adapter_artifact_size(generator: Any) -> int | None:
-    """Return the resident weight file's size for static evidence matching."""
-
-    from pathlib import Path
-
-    path = getattr(getattr(generator, "weight_index", None), "path", None)
-    if path is None:
-        path = getattr(generator, "model_path", None)
-    if path is None:
-        return None
-    try:
-        return int(Path(str(path)).expanduser().stat().st_size)
-    except OSError:
-        return None
-
-
-def sampled_route_qualified_for(generator: Any, quant: str) -> bool:
+def sampled_route_qualified_for(generator: Any) -> bool:
     """Whether the loaded plugin declares the sampled accept route.
 
     This is a static mode advertisement, not request admission. The serving
     resolver and physical-cell planner still check storage, depth, width,
-    resources and request semantics before provider mutation. Evidence rows
-    remain a compatibility source for plugins without declarations; an
-    unfamiliar artifact cannot suppress a declared implementation.
+    resources and request semantics before provider mutation.
+
+    The answer comes from the plugin's capability declaration alone: a
+    ``speculative_mtp_serving_implementations`` row whose ``backends`` cover the
+    active ``(backend, target_arch)`` and whose ``sampling_modes`` contain
+    ``sampled``. An artifact no evidence row describes still qualifies, because
+    admission is never keyed on a model name, path, quant string, or digest.
     """
 
     if generator is None:
@@ -203,55 +191,11 @@ def sampled_route_qualified_for(generator: Any, quant: str) -> bool:
     declarations = tuple(
         getattr(plugin, "speculative_mtp_serving_implementations", ()) or ()
     )
-    if any(
+    return any(
         "sampled" in declaration.sampling_modes
         and (backend, arch) in declaration.backends
         for declaration in declarations
-    ):
-        return True
-    evidence = tuple(
-        getattr(plugin, "speculative_mtp_serving_evidence", ()) or ()
     )
-    if not evidence:
-        return False
-    quant = str(quant or "")
-    artifact_size = _adapter_artifact_size(generator)
-    import os as _os
-    if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_QUALIFY"):
-        import sys as _sys
-        print(
-            "[qualify-debug] "
-            f"backend={backend!r} arch={arch!r} quant={quant!r} size={artifact_size} "
-            + "sampled_rows="
-            + repr([
-                (
-                    r.evidence_key,
-                    getattr(r, "backend", ""),
-                    getattr(r, "target_arch", ""),
-                    getattr(r, "weight_quant", ""),
-                    getattr(r, "artifact_size_bytes", None),
-                )
-                for r in evidence
-                if "sampled" in tuple(getattr(r, "sampling_modes", ()))
-            ]),
-            file=_sys.stderr,
-            flush=True,
-        )
-    for row in evidence:
-        modes = tuple(str(mode) for mode in getattr(row, "sampling_modes", ()))
-        if "sampled" not in modes:
-            continue
-        if str(getattr(row, "backend", "")) != backend:
-            continue
-        if str(getattr(row, "target_arch", "")) != arch:
-            continue
-        if str(getattr(row, "weight_quant", "")) != quant:
-            continue
-        row_size = int(getattr(row, "artifact_size_bytes", 0) or 0)
-        if artifact_size is not None and row_size and row_size != artifact_size:
-            continue
-        return True
-    return False
 
 
 def _env_enabled(name: str, default: bool = False) -> bool:
@@ -342,8 +286,18 @@ def _target_verify_mode_for_context(
     backend: str,
     end_position: int,
     target: Any | None = None,
-    quant: str | None = None,
 ) -> str:
+    """Select the target verifier mode from execution context, not identity.
+
+    The only inputs are the requested mode, the backend package's declared
+    capabilities, the target's execution contract (compact-DMS storage), the
+    target geometry's declared native-state capability, and the resulting
+    context position. Selection never reads a quant name, file-type string,
+    model name, artifact path, or digest: an unfamiliar artifact whose kernels
+    can execute the native row path runs it, and a native-state containment is
+    carried by a backend capability that names its concrete cause.
+    """
+
     if target is not None and getattr(target, "_dms_backend", None) is not None:
         return "serial_exact"
     selected = str(requested)
@@ -355,10 +309,7 @@ def _target_verify_mode_for_context(
             "config",
             None,
         )
-        weights = getattr(getattr(target, "runner", None), "weights", None)
         is_moe = bool(getattr(config, "is_moe", False))
-        file_type_name = str(getattr(weights, "file_type_name", "")).upper()
-        is_q4ks = "Q4_K_S" in file_type_name or "q4_k_s" in str(quant or "").lower()
         if is_moe and not bool(
             backend_package_capability(
                 str(backend), "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", True
@@ -368,15 +319,6 @@ def _target_verify_mode_for_context(
             # committed state diverges from AR after repeated partial accepts.
             # Keep explicit MTP executable through the serial exact verifier
             # until the backend package declares the native state path safe.
-            return "serial_exact"
-        if is_q4ks and not bool(
-            backend_package_capability(
-                str(backend), "GGUF_SPECDEC2_Q4KS_NATIVE_STATE_SAFE", True
-            )
-        ):
-            # Q4_K_S native C1 diverged near the end of the same 128-token
-            # public trajectory; use the exact verifier while this quant route
-            # is repaired and revalidated.
             return "serial_exact"
 
     if target is None:
@@ -2046,7 +1988,6 @@ class Qwen35GGUFMTP2Adapter:
                             self.target_verify_mode,
                             backend=self.generator.backend,
                             target=target,
-                            quant=self.quant,
                             end_position=(
                                 len(row.prompt_ids) + self.candidate_budget + 1
                             ),
@@ -2358,15 +2299,12 @@ class Qwen35GGUFMTP2Adapter:
 
         This is a static mode advertisement, not request admission. The serving
         resolver and physical-cell planner still check storage, depth, width,
-        resources and request semantics before provider mutation. Evidence rows
-        remain a compatibility source for plugins without declarations; an
-        unfamiliar artifact cannot suppress a declared implementation.
+        resources and request semantics before provider mutation. The answer is
+        the plugin's capability declaration, so an unfamiliar artifact that the
+        kernels can execute is not withheld for want of a measurement.
         """
 
-        return sampled_route_qualified_for(
-            getattr(self, "generator", None),
-            str(getattr(self, "quant", "") or ""),
-        )
+        return sampled_route_qualified_for(getattr(self, "generator", None))
 
     def _sampled_route_request(self, request_id: int) -> bool:
         """Return whether this request's due cycle must use the sampled route."""
@@ -3511,7 +3449,6 @@ class Qwen35GGUFMTP2Adapter:
                 self.target_verify_mode,
                 backend=self.generator.backend,
                 target=target,
-                quant=self.quant,
                 end_position=(
                     int(target.position) + self.candidate_budget + 1
                 ),
@@ -7042,7 +6979,6 @@ class Qwen35GGUFMTP2Adapter:
                     self.target_verify_mode,
                     backend=self.generator.backend,
                     target=target,
-                    quant=self.quant,
                     end_position=len(row.prompt_ids) + self.candidate_budget + 1,
                 ),
             )
