@@ -291,10 +291,11 @@ def test_the_wide_selector_is_wired_into_the_launch_chain():
 
 
 def test_the_wide_selector_claims_a_parent_the_wmma_rewrite_produced():
-    """The rewrite runs earlier in the chain, so the parent set must cover it.
+    """The wide selector runs before WMMA and must claim WMMA's parent.
 
-    A route that only accepts the pre-rewrite parent is unreachable wherever
-    the WMMA route is enabled, which is the entire certified layer window.
+    The production wide route replaces the WMMA owner at its certified scope.
+    Running the wide selector first keeps the candidate reachable and prevents a
+    later WMMA rewrite from superseding the selected production route.
     """
 
     import inspect
@@ -302,9 +303,9 @@ def test_the_wide_selector_claims_a_parent_the_wmma_rewrite_produced():
     from hipengine.runtime import gguf_linear
 
     chain = inspect.getsource(gguf_linear.launch_gguf_linear)
-    assert chain.index("_wmma_prefill_dispatch(") < chain.index(
-        "_q8_dense_wide_dispatch("
-    ), "the WMMA rewrite must precede the wide selector for this contract to hold"
+    assert chain.index("_q8_dense_wide_dispatch(") < chain.index(
+        "_wmma_prefill_dispatch("
+    ), "the wide selector must precede WMMA so its certified route remains reachable"
     assert gguf_linear._q8_dense_wide_claims_parent(
         GGUFLinearDispatch(
             KernelKey(BACKEND, "linear", "gguf_q8_0", "wmma_prefill_f32_f32_out"),

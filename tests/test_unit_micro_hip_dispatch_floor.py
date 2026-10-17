@@ -106,6 +106,8 @@ def _normalize(module, timing_mode: str = "serial_latency") -> dict:
         wrapper_command=["python3", "benchmarks/micro/runners/hip_dispatch_floor.py"],
         legacy_command=["python3", "scripts/graph_node_microbench.py"],
         source_hash="sha256:test",
+        hardware_gpu="AMD Radeon Pro W7900",
+        gfx_arch="gfx1100",
     )
 
 

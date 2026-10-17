@@ -92,11 +92,12 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
         ],
     })
     _bind(generator, profile, production=True)
-    # Every production quant keeps the runner's colwarps gate open and names
-    # the multi-column route the gate reads.
+    # The UD production composition enables the direct F16 route, whose
+    # binder owns the row-split GDN variant. The multi-column route remains
+    # the production owner for non-F16 quantizations below.
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
-        "qwen4exp_gdn_tiled16_multi_prefill")
+        "qwen4exp_gdn_rowsplit_prefill")
     profile.manifest["selections"] = [
         {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
         for r in _strict_selections(recovery=True)

@@ -79,6 +79,12 @@ GRID = ("1", "1", "1")
 # projections. They are asserted positively rather than skipped.
 CONVERSION_TOKENS = ("f32_to_f16", "f16_to_f32", "f32_to_bf16", "bf16_to_f32")
 
+# Fused hyper-connection helpers live in the dense-wide source but are
+# intentionally attributed to the hyper_connection family, not dense GEMM.
+EXPECTED_NON_DENSE_FAMILIES = {
+    "q8_0_gr_up_mean_kernel": "hyper_connection",
+}
+
 CANDIDATE_ARTIFACT = (
     REPO_ROOT
     / "benchmarks/results/2026-09-16-dense-wide-q8-prefill-candidate/artifact.json"
@@ -136,6 +142,11 @@ def test_dense_q8_0_sources_are_classified(filename: str) -> None:
         elif "selected" in name:
             assert family != "dense_projection", (
                 f"{filename}: {name} is routed but classified {family}"
+            )
+        elif name in EXPECTED_NON_DENSE_FAMILIES:
+            assert family == EXPECTED_NON_DENSE_FAMILIES[name], (
+                f"{filename}: {name} is classified {family}, expected "
+                f"{EXPECTED_NON_DENSE_FAMILIES[name]}"
             )
         else:
             assert family == "dense_projection", (

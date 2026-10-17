@@ -450,6 +450,22 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
         ),
         KernelKey(
+            "hip_gfx1151", "linear", "gguf_q4_k",
+            "selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151", "linear", "gguf_q5_1",
+            "selected_weighted_sum_warp256_fast_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+            "qwen4exp_gdn_rowsplit_prefill",
+        ),
+        KernelKey(
+            "hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+            "qwen4exp_gdn_rowsplit_decode",
+        ),
+        KernelKey(
             "hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
             "qwen4exp_gdn_tiled16_dpp_prefill",
         ),
