@@ -1,0 +1,588 @@
+{
+  "hardware": "Ryzen AI Max+ Pro 395 / Radeon 8060S gfx1151 / 128 GiB",
+  "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+  "server_command": "uv run python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --served-model-name qwen38fn-sampling --max-context-tokens 8192 --kv-storage bf16 --max-active-requests 1 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --metrics prometheus --host 127.0.0.1 --port 18389",
+  "host": "zbook",
+  "kind": "functional_structured_sse_timing_not_performance",
+  "source_commit": "241e5ed04747469271c8a208db2d6eab965133b7",
+  "probe_command": "uv run python /tmp/he-live-structured-timing.py",
+  "probe_source": "import sys, json, time, subprocess, socket\nfrom pathlib import Path\nsys.path.insert(0, '/home/lhl/hipEngine')\nimport httpx\nfrom scripts.qwen4exp_controlled_mtp_http_gate import cases, structured, validate_control, validate_hard_thinking\nfrom scripts.qwen4exp_sampled_mtp_http_gate import extract\nreport = dict(source_commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), host=socket.gethostname(), rows=[])\np = Path('/tmp/he-live-structured-timing.json')\ndef save(): p.write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\\n')\nwith httpx.Client(base_url='http://127.0.0.1:18389', timeout=240) as c:\n    deadline=time.monotonic()+600\n    while True:\n        try:\n            r=c.get('/ready',timeout=5)\n            if r.status_code==200 and r.json().get('ready'): break\n        except httpx.TransportError: pass\n        if time.monotonic()>deadline: raise TimeoutError('readiness')\n        time.sleep(1)\n    report['ready_before']=r.json()\n    r=c.post('/v1/hipengine/tokenize',json={'text':'</think>'});r.raise_for_status()\n    close_ids=r.json()['token_ids']\n    for case in cases('qwen38fn-sampling'):\n        req=case['request']\n        if req['temperature']!=0 or not req['stream'] or not req.get('speculative'): continue\n        row=case | {'events':[], 'arrivals':[]}; report['rows'].append(row)\n        start=time.monotonic(); done=False\n        try:\n            with c.stream('POST','/v1/chat/completions',json=req) as response:\n                row['status']=response.status_code;response.raise_for_status()\n                for line in response.iter_lines():\n                    if not line.startswith('data: '):continue\n                    data=line[6:]\n                    if data=='[DONE]':done=True;continue\n                    event=json.loads(data);row['events'].append(event)\n                    for choice in event.get('choices',[]):\n                        delta=choice.get('delta') or {}\n                        for field in ('content','reasoning_content','tool_calls'):\n                            if delta.get(field):row['arrivals'].append({'field':field,'seconds':time.monotonic()-start})\n            row['wall_seconds']=time.monotonic()-start\n            assert done\n            result=extract(row['events'],chat=True) | structured(row['events'])\n            row['result']=result\n            validate_control(result,kind=case['kind'],logs=bool(req.get('logprobs')))\n            if case['kind']=='hard_thinking':validate_hard_thinking(result,cap=req['hard_think_cap'],close_ids=close_ids)\n            row['correct']=True\n            row['early_delivery']=bool(row['arrivals'] and row['arrivals'][0]['seconds'] < row['wall_seconds']-.1)\n        except Exception as error:row.update(correct=False,error=repr(error))\n        save();print(row['name'], row.get('correct'), row.get('early_delivery'), row.get('error',''),flush=True)\n    report['ready_after']=c.get('/ready').json();save()\n",
+  "rows": [
+    {
+      "name": "schema-t0.0-speculative-logs0-sse1",
+      "kind": "schema",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return the requested JSON object."
+          }
+        ],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "result",
+            "strict": true,
+            "schema": {
+              "const": {
+                "answer": "alpha beta gamma",
+                "number": 42
+              }
+            }
+          }
+        },
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "content",
+          "seconds": 1.8094568650703877
+        }
+      ],
+      "wall_seconds": 1.8097614669241011,
+      "correct": true,
+      "early_delivery": false
+    },
+    {
+      "name": "schema-t0.0-speculative-logs1-sse1",
+      "kind": "schema",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return the requested JSON object."
+          }
+        ],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "result",
+            "strict": true,
+            "schema": {
+              "const": {
+                "answer": "alpha beta gamma",
+                "number": 42
+              }
+            }
+          }
+        },
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "content",
+          "seconds": 0.9582712629344314
+        }
+      ],
+      "wall_seconds": 0.9588111070916057,
+      "correct": true,
+      "early_delivery": false
+    },
+    {
+      "name": "required_tool-t0.0-speculative-logs0-sse1",
+      "kind": "required_tool",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Call the weather tool for Tokyo now."
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "weather",
+              "description": "Get weather.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "const": "Tokyo"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        ],
+        "tool_choice": "required",
+        "parallel_tool_calls": false,
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "tool_calls",
+          "seconds": 2.5356789098586887
+        }
+      ],
+      "wall_seconds": 2.5361101699527353,
+      "correct": true,
+      "early_delivery": false
+    },
+    {
+      "name": "required_tool-t0.0-speculative-logs1-sse1",
+      "kind": "required_tool",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Call the weather tool for Tokyo now."
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "weather",
+              "description": "Get weather.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "const": "Tokyo"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        ],
+        "tool_choice": "required",
+        "parallel_tool_calls": false,
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "tool_calls",
+          "seconds": 2.1591880170162767
+        }
+      ],
+      "wall_seconds": 2.159603958018124,
+      "correct": true,
+      "early_delivery": false
+    },
+    {
+      "name": "auto_tool-t0.0-speculative-logs0-sse1",
+      "kind": "auto_tool",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Call the weather tool for Tokyo now."
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "weather",
+              "description": "Get weather.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "const": "Tokyo"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "tool_calls",
+          "seconds": 2.1351921691093594
+        }
+      ],
+      "wall_seconds": 2.1356096521485597,
+      "correct": true,
+      "early_delivery": false
+    },
+    {
+      "name": "auto_tool-t0.0-speculative-logs1-sse1",
+      "kind": "auto_tool",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Call the weather tool for Tokyo now."
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "weather",
+              "description": "Get weather.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "const": "Tokyo"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "tool_calls",
+          "seconds": 2.1676501820329577
+        }
+      ],
+      "wall_seconds": 2.1681400411762297,
+      "correct": true,
+      "early_delivery": false
+    },
+    {
+      "name": "auto_answer-t0.0-speculative-logs0-sse1",
+      "kind": "auto_answer",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Do not call any tools. Return the requested JSON answer directly."
+          }
+        ],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "result",
+            "strict": true,
+            "schema": {
+              "const": {
+                "answer": "alpha beta gamma",
+                "number": 42
+              }
+            }
+          }
+        },
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "weather",
+              "description": "Get weather.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "const": "Tokyo"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "content",
+          "seconds": 1.6499357181601226
+        }
+      ],
+      "wall_seconds": 1.6503198791760951,
+      "correct": true,
+      "early_delivery": false
+    },
+    {
+      "name": "auto_answer-t0.0-speculative-logs1-sse1",
+      "kind": "auto_answer",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Do not call any tools. Return the requested JSON answer directly."
+          }
+        ],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "result",
+            "strict": true,
+            "schema": {
+              "const": {
+                "answer": "alpha beta gamma",
+                "number": 42
+              }
+            }
+          }
+        },
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "weather",
+              "description": "Get weather.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "const": "Tokyo"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "content",
+          "seconds": 1.6207443389575928
+        }
+      ],
+      "wall_seconds": 1.62111477390863,
+      "correct": true,
+      "early_delivery": false
+    },
+    {
+      "name": "hard_thinking-t0.0-speculative-logs0-sse1",
+      "kind": "hard_thinking",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return the requested JSON object."
+          }
+        ],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "result",
+            "strict": true,
+            "schema": {
+              "const": {
+                "answer": "alpha beta gamma",
+                "number": 42
+              }
+            }
+          }
+        },
+        "hard_think_cap": 4,
+        "min_answer_tokens": 48,
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "reasoning_content",
+          "seconds": 1.6178203169256449
+        },
+        {
+          "field": "content",
+          "seconds": 1.6178843278903514
+        }
+      ],
+      "wall_seconds": 1.618257859023288,
+      "correct": true,
+      "early_delivery": false
+    },
+    {
+      "name": "hard_thinking-t0.0-speculative-logs1-sse1",
+      "kind": "hard_thinking",
+      "request": {
+        "model": "qwen38fn-sampling",
+        "max_tokens": 128,
+        "seed": 104,
+        "enable_thinking": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return the requested JSON object."
+          }
+        ],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "result",
+            "strict": true,
+            "schema": {
+              "const": {
+                "answer": "alpha beta gamma",
+                "number": 42
+              }
+            }
+          }
+        },
+        "hard_think_cap": 4,
+        "min_answer_tokens": 48,
+        "temperature": 0.0,
+        "stream": true,
+        "speculative": true,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "arrivals": [
+        {
+          "field": "reasoning_content",
+          "seconds": 1.602844653883949
+        },
+        {
+          "field": "content",
+          "seconds": 1.6029925509355962
+        }
+      ],
+      "wall_seconds": 1.6033958680927753,
+      "correct": true,
+      "early_delivery": false
+    }
+  ],
+  "correctness_passed": true,
+  "incremental_delivery_passed": false,
+  "ready_after": true,
+  "limitations": [
+    "Ten C1 greedy structured HTTP cases only; not a performance, production numerical or task-quality gate.",
+    "Complete-result validation buffers schema/tool requests by contract. This evidence does not qualify incremental structured SSE.",
+    "Raw capture: /tmp/he-live-structured-timing.json."
+  ]
+}
