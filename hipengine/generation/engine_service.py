@@ -1121,11 +1121,18 @@ class EngineService:
         token_ids = output.generated_token_ids
         if token_ids is None:
             raise RuntimeError("speculative output must publish committed token ids")
+        # Public requests may leave EOS unset to use the model's default. The
+        # completed provider reports that resolved ID; otherwise the length
+        # guard can overwrite a genuine EOS exactly at the output budget.
+        details = output.finish_details
+        eos_token_id = state.request.eos_token_id
+        if eos_token_id is None and details is not None:
+            eos_token_id = details.eos_token_id
         tail = trim_speculative_output(
             token_ids,
             max_tokens=state.request.max_tokens,
             min_tokens=state.request.min_tokens,
-            eos_token_id=state.request.eos_token_id,
+            eos_token_id=eos_token_id,
             stop_token_ids=state.request.stop_token_ids,
             stop_token_sequences=state.request.stop_token_sequences,
             ignore_eos=state.request.ignore_eos,
@@ -1137,12 +1144,14 @@ class EngineService:
             detokenize = getattr(self._driver, "detokenize", None)
             if callable(detokenize):
                 text = str(detokenize(tail.token_ids))
-        details = output.finish_details
         if tail.finish_reason is not None and (
             details is None or details.reason != tail.finish_reason
         ):
-            details = FinishDetails(
+            details = replace(
+                details or FinishDetails(reason=tail.finish_reason),
                 reason=tail.finish_reason,
+                eos_token_id=eos_token_id if tail.finish_reason == "eos" else None,
+                length_limit=state.request.max_tokens if tail.finish_reason == "length" else None,
                 stop_sequence=tail.matched_stop_sequence,
             )
         return GenerationOutput(

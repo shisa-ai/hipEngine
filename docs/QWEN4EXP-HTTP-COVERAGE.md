@@ -132,6 +132,15 @@ resident sessions remain rejected on the generic route or use named explicit
 MTP-to-AR fallback. GPU sampled-MTP qualification is pending; PS4/task 17 stays
 open. SSE remains buffered and automatic MTP remains off for this provider.
 
+The first [98-request sampled-MTP audit](../benchmarks/results/2026-10-17-zbook-qwen4exp-sampled-mtp-http-diagnostic.json)
+passes 75 request checks. Twenty SSE checks lacked the opt-in execution metadata
+because the probe omitted `stream_options.include_hipengine`. Three repeated
+requests expose a service bug when model-default EOS is exactly the last allowed
+token: finish normalization replaces EOS with length and drops sampler metadata.
+The CPU repair preserves the provider's resolved EOS while honoring explicit
+EOS/ignore-EOS controls. The probe now requests telemetry and can replay only
+failed rows. Live repair qualification is pending; this attempt is not a pass.
+
 ## Baseline feature grid (before PS1/PS3/PS5 fixes)
 
 | Check | AR | Explicit MTP | Verdict |
