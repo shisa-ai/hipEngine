@@ -2491,6 +2491,10 @@ GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES = frozenset(
 # gfx1151. Keep the explicit MTP feature executable through serial_exact until a
 # same-host trajectory gate clears this backend capability.
 GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE = False
+# Q4_K_S native C1 diverged at token 118 on the original public 128-token
+# trajectory while serial_exact matched AR; keep this quant route executable
+# through serial_exact until a trajectory gate clears the capability.
+GGUF_SPECDEC2_Q4KS_NATIVE_STATE_SAFE = False
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 65544
 GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT = 65544
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
