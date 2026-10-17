@@ -21,6 +21,12 @@ For example, the bytes `[232, 136]` and `[144]` belong to two tokens, but togeth
 encode `舐`. Both token probabilities remain separate. A following `。` token
 keeps its own entry rather than being removed by a character-count mismatch.
 
+For parsed tool calls, logprobs describe the raw model tokens, including tool
+syntax—not the JSON arguments serialized by the tool parser. Blocking responses
+return that payload on the choice. Buffered SSE publishes the same payload once:
+with the content delta if present, otherwise with the first tool-call delta.
+It is not duplicated across argument fragments or additional calls.
+
 ## Legacy completion responses
 
 `choices[].logprobs.text_offset[]` counts Unicode characters, including any echoed
@@ -44,6 +50,7 @@ invent a probability for a substring of a token. Chat content logprobs exclude
 hidden reasoning; prompt-opened reasoning uses the same split as response text.
 
 Flash-Next logprob SSE uses the buffered detailed-generation route. These byte
-fields do not claim live incremental logprob streaming or sampled MTP support.
+fields do not claim live incremental logprob streaming. C1 sampled MTP text
+qualification is documented in [HTTP coverage](QWEN4EXP-HTTP-COVERAGE.md).
 Other backends may omit bytes. See [the HTTP API](API.md) for logprob admission,
 omission reporting, and streaming capability flags.

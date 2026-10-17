@@ -113,6 +113,17 @@ def test_stops_and_eos_execute_mtp(monkeypatch, spelling, stream, temperature, l
         api.close()
 
 
+@pytest.mark.parametrize('text', ['', 'Calling tools now.'])
+def test_buffered_tool_logprobs_publish_once_across_calls_and_fragments(text):
+    from hipengine.server.api import _chat_stream_parsed, _ParsedChatOutput, _ParsedToolCall
+    logs = {'content': [{'token': '<tool_call>', 'bytes': list(b'<tool_call>'), 'logprob': 0.0}]}
+    calls = tuple(_ParsedToolCall(f'call_{i}', 'ping', json.dumps({'data': 'x' * 3000})) for i in range(2))
+    events = list(_chat_stream_parsed('id', 0, 'model', _ParsedChatOutput(text, calls), 'stop', logprobs=logs))
+    choices = [c for event in events for c in json.loads(event.removeprefix('data: '))['choices']]
+    assert [c['logprobs'] for c in choices if c.get('logprobs')] == [logs]
+    assert sum(bool(c.get('delta', {}).get('tool_calls')) for c in choices) > 2
+
+
 SCHEMA = {'type': 'json_schema', 'json_schema': {'name': 'result', 'strict': True, 'schema': {'const': {'x': 7}}}}
 
 
@@ -149,6 +160,12 @@ def test_structured_chat_controls_execute_mtp(monkeypatch, spelling, stream, tem
             assert ''.join(call['function'].get('name', '') for call in calls) == 'ping'
             assert json.loads(''.join(call['function'].get('arguments', '') for call in calls)) == {}
             assert choice['finish_reason'] == 'tool_calls'
+            if logprobs:
+                entries = [token for p in payloads for c in p.get('choices', [])
+                           for token in (c.get('logprobs') or {}).get('content', [])]
+                assert entries, 'tool SSE must not discard requested raw model logprobs'
+                raw = bytes(b for token in entries for b in token['bytes']).decode()
+                assert raw == CALL
         else:
             assert json.loads(''.join(m.get('content') or '' for m in messages)) == {'x': 7}
             assert choice['finish_reason'] == 'stop'

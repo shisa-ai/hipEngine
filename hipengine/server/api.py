@@ -18385,6 +18385,7 @@ def _chat_stream_tool_call(
     tool_index: int = 0,
     argument_chunk: str | None = None,
     include_name: bool = True,
+    logprobs: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
@@ -18408,6 +18409,8 @@ def _chat_stream_tool_call(
         },
         "finish_reason": None,
     }
+    if logprobs is not None:
+        choice["logprobs"] = dict(logprobs)
     if include_hipengine:
         choice["hipengine"] = _choice_hipengine_payload("tool_call", tokens=tokens, stream_chunk=stream_chunk)
     return _sse(
@@ -18531,6 +18534,10 @@ def _chat_stream_parsed(
                 tool_index=tool_index,
                 argument_chunk=argument_chunk,
                 include_name=chunk_index == 0,
+                # These are raw model-token probabilities, as in blocking chat,
+                # not probabilities of the parser's serialized JSON arguments.
+                # Publish once if no content delta already carried the payload.
+                logprobs=(logprobs if not split.content and tool_index == 0 and chunk_index == 0 else None),
                 tokens=token_payload,
                 stream_chunk=_buffered_delta_stream_chunk(
                     argument_chunk,

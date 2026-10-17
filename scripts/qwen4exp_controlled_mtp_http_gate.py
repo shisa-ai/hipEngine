@@ -94,6 +94,19 @@ def cases(model):
                                    kind=kind, request=body)
 
 
+def replay_cases(previous, names=None):
+    selected = set(names or ())
+    if not names:
+        selected.update(r['name'] for r in previous['rows'] if not r['passed'])
+        for comparison in previous.get('comparisons', []):
+            if not comparison['passed']:
+                selected.update((comparison['left'], comparison['right']))
+    rows = [dict(name=r['name'], kind=r['kind'], request=r['request'])
+            for r in previous['rows'] if r['name'] in selected]
+    assert {r['name'] for r in rows} == selected, 'unknown replay case'
+    return rows
+
+
 async def run(args):
     args.output.mkdir(parents=True, exist_ok=True)
     report = dict(kind='functional_structured_mtp_only', source_commit=args.source_commit,
@@ -103,8 +116,7 @@ async def run(args):
     selected = list(cases(args.model))
     if args.replay_report:
         previous = json.loads(args.replay_report.read_text())
-        selected = [dict(name=r['name'], kind=r['kind'], request=r['request'])
-                    for r in previous['rows'] if not r['passed'] or (args.case and r['name'] in args.case)]
+        selected = replay_cases(previous, args.case)
         report['baseline'] = dict(path=str(args.replay_report), sha256=hashlib.sha256(args.replay_report.read_bytes()).hexdigest())
     if args.case:
         selected = [r for r in selected if r['name'] in args.case]

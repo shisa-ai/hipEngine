@@ -4,7 +4,16 @@ import json
 
 import pytest
 
-from scripts.qwen4exp_controlled_mtp_http_gate import EXPECTED, cases, structured, validate_control
+from scripts.qwen4exp_controlled_mtp_http_gate import EXPECTED, cases, structured, validate_control, replay_cases
+
+
+def test_replay_includes_failed_comparison_even_when_rows_pass():
+    rows = [dict(name=name, kind='schema', request={}, passed=True) for name in ('a', 'b', 'c')]
+    previous = dict(rows=rows, comparisons=[dict(left='a', right='b', passed=False)])
+    assert [r['name'] for r in replay_cases(previous)] == ['a', 'b']
+    assert [r['name'] for r in replay_cases(previous, ['c'])] == ['c']
+    with pytest.raises(AssertionError):
+        replay_cases(previous, ['missing'])
 
 
 def result():
