@@ -348,6 +348,23 @@ def _target_verify_mode_for_context(
     selected = str(requested)
     if selected != "native":
         return selected
+    if target is not None:
+        config = getattr(
+            getattr(getattr(target, "runner", None), "weights", None),
+            "config",
+            None,
+        )
+        is_moe = bool(getattr(config, "is_moe", False))
+        if is_moe and not bool(
+            backend_package_capability(
+                str(backend), "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", True
+            )
+        ):
+            # Native MoE rows pass the short teacher-forced screen but their
+            # committed state diverges from AR after repeated partial accepts.
+            # Keep explicit MTP executable through the serial exact verifier
+            # until the backend package declares the native state path safe.
+            return "serial_exact"
     if target is None:
         native_context_limit = int(
             backend_package_capability(

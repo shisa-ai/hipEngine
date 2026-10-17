@@ -113,7 +113,20 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
         "native", backend="hip_gfx1100", end_position=16384, target=target,
     ) == "native"
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1151", end_position=96
+        "native", backend="hip_gfx1151", end_position=96,
+        target=SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(config=SimpleNamespace(is_moe=True)),
+            ),
+        ),
+    ) == "serial_exact"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1151", end_position=96,
+        target=SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(config=SimpleNamespace(is_moe=False)),
+            ),
+        ),
     ) == "native"
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=65545

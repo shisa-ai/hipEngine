@@ -2487,6 +2487,10 @@ GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES = frozenset(
         (5120, 248320, 8),
     }
 )
+# Observed native MoE verifier state divergence after repeated partial accepts on
+# gfx1151. Keep the explicit MTP feature executable through serial_exact until a
+# same-host trajectory gate clears this backend capability.
+GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE = False
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 65544
 GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT = 65544
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
