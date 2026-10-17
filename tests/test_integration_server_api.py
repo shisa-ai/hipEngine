@@ -8679,6 +8679,23 @@ def test_chat_passes_auth_scoped_resident_session_key_to_capable_generator(
     assert commit["supported_streaming"] is True
 
 
+@pytest.mark.parametrize("chat", [False, True])
+@pytest.mark.parametrize("stream", [False, True])
+def test_min_tokens_uses_model_eos_without_explicit_request_id(chat, stream) -> None:
+    fake = FakeLLM(outputs=["yes yes"])
+    fake._text_generator = SimpleNamespace(tokenizer=SimpleNamespace(eos_token_id=99))
+    client = TestClient(create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake))
+    request = {"model": "fake-model", "max_tokens": 4, "min_tokens": 2, "stream": stream}
+    if chat:
+        request["messages"] = [{"role": "user", "content": "Say yes"}]
+    else:
+        request["prompt"] = "Say yes"
+    response = client.post("/v1/chat/completions" if chat else "/v1/completions", json=request)
+    assert response.status_code == 200, response.text
+    assert fake.calls[0][1].min_tokens == 2
+    assert fake.calls[0][1].eos_token_id == 99
+
+
 def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     fake = FakeLLM(outputs=["alpha<stop>tail", "beta<stop>tail"])
     app = create_app(

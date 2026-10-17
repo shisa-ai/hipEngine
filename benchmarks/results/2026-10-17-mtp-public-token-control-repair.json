@@ -1,0 +1,1334 @@
+{
+  "schema": 1,
+  "kind": "public_token_control_repair",
+  "performance_claim": false,
+  "hardware": "AMD Radeon 8060S / gfx1151",
+  "environment": "therock10-staging-20260828",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+  "kv": "BF16",
+  "context_capacity": 32768,
+  "server_capacity": 4,
+  "git_base": "95d80f58bfe152f52b66f2e2ff26314f03aecb01",
+  "source_hashes": {
+    "hipengine/generation/qwen35_gguf.py": "bcbee5bc241f9e68024cf39bdb86b5e77e9b0bb26076b76f4cde4b64ed3ef30d",
+    "hipengine/generation/qwen35_gguf_mtp2.py": "f98d8caf55832b0a4b45abb6bd2f7686637a2347772c90b23ca0a30be1152d95",
+    "hipengine/generation/gemma4_gguf.py": "63f660459cae87581e0234e092d44faa32ec85819301a4c434af7a89b36f69eb",
+    "hipengine/generation/gemma4_sampling.py": "df57fc8c489e2058b7f9a70d2fad95974cb2073504bd658019b5a091f39061db",
+    "hipengine/server/api.py": "77b6efa1f682134ade79a896037a315f5a6a5b60b806f1db09b3487ef633e92e",
+    "hipengine/tokenization/gguf.py": "99f5a2153f214353efbc574fb39aba65b19a001028374ac047f3899eb852f281",
+    "hipengine/runtime/qwen35_gguf_runner.py": "ffc37272f0cad6ff1e7637fd75be1cb912fcd3ad93f57c9f2a1f9db8af2f4716"
+  },
+  "additional_source_hashes": {
+    "hipengine/generation/engine_service.py": "94c8ef086f1c1053d08adb41f138e3dc308c048e48c02a92a93edfbe5c0b9900"
+  },
+  "claim_scope": "Twelve public Q4_K_S AR/MTP requests and six blocking/SSE pairs. Minimum-output admission and runtime stop suppression, not a performance or model-quality evaluation.",
+  "server_command": [
+    "/home/lhl/hipEngine-main/.venv/bin/python",
+    "-m",
+    "hipengine.cli",
+    "serve",
+    "--model",
+    "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--max-context-tokens",
+    "32768",
+    "--max-active-requests",
+    "4",
+    "--generation-batch-window-ms",
+    "0",
+    "--prefix-cache",
+    "off",
+    "--metrics",
+    "prometheus",
+    "--no-startup-chat-smoke",
+    "--no-startup-scratch-probe",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "19004",
+    "--log-color",
+    "never"
+  ],
+  "client_command": "mamba run -n therock10-staging-20260828 env PYTHONPATH=\"$PWD\" FINAL_MATRIX_CONTROLS_ONLY=1 .venv/bin/python ~/.local/state/hipengine/mtp-followup-20261017/final-matrix/token-controls-driver.py /models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf q4ks-controls-fixed",
+  "raw_directory": "~/.local/state/hipengine/mtp-followup-20261017/final-matrix",
+  "raw_files": {
+    "q4ks-controls-fixed.json": "047de1482c133f260dede6afb24cc252c012ae633e3dd294c913e36239de300f",
+    "q4ks.json": "d6e223e85ed23d0bd4b1d686f959b18543fece8c53150fdc9be1ac860019fa8f",
+    "q4ks-controls-before-stream-order-fix.json": "ba52f8187aedb84770b2d21310e2f9beaaf3588707e40194f708a71c01319c3a",
+    "token-controls-driver.py": "2211eadcb9da08310d3b5f5d8776a07f8da8cb67e77eb120d9ab5eea907f9d20"
+  },
+  "prior_failures": [
+    "min_tokens=24 without explicit eos_token_id returned HTTP400 before model EOS resolution.",
+    "Standalone BPE stop encodings missed space-prefixed runtime tokens; response post-trimmed only after the full 256-token budget.",
+    "First repair exposed streamed MTP stop text because EngineService removed finish details before stop suppression. API post-trimming then discarded final IDs and MTP attribution."
+  ],
+  "rows": [
+    {
+      "label": "min_ar_False",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with just the word yes."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": false,
+        "speculative_mtp": false,
+        "enable_thinking": false,
+        "min_tokens": 24
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        248046
+      ],
+      "content": "yes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 42,
+        "completion_tokens": 42,
+        "total_tokens": 84,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      },
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "stop_ar_False_that",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": false,
+        "speculative_mtp": false,
+        "enable_thinking": false,
+        "stop": [
+          "that"
+        ]
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        15968,
+        264,
+        3370,
+        5165,
+        369,
+        264,
+        7072,
+        45759,
+        290,
+        1817,
+        421
+      ],
+      "content": "Testing a web API is a multi-layered process",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 11,
+        "total_tokens": 66,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "stop",
+        "stop_sequence": [
+          421
+        ],
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      },
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "stop_ar_False_ensures your",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": false,
+        "speculative_mtp": false,
+        "enable_thinking": false,
+        "stop": [
+          "ensures your"
+        ]
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        15968,
+        264,
+        3370,
+        5165,
+        369,
+        264,
+        7072,
+        45759,
+        290,
+        1817,
+        421,
+        24546,
+        678
+      ],
+      "content": "Testing a web API is a multi-layered process that",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 13,
+        "total_tokens": 68,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "stop",
+        "stop_sequence": [
+          24546,
+          678
+        ],
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      },
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "min_ar_True",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with just the word yes."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": true,
+        "speculative_mtp": false,
+        "enable_thinking": false,
+        "min_tokens": 24,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        248046
+      ],
+      "content": "yes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 42,
+        "completion_tokens": 42,
+        "total_tokens": 84,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": null,
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "stop_ar_True_that",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": true,
+        "speculative_mtp": false,
+        "enable_thinking": false,
+        "stop": [
+          "that"
+        ],
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        15968,
+        264,
+        3370,
+        5165,
+        369,
+        264,
+        7072,
+        45759,
+        290,
+        1817,
+        421
+      ],
+      "content": "Testing a web API is a multi-layered process",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 11,
+        "total_tokens": 66,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "stop",
+        "stop_sequence": [
+          421
+        ],
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": null,
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "stop_ar_True_ensures your",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": true,
+        "speculative_mtp": false,
+        "enable_thinking": false,
+        "stop": [
+          "ensures your"
+        ],
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        15968,
+        264,
+        3370,
+        5165,
+        369,
+        264,
+        7072,
+        45759,
+        290,
+        1817,
+        421,
+        24546,
+        678
+      ],
+      "content": "Testing a web API is a multi-layered process that",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 13,
+        "total_tokens": 68,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "stop",
+        "stop_sequence": [
+          24546,
+          678
+        ],
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": null,
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "min_mtp_False",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with just the word yes."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": false,
+        "speculative_mtp": true,
+        "enable_thinking": false,
+        "min_tokens": 24
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        248046
+      ],
+      "content": "yes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 42,
+        "completion_tokens": 42,
+        "total_tokens": 84,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 19,
+          "rejected_prediction_tokens": 47
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 66,
+        "accepted_draft_tokens": 19,
+        "rejected_draft_tokens": 47,
+        "acceptance_rate": 0.2878787878787879,
+        "draft_cycles": 22,
+        "mtp_output_tokens": 41,
+        "ar_output_tokens": 1,
+        "output_accounting": {
+          "completion_tokens": 42,
+          "mtp_output_tokens": 41,
+          "ar_output_tokens": 1,
+          "ar_output_tokens_in_cycles": 1,
+          "mtp_coverage": 0.9761904761904762,
+          "mtp_output_tokens_explained_by_cycles": 41,
+          "unexplained_mtp_output_tokens": 0,
+          "speculative_cycles": 22,
+          "reconciled": true,
+          "reconciled_reasons": []
+        },
+        "selected_depth_histogram": {
+          "3": 22
+        },
+        "fallback_event_counts": {
+          "no_provider": 1
+        },
+        "fallback_event_total": 1,
+        "execution": {
+          "activation_reason": null,
+          "provider_readiness": "ready",
+          "provider_state_present": true,
+          "provider_decline_reason": null,
+          "plan_group_rows": 1,
+          "plan_ar_only": false,
+          "plan_reason": "speculative_qualified"
+        },
+        "cycle_timing_ms": {
+          "proposal": 459.40876397071406,
+          "target": 2828.8795719999994,
+          "provider_update": 30.38835898041725,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+        },
+        "first_fallback_position": null,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "stop_mtp_False_that",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": false,
+        "speculative_mtp": true,
+        "enable_thinking": false,
+        "stop": [
+          "that"
+        ]
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        15968,
+        264,
+        3370,
+        5165,
+        369,
+        264,
+        7072,
+        45759,
+        290,
+        1817,
+        421
+      ],
+      "content": "Testing a web API is a multi-layered process",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 11,
+        "total_tokens": 66,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 6,
+          "rejected_prediction_tokens": 6
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "stop",
+        "stop_sequence": [
+          421
+        ],
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 12,
+        "accepted_draft_tokens": 6,
+        "rejected_draft_tokens": 6,
+        "acceptance_rate": 0.5,
+        "draft_cycles": 4,
+        "mtp_output_tokens": 10,
+        "ar_output_tokens": 1,
+        "output_accounting": {
+          "completion_tokens": 11,
+          "mtp_output_tokens": 10,
+          "ar_output_tokens": 1,
+          "ar_output_tokens_in_cycles": 1,
+          "mtp_coverage": 0.9090909090909091,
+          "mtp_output_tokens_explained_by_cycles": 10,
+          "unexplained_mtp_output_tokens": 0,
+          "speculative_cycles": 4,
+          "reconciled": true,
+          "reconciled_reasons": []
+        },
+        "selected_depth_histogram": {
+          "3": 4
+        },
+        "fallback_event_counts": {
+          "no_provider": 1
+        },
+        "fallback_event_total": 1,
+        "execution": {
+          "activation_reason": null,
+          "provider_readiness": "ready",
+          "provider_state_present": true,
+          "provider_decline_reason": null,
+          "plan_group_rows": 1,
+          "plan_ar_only": false,
+          "plan_reason": "speculative_qualified"
+        },
+        "cycle_timing_ms": {
+          "proposal": 83.48710293648764,
+          "target": 513.150675,
+          "provider_update": 5.518674035556614,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+        },
+        "first_fallback_position": null,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "stop_mtp_False_ensures your",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": false,
+        "speculative_mtp": true,
+        "enable_thinking": false,
+        "stop": [
+          "ensures your"
+        ]
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        15968,
+        264,
+        3370,
+        5165,
+        369,
+        264,
+        7072,
+        45759,
+        290,
+        1817,
+        421,
+        24546,
+        678
+      ],
+      "content": "Testing a web API is a multi-layered process that",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 13,
+        "total_tokens": 68,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 8,
+          "rejected_prediction_tokens": 4
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "stop",
+        "stop_sequence": [
+          24546,
+          678
+        ],
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 12,
+        "accepted_draft_tokens": 8,
+        "rejected_draft_tokens": 4,
+        "acceptance_rate": 0.6666666666666666,
+        "draft_cycles": 4,
+        "mtp_output_tokens": 12,
+        "ar_output_tokens": 1,
+        "output_accounting": {
+          "completion_tokens": 13,
+          "mtp_output_tokens": 12,
+          "ar_output_tokens": 1,
+          "ar_output_tokens_in_cycles": 1,
+          "mtp_coverage": 0.9230769230769231,
+          "mtp_output_tokens_explained_by_cycles": 12,
+          "unexplained_mtp_output_tokens": 0,
+          "speculative_cycles": 4,
+          "reconciled": true,
+          "reconciled_reasons": []
+        },
+        "selected_depth_histogram": {
+          "3": 4
+        },
+        "fallback_event_counts": {
+          "no_provider": 1
+        },
+        "fallback_event_total": 1,
+        "execution": {
+          "activation_reason": null,
+          "provider_readiness": "ready",
+          "provider_state_present": true,
+          "provider_decline_reason": null,
+          "plan_group_rows": 1,
+          "plan_ar_only": false,
+          "plan_reason": "speculative_qualified"
+        },
+        "cycle_timing_ms": {
+          "proposal": 84.07350303605199,
+          "target": 511.871032,
+          "provider_update": 6.500107992906123,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+        },
+        "first_fallback_position": null,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "min_mtp_True",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with just the word yes."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": true,
+        "speculative_mtp": true,
+        "enable_thinking": false,
+        "min_tokens": 24,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        13,
+        198,
+        248069,
+        271,
+        9405,
+        248046
+      ],
+      "content": "yes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes.\n\n\nyes",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 42,
+        "completion_tokens": 42,
+        "total_tokens": 84,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 19,
+          "rejected_prediction_tokens": 47
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 248046,
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 66,
+        "accepted_draft_tokens": 19,
+        "rejected_draft_tokens": 47,
+        "acceptance_rate": 0.2878787878787879,
+        "draft_cycles": 22,
+        "mtp_output_tokens": 41,
+        "ar_output_tokens": 1,
+        "output_accounting": {
+          "completion_tokens": 42,
+          "mtp_output_tokens": 41,
+          "ar_output_tokens": 1,
+          "ar_output_tokens_in_cycles": 1,
+          "mtp_coverage": 0.9761904761904762,
+          "mtp_output_tokens_explained_by_cycles": 41,
+          "unexplained_mtp_output_tokens": 0,
+          "speculative_cycles": 22,
+          "reconciled": true,
+          "reconciled_reasons": []
+        },
+        "selected_depth_histogram": {
+          "3": 22
+        },
+        "fallback_event_counts": {
+          "no_provider": 1
+        },
+        "fallback_event_total": 1,
+        "execution": {
+          "activation_reason": null,
+          "provider_readiness": "ready",
+          "provider_state_present": true,
+          "provider_decline_reason": null,
+          "plan_group_rows": 1,
+          "plan_ar_only": false,
+          "plan_reason": "speculative_qualified"
+        },
+        "cycle_timing_ms": {
+          "proposal": 474.7877110494301,
+          "target": 2816.585638,
+          "provider_update": 26.144206000026315,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+        },
+        "first_fallback_position": null,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "stop_mtp_True_that",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": true,
+        "speculative_mtp": true,
+        "enable_thinking": false,
+        "stop": [
+          "that"
+        ],
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        15968,
+        264,
+        3370,
+        5165,
+        369,
+        264,
+        7072,
+        45759,
+        290,
+        1817,
+        421
+      ],
+      "content": "Testing a web API is a multi-layered process",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 11,
+        "total_tokens": 66,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 6,
+          "rejected_prediction_tokens": 6
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "stop",
+        "stop_sequence": [
+          421
+        ],
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 12,
+        "accepted_draft_tokens": 6,
+        "rejected_draft_tokens": 6,
+        "acceptance_rate": 0.5,
+        "draft_cycles": 4,
+        "mtp_output_tokens": 10,
+        "ar_output_tokens": 1,
+        "output_accounting": {
+          "completion_tokens": 11,
+          "mtp_output_tokens": 10,
+          "ar_output_tokens": 1,
+          "ar_output_tokens_in_cycles": 1,
+          "mtp_coverage": 0.9090909090909091,
+          "mtp_output_tokens_explained_by_cycles": 10,
+          "unexplained_mtp_output_tokens": 0,
+          "speculative_cycles": 4,
+          "reconciled": true,
+          "reconciled_reasons": []
+        },
+        "selected_depth_histogram": {
+          "3": 4
+        },
+        "fallback_event_counts": {
+          "no_provider": 1
+        },
+        "fallback_event_total": 1,
+        "execution": {
+          "activation_reason": null,
+          "provider_readiness": "ready",
+          "provider_state_present": true,
+          "provider_decline_reason": null,
+          "plan_group_rows": 1,
+          "plan_ar_only": false,
+          "plan_reason": "speculative_qualified"
+        },
+        "cycle_timing_ms": {
+          "proposal": 86.40906703658402,
+          "target": 511.59065599999997,
+          "provider_update": 3.964019939303398,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+        },
+        "first_fallback_position": null,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "sampler_mode": "processed_argmax"
+    },
+    {
+      "label": "stop_mtp_True_ensures your",
+      "request": {
+        "model": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+          }
+        ],
+        "temperature": 0.0,
+        "seed": 3001,
+        "max_tokens": 64,
+        "stream": true,
+        "speculative_mtp": true,
+        "enable_thinking": false,
+        "stop": [
+          "ensures your"
+        ],
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "failures": [],
+      "generated_token_ids": [
+        15968,
+        264,
+        3370,
+        5165,
+        369,
+        264,
+        7072,
+        45759,
+        290,
+        1817,
+        421,
+        24546,
+        678
+      ],
+      "content": "Testing a web API is a multi-layered process that",
+      "reasoning_content": "",
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 13,
+        "total_tokens": 68,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 8,
+          "rejected_prediction_tokens": 4
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_details": {
+        "reason": "stop",
+        "stop_sequence": [
+          24546,
+          678
+        ],
+        "sampler_mode": "processed_argmax",
+        "cache_action": "append_none"
+      },
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 12,
+        "accepted_draft_tokens": 8,
+        "rejected_draft_tokens": 4,
+        "acceptance_rate": 0.6666666666666666,
+        "draft_cycles": 4,
+        "mtp_output_tokens": 12,
+        "ar_output_tokens": 1,
+        "output_accounting": {
+          "completion_tokens": 13,
+          "mtp_output_tokens": 12,
+          "ar_output_tokens": 1,
+          "ar_output_tokens_in_cycles": 1,
+          "mtp_coverage": 0.9230769230769231,
+          "mtp_output_tokens_explained_by_cycles": 12,
+          "unexplained_mtp_output_tokens": 0,
+          "speculative_cycles": 4,
+          "reconciled": true,
+          "reconciled_reasons": []
+        },
+        "selected_depth_histogram": {
+          "3": 4
+        },
+        "fallback_event_counts": {
+          "no_provider": 1
+        },
+        "fallback_event_total": 1,
+        "execution": {
+          "activation_reason": null,
+          "provider_readiness": "ready",
+          "provider_state_present": true,
+          "provider_decline_reason": null,
+          "plan_group_rows": 1,
+          "plan_ar_only": false,
+          "plan_reason": "speculative_qualified"
+        },
+        "cycle_timing_ms": {
+          "proposal": 85.7845550053753,
+          "target": 514.033731,
+          "provider_update": 5.407616030424833,
+          "accept": 0.0,
+          "candidate_readback": 0.0,
+          "target_readback": 0.0,
+          "accept_upload": 0.0,
+          "accept_tail": 0.0,
+          "accept_enqueue": 0.0,
+          "selected_commit": 0.0
+        },
+        "first_fallback_position": null,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "sampler_mode": "processed_argmax"
+    }
+  ],
+  "pairs": [
+    {
+      "labels": [
+        "min_ar_False",
+        "min_ar_True"
+      ],
+      "ids_equal": true,
+      "content_equal_after_chat_rstrip": true,
+      "reasoning_equal": true
+    },
+    {
+      "labels": [
+        "stop_ar_False_that",
+        "stop_ar_True_that"
+      ],
+      "ids_equal": true,
+      "content_equal_after_chat_rstrip": true,
+      "reasoning_equal": true
+    },
+    {
+      "labels": [
+        "stop_ar_False_ensures your",
+        "stop_ar_True_ensures your"
+      ],
+      "ids_equal": true,
+      "content_equal_after_chat_rstrip": true,
+      "reasoning_equal": true
+    },
+    {
+      "labels": [
+        "min_mtp_False",
+        "min_mtp_True"
+      ],
+      "ids_equal": true,
+      "content_equal_after_chat_rstrip": true,
+      "reasoning_equal": true
+    },
+    {
+      "labels": [
+        "stop_mtp_False_that",
+        "stop_mtp_True_that"
+      ],
+      "ids_equal": true,
+      "content_equal_after_chat_rstrip": true,
+      "reasoning_equal": true
+    },
+    {
+      "labels": [
+        "stop_mtp_False_ensures your",
+        "stop_mtp_True_ensures your"
+      ],
+      "ids_equal": true,
+      "content_equal_after_chat_rstrip": true,
+      "reasoning_equal": true
+    }
+  ],
+  "validation": {
+    "initial_red": "13 failed, 2 passed; four HTTP adapter failures reproduce the missing EOS",
+    "initial_green": "16 passed",
+    "initial_focused": "281 passed, 1 skipped",
+    "cpu_units_plus_server_api": "14011 passed, 91 skipped (before service stop-order repair)",
+    "service_stop_red": "8 failed, 4 passed after fixing required request fields in fixture",
+    "service_stop_green": "84 passed",
+    "final_affected_bundle": "369 passed, 12 skipped",
+    "docs": "all four gates passed",
+    "fixtures_smoke_tiers": "passed"
+  },
+  "limitations": [
+    "Whitespace spellings improve early token stopping, but arbitrary substrings inside tokens still rely on response post-trimming.",
+    "Token-stop suffixes remain in generated IDs and usage, but are excluded from visible text.",
+    "The minimum-output test enforces an EOS floor, not an exact output length."
+  ]
+}

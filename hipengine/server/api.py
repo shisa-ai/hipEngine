@@ -6608,7 +6608,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             logit_bias=request.logit_bias or (),
             suppress_token_ids=suppress_token_ids,
             min_tokens=int(request.min_tokens if request.min_tokens is not None else 0),
-            eos_token_id=None if request.eos_token_id is None else int(request.eos_token_id),
+            eos_token_id=_request_eos_token_id(request, engine),
             stop_token_ids=stop_token_ids,
             stop_token_sequences=stop_token_sequences,
             forced_tokens_pending=initial_forced_tool_token_ids,
@@ -17132,6 +17132,27 @@ def _stop_strings(stop: str | list[str] | None) -> tuple[str, ...]:
     return tuple(str(item) for item in stop)
 
 
+def _request_eos_token_id(
+    request: CompletionRequest | ChatCompletionRequest,
+    engine: Any,
+) -> int | None:
+    """Resolve the model EOS before validating a minimum-output request."""
+    if request.eos_token_id is not None:
+        return int(request.eos_token_id)
+    if not request.min_tokens:
+        return None
+    target = _model_chat_protocol_target(engine, initialize=True)
+    eos = getattr(getattr(target, "tokenizer", None), "eos_token_id", None)
+    if eos is None:
+        raise OpenAIHTTPError(
+            400,
+            "min_tokens requires eos_token_id when the model tokenizer does not declare one",
+            code="invalid_request",
+            param="min_tokens",
+        )
+    return int(eos)
+
+
 def _stop_tokens_from_stop(
     stop: str | list[str] | None,
     engine: Any,
@@ -17145,15 +17166,20 @@ def _stop_tokens_from_stop(
     token_ids: list[int] = []
     sequences: list[tuple[int, ...]] = []
     for item in stops:
-        try:
-            ids = tuple(int(token) for token in tokenizer(item))
-        except (KeyError, NotImplementedError, TypeError, ValueError):
-            continue
-        if len(ids) == 1:
-            if ids[0] not in token_ids:
-                token_ids.append(ids[0])
-        elif len(ids) > 1 and ids not in sequences:
-            sequences.append(ids)
+        # BPE often merges the preceding whitespace into the first word.
+        # Keep the standalone spelling and the common contextual spellings;
+        # arbitrary token-boundary substrings still use response post-trimming.
+        spellings = (item,) if item[0].isspace() else (item, " " + item, "\n" + item)
+        for spelling in spellings:
+            try:
+                ids = tuple(int(token) for token in tokenizer(spelling))
+            except (KeyError, NotImplementedError, TypeError, ValueError):
+                continue
+            if len(ids) == 1:
+                if ids[0] not in token_ids:
+                    token_ids.append(ids[0])
+            elif len(ids) > 1 and ids not in sequences:
+                sequences.append(ids)
     return tuple(token_ids), tuple(sequences)
 
 
