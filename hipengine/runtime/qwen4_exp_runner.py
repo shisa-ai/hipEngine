@@ -9274,12 +9274,15 @@ class Qwen4ExpGGUFResidentModelRunner:
         capture_target_hidden: bool = True,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
+        reset: bool = True,
     ) -> Qwen4ExpTokenResult:
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
-        if len(token_ids) > self.max_sequence_length:
+        start_position = 0 if reset else self.position
+        if start_position + len(token_ids) > self.max_sequence_length:
             raise ValueError("Qwen4Exp prefill exceeds sequence capacity")
-        self.reset()
+        if reset:
+            self.reset()
         last_residual_ptr = 0
         captured: list[np.ndarray] = []
         values = tuple(int(token) for token in token_ids)
@@ -9386,6 +9389,28 @@ class Qwen4ExpGGUFResidentModelRunner:
                 if capture_hidden_seeds
                 else None
             ),
+        )
+
+    def prefill_append(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        capture_hidden_seeds: bool = False,
+        capture_logits: bool = True,
+        capture_target_hidden: bool = True,
+    ) -> Qwen4ExpTokenResult:
+        """Append prompt work to the current request using its prepared workspace.
+
+        The caller owns reset, chunk boundaries and request retirement. Each
+        call restores dispatch contexts before returning to the scheduler; no
+        context manager or temporary workspace binding spans another request.
+        """
+        return self._prefill_chunked_impl(
+            token_ids,
+            capture_hidden_seeds=capture_hidden_seeds,
+            capture_logits=capture_logits,
+            capture_target_hidden=capture_target_hidden,
+            reset=False,
         )
 
     def prefill(

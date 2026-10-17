@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import MappingProxyType
 import time
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 import numpy as np
 
@@ -599,9 +599,40 @@ class Qwen4ExpGGUFMTPDraftRunner:
                 f"({len(tokens)}, {self.config.residual_width})"
             )
         self.reset()
-        zero = np.zeros(self.config.residual_width, dtype=np.float32)
+        self.prime_prompt_chunk(tokens, hidden, previous_hidden=None)
+
+    def prime_prompt_chunk(
+        self,
+        token_ids: Sequence[int],
+        target_hidden_rows: np.ndarray,
+        *,
+        previous_hidden: np.ndarray | None,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
+        """Append one prompt chunk without resetting the request-owned draft.
+
+        The first token of a later chunk consumes the previous target chunk's
+        final hidden row, not zeros or the current row's hidden state.
+        """
+        tokens = tuple(int(token) for token in token_ids)
+        hidden = np.ascontiguousarray(target_hidden_rows, dtype=np.float32)
+        width = self.config.residual_width
+        if not tokens or hidden.shape != (len(tokens), width):
+            raise ValueError("Qwen4Exp MTP prompt chunk requires aligned hidden rows")
+        if self.position + len(tokens) > self.max_sequence_length:
+            raise ValueError("Qwen4Exp MTP prompt chunk exceeds capacity")
+        if previous_hidden is None:
+            if self.position != 0:
+                raise ValueError("previous_hidden is required after the first draft chunk")
+            previous = np.zeros(width, dtype=np.float32)
+        else:
+            previous = np.ascontiguousarray(previous_hidden, dtype=np.float32)
+            if self.position == 0 or previous.shape != (width,):
+                raise ValueError("previous_hidden must describe the preceding target row")
         for row, token in enumerate(tokens):
-            self.forward(token, zero if row == 0 else hidden[row - 1], run_head=False)
+            if check_cancelled is not None:
+                check_cancelled()
+            self.forward(token, previous if row == 0 else hidden[row - 1], run_head=False)
 
     def propose_chain(
         self,
