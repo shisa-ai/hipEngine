@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Any, Generator
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.registry import (
     DecodeState,
     FinishDetails,
@@ -75,6 +76,7 @@ class Qwen4ExpMTPTextProvider:
     """
 
     provider_name = _PROVIDER
+    supports_grammar = True
 
     def __init__(
         self,
@@ -161,13 +163,8 @@ class Qwen4ExpMTPTextProvider:
         plan_sampler(request)  # Validate before any model work, including max_tokens=0.
         if request.row_seeds and len(request.row_seeds) != len(request.prompts):
             raise ValueError("row_seeds must have one entry per prompt")
-        if (request.grammar is not None or request.forced_tokens_pending
-                or request.post_thinking_forced_tokens_pending
-                or request.force_sequence_completion_token_sequences
-                or request.json_object_close_forcing or request.tool_call_constraint
-                or request.thinking_hard_token_cap is not None
-                or request.thinking_soft_close_window or request.resident_session_key):
-            raise NotImplementedError("Qwen4Exp MTP does not yet support structured or thinking controls")
+        if request.resident_session_key:
+            raise NotImplementedError("Qwen4Exp MTP does not yet support resident session reuse")
 
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         self._require_open()
@@ -187,6 +184,7 @@ class Qwen4ExpMTPTextProvider:
         draft_primed: bool = False,
         row_index: int = 0,
         sampling_state: RowSamplingState | None = None,
+        grammar: Any | None = None,
     ) -> Generator[Qwen4ExpMTPProgress, int | None, GenerationOutput]:
         """Yield one committed MTP step at a time and return the final output.
 
@@ -204,7 +202,7 @@ class Qwen4ExpMTPTextProvider:
         yield, ``send(k)`` selects the next cycle's candidate budget (zero is a
         target-only step with draft catchup). ``next()`` retains the configured
         budget. The scheduler owns cancellation rollback around a step and may
-        pass its request-owned ``sampling_state`` for transactional snapshots.
+        pass its request-owned sampler and grammar for transactional snapshots.
         """
 
         self._require_open()
@@ -232,6 +230,8 @@ class Qwen4ExpMTPTextProvider:
         from hipengine.generation.qwen4_exp_gguf import _sampling_state, _token_finish
 
         sampling_state = sampling_state if sampling_state is not None else _sampling_state(request, token_ids, row_index)
+        if grammar is None and request.grammar is not None:
+            grammar = self.target_generator._grammar_session(request)
         controlled = sampling_state is not None
         sampler_mode = (
             "sampled_speculative_mtp" if request.temperature > 0 else
@@ -246,7 +246,7 @@ class Qwen4ExpMTPTextProvider:
             if getattr(result, "logits", None) is None:
                 raise ValueError("processed Qwen4Exp MTP requires target logits")
             return self.target_generator._controlled_token(
-                result, request, None, sampling_state, token_logprobs,
+                result, request, grammar, sampling_state, token_logprobs,
             )
 
         if request.max_tokens == 0:
@@ -289,7 +289,7 @@ class Qwen4ExpMTPTextProvider:
         root_hidden = result.hidden_seed
         cycles: list[Qwen4ExpMTPCycle] = []
         default_eos = int(self.target_generator.tokenizer.eos_token_id)
-        finish = _token_finish(request, generated, None, default_eos)
+        finish = _token_finish(request, generated, grammar, default_eos)
 
         next_budget = yield Qwen4ExpMTPProgress(
             token_ids=(root_token,),
@@ -331,7 +331,7 @@ class Qwen4ExpMTPTextProvider:
                 root_token = select(verified)
                 root_hidden = verified.hidden_seed
                 generated.append(root_token)
-                finish = _token_finish(request, generated, None, default_eos)
+                finish = _token_finish(request, generated, grammar, default_eos)
                 next_budget = yield Qwen4ExpMTPProgress(
                     token_ids=(root_token,), cycle=None,
                     finished=finish is not None,
@@ -395,7 +395,7 @@ class Qwen4ExpMTPTextProvider:
                         mismatch = int(truth)
                     elif candidate is not None:
                         accepted += 1
-                    finish = _token_finish(request, generated, None, default_eos)
+                    finish = _token_finish(request, generated, grammar, default_eos)
                     if mismatch is not None or finish is not None:
                         break
                 target_runner.commit_target_block_rows(consumed)
@@ -428,7 +428,7 @@ class Qwen4ExpMTPTextProvider:
                     accepted += 1
                 else:
                     mismatch = truth
-                finish = _token_finish(request, generated, None, default_eos)
+                finish = _token_finish(request, generated, grammar, default_eos)
                 should_stop = mismatch is not None or finish is not None
                 record_phase("acceptance_control", acceptance_started)
                 if should_stop:
@@ -541,7 +541,9 @@ class Qwen4ExpMTPTextProvider:
             generated_token_ids=tuple(generated),
             token_logprobs=tuple(token_logprobs),
             telemetry=telemetry,
-            finish_details=replace(finish, sampler_mode=sampler_mode),
+            finish_details=finish_details_with_sampling_state(
+                replace(finish, sampler_mode=sampler_mode), sampling_state,
+            ),
         )
 
     def _generate_one(self, prompt: Any, request: GenerationRequest, *, row_index: int = 0) -> GenerationOutput:

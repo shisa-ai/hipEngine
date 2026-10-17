@@ -186,11 +186,11 @@ def test_two_mtp_rows_have_distinct_target_and_draft_owners(monkeypatch):
         driver.close()
 
 
-@pytest.mark.parametrize("controls", [{"forced_tokens_pending": (11,)}, {"json_object_close_forcing": True}])
+@pytest.mark.parametrize("controls", [{"resident_session_key": "reuse-not-supported"}])
 def test_unimplemented_mtp_controls_reject_before_model_work(controls):
     driver, target, draft = _driver()
     try:
-        with pytest.raises(NotImplementedError, match="control"):
+        with pytest.raises(NotImplementedError, match="resident session"):
             driver.submit_speculative_detailed(replace(_request(), **controls))
         assert not target.chunks and not draft.chunks
         assert driver._runner.active_request_ids == ()

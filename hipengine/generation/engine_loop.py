@@ -504,7 +504,8 @@ class SubmitPollTextGenerator:
         normalized = tuple(requests)
         if not normalized:
             return ()
-        if any(request.grammar is not None for request in normalized):
+        if (any(request.grammar is not None for request in normalized)
+                and not getattr(self._inner, "supports_speculative_grammar", False)):
             raise NotImplementedError("grammar-constrained speculative decoding is not supported")
         if not self.supports_speculative_mtp:
             raise NotImplementedError(
@@ -605,7 +606,8 @@ class SubmitPollTextGenerator:
         lifecycle. Cross-request proposal/verify packing remains SPEC-C2.
         """
 
-        if request.grammar is not None:
+        if (request.grammar is not None
+                and not getattr(self._inner, "supports_speculative_grammar", False)):
             raise NotImplementedError("grammar-constrained speculative decoding is not supported")
         if not self.supports_speculative_mtp:
             raise NotImplementedError(

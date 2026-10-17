@@ -159,6 +159,7 @@ def test_speculative_grammar_cannot_silently_bypass_mask():
     from hipengine.generation.engine_loop import SubmitPollTextGenerator
     from hipengine.generation.registry import GenerationRequest
     driver = SubmitPollTextGenerator.__new__(SubmitPollTextGenerator)
+    driver._inner = SimpleNamespace(supports_grammar=True)  # AR grammar is not MTP grammar.
     request = GenerationRequest(prompts=("x",),max_tokens=2,temperature=0.,top_p=1.,
         ignore_eos=False,grammar={"format":"choice","value":["x"]})
     with pytest.raises(NotImplementedError,match="grammar"):

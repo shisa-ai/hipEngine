@@ -243,10 +243,10 @@ def test_iter_generate_is_lazy_until_the_first_step() -> None:
     assert first.finished is False
 
 
-def test_iter_generate_rejects_structured_controls_before_model_work():
+def test_iter_generate_rejects_session_reuse_before_model_work():
     provider, target, draft = _provider()
-    iterator = provider.iter_generate((1, 2), _request(forced_tokens_pending=(11, 12)))
-    with pytest.raises(NotImplementedError, match="controls"):
+    iterator = provider.iter_generate((1, 2), _request(resident_session_key="reuse-not-supported"))
+    with pytest.raises(NotImplementedError, match="resident session"):
         next(iterator)
     assert target.runner.prefill_calls == draft.prime_calls == 0
 

@@ -143,6 +143,14 @@ class GrammarSession:
         self.eos = set(tokenizer.eos_tokens)
         self.done = False
 
+    def clone(self):
+        """Checkpoint the matcher without replay or shared mutable parser state."""
+        cloned = object.__new__(type(self))
+        cloned.matcher = self.matcher.deep_copy()
+        cloned.eos = set(self.eos)
+        cloned.done = self.done
+        return cloned
+
     def mask_logits(self, logits):
         """Return a masked copy without consuming a token or advancing state."""
         scores = np.asarray(logits,dtype=np.float32).copy()

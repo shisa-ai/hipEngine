@@ -7,10 +7,7 @@ from tests.test_unit_qwen4exp_mtp_steps import _provider, _request
 
 
 @pytest.mark.parametrize('method', ['blocking', 'iterator', 'stream'])
-@pytest.mark.parametrize('controls', [
-    {'forced_tokens_pending': (10,)}, {'json_object_close_forcing': True},
-    {'thinking_hard_token_cap': 0, 'thinking_close_token_ids': (42,)},
-])
+@pytest.mark.parametrize('controls', [{'resident_session_key': 'reuse-not-supported'}])
 def test_mtp_rejects_unimplemented_controls_before_prefill(method, controls):
     provider, target, draft = _provider()
     request = replace(_request(), **controls)

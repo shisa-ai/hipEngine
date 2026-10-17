@@ -602,6 +602,10 @@ class Qwen4ExpGGUFTextGenerator:
     def supports_speculative_mtp(self) -> bool:
         return self.supports_speculative
 
+    @property
+    def supports_speculative_grammar(self) -> bool:
+        return bool(getattr(self._speculative_provider, "supports_grammar", False))
+
     def attach_speculative_provider(self, provider: Any) -> None:
         self._require_open()
         if self._speculative_provider is not None:
@@ -612,7 +616,7 @@ class Qwen4ExpGGUFTextGenerator:
         self, request: GenerationRequest
     ) -> list[GenerationOutput]:
         self._require_open()
-        if request.grammar is not None:
+        if request.grammar is not None and not self.supports_speculative_grammar:
             raise NotImplementedError("grammar-constrained speculative decoding is not supported")
         if self._speculative_provider is None:
             raise NotImplementedError("Qwen4Exp speculative provider is not attached")
@@ -625,7 +629,7 @@ class Qwen4ExpGGUFTextGenerator:
 
     def stream_speculative_detailed(self, request: GenerationRequest):
         self._require_open()
-        if request.grammar is not None:
+        if request.grammar is not None and not self.supports_speculative_grammar:
             raise NotImplementedError("grammar-constrained speculative decoding is not supported")
         if self._speculative_provider is None:
             raise NotImplementedError("Qwen4Exp speculative provider is not attached")
@@ -1165,7 +1169,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         ids = tuple(row.generated_ids)
         if finish is None or finish.reason == "length":
             return ids
-        if finish.sampler_mode in {"grammar_greedy", "grammar_host_logits_sample"} and finish.reason == "stop":
+        if row.grammar is not None and row.grammar.done and finish.reason == "stop" and not finish.stop_sequence:
             return ids
         if finish.stop_sequence:
             return ids[: -len(finish.stop_sequence)]

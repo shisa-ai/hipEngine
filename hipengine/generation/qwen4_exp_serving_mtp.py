@@ -153,13 +153,14 @@ class Qwen4ExpServingMTP:
             row.mtp_steps = self.generator._speculative_provider.iter_generate(
                 row.prompt_ids, request, target=row.runner, draft=row.draft,
                 prefill_result=result, draft_primed=True,
-                row_index=row.row_index, sampling_state=row.sampling_state,
+                row_index=row.row_index, sampling_state=row.sampling_state, grammar=row.grammar,
             )
 
     def _advance_mtp(self, row, budget, *, plan=None):
         """Return (progress, transaction) after commit or cancellation rollback."""
         target, draft = row.runner, row.draft
         sampling_checkpoint = None if row.sampling_state is None else row.sampling_state.clone()
+        grammar_checkpoint = None if row.grammar is None else row.grammar.clone()
         rng_counter = 0 if sampling_checkpoint is None else sampling_checkpoint.rng_draw_count
         target_checkpoint = target.begin_device_transaction(reuse_snapshot=True)
         draft_checkpoint = draft.snapshot()
@@ -211,6 +212,7 @@ class Qwen4ExpServingMTP:
             draft.restore(draft_checkpoint)
             row.mtp_steps.close()
             row.sampling_state = sampling_checkpoint
+            row.grammar = grammar_checkpoint
             if not isinstance(error, _RequestRetired):
                 raise
             return None, None if transaction is None else replace(transaction, rolled_back=True)
