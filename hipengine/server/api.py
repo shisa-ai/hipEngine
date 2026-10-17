@@ -3439,8 +3439,8 @@ def _stream_timing_summary(
 
     timing: dict[str, float] = {}
     if isinstance(stream_started_at, _StreamTimingTracker):
-        # Observing the final usage keeps the decode rate on the authoritative
-        # completion-token count even if the last token delta lagged it.
+        # Final usage updates total accounting, but cannot invent a token-delivery
+        # timestamp. The decode interval is fixed by token-bearing events.
         timing.update(
             stream_started_at.observe(event="usage", usage=usage)
         )
@@ -20058,7 +20058,11 @@ class _StreamTokenAccounting:
 class _StreamTimingTracker:
     started_at: float
     first_token_at: float | None = None
+    first_chunk_tokens: int | None = None
+    last_token_at: float | None = None
+    last_chunk_tokens: int = 0
     observed_tokens: int = 0
+    buffered: bool = False
 
     @classmethod
     def start(cls) -> "_StreamTimingTracker":
@@ -20077,6 +20081,10 @@ class _StreamTimingTracker:
         if token_event:
             if self.first_token_at is None:
                 self.first_token_at = now
+                self.first_chunk_tokens = token_total if token_total > 0 else None
+            if token_total > self.last_chunk_tokens:
+                self.last_token_at = now
+                self.last_chunk_tokens = token_total
         if token_total > self.observed_tokens:
             self.observed_tokens = token_total
         return self.snapshot(now=now, event=event)
@@ -20088,12 +20096,28 @@ class _StreamTimingTracker:
             return payload
         ttft_s = max(0.0, self.first_token_at - self.started_at)
         payload["ttft_ms"] = round(ttft_s * 1000.0, 3)
-        if str(event) in {"done", "usage"}:
-            decode_elapsed_s = max(0.0, now - self.first_token_at)
+        if str(event) in {"done", "usage"} and not self.buffered and self.last_token_at is not None:
+            # The interval ends at the last token-bearing event, not at the
+            # final SSE flush. Tokens in the first chunk precede this interval.
+            decode_elapsed_s = max(0.0, self.last_token_at - self.first_token_at)
             payload["decode_elapsed_ms"] = round(decode_elapsed_s * 1000.0, 3)
-            if self.observed_tokens > 0:
-                payload["decode_tokens_per_second"] = round(self.observed_tokens / max(decode_elapsed_s, 1e-9), 3)
+            if self.first_chunk_tokens is not None:
+                decode_tokens = self.last_chunk_tokens - self.first_chunk_tokens
+                if decode_tokens > 0 and decode_elapsed_s > 0:
+                    payload["decode_tokens_per_second"] = round(decode_tokens / decode_elapsed_s, 3)
         return payload
+
+
+def _observe_stream_source(
+    tracker: "_StreamTimingSource", chunk: GenerationStreamChunk | None,
+) -> None:
+    """A completed first backend chunk is buffered, even if split into channels."""
+    if not isinstance(tracker, _StreamTimingTracker) or tracker.first_token_at is not None or chunk is None:
+        return
+    if chunk.finish_details is not None or (
+        chunk.telemetry is not None and chunk.telemetry.decode_state.phase == "done"
+    ):
+        tracker.buffered = True
 
 
 _StreamTimingSource = float | _StreamTimingTracker | None
@@ -20291,6 +20315,7 @@ def _completion_stream_delta(
     routing: Mapping[str, Any] | None = None,
     phase: str = "answer",
 ) -> str:
+    _observe_stream_source(stream_started_at, stream_chunk)
     choice = {
         "text": text,
         "index": int(index),
@@ -20480,6 +20505,8 @@ def _completion_stream(
     done_phase: str = "done",
     scheduler_token_chunks: Sequence[Mapping[str, Any]] | None = None,
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     details_by_index = (
         {index: detail for index, detail in enumerate(details)}
@@ -20859,6 +20886,7 @@ def _chat_stream_delta(
     routing: Mapping[str, Any] | None = None,
     phase: str | None = None,
 ) -> str:
+    _observe_stream_source(stream_started_at, stream_chunk)
     choice: dict[str, Any] = {"index": int(index), "delta": {field: text}, "finish_reason": None}
     if logprobs is not None:
         choice["logprobs"] = dict(logprobs)
@@ -20903,6 +20931,7 @@ def _chat_stream_tool_call(
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
 ) -> str:
+    _observe_stream_source(stream_started_at, stream_chunk)
     function: dict[str, Any] = {"arguments": call.arguments if argument_chunk is None else str(argument_chunk)}
     if include_name:
         function["name"] = call.name
@@ -20972,6 +21001,8 @@ def _chat_stream_parsed(
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     split = _split_reasoning(
         parsed.text,
         initially_open=parsed.reasoning_initially_open,
@@ -21153,6 +21184,8 @@ def _chat_stream_scheduler_tool_call_chunks(
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     last_stream_chunk: GenerationStreamChunk | None = None
     emitted_by_tool: set[int] = set()
     for fragment in fragments:
@@ -21227,6 +21260,8 @@ def _chat_stream_scheduler_text_chunks(
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     splitter = _ReasoningSplitter(initially_open=reasoning_initially_open)
     last_stream_chunk: GenerationStreamChunk | None = None
     for raw_chunk in scheduler_chunks:
