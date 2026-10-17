@@ -409,7 +409,7 @@ class Gemma4GGUFGenerator:
                         break
                     if token_id in stop_ids:
                         finish_reason = "stop"
-                        eos_id = token_id
+                        stop_sequence = (token_id,)
                         break
                     if (
                         not request.ignore_eos

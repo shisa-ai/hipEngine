@@ -325,6 +325,8 @@ class Gemma4MTPTextProvider:
         sampler.discard_undo_history()
         if token in stop_ids or stop_sequence:
             reason = "stop"
+            if token in request.stop_token_ids:
+                stop_sequence = stop_sequence or (token,)
 
         while len(generated) < request.max_tokens and reason != "stop":
             raise_if_generation_deadline_expired(request)
@@ -448,6 +450,8 @@ class Gemma4MTPTextProvider:
                     committed = committed[:index + 1]
                     accepted = min(accepted, len(committed))
                     reason = "stop"
+                    if committed_token in request.stop_token_ids:
+                        stop_sequence = (committed_token,)
                     break
                 stop_state = stop_state.observe(committed_token)
                 if stop_state.matched:

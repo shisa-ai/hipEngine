@@ -255,6 +255,19 @@ def _tokens(output) -> list[int]:
     return [int(token) for token in output.generated_token_ids]
 
 
+@pytest.mark.parametrize("route", ["ar", "mtp"])
+@pytest.mark.parametrize("position", [0, 1, 3, 5])
+def test_explicit_single_stop_is_hidden_and_reported_as_sequence(route, position):
+    request = _request(stop_token_ids=(_gen(position),))
+    output = (_run_ar(request, _Target()) if route == "ar"
+              else _run_mtp(request, _Target()))[0]
+    assert _tokens(output) == [_gen(i) for i in range(position + 1)]
+    assert output.text == _FakeTokenizer.decode([_gen(i) for i in range(position)])
+    assert output.finish_details.stop_sequence == (_gen(position),)
+    assert output.finish_details.eos_token_id is None
+    assert output.finish_details.reason == "stop"
+
+
 # --- thinking budgets ---------------------------------------------------
 
 
@@ -727,7 +740,8 @@ def test_ar_custom_stop_token_id_is_not_delayed_by_the_floor() -> None:
 
     assert _tokens(output) == [_gen(0), stop_id]
     assert output.finish_details.reason == "stop"
-    assert output.finish_details.eos_token_id == stop_id
+    assert output.finish_details.stop_sequence == (stop_id,)
+    assert output.finish_details.eos_token_id is None
 
 
 def test_ar_custom_stop_sequence_is_not_delayed_by_the_floor() -> None:
@@ -784,7 +798,8 @@ def test_ar_the_floor_holds_back_the_model_eos_but_not_a_custom_stop() -> None:
 
     assert _tokens(output) == [_RUNNER_UP, stop_id]
     assert output.finish_details.reason == "stop"
-    assert output.finish_details.eos_token_id == stop_id
+    assert output.finish_details.stop_sequence == (stop_id,)
+    assert output.finish_details.eos_token_id is None
 
 
 @pytest.mark.parametrize("min_tokens", [0, 2, 5])
