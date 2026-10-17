@@ -32,8 +32,6 @@ _last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
 # write apart from a value the caller set. Strict-then-production binding in one
 # process is normal and is not a conflict.
 _binder_written: dict[str, str] = {}
-# F16 route selectors this module currently has published.
-_f16_routes_published: set[str] = set()
 
 
 PROFILE_Q5_1_DOWN_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
@@ -93,8 +91,8 @@ _F16_ROUTE_BINDER_ENV = {
     # different FP32 summation order, 128-thread blocks.
     "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_rowsplit_prefill",
 }
-# Route selectors the composition's binder publishes; a later bind without the
-# composition in the same process retracts them to "0".
+# Profile-owned composition selectors: profiles without the composition disable
+# them even when a caller set them before binding, keeping dispatch and manifest aligned.
 _F16_ROUTE_SELECTORS = {
     _ROUTED_F16_ENV: "1",
     # Hyper-connection up projection on the F16 wide route.
@@ -958,20 +956,16 @@ def _bind_default_chunk(generator: Any, *, production: bool) -> None:
 
 
 def _bind_f16_routes(*, enabled: bool) -> None:
-    """Publish the F16 route selectors, or retract this module's own.
+    """Bind composition selectors, including strict disablement.
 
-    A bind without the composition leaves a caller-set selector alone (the A/B
-    and gate harnesses set these directly); it only clears a value an earlier
-    bind in this process wrote.
+    A/B harnesses must set experimental overrides after binding, as for other
+    profile-owned routes. Pre-binder conflicts use the normal warning/error policy.
     """
 
-    for key, value in _F16_ROUTE_SELECTORS.items():
-        if enabled:
-            _apply_profile_env({key: value})
-            _f16_routes_published.add(key)
-        elif key in _f16_routes_published:
-            _f16_routes_published.discard(key)
-            _apply_profile_env({key: "0"})
+    _apply_profile_env({
+        key: value if enabled else "0"
+        for key, value in _F16_ROUTE_SELECTORS.items()
+    })
 
 
 def _bind(

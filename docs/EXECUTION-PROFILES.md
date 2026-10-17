@@ -410,6 +410,14 @@ binder and variants. The response profile metadata reports
 artifact path. The historical failed composition remains registered only for
 diagnosis, not admitted for serving. This is fallback to an existing oracle,
 not numerical qualification of a repaired composition.
+
+The Qwen4Exp binder owns the F16-composition selectors in
+`_F16_ROUTE_SELECTORS`, including their disabled values for strict and fallback
+bindings. Conflicting values set before binding are replaced and reported through
+`HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT` (`warn` by default, `error` to reject).
+Experimental harnesses must apply overrides after binding and record the modified
+candidate separately; the original manifest does not certify those overrides.
+
 The recognized UD layout selects the same manifest as explicit
 `quant="gguf_ud_q4_k_xl"`, with the numerical evidence and task-review limits
 stated in this section. No kernel composition was changed by the resolver.

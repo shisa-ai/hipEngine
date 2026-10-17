@@ -848,15 +848,24 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ""
 
 
-def test_strict_binder_leaves_a_caller_set_routed_selector_alone(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("quant,requested", [
+    ("gguf_ud_q4_k_xl", ExecutionProfile.STRICT),
+    ("gguf_q4_k_m", ExecutionProfile.PRODUCTION),
+])
+def test_strict_binder_clears_caller_set_composition_selectors(
+    monkeypatch: pytest.MonkeyPatch, quant, requested,
 ) -> None:
+    from hipengine.generation import qwen4_exp_profiles as profiles
+
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
-    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
-    monkeypatch.setenv(_ROUTED_F16_ENV, "1")
+    strict = _resolve(requested, quant=quant)
+    monkeypatch.setattr(profiles, "_binder_written", {})
+    for key in profiles._F16_ROUTE_SELECTORS:
+        monkeypatch.setenv(key, "1")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         strict.binder(SimpleNamespace(), strict)
-    assert os.environ[_ROUTED_F16_ENV] == "1"
-    assert not any(_ROUTED_F16_ENV in str(w.message) for w in caught)
+    for key in profiles._F16_ROUTE_SELECTORS:
+        assert os.environ[key] == "0", key
+        assert any(key in str(w.message) for w in caught), key
