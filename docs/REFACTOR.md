@@ -1,3 +1,19 @@
+## DMS extent compaction: replace the memmove with a ring head
+
+The DMS append/decode kernel compacts the live extent on every decode step:
+each expired row moves every later slot left by one. At an 8K window that is a
+3.4 ms append per layer, which is what bounds the route's decode rate, and it is
+why the 2026-10-18 compaction-race fix had to stage 16-slot tiles through shared
+memory to stay correct.
+
+Expiry always removes the oldest row, which sits at the lowest slot, so the
+extent can advance `base_offsets` instead of moving data and only compact when
+the window reaches the end of the reserved range. That removes the per-step move
+entirely and the staging with it. The change touches the append kernel, the
+attention readers that walk `[base, base+live)`, and the store's snapshot
+bookkeeping, so it needs its own correctness gate against the host oracle in
+`tests/test_gpu_dms_append_decode_hip.py`.
+
 ## Full-suite GPU abort: an out-of-bounds index write in one test (fixed)
 
 `uv run pytest --suite all` and `uv run pytest --suite gpu` both died with

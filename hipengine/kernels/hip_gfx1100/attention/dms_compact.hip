@@ -10,6 +10,13 @@
 #include <stdint.h>
 
 constexpr int kDmsPackThreads = 256;
+// Slots staged through shared memory per compaction tile. A forward
+// compaction moves kept slots to lower indices, so a thread writing `dst`
+// could overwrite another thread's unread `src` in the same chunk. Staging a
+// tile in shared memory reads every source of the tile before any write of it,
+// and because `dst <= src` a tile's writes can only land in tiles that were
+// already written.
+constexpr int kDmsCompactTileSlots = 16;
 
 namespace {
 
@@ -286,6 +293,9 @@ __global__ void dms_append_decode_kernel(
 
   __shared__ int32_t s_flag[kDmsPackThreads];
   __shared__ int32_t s_chunk_total;
+  __shared__ int32_t s_tile_positions[kDmsCompactTileSlots];
+  __shared__ uint8_t s_tile_evict[kDmsCompactTileSlots];
+  extern __shared__ uint16_t s_stage[];
 
   // Pass 1: count keepers (read-only; overflow must fail closed).
   int32_t keepers = 0;
@@ -336,22 +346,65 @@ __global__ void dms_append_decode_kernel(
       s_flag[tid] += delta;
       __syncthreads();
     }
-    if (in_chunk && s_flag[tid] > (tid > 0 ? s_flag[tid - 1] : 0)) {
-      // This slot is kept: exclusive rank = chunk_rank + inclusive - 1.
-      const int32_t dst = base + chunk_rank + s_flag[tid] - 1;
-      const int32_t src = base + chunk0 + tid;
-      if (dst != src) {
-        const uint16_t* sk = k_slot + static_cast<int64_t>(src) * dim;
-        const uint16_t* sv = v_slot + static_cast<int64_t>(src) * dim;
-        uint16_t* dk = k_slot + static_cast<int64_t>(dst) * dim;
-        uint16_t* dv = v_slot + static_cast<int64_t>(dst) * dim;
-        for (int32_t d = 0; d < dim; d++) {
-          dk[d] = sk[d];
-          dv[d] = sv[d];
+    const int32_t chunk_n =
+        (live - chunk0 < kDmsPackThreads) ? (live - chunk0) : kDmsPackThreads;
+    for (int32_t tile0 = 0; tile0 < chunk_n; tile0 += kDmsCompactTileSlots) {
+      const int32_t tile_n = (chunk_n - tile0 < kDmsCompactTileSlots)
+                                 ? (chunk_n - tile0)
+                                 : kDmsCompactTileSlots;
+      const int32_t stage_elems = tile_n * dim;
+      // Stage every source slot of this tile before any write. A plain
+      // parallel forward compaction lets a thread whose `dst` is another
+      // thread's unread `src` overwrite it, which duplicated and shifted
+      // slots at random positions once the extent spanned many chunks.
+      for (int32_t e = tid; e < stage_elems; e += kDmsPackThreads) {
+        const int32_t slot_i = e / dim;
+        const int32_t t_in_chunk = tile0 + slot_i;
+        const bool kept =
+            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+        if (kept) {
+          const int32_t src = base + chunk0 + t_in_chunk;
+          const int32_t d = e - slot_i * dim;
+          s_stage[e] = k_slot[static_cast<int64_t>(src) * dim + d];
+          s_stage[stage_elems + e] =
+              v_slot[static_cast<int64_t>(src) * dim + d];
         }
-        token_positions[dst] = token_positions[src];
-        slot_evict[dst] = slot_evict[src];
       }
+      if (tid < tile_n) {
+        const int32_t src = base + chunk0 + tile0 + tid;
+        s_tile_positions[tid] = token_positions[src];
+        s_tile_evict[tid] = slot_evict[src];
+      }
+      __syncthreads();
+      for (int32_t e = tid; e < stage_elems; e += kDmsPackThreads) {
+        const int32_t slot_i = e / dim;
+        const int32_t t_in_chunk = tile0 + slot_i;
+        const bool kept =
+            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+        if (!kept) {
+          continue;
+        }
+        const int32_t dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
+        const int32_t src = base + chunk0 + t_in_chunk;
+        if (dst != src) {
+          const int32_t d = e - slot_i * dim;
+          k_slot[static_cast<int64_t>(dst) * dim + d] = s_stage[e];
+          v_slot[static_cast<int64_t>(dst) * dim + d] =
+              s_stage[stage_elems + e];
+        }
+      }
+      if (tid < tile_n) {
+        const int32_t t_in_chunk = tile0 + tid;
+        const bool kept =
+            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+        const int32_t dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
+        const int32_t src = base + chunk0 + t_in_chunk;
+        if (kept && dst != src) {
+          token_positions[dst] = s_tile_positions[tid];
+          slot_evict[dst] = s_tile_evict[tid];
+        }
+      }
+      __syncthreads();
     }
     s_chunk_total = s_flag[kDmsPackThreads - 1];
     __syncthreads();
@@ -1049,9 +1102,17 @@ extern "C" int hipengine_dms_append_decode_bf16(
   if (rows <= 0 || heads <= 0 || dim <= 0 || window_size < 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  // Two staged planes of kDmsCompactTileSlots slots; 64 KiB of shared memory
+  // caps dim at 1024, far above any KV head width this backend serves.
+  const size_t stage_bytes =
+      2ull * kDmsCompactTileSlots * static_cast<size_t>(dim) * sizeof(uint16_t);
+  if (stage_bytes > 64ull * 1024ull) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
   const int blocks = rows * heads;
   hipLaunchKernelGGL(
-      dms_append_decode_kernel, dim3(blocks), dim3(kDmsPackThreads), 0, stream,
+      dms_append_decode_kernel, dim3(blocks), dim3(kDmsPackThreads),
+      stage_bytes, stream,
       k_new,
       v_new,
       evict_new,

@@ -7,6 +7,13 @@
 
 namespace {
 constexpr int Threads = 256;
+// Slots staged through shared memory per compaction tile. Chunking alone does
+// not make a forward compaction safe: inside one chunk a thread whose `dst` is
+// another thread's unread `src` overwrites it, which duplicated and shifted
+// entries at random positions once the extent spanned many chunks. Staging a
+// tile reads every source of the tile before any write of it, and `dst <= src`
+// keeps a tile's writes inside tiles that were already written.
+constexpr int kCompactTileSlots = 16;
 __device__ float from_bf16(uint16_t x) { return __uint_as_float(uint32_t(x) << 16); }
 
 // All lanes cooperate on one vector pair. The maximum is exact for finite
@@ -81,6 +88,11 @@ __global__ void dms_int8_append_kernel(const uint16_t* k, const uint16_t* v,
   // row-by-row version preserved, now in parallel.
   __shared__ int s_flag[Threads];
   __shared__ int s_chunk_total;
+  __shared__ float s_tile_ks[kCompactTileSlots];
+  __shared__ float s_tile_vs[kCompactTileSlots];
+  __shared__ int s_tile_positions[kCompactTileSlots];
+  __shared__ uint8_t s_tile_flags[kCompactTileSlots];
+  extern __shared__ int8_t s_stage[];
   int keepers = 0;
   for (int chunk0 = 0; chunk0 < n; chunk0 += Threads) {
     const int in_chunk = tid < (n - chunk0);
@@ -121,19 +133,63 @@ __global__ void dms_int8_append_kernel(const uint16_t* k, const uint16_t* v,
       s_flag[tid] += delta;
       __syncthreads();
     }
-    if (in_chunk && s_flag[tid] > (tid > 0 ? s_flag[tid - 1] : 0)) {
-      const int dst = base + chunk_rank + s_flag[tid] - 1;
-      const int src = base + chunk0 + tid;
-      if (dst != src) {
-        // The owning thread moves the whole row (payload bytes and scales
-        // without requantization), matching the BF16 family's ownership rule.
-        for (int d = 0; d < dim; ++d) {
-          ko[int64_t(dst)*dim+d] = ko[int64_t(src)*dim+d];
-          vo[int64_t(dst)*dim+d] = vo[int64_t(src)*dim+d];
+    const int chunk_n = (n - chunk0 < Threads) ? (n - chunk0) : Threads;
+    for (int tile0 = 0; tile0 < chunk_n; tile0 += kCompactTileSlots) {
+      const int tile_n = (chunk_n - tile0 < kCompactTileSlots)
+                             ? (chunk_n - tile0)
+                             : kCompactTileSlots;
+      const int stage_elems = tile_n * dim;
+      // Stage every source slot of this tile before any write so no thread can
+      // clobber another thread's unread source. Payload bytes and scales move
+      // without requantization, as before.
+      for (int e = tid; e < stage_elems; e += Threads) {
+        const int slot_i = e / dim;
+        const int t_in_chunk = tile0 + slot_i;
+        const bool kept =
+            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+        if (kept) {
+          const int src = base + chunk0 + t_in_chunk;
+          const int d = e - slot_i * dim;
+          s_stage[e] = ko[int64_t(src)*dim+d];
+          s_stage[stage_elems + e] = vo[int64_t(src)*dim+d];
         }
-        ks[dst] = ks[src]; vs[dst] = vs[src];
-        positions[dst] = positions[src]; flags[dst] = flags[src];
       }
+      if (tid < tile_n) {
+        const int src = base + chunk0 + tile0 + tid;
+        s_tile_ks[tid] = ks[src];
+        s_tile_vs[tid] = vs[src];
+        s_tile_positions[tid] = positions[src];
+        s_tile_flags[tid] = flags[src];
+      }
+      __syncthreads();
+      for (int e = tid; e < stage_elems; e += Threads) {
+        const int slot_i = e / dim;
+        const int t_in_chunk = tile0 + slot_i;
+        const bool kept =
+            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+        if (!kept) continue;
+        const int dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
+        const int src = base + chunk0 + t_in_chunk;
+        if (dst != src) {
+          const int d = e - slot_i * dim;
+          ko[int64_t(dst)*dim+d] = s_stage[e];
+          vo[int64_t(dst)*dim+d] = s_stage[stage_elems + e];
+        }
+      }
+      if (tid < tile_n) {
+        const int t_in_chunk = tile0 + tid;
+        const bool kept =
+            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+        const int dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
+        const int src = base + chunk0 + t_in_chunk;
+        if (kept && dst != src) {
+          ks[dst] = s_tile_ks[tid];
+          vs[dst] = s_tile_vs[tid];
+          positions[dst] = s_tile_positions[tid];
+          flags[dst] = s_tile_flags[tid];
+        }
+      }
+      __syncthreads();
     }
     s_chunk_total = s_flag[Threads - 1];
     __syncthreads();
@@ -396,7 +452,9 @@ extern "C" int hipengine_dms_append_decode_int8(
     int32_t* pos, uint8_t* flags, int32_t* status, float* ks, float* vs,
     int rows, int heads, int dim, int window, hipStream_t stream) {
   if (rows <= 0 || heads <= 0 || dim <= 0 || window < 0) return hipErrorInvalidValue;
-  hipLaunchKernelGGL(dms_int8_append_kernel, dim3(rows*heads), dim3(Threads), 0, stream,
+  const size_t stage_bytes = 2ull * kCompactTileSlots * static_cast<size_t>(dim);
+  if (stage_bytes > 64ull * 1024ull) return hipErrorInvalidValue;
+  hipLaunchKernelGGL(dms_int8_append_kernel, dim3(rows*heads), dim3(Threads), stage_bytes, stream,
                     k,v,evict,rowpos,base,cap,live,ko,vo,pos,flags,status,ks,vs,heads,dim,window);
   return hipGetLastError();
 }

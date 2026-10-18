@@ -382,6 +382,80 @@ def test_dms_append_decode_expire_compaction_bit_exact() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_dms_append_decode_long_extent_compaction_is_exact() -> None:
+    """A multi-chunk extent with one expiry must move every slot exactly once.
+
+    The compaction used to copy each kept slot straight from ``src`` to ``dst``
+    inside a chunk. With one expired row every later slot moves left by one, so
+    a thread writing ``dst`` could overwrite the ``src`` another thread had not
+    read yet; the extent then carried a duplicated and shifted position at
+    random sites. Small cases stayed inside one warp step and never showed it.
+    """
+
+    tokens, window, dim = 8193, 8192, 256
+    heads = 2
+    slots = tokens * 4 + window + 16
+    backend = _backend(num_layers=1, heads=heads, dim=dim, window=window, slots=slots)
+    _admit(backend, request_id=0, tokens=tokens)
+    # Position 0 is evicted and, once the row reaches 8193, falls outside the
+    # 8192-slot window: exactly one drop, and every other slot moves by one.
+    prompt_data, step_data = _build_case_data(
+        [tokens],
+        heads,
+        dim,
+        window,
+        [set(range(1, tokens))],
+        [([False] * heads,)],
+    )
+    _host_run(backend, [0], [tokens], prompt_data, step_data)
+    (
+        k_slot,
+        v_slot,
+        positions,
+        slot_evict,
+        live_dev,
+        status,
+    ) = _device_run(
+        backend,
+        rows=[0],
+        prompts=[tokens],
+        prompt_data=prompt_data,
+        step_data=step_data,
+        heads=heads,
+        dim=dim,
+        window=window,
+        row_starts=[0],
+    )
+    assert (status == 0).all()
+    state = backend.state_for_request(0)
+    for h in range(heads):
+        start_slot = int(state.base_offsets[0, h])
+        live = int(state.live_counts[0, h])
+        assert live == tokens, f"head {h} kept {live} of {tokens}"
+        np.testing.assert_array_equal(live_dev[0, h], live)
+        np.testing.assert_array_equal(
+            positions[start_slot:start_slot + live],
+            state.token_positions[0, h, :live],
+            err_msg=f"head {h} token_positions",
+        )
+        np.testing.assert_array_equal(
+            k_slot[start_slot:start_slot + live],
+            _bf16_bits(state.k_payload[(0, h)]),
+            err_msg=f"head {h} K payload",
+        )
+        np.testing.assert_array_equal(
+            v_slot[start_slot:start_slot + live],
+            _bf16_bits(state.v_payload[(0, h)]),
+            err_msg=f"head {h} V payload",
+        )
+        np.testing.assert_array_equal(
+            slot_evict[start_slot:start_slot + live],
+            state.evict_mask[0, h, :live].astype(np.uint8),
+            err_msg=f"head {h} evict mask",
+        )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 def test_dms_append_decode_overflow_fails_closed() -> None:
     # Synthetic steady-state violation: the extent is full of never-evicted
     # rows at capacity. Appending must fail closed (status=1, extent and
