@@ -1,0 +1,315 @@
+{
+ "schema": "hipengine.qwen4exp.http_mtp_economics.v1",
+ "created_at": "2026-10-18T08:48:53Z",
+ "url": "http://127.0.0.1:18400",
+ "model": "qwen38fn-capon",
+ "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+ "width": 4,
+ "max_tokens": 64,
+ "ar": {
+  "waves": 3,
+  "wall_s": 20.59,
+  "completion_tokens": 601,
+  "aggregate_tok_s": 29.189,
+  "requests": 10,
+  "errors": 0,
+  "speculative_used": 0,
+  "mean_acceptance": 0.0
+ },
+ "mtp": {
+  "waves": 3,
+  "wall_s": 2.669,
+  "completion_tokens": 64,
+  "aggregate_tok_s": 23.979,
+  "requests": 10,
+  "errors": 9,
+  "speculative_used": 1,
+  "mean_acceptance": 0.7
+ },
+ "mtp_over_ar": 0.8215,
+ "waves": {
+  "ar": [
+   {
+    "wall_s": 7.697,
+    "requests": 4,
+    "completion_tokens": 256,
+    "aggregate_tok_s": 33.259,
+    "per_request_tok_s": 8.325,
+    "mean_wall_s": 7.687,
+    "cases": [
+     {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "status": 200,
+      "wall_s": 7.685702123912051,
+      "completion_tokens": 64,
+      "prompt_tokens": 40,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_topological_sort",
+      "category": "code",
+      "status": 200,
+      "wall_s": 7.6863662109244615,
+      "completion_tokens": 64,
+      "prompt_tokens": 50,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_lru_cache",
+      "category": "code",
+      "status": 200,
+      "wall_s": 7.688557663932443,
+      "completion_tokens": 64,
+      "prompt_tokens": 47,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_markdown_table",
+      "category": "code",
+      "status": 200,
+      "wall_s": 7.688737981952727,
+      "completion_tokens": 64,
+      "prompt_tokens": 52,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     }
+    ]
+   },
+   {
+    "wall_s": 7.677,
+    "requests": 4,
+    "completion_tokens": 256,
+    "aggregate_tok_s": 33.348,
+    "per_request_tok_s": 8.342,
+    "mean_wall_s": 7.672,
+    "cases": [
+     {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "status": 200,
+      "wall_s": 7.671402017120272,
+      "completion_tokens": 64,
+      "prompt_tokens": 39,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "status": 200,
+      "wall_s": 7.6720383919309825,
+      "completion_tokens": 64,
+      "prompt_tokens": 40,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "status": 200,
+      "wall_s": 7.671825360972434,
+      "completion_tokens": 64,
+      "prompt_tokens": 43,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "status": 200,
+      "wall_s": 7.671101453015581,
+      "completion_tokens": 64,
+      "prompt_tokens": 43,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     }
+    ]
+   },
+   {
+    "wall_s": 5.216,
+    "requests": 2,
+    "completion_tokens": 89,
+    "aggregate_tok_s": 17.064,
+    "per_request_tok_s": 9.793,
+    "mean_wall_s": 4.439,
+    "cases": [
+     {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "status": 200,
+      "wall_s": 5.210358639946207,
+      "completion_tokens": 58,
+      "prompt_tokens": 64,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "stop"
+     },
+     {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "status": 200,
+      "wall_s": 3.6670561011414975,
+      "completion_tokens": 31,
+      "prompt_tokens": 71,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "stop"
+     }
+    ]
+   }
+  ],
+  "mtp": [
+   {
+    "wall_s": 2.654,
+    "requests": 4,
+    "completion_tokens": 64,
+    "aggregate_tok_s": 24.116,
+    "per_request_tok_s": 6.044,
+    "mean_wall_s": 2.647,
+    "cases": [
+     {
+      "id": "code_merge_intervals",
+      "status": 500,
+      "wall_s": 2.648764970013872,
+      "error": "{\"error\": {\"message\": \"generation failed: '_CompositeGenerationCancellationToken' object has no attribute 'cancel_requested'\", \"type\": \"server_error\", \"param\": null, \"code\": \"generation_failed\", \"hipengine\": {\"code\": \"generation_failed\", \"status_code\": 500}}}"
+     },
+     {
+      "id": "code_topological_sort",
+      "category": "code",
+      "status": 200,
+      "wall_s": 2.6471624728292227,
+      "completion_tokens": 64,
+      "prompt_tokens": 50,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.7,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_lru_cache",
+      "status": 500,
+      "wall_s": 2.6458487678319216,
+      "error": "{\"error\": {\"message\": \"generation failed: '_CompositeGenerationCancellationToken' object has no attribute 'cancel_requested'\", \"type\": \"server_error\", \"param\": null, \"code\": \"generation_failed\", \"hipengine\": {\"code\": \"generation_failed\", \"status_code\": 500}}}"
+     },
+     {
+      "id": "code_markdown_table",
+      "status": 500,
+      "wall_s": 2.647799808997661,
+      "error": "{\"error\": {\"message\": \"generation failed: '_CompositeGenerationCancellationToken' object has no attribute 'cancel_requested'\", \"type\": \"server_error\", \"param\": null, \"code\": \"generation_failed\", \"hipengine\": {\"code\": \"generation_failed\", \"status_code\": 500}}}"
+     }
+    ]
+   },
+   {
+    "wall_s": 0.008,
+    "requests": 4,
+    "completion_tokens": 0,
+    "aggregate_tok_s": 0.0,
+    "per_request_tok_s": 0.0,
+    "mean_wall_s": 0.002,
+    "cases": [
+     {
+      "id": "general_en_plan",
+      "status": 503,
+      "wall_s": 0.0018471970688551664,
+      "error": "{\"error\": {\"message\": \"engine service is closed\", \"type\": \"server_error\", \"param\": null, \"code\": \"resident_prepare_failed\", \"hipengine\": {\"code\": \"resident_prepare_failed\", \"status_code\": 503, \"guidance\": \"Fix the reported configuration error; the server logs name the exact setting that was refused.\"}}}"
+     },
+     {
+      "id": "general_en_explain",
+      "status": 503,
+      "wall_s": 0.001717852894216776,
+      "error": "{\"error\": {\"message\": \"engine service is closed\", \"type\": \"server_error\", \"param\": null, \"code\": \"resident_prepare_failed\", \"hipengine\": {\"code\": \"resident_prepare_failed\", \"status_code\": 503, \"guidance\": \"Fix the reported configuration error; the server logs name the exact setting that was refused.\"}}}"
+     },
+     {
+      "id": "general_ja_plan",
+      "status": 503,
+      "wall_s": 0.0016189180314540863,
+      "error": "{\"error\": {\"message\": \"engine service is closed\", \"type\": \"server_error\", \"param\": null, \"code\": \"resident_prepare_failed\", \"hipengine\": {\"code\": \"resident_prepare_failed\", \"status_code\": 503, \"guidance\": \"Fix the reported configuration error; the server logs name the exact setting that was refused.\"}}}"
+     },
+     {
+      "id": "general_ja_explain",
+      "status": 503,
+      "wall_s": 0.001847167033702135,
+      "error": "{\"error\": {\"message\": \"engine service is closed\", \"type\": \"server_error\", \"param\": null, \"code\": \"resident_prepare_failed\", \"hipengine\": {\"code\": \"resident_prepare_failed\", \"status_code\": 503, \"guidance\": \"Fix the reported configuration error; the server logs name the exact setting that was refused.\"}}}"
+     }
+    ]
+   },
+   {
+    "wall_s": 0.007,
+    "requests": 2,
+    "completion_tokens": 0,
+    "aggregate_tok_s": 0.0,
+    "per_request_tok_s": 0.0,
+    "mean_wall_s": 0.003,
+    "cases": [
+     {
+      "id": "mixed_ja_en_translate",
+      "status": 503,
+      "wall_s": 0.002643289975821972,
+      "error": "{\"error\": {\"message\": \"engine service is closed\", \"type\": \"server_error\", \"param\": null, \"code\": \"resident_prepare_failed\", \"hipengine\": {\"code\": \"resident_prepare_failed\", \"status_code\": 503, \"guidance\": \"Fix the reported configuration error; the server logs name the exact setting that was refused.\"}}}"
+     },
+     {
+      "id": "mixed_ja_en_review",
+      "status": 503,
+      "wall_s": 0.002609256887808442,
+      "error": "{\"error\": {\"message\": \"engine service is closed\", \"type\": \"server_error\", \"param\": null, \"code\": \"resident_prepare_failed\", \"hipengine\": {\"code\": \"resident_prepare_failed\", \"status_code\": 503, \"guidance\": \"Fix the reported configuration error; the server logs name the exact setting that was refused.\"}}}"
+     }
+    ]
+   }
+  ]
+ },
+ "artifact_meta": {
+  "date": "2026-10-18",
+  "host": "zbook",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "backend": "hip_gfx1151",
+  "quant": "gguf_ud_q4_k_xl",
+  "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "execution_profile": "production",
+  "sidecar": "Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+  "head": "b021b007c"
+ }
+}

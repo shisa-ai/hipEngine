@@ -1,0 +1,574 @@
+{
+ "schema": "hipengine.qwen4exp.http_mtp_economics.v1",
+ "created_at": "2026-10-18T09:01:26Z",
+ "url": "http://127.0.0.1:18400",
+ "model": "qwen38fn-capon",
+ "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+ "width": 4,
+ "max_tokens": 64,
+ "arms": {
+  "ar": {
+   "waves": 3,
+   "wall_s": 20.866,
+   "completion_tokens": 601,
+   "aggregate_tok_s": 28.803,
+   "requests": 10,
+   "errors": 0,
+   "speculative_used": 0,
+   "mean_acceptance": 0.0
+  },
+  "mixed": {
+   "waves": 3,
+   "wall_s": 22.46,
+   "completion_tokens": 601,
+   "aggregate_tok_s": 26.759,
+   "requests": 10,
+   "errors": 0,
+   "speculative_used": 3,
+   "mean_acceptance": 0.65
+  },
+  "mtp": {
+   "waves": 3,
+   "wall_s": 24.114,
+   "completion_tokens": 601,
+   "aggregate_tok_s": 24.923,
+   "requests": 10,
+   "errors": 0,
+   "speculative_used": 10,
+   "mean_acceptance": 0.6657
+  }
+ },
+ "ratios": {
+  "mixed": 0.929,
+  "mtp": 0.8653
+ },
+ "waves": {
+  "ar": [
+   {
+    "wall_s": 7.974,
+    "requests": 4,
+    "completion_tokens": 256,
+    "aggregate_tok_s": 32.106,
+    "per_request_tok_s": 8.093,
+    "mean_wall_s": 7.909,
+    "cases": [
+     {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "status": 200,
+      "wall_s": 7.745928470976651,
+      "completion_tokens": 64,
+      "prompt_tokens": 40,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_topological_sort",
+      "category": "code",
+      "status": 200,
+      "wall_s": 7.962935796007514,
+      "completion_tokens": 64,
+      "prompt_tokens": 50,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_lru_cache",
+      "category": "code",
+      "status": 200,
+      "wall_s": 7.963095406070352,
+      "completion_tokens": 64,
+      "prompt_tokens": 47,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_markdown_table",
+      "category": "code",
+      "status": 200,
+      "wall_s": 7.964910233160481,
+      "completion_tokens": 64,
+      "prompt_tokens": 52,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     }
+    ]
+   },
+   {
+    "wall_s": 7.862,
+    "requests": 4,
+    "completion_tokens": 256,
+    "aggregate_tok_s": 32.56,
+    "per_request_tok_s": 8.204,
+    "mean_wall_s": 7.802,
+    "cases": [
+     {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "status": 200,
+      "wall_s": 7.748328934190795,
+      "completion_tokens": 64,
+      "prompt_tokens": 39,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "status": 200,
+      "wall_s": 7.748834182973951,
+      "completion_tokens": 64,
+      "prompt_tokens": 40,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "status": 200,
+      "wall_s": 7.854705492965877,
+      "completion_tokens": 64,
+      "prompt_tokens": 43,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "status": 200,
+      "wall_s": 7.855621564202011,
+      "completion_tokens": 64,
+      "prompt_tokens": 43,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     }
+    ]
+   },
+   {
+    "wall_s": 5.03,
+    "requests": 2,
+    "completion_tokens": 89,
+    "aggregate_tok_s": 17.694,
+    "per_request_tok_s": 10.279,
+    "mean_wall_s": 4.232,
+    "cases": [
+     {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "status": 200,
+      "wall_s": 5.023056749952957,
+      "completion_tokens": 58,
+      "prompt_tokens": 64,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "stop"
+     },
+     {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "status": 200,
+      "wall_s": 3.440187406959012,
+      "completion_tokens": 31,
+      "prompt_tokens": 71,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "stop"
+     }
+    ]
+   }
+  ],
+  "mixed": [
+   {
+    "wall_s": 8.478,
+    "requests": 4,
+    "completion_tokens": 256,
+    "aggregate_tok_s": 30.197,
+    "per_request_tok_s": 8.896,
+    "mean_wall_s": 7.591,
+    "cases": [
+     {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "status": 200,
+      "wall_s": 4.955950387055054,
+      "completion_tokens": 64,
+      "prompt_tokens": 40,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.8490566037735849,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_topological_sort",
+      "category": "code",
+      "status": 200,
+      "wall_s": 8.470401539932936,
+      "completion_tokens": 64,
+      "prompt_tokens": 50,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_lru_cache",
+      "category": "code",
+      "status": 200,
+      "wall_s": 8.470515733817592,
+      "completion_tokens": 64,
+      "prompt_tokens": 47,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_markdown_table",
+      "category": "code",
+      "status": 200,
+      "wall_s": 8.466284159105271,
+      "completion_tokens": 64,
+      "prompt_tokens": 52,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     }
+    ]
+   },
+   {
+    "wall_s": 9.118,
+    "requests": 4,
+    "completion_tokens": 256,
+    "aggregate_tok_s": 28.075,
+    "per_request_tok_s": 10.706,
+    "mean_wall_s": 7.568,
+    "cases": [
+     {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "status": 200,
+      "wall_s": 2.942785292165354,
+      "completion_tokens": 64,
+      "prompt_tokens": 39,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.4675324675324675,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "status": 200,
+      "wall_s": 9.11101073701866,
+      "completion_tokens": 64,
+      "prompt_tokens": 40,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "status": 200,
+      "wall_s": 9.111717172898352,
+      "completion_tokens": 64,
+      "prompt_tokens": 43,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "status": 200,
+      "wall_s": 9.108231598977,
+      "completion_tokens": 64,
+      "prompt_tokens": 43,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "length"
+     }
+    ]
+   },
+   {
+    "wall_s": 4.864,
+    "requests": 2,
+    "completion_tokens": 89,
+    "aggregate_tok_s": 18.297,
+    "per_request_tok_s": 9.83,
+    "mean_wall_s": 4.613,
+    "cases": [
+     {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "status": 200,
+      "wall_s": 4.367879803059623,
+      "completion_tokens": 58,
+      "prompt_tokens": 64,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.6333333333333333,
+      "route": "speculative_mtp",
+      "finish_reason": "stop"
+     },
+     {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "status": 200,
+      "wall_s": 4.857777307974175,
+      "completion_tokens": 31,
+      "prompt_tokens": 71,
+      "speculative_used": false,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": null,
+      "route": "default",
+      "finish_reason": "stop"
+     }
+    ]
+   }
+  ],
+  "mtp": [
+   {
+    "wall_s": 8.985,
+    "requests": 4,
+    "completion_tokens": 256,
+    "aggregate_tok_s": 28.491,
+    "per_request_tok_s": 12.803,
+    "mean_wall_s": 7.265,
+    "cases": [
+     {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "status": 200,
+      "wall_s": 2.146944053005427,
+      "completion_tokens": 64,
+      "prompt_tokens": 40,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.8490566037735849,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_topological_sort",
+      "category": "code",
+      "status": 200,
+      "wall_s": 8.9764970659744,
+      "completion_tokens": 64,
+      "prompt_tokens": 50,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.7,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_lru_cache",
+      "category": "code",
+      "status": 200,
+      "wall_s": 8.960119855822995,
+      "completion_tokens": 64,
+      "prompt_tokens": 47,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.7288135593220338,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     },
+     {
+      "id": "code_markdown_table",
+      "category": "code",
+      "status": 200,
+      "wall_s": 8.97746890084818,
+      "completion_tokens": 64,
+      "prompt_tokens": 52,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.9387755102040817,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     }
+    ]
+   },
+   {
+    "wall_s": 11.204,
+    "requests": 4,
+    "completion_tokens": 256,
+    "aggregate_tok_s": 22.848,
+    "per_request_tok_s": 9.815,
+    "mean_wall_s": 9.12,
+    "cases": [
+     {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "status": 200,
+      "wall_s": 2.894576051970944,
+      "completion_tokens": 64,
+      "prompt_tokens": 39,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.4675324675324675,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "status": 200,
+      "wall_s": 11.196053731022403,
+      "completion_tokens": 64,
+      "prompt_tokens": 40,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.6060606060606061,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "status": 200,
+      "wall_s": 11.194998258026317,
+      "completion_tokens": 64,
+      "prompt_tokens": 43,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.4868421052631579,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     },
+     {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "status": 200,
+      "wall_s": 11.195595320081338,
+      "completion_tokens": 64,
+      "prompt_tokens": 43,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.43209876543209874,
+      "route": "speculative_mtp",
+      "finish_reason": "length"
+     }
+    ]
+   },
+   {
+    "wall_s": 3.925,
+    "requests": 2,
+    "completion_tokens": 89,
+    "aggregate_tok_s": 22.677,
+    "per_request_tok_s": 17.893,
+    "mean_wall_s": 2.698,
+    "cases": [
+     {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "status": 200,
+      "wall_s": 3.918580337893218,
+      "completion_tokens": 58,
+      "prompt_tokens": 64,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.6333333333333333,
+      "route": "speculative_mtp",
+      "finish_reason": "stop"
+     },
+     {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "status": 200,
+      "wall_s": 1.477331583853811,
+      "completion_tokens": 31,
+      "prompt_tokens": 71,
+      "speculative_used": true,
+      "speculative_reason": null,
+      "accepted_per_cycle": null,
+      "acceptance": 0.8148148148148148,
+      "route": "speculative_mtp",
+      "finish_reason": "stop"
+     }
+    ]
+   }
+  ]
+ },
+ "artifact_meta": {
+  "date": "2026-10-18",
+  "host": "zbook",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "backend": "hip_gfx1151",
+  "quant": "gguf_ud_q4_k_xl",
+  "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "execution_profile": "production",
+  "sidecar": "Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+  "head": "b021b007c"
+ }
+}

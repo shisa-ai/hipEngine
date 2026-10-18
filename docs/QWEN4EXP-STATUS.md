@@ -1,5 +1,18 @@
 # Qwen3.8-Flash-Next (Qwen4Exp) Optimization Status
 
+**2026-10-18 MTP economics re-measured:** on gfx1151/zbook the full category
+suite runs 1.163-1.167x AR in-process and the heldouts 1.157x, with identical
+draft acceptance (56.1%) and identical cycle counts to the 2026-10-14 row.
+Re-running that row's own commit `9a0c408d2` on today's machine measures 1.086x
+against HEAD's 1.163x, so the retained 1.273x was a session artifact rather than
+a code baseline; the same-session pair is the comparison. On the served route MTP
+is 1.257x for one request, 1.330x at two concurrent requests and 0.865x at four,
+where AR batching reaches 28.80 aggregate tok/s. Concurrent MTP also crashed the
+resident engine before this pass (`_CompositeGenerationCancellationToken` had no
+`cancel_requested`, escalated to a full teardown); that is fixed and covered by
+`tests/test_unit_server_composite_cancellation.py`
+([economics](../benchmarks/results/2026-10-18-qwen4exp-mtp-economics/README.md)).
+
 **2026-10-18 serving qualification:** the served path now passes the
 production gates the audit left open. Isolation and determinism hold at width
 four: eight distinct prompts replayed concurrently reproduce their solo answers

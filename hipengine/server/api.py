@@ -3007,6 +3007,17 @@ class _CompositeGenerationCancellationToken:
         return bool(self._tokens) and all(bool(token.cancelled) for token in self._tokens)
 
     @property
+    def cancel_requested(self) -> bool:
+        """Mirror ``cancelled`` so a shared call keeps the single-token contract.
+
+        Every generation path may probe ``cancel_requested``; the composite has
+        to answer it instead of raising inside the driver tick, where an
+        unexpected exception tears the resident engine down.
+        """
+
+        return self.cancelled
+
+    @property
     def finish_details(self) -> FinishDetails:
         for token in self._tokens:
             if token.cancelled:

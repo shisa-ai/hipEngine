@@ -1,3 +1,36 @@
+## Qwen4Exp MTP auto-admission and the AR batch width-1 gap
+
+Measured 2026-10-18 on gfx1151/zbook
+([artifact](benchmarks/results/2026-10-18-qwen4exp-mtp-economics/README.md)):
+
+- **MTP has no evidence-gated `auto` scope for Qwen4Exp.** The mode is
+  `opt_in`, because `Qwen4ExpGGUFTextGenerator` has no
+  `resolve_speculative_mtp_serving_plan` and the Qwen4Exp model plugin declares
+  no `speculative_mtp_serving_evidence`. The Qwen35 plugin path builds the key
+  from `_kv_weight_quant_key()` and `_kv_model_artifact_identity()`; Qwen4Exp
+  has neither, and an artifact identity for a four-shard directory is not
+  something to approximate. Encode the measured scope when that layer exists:
+  `realized_group_rows` 1..2, greedy, budget 3, BF16 KV, context <= 2048,
+  production profile (1.257x solo, 1.330x at width 2, 0.865x at width 4).
+  Until then `opt_in` is the honest default, and `auto` resolving to AR is the
+  correct fail-closed behaviour rather than a missing feature to paper over.
+- **A speculative row cannot share a batch step.** MTP throughput is flat at
+  23.8-24.9 tok/s across widths 1/2/4 while AR scales 13.4 -> 18.4 -> 28.8, so
+  one MTP request in a four-wide batch costs the other rows 7% aggregate while
+  itself running 1.5-3.1x faster. Remove the penalty by letting MTP verify rows
+  and AR decode rows share one physical step (the MTP verifier already runs
+  prefill-shaped kernels over a row set), then re-measure before widening the
+  auto scope past `realized_group_rows <= 2`.
+- **The AR batch path is slower than serial c1 decode below four rows.** Width
+  1: 13.39 tok/s (batch) against 18.93 (serial c1, the shipped default). Width
+  2: 18.35. Width 4: 28.80. A single request on a server configured for
+  concurrency therefore pays about 29% against the serial default. Fix by
+  keeping a solo row on its c1 runner and importing it into a batch slot at the
+  first tick where the row set is >= 2 (the slot is already reserved at
+  admission, so capacity planning does not change), then re-run the width-4
+  numerical and lifecycle gates. Do not "fix" this by disabling the batch path:
+  it is the only route that reaches 28.8 tok/s at width 4.
+
 ## Flash-Next batch decode runner: hand-off copies and owner reset duplication
 
 - `Qwen4ExpGGUFBatchRunner` (independent-request decode over physical state

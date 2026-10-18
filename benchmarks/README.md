@@ -10,7 +10,7 @@ production default or performance claim changed.
 
 [Protocol, test and artifact](results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/README.md).
 
-Last updated: **2026-10-14 UTC**
+Last updated: **2026-10-18 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -68,11 +68,17 @@ does on the same prompts (floor 5.0e-3), plus retrieval answers at 8K and
 · [routed-expert kernel](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).
 
 With the Q8_0 MTP sidecar (explicit speculative provider, greedy, budget 3),
-generation over the full 10-prompt mtp-bench category suite runs at 28.9
-tok/s against 22.7 tok/s autoregressive in the same process (1.27x; code
-1.55x, general English 1.24x, general Japanese 1.17x, mixed Japanese/English
-1.03x), 64 tokens per prompt.
-[MTP measurements](results/2026-10-14-qwen4exp-mtp-batched-verify/README.md).
+generation over the full 10-prompt mtp-bench category suite runs at 23.8-24.5
+tok/s against 20.5-21.0 tok/s autoregressive in the same process (1.16x; code
+1.39-1.41x, general English 1.14-1.15x, general Japanese 1.07-1.09x, mixed
+Japanese/English 0.95-0.96x), 64 tokens per prompt, and 1.16x on the eight
+category heldouts. The 2026-10-14 row measured 1.27x on this host; re-running
+that row's own commit on today's machine measures 1.09x, so the difference is
+the session, not the code — the same-session pair is 1.09x before and 1.16x
+after the work since. On the served route MTP is 1.26x a single request and
+1.33x at two concurrent requests, and 0.87x at four, where AR batching wins.
+[MTP measurements](results/2026-10-18-qwen4exp-mtp-economics/README.md)
+· [2026-10-14 row](results/2026-10-14-qwen4exp-mtp-batched-verify/README.md).
 
 The opt-in `fast` profile is where a reduced-precision route lands before
 its production gate. It currently selects the same routes as `production`.

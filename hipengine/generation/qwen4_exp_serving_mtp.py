@@ -63,7 +63,11 @@ class Qwen4ExpServingMTP:
         if generation_deadline_expired(request.deadline_at):
             return "timeout"
         token = request.cancellation_token
-        if token is not None and (token.cancel_requested or token.cancelled):
+        # Engine-owned tokens may be composites that only expose `cancelled`;
+        # a probe that raises here would fail the whole driver tick.
+        if token is not None and (
+            getattr(token, "cancel_requested", False) or bool(token.cancelled)
+        ):
             return "timeout" if token.finish_details.deadline_exceeded else "disconnect"
         return None
 
