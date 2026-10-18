@@ -77,7 +77,7 @@ constexpr int Q6_T16_QL_OFFSET = Q6_T16_SCALE_OFFSET + Q6_GROUPS16 * T16_COLS;
 constexpr int Q6_T16_QH_OFFSET = Q6_T16_QL_OFFSET + QK_K * (T16_COLS / 2);
 constexpr int Q6_T16_BLOCK_BYTES = Q6_T16_QH_OFFSET + QK_K * (T16_COLS / 4);
 
-// ---- Q5_1 T16 layout (matches hipengine/quant/gguf_t16.py) -------------
+// ---- Q5_1 T16 layout (repack_gguf_q5_1_tile16_packed in gguf_t16.py) ----
 // One Q5_1 block is 24 bytes for 32 values: d (f16), m (f16), qh (uint32)
 // and ql (16 nibble bytes). The tile stages 16 output columns per block:
 // d pairs, m pairs, the per-column ql planes (16B each) and the per-column

@@ -4363,7 +4363,7 @@ _T16_GATE_UP_ENV = "HIPENGINE_QWEN4_EXP_T16_GATE_UP"
 
 # T16 Q5_1 down route (2026-10-09 down-leg build, step 4): the same
 # env-gated pattern as the gate/up T16 route. The A/B harness populates
-# the tile cache (repack_gguf_q5_1_tile16 on the GGUF down weights,
+# the tile cache (repack_gguf_q5_1_tile16_packed on the GGUF down weights,
 # uploaded and keyed by the resident down weight's raw device pointer);
 # the runner branch falls back to the production down chain on a cache
 # miss, so the default path is untouched and the strict fallback is

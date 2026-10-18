@@ -60,7 +60,7 @@ loaded (and only when the production profile's T16 window selects the
 layer):
 
 1. read the raw tensor bytes (host);
-2. `repack_gguf_q4_k_tile16` / `repack_gguf_q5_1_tile16` (host, NumPy);
+2. `repack_gguf_q4_k_tile16` / `repack_gguf_q5_1_tile16_packed` (host, NumPy);
 3. upload the tile buffer, attach it as the binding's `"t16"` stage;
 4. `allocation("raw").free()` and drop the `"raw"` stage from the binding.
 

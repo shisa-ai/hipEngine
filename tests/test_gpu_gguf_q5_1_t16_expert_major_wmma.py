@@ -2,7 +2,7 @@
 
 Down-leg T16 build step 2 (committed spec 4d94cbbb5): the qtype==7 decode
 path in ``gguf_k_t16_selected_expert_major_wmma_comp_kernel`` over the
-Q5_1 T16 tile layout (``repack_gguf_q5_1_tile16``, bit-lossless).
+Q5_1 T16 tile layout (``repack_gguf_q5_1_tile16_packed``, bit-lossless).
 """
 
 import ctypes
@@ -24,7 +24,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
-from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16
+from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16_packed
 
 Q5_1_BLOCK_BYTES = 24
 
@@ -103,7 +103,7 @@ def _make_q5_1_fixture(
             axis=0,
         )
     )
-    tiles = np.ascontiguousarray(repack_gguf_q5_1_tile16(qweight).tiles)
+    tiles = np.ascontiguousarray(repack_gguf_q5_1_tile16_packed(qweight).tiles)
 
     reference = np.zeros((compact_rows, out_features), dtype=np.float32)
     for expert, count in enumerate(counts):

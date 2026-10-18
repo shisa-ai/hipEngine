@@ -5,9 +5,9 @@ import pytest
 
 from hipengine.quant.gguf_t16 import (
     GGUF_Q5_1_BLOCK_BYTES,
-    GGUF_Q5_1_T16_BLOCK_BYTES,
-    repack_gguf_q5_1_tile16,
-    unpack_gguf_q5_1_tile16,
+    GGUF_Q5_1_PACKED_T16_BLOCK_BYTES,
+    repack_gguf_q5_1_tile16_packed,
+    unpack_gguf_q5_1_tile16_packed,
 )
 
 
@@ -26,12 +26,12 @@ def test_q5_1_tile16_round_trip_is_bit_lossless(experts, out_features, in_featur
     raw[-1, -1, :] = 0xFF
     raw[0, -1, 0:2] = np.array([0x00, 0x7C], dtype=np.uint8)  # +inf f16 (unusual but bytes are bytes)
 
-    packed = repack_gguf_q5_1_tile16(raw)
+    packed = repack_gguf_q5_1_tile16_packed(raw)
     tiles = np.asarray(packed.tiles)
     assert tiles.shape == (
-        experts, out_features // 16, in_features // 32, GGUF_Q5_1_T16_BLOCK_BYTES,
+        experts, out_features // 16, in_features // 32, GGUF_Q5_1_PACKED_T16_BLOCK_BYTES,
     )
-    rebuilt = unpack_gguf_q5_1_tile16(packed)
+    rebuilt = unpack_gguf_q5_1_tile16_packed(packed)
     assert rebuilt.shape == raw.shape
     np.testing.assert_array_equal(raw, np.ascontiguousarray(rebuilt))
 
@@ -44,7 +44,7 @@ def test_q5_1_tile16_preserves_dequant_values():
     experts, out_features, in_features = 2, 16, 64
     bytes_per_row = (in_features // 32) * GGUF_Q5_1_BLOCK_BYTES
     raw = rng.integers(0, 256, (experts, out_features, bytes_per_row), dtype=np.uint8)
-    rebuilt = unpack_gguf_q5_1_tile16(repack_gguf_q5_1_tile16(raw))
+    rebuilt = unpack_gguf_q5_1_tile16_packed(repack_gguf_q5_1_tile16_packed(raw))
 
     for arr in (raw, np.ascontiguousarray(rebuilt)):
         blocks = arr.reshape(-1, GGUF_Q5_1_BLOCK_BYTES)

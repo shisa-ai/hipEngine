@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 from hipengine.core.memory import copy_host_to_device, host_array_ptr, malloc
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
-from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16
+from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16_packed
 
 
 def populate_t16_down_tiles(
@@ -38,7 +38,7 @@ def populate_t16_down_tiles(
 
     The down-leg build's populate (step 4): reads each Q5_1 ``ffn_down_exps``
     tensor from the model's GGUF, repacks through the bit-lossless Q5_1 T16
-    layout (repack_gguf_q5_1_tile16), uploads, and inserts into
+    layout (repack_gguf_q5_1_tile16_packed), uploads, and inserts into
     hipengine.runtime.qwen4_exp_runner's _T16_DOWN_TILES keyed by the resident
     down weight's raw device pointer. Layers whose down is not Q5_1 (the
     Q8_0 split) are skipped. The env-gated runner branch
@@ -79,7 +79,7 @@ def populate_t16_down_tiles(
         if raw.ndim != 3 or raw.shape[2] % 24 != 0:
             print(f"layer {layer}: unexpected down byte shape; skipped", file=sys.stderr)
             continue
-        tiles = np.ascontiguousarray(repack_gguf_q5_1_tile16(raw).tiles)
+        tiles = np.ascontiguousarray(repack_gguf_q5_1_tile16_packed(raw).tiles)
         try:
             dev = malloc(int(tiles.nbytes))
         except Exception as error:

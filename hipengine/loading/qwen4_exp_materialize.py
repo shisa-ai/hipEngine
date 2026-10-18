@@ -421,7 +421,7 @@ def materialize_qwen4_exp_t16_stages(
     """
 
     from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
-    from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16
+    from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16_packed
 
     populated: dict[str, int] = {}
     for slot in slots:
@@ -430,7 +430,7 @@ def materialize_qwen4_exp_t16_stages(
         if quant == "gguf_q4_k":
             repack = repack_gguf_q4_k_tile16
         elif quant == "gguf_q5_1":
-            repack = repack_gguf_q5_1_tile16
+            repack = repack_gguf_q5_1_tile16_packed
         else:
             continue
         raw = read_tensor(weight.spec.source.name)

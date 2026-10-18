@@ -190,12 +190,12 @@ def main() -> int:
         # synthesized raw Q5_1 down weights into the bit-lossless Q5_1 T16
         # layout and upload the tile buffer, mirroring the gate/up T16 arm.
         from hipengine.kernels.hip_gfx1100.quant import gguf_k_t16_selected_prefill as t16mod
-        from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16
+        from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16_packed
         t16mod.build_gguf_k_t16_selected_prefill(load=True)
         raw_down = np.full(
             (EXPERTS, route["out_features"], row_bytes), 0x3C, dtype=np.uint8
         )
-        tiles_down = repack_gguf_q5_1_tile16(raw_down).tiles
+        tiles_down = repack_gguf_q5_1_tile16_packed(raw_down).tiles
         t16_down_tiles = malloc(int(tiles_down.nbytes))
         copy_host_to_device(
             t16_down_tiles, host_array_ptr(tiles_down), int(tiles_down.nbytes)
