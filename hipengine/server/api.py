@@ -1331,6 +1331,37 @@ def _grammar_capability(engine=None) -> dict[str, Any]:
     }
 
 
+def _resident_prepare_guidance(exc: BaseException) -> str:
+    """Name the remedy the failure actually has.
+
+    ``resident_prepare`` covers both capacity failures and configuration
+    failures. A width bound above the qualified maximum is not helped by a
+    smaller context or a different KV storage, so the allocation hint is only
+    offered for an allocation error; anything else points at the setting the
+    server logs already name.
+    """
+
+    if isinstance(exc, MemoryError):
+        return "Try a lower --max-context-tokens or --kv-storage int8_per_token_head."
+    message = str(exc).lower()
+    if any(marker in message for marker in ("out of memory", "out_of_memory", "oom")):
+        return "Try a lower --max-context-tokens or --kv-storage int8_per_token_head."
+    # An allocation message states a quantity and a memory context. Requiring
+    # both keeps an unrelated "requires ..." sentence from borrowing the hint.
+    states_a_quantity = any(
+        marker in message for marker in ("needs", "requires", "insufficient", "available")
+    )
+    names_memory = any(
+        marker in message for marker in ("bytes", "gib", "mib", "gb", "mb", "memory")
+    )
+    if states_a_quantity and names_memory:
+        return "Try a lower --max-context-tokens or --kv-storage int8_per_token_head."
+    return (
+        "Fix the reported configuration error; the server logs name the exact "
+        "setting that was refused."
+    )
+
+
 def _probe_decode_telemetry(engine: Any | None) -> dict[str, Any]:
     """Read the live decode path without building or warming anything.
 
@@ -4921,11 +4952,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             raise
         except Exception as exc:
+            guidance = _resident_prepare_guidance(exc)
             _LOGGER.error(
-                "hipEngine %s failed to prepare resident session/KV cache: %s. "
-                "Try a lower --max-context-tokens or --kv-storage int8_per_token_head.",
+                "hipEngine %s failed to prepare resident session/KV cache: %s. %s",
                 phase,
                 exc,
+                guidance,
             )
             raise
         finally:
@@ -5099,7 +5131,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     exc,
                     startup_started=startup_started,
                     stage="resident_prepare",
-                    guidance="Try a lower --max-context-tokens or --kv-storage int8_per_token_head.",
+                    guidance=_resident_prepare_guidance(exc),
                     timings={
                         "engine_create_s": round(engine_create_s, 6),
                         "resident_prepare_s": round(time.perf_counter() - prepare_started, 6),

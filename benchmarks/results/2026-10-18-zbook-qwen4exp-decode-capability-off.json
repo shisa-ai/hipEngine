@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_decode_capability_probe",
+  "created_at": "2026-10-18T06:20:30Z",
+  "url": "http://127.0.0.1:18392",
+  "expect": {
+    "enabled": 0,
+    "width": 2
+  },
+  "checks": [
+    {
+      "name": "before.available",
+      "passed": true,
+      "got": true
+    },
+    {
+      "name": "before.same_path",
+      "passed": true,
+      "capabilities_path": "qwen4exp_c1_request_owned_step",
+      "decode_path": "qwen4exp_c1_request_owned_step"
+    },
+    {
+      "name": "before.envelope_matches_env",
+      "passed": true,
+      "advertised": false,
+      "expected": false
+    },
+    {
+      "name": "before.envelope_present",
+      "passed": true,
+      "qualified_max_slots": 4
+    },
+    {
+      "name": "requests.all_200",
+      "passed": true,
+      "statuses": [
+        200,
+        200
+      ]
+    },
+    {
+      "name": "after.same_path",
+      "passed": true,
+      "capabilities_path": "qwen4exp_c1_request_owned_step",
+      "decode_path": "qwen4exp_c1_request_owned_step"
+    },
+    {
+      "name": "after.same_live_state",
+      "passed": true,
+      "capabilities_active": null,
+      "decode_active": null
+    },
+    {
+      "name": "after.c1_path",
+      "passed": true,
+      "path": "qwen4exp_c1_request_owned_step"
+    },
+    {
+      "name": "after.no_batch_state",
+      "passed": true,
+      "active": null
+    }
+  ],
+  "ready": {
+    "ready": true,
+    "status": "ready"
+  },
+  "model": "qwen38fn-capoff",
+  "before": {
+    "capabilities": {
+      "available": true,
+      "path": "qwen4exp_c1_request_owned_step",
+      "reason": null,
+      "enabled": false,
+      "configured_slots": null,
+      "qualified_max_slots": 4,
+      "qualified_max_positions": 2048,
+      "mtp_rows_join_batch": false,
+      "invalid_configuration": null,
+      "active": null
+    },
+    "decode": {
+      "object": "hipengine.decode_telemetry",
+      "available": true,
+      "decode": {
+        "decode_path": "qwen4exp_c1_request_owned_step",
+        "ar_batch": null
+      }
+    }
+  },
+  "requests": {
+    "count": 2,
+    "statuses": [
+      200,
+      200
+    ],
+    "elapsed_seconds": 0.533
+  },
+  "after": {
+    "capabilities": {
+      "available": true,
+      "path": "qwen4exp_c1_request_owned_step",
+      "reason": null,
+      "enabled": false,
+      "configured_slots": null,
+      "qualified_max_slots": 4,
+      "qualified_max_positions": 2048,
+      "mtp_rows_join_batch": false,
+      "invalid_configuration": null,
+      "active": null
+    },
+    "decode": {
+      "object": "hipengine.decode_telemetry",
+      "available": true,
+      "decode": {
+        "decode_path": "qwen4exp_c1_request_owned_step",
+        "ar_batch": null
+      }
+    }
+  },
+  "status": "passed",
+  "check_count": 9,
+  "failure_count": 0,
+  "note": "AR batch switch off: advertised c1 route matches the executed c1 route",
+  "source_artifact_sha256": "0fdd2c69bbdc69fcbaa1e56b2532c644ab1676a7dbfeb7a01e64872e49cc6598"
+}

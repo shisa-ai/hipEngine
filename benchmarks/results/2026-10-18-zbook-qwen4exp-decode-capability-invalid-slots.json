@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_decode_capability_negative",
+  "created_at": "2026-10-18T06:27:20Z",
+  "note": "An unqualified width is refused at startup; readiness names the configuration error",
+  "server_command": "HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft HIPENGINE_QWEN4_EXP_AR_BATCH=1 HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS=9 python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --quant gguf_ud_q4_k_xl --execution-profile production --served-model-name qwen38fn-capbad --max-context-tokens 2048 --kv-storage bf16 --max-active-requests 2 --host 127.0.0.1 --port 18393",
+  "expected": {
+    "ready": false,
+    "status": "error",
+    "stage": "resident_prepare"
+  },
+  "readiness": {
+    "object": "hipengine.readiness",
+    "status": "error",
+    "ready": false,
+    "diagnostics": [
+      "server startup is not ready; check startup.error and server logs",
+      "startup resident_prepare failed: Fix the reported configuration error; the server logs name the exact setting that was refused."
+    ],
+    "model": {
+      "id": "qwen38fn-capbad",
+      "backend": "hip_gfx1151",
+      "quant": "gguf_ud_q4_k_xl",
+      "loaded": true,
+      "loaded_model_count": 1,
+      "kv_capability": {
+        "schema_version": 1,
+        "status": "unavailable",
+        "runtime_action": "not_applicable",
+        "promotion_eligible": false,
+        "diagnostic_override": false,
+        "requested": null,
+        "effective_kv_storage": null,
+        "artifact": null,
+        "evidence": null,
+        "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+      }
+    },
+    "startup": {
+      "eager_load": true,
+      "warmup_complete": false,
+      "last_timings_s": {
+        "engine_create_s": 0.000821,
+        "resident_prepare_s": 18.12533,
+        "warmup_s": null,
+        "scratch_probe_s": null,
+        "chat_smoke_s": null,
+        "startup_total_s": 18.164197
+      },
+      "checks": {
+        "resident_prepare": {
+          "status": "failed",
+          "exception_type": "ValueError"
+        }
+      },
+      "memory": {
+        "startup_begin": {
+          "free_bytes": 130570309632,
+          "total_bytes": 133143986176,
+          "used_bytes": 2573676544,
+          "free_gib": 121.603077,
+          "used_gib": 2.396923
+        }
+      },
+      "error": {
+        "stage": "resident_prepare",
+        "type": "ValueError",
+        "message": "startup resident_prepare failed",
+        "guidance": "Fix the reported configuration error; the server logs name the exact setting that was refused."
+      }
+    },
+    "context": {
+      "configured_max_context_tokens": 2048,
+      "effective_max_context_tokens": 2048,
+      "chat_default_max_tokens": 4096
+    },
+    "kv_capacity": {
+      "storage": "bf16",
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "estimate": null,
+      "pool": {
+        "current_bytes": 0.0,
+        "high_water_observed_bytes": 0.0,
+        "current_pages": 0.0,
+        "high_water_observed_pages": 0.0,
+        "grow_events": 0.0,
+        "grow_failures": 0.0,
+        "shrink_events": 0.0,
+        "free_pages": 0.0,
+        "refcounted_pages": 0.0,
+        "pinned_pages": 0.0,
+        "max_pages": 0.0,
+        "budget_bytes": 0.0,
+        "retired_pages": 0.0,
+        "retired_bytes": 0.0
+      }
+    },
+    "prefix_cache": {
+      "mode": "off",
+      "block_size_tokens": 256,
+      "snapshot_entries": 0,
+      "snapshot_limit": 0,
+      "retained_snapshot_entries": 0,
+      "snapshot_bytes": 0,
+      "retained_kv_pages": 0,
+      "retained_kv_bytes": 0,
+      "resident_bytes": 0,
+      "resident_limit_bytes": 0
+    },
+    "graph_cache": {
+      "entries": 0.0,
+      "hits": 0.0,
+      "misses": 0.0,
+      "replay_hit_rate": 0.0
+    },
+    "device": {
+      "backend": "hip_gfx1151",
+      "hip_visible_devices": null,
+      "rocr_visible_devices": null,
+      "visible_devices": [],
+      "selected_visible_device": null,
+      "selection_source": null
+    },
+    "queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 2,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": false,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 0.0
+    },
+    "sessions": {
+      "resident_context": true,
+      "active": 0,
+      "pending_creations": 0,
+      "max_active": null,
+      "storage": "app_local_transcript",
+      "resident_state_reuse": false,
+      "total_messages": 0,
+      "continuations": {
+        "active": 0,
+        "ttl_seconds": 900
+      }
+    }
+  },
+  "server_log_errors": [
+    "ERROR:    hipEngine startup failed to prepare resident session/KV cache: HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS=9 exceeds the qualified physical width 4. Fix the reported configuration error; the server logs name the exact setting that was refused."
+  ],
+  "checks": [
+    {
+      "name": "refuses_to_start",
+      "passed": true
+    },
+    {
+      "name": "stage_is_resident_prepare",
+      "passed": true,
+      "stage": "resident_prepare"
+    },
+    {
+      "name": "names_the_refused_setting",
+      "passed": true
+    },
+    {
+      "name": "does_not_offer_a_kv_remedy",
+      "passed": true
+    },
+    {
+      "name": "guidance_names_a_configuration_error",
+      "passed": true,
+      "guidance": "Fix the reported configuration error; the server logs name the exact setting that was refused."
+    }
+  ],
+  "status": "passed",
+  "failure_count": 0,
+  "startup_error": {
+    "stage": "resident_prepare",
+    "type": "ValueError",
+    "message": "startup resident_prepare failed",
+    "guidance": "Fix the reported configuration error; the server logs name the exact setting that was refused."
+  }
+}

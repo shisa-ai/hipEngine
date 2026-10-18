@@ -1,0 +1,204 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_decode_capability_probe",
+  "created_at": "2026-10-18T06:21:06Z",
+  "url": "http://127.0.0.1:18392",
+  "expect": {
+    "enabled": 1,
+    "width": 4
+  },
+  "checks": [
+    {
+      "name": "before.available",
+      "passed": true,
+      "got": true
+    },
+    {
+      "name": "before.same_path",
+      "passed": true,
+      "capabilities_path": "qwen4exp_full_model_ar_batch",
+      "decode_path": "qwen4exp_full_model_ar_batch"
+    },
+    {
+      "name": "before.envelope_matches_env",
+      "passed": true,
+      "advertised": true,
+      "expected": true
+    },
+    {
+      "name": "before.envelope_present",
+      "passed": true,
+      "qualified_max_slots": 4
+    },
+    {
+      "name": "requests.all_200",
+      "passed": true,
+      "statuses": [
+        200,
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "name": "after.same_path",
+      "passed": true,
+      "capabilities_path": "qwen4exp_full_model_ar_batch",
+      "decode_path": "qwen4exp_full_model_ar_batch"
+    },
+    {
+      "name": "after.same_live_state",
+      "passed": true,
+      "capabilities_active": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "state_slots": 4,
+        "max_positions": 2048,
+        "live_slots": 0,
+        "steps": 2,
+        "step_widths": {
+          "4": 2
+        },
+        "imports": 6,
+        "releases": 6,
+        "failure": null
+      },
+      "decode_active": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "state_slots": 4,
+        "max_positions": 2048,
+        "live_slots": 0,
+        "steps": 2,
+        "step_widths": {
+          "4": 2
+        },
+        "imports": 6,
+        "releases": 6,
+        "failure": null
+      }
+    },
+    {
+      "name": "after.batch_path",
+      "passed": true,
+      "path": "qwen4exp_full_model_ar_batch"
+    },
+    {
+      "name": "after.physical_width_observed",
+      "passed": true,
+      "expected_width": 4,
+      "step_widths": {
+        "4": 2
+      }
+    }
+  ],
+  "ready": {
+    "ready": true,
+    "status": "ready"
+  },
+  "model": "qwen38fn-capon",
+  "before": {
+    "capabilities": {
+      "available": true,
+      "path": "qwen4exp_full_model_ar_batch",
+      "reason": null,
+      "enabled": true,
+      "configured_slots": 4,
+      "qualified_max_slots": 4,
+      "qualified_max_positions": 2048,
+      "mtp_rows_join_batch": false,
+      "invalid_configuration": null,
+      "active": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "state_slots": 4,
+        "max_positions": 2048,
+        "live_slots": 0,
+        "steps": 0,
+        "step_widths": {},
+        "imports": 2,
+        "releases": 2,
+        "failure": null
+      }
+    },
+    "decode": {
+      "object": "hipengine.decode_telemetry",
+      "available": true,
+      "decode": {
+        "decode_path": "qwen4exp_full_model_ar_batch",
+        "ar_batch": {
+          "execution_path": "qwen4exp_full_model_ar_batch",
+          "state_slots": 4,
+          "max_positions": 2048,
+          "live_slots": 0,
+          "steps": 0,
+          "step_widths": {},
+          "imports": 2,
+          "releases": 2,
+          "failure": null
+        }
+      }
+    }
+  },
+  "requests": {
+    "count": 4,
+    "statuses": [
+      200,
+      200,
+      200,
+      200
+    ],
+    "elapsed_seconds": 0.987
+  },
+  "after": {
+    "capabilities": {
+      "available": true,
+      "path": "qwen4exp_full_model_ar_batch",
+      "reason": null,
+      "enabled": true,
+      "configured_slots": 4,
+      "qualified_max_slots": 4,
+      "qualified_max_positions": 2048,
+      "mtp_rows_join_batch": false,
+      "invalid_configuration": null,
+      "active": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "state_slots": 4,
+        "max_positions": 2048,
+        "live_slots": 0,
+        "steps": 2,
+        "step_widths": {
+          "4": 2
+        },
+        "imports": 6,
+        "releases": 6,
+        "failure": null
+      }
+    },
+    "decode": {
+      "object": "hipengine.decode_telemetry",
+      "available": true,
+      "decode": {
+        "decode_path": "qwen4exp_full_model_ar_batch",
+        "ar_batch": {
+          "execution_path": "qwen4exp_full_model_ar_batch",
+          "state_slots": 4,
+          "max_positions": 2048,
+          "live_slots": 0,
+          "steps": 2,
+          "step_widths": {
+            "4": 2
+          },
+          "imports": 6,
+          "releases": 6,
+          "failure": null
+        }
+      }
+    },
+    "step_widths": {
+      "4": 2
+    }
+  },
+  "status": "passed",
+  "check_count": 9,
+  "failure_count": 0,
+  "note": "AR batch on at width 4: advertised batch route matches four physical rows per step",
+  "source_artifact_sha256": "2aaa45b933a017b63fc222445adc91473f91e9e1a32aca3e84228c9c7f65b1f5"
+}
