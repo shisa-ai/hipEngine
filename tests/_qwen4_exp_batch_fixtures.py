@@ -129,3 +129,24 @@ class FakePleTable:
 
     def telemetry(self) -> None:
         return None
+
+
+# A second QSA layer. The default geometry has exactly one, which cannot show a
+# bug where several QSA layers share one paged K/V cache: the production model
+# has 12 QSA layers out of 48 and each owns its own cache.
+TWO_QSA_LAYER_TYPES = ("gdn", "qsa", "gdn", "qsa")
+
+
+def two_qsa_config() -> Qwen4ExpGGUFConfig:
+    """The default geometry with a second QSA layer at the end."""
+
+    from dataclasses import replace
+
+    return replace(
+        config(),
+        block_count=len(TWO_QSA_LAYER_TYPES),
+        layer_types=TWO_QSA_LAYER_TYPES,
+        attention_compress_ratios=tuple(
+            0 if kind == "gdn" else RATIO for kind in TWO_QSA_LAYER_TYPES
+        ),
+    )

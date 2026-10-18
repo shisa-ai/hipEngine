@@ -451,7 +451,7 @@ class Qwen4ExpGGUFBatchRunner:
         self._ple_hash_states: dict[int, PLEHashState] = {}
         self.gdn_bindings: Mapping[int, Qwen4ExpGDNLayerDeviceWeights] = {}
         self.qsa_bindings: Mapping[int, Qwen4ExpQSALayerDeviceWeights] = {}
-        self.attention_state: Qwen4ExpBatchAttentionState | None = None
+        self.attention_states: tuple[Qwen4ExpBatchAttentionState, ...] = ()
         self.index_states: tuple[Qwen4ExpBatchQsaIndexState, ...] = ()
         self.gdn_states: tuple[Qwen4ExpBatchGdnState, ...] = ()
         self.ple_state: Qwen4ExpBatchPleState | None = None
@@ -495,16 +495,24 @@ class Qwen4ExpGGUFBatchRunner:
     def _allocate(self) -> None:
         cfg = self.config
         qkv_width = 2 * cfg.gdn_group_count * cfg.gdn_state_size + cfg.gdn_inner_size
-        attention = Qwen4ExpBatchAttentionState.allocate(
-            state_slots=self.state_slots,
-            max_positions=self.max_positions,
-            block_size=self.block_size,
-            kv_heads=cfg.attention_kv_head_count,
-            head_dim=cfg.attention_key_length,
-            runtime=self.runtime,
+        # One paged K/V cache per QSA layer, exactly as the c1 runner keeps one
+        # ``Qwen4ExpDenseAttentionState`` per QSA layer. A single shared cache
+        # would have every QSA layer append over the previous layer's keys at the
+        # same physical block and position, which the one-QSA-layer synthetic
+        # fixture cannot show and the real 12-QSA-layer model hits immediately.
+        attention_states = tuple(
+            Qwen4ExpBatchAttentionState.allocate(
+                state_slots=self.state_slots,
+                max_positions=self.max_positions,
+                block_size=self.block_size,
+                kv_heads=cfg.attention_kv_head_count,
+                head_dim=cfg.attention_key_length,
+                runtime=self.runtime,
+            )
+            for _ in range(cfg.qsa_layer_count)
         )
-        self.attention_state = attention
-        self._owned.append(attention)
+        self.attention_states = attention_states
+        self._owned.extend(attention_states)
         index_states = tuple(
             Qwen4ExpBatchQsaIndexState.allocate(
                 attention_state=attention,
@@ -514,7 +522,7 @@ class Qwen4ExpGGUFBatchRunner:
                 block_budget=cfg.qsa_block_budget,
                 runtime=self.runtime,
             )
-            for _ in range(cfg.layer_types.count("qsa"))
+            for attention in attention_states
         )
         self.index_states = index_states
         self._owned.extend(index_states)
@@ -762,25 +770,27 @@ class Qwen4ExpGGUFBatchRunner:
         self._ple_hash_states.pop(parsed, None)
 
     def _zero_slot(self, slot: int) -> None:
-        attention = self._require_attention()
-        blocks = attention.block_host[slot]
+        attention_states = self._require_attention_states()
+        blocks = attention_states[0].block_host[slot]
         row_bytes = (
-            attention.kv_heads * attention.head_dim * DType.BF16.itemsize
+            attention_states[0].kv_heads * attention_states[0].head_dim
+            * DType.BF16.itemsize
         )
-        block_bytes = attention.block_size * row_bytes
-        for physical in blocks.tolist():
-            offset = int(physical) * block_bytes
-            self.runtime.memset(
-                attention.key_cache.ptr + offset, 0, block_bytes
-            )
-            self.runtime.memset(
-                attention.value_cache.ptr + offset, 0, block_bytes
-            )
+        block_bytes = attention_states[0].block_size * row_bytes
+        for attention in attention_states:
+            for physical in blocks.tolist():
+                offset = int(physical) * block_bytes
+                self.runtime.memset(
+                    attention.key_cache.ptr + offset, 0, block_bytes
+                )
+                self.runtime.memset(
+                    attention.value_cache.ptr + offset, 0, block_bytes
+                )
         for index_state in self.index_states:
             base = index_state.raw_keys.ptr
             index_row_bytes = index_state.index_dim * DType.FP32.itemsize
             index_block_bytes = index_state.block_size * index_row_bytes
-            for logical in range(attention.blocks_per_request):
+            for logical in range(attention_states[0].blocks_per_request):
                 self.runtime.memset(
                     base + int(blocks[logical]) * index_block_bytes,
                     0,
@@ -856,18 +866,18 @@ class Qwen4ExpGGUFBatchRunner:
             raise ValueError(
                 f"import position {position} exceeds max_positions {self.max_positions}"
             )
-        attention = self._require_attention()
+        attention_states = self._require_attention_states()
         needed_blocks = (position + self.block_size - 1) // self.block_size
-        if needed_blocks > attention.blocks_per_request:
+        if needed_blocks > attention_states[0].blocks_per_request:
             raise ValueError(
                 f"import position {position} needs {needed_blocks} paged blocks but "
-                f"each slot holds {attention.blocks_per_request}"
+                f"each slot holds {attention_states[0].blocks_per_request}"
             )
         source_attention = tuple(getattr(source, "attention_states", ()))
-        if len(source_attention) != len(self.index_states):
+        if len(source_attention) != len(attention_states):
             raise ValueError(
                 f"import source has {len(source_attention)} QSA attention states, "
-                f"expected {len(self.index_states)}"
+                f"expected {len(attention_states)}"
             )
         source_blocks: list[np.ndarray] = []
         for layer, state in enumerate(source_attention):
@@ -952,12 +962,12 @@ class Qwen4ExpGGUFBatchRunner:
         for layer, state in enumerate(source_attention):
             _require_disjoint(
                 state.key_cache,
-                attention.key_cache,
+                attention_states[layer].key_cache,
                 name=f"QSA layer {layer} key cache",
             )
             _require_disjoint(
                 state.value_cache,
-                attention.value_cache,
+                attention_states[layer].value_cache,
                 name=f"QSA layer {layer} value cache",
             )
             _require_disjoint(
@@ -1024,11 +1034,13 @@ class Qwen4ExpGGUFBatchRunner:
         unwritten tail must not land in this slot.
         """
 
-        attention = self._require_attention()
+        attention_states = self._require_attention_states()
+        attention = attention_states[0]
         row_bytes = attention.kv_heads * attention.head_dim * DType.BF16.itemsize
         block_bytes = attention.block_size * row_bytes
         slot_blocks = attention.block_host[slot]
         for layer, state in enumerate(source_attention):
+            destination_attention = attention_states[layer]
             index_state = self.index_states[layer]
             index_row_bytes = index_state.index_dim * DType.FP32.itemsize
             index_block_bytes = index_state.block_size * index_row_bytes
@@ -1039,8 +1051,8 @@ class Qwen4ExpGGUFBatchRunner:
                 source_block = int(source_blocks[layer][logical])
                 destination_block = int(slot_blocks[logical])
                 for source_cache, destination_cache in (
-                    (state.key_cache, attention.key_cache),
-                    (state.value_cache, attention.value_cache),
+                    (state.key_cache, destination_attention.key_cache),
+                    (state.value_cache, destination_attention.value_cache),
                 ):
                     self.runtime.memcpy(
                         destination_cache.ptr
@@ -1170,7 +1182,7 @@ class Qwen4ExpGGUFBatchRunner:
         """Run one validated step. Callers must poison ``plan.slots`` on failure."""
 
         cfg = self.config
-        attention = self._require_attention()
+        attention_states = self._require_attention_states()
         selection = self.selection
         gdn_scratch = self.gdn_scratch
         qsa_scratch = self.qsa_scratch
@@ -1224,7 +1236,8 @@ class Qwen4ExpGGUFBatchRunner:
                 runtime=self.runtime,
             )
             self._ple_hash_states = ple_states
-        attention.prepare(plan.slots, position_host)
+        for attention in attention_states:
+            attention.prepare(plan.slots, position_host)
         for index_state in self.index_states:
             index_state.prepare(plan.slots)
         for gdn_state in self.gdn_states:
@@ -1288,7 +1301,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_qsa_layer(
                     residual_ptr,
                     qsa_binding,
-                    attention_state=attention,
+                    attention_state=attention_states[qsa_binding.qsa_state_index],
                     index_state=self.index_states[qsa_binding.qsa_state_index],
                     selection=selection,
                     scratch=qsa_scratch,
@@ -1387,7 +1400,7 @@ class Qwen4ExpGGUFBatchRunner:
         slot healthy.
         """
 
-        attention = self._require_attention()
+        attention = self._require_attention_states()[0]
         cfg = self.config
         rows = int(tokens.size)
         if rows <= 0:
@@ -1531,11 +1544,11 @@ class Qwen4ExpGGUFBatchRunner:
                 f"slot {slot} is owned by request {self._owners[slot]}, not {parsed}"
             )
 
-    def _require_attention(self) -> Qwen4ExpBatchAttentionState:
-        attention = self.attention_state
-        if attention is None:
+    def _require_attention_states(self) -> tuple[Qwen4ExpBatchAttentionState, ...]:
+        states = self.attention_states
+        if not states:
             raise RuntimeError("Qwen4Exp batch runner has no attention state")
-        return attention
+        return states
 
     # -- lifecycle --------------------------------------------------------
 
@@ -1551,7 +1564,7 @@ class Qwen4ExpGGUFBatchRunner:
             self._owned.pop()
         if self._buffers is not None:
             self._buffers.close()
-        self.attention_state = None
+        self.attention_states = ()
         self.index_states = ()
         self.gdn_states = ()
         self.ple_state = None

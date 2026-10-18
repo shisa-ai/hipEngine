@@ -246,7 +246,7 @@ def _fake_runner(*, slots: int = 3) -> Qwen4ExpGGUFBatchRunner:
         for layer, kind in enumerate(config.layer_types)
         if kind == "qsa"
     }
-    runner.attention_state = _FakeAttention(slots, 2)
+    runner.attention_states = (_FakeAttention(slots, 2),)
     runner.index_states = (_FakeIndex(slots),)
     runner.gdn_states = (_FakeGdn(slots), _FakeGdn(slots))
     runner.ple_state = _FakePle(slots)
@@ -405,7 +405,7 @@ def test_step_dispatches_every_stage_at_physical_width(monkeypatch) -> None:
     assert result.logits is None
     assert runner.position(2) == 1 and runner.position(0) == 1
     # The owners were admitted with the caller's slot order, unchanged.
-    attention = runner.attention_state
+    attention = runner.attention_states[0]
     assert attention.prepared == [((2, 0), (0, 0))]
     assert runner.index_states[0].prepared == [(2, 0)]
     assert [state.prepared for state in runner.gdn_states] == [[(2, 0)], [(2, 0)]]
@@ -430,7 +430,7 @@ def test_step_rejects_a_bad_row_set_before_any_prepare(monkeypatch) -> None:
     _install_step_fakes(monkeypatch)
     runner = _fake_runner(slots=3)
     owner = runner.admit(2)
-    attention = runner.attention_state
+    attention = runner.attention_states[0]
     index_state = runner.index_states[0]
     gdn_state = runner.gdn_states[0]
     ple_state = runner.ple_state
@@ -498,7 +498,7 @@ def test_admission_zeroes_the_whole_slot(monkeypatch) -> None:
     memsets = [call for call in runner.runtime.calls if call[0] == "memset"]
     assert memsets, "admission must zero the slot's persistent state"
     total = sum(call[3] for call in memsets)
-    attention = runner.attention_state
+    attention = runner.attention_states[0]
     block_bytes = attention.block_size * attention.kv_heads * attention.head_dim * 2
     expected = 2 * attention.blocks_per_request * block_bytes
     expected += (
@@ -602,7 +602,7 @@ def test_import_rejects_a_mismatched_source_before_copying(monkeypatch) -> None:
     assert runner.position(0) == 0
     # The nonalias guard rejects a source that shares the destination slab.
     aliased = source()
-    aliased.attention_states[0].key_cache = runner.attention_state.key_cache
+    aliased.attention_states[0].key_cache = runner.attention_states[0].key_cache
     with pytest.raises(ValueError, match="overlap"):
         runner.import_prefilled(0, owner, source=aliased)
     assert runner.position(0) == 0
@@ -647,7 +647,7 @@ def test_import_copies_each_block_prefix_from_its_own_physical_block(
     _install_step_fakes(monkeypatch)
     runner = _fake_runner(slots=2)
     owner = runner.admit(0)
-    attention = runner.attention_state
+    attention = runner.attention_states[0]
     attention.block_host[0] = np.asarray([2, 3], dtype=np.int32)
     source_attention = _FakeAttention(1, 2)
     source_attention.block_host[0] = np.asarray([7, 9], dtype=np.int32)
@@ -732,7 +732,7 @@ def test_step_rejects_non_integral_slots_tokens_and_owners(monkeypatch) -> None:
     events = _install_step_fakes(monkeypatch)
     runner = _fake_runner(slots=3)
     owner = runner.admit(2)
-    attention = runner.attention_state
+    attention = runner.attention_states[0]
     for call in (
         dict(token_ids=[1], slots=[2.0], owners=[owner]),
         dict(token_ids=[1], slots=[True], owners=[owner]),
@@ -929,3 +929,72 @@ def test_failed_import_poisons_the_target_slot_only(monkeypatch) -> None:
     assert runner.import_prefilled(1, owner_one, source=source) == 300
     assert runner.position(1) == 300
     assert int(runner.index_states[0].cursor_host[1]) == 300
+
+
+def test_each_qsa_layer_owns_its_own_paged_kv_cache(monkeypatch) -> None:
+    """Two QSA layers must not share one K/V cache.
+
+    The synthetic default geometry has a single QSA layer, so a shared cache
+    looks correct there. The production model has 12 QSA layers: with one cache
+    every layer would append over the previous layer's keys at the same physical
+    block and position, and the import would keep only the last layer's state.
+    """
+
+    _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=2)
+    two_qsa = fixture.two_qsa_config()
+    runner.config = two_qsa
+    runner._ple_layers = frozenset(two_qsa.ple_layers)
+    runner.gdn_bindings = {
+        layer: _fake_binding(layer, kind)
+        for layer, kind in enumerate(two_qsa.layer_types)
+        if kind == "gdn"
+    }
+    runner.qsa_bindings = {
+        layer: _fake_binding(layer, kind)
+        for layer, kind in enumerate(two_qsa.layer_types)
+        if kind == "qsa"
+    }
+    runner.attention_states = (
+        _FakeAttention(2, 2),
+        _FakeAttention(2, 2),
+    )
+    runner.index_states = (_FakeIndex(2), _FakeIndex(2))
+
+    seen: list[tuple[int, int]] = []
+
+    def qsa_layer(
+        residual_ptr,
+        weights,
+        *,
+        attention_state,
+        index_state,
+        selection,
+        scratch,
+        rows,
+        **kwargs,
+    ):
+        seen.append((id(attention_state), id(index_state)))
+        return SimpleNamespace(ptr=residual_ptr + 0x10)
+
+    monkeypatch.setattr(runner_module, "run_qwen4_exp_batch_qsa_layer", qsa_layer)
+    owner = runner.admit(0)
+    runner.step([3], slots=[0], owners=[owner], capture_logits=False)
+    assert len(seen) == 2, "both QSA layers must dispatch"
+    attention_ids = {entry[0] for entry in seen}
+    index_ids = {entry[1] for entry in seen}
+    assert len(attention_ids) == 2, "each QSA layer needs its own K/V owner"
+    assert len(index_ids) == 2, "each QSA layer needs its own index owner"
+    # Every layer's owner was prepared for this row set.
+    for attention in runner.attention_states:
+        assert attention.prepared == [((0,), (0,))]
+    # Zeroing a slot touches every layer's cache, not only the first.
+    runner.runtime.calls.clear()
+    runner.admit(1)
+    memsets = [call for call in runner.runtime.calls if call[0] == "memset"]
+    attention = runner.attention_states[0]
+    block_bytes = attention.block_size * attention.kv_heads * attention.head_dim * 2
+    kv_bytes = 2 * len(runner.attention_states) * attention.blocks_per_request * block_bytes
+    assert sum(call[3] for call in memsets if call[3] == block_bytes) == (
+        kv_bytes // block_bytes
+    ) * block_bytes

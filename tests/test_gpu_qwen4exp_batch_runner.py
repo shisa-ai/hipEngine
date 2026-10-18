@@ -145,9 +145,10 @@ def _raw_weight(
     return Qwen4ExpDeviceWeight(spec, backend, {"raw": allocation})
 
 
-def _build_weights(runtime, backend):
-    """Every weight the three synthetic layers and the head resolve."""
+def _build_weights(runtime, backend, config=None):
+    """Every weight the synthetic layers and the head resolve."""
 
+    config = config or fixture.config()
     allocations: list = []
     weights: dict[str, object] = {}
     seed = 100
@@ -174,7 +175,7 @@ def _build_weights(runtime, backend):
     dense("root.head_hc_down", (fixture.LOW_RANK, residual), scale=0.1)
     dense("root.head_hc_up", (residual, fixture.LOW_RANK), scale=0.1)
     dense("root.lm_head", (fixture.VOCAB, fixture.HIDDEN), scale=0.1)
-    for layer, kind in enumerate(fixture.LAYER_TYPES):
+    for layer, kind in enumerate(config.layer_types):
         prefix = f"layers.{layer}."
         dense(prefix + "hc_attn_norm", (residual,), scale=0.1)
         dense(prefix + "hc_attn_down", (fixture.LOW_RANK, residual), scale=0.1)
@@ -261,7 +262,7 @@ def _build_weights(runtime, backend):
             dense(prefix + "ssm_dt_bias", (fixture.GDN_V_HEADS,), scale=0.05)
             dense(prefix + "ssm_a", (fixture.GDN_V_HEADS,), scale=0.05)
             dense(prefix + "ssm_norm", (fixture.GDN_HEAD_DIM,), scale=0.1)
-        if layer in fixture.PLE_LAYERS:
+        if layer in config.ple_layers:
             dense(prefix + "ple_key", (residual, fixture.HIDDEN), scale=0.1)
             dense(prefix + "ple_value", (fixture.HIDDEN, fixture.HIDDEN), scale=0.1)
             dense(prefix + "ple_norm_key", (residual,), scale=0.1)
@@ -275,32 +276,21 @@ def _build_weights(runtime, backend):
     return weights, allocations
 
 
-@pytest.fixture(scope="module")
-def model(hip_test_target_arch):
-    if not _hip_available():
-        pytest.skip("HIP runtime is not available")
-    monkey = pytest.MonkeyPatch()
-    # The c1 reference is the eager committed path; graph capture is a c1
-    # single-request optimization this fixture does not exercise.
-    monkey.setenv("HIPENGINE_QWEN4_EXP_MOE_GRAPH", "0")
-    monkey.setenv("HIPENGINE_QWEN4_EXP_LAYER_GRAPHS", "0")
-    monkey.delenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", raising=False)
-    monkey.delenv("HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", raising=False)
-    backend = HIP_TARGET_ARCH_BACKEND[hip_test_target_arch]
+def _build_bundle(monkey, backend, config):
     runtime = get_hip_runtime()
-    weights, allocations = _build_weights(runtime, backend)
+    weights, allocations = _build_weights(runtime, backend, config)
     table = fixture.FakePleTable()
     staging = Qwen4ExpPLEStagingRing.create(
         table, row_capacity=4 * fixture.PLE_HEAD_COUNT, runtime=None
     )
     resident = SimpleNamespace(
-        plan=SimpleNamespace(config=fixture.config()),
+        plan=SimpleNamespace(config=config),
         weights=weights,
         ple_staging=staging,
         ple_table=table,
     )
     resident.weight = weights.__getitem__
-    bundle = SimpleNamespace(
+    return SimpleNamespace(
         runtime=runtime,
         resident=resident,
         weights=weights,
@@ -308,12 +298,56 @@ def model(hip_test_target_arch):
         staging=staging,
         backend=backend,
     )
+
+
+def _release_bundle(bundle) -> None:
+    bundle.staging.close()
+    for buffer in reversed(bundle.allocations):
+        free(buffer, runtime=bundle.runtime)
+
+
+def _module_monkeypatch() -> pytest.MonkeyPatch:
+    monkey = pytest.MonkeyPatch()
+    # The c1 reference is the eager committed path; graph capture is a c1
+    # single-request optimization these fixtures do not exercise.
+    monkey.setenv("HIPENGINE_QWEN4_EXP_MOE_GRAPH", "0")
+    monkey.setenv("HIPENGINE_QWEN4_EXP_LAYER_GRAPHS", "0")
+    monkey.delenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", raising=False)
+    monkey.delenv("HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", raising=False)
+    return monkey
+
+
+@pytest.fixture(scope="module")
+def model(hip_test_target_arch):
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    monkey = _module_monkeypatch()
+    bundle = _build_bundle(
+        monkey, HIP_TARGET_ARCH_BACKEND[hip_test_target_arch], fixture.config()
+    )
     try:
         yield bundle
     finally:
-        staging.close()
-        for buffer in reversed(allocations):
-            free(buffer, runtime=runtime)
+        _release_bundle(bundle)
+        monkey.undo()
+
+
+@pytest.fixture(scope="module")
+def two_qsa_model(hip_test_target_arch):
+    """The same geometry with two QSA layers, as the real model has 12 of 48."""
+
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    monkey = _module_monkeypatch()
+    bundle = _build_bundle(
+        monkey,
+        HIP_TARGET_ARCH_BACKEND[hip_test_target_arch],
+        fixture.two_qsa_config(),
+    )
+    try:
+        yield bundle
+    finally:
+        _release_bundle(bundle)
         monkey.undo()
 
 
@@ -347,9 +381,9 @@ def _download(buffer, shape, dtype, runtime):
 
 
 def _slot_kv(batch_runner, slot, *, layer: int = 0):
-    """The slot's full paged K/V bytes, both caches, in logical block order."""
+    """One QSA layer's full paged K/V bytes for a slot, in logical block order."""
 
-    attention = batch_runner.attention_state
+    attention = batch_runner.attention_states[layer]
     row_bytes = attention.kv_heads * attention.head_dim * DType.BF16.itemsize
     block_bytes = attention.block_size * row_bytes
     blocks = attention.block_host[slot]
@@ -987,4 +1021,67 @@ def test_failed_import_poisons_only_the_target_slot(model, monkeypatch) -> None:
         assert _max_abs(_float_view(batch_keys), _float_view(c1_keys)) <= STATE_ATOL
     finally:
         reference.close()
+        batch.close()
+
+
+def test_two_qsa_layers_keep_separate_caches_and_match_c1(two_qsa_model) -> None:
+    """A model with two QSA layers keeps one K/V cache per layer.
+
+    The RED signal is the per-layer cache bytes: with one shared cache the
+    second QSA layer writes its blocks over the first layer's, so layer 0's
+    cache holds layer 1's keys (measured 0.18 max deviation from the c1
+    reference at weight scale 0.1). The logits comparison is a non-regression
+    guard: in this synthetic geometry the QSA mixer's contribution does not
+    reach the BF16 residual as a visible logit change, so logit parity alone
+    cannot see a cache-content bug. The default one-QSA-layer fixture cannot
+    express the collision at all, and the real artifact has 12 QSA layers of 48.
+    """
+
+    model = two_qsa_model
+    config = model.resident.plan.config
+    assert config.qsa_layer_count == 2
+    batch = _batch(model, slots=2)
+    references = [_c1(model), _c1(model)]
+    tokens = [5, 17, 29, 6]
+    try:
+        assert len(batch.attention_states) == 2, (
+            "each QSA layer needs its own paged K/V owner"
+        )
+        first, second = batch.attention_states
+        assert first is not second
+        assert first.key_cache.ptr != second.key_cache.ptr
+        assert first.value_cache.ptr != second.value_cache.ptr
+        owners = [batch.admit(slot) for slot in (1, 0)]
+        for row, reference in enumerate(references):
+            reference.prefill_serial([3, 11, 25][: 2 + row])
+        for slot, reference in zip((1, 0), references):
+            batch.import_prefilled(slot, owners[(1, 0).index(slot)], source=reference)
+        for step, token in enumerate(tokens):
+            expected = [reference.step(token) for reference in references]
+            actual = batch.step([token, token], slots=[1, 0], owners=owners)
+            for row, reference in enumerate(references):
+                deviation = _max_abs(actual.logits[row], expected[row].logits)
+                assert deviation <= LOGIT_ATOL, (
+                    f"step {step} slot {actual.slot_ids[row]} deviation "
+                    f"{deviation:.3e} (shared QSA cache would diverge here)"
+                )
+                assert int(np.argmax(actual.logits[row])) == int(
+                    np.argmax(expected[row].logits)
+                )
+                assert int(actual.positions[row]) == int(reference.position) - 1
+            # Every layer's cache must match its own c1 counterpart: a shared
+            # cache would leave layer 0 holding layer 1's keys here.
+            for layer in range(config.qsa_layer_count):
+                keys, values = _slot_kv(batch, 1, layer=layer)
+                c1_keys, c1_values = _c1_kv(references[0], layer=layer)
+                assert (
+                    _max_abs(_float_view(keys), _float_view(c1_keys)) <= STATE_ATOL
+                )
+                assert (
+                    _max_abs(_float_view(values), _float_view(c1_values))
+                    <= STATE_ATOL
+                )
+    finally:
+        for reference in references:
+            reference.close()
         batch.close()
