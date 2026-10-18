@@ -327,6 +327,7 @@ def test_gguf_packed_decode_width_caps_a_hybrid_layer_layout() -> None:
     """
 
     assert _gguf_packed_decode_max_rows(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
         direct_rows=4,
         retained_decode_kernel=_retained_kernel,
         bf16_full_attention_layer_indices=(0, 1, 2, 3, 4, 5, 6, 7),
@@ -337,6 +338,7 @@ def test_gguf_packed_decode_width_caps_a_single_bf16_layer() -> None:
     """One BF16 layer in the stack is enough to split the batch."""
 
     assert _gguf_packed_decode_max_rows(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
         direct_rows=4,
         retained_decode_kernel=_retained_kernel,
         bf16_full_attention_layer_indices=(0,),
@@ -347,6 +349,7 @@ def test_gguf_packed_decode_width_keeps_the_declared_width_when_uniform() -> Non
     """A uniform INT8 stack keeps the width the declaration qualifies."""
 
     assert _gguf_packed_decode_max_rows(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
         direct_rows=4,
         retained_decode_kernel=_retained_kernel,
         bf16_full_attention_layer_indices=(),
@@ -357,6 +360,7 @@ def test_gguf_packed_decode_width_is_one_without_the_retained_leaf() -> None:
     """Without the retained direct leaf there is no packed INT8 batch at all."""
 
     assert _gguf_packed_decode_max_rows(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
         direct_rows=4,
         retained_decode_kernel=None,
         bf16_full_attention_layer_indices=(),

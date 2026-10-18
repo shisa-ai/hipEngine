@@ -629,6 +629,25 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
             for name, attribute in CYCLE_PHASE_ATTRIBUTES
         },
     }
+    if hasattr(row, "mtp2_target_physical_rows"):
+        # HTTP submissions may be singleton subscriptions to a shared resident
+        # loop. Only actual proposal/target calls establish physical width;
+        # neither the HTTP group nor the planner's last width proves execution.
+        block["physical_execution"] = {
+            "proposal_batch_calls": _row_int(row, "mtp2_proposal_batch_calls"),
+            "proposal_rows_histogram": {
+                str(width): count for width, count in sorted(Counter(
+                    _counts(getattr(row, "mtp2_proposal_physical_rows", None))
+                ).items())
+            },
+            "target_pass_count": len(getattr(row, "mtp2_target_pass_ms", ()) or ()),
+            "target_batch_calls": _row_int(row, "mtp2_target_batch_calls"),
+            "target_rows_histogram": {
+                str(width): count for width, count in sorted(Counter(
+                    _counts(getattr(row, "mtp2_target_physical_rows", None))
+                ).items())
+            },
+        }
     if output_span_recording_enabled():
         # Diagnostic only: the span list is added, never substituted for the
         # counters above, so a response read without it is unchanged.

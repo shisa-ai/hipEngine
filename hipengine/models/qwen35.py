@@ -1061,7 +1061,11 @@ class Qwen35MoeGGUFModel:
             max_group_rows=2,
             group_rejection_reason="moe_group_above_offered_width",
             sampling_modes=("greedy_fast", "sampled"),
-            automatic_eligible=True,
+            # Automatic selection uses AR because the measured paired workload
+            # was slower with MTP. Explicit ``speculative_mtp: true`` still runs
+            # the native capability; generated-ID differences between arithmetic
+            # paths are not evidence of a state-ownership failure.
+            automatic_eligible=False,
         ),
     )
     weight_name_templates: tuple[str, ...] = (

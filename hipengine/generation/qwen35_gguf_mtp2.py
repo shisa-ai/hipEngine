@@ -169,30 +169,18 @@ _NGRAM_MOD_N_MIN_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN"
 _NGRAM_MOD_PROBE_MAX_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX"
 
 
-def _adapter_artifact_size(generator: Any) -> int | None:
-    """Return the resident weight file's size for static evidence matching."""
-
-    from pathlib import Path
-
-    path = getattr(getattr(generator, "weight_index", None), "path", None)
-    if path is None:
-        path = getattr(generator, "model_path", None)
-    if path is None:
-        return None
-    try:
-        return int(Path(str(path)).expanduser().stat().st_size)
-    except OSError:
-        return None
-
-
-def sampled_route_qualified_for(generator: Any, quant: str) -> bool:
+def sampled_route_qualified_for(generator: Any) -> bool:
     """Whether the loaded plugin declares the sampled accept route.
 
     This is a static mode advertisement, not request admission. The serving
     resolver and physical-cell planner still check storage, depth, width,
-    resources and request semantics before provider mutation. Evidence rows
-    remain a compatibility source for plugins without declarations; an
-    unfamiliar artifact cannot suppress a declared implementation.
+    resources and request semantics before provider mutation.
+
+    The answer comes from the plugin's capability declaration alone: a
+    ``speculative_mtp_serving_implementations`` row whose ``backends`` cover the
+    active ``(backend, target_arch)`` and whose ``sampling_modes`` contain
+    ``sampled``. An artifact no evidence row describes still qualifies, because
+    admission is never keyed on a model name, path, quant string, or digest.
     """
 
     if generator is None:
@@ -203,55 +191,11 @@ def sampled_route_qualified_for(generator: Any, quant: str) -> bool:
     declarations = tuple(
         getattr(plugin, "speculative_mtp_serving_implementations", ()) or ()
     )
-    if any(
+    return any(
         "sampled" in declaration.sampling_modes
         and (backend, arch) in declaration.backends
         for declaration in declarations
-    ):
-        return True
-    evidence = tuple(
-        getattr(plugin, "speculative_mtp_serving_evidence", ()) or ()
     )
-    if not evidence:
-        return False
-    quant = str(quant or "")
-    artifact_size = _adapter_artifact_size(generator)
-    import os as _os
-    if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_QUALIFY"):
-        import sys as _sys
-        print(
-            "[qualify-debug] "
-            f"backend={backend!r} arch={arch!r} quant={quant!r} size={artifact_size} "
-            + "sampled_rows="
-            + repr([
-                (
-                    r.evidence_key,
-                    getattr(r, "backend", ""),
-                    getattr(r, "target_arch", ""),
-                    getattr(r, "weight_quant", ""),
-                    getattr(r, "artifact_size_bytes", None),
-                )
-                for r in evidence
-                if "sampled" in tuple(getattr(r, "sampling_modes", ()))
-            ]),
-            file=_sys.stderr,
-            flush=True,
-        )
-    for row in evidence:
-        modes = tuple(str(mode) for mode in getattr(row, "sampling_modes", ()))
-        if "sampled" not in modes:
-            continue
-        if str(getattr(row, "backend", "")) != backend:
-            continue
-        if str(getattr(row, "target_arch", "")) != arch:
-            continue
-        if str(getattr(row, "weight_quant", "")) != quant:
-            continue
-        row_size = int(getattr(row, "artifact_size_bytes", 0) or 0)
-        if artifact_size is not None and row_size and row_size != artifact_size:
-            continue
-        return True
-    return False
 
 
 def _env_enabled(name: str, default: bool = False) -> bool:
@@ -343,6 +287,16 @@ def _target_verify_mode_for_context(
     end_position: int,
     target: Any | None = None,
 ) -> str:
+    """Select the target verifier mode from execution context, not identity.
+
+    The only inputs are the requested mode, the backend package's declared
+    capabilities, the target's execution contract (compact-DMS storage), and the
+    resulting context position. Selection never reads a quant name, file-type
+    string, model name, artifact path, or digest: an unfamiliar artifact whose
+    kernels can execute the native row path runs it. Cross-path numerical or
+    generated-ID differences do not establish a state-ownership failure.
+    """
+
     if target is not None and getattr(target, "_dms_backend", None) is not None:
         return "serial_exact"
     selected = str(requested)
@@ -811,6 +765,11 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     if not isinstance(policies, Mapping):
         raise RuntimeError("backend prompt-streaming policies must be a mapping")
     raw = policies.get((geometry, file_type_name, profile), ())
+    if not raw:
+        # Physical prompt streaming is a geometry/profile capability. A
+        # quantization file-type label must not turn an otherwise executable
+        # Qwen lane into an admission miss.
+        raw = policies.get((geometry, None, profile), ())
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
         raise RuntimeError("backend prompt-streaming widths must be a sequence")
     widths = tuple(sorted({int(value) for value in raw}))
@@ -2144,6 +2103,11 @@ class Qwen35GGUFMTP2Adapter:
         # capacity-1 warmup reuses the same names.
         row = self.owner._row(rid)
         target = None if row.lease is None else row.lease.session
+        if target is not None:
+            # Sampled graphs can be captured before provider creation. Bind the
+            # same immutable profile here so opening the provider cannot change
+            # the graph identity at its first device-proposal handoff.
+            self._bind_target_profile_metadata(target)
         token_id = getattr(result, "token_id", None)
         budget = int(self._intents[rid])
         state = self._states.get(rid)
@@ -2321,15 +2285,12 @@ class Qwen35GGUFMTP2Adapter:
 
         This is a static mode advertisement, not request admission. The serving
         resolver and physical-cell planner still check storage, depth, width,
-        resources and request semantics before provider mutation. Evidence rows
-        remain a compatibility source for plugins without declarations; an
-        unfamiliar artifact cannot suppress a declared implementation.
+        resources and request semantics before provider mutation. The answer is
+        the plugin's capability declaration, so an unfamiliar artifact that the
+        kernels can execute is not withheld for want of a measurement.
         """
 
-        return sampled_route_qualified_for(
-            getattr(self, "generator", None),
-            str(getattr(self, "quant", "") or ""),
-        )
+        return sampled_route_qualified_for(getattr(self, "generator", None))
 
     def _sampled_route_request(self, request_id: int) -> bool:
         """Return whether this request's due cycle must use the sampled route."""
@@ -4027,8 +3988,11 @@ class Qwen35GGUFMTP2Adapter:
                     and not row.native_sampler
                 ),
                 **(
+                    # A staged sampled plan can still take an eager verifier
+                    # path (for example when the final cycle shrinks depth).
+                    # Keep its resident logits available for the accept walk.
                     {"return_device_logits": True}
-                    if sampled_route and sampled_device_plan is None and row.native_sampler
+                    if sampled_route and row.native_sampler
                     else {}
                 ),
                 device_proposal=(
@@ -4431,9 +4395,20 @@ class Qwen35GGUFMTP2Adapter:
             session = row.lease.session
             workspace = session._native_sampler()
             device = getattr(prepared, "target_logits_device", None)
+            expected_shape = (int(batch.rows), int(workspace.vocab_size))
+            expected_bytes = expected_shape[0] * expected_shape[1] * 4
             if device is None:
                 logits = np.ascontiguousarray(prepared.target_logits, dtype=np.float32)
+                if logits.shape != expected_shape:
+                    raise RuntimeError(
+                        f"sampled MTP requires logits shaped {expected_shape}, "
+                        f"received {logits.shape}"
+                    )
                 device = workspace._upload("mtp_eager_logits", logits)
+            if int(device.ptr) <= 0 or int(device.nbytes) < expected_bytes:
+                raise RuntimeError(
+                    f"sampled MTP requires {expected_bytes} bytes of resident logits"
+                )
             prefixes = row_prefix_states(
                 batch,
                 {int(batch.request_ids[0]): sampling_state},

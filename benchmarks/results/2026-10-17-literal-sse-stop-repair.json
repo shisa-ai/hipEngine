@@ -1,0 +1,1704 @@
+{
+  "schema": 1,
+  "kind": "literal_sse_stop_repair",
+  "performance_claim": false,
+  "captures": [
+    {
+      "git_head": "273c614d4a567e720b9e720e2b0410b8ac12c4c1",
+      "source_hashes": {
+        "hipengine/generation/gemma4_mtp.py": "aa6b70b5a841afa7b9fa7f161da98134169936905f760b1992269489fc44f962",
+        "hipengine/generation/engine_service.py": "94c8ef086f1c1053d08adb41f138e3dc308c048e48c02a92a93edfbe5c0b9900",
+        "hipengine/generation/qwen35_gguf.py": "bcbee5bc241f9e68024cf39bdb86b5e77e9b0bb26076b76f4cde4b64ed3ef30d",
+        "hipengine/generation/qwen35_gguf_mtp2.py": "f98d8caf55832b0a4b45abb6bd2f7686637a2347772c90b23ca0a30be1152d95",
+        "hipengine/generation/gemma4_gguf.py": "4e3d7b21ca8a4f6f8c328e4b5389b6575feeecab7382b9954d568233b5e2aa59",
+        "hipengine/generation/gemma4_sampling.py": "df57fc8c489e2058b7f9a70d2fad95974cb2073504bd658019b5a091f39061db",
+        "hipengine/server/api.py": "2ca4c0501389baf2aab46f6d0302b4964cf1a0902c0909f7a5d358e24a71d74a",
+        "hipengine/tokenization/gguf.py": "99f5a2153f214353efbc574fb39aba65b19a001028374ac047f3899eb852f281",
+        "hipengine/runtime/qwen35_gguf_runner.py": "ffc37272f0cad6ff1e7637fd75be1cb912fcd3ad93f57c9f2a1f9db8af2f4716"
+      },
+      "client_sha256": "6502ec9074716f19532746939f443ff16016a78ef52f0afca8ef13279c4fed0a",
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "server_command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python",
+        "-m",
+        "hipengine.cli",
+        "serve",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--max-context-tokens",
+        "32768",
+        "--max-active-requests",
+        "4",
+        "--generation-batch-window-ms",
+        "0",
+        "--prefix-cache",
+        "off",
+        "--metrics",
+        "prometheus",
+        "--no-startup-chat-smoke",
+        "--no-startup-scratch-probe",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "19004",
+        "--log-color",
+        "never"
+      ],
+      "environment": {
+        "HIPENGINE_HIP_ARCH": "gfx1151"
+      },
+      "comparisons": [
+        {
+          "kind": "stream_repeat",
+          "labels": [
+            "ar_esting",
+            "ar_esting_sse"
+          ],
+          "ids_equal": true,
+          "content_equal": true,
+          "chat_trim_content_equal": true,
+          "reasoning_equal": true,
+          "passed": true
+        },
+        {
+          "kind": "stream_repeat",
+          "labels": [
+            "ar_web A",
+            "ar_web A_sse"
+          ],
+          "ids_equal": true,
+          "content_equal": false,
+          "chat_trim_content_equal": true,
+          "reasoning_equal": true,
+          "passed": true
+        },
+        {
+          "kind": "stream_repeat",
+          "labels": [
+            "mtp_esting",
+            "mtp_esting_sse"
+          ],
+          "ids_equal": true,
+          "content_equal": true,
+          "chat_trim_content_equal": true,
+          "reasoning_equal": true,
+          "passed": true
+        },
+        {
+          "kind": "stream_repeat",
+          "labels": [
+            "mtp_web A",
+            "mtp_web A_sse"
+          ],
+          "ids_equal": true,
+          "content_equal": false,
+          "chat_trim_content_equal": true,
+          "reasoning_equal": true,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "raw_capture": {
+        "path": "~/.local/state/hipengine/mtp-followup-20261017/final-matrix/q4km-literal-stop-fixed.json",
+        "sha256": "d99f8612d0c9592e43e35d7229e8a1812ec4df876f9cadb876d1dffc331fe4fe"
+      },
+      "rows": [
+        {
+          "label": "ar_esting",
+          "request": {
+            "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": false,
+            "speculative_mtp": false,
+            "enable_thinking": false,
+            "stop": [
+              "esting"
+            ]
+          },
+          "status": 200,
+          "failures": [],
+          "content": "T",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            15968,
+            264,
+            3370,
+            5165,
+            369,
+            264,
+            7072,
+            45759,
+            290,
+            1817,
+            421,
+            24546,
+            678,
+            2393,
+            369,
+            524,
+            1132,
+            709,
+            722,
+            4252,
+            694,
+            1048,
+            2649,
+            505,
+            321,
+            14733,
+            1172,
+            2706,
+            13,
+            20543,
+            369,
+            264
+          ],
+          "usage": {
+            "prompt_tokens": 55,
+            "completion_tokens": 32,
+            "total_tokens": 87,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "length_limit": 32,
+            "sampler_mode": "processed_argmax",
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        {
+          "label": "ar_esting_sse",
+          "request": {
+            "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": true,
+            "speculative_mtp": false,
+            "enable_thinking": false,
+            "stop": [
+              "esting"
+            ],
+            "stream_options": {
+              "include_usage": true,
+              "include_hipengine": true
+            }
+          },
+          "status": 200,
+          "failures": [],
+          "content": "T",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            15968,
+            264,
+            3370,
+            5165,
+            369,
+            264,
+            7072,
+            45759,
+            290,
+            1817,
+            421,
+            24546,
+            678,
+            2393,
+            369,
+            524,
+            1132,
+            709,
+            722,
+            4252,
+            694,
+            1048,
+            2649,
+            505,
+            321,
+            14733,
+            1172,
+            2706,
+            13,
+            20543,
+            369,
+            264
+          ],
+          "usage": {
+            "prompt_tokens": 55,
+            "completion_tokens": 32,
+            "total_tokens": 87,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "sampler_mode": "processed_argmax",
+            "continuation_eligible": false,
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {}
+        },
+        {
+          "label": "ar_web A",
+          "request": {
+            "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": false,
+            "speculative_mtp": false,
+            "enable_thinking": false,
+            "stop": [
+              "web A"
+            ]
+          },
+          "status": 200,
+          "failures": [],
+          "content": "Testing a",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            15968,
+            264,
+            3370,
+            5165,
+            369,
+            264,
+            7072,
+            45759,
+            290,
+            1817,
+            421,
+            24546,
+            678,
+            2393,
+            369,
+            524,
+            1132,
+            709,
+            722,
+            4252,
+            694,
+            1048,
+            2649,
+            505,
+            321,
+            14733,
+            1172,
+            2706,
+            13,
+            20543,
+            369,
+            264
+          ],
+          "usage": {
+            "prompt_tokens": 55,
+            "completion_tokens": 32,
+            "total_tokens": 87,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "length_limit": 32,
+            "sampler_mode": "processed_argmax",
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        {
+          "label": "ar_web A_sse",
+          "request": {
+            "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": true,
+            "speculative_mtp": false,
+            "enable_thinking": false,
+            "stop": [
+              "web A"
+            ],
+            "stream_options": {
+              "include_usage": true,
+              "include_hipengine": true
+            }
+          },
+          "status": 200,
+          "failures": [],
+          "content": "Testing a ",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            15968,
+            264,
+            3370,
+            5165,
+            369,
+            264,
+            7072,
+            45759,
+            290,
+            1817,
+            421,
+            24546,
+            678,
+            2393,
+            369,
+            524,
+            1132,
+            709,
+            722,
+            4252,
+            694,
+            1048,
+            2649,
+            505,
+            321,
+            14733,
+            1172,
+            2706,
+            13,
+            20543,
+            369,
+            264
+          ],
+          "usage": {
+            "prompt_tokens": 55,
+            "completion_tokens": 32,
+            "total_tokens": 87,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "sampler_mode": "processed_argmax",
+            "continuation_eligible": false,
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {}
+        },
+        {
+          "label": "mtp_esting",
+          "request": {
+            "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": false,
+            "speculative_mtp": true,
+            "enable_thinking": false,
+            "stop": [
+              "esting"
+            ]
+          },
+          "status": 200,
+          "failures": [],
+          "content": "T",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            15968,
+            264,
+            3370,
+            5165,
+            369,
+            264,
+            7072,
+            45759,
+            290,
+            1817,
+            421,
+            24546,
+            678,
+            2393,
+            369,
+            524,
+            1132,
+            709,
+            722,
+            4252,
+            694,
+            1048,
+            2649,
+            505,
+            321,
+            14733,
+            1172,
+            2706,
+            13,
+            20543,
+            369,
+            264
+          ],
+          "usage": {
+            "prompt_tokens": 55,
+            "completion_tokens": 32,
+            "total_tokens": 87,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 19,
+              "rejected_prediction_tokens": 15
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "length_limit": 32,
+            "sampler_mode": "processed_argmax",
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 34,
+            "accepted_draft_tokens": 19,
+            "rejected_draft_tokens": 15,
+            "acceptance_rate": 0.5588235294117647,
+            "draft_cycles": 12,
+            "mtp_output_tokens": 31,
+            "ar_output_tokens": 1,
+            "output_accounting": {
+              "completion_tokens": 32,
+              "mtp_output_tokens": 31,
+              "ar_output_tokens": 1,
+              "ar_output_tokens_in_cycles": 1,
+              "mtp_coverage": 0.96875,
+              "mtp_output_tokens_explained_by_cycles": 31,
+              "unexplained_mtp_output_tokens": 0,
+              "speculative_cycles": 12,
+              "reconciled": true,
+              "reconciled_reasons": []
+            },
+            "selected_depth_histogram": {
+              "1": 1,
+              "3": 11
+            },
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "fallback_event_total": 1,
+            "execution": {
+              "activation_reason": null,
+              "provider_readiness": "ready",
+              "provider_state_present": true,
+              "provider_decline_reason": null,
+              "plan_group_rows": 1,
+              "plan_ar_only": false,
+              "plan_reason": "speculative_qualified"
+            },
+            "first_fallback_position": null,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        {
+          "label": "mtp_esting_sse",
+          "request": {
+            "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": true,
+            "speculative_mtp": true,
+            "enable_thinking": false,
+            "stop": [
+              "esting"
+            ],
+            "stream_options": {
+              "include_usage": true,
+              "include_hipengine": true
+            }
+          },
+          "status": 200,
+          "failures": [],
+          "content": "T",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            15968,
+            264,
+            3370,
+            5165,
+            369,
+            264,
+            7072,
+            45759,
+            290,
+            1817,
+            421,
+            24546,
+            678,
+            2393,
+            369,
+            524,
+            1132,
+            709,
+            722,
+            4252,
+            694,
+            1048,
+            2649,
+            505,
+            321,
+            14733,
+            1172,
+            2706,
+            13,
+            20543,
+            369,
+            264
+          ],
+          "usage": {
+            "prompt_tokens": 55,
+            "completion_tokens": 32,
+            "total_tokens": 87,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 19,
+              "rejected_prediction_tokens": 15
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "sampler_mode": "processed_argmax",
+            "continuation_eligible": false,
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 34,
+            "accepted_draft_tokens": 19,
+            "rejected_draft_tokens": 15,
+            "acceptance_rate": 0.5588235294117647,
+            "draft_cycles": 12,
+            "mtp_output_tokens": 31,
+            "ar_output_tokens": 1,
+            "output_accounting": {
+              "completion_tokens": 32,
+              "mtp_output_tokens": 31,
+              "ar_output_tokens": 1,
+              "ar_output_tokens_in_cycles": 1,
+              "mtp_coverage": 0.96875,
+              "mtp_output_tokens_explained_by_cycles": 31,
+              "unexplained_mtp_output_tokens": 0,
+              "speculative_cycles": 12,
+              "reconciled": true,
+              "reconciled_reasons": []
+            },
+            "selected_depth_histogram": {
+              "1": 1,
+              "3": 11
+            },
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "fallback_event_total": 1,
+            "execution": {
+              "activation_reason": null,
+              "provider_readiness": "ready",
+              "provider_state_present": true,
+              "provider_decline_reason": null,
+              "plan_group_rows": 1,
+              "plan_ar_only": false,
+              "plan_reason": "speculative_qualified"
+            },
+            "first_fallback_position": null,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        {
+          "label": "mtp_web A",
+          "request": {
+            "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": false,
+            "speculative_mtp": true,
+            "enable_thinking": false,
+            "stop": [
+              "web A"
+            ]
+          },
+          "status": 200,
+          "failures": [],
+          "content": "Testing a",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            15968,
+            264,
+            3370,
+            5165,
+            369,
+            264,
+            7072,
+            45759,
+            290,
+            1817,
+            421,
+            24546,
+            678,
+            2393,
+            369,
+            524,
+            1132,
+            709,
+            722,
+            4252,
+            694,
+            1048,
+            2649,
+            505,
+            321,
+            14733,
+            1172,
+            2706,
+            13,
+            20543,
+            369,
+            264
+          ],
+          "usage": {
+            "prompt_tokens": 55,
+            "completion_tokens": 32,
+            "total_tokens": 87,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 19,
+              "rejected_prediction_tokens": 15
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "length_limit": 32,
+            "sampler_mode": "processed_argmax",
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 34,
+            "accepted_draft_tokens": 19,
+            "rejected_draft_tokens": 15,
+            "acceptance_rate": 0.5588235294117647,
+            "draft_cycles": 12,
+            "mtp_output_tokens": 31,
+            "ar_output_tokens": 1,
+            "output_accounting": {
+              "completion_tokens": 32,
+              "mtp_output_tokens": 31,
+              "ar_output_tokens": 1,
+              "ar_output_tokens_in_cycles": 1,
+              "mtp_coverage": 0.96875,
+              "mtp_output_tokens_explained_by_cycles": 31,
+              "unexplained_mtp_output_tokens": 0,
+              "speculative_cycles": 12,
+              "reconciled": true,
+              "reconciled_reasons": []
+            },
+            "selected_depth_histogram": {
+              "1": 1,
+              "3": 11
+            },
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "fallback_event_total": 1,
+            "execution": {
+              "activation_reason": null,
+              "provider_readiness": "ready",
+              "provider_state_present": true,
+              "provider_decline_reason": null,
+              "plan_group_rows": 1,
+              "plan_ar_only": false,
+              "plan_reason": "speculative_qualified"
+            },
+            "first_fallback_position": null,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        {
+          "label": "mtp_web A_sse",
+          "request": {
+            "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": true,
+            "speculative_mtp": true,
+            "enable_thinking": false,
+            "stop": [
+              "web A"
+            ],
+            "stream_options": {
+              "include_usage": true,
+              "include_hipengine": true
+            }
+          },
+          "status": 200,
+          "failures": [],
+          "content": "Testing a ",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            15968,
+            264,
+            3370,
+            5165,
+            369,
+            264,
+            7072,
+            45759,
+            290,
+            1817,
+            421,
+            24546,
+            678,
+            2393,
+            369,
+            524,
+            1132,
+            709,
+            722,
+            4252,
+            694,
+            1048,
+            2649,
+            505,
+            321,
+            14733,
+            1172,
+            2706,
+            13,
+            20543,
+            369,
+            264
+          ],
+          "usage": {
+            "prompt_tokens": 55,
+            "completion_tokens": 32,
+            "total_tokens": 87,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 19,
+              "rejected_prediction_tokens": 15
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "sampler_mode": "processed_argmax",
+            "continuation_eligible": false,
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 34,
+            "accepted_draft_tokens": 19,
+            "rejected_draft_tokens": 15,
+            "acceptance_rate": 0.5588235294117647,
+            "draft_cycles": 12,
+            "mtp_output_tokens": 31,
+            "ar_output_tokens": 1,
+            "output_accounting": {
+              "completion_tokens": 32,
+              "mtp_output_tokens": 31,
+              "ar_output_tokens": 1,
+              "ar_output_tokens_in_cycles": 1,
+              "mtp_coverage": 0.96875,
+              "mtp_output_tokens_explained_by_cycles": 31,
+              "unexplained_mtp_output_tokens": 0,
+              "speculative_cycles": 12,
+              "reconciled": true,
+              "reconciled_reasons": []
+            },
+            "selected_depth_histogram": {
+              "1": 1,
+              "3": 11
+            },
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "fallback_event_total": 1,
+            "execution": {
+              "activation_reason": null,
+              "provider_readiness": "ready",
+              "provider_state_present": true,
+              "provider_decline_reason": null,
+              "plan_group_rows": 1,
+              "plan_ar_only": false,
+              "plan_reason": "speculative_qualified"
+            },
+            "first_fallback_position": null,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        }
+      ]
+    },
+    {
+      "git_head": "273c614d4a567e720b9e720e2b0410b8ac12c4c1",
+      "source_hashes": {
+        "hipengine/generation/gemma4_mtp.py": "aa6b70b5a841afa7b9fa7f161da98134169936905f760b1992269489fc44f962",
+        "hipengine/generation/engine_service.py": "94c8ef086f1c1053d08adb41f138e3dc308c048e48c02a92a93edfbe5c0b9900",
+        "hipengine/generation/qwen35_gguf.py": "bcbee5bc241f9e68024cf39bdb86b5e77e9b0bb26076b76f4cde4b64ed3ef30d",
+        "hipengine/generation/qwen35_gguf_mtp2.py": "f98d8caf55832b0a4b45abb6bd2f7686637a2347772c90b23ca0a30be1152d95",
+        "hipengine/generation/gemma4_gguf.py": "4e3d7b21ca8a4f6f8c328e4b5389b6575feeecab7382b9954d568233b5e2aa59",
+        "hipengine/generation/gemma4_sampling.py": "df57fc8c489e2058b7f9a70d2fad95974cb2073504bd658019b5a091f39061db",
+        "hipengine/server/api.py": "2ca4c0501389baf2aab46f6d0302b4964cf1a0902c0909f7a5d358e24a71d74a",
+        "hipengine/tokenization/gguf.py": "99f5a2153f214353efbc574fb39aba65b19a001028374ac047f3899eb852f281",
+        "hipengine/runtime/qwen35_gguf_runner.py": "ffc37272f0cad6ff1e7637fd75be1cb912fcd3ad93f57c9f2a1f9db8af2f4716"
+      },
+      "client_sha256": "6502ec9074716f19532746939f443ff16016a78ef52f0afca8ef13279c4fed0a",
+      "model": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "server_command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python",
+        "-m",
+        "hipengine.cli",
+        "serve",
+        "--model",
+        "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--max-context-tokens",
+        "32768",
+        "--max-active-requests",
+        "4",
+        "--generation-batch-window-ms",
+        "0",
+        "--prefix-cache",
+        "off",
+        "--metrics",
+        "prometheus",
+        "--no-startup-chat-smoke",
+        "--no-startup-scratch-probe",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "19004",
+        "--log-color",
+        "never"
+      ],
+      "environment": {
+        "HIPENGINE_HIP_ARCH": "gfx1151"
+      },
+      "comparisons": [
+        {
+          "kind": "stream_repeat",
+          "labels": [
+            "ar_esting",
+            "ar_esting_sse"
+          ],
+          "ids_equal": true,
+          "content_equal": true,
+          "chat_trim_content_equal": true,
+          "reasoning_equal": true,
+          "passed": true
+        },
+        {
+          "kind": "stream_repeat",
+          "labels": [
+            "ar_web A",
+            "ar_web A_sse"
+          ],
+          "ids_equal": true,
+          "content_equal": false,
+          "chat_trim_content_equal": true,
+          "reasoning_equal": true,
+          "passed": true
+        },
+        {
+          "kind": "stream_repeat",
+          "labels": [
+            "mtp_esting",
+            "mtp_esting_sse"
+          ],
+          "ids_equal": true,
+          "content_equal": true,
+          "chat_trim_content_equal": true,
+          "reasoning_equal": true,
+          "passed": true
+        },
+        {
+          "kind": "stream_repeat",
+          "labels": [
+            "mtp_web A",
+            "mtp_web A_sse"
+          ],
+          "ids_equal": true,
+          "content_equal": false,
+          "chat_trim_content_equal": true,
+          "reasoning_equal": true,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "raw_capture": {
+        "path": "~/.local/state/hipengine/mtp-followup-20261017/final-matrix/gemma-literal-stop-fixed.json",
+        "sha256": "9bdd5160798116769583019d884be17a9417b47b95b9d96ac201b94fd06d8a1a"
+      },
+      "rows": [
+        {
+          "label": "ar_esting",
+          "request": {
+            "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": false,
+            "speculative_mtp": false,
+            "enable_thinking": false,
+            "stop": [
+              "esting"
+            ]
+          },
+          "status": 200,
+          "failures": [],
+          "content": "T",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            26653,
+            496,
+            4108,
+            9299,
+            7087,
+            496,
+            53091,
+            4313,
+            236761,
+            1599,
+            3914,
+            18039,
+            580,
+            496,
+            3161,
+            1722,
+            529,
+            1594,
+            531,
+            5330,
+            21016,
+            236793,
+            5205,
+            236764,
+            611,
+            1921,
+            2827,
+            699,
+            7257,
+            3141,
+            13179,
+            9097
+          ],
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 32,
+            "total_tokens": 64
+          },
+          "finish_details": {
+            "reason": "stop",
+            "length_limit": 32,
+            "sampler_mode": "greedy",
+            "phase": "decode",
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        {
+          "label": "ar_esting_sse",
+          "request": {
+            "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": true,
+            "speculative_mtp": false,
+            "enable_thinking": false,
+            "stop": [
+              "esting"
+            ],
+            "stream_options": {
+              "include_usage": true,
+              "include_hipengine": true
+            }
+          },
+          "status": 200,
+          "failures": [],
+          "content": "T",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            26653,
+            496,
+            4108,
+            9299,
+            7087,
+            496,
+            53091,
+            4313,
+            236761,
+            1599,
+            3914,
+            18039,
+            580,
+            496,
+            3161,
+            1722,
+            529,
+            1594,
+            531,
+            5330,
+            21016,
+            236793,
+            5205,
+            236764,
+            611,
+            1921,
+            2827,
+            699,
+            7257,
+            3141,
+            13179,
+            9097
+          ],
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 32,
+            "total_tokens": 64
+          },
+          "finish_details": {
+            "reason": "stop",
+            "sampler_mode": "greedy",
+            "phase": "decode",
+            "continuation_eligible": false,
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {}
+        },
+        {
+          "label": "ar_web A",
+          "request": {
+            "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": false,
+            "speculative_mtp": false,
+            "enable_thinking": false,
+            "stop": [
+              "web A"
+            ]
+          },
+          "status": 200,
+          "failures": [],
+          "content": "Testing a",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            26653,
+            496,
+            4108,
+            9299,
+            7087,
+            496,
+            53091,
+            4313,
+            236761,
+            1599,
+            3914,
+            18039,
+            580,
+            496,
+            3161,
+            1722,
+            529,
+            1594,
+            531,
+            5330,
+            21016,
+            236793,
+            5205,
+            236764,
+            611,
+            1921,
+            2827,
+            699,
+            7257,
+            3141,
+            13179,
+            9097
+          ],
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 32,
+            "total_tokens": 64
+          },
+          "finish_details": {
+            "reason": "stop",
+            "length_limit": 32,
+            "sampler_mode": "greedy",
+            "phase": "decode",
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        {
+          "label": "ar_web A_sse",
+          "request": {
+            "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": true,
+            "speculative_mtp": false,
+            "enable_thinking": false,
+            "stop": [
+              "web A"
+            ],
+            "stream_options": {
+              "include_usage": true,
+              "include_hipengine": true
+            }
+          },
+          "status": 200,
+          "failures": [],
+          "content": "Testing a ",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            26653,
+            496,
+            4108,
+            9299,
+            7087,
+            496,
+            53091,
+            4313,
+            236761,
+            1599,
+            3914,
+            18039,
+            580,
+            496,
+            3161,
+            1722,
+            529,
+            1594,
+            531,
+            5330,
+            21016,
+            236793,
+            5205,
+            236764,
+            611,
+            1921,
+            2827,
+            699,
+            7257,
+            3141,
+            13179,
+            9097
+          ],
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 32,
+            "total_tokens": 64
+          },
+          "finish_details": {
+            "reason": "stop",
+            "sampler_mode": "greedy",
+            "phase": "decode",
+            "continuation_eligible": false,
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {}
+        },
+        {
+          "label": "mtp_esting",
+          "request": {
+            "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": false,
+            "speculative_mtp": true,
+            "enable_thinking": false,
+            "stop": [
+              "esting"
+            ]
+          },
+          "status": 200,
+          "failures": [],
+          "content": "T",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            26653,
+            496,
+            4108,
+            9299,
+            7087,
+            496,
+            53091,
+            4313,
+            236761,
+            1599,
+            3914,
+            18039,
+            580,
+            496,
+            3161,
+            1722,
+            529,
+            1594,
+            531,
+            5330,
+            21016,
+            236793,
+            5205,
+            236764,
+            611,
+            1921,
+            2827,
+            699,
+            7257,
+            3141,
+            13179,
+            9097
+          ],
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 32,
+            "total_tokens": 64,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 19,
+              "rejected_prediction_tokens": 23
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "length_limit": 32,
+            "sampler_mode": "greedy_speculative_mtp",
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 42,
+            "accepted_draft_tokens": 19,
+            "rejected_draft_tokens": 23,
+            "acceptance_rate": 0.4523809523809524,
+            "draft_cycles": 12,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        {
+          "label": "mtp_esting_sse",
+          "request": {
+            "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": true,
+            "speculative_mtp": true,
+            "enable_thinking": false,
+            "stop": [
+              "esting"
+            ],
+            "stream_options": {
+              "include_usage": true,
+              "include_hipengine": true
+            }
+          },
+          "status": 200,
+          "failures": [],
+          "content": "T",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            26653,
+            496,
+            4108,
+            9299,
+            7087,
+            496,
+            53091,
+            4313,
+            236761,
+            1599,
+            3914,
+            18039,
+            580,
+            496,
+            3161,
+            1722,
+            529,
+            1594,
+            531,
+            5330,
+            21016,
+            236793,
+            5205,
+            236764,
+            611,
+            1921,
+            2827,
+            699,
+            7257,
+            3141,
+            13179,
+            9097
+          ],
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 32,
+            "total_tokens": 64,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 19,
+              "rejected_prediction_tokens": 23
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "sampler_mode": "greedy_speculative_mtp",
+            "continuation_eligible": false,
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 42,
+            "accepted_draft_tokens": 19,
+            "rejected_draft_tokens": 23,
+            "acceptance_rate": 0.4523809523809524,
+            "draft_cycles": 12,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        {
+          "label": "mtp_web A",
+          "request": {
+            "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": false,
+            "speculative_mtp": true,
+            "enable_thinking": false,
+            "stop": [
+              "web A"
+            ]
+          },
+          "status": 200,
+          "failures": [],
+          "content": "Testing a",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            26653,
+            496,
+            4108,
+            9299,
+            7087,
+            496,
+            53091,
+            4313,
+            236761,
+            1599,
+            3914,
+            18039,
+            580,
+            496,
+            3161,
+            1722,
+            529,
+            1594,
+            531,
+            5330,
+            21016,
+            236793,
+            5205,
+            236764,
+            611,
+            1921,
+            2827,
+            699,
+            7257,
+            3141,
+            13179,
+            9097
+          ],
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 32,
+            "total_tokens": 64,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 19,
+              "rejected_prediction_tokens": 23
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "length_limit": 32,
+            "sampler_mode": "greedy_speculative_mtp",
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 42,
+            "accepted_draft_tokens": 19,
+            "rejected_draft_tokens": 23,
+            "acceptance_rate": 0.4523809523809524,
+            "draft_cycles": 12,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        {
+          "label": "mtp_web A_sse",
+          "request": {
+            "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Explain how to test a web API, including unit tests, integration tests, and concurrent requests."
+              }
+            ],
+            "temperature": 0.0,
+            "seed": 3001,
+            "max_tokens": 32,
+            "stream": true,
+            "speculative_mtp": true,
+            "enable_thinking": false,
+            "stop": [
+              "web A"
+            ],
+            "stream_options": {
+              "include_usage": true,
+              "include_hipengine": true
+            }
+          },
+          "status": 200,
+          "failures": [],
+          "content": "Testing a ",
+          "reasoning_content": "",
+          "generated_token_ids": [
+            26653,
+            496,
+            4108,
+            9299,
+            7087,
+            496,
+            53091,
+            4313,
+            236761,
+            1599,
+            3914,
+            18039,
+            580,
+            496,
+            3161,
+            1722,
+            529,
+            1594,
+            531,
+            5330,
+            21016,
+            236793,
+            5205,
+            236764,
+            611,
+            1921,
+            2827,
+            699,
+            7257,
+            3141,
+            13179,
+            9097
+          ],
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 32,
+            "total_tokens": 64,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 19,
+              "rejected_prediction_tokens": 23
+            }
+          },
+          "finish_details": {
+            "reason": "stop",
+            "sampler_mode": "greedy_speculative_mtp",
+            "continuation_eligible": false,
+            "cache_action": "append_none"
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 42,
+            "accepted_draft_tokens": 19,
+            "rejected_draft_tokens": 23,
+            "acceptance_rate": 0.4523809523809524,
+            "draft_cycles": 12,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Literal substring stops filter visible output, while the backend is drained to preserve final generated IDs and MTP telemetry. They do not guarantee early computation termination.",
+    "Stop fragments inside a logprob token omit that fragment probability rather than inventing one.",
+    "Blocking chat trims trailing whitespace; SSE preserves whitespace before the stop."
+  ]
+}

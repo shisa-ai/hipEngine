@@ -4,22 +4,6 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
-## `HIPENGINE_DEBUG_SAMPLED_QUALIFY` sampled-evidence qualification trace (added 2026-10-16)
-
-`HIPENGINE_DEBUG_SAMPLED_QUALIFY` gates the `[qualify-debug]` stderr trace in
-`sampled_route_qualified_for` (`hipengine/generation/qwen35_gguf_mtp2.py`). It
-prints the sampled evidence rows being matched against the request's backend,
-arch, quant, and artifact size, so a sampled request that planned `K=0` can be
-attributed to a specific evidence-table miss instead of guessed at. It costs one
-`os.environ` lookup per call when unset and prints nothing; the qualification
-verdict is identical either way.
-
-It is the same diagnostic family as the retained
-`HIPENGINE_DEBUG_SAMPLED_ROUTE` traces (see the "Sampled-route debug traces"
-entry below). Remove it once the sampled route's admission cell is widened and
-measured, together with those traces, or replace both with a documented
-diagnostic.
-
 ## `Gemma4MTPTextProvider.draft_sampling` keeps a most-likely-token draft arm (open 2026-10-13)
 
 A sampled Gemma 4 MTP request draws each draft from the assistant head's

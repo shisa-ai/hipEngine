@@ -895,7 +895,7 @@ class SubmitPollTextGenerator:
         """Expose the resident runner's explicit-MTP batch-route width bound."""
 
         return getattr(
-            self._runner,
+            self._runner if self._has_resident_runner else self._inner,
             "server_mtp_batch_max_active_requests",
             None,
         )
@@ -955,6 +955,9 @@ class SubmitPollTextGenerator:
             return self._submit_detailed_locked(request)
 
     def _submit_detailed_locked(self, request: GenerationRequest) -> GenerationSubmission:
+        validator = getattr(self._inner, "validate_request", None)
+        if callable(validator):
+            validator(request)
         if request.grammar is not None and not getattr(self._inner,"supports_grammar",False):
             raise NotImplementedError("this model does not implement token grammar masking")
         prompts = tuple(request.prompts)

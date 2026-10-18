@@ -1153,20 +1153,20 @@ class EngineService:
                 self._cancel_state(state, reason="client_backpressure")
                 continue
             state.token_ids.append(token_id)
-            stream_chunk = event.stream_chunk
-            if state.execution_mode in {"verify_chain", "verify_tree"} and (
-                stream_chunk.finish_details is not None
-                or stream_chunk.generated_token_ids is not None
-            ):
-                # One terminal service chunk owns final speculative IDs, finish,
-                # and authoritative backend telemetry. Live chunks own text only.
-                stream_chunk = replace(
-                    stream_chunk,
-                    finish_details=None,
-                    generated_token_ids=None,
-                )
-            chunks = _stop_safe_chunks(state, token_id=token_id, chunk=stream_chunk)
+            chunks = _stop_safe_chunks(state, token_id=token_id, chunk=event.stream_chunk)
             for chunk in chunks:
+                if state.execution_mode in {"verify_chain", "verify_tree"} and (
+                    chunk.finish_details is not None
+                    or chunk.generated_token_ids is not None
+                ):
+                    # Stop suppression needs the finish metadata first. Only
+                    # then defer final IDs/finish/telemetry to the terminal
+                    # service chunk; live chunks own the stop-safe text.
+                    chunk = replace(
+                        chunk,
+                        finish_details=None,
+                        generated_token_ids=None,
+                    )
                 accepted = state.collector.publish(
                     EngineOutput(
                         kind=OutputKind.CHUNK,

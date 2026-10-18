@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261016T171030.243553Z-overnight-mtp-gfx1151-gemma-live-851c6b.md",
+  "sha256": "01c6539faaab6873ee981c4ea8f7d3ad54be2b2bda3b0418d904194c893c2193",
+  "defects": [
+    "abbreviated_base_commit"
+  ],
+  "reason": "base_commit recorded the 9-character abbreviation c29b9288c; it resolves to c29b9288cf2c30904e43cd490e0d4570f020599d in this repository's history.",
+  "base_commit": "c29b9288cf2c30904e43cd490e0d4570f020599d",
+  "superseded_by": null
+}

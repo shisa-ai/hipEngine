@@ -83,10 +83,19 @@ def test_decode_does_not_forward_after_last_requested_token():
 
 @pytest.mark.parametrize("options", [
     {"grammar": {"type": "json_object"}},
-    {"thinking_close_token_ids": (12,), "thinking_hard_token_cap": 2},
+    {"forced_tokens_pending": (12,)},
     {"force_sequence_completion_token_sequences": ((12, 13),)},
 ])
 def test_unimplemented_generation_controls_fail_before_device_work(options):
+    """A control this route cannot execute costs no device work.
+
+    Thinking budgets, ``min_tokens``, logprobs and multi-token stop sequences
+    used to be listed here; they are implemented on the shared sampler now and
+    are pinned in ``test_unit_gemma4_generation_controls.py``. What remains is
+    the set this route genuinely cannot execute, and each is refused by the
+    pre-admission check rather than inside a decode step.
+    """
+
     generator, calls = _generator()
     with pytest.raises(NotImplementedError):
         generator.generate_detailed(_request(**options))

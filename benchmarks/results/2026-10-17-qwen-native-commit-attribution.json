@@ -1,0 +1,1911 @@
+{
+  "schema": 1,
+  "kind": "native_commit_ownership_attribution",
+  "performance_claim": false,
+  "host": "gfx1151",
+  "hardware": "AMD Ryzen AI Max+ 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "kv": "bf16",
+  "source_hashes": {
+    "scripts/gguf_mtp_native_state_attribution.py": "ca3a5eeb7aaf1cf4ac45b451be67a75c3b1d630e126f6559fd56ee14c3915d45",
+    "scripts/gguf_mtp_forced_target_probe.py": "dce813928ad19747d2c28f18555fb03b79b39b06b3b9d4f12dd6ee3260ac0031",
+    "hipengine/runtime/qwen35_gguf_runner.py": "ffc37272f0cad6ff1e7637fd75be1cb912fcd3ad93f57c9f2a1f9db8af2f4716",
+    "hipengine/runtime/gguf_native_spec_cycle.py": "c8d99450649859db6d253089d33d3059a0e1df4e717606c8f1388c236d236e89",
+    "hipengine/generation/qwen35_gguf_mtp2.py": "3150e6def5dbdb599def87c888af0664bdbd6e6661e87de5821297e9283ef35f",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "c67336668c93ad5fb212ed93373ac8e0c891d49c560ffa570aa84ef37dd2d948"
+  },
+  "claim_scope": "Two singleton native-cycle probes at recorded AR prefixes. Exact commit-copy, ownership and same-schedule repeatability, separate from numerical drift. Not a complete trajectory or production numerical-envelope gate.",
+  "rows": [
+    {
+      "timestamp": "2026-10-17T20:25:32.738164+00:00",
+      "repo": {
+        "root": "/home/lhl/hipEngine-main",
+        "commit": "95b3595e33d5308300e7bef835efc6d976e63a73",
+        "branch": "gfx1151-mtp-default",
+        "dirty": true
+      },
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "source_record": "/tmp/mtp-repair/moe-hostproposal-native.json",
+      "record_row": "pair0_False",
+      "inputs": {
+        "output_index": 35,
+        "reference_ids": 128,
+        "prompt_tokens": 512,
+        "expected_prompt_tokens": 512,
+        "prompt_reasoning": "none",
+        "start_position": 546,
+        "verifier_inputs": [
+          318,
+          40,
+          16757
+        ],
+        "draft_tokens": [
+          40,
+          16757
+        ],
+        "draft_source": "record_ar_trajectory",
+        "draft_budget": 2,
+        "force_partial_accept": true,
+        "repeat": 2,
+        "remaining_decode": 3,
+        "prefill_attention_mode": "bulk",
+        "max_sequence_length": 650,
+        "use_gemv_decode": null
+      },
+      "diagnostic_env": {},
+      "native_env_contract": {
+        "refused_pair": [
+          "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL",
+          "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING"
+        ],
+        "refused_logit_path": "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A",
+        "enabled": {
+          "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": false,
+          "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING": false,
+          "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A": false
+        },
+        "native_capture_env": {
+          "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": null,
+          "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING": null,
+          "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A": null
+        }
+      },
+      "lane": {
+        "lane": "singleton_native_cycle",
+        "requested": "auto",
+        "request_count": 1,
+        "max_active_requests": 4,
+        "packed_c1_target": false,
+        "reproduced_by_this_diagnostic": true,
+        "launch": "Qwen35GGUFResidentSession.verify_target_block_native_cycle",
+        "reason": "a lone speculative request runs the per-request Qwen35GGUFTransactionalVerifier, which launches verify_target_block_native_cycle with device_accept_commit=True. --max-active-requests 4 does not put a lone request on the packed batch lane, and the one-request packed target needs the backend's GGUF_SPECDEC2_MTP2_PHYSICAL_C1 capability plus an explicit packed_c1_target evidence row",
+        "native_kwargs": {
+          "bulk_attention_mode": "native",
+          "use_wmma_prefill": false,
+          "capture_linear_state_rows": true,
+          "capture_pre_output_norm_hidden": true,
+          "capture_lm_head_logits": true,
+          "defer_linear_state_commit": true,
+          "device_accept_commit": true,
+          "remaining_decode": 3
+        }
+      },
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gguf_mtp_native_state_attribution.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --record /tmp/mtp-repair/moe-hostproposal-native.json --record-row pair0_False --output-index 35 --max-active-requests 4 --repeat 2 --force-partial-accept --output /tmp/mtp-repair/moe-token35-native-cycle-current-hidden.json",
+      "raw_result": {
+        "path": "/tmp/mtp-repair/moe-token35-native-cycle-current-hidden.json",
+        "sha256": "5dcb1ac97fa638c3d3d20a127706b40e9ba4f842e957448cbb12564b75b2731f"
+      },
+      "source_record_sha256": "b3dde45f6ca645142cf3670742113545b43e121d20d01b69578838f4c41890db",
+      "verdict": "numerical_drift_measured",
+      "contracts": {
+        "strict_state_copy": {
+          "status": "exact",
+          "mismatches": [],
+          "missing_captures": []
+        },
+        "ownership": {
+          "status": "exact",
+          "mismatches": []
+        },
+        "repeatability": {
+          "checked": true,
+          "runs": 2,
+          "identical": true,
+          "differences": [],
+          "reason": "repeated native runs at the same prefix must produce identical row top-1, logit bytes, commit metadata, and committed state"
+        },
+        "numerical_drift": {
+          "status": "measured",
+          "gating": false,
+          "decisive": false,
+          "note": "native-versus-AR measurements at one prefix. A top-1 or generated-ID difference alone is a diagnostic signal, never a correctness failure; ownership and repeatability are the binding contracts here"
+        }
+      },
+      "commit_ownership": {
+        "status": "exact",
+        "selected_row": 1,
+        "start_position": 546,
+        "expected_commit_position": 547,
+        "expected_end_position": 548,
+        "actual_commit_position": 547,
+        "actual_end_position": 548,
+        "actual_cursor_after": 548,
+        "commit_row_in_range": true,
+        "layers_checked": 30,
+        "layers_expected": 30,
+        "hidden_row_checked": true,
+        "contracts": {
+          "strict_state_copy": {
+            "status": "exact",
+            "mismatches": [],
+            "missing_captures": []
+          },
+          "ownership": {
+            "status": "exact",
+            "mismatches": []
+          }
+        },
+        "mismatches": [],
+        "contract": "the committed destination equals the captured source row (commit_rows[0]) byte for byte, commit_row is the accepted row, commit_token is that row's input token, and the cursor is start_position + commit_row + 1"
+      },
+      "commit": {
+        "accepted": 1,
+        "commit_row": 1,
+        "commit_token": 40,
+        "input_token_ids": [
+          318,
+          40,
+          16757
+        ],
+        "consumed_input_tokens": [
+          318,
+          40
+        ],
+        "commit_position": 547,
+        "end_position": 548,
+        "cursor_after": 548,
+        "full_accept": false,
+        "next_token": 1698
+      },
+      "native_launch": {
+        "launch": "Qwen35GGUFResidentSession.verify_target_block_native_cycle",
+        "device_accept_commit": true,
+        "fallback_reason": null
+      },
+      "ar_vs_serial": [],
+      "row_top1": {
+        "ar": [
+          40,
+          1698,
+          1698
+        ],
+        "native": [
+          40,
+          1698,
+          1698
+        ],
+        "serial": [
+          40,
+          1698,
+          1698
+        ]
+      },
+      "metrics": {
+        "row_arithmetic_full_block": {
+          "compared_rows": 3,
+          "vocab_size": 248320,
+          "mean_kl_nats": 0.0011914197182982644,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.3210141658782959,
+          "max_kl_nats": 0.0020308427204889074,
+          "kl_percentiles": {
+            "p50": 0.0012203677400398373,
+            "p90": 0.0018687477243990935,
+            "p95": 0.0019497952224440003,
+            "p99": 0.002014633220879926,
+            "p99_9": 0.0020292217705280093
+          }
+        },
+        "row_arithmetic_accepted_prefix": {
+          "compared_rows": 2,
+          "vocab_size": 248320,
+          "mean_kl_nats": 0.0007717082172029427,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.30771446228027344,
+          "max_kl_nats": 0.0012203677400398373,
+          "kl_percentiles": {
+            "p50": 0.0007717082172029427,
+            "p90": 0.0011306358354724584,
+            "p95": 0.0011755017877561479,
+            "p99": 0.0012113945495830995,
+            "p99_9": 0.0012194704209941636
+          }
+        }
+      },
+      "commit_rows": [
+        {
+          "layer": 0,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "d8ecfa9797f6f123cd8c543396f2696e",
+            "destination_digest": "d8ecfa9797f6f123cd8c543396f2696e",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "2e2f9dfd9f3ced6a59ea039f3d1ce357",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "0daf3b6250bd6776071c413549b733b9",
+            "destination_digest": "0daf3b6250bd6776071c413549b733b9",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "bbe058723ee6f3f0137c9271f3118b5c",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 1,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "648e2850dab9d52ce5794e26a5273503",
+            "destination_digest": "648e2850dab9d52ce5794e26a5273503",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "373e08ded47856f96d6c8e6ff4794a21",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "8d67459e28b0f8c674daa86ebdb3e58a",
+            "destination_digest": "8d67459e28b0f8c674daa86ebdb3e58a",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "5aad050c5269f2cd26cf0bf1610d112b",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 2,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "cfaefe2881eb4631619629e9397d7472",
+            "destination_digest": "cfaefe2881eb4631619629e9397d7472",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "7416080feb9eaba7b10358442f90d31b",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "a89843f4861491d644a0f0c69cf890fe",
+            "destination_digest": "a89843f4861491d644a0f0c69cf890fe",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "556d5361c5cb3df58d788f59ffad007d",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 4,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "2efa3c03efb7aea48d2bd9c5e586be43",
+            "destination_digest": "2efa3c03efb7aea48d2bd9c5e586be43",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "d0b51b46ff0f2610b6b7ad3fb0d02a6c",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "d07678f5c9291cb7597c9baa25163581",
+            "destination_digest": "d07678f5c9291cb7597c9baa25163581",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "9b2440da75bd4d58d2c8d8a79459f011",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 5,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "68015131f88e7c8de2e17e5e8204c321",
+            "destination_digest": "68015131f88e7c8de2e17e5e8204c321",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "e0e78c4a86a6c159dc0fcccedec5e440",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "87c8cc95a7b45cab567b44424fd91212",
+            "destination_digest": "87c8cc95a7b45cab567b44424fd91212",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "4188dc8226371d66aec7eeb71ba749e3",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 6,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "8214d76f48308be40267e12703732a52",
+            "destination_digest": "8214d76f48308be40267e12703732a52",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "3cac74a71561e2ee6c9ef7eda3407290",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "f7fbb3f814807736477a0ee732186b53",
+            "destination_digest": "f7fbb3f814807736477a0ee732186b53",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "a961e72fb5be503e71e24de1a029021c",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 8,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "9e3265b9e7a4405ceed98f867b593afc",
+            "destination_digest": "9e3265b9e7a4405ceed98f867b593afc",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "fb077632654eb1231f00e5b07b48e287",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "27d4897574a501c2d4059652fc45a04c",
+            "destination_digest": "27d4897574a501c2d4059652fc45a04c",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "27a4db29d340b2d98e1cb54b87540d85",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 9,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "77f2e0e6a533e35e6ac99753cbbd1d5e",
+            "destination_digest": "77f2e0e6a533e35e6ac99753cbbd1d5e",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "17c2867e1570337248e6eae8b42d3d78",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "b81ddef5f929792354e7143d93ff6d97",
+            "destination_digest": "b81ddef5f929792354e7143d93ff6d97",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "755ab3384bdf02968d244e669b28df51",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 10,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "92ff2658f98cc84c1904aa7c4f7887f0",
+            "destination_digest": "92ff2658f98cc84c1904aa7c4f7887f0",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "f4d18af256e488033e76ec4f30bac457",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "2925b07254cdfc9462403c27c99090c4",
+            "destination_digest": "2925b07254cdfc9462403c27c99090c4",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "41a7ab450ad6c93d0b7097dc54632251",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 12,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "20bb64cfc7a54b9aa675dbcd7539aa9f",
+            "destination_digest": "20bb64cfc7a54b9aa675dbcd7539aa9f",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "3fd85165af5f5d25a4540f2fa346b6a3",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "7469eef14e17e4bc3ae26b83fc91295e",
+            "destination_digest": "7469eef14e17e4bc3ae26b83fc91295e",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "0218e16f27d3c23a5d75ce0c78fea52d",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 13,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "14f6c9a38d15923e95a51062287aa3c2",
+            "destination_digest": "14f6c9a38d15923e95a51062287aa3c2",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "1a8fd5bb1c2b19d69d659fa722c0814b",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "7e9e1cacdde9f97bea2f09f4b96ce101",
+            "destination_digest": "7e9e1cacdde9f97bea2f09f4b96ce101",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "d36a3315db75ec70b6cd34f54fa19d97",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 14,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "c8b38c635bf252477fa346c39f36fa50",
+            "destination_digest": "c8b38c635bf252477fa346c39f36fa50",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "263093158abe35638cabadba075e40f6",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "3ec8d95ff5c04a5b8b7f938c31637e64",
+            "destination_digest": "3ec8d95ff5c04a5b8b7f938c31637e64",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "8ca839ae38b2eb442883069b9b0382c6",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 16,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "5e02108023f1e649c25b10e903c54ca3",
+            "destination_digest": "5e02108023f1e649c25b10e903c54ca3",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "8989ea44824ab17a785f65deafa18040",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "150816842e5a856ec851cfc88edb352b",
+            "destination_digest": "150816842e5a856ec851cfc88edb352b",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "d1f3800e633edf9cb66fa1e9422275b4",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 17,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "6f23b8e07f1168b6d419058f8e674d65",
+            "destination_digest": "6f23b8e07f1168b6d419058f8e674d65",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "43781f4000a3fd970efe2d3ae38a47e4",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "2060bf4afa21c6914520c0ee6f7fefa6",
+            "destination_digest": "2060bf4afa21c6914520c0ee6f7fefa6",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "03cb5118c14412d825773558f1a488c1",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 18,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "20786d469e7cb5146639d4a8d0d5ea95",
+            "destination_digest": "20786d469e7cb5146639d4a8d0d5ea95",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "c60023d259a2ba981a4f85a17ea89b7f",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "cb1b2f9affb4823ac16a59877a10ce57",
+            "destination_digest": "cb1b2f9affb4823ac16a59877a10ce57",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "09b9a30f0847ea215519cce7c551454d",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 20,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "02c64fe079b629413a49a8005083c5aa",
+            "destination_digest": "02c64fe079b629413a49a8005083c5aa",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "77562eba2945198571f3b0bd903d8e0f",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "2d01204b4fcfa0f443746b641287ec3e",
+            "destination_digest": "2d01204b4fcfa0f443746b641287ec3e",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "ff8e086783bd62845a42e9edea62603f",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 21,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "a5523163b90486b8f9c343437e3339bf",
+            "destination_digest": "a5523163b90486b8f9c343437e3339bf",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "9ed46ecb000653d9170f729857ab1997",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "cf541b0b945e524bebc54cc27d2ec1eb",
+            "destination_digest": "cf541b0b945e524bebc54cc27d2ec1eb",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "81a87faa811f9a02044dcd23d4182130",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 22,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "183f29006e9a5f682edab00ea1edaf30",
+            "destination_digest": "183f29006e9a5f682edab00ea1edaf30",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "94ebd6304bb91d4ea83321c1428c40e1",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "a77ac5085a3f3f3f82e9b49c6fe81c3f",
+            "destination_digest": "a77ac5085a3f3f3f82e9b49c6fe81c3f",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "a28fa3427b909e7bc07fd10aa3dcad96",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 24,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "fe8170578cad5862c22fb8d85cd554b0",
+            "destination_digest": "fe8170578cad5862c22fb8d85cd554b0",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "744700acb9f5970f94165801d9ca6215",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "be601fa8d5adb95ad68d9542d513889b",
+            "destination_digest": "be601fa8d5adb95ad68d9542d513889b",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "a0e13aeeed2972166aa70aa3b36317f3",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 25,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "dba17f416863aff3664f2df2923c9199",
+            "destination_digest": "dba17f416863aff3664f2df2923c9199",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "2ab32ab14e41291bb2e1c5c5f40c1d64",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "d692bf733943c9e2935c7c9b2e7e4f2b",
+            "destination_digest": "d692bf733943c9e2935c7c9b2e7e4f2b",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "b7ea6694cee4fa0646f1ae34bb7b1697",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 26,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "d0cc96f5dc274b89dbc4de07292407d9",
+            "destination_digest": "d0cc96f5dc274b89dbc4de07292407d9",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "8490da06f89a964f89fd955c14b079ef",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "3d7cfe147460e022755c0e1d801be4b2",
+            "destination_digest": "3d7cfe147460e022755c0e1d801be4b2",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "a43faf56cf0c042a64d651bdf2a517ea",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 28,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "d2723ab35e7eade40bd2f1817f4e3103",
+            "destination_digest": "d2723ab35e7eade40bd2f1817f4e3103",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "70df87b1483752a5ba90b1899cb856c0",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "0db74ce3725a1d4daa315cb724edaabf",
+            "destination_digest": "0db74ce3725a1d4daa315cb724edaabf",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "08ab72ad598ff0e00258c4dca622160d",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 29,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "11db42e796d546474a400d0c4ee238b8",
+            "destination_digest": "11db42e796d546474a400d0c4ee238b8",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "0cdc5df0b06371bd04c8deba9e6f200e",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "55f1fd75997bdaf5189112490afb5625",
+            "destination_digest": "55f1fd75997bdaf5189112490afb5625",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "5a42bf533fa15539379d819f243a6d8d",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 30,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "b6ca342a45279b19377ccfe60df0d7ce",
+            "destination_digest": "b6ca342a45279b19377ccfe60df0d7ce",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "3e83b0c8fcce77e65e505e55712ff4d9",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "22b076f0b9469f218cee085b46ba1d36",
+            "destination_digest": "22b076f0b9469f218cee085b46ba1d36",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "ef8053ca1aa6ec6250a5de4273e7a455",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 32,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "40ad4b866140d1728b77201e27f9ed1c",
+            "destination_digest": "40ad4b866140d1728b77201e27f9ed1c",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "110e6ae3cd6cde756cc48a5f9305543e",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "8309e881c1758c6d159fb2ad7061c9f6",
+            "destination_digest": "8309e881c1758c6d159fb2ad7061c9f6",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "ab6cc921576e1246b60da273446dbf15",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 33,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "b7eb7df84282dba075b70856d241ec53",
+            "destination_digest": "b7eb7df84282dba075b70856d241ec53",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "55912b5409974aa0e08dc61c5a0e7a62",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "49c58c73e2c36515aaab7df0cf103230",
+            "destination_digest": "49c58c73e2c36515aaab7df0cf103230",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "ab86cc001ac0a30da3691ca1c686f4c5",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 34,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "ae8d03a2f100089e42ef293e92c2421b",
+            "destination_digest": "ae8d03a2f100089e42ef293e92c2421b",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "7eb571aa4a5b24a09297a0b4e66553b8",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "67c685d05e9dfe18a71cd462f2626086",
+            "destination_digest": "67c685d05e9dfe18a71cd462f2626086",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "c6a134787639ff424c701d0e098d9271",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 36,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "b3c0d87540910f5c2c9779b92d71aa9c",
+            "destination_digest": "b3c0d87540910f5c2c9779b92d71aa9c",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "445cef0267f89ab8ee98e0cedb1c1479",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "9505f42f42f97f6d93e0936e95e8f78e",
+            "destination_digest": "9505f42f42f97f6d93e0936e95e8f78e",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "9282bdf03ea328e9a8a589659d4b417f",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 37,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "66102ff821ce5580354355bd72be9a25",
+            "destination_digest": "66102ff821ce5580354355bd72be9a25",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "2952384ba2b8fca022357dac8581fb20",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "c3a2a94ba3abb9193a8aeaae0237cbfe",
+            "destination_digest": "c3a2a94ba3abb9193a8aeaae0237cbfe",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "792e55dc3c7138b48bcd7850fa3245b4",
+            "destination_matches_other_row": false
+          }
+        },
+        {
+          "layer": 38,
+          "selected_row": 1,
+          "conv": {
+            "nbytes": 131072,
+            "source_row_digest": "b22430dcade24f1bbec7780003ebb718",
+            "destination_digest": "b22430dcade24f1bbec7780003ebb718",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "d88b6f0d0fed2bf98f4a7f5936176796",
+            "destination_matches_other_row": false
+          },
+          "recurrent": {
+            "nbytes": 2097152,
+            "source_row_digest": "b58da9a8194377cd0e5739ce9b9ad52b",
+            "destination_digest": "b58da9a8194377cd0e5739ce9b9ad52b",
+            "copy_exact": true,
+            "other_row_index": 0,
+            "other_row_digest": "fadead9184e60c18b213eca976a8c7d5",
+            "destination_matches_other_row": false
+          }
+        }
+      ],
+      "hidden_row": {
+        "selected_row": 1,
+        "nbytes": 8192,
+        "source_row_digest": "24133cbb75a1e12660d9ac1bb54ef75f",
+        "destination_digest": "24133cbb75a1e12660d9ac1bb54ef75f",
+        "copy_exact": true
+      },
+      "prior_inconclusive_attempt": {
+        "path": "/tmp/mtp-repair/moe-token35-native-cycle-stale-hidden.json",
+        "sha256": "e56daa97c818430980a16b4275159a45b1a5b83045897edae9a27f45463d71eb",
+        "verdict": "inconclusive_serial_control_mismatch",
+        "ar_vs_serial": [
+          {
+            "component": "hidden_seed",
+            "baseline": "e470dfa0a2203f8e83bbb1e76d4f4892",
+            "candidate": "da77dafd2a07048a18966cb54309c66d"
+          }
+        ],
+        "cause": "AR arms omitted capture_hidden_seed_fp32=True and read stale prefix hidden seeds. Repaired with RED/GREEN tests."
+      }
+    },
+    {
+      "timestamp": "2026-10-17T20:28:25.492000+00:00",
+      "repo": {
+        "root": "/home/lhl/hipEngine-main",
+        "commit": "95b3595e33d5308300e7bef835efc6d976e63a73",
+        "branch": "gfx1151-mtp-default",
+        "dirty": true
+      },
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "source_record": "/tmp/mtp-repair/qwen38-q4ks-http-matrix.json",
+      "record_row": "ar_128",
+      "inputs": {
+        "output_index": 118,
+        "reference_ids": 128,
+        "prompt_tokens": 22,
+        "expected_prompt_tokens": 22,
+        "prompt_reasoning": "none",
+        "start_position": 139,
+        "verifier_inputs": [
+          12,
+          9830,
+          13513
+        ],
+        "draft_tokens": [
+          9830,
+          13513
+        ],
+        "draft_source": "record_ar_trajectory",
+        "draft_budget": 2,
+        "force_partial_accept": true,
+        "repeat": 2,
+        "remaining_decode": 3,
+        "prefill_attention_mode": "bulk",
+        "max_sequence_length": 160,
+        "use_gemv_decode": null
+      },
+      "diagnostic_env": {},
+      "native_env_contract": {
+        "refused_pair": [
+          "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL",
+          "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING"
+        ],
+        "refused_logit_path": "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A",
+        "enabled": {
+          "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": false,
+          "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING": false,
+          "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A": false
+        },
+        "native_capture_env": {
+          "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": null,
+          "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING": null,
+          "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A": null
+        }
+      },
+      "lane": {
+        "lane": "singleton_native_cycle",
+        "requested": "auto",
+        "request_count": 1,
+        "max_active_requests": 4,
+        "packed_c1_target": false,
+        "reproduced_by_this_diagnostic": true,
+        "launch": "Qwen35GGUFResidentSession.verify_target_block_native_cycle",
+        "reason": "a lone speculative request runs the per-request Qwen35GGUFTransactionalVerifier, which launches verify_target_block_native_cycle with device_accept_commit=True. --max-active-requests 4 does not put a lone request on the packed batch lane, and the one-request packed target needs the backend's GGUF_SPECDEC2_MTP2_PHYSICAL_C1 capability plus an explicit packed_c1_target evidence row",
+        "native_kwargs": {
+          "bulk_attention_mode": "native",
+          "use_wmma_prefill": false,
+          "capture_linear_state_rows": true,
+          "capture_pre_output_norm_hidden": true,
+          "capture_lm_head_logits": true,
+          "defer_linear_state_commit": true,
+          "device_accept_commit": true,
+          "remaining_decode": 3
+        }
+      },
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gguf_mtp_native_state_attribution.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf --record /tmp/mtp-repair/qwen38-q4ks-http-matrix.json --record-row ar_128 --output-index 118 --max-active-requests 4 --repeat 2 --force-partial-accept --output /tmp/mtp-repair/qwen38-q4ks-token118-native-cycle-current-hidden.json",
+      "raw_result": {
+        "path": "/tmp/mtp-repair/qwen38-q4ks-token118-native-cycle-current-hidden.json",
+        "sha256": "e7b61fdfceb6e1a6cbf02c0cebb7e62091095ba45b728b8726fd9c6111a968d2"
+      },
+      "source_record_sha256": "602641f49b63a738da416031664e9b582d2c6f3a7c42cd0aa0293cd41376c082",
+      "verdict": "numerical_drift_measured",
+      "contracts": {
+        "strict_state_copy": {
+          "status": "exact",
+          "mismatches": [],
+          "missing_captures": []
+        },
+        "ownership": {
+          "status": "exact",
+          "mismatches": []
+        },
+        "repeatability": {
+          "checked": true,
+          "runs": 2,
+          "identical": true,
+          "differences": [],
+          "reason": "repeated native runs at the same prefix must produce identical row top-1, logit bytes, commit metadata, and committed state"
+        },
+        "numerical_drift": {
+          "status": "measured",
+          "gating": false,
+          "decisive": false,
+          "note": "native-versus-AR measurements at one prefix. A top-1 or generated-ID difference alone is a diagnostic signal, never a correctness failure; ownership and repeatability are the binding contracts here"
+        }
+      },
+      "commit_ownership": {
+        "status": "exact",
+        "selected_row": 0,
+        "start_position": 139,
+        "expected_commit_position": 139,
+        "expected_end_position": 140,
+        "actual_commit_position": 139,
+        "actual_end_position": 140,
+        "actual_cursor_after": 140,
+        "commit_row_in_range": true,
+        "layers_checked": 48,
+        "layers_expected": 48,
+        "hidden_row_checked": true,
+        "contracts": {
+          "strict_state_copy": {
+            "status": "exact",
+            "mismatches": [],
+            "missing_captures": []
+          },
+          "ownership": {
+            "status": "exact",
+            "mismatches": []
+          }
+        },
+        "mismatches": [],
+        "contract": "the committed destination equals the captured source row (commit_rows[0]) byte for byte, commit_row is the accepted row, commit_token is that row's input token, and the cursor is start_position + commit_row + 1"
+      },
+      "commit": {
+        "accepted": 0,
+        "commit_row": 0,
+        "commit_token": 12,
+        "input_token_ids": [
+          12,
+          9830,
+          13513
+        ],
+        "consumed_input_tokens": [
+          12
+        ],
+        "commit_position": 139,
+        "end_position": 140,
+        "cursor_after": 140,
+        "full_accept": false,
+        "next_token": 1394
+      },
+      "native_launch": {
+        "launch": "Qwen35GGUFResidentSession.verify_target_block_native_cycle",
+        "device_accept_commit": true,
+        "fallback_reason": null
+      },
+      "ar_vs_serial": [],
+      "row_top1": {
+        "ar": [
+          1394,
+          2552,
+          4766
+        ],
+        "native": [
+          1394,
+          2552,
+          4766
+        ],
+        "serial": [
+          1394,
+          2552,
+          4766
+        ]
+      },
+      "metrics": {
+        "row_arithmetic_full_block": {
+          "compared_rows": 3,
+          "vocab_size": 248320,
+          "mean_kl_nats": 0.00015538936170561847,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.1376793384552002,
+          "max_kl_nats": 0.00027971902001739984,
+          "kl_percentiles": {
+            "p50": 0.0001181218844582123,
+            "p90": 0.00024739959290556235,
+            "p95": 0.0002635593064614811,
+            "p99": 0.00027648707730621607,
+            "p99_9": 0.0002793958257462815
+          }
+        },
+        "row_arithmetic_accepted_prefix": {
+          "compared_rows": 1,
+          "vocab_size": 248320,
+          "mean_kl_nats": 0.00027971902001739984,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.10846948623657227,
+          "max_kl_nats": 0.00027971902001739984,
+          "kl_percentiles": {
+            "p50": 0.00027971902001739984,
+            "p90": 0.00027971902001739984,
+            "p95": 0.00027971902001739984,
+            "p99": 0.00027971902001739984,
+            "p99_9": 0.00027971902001739984
+          }
+        }
+      },
+      "commit_rows": [
+        {
+          "layer": 0,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "ba797404dd7fdd6a679ff387d3a90eb4",
+            "destination_digest": "ba797404dd7fdd6a679ff387d3a90eb4",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "fba04ae9cf7f9c70331ab2a9fdc603ac",
+            "destination_digest": "fba04ae9cf7f9c70331ab2a9fdc603ac",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 1,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "399cbe21f612a4cec9a60a79a5a265fd",
+            "destination_digest": "399cbe21f612a4cec9a60a79a5a265fd",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "86475c4ae5b37347e7deaf9120a07dc9",
+            "destination_digest": "86475c4ae5b37347e7deaf9120a07dc9",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 2,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "acda9d40cad403cec6f97c5c24d7dcab",
+            "destination_digest": "acda9d40cad403cec6f97c5c24d7dcab",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "c7d1e410db7a2f44816ef958f89999c7",
+            "destination_digest": "c7d1e410db7a2f44816ef958f89999c7",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 4,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "9abb2b3230fe8460065d3ef855e2530a",
+            "destination_digest": "9abb2b3230fe8460065d3ef855e2530a",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "715b22e77631bddd190c221736382c36",
+            "destination_digest": "715b22e77631bddd190c221736382c36",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 5,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "0e3f7809a5947d45e1d28f59f18aee12",
+            "destination_digest": "0e3f7809a5947d45e1d28f59f18aee12",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "7a8f4c9b376c4e58665337b254b619e6",
+            "destination_digest": "7a8f4c9b376c4e58665337b254b619e6",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 6,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "0a85f51734efe3ce52f006f0d76cc530",
+            "destination_digest": "0a85f51734efe3ce52f006f0d76cc530",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "c53d0fc6e1f6dbd3b8464a08859a5566",
+            "destination_digest": "c53d0fc6e1f6dbd3b8464a08859a5566",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 8,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "54e04a4354d8a2ae9962956dc916ae7a",
+            "destination_digest": "54e04a4354d8a2ae9962956dc916ae7a",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "b5252a6296af31c668397ac08d3ad66c",
+            "destination_digest": "b5252a6296af31c668397ac08d3ad66c",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 9,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "925a70298c7d5764e519ded20d6a469b",
+            "destination_digest": "925a70298c7d5764e519ded20d6a469b",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "a3c7f719632ca76bfd493d3e7c5aa5b0",
+            "destination_digest": "a3c7f719632ca76bfd493d3e7c5aa5b0",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 10,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "09eac7a2f11dc0816082365694691b40",
+            "destination_digest": "09eac7a2f11dc0816082365694691b40",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "2cd23aec97132dd7f7395e0f95064d40",
+            "destination_digest": "2cd23aec97132dd7f7395e0f95064d40",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 12,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "e5c24d11f0c2b5842ca402c88f007f85",
+            "destination_digest": "e5c24d11f0c2b5842ca402c88f007f85",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "1d0c733380363b00f580aeb8434c8817",
+            "destination_digest": "1d0c733380363b00f580aeb8434c8817",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 13,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "ccdce66cc3a5119a8e51247836b66a10",
+            "destination_digest": "ccdce66cc3a5119a8e51247836b66a10",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "752f251c26e72d8b4933843025ba9bd7",
+            "destination_digest": "752f251c26e72d8b4933843025ba9bd7",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 14,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "78d2f57bfc772076ee7e71712b42cc0d",
+            "destination_digest": "78d2f57bfc772076ee7e71712b42cc0d",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "48d98a7ea4deec8aac25cc9f15a4231b",
+            "destination_digest": "48d98a7ea4deec8aac25cc9f15a4231b",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 16,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "a77254ab4d8c7f3729a12afbec9bdb30",
+            "destination_digest": "a77254ab4d8c7f3729a12afbec9bdb30",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "a985334ab851b29d044949d682bb3ff8",
+            "destination_digest": "a985334ab851b29d044949d682bb3ff8",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 17,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "d6ce676fcd7391173756fb493a698232",
+            "destination_digest": "d6ce676fcd7391173756fb493a698232",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "f4e0eb41c971b0bc3eae950490ae0300",
+            "destination_digest": "f4e0eb41c971b0bc3eae950490ae0300",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 18,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "5b54e3911d740f6e20642ab3ce70794a",
+            "destination_digest": "5b54e3911d740f6e20642ab3ce70794a",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "70ff411823042efded4a3aa096768e8e",
+            "destination_digest": "70ff411823042efded4a3aa096768e8e",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 20,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "d7bb01c91c641624974bbb9ef00c4dfa",
+            "destination_digest": "d7bb01c91c641624974bbb9ef00c4dfa",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "cb1dcca2c6c2abac245d5804bc5f17db",
+            "destination_digest": "cb1dcca2c6c2abac245d5804bc5f17db",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 21,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "2766dd5d5f765c5aeca423322b5fa246",
+            "destination_digest": "2766dd5d5f765c5aeca423322b5fa246",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "17dcd077a85b96f4e508c700c3227bee",
+            "destination_digest": "17dcd077a85b96f4e508c700c3227bee",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 22,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "fe8e0e1d1a73cca4152eaf33c9710df5",
+            "destination_digest": "fe8e0e1d1a73cca4152eaf33c9710df5",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "abfbc3768c3193ff58d3a1ffc135e966",
+            "destination_digest": "abfbc3768c3193ff58d3a1ffc135e966",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 24,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "11dbb59f705528e0354814beccfd7d0b",
+            "destination_digest": "11dbb59f705528e0354814beccfd7d0b",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "7e3130efb77011f4bb15cb6d54f03f49",
+            "destination_digest": "7e3130efb77011f4bb15cb6d54f03f49",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 25,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "2da275dbf49a2942db03e3145530b1fc",
+            "destination_digest": "2da275dbf49a2942db03e3145530b1fc",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "332d9366acb160daef33319cf852a875",
+            "destination_digest": "332d9366acb160daef33319cf852a875",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 26,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "a5d2b8da9830ec448047e14b79b5b7e6",
+            "destination_digest": "a5d2b8da9830ec448047e14b79b5b7e6",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "291b18500171549c7f24a8c33f983ef1",
+            "destination_digest": "291b18500171549c7f24a8c33f983ef1",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 28,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "97ac879ea4fe91d2a7b389541df53aec",
+            "destination_digest": "97ac879ea4fe91d2a7b389541df53aec",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "707dad931cb89c8ad0e3595269ec93ce",
+            "destination_digest": "707dad931cb89c8ad0e3595269ec93ce",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 29,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "3782d6d8c310271cb53f2e31c5e55e9e",
+            "destination_digest": "3782d6d8c310271cb53f2e31c5e55e9e",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "c09054c5f5954228c1776a1338a6a9a0",
+            "destination_digest": "c09054c5f5954228c1776a1338a6a9a0",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 30,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "d0396588ba1f43e300e6a24c38339c3b",
+            "destination_digest": "d0396588ba1f43e300e6a24c38339c3b",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "b8cf006a584da517eab56ddf92589fae",
+            "destination_digest": "b8cf006a584da517eab56ddf92589fae",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 32,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "49bc32363ea96495ac18d8cf680a5930",
+            "destination_digest": "49bc32363ea96495ac18d8cf680a5930",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "9eaf1275203983859b3fae112cdd743d",
+            "destination_digest": "9eaf1275203983859b3fae112cdd743d",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 33,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "03a7abdcf5683738be4c0d1993b33192",
+            "destination_digest": "03a7abdcf5683738be4c0d1993b33192",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "e88a5216e1237f06348c7d254152d9b5",
+            "destination_digest": "e88a5216e1237f06348c7d254152d9b5",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 34,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "e04e9c4e89a72dc5de127410b93c7752",
+            "destination_digest": "e04e9c4e89a72dc5de127410b93c7752",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "22ca5a993e1993bd1fcb337dc00ce564",
+            "destination_digest": "22ca5a993e1993bd1fcb337dc00ce564",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 36,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "d1e4d879f5ead86df5ef6d6438897666",
+            "destination_digest": "d1e4d879f5ead86df5ef6d6438897666",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "bb01e589c8f272ef52a4c9ceb72f28c6",
+            "destination_digest": "bb01e589c8f272ef52a4c9ceb72f28c6",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 37,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "a23959a145448bc1ac792ae6302373bf",
+            "destination_digest": "a23959a145448bc1ac792ae6302373bf",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "a15b7c6bc783577a42f88157d155bada",
+            "destination_digest": "a15b7c6bc783577a42f88157d155bada",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 38,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "47680ea4eb63acac4fc64405363f2fdc",
+            "destination_digest": "47680ea4eb63acac4fc64405363f2fdc",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "9684adec455b37104fd5d57ad9c7daba",
+            "destination_digest": "9684adec455b37104fd5d57ad9c7daba",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 40,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "51489c9e53ffc65ad855ad5d8e82bfd3",
+            "destination_digest": "51489c9e53ffc65ad855ad5d8e82bfd3",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "9bc4c643ea12ceb6276f75bfb9264eae",
+            "destination_digest": "9bc4c643ea12ceb6276f75bfb9264eae",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 41,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "9e81f8f1807c58d56dbabc0705362e7f",
+            "destination_digest": "9e81f8f1807c58d56dbabc0705362e7f",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "394c776f70131aeb40392dbe8c3c5c52",
+            "destination_digest": "394c776f70131aeb40392dbe8c3c5c52",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 42,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "e6429df72e2550ad167de8ec6fff7c28",
+            "destination_digest": "e6429df72e2550ad167de8ec6fff7c28",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "0e04cd75618117a8ca8e27452a85dcfc",
+            "destination_digest": "0e04cd75618117a8ca8e27452a85dcfc",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 44,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "721b6123d8ddc10295dd0b3589ef2af4",
+            "destination_digest": "721b6123d8ddc10295dd0b3589ef2af4",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "68e88c8838ec5ee70224920bd350b603",
+            "destination_digest": "68e88c8838ec5ee70224920bd350b603",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 45,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "4b6e3c6d2c80333320d3d585681b7636",
+            "destination_digest": "4b6e3c6d2c80333320d3d585681b7636",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "b054df3e83708cd723e89cf117942bad",
+            "destination_digest": "b054df3e83708cd723e89cf117942bad",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 46,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "7aa9bd803aaa08c2e19a54a9f4fac994",
+            "destination_digest": "7aa9bd803aaa08c2e19a54a9f4fac994",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "b726d19791aeb805dc218ef5aef857c8",
+            "destination_digest": "b726d19791aeb805dc218ef5aef857c8",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 48,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "c320035970032b306d674e6bb2d76ba9",
+            "destination_digest": "c320035970032b306d674e6bb2d76ba9",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "4e2ad6fc376ea118d1a12933dac0f40d",
+            "destination_digest": "4e2ad6fc376ea118d1a12933dac0f40d",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 49,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "6eaf66c68394a170896e8e85c1c76c8e",
+            "destination_digest": "6eaf66c68394a170896e8e85c1c76c8e",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "8ece7cac32183153a3ff15d058b734cf",
+            "destination_digest": "8ece7cac32183153a3ff15d058b734cf",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 50,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "89a00f7ca48f8537e4d7b0ab5cfb5f4c",
+            "destination_digest": "89a00f7ca48f8537e4d7b0ab5cfb5f4c",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "621c05be8f4eb3c8acf70d9bfe861aad",
+            "destination_digest": "621c05be8f4eb3c8acf70d9bfe861aad",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 52,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "be8e4cb4c28d2b8ff38ce7d75826d115",
+            "destination_digest": "be8e4cb4c28d2b8ff38ce7d75826d115",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "b271442b21a1ca48e7cf6687f60131c0",
+            "destination_digest": "b271442b21a1ca48e7cf6687f60131c0",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 53,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "df87a93bb193a635a3bf6c706db73461",
+            "destination_digest": "df87a93bb193a635a3bf6c706db73461",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "bdc8201e26d7f3d8c134973145a9b154",
+            "destination_digest": "bdc8201e26d7f3d8c134973145a9b154",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 54,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "196009fd016506b05ab087c1570ae396",
+            "destination_digest": "196009fd016506b05ab087c1570ae396",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "38bbef0615b43c5738c8c3b23a6d4726",
+            "destination_digest": "38bbef0615b43c5738c8c3b23a6d4726",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 56,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "4957189e94dffdb24ce75ae8c73dc68a",
+            "destination_digest": "4957189e94dffdb24ce75ae8c73dc68a",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "494d4c4bf12e7e86b17899f2dbd1c93c",
+            "destination_digest": "494d4c4bf12e7e86b17899f2dbd1c93c",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 57,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "4786499cff118458654fa2a226a2edba",
+            "destination_digest": "4786499cff118458654fa2a226a2edba",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "583543deb16a2847ecf5b6b05a7826bd",
+            "destination_digest": "583543deb16a2847ecf5b6b05a7826bd",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 58,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "1a11051e3dfb1737aca2eb6341c15c2c",
+            "destination_digest": "1a11051e3dfb1737aca2eb6341c15c2c",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "667ca131390e6ec71ceeb6c8a81f79ef",
+            "destination_digest": "667ca131390e6ec71ceeb6c8a81f79ef",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 60,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "e0bc7e60f18cacb38605d26694a08c07",
+            "destination_digest": "e0bc7e60f18cacb38605d26694a08c07",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "0d98e5380d857c29fa0b4191fba4245a",
+            "destination_digest": "0d98e5380d857c29fa0b4191fba4245a",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 61,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "d840aa3306f3ee2dfb090317ccd3329d",
+            "destination_digest": "d840aa3306f3ee2dfb090317ccd3329d",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "1767438c9cddfcb44dc37c5d172037f6",
+            "destination_digest": "1767438c9cddfcb44dc37c5d172037f6",
+            "copy_exact": true
+          }
+        },
+        {
+          "layer": 62,
+          "selected_row": 0,
+          "conv": {
+            "nbytes": 163840,
+            "source_row_digest": "591cc669160f92cf25a09b0b56041d0e",
+            "destination_digest": "591cc669160f92cf25a09b0b56041d0e",
+            "copy_exact": true
+          },
+          "recurrent": {
+            "nbytes": 3145728,
+            "source_row_digest": "4e60760d7094b1b0d8289a099ad74462",
+            "destination_digest": "4e60760d7094b1b0d8289a099ad74462",
+            "copy_exact": true
+          }
+        }
+      ],
+      "hidden_row": {
+        "selected_row": 0,
+        "nbytes": 20480,
+        "source_row_digest": "4cc2fa274003e23cdde2f3082361b36a",
+        "destination_digest": "4cc2fa274003e23cdde2f3082361b36a",
+        "copy_exact": true
+      },
+      "prior_inconclusive_attempt": {
+        "path": "/tmp/mtp-repair/qwen38-q4ks-token118-native-cycle-stale-hidden.json",
+        "sha256": "7b52b1cdc818c4c17d740fbd4d03464c06d39aab4068b8411fa0dec16d90d9e0",
+        "verdict": "inconclusive_serial_control_mismatch",
+        "ar_vs_serial": [
+          {
+            "component": "hidden_seed",
+            "baseline": "80582442153975ce39b31d345fe7f332",
+            "candidate": "001361efd83930da5fdb22f0a771471e"
+          }
+        ],
+        "cause": "AR arms omitted capture_hidden_seed_fp32=True and read stale prefix hidden seeds. Repaired with RED/GREEN tests."
+      }
+    }
+  ],
+  "limitations": [
+    "HTTP records contain no per-cycle provider drafts. Deeper verifier inputs use the AR trajectory, not reconstructed original MTP proposals.",
+    "Packed batching is not exercised by this diagnostic.",
+    "Full-attention KV contents are not fingerprinted here.",
+    "The two probes exercise selected rows 1 (MoE partial accept) and 0 (dense rejection), not every acceptance case."
+  ]
+}

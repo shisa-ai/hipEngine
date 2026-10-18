@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261017T162931.315903Z-mtp-validation-mtp-throughput-revalidation-d590b8.md",
+  "sha256": "8629f9fcd2fc1246efd9e263ceb56b6cce134810ade3c3617794ab14141f8fe0",
+  "defects": [
+    "missing_required_sections"
+  ],
+  "reason": "the entry uses '## Commands and environment', '## Results', and '## Decision' instead of the required '## Changes', '## Validation', and '## Next' headings.",
+  "base_commit": null,
+  "superseded_by": "worklog/entries/20261017T182358.652921Z-worklog-compat-correct-mtp-throughput-revalidation-headings-9ac6da.md"
+}

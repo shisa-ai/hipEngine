@@ -2605,18 +2605,11 @@ def _mtp_unavailable_route_fallback(
     group_rows: int,
     output_horizon_tokens: int,
 ) -> tuple[str, dict[str, Any] | None]:
-    """Report an unavailable MTP route instead of failing the request.
+    """Refuse explicit MTP when unavailable; report automatic AR fallback.
 
-    An open scope breaker and an operator rollback are the same condition: the
-    promoted MTP route cannot run for this scope.  Both degrade the request to
-    AR, which is the exact fallback for every admitted MTP scope (the promoted
-    route emits the same greedy tokens), and both say so in the response's
-    route decision.  A 503 would instead withhold a completion AR could have
-    produced and leave the client to rediscover the downgrade itself.
-
-    ``route`` is the realized route and ``requested_route`` the one the client
-    asked for; only a realized MTP route is inspected, so a request that
-    already resolved to AR keeps its decision untouched.
+    Client validation errors do not open the breaker. A genuine runtime failure
+    or operator rollback may close the route, but cannot change an explicit
+    request into an autoregressive request.
     """
 
     if str(route) not in {
@@ -2637,6 +2630,20 @@ def _mtp_unavailable_route_fallback(
         reason = "mtp_circuit_breaker_open"
         evidence = "circuit_breaker_scope_open"
     breaker.attach(engine)
+    if (
+        str(requested_route) == _SPECULATIVE_MTP_BATCH_ROUTE
+        and (route_decision or {}).get("request_mode") != "automatic"
+    ):
+        raise OpenAIHTTPError(
+            503,
+            f"requested speculative_mtp cannot execute: {reason}; restart the server to reset",
+            error_type="server_error",
+            code="engine_unavailable",
+            param="speculative_mtp",
+            extra={"hipengine": {"speculative_mtp": {
+                "reason": reason, "circuit_breaker": breaker.snapshot(),
+            }}},
+        )
     return _SPECULATIVE_MTP_DEFAULT_ROUTE, {
         "requested_route": str(requested_route),
         "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
@@ -2735,6 +2742,20 @@ def _serving_plan_route_decision(
     ):
         admitted = False
         reason = _SPECULATIVE_MTP_AUTO_REJECTION_REASON
+    if (
+        not admitted
+        and not static_intent_allowed
+        and route == _SPECULATIVE_MTP_BATCH_ROUTE
+        and copied.get("request_mode") != "automatic"
+    ):
+        raise OpenAIHTTPError(
+            501,
+            f"requested speculative_mtp cannot execute: {reason}",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative_mtp",
+            extra={"hipengine": {"speculative_mtp": {"reason": reason, "key": key}}},
+        )
     selected_route = (
         _SPECULATIVE_MTP_BATCH_ROUTE
         if admitted
@@ -2759,6 +2780,7 @@ def _serving_plan_route_decision(
     )
     return selected_route, {
         "requested_route": reported_requested_route,
+        "request_mode": copied.get("request_mode", "explicit" if route == _SPECULATIVE_MTP_BATCH_ROUTE else "automatic"),
         "selected_route": selected_route,
         "reason": reason,
         "k0_class": k0_class,
@@ -3002,6 +3024,7 @@ def _resolve_realized_generation_route(
             )
             return route, {
                 "requested_route": route,
+                "request_mode": precomputed_decision.get("request_mode", "explicit"),
                 "selected_route": route,
                 "reason": (
                     "unqualified_cell_deferred_to_resident_owner"
@@ -3080,7 +3103,7 @@ def _resolve_realized_generation_route(
             },
         )
     if route != _SPECULATIVE_MTP_AUTO_ROUTE:
-        return route, None
+        return route, None if precomputed_decision is None else dict(precomputed_decision)
     rows = int(group_rows)
     if rows < 1:
         raise ValueError("automatic generation route requires a positive realized group")
@@ -3416,8 +3439,8 @@ def _stream_timing_summary(
 
     timing: dict[str, float] = {}
     if isinstance(stream_started_at, _StreamTimingTracker):
-        # Observing the final usage keeps the decode rate on the authoritative
-        # completion-token count even if the last token delta lagged it.
+        # Final usage updates total accounting, but cannot invent a token-delivery
+        # timestamp. The decode interval is fixed by token-bearing events.
         timing.update(
             stream_started_at.observe(event="usage", usage=usage)
         )
@@ -3506,6 +3529,8 @@ class _MTPCircuitBreaker:
         scope: tuple[str, str, str, str],
         exc: BaseException,
     ) -> None:
+        if isinstance(exc, (NotImplementedError, ValueError, GenerationCancelled, GenerationDeadlineExceeded, OpenAIHTTPError)):
+            return
         failures = self._failures.get(scope, 0) + 1
         self._failures[scope] = failures
         if failures >= self.threshold and scope not in self._opened:
@@ -3959,7 +3984,11 @@ class _GenerationBatcher:
                 self._launch_controlled_stream(first, engine)
                 return
         elif (
-            str(first.route) == _SPECULATIVE_MTP_DEFAULT_ROUTE
+            str(first.route) in {
+                _SPECULATIVE_MTP_DEFAULT_ROUTE,
+                _SPECULATIVE_MTP_BATCH_ROUTE,
+                _SPECULATIVE_MTP_AUTO_ROUTE,
+            }
             and _engine_supports_independent_generation(engine)
         ):
             active_limit = self._route_request_cap(first.route)
@@ -3990,6 +4019,14 @@ class _GenerationBatcher:
                         "independent generation capacity is full without an active producer"
                     )
                 await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
+                return
+            if str(first.route) != _SPECULATIVE_MTP_DEFAULT_ROUTE:
+                # Each client keeps its sampling/control state. The resident
+                # service owns physical MTP grouping; waiting for a whole HTTP
+                # call here prevents other clients from ever reaching it.
+                # The ready-cohort API below is AR-only, so MTP uses its own
+                # normal submission path instead.
+                self._launch_independent_generation(first)
                 return
             submit_ready = getattr(
                 engine,
@@ -4350,6 +4387,9 @@ class _GenerationBatcher:
                     )
                 else:
                     _finish_queued_generation(item, outputs=item_outputs)
+        except OpenAIHTTPError as exc:
+            for item in group:
+                _finish_queued_generation(item, exception=exc)
         finally:
             if manage_active:
                 for item in group:
@@ -4365,21 +4405,8 @@ class _GenerationBatcher:
         thinking_policy: str | None = None,
     ) -> _QueuedBatchResult:
         engine = self._engine_factory()
-        # ``_run_group`` resolves an unavailable MTP route (operator rollback or
-        # an open scope breaker) to AR before dispatch and reports the decision
-        # to the client.  Re-checking here keeps the breaker authoritative if a
-        # future caller ever dispatches the batch route directly: the request
-        # degrades to AR instead of launching a route the breaker closed.
-        route, _ = _mtp_unavailable_route_fallback(
-            route,
-            requested_route=route,
-            route_decision=None,
-            breaker=self._mtp_circuit_breaker,
-            engine=engine,
-            prompts=prompts,
-            group_rows=len(prompts),
-            output_horizon_tokens=int(sampling.max_tokens),
-        )
+        # _run_group resolves availability before dispatch and preserves the
+        # request's explicit/automatic intent in the response route decision.
         if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
             breaker = self._mtp_circuit_breaker
             scope = None if breaker is None else breaker.scope(engine, prompts)
@@ -6581,7 +6608,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             logit_bias=request.logit_bias or (),
             suppress_token_ids=suppress_token_ids,
             min_tokens=int(request.min_tokens if request.min_tokens is not None else 0),
-            eos_token_id=None if request.eos_token_id is None else int(request.eos_token_id),
+            eos_token_id=_request_eos_token_id(request, engine),
             stop_token_ids=stop_token_ids,
             stop_token_sequences=stop_token_sequences,
             forced_tokens_pending=initial_forced_tool_token_ids,
@@ -7023,7 +7050,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine=engine,
                 )
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
-            async for token in _iterate_with_request_control(
+            literal_stops = _LiteralStopStream(request.stop)
+            async for token in _iterate_with_literal_stops(
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
@@ -7041,6 +7069,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 ),
                 control,
+                literal_stops,
             ):
                 stream_chunk = _coerce_generation_stream_chunk(token)
                 last_stream_chunk = stream_chunk
@@ -7308,11 +7337,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
 
-        raw_text = "".join(full_text)
+        raw_text = literal_stops.raw_text if literal_stops.stops else "".join(full_text)
         text, finish_reason = _apply_stop(raw_text, request.stop)
-        server_stop = text != raw_text
-        backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
-        done_stream_chunk = None if server_stop else last_stream_chunk
+        server_stop = literal_stops.matched
+        done_stream_chunk = _literal_stop_terminal_chunk(last_stream_chunk, server_stop)
+        backend_detail = _output_from_stream_chunk(done_stream_chunk, raw_text)
         finish_reason = _finish_reason_for_output(backend_detail, finish_reason, server_stop=server_stop)
         usage = _usage(
             engine,
@@ -9888,7 +9917,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
             )
-            async for token in _iterate_with_request_control(
+            literal_stops = _LiteralStopStream(request.stop)
+            async for token in _iterate_with_literal_stops(
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
@@ -9906,6 +9936,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 ),
                 control,
+                literal_stops,
             ):
                 stream_chunk = _coerce_generation_stream_chunk(token)
                 last_stream_chunk = stream_chunk
@@ -10257,17 +10288,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
 
-        raw_text = "".join(full_text)
+        raw_text = literal_stops.raw_text if literal_stops.stops else "".join(full_text)
         text, finish_reason = _apply_stop(raw_text, request.stop)
-        server_stop = text != raw_text
-        backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
-        done_stream_chunk = None if server_stop else last_stream_chunk
-        if server_stop:
-            # Stop strings can split across yielded chunks; current streaming keeps
-            # transport simple and reports the stop after generation completes.
-            finish_reason = "stop"
-        else:
-            finish_reason = _finish_reason_for_output(backend_detail, finish_reason)
+        server_stop = literal_stops.matched
+        done_stream_chunk = _literal_stop_terminal_chunk(last_stream_chunk, server_stop)
+        backend_detail = _output_from_stream_chunk(done_stream_chunk, raw_text)
+        finish_reason = _finish_reason_for_output(backend_detail, finish_reason, server_stop=server_stop)
         usage = _usage(
             engine,
             (generation_prompt,),
@@ -12896,7 +12922,7 @@ def _log_pretty_startup_summary(
     snapshot = _live_loop_snapshot(engine) or {}
     runner = _nested_mapping(snapshot, "runner")
     pool = _nested_mapping(runner, "kv_pool")
-    context = estimate.get("requested_context_tokens")
+    context = estimate.get("requested_context_tokens") or config.max_context_tokens
     model_max = estimate.get("model_max_context_tokens")
     storage = estimate.get("kv_storage_dtype") or config.kv_storage
     scale = estimate.get("kv_scale_dtype") or config.kv_scale_dtype
@@ -14990,8 +15016,13 @@ def _speculative_mtp_route_for_request(
         supports_sampled_speculative_mtp(sampling)
         and _engine_supports_sampled_mtp(engine)
     ):
-        # Only an artifact whose evidence admits the sampled route keeps typed
-        # intent for a request the argmax route cannot serve.
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                400,
+                "requested speculative_mtp does not support these sampling controls: " + ", ".join(blockers),
+                code="unsupported_parameter",
+                param="speculative_mtp",
+            )
         return _SPECULATIVE_MTP_K0_ROUTE
     if not blockers and not supports_speculative_mtp_sampling(sampling):
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
@@ -15319,8 +15350,11 @@ def _generation_route_for_request(
         prompts=prompts,
     )
     if plan is None:
+        if route == _SPECULATIVE_MTP_BATCH_ROUTE and _request_speculative_mtp_enabled(request) is not True:
+            return route, {"request_mode": "automatic"}
         return route, None
     explicit_requested = _request_speculative_mtp_enabled(request) is True
+    plan["request_mode"] = "explicit" if explicit_requested else "automatic"
     plan_reason = str(plan.get("reason") or "")
     if (
         explicit_requested
@@ -15364,6 +15398,14 @@ def _generation_route_for_request(
         plan["screening"] = True
         plan["qualification"] = _MTP_SCREENING_QUALIFICATION
         plan["unqualified_reason"] = plan_reason
+    if explicit_requested and not plan.get("admitted") and not defer_physical_group and screening_payload is None:
+        raise OpenAIHTTPError(
+            501,
+            f"requested speculative_mtp cannot execute: {plan_reason}",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative_mtp",
+        )
     static_payload = plan.get("static_eligibility")
     static_eligible = bool(
         isinstance(static_payload, Mapping)
@@ -16675,6 +16717,103 @@ def _message_content_text(content: str | list[Any] | None, message_index: int) -
     return "".join(text_parts)
 
 
+class _LiteralStopStream:
+    """Hold possible stop prefixes before publishing any response text.
+
+    Keep original chunk boundaries where possible, and drain the backend after
+    a match so its terminal IDs, usage and speculative attribution survive.
+    """
+
+    def __init__(self, stop: str | list[str] | None) -> None:
+        self.stops = tuple(s for s in _stop_strings(stop) if s)
+        self.matched = False
+        self.raw_parts: list[str] = []
+        self.pending: list[GenerationStreamChunk] = []
+
+    @property
+    def raw_text(self) -> str:
+        return "".join(self.raw_parts)
+
+    def feed(self, chunk: GenerationStreamChunk) -> list[GenerationStreamChunk]:
+        self.raw_parts.append(chunk.text)
+        if self.matched or not chunk.text:
+            return [replace(chunk, text="", token_logprobs=())]
+        self.pending.append(chunk)
+        text = "".join(item.text for item in self.pending)
+        positions = [text.find(stop) for stop in self.stops if stop in text]
+        if positions:
+            self.matched = True
+            result = self._drain(min(positions), partial=True)
+            self.pending.clear()
+            return result
+        held = max((n for stop in self.stops
+                    for n in range(1, min(len(stop), len(text) + 1))
+                    if text.endswith(stop[:n])), default=0)
+        return self._drain(len(text) - held, partial=False)
+
+    def _drain(self, count: int, *, partial: bool) -> list[GenerationStreamChunk]:
+        result = []
+        while self.pending and count > 0:
+            chunk = self.pending[0]
+            if len(chunk.text) > count:
+                if partial:
+                    # A stop inside a token has no probability for the visible
+                    # fragment. Preserve its ID, but report that logprob omitted.
+                    records = []
+                    left = count
+                    for token in chunk.token_logprobs:
+                        if left <= 0:
+                            break
+                        if len(token.token_text) <= left:
+                            records.append(token)
+                        else:
+                            records.append(replace(token, token_text=token.token_text[:left],
+                                                   logprob=None, top_logprobs=()))
+                        left -= len(token.token_text)
+                    result.append(replace(chunk, text=chunk.text[:count], token_logprobs=tuple(records)))
+                break
+            self.pending.pop(0)
+            result.append(chunk)
+            count -= len(chunk.text)
+        return result
+
+    def finish(self) -> list[GenerationStreamChunk]:
+        result, self.pending = self.pending, []
+        return result
+
+
+async def _iterate_with_literal_stops(iterator, control, stops):
+    source = _iterate_with_request_control(iterator, control)
+    last = None
+    try:
+        async for token in source:
+            if not stops.stops:
+                yield token
+                continue
+            last = _coerce_generation_stream_chunk(token)
+            for chunk in stops.feed(last):
+                yield chunk
+        if stops.stops:
+            for chunk in stops.finish():
+                yield chunk
+            if last is not None:
+                # Buffered text can outlive the backend's terminal chunk. The
+                # final metadata must still come from that terminal chunk.
+                yield replace(last, text="", token_logprobs=())
+    finally:
+        await source.aclose()
+
+
+def _literal_stop_terminal_chunk(chunk, matched):
+    if chunk is None or not matched:
+        return chunk
+    finish = chunk.finish_details or FinishDetails(reason="stop")
+    return replace(chunk, finish_details=replace(
+        finish, reason="stop", length_limit=None, eos_token_id=None,
+        continuation_eligible=False,
+    ))
+
+
 def _apply_stop(text: str, stop: str | list[str] | None) -> tuple[str, str]:
     stops = _stop_strings(stop)
     if not stops:
@@ -17089,6 +17228,27 @@ def _stop_strings(stop: str | list[str] | None) -> tuple[str, ...]:
     return tuple(str(item) for item in stop)
 
 
+def _request_eos_token_id(
+    request: CompletionRequest | ChatCompletionRequest,
+    engine: Any,
+) -> int | None:
+    """Resolve the model EOS before validating a minimum-output request."""
+    if request.eos_token_id is not None:
+        return int(request.eos_token_id)
+    if not request.min_tokens:
+        return None
+    target = _model_chat_protocol_target(engine, initialize=True)
+    eos = getattr(getattr(target, "tokenizer", None), "eos_token_id", None)
+    if eos is None:
+        raise OpenAIHTTPError(
+            400,
+            "min_tokens requires eos_token_id when the model tokenizer does not declare one",
+            code="invalid_request",
+            param="min_tokens",
+        )
+    return int(eos)
+
+
 def _stop_tokens_from_stop(
     stop: str | list[str] | None,
     engine: Any,
@@ -17102,15 +17262,20 @@ def _stop_tokens_from_stop(
     token_ids: list[int] = []
     sequences: list[tuple[int, ...]] = []
     for item in stops:
-        try:
-            ids = tuple(int(token) for token in tokenizer(item))
-        except (KeyError, NotImplementedError, TypeError, ValueError):
-            continue
-        if len(ids) == 1:
-            if ids[0] not in token_ids:
-                token_ids.append(ids[0])
-        elif len(ids) > 1 and ids not in sequences:
-            sequences.append(ids)
+        # BPE often merges the preceding whitespace into the first word.
+        # Keep the standalone spelling and the common contextual spellings;
+        # arbitrary token-boundary substrings still use response post-trimming.
+        spellings = (item,) if item[0].isspace() else (item, " " + item, "\n" + item)
+        for spelling in spellings:
+            try:
+                ids = tuple(int(token) for token in tokenizer(spelling))
+            except (KeyError, NotImplementedError, TypeError, ValueError):
+                continue
+            if len(ids) == 1:
+                if ids[0] not in token_ids:
+                    token_ids.append(ids[0])
+            elif len(ids) > 1 and ids not in sequences:
+                sequences.append(ids)
     return tuple(token_ids), tuple(sequences)
 
 
@@ -17634,10 +17799,20 @@ def _mtp_accepted_rejected_counts(
     found = False
     for detail in (details or ()):
         timing, _, timing_owner = _mtp_telemetry_parts(detail)
-        if timing is None or not timing_owner:
+        if timing is not None and not timing_owner:
             continue
-        row_accepted = timing.get("mtp_accepted_draft_tokens")
-        row_generated = timing.get("mtp_generated_draft_tokens")
+        row_accepted = None if timing is None else timing.get("mtp_accepted_draft_tokens")
+        row_generated = None if timing is None else timing.get("mtp_generated_draft_tokens")
+        if row_accepted is None and row_generated is None:
+            telemetry = getattr(detail, "telemetry", None)
+            diagnostics = (
+                telemetry.get("diagnostics")
+                if isinstance(telemetry, Mapping)
+                else getattr(telemetry, "diagnostics", None)
+            )
+            if isinstance(diagnostics, Mapping) and diagnostics.get("speculative_provider"):
+                row_accepted = diagnostics.get("accepted_draft_tokens", 0)
+                row_generated = diagnostics.get("proposed_draft_tokens", 0)
         if row_accepted is None and row_generated is None:
             continue
         found = True
@@ -17869,6 +18044,46 @@ def _mtp_response_summary(
             generated += _mtp_counted_int(block.get("generated_draft_tokens"))
             cycles += _mtp_counted_int(block.get("cycles"))
             continue
+        timing_generated = (
+            None if timing is None else timing.get("mtp_generated_draft_tokens")
+        )
+        timing_accepted = (
+            None if timing is None else timing.get("mtp_accepted_draft_tokens")
+        )
+        if timing_generated is None and timing_accepted is None:
+            # Gemma's assistant-head provider predates the normalized
+            # ``specdec2_mtp2`` block and publishes its counts directly in
+            # provider diagnostics. Keep the response extension truthful for
+            # that route instead of returning draft_tokens=0 while usage has
+            # already reported the same counts.
+            telemetry = getattr(detail, "telemetry", None)
+            diagnostics = (
+                telemetry.get("diagnostics")
+                if isinstance(telemetry, Mapping)
+                else getattr(telemetry, "diagnostics", None)
+            )
+            if (
+                isinstance(diagnostics, Mapping)
+                and diagnostics.get("speculative_provider")
+            ):
+                provider_cycles = diagnostics.get("cycles")
+                if isinstance(provider_cycles, Sequence) and not isinstance(
+                    provider_cycles, (str, bytes, bytearray)
+                ):
+                    provider_cycle_count = len(provider_cycles)
+                else:
+                    provider_cycle_count = _mtp_counted_int(
+                        diagnostics.get("cycle_count")
+                    )
+                accepted += _mtp_counted_int(
+                    diagnostics.get("accepted_draft_tokens")
+                )
+                generated += _mtp_counted_int(
+                    diagnostics.get("proposed_draft_tokens")
+                )
+                cycles += provider_cycle_count
+                used = True
+                continue
         if timing is None or not timing_owner:
             continue
         row_accepted = timing.get("mtp_accepted_draft_tokens")
@@ -17997,6 +18212,18 @@ def _mtp_response_summary(
             primary_fallback_reason = sorted(
                 fallback_reason_counts.items(), key=lambda item: (-item[1], item[0])
             )[0][0]
+        if (
+            primary_fallback_reason == "no_provider"
+            and used
+            and provider_readiness == "ready"
+            and not plan_ar_only
+            and first_fallback_position is None
+        ):
+            # ``no_provider`` can describe the target-root/K0 bookkeeping that
+            # surrounds an otherwise engaged provider. It is not a fallback
+            # reason when the provider was ready and no output position left
+            # speculative execution. Do not publish it beside ``used: true``.
+            primary_fallback_reason = None
         if primary_fallback_reason is not None:
             summary["fallback_reason"] = primary_fallback_reason
         # ``None`` means speculation covered every token after the prompt root;
@@ -19953,7 +20180,11 @@ class _StreamTokenAccounting:
 class _StreamTimingTracker:
     started_at: float
     first_token_at: float | None = None
+    first_chunk_tokens: int | None = None
+    last_token_at: float | None = None
+    last_chunk_tokens: int = 0
     observed_tokens: int = 0
+    buffered: bool = False
 
     @classmethod
     def start(cls) -> "_StreamTimingTracker":
@@ -19972,6 +20203,10 @@ class _StreamTimingTracker:
         if token_event:
             if self.first_token_at is None:
                 self.first_token_at = now
+                self.first_chunk_tokens = token_total if token_total > 0 else None
+            if token_total > self.last_chunk_tokens:
+                self.last_token_at = now
+                self.last_chunk_tokens = token_total
         if token_total > self.observed_tokens:
             self.observed_tokens = token_total
         return self.snapshot(now=now, event=event)
@@ -19983,12 +20218,28 @@ class _StreamTimingTracker:
             return payload
         ttft_s = max(0.0, self.first_token_at - self.started_at)
         payload["ttft_ms"] = round(ttft_s * 1000.0, 3)
-        if str(event) in {"done", "usage"}:
-            decode_elapsed_s = max(0.0, now - self.first_token_at)
+        if str(event) in {"done", "usage"} and not self.buffered and self.last_token_at is not None:
+            # The interval ends at the last token-bearing event, not at the
+            # final SSE flush. Tokens in the first chunk precede this interval.
+            decode_elapsed_s = max(0.0, self.last_token_at - self.first_token_at)
             payload["decode_elapsed_ms"] = round(decode_elapsed_s * 1000.0, 3)
-            if self.observed_tokens > 0:
-                payload["decode_tokens_per_second"] = round(self.observed_tokens / max(decode_elapsed_s, 1e-9), 3)
+            if self.first_chunk_tokens is not None:
+                decode_tokens = self.last_chunk_tokens - self.first_chunk_tokens
+                if decode_tokens > 0 and decode_elapsed_s > 0:
+                    payload["decode_tokens_per_second"] = round(decode_tokens / decode_elapsed_s, 3)
         return payload
+
+
+def _observe_stream_source(
+    tracker: "_StreamTimingSource", chunk: GenerationStreamChunk | None,
+) -> None:
+    """A completed first backend chunk is buffered, even if split into channels."""
+    if not isinstance(tracker, _StreamTimingTracker) or tracker.first_token_at is not None or chunk is None:
+        return
+    if chunk.finish_details is not None or (
+        chunk.telemetry is not None and chunk.telemetry.decode_state.phase == "done"
+    ):
+        tracker.buffered = True
 
 
 _StreamTimingSource = float | _StreamTimingTracker | None
@@ -20186,6 +20437,7 @@ def _completion_stream_delta(
     routing: Mapping[str, Any] | None = None,
     phase: str = "answer",
 ) -> str:
+    _observe_stream_source(stream_started_at, stream_chunk)
     choice = {
         "text": text,
         "index": int(index),
@@ -20375,6 +20627,8 @@ def _completion_stream(
     done_phase: str = "done",
     scheduler_token_chunks: Sequence[Mapping[str, Any]] | None = None,
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     details_by_index = (
         {index: detail for index, detail in enumerate(details)}
@@ -20754,6 +21008,7 @@ def _chat_stream_delta(
     routing: Mapping[str, Any] | None = None,
     phase: str | None = None,
 ) -> str:
+    _observe_stream_source(stream_started_at, stream_chunk)
     choice: dict[str, Any] = {"index": int(index), "delta": {field: text}, "finish_reason": None}
     if logprobs is not None:
         choice["logprobs"] = dict(logprobs)
@@ -20798,6 +21053,7 @@ def _chat_stream_tool_call(
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
 ) -> str:
+    _observe_stream_source(stream_started_at, stream_chunk)
     function: dict[str, Any] = {"arguments": call.arguments if argument_chunk is None else str(argument_chunk)}
     if include_name:
         function["name"] = call.name
@@ -20867,6 +21123,8 @@ def _chat_stream_parsed(
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     split = _split_reasoning(
         parsed.text,
         initially_open=parsed.reasoning_initially_open,
@@ -21048,6 +21306,8 @@ def _chat_stream_scheduler_tool_call_chunks(
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     last_stream_chunk: GenerationStreamChunk | None = None
     emitted_by_tool: set[int] = set()
     for fragment in fragments:
@@ -21122,6 +21382,8 @@ def _chat_stream_scheduler_text_chunks(
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     splitter = _ReasoningSplitter(initially_open=reasoning_initially_open)
     last_stream_chunk: GenerationStreamChunk | None = None
     for raw_chunk in scheduler_chunks:

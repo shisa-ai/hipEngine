@@ -8223,19 +8223,30 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         decode_scratch,
         linear_state_rows: tuple[object, object],
+        state_capacity: int,
+        state_indices: Sequence[int],
         stream: int = 0,
     ) -> None:
-        """Run one MoE C2 linear layer row-exact over transaction-local state."""
+        """Run MoE C2 rows using the resident slot map for initial state."""
 
         rows = int(rows)
         segments = int(getattr(scratch, "gdn_active_segments", 1))
         if rows != 6 or segments != 2:
             raise ValueError("MoE C2 exact linear owner requires two R3 segments")
+        state_capacity = int(state_capacity)
+        state_indices = tuple(int(index) for index in state_indices)
+        if (
+            state_capacity < segments
+            or len(state_indices) != segments
+            or any(index < 0 or index >= state_capacity for index in state_indices)
+        ):
+            raise ValueError("MoE C2 exact linear state indices exceed state capacity")
         conv_state = decode_scratch.layer_conv_states[layer_id]
         recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
         if conv_state is None or recurrent_state is None:
             raise RuntimeError("MoE C2 exact linear owner lost packed state")
-        state_capacity = int(getattr(scratch, "gdn_segment_capacity", segments))
+        # The state slab may have more resident slots than this packed group.
+        # Its stride and indices must not come from the verifier workspace.
         conv_nbytes, conv_remainder = divmod(int(conv_state.nbytes), state_capacity)
         recurrent_nbytes, recurrent_remainder = divmod(
             int(recurrent_state.nbytes), state_capacity
@@ -8293,7 +8304,7 @@ class Qwen35GGUFFullStackRunner:
             row_start = segment * segment_rows
             qwen35_linear_attn_chain_conv_decode_bf16_tloop(
                 scratch.linear_qkv.ptr + row_start * qkv_row_nbytes,
-                conv_state.ptr + segment * conv_nbytes,
+                conv_state.ptr + state_indices[segment] * conv_nbytes,
                 conv_rows.ptr + row_start * conv_nbytes,
                 layer.weight("ssm_conv1d").allocation().tensor.ptr,
                 scratch.conv_out.ptr + row_start * conv_out_row_nbytes,
@@ -12999,27 +13010,43 @@ def _gguf_int8_bf16_full_attention_layer_indices(
     return tuple(range(min(max(0, int(prefix)), int(full_attention_layers))))
 
 
+# The declared standard packed decode width: the widest shared-slot AR physical
+# width the backend advertises by default, and the width a resident session uses
+# when no INT8 layer constraint applies. A BF16 stack takes the standard batch
+# leaf on every full-attention layer, so one packed batch describes the whole
+# group at any advertised width.
+_GGUF_STANDARD_PACKED_DECODE_ROWS = 8
+
+
 def _gguf_packed_decode_max_rows(
     *,
+    kv_storage_dtype: DType,
     direct_rows: int,
     retained_decode_kernel: object | None,
     bf16_full_attention_layer_indices: tuple[int, ...],
 ) -> int:
-    """Resolve the packed decode width a resident INT8 session may use.
+    """Resolve the packed decode width one resident session may use.
 
-    The direct INT8 batch leaf reads retained INT8 planes on every
-    full-attention layer it covers. A hybrid layout keeps part of that stack in
-    BF16, and a BF16 layer has no retained planes, so it takes the standard
-    batch leaf instead. One packed batch cannot run both leaves, and the packed
-    execution manifest names a single full-attention route, so a hybrid layout
-    is capped at one row. The session then refuses the packed step, which
-    ``step_batch_native`` already reports as "no packed result" so the caller
-    serializes the rows.
+    Only a direct INT8 KV stack is capped, because only it can mix two
+    full-attention leaves in one packed batch. The direct INT8 batch leaf reads
+    retained INT8 planes on every full-attention layer it covers. A hybrid
+    layout keeps part of that stack in BF16, and a BF16 layer has no retained
+    planes, so it takes the standard batch leaf instead. One packed batch
+    cannot run both leaves, and the packed execution manifest names a single
+    full-attention route, so a hybrid layout is capped at one row. The session
+    then refuses the packed step, which ``step_batch_native`` already reports as
+    "no packed result" so the caller serializes the rows.
 
     Without the cap the batch mixes the two leaves and the consistency check in
     the packed decode raises instead of falling back.
+
+    A BF16 stack has no retained INT8 planes on any layer, so it never mixes
+    leaves and keeps the declared standard width. Capping it here would serialize
+    the packed AR decode of every BF16 server one row per step.
     """
 
+    if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        return max(1, int(_GGUF_STANDARD_PACKED_DECODE_ROWS))
     if not callable(retained_decode_kernel):
         return 1
     if bf16_full_attention_layer_indices:
@@ -16662,7 +16689,9 @@ class Qwen35GGUFResidentSession:
     _host_token_embedding_cache: dict[int, np.ndarray] = field(default_factory=dict, init=False)
     host_token_embedding_enabled: bool = field(default=False, init=False)
     host_token_embedding_reason: str | None = field(default=None, init=False)
-    packed_decode_max_rows: int = field(default=8, init=False)
+    packed_decode_max_rows: int = field(
+        default=_GGUF_STANDARD_PACKED_DECODE_ROWS, init=False
+    )
     _retained_decode_kernel: object | None = field(default=None, init=False, repr=False)
     small_weight_arena_enabled: bool = field(default=False, init=False)
     small_weight_arena_reason: str = field(default="disabled", init=False)
@@ -16987,7 +17016,7 @@ class Qwen35GGUFResidentSession:
             self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
             and _admitted_no_mirror_int8_capability(self.kv_capability)
         )
-        self.packed_decode_max_rows = 8
+        self.packed_decode_max_rows = _GGUF_STANDARD_PACKED_DECODE_ROWS
         self._retained_decode_kernel = None
         direct_rows = 1
         # Allocation follows the admitted predicate; route resolution follows the
@@ -17054,8 +17083,10 @@ class Qwen35GGUFResidentSession:
         # so a hybrid layout is capped at one row. ``step_batch_native`` already
         # treats its refusal as "no packed result" and the caller serializes.
         # ``HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none`` clears the cap by
-        # making the layout uniform.
+        # making the layout uniform. A BF16 stack has no retained planes on any
+        # layer, so it keeps the declared standard width.
         self.packed_decode_max_rows = _gguf_packed_decode_max_rows(
+            kv_storage_dtype=self.kv_storage_dtype,
             direct_rows=direct_rows,
             retained_decode_kernel=self._retained_decode_kernel,
             bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
@@ -22796,6 +22827,8 @@ class Qwen35GGUFResidentSession:
                             rows=rows,
                             decode_scratch=linear_decode_scratch,
                             linear_state_rows=linear_state_rows,
+                            state_capacity=int(linear_state_owner.slot_count),
+                            state_indices=layout.state_indices,
                             stream=stream,
                         )
                     else:

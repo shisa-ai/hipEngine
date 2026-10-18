@@ -1,0 +1,2653 @@
+{
+  "schema": 1,
+  "created_at": "2026-10-17T19:02:34.114838+00:00",
+  "command": [
+    "scripts/mtp_http_replay.py",
+    "--input",
+    "benchmarks/results/2026-10-17-gemma-mtp-http-controls.json",
+    "--output",
+    "/home/lhl/.local/state/hipengine/mtp-followup-20261017/gemma-stream-timing.json",
+    "--labels",
+    "stream_mtp,stream_speculative_true,stream_logprobs_ar,stream_thinking_hard_ar,stream_logprobs_mtp,stream_thinking_hard_mtp"
+  ],
+  "host": "gfx1151",
+  "git_head": "c99305c1ca0c938ca895fbdfe2627bbaa7f670a8",
+  "source_sha256": "1c54ab5b3492085ee9f44ed9d17c7a6b6e57c9ad5678f4665d03879de97e756c",
+  "ready": {
+    "object": "hipengine.readiness",
+    "status": "ready",
+    "ready": true,
+    "diagnostics": [],
+    "engine_service": null,
+    "model": {
+      "id": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "backend": "hip_gfx1151",
+      "quant": "gguf_q4_k_m",
+      "loaded": true,
+      "loaded_model_count": 1,
+      "kv_capability": {
+        "schema_version": 1,
+        "status": "unavailable",
+        "runtime_action": "not_applicable",
+        "promotion_eligible": false,
+        "diagnostic_override": false,
+        "requested": null,
+        "effective_kv_storage": null,
+        "artifact": null,
+        "evidence": null,
+        "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+      }
+    },
+    "startup": {
+      "eager_load": true,
+      "warmup_complete": true,
+      "last_timings_s": {
+        "engine_create_s": 0.000659,
+        "resident_prepare_s": 0.07917,
+        "warmup_s": 36.750939,
+        "scratch_probe_s": 2e-05,
+        "chat_smoke_s": null,
+        "mtp_smoke_s": null,
+        "startup_total_s": 37.758288
+      },
+      "checks": {
+        "raw_warmup": {
+          "status": "passed",
+          "max_tokens": 1
+        },
+        "scratch_probe": {
+          "enabled": false,
+          "status": "disabled"
+        },
+        "chat_smoke": {
+          "enabled": false,
+          "status": "disabled"
+        },
+        "mtp_smoke": {
+          "enabled": false,
+          "status": "disabled"
+        }
+      },
+      "memory": {
+        "startup_begin": {
+          "free_bytes": 128844787712,
+          "total_bytes": 128849018880,
+          "used_bytes": 4231168,
+          "free_gib": 119.996059,
+          "used_gib": 0.003941
+        },
+        "after_resident_prepare": {
+          "free_bytes": 128844787712,
+          "total_bytes": 128849018880,
+          "used_bytes": 4231168,
+          "free_gib": 119.996059,
+          "used_gib": 0.003941
+        },
+        "after_raw_warmup": {
+          "free_bytes": 88545484800,
+          "total_bytes": 128849018880,
+          "used_bytes": 40303534080,
+          "free_gib": 82.464409,
+          "used_gib": 37.535591
+        },
+        "after_scratch_probe": {
+          "free_bytes": 88545484800,
+          "total_bytes": 128849018880,
+          "used_bytes": 40303534080,
+          "free_gib": 82.464409,
+          "used_gib": 37.535591
+        },
+        "guard": {
+          "free_bytes": 88545484800,
+          "total_bytes": 128849018880,
+          "used_bytes": 40303534080,
+          "free_gib": 82.464409,
+          "used_gib": 37.535591
+        }
+      },
+      "error": null
+    },
+    "context": {
+      "configured_max_context_tokens": 32768,
+      "effective_max_context_tokens": 32768,
+      "chat_default_max_tokens": 4096
+    },
+    "kv_capacity": {
+      "storage": "bf16",
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "estimate": null,
+      "pool": {
+        "current_bytes": 0.0,
+        "high_water_observed_bytes": 0.0,
+        "current_pages": 0.0,
+        "high_water_observed_pages": 0.0,
+        "grow_events": 0.0,
+        "grow_failures": 0.0,
+        "shrink_events": 0.0,
+        "free_pages": 0.0,
+        "refcounted_pages": 0.0,
+        "pinned_pages": 0.0,
+        "max_pages": 0.0,
+        "budget_bytes": 0.0,
+        "retired_pages": 0.0,
+        "retired_bytes": 0.0
+      }
+    },
+    "prefix_cache": {
+      "mode": "off",
+      "block_size_tokens": 256,
+      "snapshot_entries": 0,
+      "snapshot_limit": 0,
+      "retained_snapshot_entries": 0,
+      "snapshot_bytes": 0,
+      "retained_kv_pages": 0,
+      "retained_kv_bytes": 0,
+      "resident_bytes": 0,
+      "resident_limit_bytes": 0
+    },
+    "dms": {
+      "requested_metadata_path": null,
+      "policy": null
+    },
+    "graph_cache": {
+      "entries": 0.0,
+      "hits": 0.0,
+      "misses": 0.0,
+      "replay_hit_rate": 0.0
+    },
+    "device": {
+      "backend": "hip_gfx1151",
+      "hip_visible_devices": null,
+      "rocr_visible_devices": null,
+      "visible_devices": [],
+      "selected_visible_device": null,
+      "selection_source": null
+    },
+    "queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 4,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": false,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 0.0
+    },
+    "sessions": {
+      "resident_context": true,
+      "active": 0,
+      "pending_creations": 0,
+      "max_active": null,
+      "storage": "app_local_transcript",
+      "resident_state_reuse": false,
+      "total_messages": 0,
+      "continuations": {
+        "active": 0,
+        "ttl_seconds": 900
+      }
+    }
+  },
+  "rows": [
+    {
+      "label": "stream_mtp",
+      "request": {
+        "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code."
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "speculative_mtp": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "wall_seconds": 4.698312045948114,
+      "response": {
+        "sse_raw": "data: {\"id\":\"chatcmpl-547e03185a37443c84cee19b4f607d81\",\"object\":\"chat.completion.chunk\",\"created\":1792263754,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"hipengine\":{\"metadata_version\":1,\"event\":\"role\",\"timing\":{\"elapsed_ms\":0.861},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-547e03185a37443c84cee19b4f607d81\",\"object\":\"chat.completion.chunk\",\"created\":1792263754,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"```python\\ndef merge_intervals(intervals):\\n    \\\"\\\"\\\"Merges overlapping closed integer intervals.\\\"\\\"\\\"\\n    if not intervals:\\n        return []\\n\\n    # Sort intervals by start time\\n    intervals.sort(key=lambda x: x[0])\\n    \\n    merged = []\\n    for current in intervals:\\n        # If merged is empty or no overlap with the last interval\\n        if not merged or current[0] > merged[-1][1]:\\n            merged.append(list(current))\\n        else:\\n            # There is an overlap, merge by updating the end time\\n            merged[-1][1] = max(merged[-1][1], current[1])\\n            \\n    return [tuple(i) for i in merged]\\n\\nif __name__ == \\\"__main__\\\":\\n    import pytest\\n\\n    def test_merge_intervals():\\n        assert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\\n        assert merge_intervals([(1, 4), (4, 5\"},\"finish_reason\":null,\"hipengine\":{\"phase\":\"answer\",\"decode_state\":{\"row_index\":0,\"step_index\":62,\"prompt_tokens\":43,\"generated_tokens\":256,\"phase\":\"answer\",\"continuation_eligible\":false,\"sampler_mode\":\"greedy_speculative_mtp\",\"execution_path\":\"gemma4_mtp_batched_verify\"},\"event\":\"generation_complete\",\"diagnostics\":{\"speculative_provider\":\"gemma4_mtp\",\"candidate_budget\":4,\"proposed_draft_tokens\":244,\"accepted_draft_tokens\":193,\"draft_acceptance\":0.7909836065573771,\"tokens_per_cycle\":4.129032258064516,\"cycles\":[{\"start_position\":43,\"candidates\":[6719,107,2063,22223],\"accepted\":4,\"committed\":5},{\"start_position\":48,\"candidates\":[95829,236769,95829,1473],\"accepted\":4,\"committed\":5},{\"start_position\":53,\"candidates\":[140,12234,107,140],\"accepted\":2,\"committed\":3},{\"start_position\":56,\"candidates\":[3624,48490,6535,11995],\"accepted\":4,\"committed\":5},{\"start_position\":61,\"candidates\":[29738,107,140,584],\"accepted\":4,\"committed\":5},{\"start_position\":66,\"candidates\":[20312,236787,107,144],\"accepted\":4,\"committed\":5},{\"start_position\":71,\"candidates\":[2977,108,140,95829],\"accepted\":3,\"committed\":4},{\"start_position\":75,\"candidates\":[36702,20312,684,1502],\"accepted\":4,\"committed\":5},{\"start_position\":80,\"candidates\":[107,140,95829,236761],\"accepted\":4,\"committed\":5},{\"start_position\":85,\"candidates\":[236769,2478,236784,3485],\"accepted\":4,\"committed\":5},{\"start_position\":90,\"candidates\":[236787,1123,236840,236770],\"accepted\":3,\"committed\":4},{\"start_position\":94,\"candidates\":[2812,107,140,107],\"accepted\":4,\"committed\":5},{\"start_position\":99,\"candidates\":[35516,578,2977,107],\"accepted\":4,\"committed\":5},{\"start_position\":104,\"candidates\":[1708,8448,528,20312],\"accepted\":1,\"committed\":2},{\"start_position\":106,\"candidates\":[528,20312,236787,107],\"accepted\":4,\"committed\":5},{\"start_position\":111,\"candidates\":[584,711,34846,653],\"accepted\":0,\"committed\":1},{\"start_position\":112,\"candidates\":[1637,506,34846,1694],\"accepted\":1,\"committed\":2},{\"start_position\":114,\"candidates\":[563,7738,653,506],\"accepted\":3,\"committed\":4},{\"start_position\":118,\"candidates\":[28981,236764,17366,1873],\"accepted\":1,\"committed\":2},{\"start_position\":120,\"candidates\":[506,1774,8448,236764],\"accepted\":3,\"committed\":4},{\"start_position\":124,\"candidates\":[144,584,711,34846],\"accepted\":4,\"committed\":5},{\"start_position\":129,\"candidates\":[1873,236840,236771,236842],\"accepted\":4,\"committed\":5},{\"start_position\":134,\"candidates\":[34846,17825,236770,2585],\"accepted\":4,\"committed\":5},{\"start_position\":139,\"candidates\":[9414,107,148,35516],\"accepted\":4,\"committed\":5},{\"start_position\":144,\"candidates\":[3770,236769,4002,236768],\"accepted\":2,\"committed\":3},{\"start_position\":147,\"candidates\":[236769,4002,1223,107],\"accepted\":4,\"committed\":5},{\"start_position\":152,\"candidates\":[4454,236787,107,148],\"accepted\":4,\"committed\":5},{\"start_position\":157,\"candidates\":[7178,35680,1765,236787],\"accepted\":0,\"committed\":1},{\"start_position\":158,\"candidates\":[563,614,28981,236764],\"accepted\":4,\"committed\":5},{\"start_position\":163,\"candidates\":[506,1873,8448,607],\"accepted\":0,\"committed\":1},{\"start_position\":164,\"candidates\":[31652,506,1345,529],\"accepted\":3,\"committed\":4},{\"start_position\":168,\"candidates\":[107,148,35516,17825],\"accepted\":4,\"committed\":5},{\"start_position\":173,\"candidates\":[2585,236770,236842,578],\"accepted\":4,\"committed\":5},{\"start_position\":178,\"candidates\":[236769,35516,17825,236770],\"accepted\":4,\"committed\":5},{\"start_position\":183,\"candidates\":[236770,1604,1873,236840],\"accepted\":4,\"committed\":5},{\"start_position\":188,\"candidates\":[2812,107,148,107],\"accepted\":4,\"committed\":5},{\"start_position\":193,\"candidates\":[2060,34846,108,584],\"accepted\":1,\"committed\":2},{\"start_position\":195,\"candidates\":[1582,573,1159,2234],\"accepted\":0,\"committed\":1},{\"start_position\":196,\"candidates\":[236769,236747,236768,573],\"accepted\":4,\"committed\":5},{\"start_position\":201,\"candidates\":[528,34846,236842,108],\"accepted\":4,\"committed\":5},{\"start_position\":206,\"candidates\":[5062,1201,1269,1251],\"accepted\":4,\"committed\":5},{\"start_position\":211,\"candidates\":[3241,37887,107,140],\"accepted\":4,\"committed\":5},{\"start_position\":216,\"candidates\":[118877,107,140,107],\"accepted\":1,\"committed\":2},{\"start_position\":218,\"candidates\":[140,2063,1594,236779],\"accepted\":4,\"committed\":5},{\"start_position\":223,\"candidates\":[236779,95829,6141,107],\"accepted\":4,\"committed\":5},{\"start_position\":228,\"candidates\":[10640,22223,236779,95829],\"accepted\":4,\"committed\":5},{\"start_position\":233,\"candidates\":[236770,236764,236743,236778],\"accepted\":3,\"committed\":4},{\"start_position\":237,\"candidates\":[779,568,236778,236764],\"accepted\":4,\"committed\":5},{\"start_position\":242,\"candidates\":[236825,44538,1251,21652],\"accepted\":1,\"committed\":2},{\"start_position\":244,\"candidates\":[568,236828,236764,236743],\"accepted\":4,\"committed\":5},{\"start_position\":249,\"candidates\":[236771,44538,1251,21652],\"accepted\":1,\"committed\":2},{\"start_position\":251,\"candidates\":[568,236770,236810,236764],\"accepted\":4,\"committed\":5},{\"start_position\":256,\"candidates\":[236770,236828,44538,1251],\"accepted\":4,\"committed\":5},{\"start_position\":261,\"candidates\":[236770,236764,236743,236800],\"accepted\":3,\"committed\":4},{\"start_position\":265,\"candidates\":[779,568,236778,236764],\"accepted\":2,\"committed\":3},{\"start_position\":268,\"candidates\":[236764,236743,236770,236771],\"accepted\":4,\"committed\":5},{\"start_position\":273,\"candidates\":[568,236770,236810,236764],\"accepted\":4,\"committed\":5},{\"start_position\":278,\"candidates\":[236770,236828,7066,107],\"accepted\":4,\"committed\":5},{\"start_position\":283,\"candidates\":[10640,22223,236779,95829],\"accepted\":4,\"committed\":5},{\"start_position\":288,\"candidates\":[236770,236764,236743,236800],\"accepted\":3,\"committed\":4},{\"start_position\":292,\"candidates\":[779,568,236812,236764],\"accepted\":4,\"committed\":5},{\"start_position\":297,\"candidates\":[],\"accepted\":0,\"committed\":1}],\"target_verify\":\"batched_wmma\",\"draft_rollback\":\"cursor_rewind\",\"accept_rule\":\"min(1, p/q) with residual resampling\",\"draft_law\":\"point_mass\",\"verify_equivalence\":\"production_envelope_of_target_ar_greedy\",\"phase_census\":{\"cycles\":62,\"target_prefill\":{\"calls\":1,\"ms\":138.55894695734605},\"proposal\":{\"calls\":62,\"ms\":726.2549119186588},\"target_verify\":{\"calls\":62,\"rows\":306,\"ms\":2435.797919635661},\"accept\":{\"calls\":62,\"ms\":8.377826132345945}}},\"tokens\":{\"streamed_tokens\":256,\"delta_tokens\":256,\"answer_tokens\":256}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"delta\",\"timing\":{\"elapsed_ms\":4657.115,\"ttft_ms\":4657.115},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-547e03185a37443c84cee19b4f607d81\",\"object\":\"chat.completion.chunk\",\"created\":1792263754,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\",\"finish_details\":{\"reason\":\"length\",\"length_limit\":256,\"sampler_mode\":\"greedy_speculative_mtp\",\"cache_action\":\"append_none\",\"phase\":\"answer\",\"continuation_eligible\":false},\"hipengine\":{\"phase\":\"done\",\"decode_state\":{\"row_index\":0,\"step_index\":62,\"prompt_tokens\":43,\"generated_tokens\":256,\"phase\":\"done\",\"continuation_eligible\":false,\"sampler_mode\":\"greedy_speculative_mtp\",\"execution_path\":\"gemma4_mtp_batched_verify\"},\"event\":\"generation_complete\",\"diagnostics\":{\"speculative_provider\":\"gemma4_mtp\",\"candidate_budget\":4,\"proposed_draft_tokens\":244,\"accepted_draft_tokens\":193,\"draft_acceptance\":0.7909836065573771,\"tokens_per_cycle\":4.129032258064516,\"cycles\":[{\"start_position\":43,\"candidates\":[6719,107,2063,22223],\"accepted\":4,\"committed\":5},{\"start_position\":48,\"candidates\":[95829,236769,95829,1473],\"accepted\":4,\"committed\":5},{\"start_position\":53,\"candidates\":[140,12234,107,140],\"accepted\":2,\"committed\":3},{\"start_position\":56,\"candidates\":[3624,48490,6535,11995],\"accepted\":4,\"committed\":5},{\"start_position\":61,\"candidates\":[29738,107,140,584],\"accepted\":4,\"committed\":5},{\"start_position\":66,\"candidates\":[20312,236787,107,144],\"accepted\":4,\"committed\":5},{\"start_position\":71,\"candidates\":[2977,108,140,95829],\"accepted\":3,\"committed\":4},{\"start_position\":75,\"candidates\":[36702,20312,684,1502],\"accepted\":4,\"committed\":5},{\"start_position\":80,\"candidates\":[107,140,95829,236761],\"accepted\":4,\"committed\":5},{\"start_position\":85,\"candidates\":[236769,2478,236784,3485],\"accepted\":4,\"committed\":5},{\"start_position\":90,\"candidates\":[236787,1123,236840,236770],\"accepted\":3,\"committed\":4},{\"start_position\":94,\"candidates\":[2812,107,140,107],\"accepted\":4,\"committed\":5},{\"start_position\":99,\"candidates\":[35516,578,2977,107],\"accepted\":4,\"committed\":5},{\"start_position\":104,\"candidates\":[1708,8448,528,20312],\"accepted\":1,\"committed\":2},{\"start_position\":106,\"candidates\":[528,20312,236787,107],\"accepted\":4,\"committed\":5},{\"start_position\":111,\"candidates\":[584,711,34846,653],\"accepted\":0,\"committed\":1},{\"start_position\":112,\"candidates\":[1637,506,34846,1694],\"accepted\":1,\"committed\":2},{\"start_position\":114,\"candidates\":[563,7738,653,506],\"accepted\":3,\"committed\":4},{\"start_position\":118,\"candidates\":[28981,236764,17366,1873],\"accepted\":1,\"committed\":2},{\"start_position\":120,\"candidates\":[506,1774,8448,236764],\"accepted\":3,\"committed\":4},{\"start_position\":124,\"candidates\":[144,584,711,34846],\"accepted\":4,\"committed\":5},{\"start_position\":129,\"candidates\":[1873,236840,236771,236842],\"accepted\":4,\"committed\":5},{\"start_position\":134,\"candidates\":[34846,17825,236770,2585],\"accepted\":4,\"committed\":5},{\"start_position\":139,\"candidates\":[9414,107,148,35516],\"accepted\":4,\"committed\":5},{\"start_position\":144,\"candidates\":[3770,236769,4002,236768],\"accepted\":2,\"committed\":3},{\"start_position\":147,\"candidates\":[236769,4002,1223,107],\"accepted\":4,\"committed\":5},{\"start_position\":152,\"candidates\":[4454,236787,107,148],\"accepted\":4,\"committed\":5},{\"start_position\":157,\"candidates\":[7178,35680,1765,236787],\"accepted\":0,\"committed\":1},{\"start_position\":158,\"candidates\":[563,614,28981,236764],\"accepted\":4,\"committed\":5},{\"start_position\":163,\"candidates\":[506,1873,8448,607],\"accepted\":0,\"committed\":1},{\"start_position\":164,\"candidates\":[31652,506,1345,529],\"accepted\":3,\"committed\":4},{\"start_position\":168,\"candidates\":[107,148,35516,17825],\"accepted\":4,\"committed\":5},{\"start_position\":173,\"candidates\":[2585,236770,236842,578],\"accepted\":4,\"committed\":5},{\"start_position\":178,\"candidates\":[236769,35516,17825,236770],\"accepted\":4,\"committed\":5},{\"start_position\":183,\"candidates\":[236770,1604,1873,236840],\"accepted\":4,\"committed\":5},{\"start_position\":188,\"candidates\":[2812,107,148,107],\"accepted\":4,\"committed\":5},{\"start_position\":193,\"candidates\":[2060,34846,108,584],\"accepted\":1,\"committed\":2},{\"start_position\":195,\"candidates\":[1582,573,1159,2234],\"accepted\":0,\"committed\":1},{\"start_position\":196,\"candidates\":[236769,236747,236768,573],\"accepted\":4,\"committed\":5},{\"start_position\":201,\"candidates\":[528,34846,236842,108],\"accepted\":4,\"committed\":5},{\"start_position\":206,\"candidates\":[5062,1201,1269,1251],\"accepted\":4,\"committed\":5},{\"start_position\":211,\"candidates\":[3241,37887,107,140],\"accepted\":4,\"committed\":5},{\"start_position\":216,\"candidates\":[118877,107,140,107],\"accepted\":1,\"committed\":2},{\"start_position\":218,\"candidates\":[140,2063,1594,236779],\"accepted\":4,\"committed\":5},{\"start_position\":223,\"candidates\":[236779,95829,6141,107],\"accepted\":4,\"committed\":5},{\"start_position\":228,\"candidates\":[10640,22223,236779,95829],\"accepted\":4,\"committed\":5},{\"start_position\":233,\"candidates\":[236770,236764,236743,236778],\"accepted\":3,\"committed\":4},{\"start_position\":237,\"candidates\":[779,568,236778,236764],\"accepted\":4,\"committed\":5},{\"start_position\":242,\"candidates\":[236825,44538,1251,21652],\"accepted\":1,\"committed\":2},{\"start_position\":244,\"candidates\":[568,236828,236764,236743],\"accepted\":4,\"committed\":5},{\"start_position\":249,\"candidates\":[236771,44538,1251,21652],\"accepted\":1,\"committed\":2},{\"start_position\":251,\"candidates\":[568,236770,236810,236764],\"accepted\":4,\"committed\":5},{\"start_position\":256,\"candidates\":[236770,236828,44538,1251],\"accepted\":4,\"committed\":5},{\"start_position\":261,\"candidates\":[236770,236764,236743,236800],\"accepted\":3,\"committed\":4},{\"start_position\":265,\"candidates\":[779,568,236778,236764],\"accepted\":2,\"committed\":3},{\"start_position\":268,\"candidates\":[236764,236743,236770,236771],\"accepted\":4,\"committed\":5},{\"start_position\":273,\"candidates\":[568,236770,236810,236764],\"accepted\":4,\"committed\":5},{\"start_position\":278,\"candidates\":[236770,236828,7066,107],\"accepted\":4,\"committed\":5},{\"start_position\":283,\"candidates\":[10640,22223,236779,95829],\"accepted\":4,\"committed\":5},{\"start_position\":288,\"candidates\":[236770,236764,236743,236800],\"accepted\":3,\"committed\":4},{\"start_position\":292,\"candidates\":[779,568,236812,236764],\"accepted\":4,\"committed\":5},{\"start_position\":297,\"candidates\":[],\"accepted\":0,\"committed\":1}],\"target_verify\":\"batched_wmma\",\"draft_rollback\":\"cursor_rewind\",\"accept_rule\":\"min(1, p/q) with residual resampling\",\"draft_law\":\"point_mass\",\"verify_equivalence\":\"production_envelope_of_target_ar_greedy\",\"phase_census\":{\"cycles\":62,\"target_prefill\":{\"calls\":1,\"ms\":138.55894695734605},\"proposal\":{\"calls\":62,\"ms\":726.2549119186588},\"target_verify\":{\"calls\":62,\"rows\":306,\"ms\":2435.797919635661},\"accept\":{\"calls\":62,\"ms\":8.377826132345945}}},\"finish_details\":{\"reason\":\"length\",\"length_limit\":256,\"sampler_mode\":\"greedy_speculative_mtp\",\"cache_action\":\"append_none\",\"phase\":\"answer\",\"continuation_eligible\":false},\"generated_token_ids\":[2717,6719,107,2063,22223,236779,95829,236769,95829,1473,107,140,12234,17639,3624,48490,6535,11995,20312,29738,107,140,584,711,20312,236787,107,144,2060,2977,108,140,236865,36702,20312,684,1502,990,107,140,95829,236761,10479,236769,2478,236784,3485,1123,236787,1123,236840,236771,2812,107,140,107,140,35516,578,2977,107,140,1708,1873,528,20312,236787,107,144,236865,1637,34846,563,7738,653,951,28981,607,506,1774,8448,107,144,584,711,34846,653,1873,236840,236771,236842,1890,34846,17825,236770,2585,236770,9414,107,148,35516,236761,3770,236769,2234,236769,4002,1223,107,144,4454,236787,107,148,236865,2085,563,614,28981,236764,22223,684,31652,506,1345,990,107,148,35516,17825,236770,2585,236770,236842,578,2631,236769,35516,17825,236770,2585,236770,1604,1873,236840,236770,2812,107,148,107,140,2060,870,40505,236769,236747,236768,573,858,528,34846,236842,108,584,5062,1201,1269,1251,29802,3241,37887,107,140,1106,118877,108,140,2063,1594,236779,19215,236779,95829,6141,107,144,10640,22223,236779,95829,173296,236770,236764,236743,236800,779,568,236778,236764,236743,236825,779,568,236828,236764,236743,236770,236771,779,568,236770,236810,236764,236743,236770,236828,44538,1251,21652,236770,236764,236743,236825,779,568,236828,236764,236743,236770,236771,779,568,236770,236810,236764,236743,236770,236828,7066,107,144,10640,22223,236779,95829,173296,236770,236764,236743,236812,779,568,236812,236764,236743,236810],\"generated_tokens\":256,\"tokens\":{\"prompt_tokens\":43,\"completion_tokens\":256,\"total_tokens\":299,\"streamed_tokens\":256,\"answer_tokens\":256},\"generation_shape\":{\"route\":\"speculative_mtp\",\"route_decision\":{\"requested_route\":\"speculative_mtp\",\"request_mode\":\"explicit\",\"selected_route\":\"speculative_mtp\",\"reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"k0_class\":\"not_k0\",\"static_eligibility\":{\"state\":\"speculative_capable\",\"eligible\":true,\"reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"packed_c1_target\":false,\"max_candidate_count\":4,\"max_realized_group_rows\":1,\"automatic_eligible\":true,\"strict_fallback_key\":\"gguf_target_ar\",\"evidence_key\":null,\"evidence_fingerprint\":null,\"evidence_artifacts\":[],\"implementation_key\":\"gguf_gemma4_assistant_bf16_c1_chain\"},\"static_eligibility_fingerprint\":\"sha256:dc06263b48aa77d01f483c680d9e10082d5966388b0f5c2f524d82c325ab4f68\",\"static_intent_allowed\":true,\"policy_cell\":\"gguf_gemma4_assistant_bf16_c1_chain\",\"admission_basis\":\"implementation\",\"implementation_key\":\"gguf_gemma4_assistant_bf16_c1_chain\",\"effective_kv_storage\":\"bf16\",\"kv_layout\":\"uniform\",\"kv_scale_dtype\":null,\"kv_scale_granularity\":null,\"selected_candidate_count\":4,\"policy_reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"policy_fingerprint\":\"sha256:e8b07e023f864d8680c37b01722f1c88111f95c142a7989ab5504244fb3ebaac\",\"realized_group_rows\":1,\"output_horizon_tokens\":256,\"exact_default_required\":true,\"automatic_eligible\":true,\"evidence\":\"model_plugin_speculative_mtp_serving_plan\"}},\"speculative_mtp\":{\"effective_route\":\"speculative_mtp\",\"used\":true,\"draft_tokens\":244,\"accepted_draft_tokens\":193,\"rejected_draft_tokens\":51,\"acceptance_rate\":0.7909836065573771,\"draft_cycles\":62,\"requested_route\":\"speculative_mtp\",\"decision_reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"thinking_policy\":\"hint\",\"thinking_controls\":\"prompt_hint_only\"}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"done\",\"timing\":{\"elapsed_ms\":4657.846,\"ttft_ms\":4657.115},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-547e03185a37443c84cee19b4f607d81\",\"object\":\"chat.completion.chunk\",\"created\":1792263754,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[],\"usage\":{\"prompt_tokens\":43,\"completion_tokens\":256,\"total_tokens\":299,\"completion_tokens_details\":{\"accepted_prediction_tokens\":193,\"rejected_prediction_tokens\":51}},\"hipengine\":{\"metadata_version\":1,\"event\":\"usage\",\"timing\":{\"elapsed_ms\":4657.931,\"ttft_ms\":4657.115},\"usage\":{\"prompt_tokens\":43,\"completion_tokens\":256,\"total_tokens\":299,\"completion_tokens_details\":{\"accepted_prediction_tokens\":193,\"rejected_prediction_tokens\":51}},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: [DONE]\n\n"
+      },
+      "summary": {
+        "content": "```python\ndef merge_intervals(intervals):\n    \"\"\"Merges overlapping closed integer intervals.\"\"\"\n    if not intervals:\n        return []\n\n    # Sort intervals by start time\n    intervals.sort(key=lambda x: x[0])\n    \n    merged = []\n    for current in intervals:\n        # If merged is empty or no overlap with the last interval\n        if not merged or current[0] > merged[-1][1]:\n            merged.append(list(current))\n        else:\n            # There is an overlap, merge by updating the end time\n            merged[-1][1] = max(merged[-1][1], current[1])\n            \n    return [tuple(i) for i in merged]\n\nif __name__ == \"__main__\":\n    import pytest\n\n    def test_merge_intervals():\n        assert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\n        assert merge_intervals([(1, 4), (4, 5",
+        "reasoning_content": "",
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "usage",
+          "timing": {
+            "elapsed_ms": 4657.931,
+            "ttft_ms": 4657.115
+          },
+          "routing": {
+            "requested_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "served_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "phase": "done",
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 62,
+            "prompt_tokens": 43,
+            "generated_tokens": 256,
+            "phase": "done",
+            "continuation_eligible": false,
+            "sampler_mode": "greedy_speculative_mtp",
+            "execution_path": "gemma4_mtp_batched_verify"
+          },
+          "diagnostics": {
+            "speculative_provider": "gemma4_mtp",
+            "candidate_budget": 4,
+            "proposed_draft_tokens": 244,
+            "accepted_draft_tokens": 193,
+            "draft_acceptance": 0.7909836065573771,
+            "tokens_per_cycle": 4.129032258064516,
+            "cycles": [
+              {
+                "start_position": 43,
+                "candidates": [
+                  6719,
+                  107,
+                  2063,
+                  22223
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 48,
+                "candidates": [
+                  95829,
+                  236769,
+                  95829,
+                  1473
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 53,
+                "candidates": [
+                  140,
+                  12234,
+                  107,
+                  140
+                ],
+                "accepted": 2,
+                "committed": 3
+              },
+              {
+                "start_position": 56,
+                "candidates": [
+                  3624,
+                  48490,
+                  6535,
+                  11995
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 61,
+                "candidates": [
+                  29738,
+                  107,
+                  140,
+                  584
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 66,
+                "candidates": [
+                  20312,
+                  236787,
+                  107,
+                  144
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 71,
+                "candidates": [
+                  2977,
+                  108,
+                  140,
+                  95829
+                ],
+                "accepted": 3,
+                "committed": 4
+              },
+              {
+                "start_position": 75,
+                "candidates": [
+                  36702,
+                  20312,
+                  684,
+                  1502
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 80,
+                "candidates": [
+                  107,
+                  140,
+                  95829,
+                  236761
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 85,
+                "candidates": [
+                  236769,
+                  2478,
+                  236784,
+                  3485
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 90,
+                "candidates": [
+                  236787,
+                  1123,
+                  236840,
+                  236770
+                ],
+                "accepted": 3,
+                "committed": 4
+              },
+              {
+                "start_position": 94,
+                "candidates": [
+                  2812,
+                  107,
+                  140,
+                  107
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 99,
+                "candidates": [
+                  35516,
+                  578,
+                  2977,
+                  107
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 104,
+                "candidates": [
+                  1708,
+                  8448,
+                  528,
+                  20312
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 106,
+                "candidates": [
+                  528,
+                  20312,
+                  236787,
+                  107
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 111,
+                "candidates": [
+                  584,
+                  711,
+                  34846,
+                  653
+                ],
+                "accepted": 0,
+                "committed": 1
+              },
+              {
+                "start_position": 112,
+                "candidates": [
+                  1637,
+                  506,
+                  34846,
+                  1694
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 114,
+                "candidates": [
+                  563,
+                  7738,
+                  653,
+                  506
+                ],
+                "accepted": 3,
+                "committed": 4
+              },
+              {
+                "start_position": 118,
+                "candidates": [
+                  28981,
+                  236764,
+                  17366,
+                  1873
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 120,
+                "candidates": [
+                  506,
+                  1774,
+                  8448,
+                  236764
+                ],
+                "accepted": 3,
+                "committed": 4
+              },
+              {
+                "start_position": 124,
+                "candidates": [
+                  144,
+                  584,
+                  711,
+                  34846
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 129,
+                "candidates": [
+                  1873,
+                  236840,
+                  236771,
+                  236842
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 134,
+                "candidates": [
+                  34846,
+                  17825,
+                  236770,
+                  2585
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 139,
+                "candidates": [
+                  9414,
+                  107,
+                  148,
+                  35516
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 144,
+                "candidates": [
+                  3770,
+                  236769,
+                  4002,
+                  236768
+                ],
+                "accepted": 2,
+                "committed": 3
+              },
+              {
+                "start_position": 147,
+                "candidates": [
+                  236769,
+                  4002,
+                  1223,
+                  107
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 152,
+                "candidates": [
+                  4454,
+                  236787,
+                  107,
+                  148
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 157,
+                "candidates": [
+                  7178,
+                  35680,
+                  1765,
+                  236787
+                ],
+                "accepted": 0,
+                "committed": 1
+              },
+              {
+                "start_position": 158,
+                "candidates": [
+                  563,
+                  614,
+                  28981,
+                  236764
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 163,
+                "candidates": [
+                  506,
+                  1873,
+                  8448,
+                  607
+                ],
+                "accepted": 0,
+                "committed": 1
+              },
+              {
+                "start_position": 164,
+                "candidates": [
+                  31652,
+                  506,
+                  1345,
+                  529
+                ],
+                "accepted": 3,
+                "committed": 4
+              },
+              {
+                "start_position": 168,
+                "candidates": [
+                  107,
+                  148,
+                  35516,
+                  17825
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 173,
+                "candidates": [
+                  2585,
+                  236770,
+                  236842,
+                  578
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 178,
+                "candidates": [
+                  236769,
+                  35516,
+                  17825,
+                  236770
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 183,
+                "candidates": [
+                  236770,
+                  1604,
+                  1873,
+                  236840
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 188,
+                "candidates": [
+                  2812,
+                  107,
+                  148,
+                  107
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 193,
+                "candidates": [
+                  2060,
+                  34846,
+                  108,
+                  584
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 195,
+                "candidates": [
+                  1582,
+                  573,
+                  1159,
+                  2234
+                ],
+                "accepted": 0,
+                "committed": 1
+              },
+              {
+                "start_position": 196,
+                "candidates": [
+                  236769,
+                  236747,
+                  236768,
+                  573
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 201,
+                "candidates": [
+                  528,
+                  34846,
+                  236842,
+                  108
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 206,
+                "candidates": [
+                  5062,
+                  1201,
+                  1269,
+                  1251
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 211,
+                "candidates": [
+                  3241,
+                  37887,
+                  107,
+                  140
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 216,
+                "candidates": [
+                  118877,
+                  107,
+                  140,
+                  107
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 218,
+                "candidates": [
+                  140,
+                  2063,
+                  1594,
+                  236779
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 223,
+                "candidates": [
+                  236779,
+                  95829,
+                  6141,
+                  107
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 228,
+                "candidates": [
+                  10640,
+                  22223,
+                  236779,
+                  95829
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 233,
+                "candidates": [
+                  236770,
+                  236764,
+                  236743,
+                  236778
+                ],
+                "accepted": 3,
+                "committed": 4
+              },
+              {
+                "start_position": 237,
+                "candidates": [
+                  779,
+                  568,
+                  236778,
+                  236764
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 242,
+                "candidates": [
+                  236825,
+                  44538,
+                  1251,
+                  21652
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 244,
+                "candidates": [
+                  568,
+                  236828,
+                  236764,
+                  236743
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 249,
+                "candidates": [
+                  236771,
+                  44538,
+                  1251,
+                  21652
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 251,
+                "candidates": [
+                  568,
+                  236770,
+                  236810,
+                  236764
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 256,
+                "candidates": [
+                  236770,
+                  236828,
+                  44538,
+                  1251
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 261,
+                "candidates": [
+                  236770,
+                  236764,
+                  236743,
+                  236800
+                ],
+                "accepted": 3,
+                "committed": 4
+              },
+              {
+                "start_position": 265,
+                "candidates": [
+                  779,
+                  568,
+                  236778,
+                  236764
+                ],
+                "accepted": 2,
+                "committed": 3
+              },
+              {
+                "start_position": 268,
+                "candidates": [
+                  236764,
+                  236743,
+                  236770,
+                  236771
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 273,
+                "candidates": [
+                  568,
+                  236770,
+                  236810,
+                  236764
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 278,
+                "candidates": [
+                  236770,
+                  236828,
+                  7066,
+                  107
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 283,
+                "candidates": [
+                  10640,
+                  22223,
+                  236779,
+                  95829
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 288,
+                "candidates": [
+                  236770,
+                  236764,
+                  236743,
+                  236800
+                ],
+                "accepted": 3,
+                "committed": 4
+              },
+              {
+                "start_position": 292,
+                "candidates": [
+                  779,
+                  568,
+                  236812,
+                  236764
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 297,
+                "candidates": [],
+                "accepted": 0,
+                "committed": 1
+              }
+            ],
+            "target_verify": "batched_wmma",
+            "draft_rollback": "cursor_rewind",
+            "accept_rule": "min(1, p/q) with residual resampling",
+            "draft_law": "point_mass",
+            "verify_equivalence": "production_envelope_of_target_ar_greedy",
+            "phase_census": {
+              "cycles": 62,
+              "target_prefill": {
+                "calls": 1,
+                "ms": 138.55894695734605
+              },
+              "proposal": {
+                "calls": 62,
+                "ms": 726.2549119186588
+              },
+              "target_verify": {
+                "calls": 62,
+                "rows": 306,
+                "ms": 2435.797919635661
+              },
+              "accept": {
+                "calls": 62,
+                "ms": 8.377826132345945
+              }
+            }
+          },
+          "tokens": {
+            "prompt_tokens": 43,
+            "completion_tokens": 256,
+            "total_tokens": 299,
+            "streamed_tokens": 256,
+            "answer_tokens": 256
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 256,
+            "sampler_mode": "greedy_speculative_mtp",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          },
+          "generated_token_ids": [
+            2717,
+            6719,
+            107,
+            2063,
+            22223,
+            236779,
+            95829,
+            236769,
+            95829,
+            1473,
+            107,
+            140,
+            12234,
+            17639,
+            3624,
+            48490,
+            6535,
+            11995,
+            20312,
+            29738,
+            107,
+            140,
+            584,
+            711,
+            20312,
+            236787,
+            107,
+            144,
+            2060,
+            2977,
+            108,
+            140,
+            236865,
+            36702,
+            20312,
+            684,
+            1502,
+            990,
+            107,
+            140,
+            95829,
+            236761,
+            10479,
+            236769,
+            2478,
+            236784,
+            3485,
+            1123,
+            236787,
+            1123,
+            236840,
+            236771,
+            2812,
+            107,
+            140,
+            107,
+            140,
+            35516,
+            578,
+            2977,
+            107,
+            140,
+            1708,
+            1873,
+            528,
+            20312,
+            236787,
+            107,
+            144,
+            236865,
+            1637,
+            34846,
+            563,
+            7738,
+            653,
+            951,
+            28981,
+            607,
+            506,
+            1774,
+            8448,
+            107,
+            144,
+            584,
+            711,
+            34846,
+            653,
+            1873,
+            236840,
+            236771,
+            236842,
+            1890,
+            34846,
+            17825,
+            236770,
+            2585,
+            236770,
+            9414,
+            107,
+            148,
+            35516,
+            236761,
+            3770,
+            236769,
+            2234,
+            236769,
+            4002,
+            1223,
+            107,
+            144,
+            4454,
+            236787,
+            107,
+            148,
+            236865,
+            2085,
+            563,
+            614,
+            28981,
+            236764,
+            22223,
+            684,
+            31652,
+            506,
+            1345,
+            990,
+            107,
+            148,
+            35516,
+            17825,
+            236770,
+            2585,
+            236770,
+            236842,
+            578,
+            2631,
+            236769,
+            35516,
+            17825,
+            236770,
+            2585,
+            236770,
+            1604,
+            1873,
+            236840,
+            236770,
+            2812,
+            107,
+            148,
+            107,
+            140,
+            2060,
+            870,
+            40505,
+            236769,
+            236747,
+            236768,
+            573,
+            858,
+            528,
+            34846,
+            236842,
+            108,
+            584,
+            5062,
+            1201,
+            1269,
+            1251,
+            29802,
+            3241,
+            37887,
+            107,
+            140,
+            1106,
+            118877,
+            108,
+            140,
+            2063,
+            1594,
+            236779,
+            19215,
+            236779,
+            95829,
+            6141,
+            107,
+            144,
+            10640,
+            22223,
+            236779,
+            95829,
+            173296,
+            236770,
+            236764,
+            236743,
+            236800,
+            779,
+            568,
+            236778,
+            236764,
+            236743,
+            236825,
+            779,
+            568,
+            236828,
+            236764,
+            236743,
+            236770,
+            236771,
+            779,
+            568,
+            236770,
+            236810,
+            236764,
+            236743,
+            236770,
+            236828,
+            44538,
+            1251,
+            21652,
+            236770,
+            236764,
+            236743,
+            236825,
+            779,
+            568,
+            236828,
+            236764,
+            236743,
+            236770,
+            236771,
+            779,
+            568,
+            236770,
+            236810,
+            236764,
+            236743,
+            236770,
+            236828,
+            7066,
+            107,
+            144,
+            10640,
+            22223,
+            236779,
+            95829,
+            173296,
+            236770,
+            236764,
+            236743,
+            236812,
+            779,
+            568,
+            236812,
+            236764,
+            236743,
+            236810
+          ],
+          "generated_tokens": 256,
+          "generation_shape": {
+            "route": "speculative_mtp",
+            "route_decision": {
+              "requested_route": "speculative_mtp",
+              "request_mode": "explicit",
+              "selected_route": "speculative_mtp",
+              "reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+              "k0_class": "not_k0",
+              "static_eligibility": {
+                "state": "speculative_capable",
+                "eligible": true,
+                "reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+                "packed_c1_target": false,
+                "max_candidate_count": 4,
+                "max_realized_group_rows": 1,
+                "automatic_eligible": true,
+                "strict_fallback_key": "gguf_target_ar",
+                "evidence_key": null,
+                "evidence_fingerprint": null,
+                "evidence_artifacts": [],
+                "implementation_key": "gguf_gemma4_assistant_bf16_c1_chain"
+              },
+              "static_eligibility_fingerprint": "sha256:dc06263b48aa77d01f483c680d9e10082d5966388b0f5c2f524d82c325ab4f68",
+              "static_intent_allowed": true,
+              "policy_cell": "gguf_gemma4_assistant_bf16_c1_chain",
+              "admission_basis": "implementation",
+              "implementation_key": "gguf_gemma4_assistant_bf16_c1_chain",
+              "effective_kv_storage": "bf16",
+              "kv_layout": "uniform",
+              "kv_scale_dtype": null,
+              "kv_scale_granularity": null,
+              "selected_candidate_count": 4,
+              "policy_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+              "policy_fingerprint": "sha256:e8b07e023f864d8680c37b01722f1c88111f95c142a7989ab5504244fb3ebaac",
+              "realized_group_rows": 1,
+              "output_horizon_tokens": 256,
+              "exact_default_required": true,
+              "automatic_eligible": true,
+              "evidence": "model_plugin_speculative_mtp_serving_plan"
+            }
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 244,
+            "accepted_draft_tokens": 193,
+            "rejected_draft_tokens": 51,
+            "acceptance_rate": 0.7909836065573771,
+            "draft_cycles": 62,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          },
+          "usage": {
+            "prompt_tokens": 43,
+            "completion_tokens": 256,
+            "total_tokens": 299,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 193,
+              "rejected_prediction_tokens": 51
+            }
+          }
+        },
+        "usage": {
+          "prompt_tokens": 43,
+          "completion_tokens": 256,
+          "total_tokens": 299,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 193,
+            "rejected_prediction_tokens": 51
+          }
+        },
+        "finish_reason": "length",
+        "errors": []
+      },
+      "failures": [],
+      "checks": {
+        "request_success": true,
+        "ids_match_before_timing_change": true,
+        "content_match": true,
+        "reasoning_match": true,
+        "ttft_present": true,
+        "buffered_flush_rate_absent": true,
+        "usage_matches_exact_ids": true
+      }
+    },
+    {
+      "label": "stream_speculative_true",
+      "request": {
+        "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code."
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 32,
+        "stream": true,
+        "speculative": true,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "wall_seconds": 0.4783511210116558,
+      "response": {
+        "sse_raw": "data: {\"id\":\"chatcmpl-ff000b8800b042549eda7932cb0e579c\",\"object\":\"chat.completion.chunk\",\"created\":1792263758,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"hipengine\":{\"metadata_version\":1,\"event\":\"role\",\"timing\":{\"elapsed_ms\":0.533},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-ff000b8800b042549eda7932cb0e579c\",\"object\":\"chat.completion.chunk\",\"created\":1792263758,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"```python\\ndef merge_intervals(intervals):\\n    \\\"\\\"\\\"Merges overlapping closed integer intervals.\\\"\\\"\\\"\\n    if not intervals:\\n        return []\\n\\n    \"},\"finish_reason\":null,\"hipengine\":{\"phase\":\"answer\",\"decode_state\":{\"row_index\":0,\"step_index\":7,\"prompt_tokens\":43,\"generated_tokens\":32,\"phase\":\"answer\",\"continuation_eligible\":false,\"sampler_mode\":\"greedy_speculative_mtp\",\"execution_path\":\"gemma4_mtp_batched_verify\"},\"event\":\"generation_complete\",\"diagnostics\":{\"speculative_provider\":\"gemma4_mtp\",\"candidate_budget\":4,\"proposed_draft_tokens\":26,\"accepted_draft_tokens\":24,\"draft_acceptance\":0.9230769230769231,\"tokens_per_cycle\":4.571428571428571,\"cycles\":[{\"start_position\":43,\"candidates\":[6719,107,2063,22223],\"accepted\":4,\"committed\":5},{\"start_position\":48,\"candidates\":[95829,236769,95829,1473],\"accepted\":4,\"committed\":5},{\"start_position\":53,\"candidates\":[140,12234,107,140],\"accepted\":2,\"committed\":3},{\"start_position\":56,\"candidates\":[3624,48490,6535,11995],\"accepted\":4,\"committed\":5},{\"start_position\":61,\"candidates\":[29738,107,140,584],\"accepted\":4,\"committed\":5},{\"start_position\":66,\"candidates\":[20312,236787,107,144],\"accepted\":4,\"committed\":5},{\"start_position\":71,\"candidates\":[2977,108],\"accepted\":2,\"committed\":3}],\"target_verify\":\"batched_wmma\",\"draft_rollback\":\"cursor_rewind\",\"accept_rule\":\"min(1, p/q) with residual resampling\",\"draft_law\":\"point_mass\",\"verify_equivalence\":\"production_envelope_of_target_ar_greedy\",\"phase_census\":{\"cycles\":7,\"target_prefill\":{\"calls\":1,\"ms\":132.0151489926502},\"proposal\":{\"calls\":7,\"ms\":74.62306995876133},\"target_verify\":{\"calls\":7,\"rows\":33,\"ms\":266.2449739873409},\"accept\":{\"calls\":7,\"ms\":0.93651789939031}}},\"tokens\":{\"streamed_tokens\":32,\"delta_tokens\":32,\"answer_tokens\":32}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"delta\",\"timing\":{\"elapsed_ms\":475.932,\"ttft_ms\":475.932},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-ff000b8800b042549eda7932cb0e579c\",\"object\":\"chat.completion.chunk\",\"created\":1792263758,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\",\"finish_details\":{\"reason\":\"length\",\"length_limit\":32,\"sampler_mode\":\"greedy_speculative_mtp\",\"cache_action\":\"append_none\",\"phase\":\"answer\",\"continuation_eligible\":false},\"hipengine\":{\"phase\":\"done\",\"decode_state\":{\"row_index\":0,\"step_index\":7,\"prompt_tokens\":43,\"generated_tokens\":32,\"phase\":\"done\",\"continuation_eligible\":false,\"sampler_mode\":\"greedy_speculative_mtp\",\"execution_path\":\"gemma4_mtp_batched_verify\"},\"event\":\"generation_complete\",\"diagnostics\":{\"speculative_provider\":\"gemma4_mtp\",\"candidate_budget\":4,\"proposed_draft_tokens\":26,\"accepted_draft_tokens\":24,\"draft_acceptance\":0.9230769230769231,\"tokens_per_cycle\":4.571428571428571,\"cycles\":[{\"start_position\":43,\"candidates\":[6719,107,2063,22223],\"accepted\":4,\"committed\":5},{\"start_position\":48,\"candidates\":[95829,236769,95829,1473],\"accepted\":4,\"committed\":5},{\"start_position\":53,\"candidates\":[140,12234,107,140],\"accepted\":2,\"committed\":3},{\"start_position\":56,\"candidates\":[3624,48490,6535,11995],\"accepted\":4,\"committed\":5},{\"start_position\":61,\"candidates\":[29738,107,140,584],\"accepted\":4,\"committed\":5},{\"start_position\":66,\"candidates\":[20312,236787,107,144],\"accepted\":4,\"committed\":5},{\"start_position\":71,\"candidates\":[2977,108],\"accepted\":2,\"committed\":3}],\"target_verify\":\"batched_wmma\",\"draft_rollback\":\"cursor_rewind\",\"accept_rule\":\"min(1, p/q) with residual resampling\",\"draft_law\":\"point_mass\",\"verify_equivalence\":\"production_envelope_of_target_ar_greedy\",\"phase_census\":{\"cycles\":7,\"target_prefill\":{\"calls\":1,\"ms\":132.0151489926502},\"proposal\":{\"calls\":7,\"ms\":74.62306995876133},\"target_verify\":{\"calls\":7,\"rows\":33,\"ms\":266.2449739873409},\"accept\":{\"calls\":7,\"ms\":0.93651789939031}}},\"finish_details\":{\"reason\":\"length\",\"length_limit\":32,\"sampler_mode\":\"greedy_speculative_mtp\",\"cache_action\":\"append_none\",\"phase\":\"answer\",\"continuation_eligible\":false},\"generated_token_ids\":[2717,6719,107,2063,22223,236779,95829,236769,95829,1473,107,140,12234,17639,3624,48490,6535,11995,20312,29738,107,140,584,711,20312,236787,107,144,2060,2977,108,140],\"generated_tokens\":32,\"tokens\":{\"prompt_tokens\":43,\"completion_tokens\":32,\"total_tokens\":75,\"streamed_tokens\":32,\"answer_tokens\":32},\"generation_shape\":{\"route\":\"speculative_mtp\"},\"speculative_mtp\":{\"effective_route\":\"speculative_mtp\",\"used\":true,\"draft_tokens\":26,\"accepted_draft_tokens\":24,\"rejected_draft_tokens\":2,\"acceptance_rate\":0.9230769230769231,\"draft_cycles\":7,\"thinking_policy\":\"hint\",\"thinking_controls\":\"prompt_hint_only\"}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"done\",\"timing\":{\"elapsed_ms\":476.53,\"ttft_ms\":475.932},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-ff000b8800b042549eda7932cb0e579c\",\"object\":\"chat.completion.chunk\",\"created\":1792263758,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[],\"usage\":{\"prompt_tokens\":43,\"completion_tokens\":32,\"total_tokens\":75,\"completion_tokens_details\":{\"accepted_prediction_tokens\":24,\"rejected_prediction_tokens\":2}},\"hipengine\":{\"metadata_version\":1,\"event\":\"usage\",\"timing\":{\"elapsed_ms\":476.62,\"ttft_ms\":475.932},\"usage\":{\"prompt_tokens\":43,\"completion_tokens\":32,\"total_tokens\":75,\"completion_tokens_details\":{\"accepted_prediction_tokens\":24,\"rejected_prediction_tokens\":2}},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: [DONE]\n\n"
+      },
+      "summary": {
+        "content": "```python\ndef merge_intervals(intervals):\n    \"\"\"Merges overlapping closed integer intervals.\"\"\"\n    if not intervals:\n        return []\n\n    ",
+        "reasoning_content": "",
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "usage",
+          "timing": {
+            "elapsed_ms": 476.62,
+            "ttft_ms": 475.932
+          },
+          "routing": {
+            "requested_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "served_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "phase": "done",
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 7,
+            "prompt_tokens": 43,
+            "generated_tokens": 32,
+            "phase": "done",
+            "continuation_eligible": false,
+            "sampler_mode": "greedy_speculative_mtp",
+            "execution_path": "gemma4_mtp_batched_verify"
+          },
+          "diagnostics": {
+            "speculative_provider": "gemma4_mtp",
+            "candidate_budget": 4,
+            "proposed_draft_tokens": 26,
+            "accepted_draft_tokens": 24,
+            "draft_acceptance": 0.9230769230769231,
+            "tokens_per_cycle": 4.571428571428571,
+            "cycles": [
+              {
+                "start_position": 43,
+                "candidates": [
+                  6719,
+                  107,
+                  2063,
+                  22223
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 48,
+                "candidates": [
+                  95829,
+                  236769,
+                  95829,
+                  1473
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 53,
+                "candidates": [
+                  140,
+                  12234,
+                  107,
+                  140
+                ],
+                "accepted": 2,
+                "committed": 3
+              },
+              {
+                "start_position": 56,
+                "candidates": [
+                  3624,
+                  48490,
+                  6535,
+                  11995
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 61,
+                "candidates": [
+                  29738,
+                  107,
+                  140,
+                  584
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 66,
+                "candidates": [
+                  20312,
+                  236787,
+                  107,
+                  144
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 71,
+                "candidates": [
+                  2977,
+                  108
+                ],
+                "accepted": 2,
+                "committed": 3
+              }
+            ],
+            "target_verify": "batched_wmma",
+            "draft_rollback": "cursor_rewind",
+            "accept_rule": "min(1, p/q) with residual resampling",
+            "draft_law": "point_mass",
+            "verify_equivalence": "production_envelope_of_target_ar_greedy",
+            "phase_census": {
+              "cycles": 7,
+              "target_prefill": {
+                "calls": 1,
+                "ms": 132.0151489926502
+              },
+              "proposal": {
+                "calls": 7,
+                "ms": 74.62306995876133
+              },
+              "target_verify": {
+                "calls": 7,
+                "rows": 33,
+                "ms": 266.2449739873409
+              },
+              "accept": {
+                "calls": 7,
+                "ms": 0.93651789939031
+              }
+            }
+          },
+          "tokens": {
+            "prompt_tokens": 43,
+            "completion_tokens": 32,
+            "total_tokens": 75,
+            "streamed_tokens": 32,
+            "answer_tokens": 32
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 32,
+            "sampler_mode": "greedy_speculative_mtp",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          },
+          "generated_token_ids": [
+            2717,
+            6719,
+            107,
+            2063,
+            22223,
+            236779,
+            95829,
+            236769,
+            95829,
+            1473,
+            107,
+            140,
+            12234,
+            17639,
+            3624,
+            48490,
+            6535,
+            11995,
+            20312,
+            29738,
+            107,
+            140,
+            584,
+            711,
+            20312,
+            236787,
+            107,
+            144,
+            2060,
+            2977,
+            108,
+            140
+          ],
+          "generated_tokens": 32,
+          "generation_shape": {
+            "route": "speculative_mtp"
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 26,
+            "accepted_draft_tokens": 24,
+            "rejected_draft_tokens": 2,
+            "acceptance_rate": 0.9230769230769231,
+            "draft_cycles": 7,
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          },
+          "usage": {
+            "prompt_tokens": 43,
+            "completion_tokens": 32,
+            "total_tokens": 75,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 24,
+              "rejected_prediction_tokens": 2
+            }
+          }
+        },
+        "usage": {
+          "prompt_tokens": 43,
+          "completion_tokens": 32,
+          "total_tokens": 75,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 24,
+            "rejected_prediction_tokens": 2
+          }
+        },
+        "finish_reason": "length",
+        "errors": []
+      },
+      "failures": [],
+      "checks": {
+        "request_success": true,
+        "ids_match_before_timing_change": true,
+        "content_match": true,
+        "reasoning_match": true,
+        "ttft_present": true,
+        "buffered_flush_rate_absent": true,
+        "usage_matches_exact_ids": true
+      }
+    },
+    {
+      "label": "stream_logprobs_ar",
+      "request": {
+        "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Acceptance matrix: explain one practical fact about testing a web API."
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 24,
+        "stream": true,
+        "speculative_mtp": false,
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 2,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "wall_seconds": 0.9932401449768804,
+      "response": {
+        "sse_raw": "data: {\"id\":\"chatcmpl-bf7af239f23a4f1c8db8daf50865f359\",\"object\":\"chat.completion.chunk\",\"created\":1792263759,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"hipengine\":{\"metadata_version\":1,\"event\":\"role\",\"timing\":{\"elapsed_ms\":0.362},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-bf7af239f23a4f1c8db8daf50865f359\",\"object\":\"chat.completion.chunk\",\"created\":1792263759,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"In the context of testing a web API, an **Acceptance Matrix** (often used interchangeably with a *Traceability\"},\"finish_reason\":null,\"logprobs\":{\"content\":[{\"token\":\"In\",\"logprob\":-0.15394179545171272,\"bytes\":null,\"top_logprobs\":[{\"token\":\"In\",\"logprob\":-0.15394179545171272,\"bytes\":null},{\"token\":\"An\",\"logprob\":-2.932534858806205,\"bytes\":null}]},{\"token\":\" the\",\"logprob\":-0.0013568460007980221,\"bytes\":null,\"top_logprobs\":[{\"token\":\" the\",\"logprob\":-0.0013568460007980221,\"bytes\":null},{\"token\":\" testing\",\"logprob\":-7.295168644096501,\"bytes\":null}]},{\"token\":\" context\",\"logprob\":-1.4812003502770832e-05,\"bytes\":null,\"top_logprobs\":[{\"token\":\" context\",\"logprob\":-1.4812003502770832e-05,\"bytes\":null},{\"token\":\" software\",\"logprob\":-12.504743129264245,\"bytes\":null}]},{\"token\":\" of\",\"logprob\":-9.014038007831407e-06,\"bytes\":null,\"top_logprobs\":[{\"token\":\" of\",\"logprob\":-9.014038007831407e-06,\"bytes\":null},{\"token\":\" much\",\"logprob\":-11.651109172729415,\"bytes\":null}]},{\"token\":\" testing\",\"logprob\":-0.03139408302057473,\"bytes\":null,\"top_logprobs\":[{\"token\":\" testing\",\"logprob\":-0.03139408302057473,\"bytes\":null},{\"token\":\" web\",\"logprob\":-3.671446878430731,\"bytes\":null}]},{\"token\":\" a\",\"logprob\":-0.0012684121566921861,\"bytes\":null,\"top_logprobs\":[{\"token\":\" a\",\"logprob\":-0.0012684121566921861,\"bytes\":null},{\"token\":\" web\",\"logprob\":-6.736082102342239,\"bytes\":null}]},{\"token\":\" web\",\"logprob\":-0.025651220334389026,\"bytes\":null,\"top_logprobs\":[{\"token\":\" web\",\"logprob\":-0.025651220334389026,\"bytes\":null},{\"token\":\" Web\",\"logprob\":-3.6764977016576315,\"bytes\":null}]},{\"token\":\" API\",\"logprob\":-8.997444427932178e-08,\"bytes\":null,\"top_logprobs\":[{\"token\":\" API\",\"logprob\":-8.997444427932178e-08,\"bytes\":null},{\"token\":\"-\",\"logprob\":-18.59401735720162,\"bytes\":null}]},{\"token\":\",\",\"logprob\":-1.2280050774743836e-05,\"bytes\":null,\"top_logprobs\":[{\"token\":\",\",\"logprob\":-1.2280050774743836e-05,\"bytes\":null},{\"token\":\" via\",\"logprob\":-12.077154995504877,\"bytes\":null}]},{\"token\":\" an\",\"logprob\":-0.0070557685464831465,\"bytes\":null,\"top_logprobs\":[{\"token\":\" an\",\"logprob\":-0.0070557685464831465,\"bytes\":null},{\"token\":\" the\",\"logprob\":-5.1816277595132805,\"bytes\":null}]},{\"token\":\" **\",\"logprob\":-0.00011219609602127697,\"bytes\":null,\"top_logprobs\":[{\"token\":\" **\",\"logprob\":-0.00011219609602127697,\"bytes\":null},{\"token\":\" acceptance\",\"logprob\":-9.847255369313794,\"bytes\":null}]},{\"token\":\"Accept\",\"logprob\":-0.00018210324198982065,\"bytes\":null,\"top_logprobs\":[{\"token\":\"Accept\",\"logprob\":-0.00018210324198982065,\"bytes\":null},{\"token\":\"acceptance\",\"logprob\":-8.613884877289841,\"bytes\":null}]},{\"token\":\"ance\",\"logprob\":-1.0085158725636656e-05,\"bytes\":null,\"top_logprobs\":[{\"token\":\"ance\",\"logprob\":-1.0085158725636656e-05,\"bytes\":null},{\"token\":\"ation\",\"logprob\":-12.397691321425816,\"bytes\":null}]},{\"token\":\" Matrix\",\"logprob\":-1.639850235786472e-06,\"bytes\":null,\"top_logprobs\":[{\"token\":\" Matrix\",\"logprob\":-1.639850235786472e-06,\"bytes\":null},{\"token\":\" matrix\",\"logprob\":-13.369823665149308,\"bytes\":null}]},{\"token\":\"**\",\"logprob\":-2.0027212684176362e-07,\"bytes\":null,\"top_logprobs\":[{\"token\":\"**\",\"logprob\":-2.0027212684176362e-07,\"bytes\":null},{\"token\":\"-\",\"logprob\":-16.385649404526276,\"bytes\":null}]},{\"token\":\" (\",\"logprob\":-0.29512917071081257,\"bytes\":null,\"top_logprobs\":[{\"token\":\" (\",\"logprob\":-0.29512917071081257,\"bytes\":null},{\"token\":\" is\",\"logprob\":-1.3747495320389376,\"bytes\":null}]},{\"token\":\"often\",\"logprob\":-0.026003539382293953,\"bytes\":null,\"top_logprobs\":[{\"token\":\"often\",\"logprob\":-0.026003539382293953,\"bytes\":null},{\"token\":\"sometimes\",\"logprob\":-4.3119150994408875,\"bytes\":null}]},{\"token\":\" used\",\"logprob\":-0.9872853477054964,\"bytes\":null,\"top_logprobs\":[{\"token\":\" used\",\"logprob\":-0.9872853477054964,\"bytes\":null},{\"token\":\" referred\",\"logprob\":-1.1441266257816682,\"bytes\":null}]},{\"token\":\" interchangeably\",\"logprob\":-0.4699453165494771,\"bytes\":null,\"top_logprobs\":[{\"token\":\" interchangeably\",\"logprob\":-0.4699453165494771,\"bytes\":null},{\"token\":\" alongside\",\"logprob\":-2.1249078562223285,\"bytes\":null}]},{\"token\":\" with\",\"logprob\":-0.0002374888880092711,\"bytes\":null,\"top_logprobs\":[{\"token\":\" with\",\"logprob\":-0.0002374888880092711,\"bytes\":null},{\"token\":\" or\",\"logprob\":-8.981561684749826,\"bytes\":null}]},{\"token\":\" a\",\"logprob\":-0.5077648065646035,\"bytes\":null,\"top_logprobs\":[{\"token\":\" a\",\"logprob\":-0.5077648065646035,\"bytes\":null},{\"token\":\" an\",\"logprob\":-0.9264469049532754,\"bytes\":null}]},{\"token\":\" *\",\"logprob\":-1.0111992801638983,\"bytes\":null,\"top_logprobs\":[{\"token\":\" *\",\"logprob\":-1.0111992801638983,\"bytes\":null},{\"token\":\" Trace\",\"logprob\":-1.2584717716189762,\"bytes\":null}]},{\"token\":\"Trace\",\"logprob\":-0.6422567916459955,\"bytes\":null,\"top_logprobs\":[{\"token\":\"Trace\",\"logprob\":-0.6422567916459955,\"bytes\":null},{\"token\":\"Requirement\",\"logprob\":-1.3709536147661125,\"bytes\":null}]},{\"token\":\"ability\",\"logprob\":-7.81850644815477e-08,\"bytes\":null,\"top_logprobs\":[{\"token\":\"ability\",\"logprob\":-7.81850644815477e-08,\"bytes\":null},{\"token\":\"able\",\"logprob\":-16.90640218923853,\"bytes\":null}]}],\"refusal\":null},\"hipengine\":{\"phase\":\"answer\",\"tokens\":{\"streamed_tokens\":24,\"delta_tokens\":24,\"answer_tokens\":24},\"decode_state\":{\"row_index\":0,\"step_index\":24,\"prompt_tokens\":0,\"generated_tokens\":24,\"phase\":\"answer\",\"continuation_eligible\":false,\"answer_tokens\":24}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"delta\",\"timing\":{\"elapsed_ms\":990.578,\"ttft_ms\":990.578},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-bf7af239f23a4f1c8db8daf50865f359\",\"object\":\"chat.completion.chunk\",\"created\":1792263759,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\",\"finish_details\":{\"reason\":\"length\",\"length_limit\":24,\"sampler_mode\":\"processed_argmax\",\"phase\":\"decode\",\"cache_action\":\"append_none\",\"continuation_eligible\":false},\"hipengine\":{\"phase\":\"done\",\"finish_details\":{\"reason\":\"length\",\"length_limit\":24,\"sampler_mode\":\"processed_argmax\",\"phase\":\"decode\",\"cache_action\":\"append_none\",\"continuation_eligible\":false},\"generated_token_ids\":[902,506,4403,529,7257,496,4108,9299,236764,614,5213,24040,831,28707,1018,568,74860,1456,185487,607,496,808,17070,2109],\"generated_tokens\":24,\"tokens\":{\"prompt_tokens\":27,\"completion_tokens\":24,\"total_tokens\":51,\"streamed_tokens\":24,\"answer_tokens\":24},\"decode_state\":{\"row_index\":0,\"step_index\":24,\"prompt_tokens\":27,\"generated_tokens\":24,\"phase\":\"done\",\"continuation_eligible\":false,\"answer_tokens\":24}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"done\",\"timing\":{\"elapsed_ms\":991.215,\"ttft_ms\":990.578},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-bf7af239f23a4f1c8db8daf50865f359\",\"object\":\"chat.completion.chunk\",\"created\":1792263759,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[],\"usage\":{\"prompt_tokens\":27,\"completion_tokens\":24,\"total_tokens\":51},\"hipengine\":{\"metadata_version\":1,\"event\":\"usage\",\"timing\":{\"elapsed_ms\":991.28,\"ttft_ms\":990.578},\"usage\":{\"prompt_tokens\":27,\"completion_tokens\":24,\"total_tokens\":51},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: [DONE]\n\n"
+      },
+      "summary": {
+        "content": "In the context of testing a web API, an **Acceptance Matrix** (often used interchangeably with a *Traceability",
+        "reasoning_content": "",
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "usage",
+          "timing": {
+            "elapsed_ms": 991.28,
+            "ttft_ms": 990.578
+          },
+          "routing": {
+            "requested_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "served_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "phase": "done",
+          "tokens": {
+            "prompt_tokens": 27,
+            "completion_tokens": 24,
+            "total_tokens": 51,
+            "streamed_tokens": 24,
+            "answer_tokens": 24
+          },
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 24,
+            "prompt_tokens": 27,
+            "generated_tokens": 24,
+            "phase": "done",
+            "continuation_eligible": false,
+            "answer_tokens": 24
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 24,
+            "sampler_mode": "processed_argmax",
+            "phase": "decode",
+            "cache_action": "append_none",
+            "continuation_eligible": false
+          },
+          "generated_token_ids": [
+            902,
+            506,
+            4403,
+            529,
+            7257,
+            496,
+            4108,
+            9299,
+            236764,
+            614,
+            5213,
+            24040,
+            831,
+            28707,
+            1018,
+            568,
+            74860,
+            1456,
+            185487,
+            607,
+            496,
+            808,
+            17070,
+            2109
+          ],
+          "generated_tokens": 24,
+          "usage": {
+            "prompt_tokens": 27,
+            "completion_tokens": 24,
+            "total_tokens": 51
+          }
+        },
+        "usage": {
+          "prompt_tokens": 27,
+          "completion_tokens": 24,
+          "total_tokens": 51
+        },
+        "finish_reason": "length",
+        "errors": []
+      },
+      "failures": [],
+      "checks": {
+        "request_success": true,
+        "ids_match_before_timing_change": true,
+        "content_match": true,
+        "reasoning_match": true,
+        "ttft_present": true,
+        "buffered_flush_rate_absent": true,
+        "usage_matches_exact_ids": true
+      }
+    },
+    {
+      "label": "stream_thinking_hard_ar",
+      "request": {
+        "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Acceptance matrix: explain one practical fact about testing a web API."
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 64,
+        "stream": true,
+        "speculative_mtp": false,
+        "enable_thinking": true,
+        "max_think_tokens": 8,
+        "hard_think_cap": 8,
+        "min_answer_tokens": 16,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "wall_seconds": 1.405579513986595,
+      "response": {
+        "sse_raw": "data: {\"id\":\"chatcmpl-faa6bcf84c3a4f01ac5ae8bcb33ae438\",\"object\":\"chat.completion.chunk\",\"created\":1792263760,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"hipengine\":{\"metadata_version\":1,\"event\":\"role\",\"timing\":{\"elapsed_ms\":0.354},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-faa6bcf84c3a4f01ac5ae8bcb33ae438\",\"object\":\"chat.completion.chunk\",\"created\":1792263760,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"\\n*   Topic: Acceptance\"},\"finish_reason\":null,\"hipengine\":{\"phase\":\"think\",\"tokens\":{\"streamed_tokens\":6,\"delta_tokens\":6,\"reasoning_tokens\":6},\"decode_state\":{\"row_index\":0,\"step_index\":6,\"prompt_tokens\":0,\"generated_tokens\":6,\"phase\":\"think\",\"continuation_eligible\":false,\"reasoning_tokens\":6}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"delta\",\"timing\":{\"elapsed_ms\":1402.686,\"ttft_ms\":1402.686},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-faa6bcf84c3a4f01ac5ae8bcb33ae438\",\"object\":\"chat.completion.chunk\",\"created\":1792263760,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"To explain a practical fact about testing a web API through the lens of an **Acceptance Matrix**, we first need to define what that is in this context.\\n\\nIn API testing, an **Acceptance Matrix** (often called a Traceability Matrix or an Acceptance\"},\"finish_reason\":null,\"hipengine\":{\"phase\":\"answer\",\"tokens\":{\"streamed_tokens\":59,\"delta_tokens\":53,\"reasoning_tokens\":6,\"answer_tokens\":53},\"decode_state\":{\"row_index\":0,\"step_index\":59,\"prompt_tokens\":0,\"generated_tokens\":59,\"phase\":\"answer\",\"continuation_eligible\":false,\"reasoning_tokens\":6,\"answer_tokens\":53}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"delta\",\"timing\":{\"elapsed_ms\":1402.969,\"ttft_ms\":1402.686},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-faa6bcf84c3a4f01ac5ae8bcb33ae438\",\"object\":\"chat.completion.chunk\",\"created\":1792263760,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\",\"finish_details\":{\"reason\":\"length\",\"length_limit\":64,\"forced_close\":true,\"reasoning_tokens\":11,\"answer_tokens\":53,\"budget_pressure\":\"hard_close\",\"sampler_mode\":\"processed_argmax\",\"phase\":\"answer\",\"cache_action\":\"append_none\",\"continuation_eligible\":false},\"hipengine\":{\"phase\":\"done\",\"finish_details\":{\"reason\":\"length\",\"length_limit\":64,\"forced_close\":true,\"reasoning_tokens\":11,\"answer_tokens\":53,\"budget_pressure\":\"hard_close\",\"sampler_mode\":\"processed_argmax\",\"phase\":\"answer\",\"cache_action\":\"append_none\",\"continuation_eligible\":false},\"generated_token_ids\":[100,45518,108,236829,139,47589,236787,122902,954,36345,236813,2021,8082,496,10231,1707,1003,7257,496,4108,9299,1343,506,14970,529,614,5213,24040,831,28707,125546,692,1171,1202,531,8540,1144,600,563,528,672,4403,236761,108,902,9299,7257,236764,614,5213,24040,831,28707,1018,568,74860,2760,496,64861,2109,28707,653,614,122902],\"generated_tokens\":64,\"tokens\":{\"prompt_tokens\":30,\"completion_tokens\":64,\"total_tokens\":94,\"streamed_tokens\":59,\"reasoning_tokens\":6,\"answer_tokens\":53},\"decode_state\":{\"row_index\":0,\"step_index\":59,\"prompt_tokens\":30,\"generated_tokens\":64,\"phase\":\"done\",\"continuation_eligible\":false,\"reasoning_tokens\":6,\"answer_tokens\":53}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"done\",\"timing\":{\"elapsed_ms\":1403.449,\"ttft_ms\":1402.686},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-faa6bcf84c3a4f01ac5ae8bcb33ae438\",\"object\":\"chat.completion.chunk\",\"created\":1792263760,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[],\"usage\":{\"prompt_tokens\":30,\"completion_tokens\":64,\"total_tokens\":94,\"reasoning_tokens\":11,\"completion_tokens_details\":{\"reasoning_tokens\":11}},\"hipengine\":{\"metadata_version\":1,\"event\":\"usage\",\"timing\":{\"elapsed_ms\":1403.483,\"ttft_ms\":1402.686},\"usage\":{\"prompt_tokens\":30,\"completion_tokens\":64,\"total_tokens\":94,\"reasoning_tokens\":11,\"completion_tokens_details\":{\"reasoning_tokens\":11}},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: [DONE]\n\n"
+      },
+      "summary": {
+        "content": "To explain a practical fact about testing a web API through the lens of an **Acceptance Matrix**, we first need to define what that is in this context.\n\nIn API testing, an **Acceptance Matrix** (often called a Traceability Matrix or an Acceptance",
+        "reasoning_content": "\n*   Topic: Acceptance",
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "usage",
+          "timing": {
+            "elapsed_ms": 1403.483,
+            "ttft_ms": 1402.686
+          },
+          "routing": {
+            "requested_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "served_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "phase": "done",
+          "tokens": {
+            "prompt_tokens": 30,
+            "completion_tokens": 64,
+            "total_tokens": 94,
+            "streamed_tokens": 59,
+            "reasoning_tokens": 6,
+            "answer_tokens": 53
+          },
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 59,
+            "prompt_tokens": 30,
+            "generated_tokens": 64,
+            "phase": "done",
+            "continuation_eligible": false,
+            "reasoning_tokens": 6,
+            "answer_tokens": 53
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 64,
+            "forced_close": true,
+            "reasoning_tokens": 11,
+            "answer_tokens": 53,
+            "budget_pressure": "hard_close",
+            "sampler_mode": "processed_argmax",
+            "phase": "answer",
+            "cache_action": "append_none",
+            "continuation_eligible": false
+          },
+          "generated_token_ids": [
+            100,
+            45518,
+            108,
+            236829,
+            139,
+            47589,
+            236787,
+            122902,
+            954,
+            36345,
+            236813,
+            2021,
+            8082,
+            496,
+            10231,
+            1707,
+            1003,
+            7257,
+            496,
+            4108,
+            9299,
+            1343,
+            506,
+            14970,
+            529,
+            614,
+            5213,
+            24040,
+            831,
+            28707,
+            125546,
+            692,
+            1171,
+            1202,
+            531,
+            8540,
+            1144,
+            600,
+            563,
+            528,
+            672,
+            4403,
+            236761,
+            108,
+            902,
+            9299,
+            7257,
+            236764,
+            614,
+            5213,
+            24040,
+            831,
+            28707,
+            1018,
+            568,
+            74860,
+            2760,
+            496,
+            64861,
+            2109,
+            28707,
+            653,
+            614,
+            122902
+          ],
+          "generated_tokens": 64,
+          "usage": {
+            "prompt_tokens": 30,
+            "completion_tokens": 64,
+            "total_tokens": 94,
+            "reasoning_tokens": 11,
+            "completion_tokens_details": {
+              "reasoning_tokens": 11
+            }
+          }
+        },
+        "usage": {
+          "prompt_tokens": 30,
+          "completion_tokens": 64,
+          "total_tokens": 94,
+          "reasoning_tokens": 11,
+          "completion_tokens_details": {
+            "reasoning_tokens": 11
+          }
+        },
+        "finish_reason": "length",
+        "errors": []
+      },
+      "failures": [],
+      "checks": {
+        "request_success": true,
+        "ids_match_before_timing_change": true,
+        "content_match": true,
+        "reasoning_match": true,
+        "ttft_present": true,
+        "buffered_flush_rate_absent": true,
+        "usage_matches_exact_ids": true
+      }
+    },
+    {
+      "label": "stream_logprobs_mtp",
+      "request": {
+        "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Acceptance matrix: explain one practical fact about testing a web API."
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 24,
+        "stream": true,
+        "speculative_mtp": true,
+        "enable_thinking": false,
+        "logprobs": true,
+        "top_logprobs": 2,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "wall_seconds": 0.8658148579997942,
+      "response": {
+        "sse_raw": "data: {\"id\":\"chatcmpl-4d6e9f4880a04bffb5c302b62f775f22\",\"object\":\"chat.completion.chunk\",\"created\":1792263761,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"hipengine\":{\"metadata_version\":1,\"event\":\"role\",\"timing\":{\"elapsed_ms\":0.719},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-4d6e9f4880a04bffb5c302b62f775f22\",\"object\":\"chat.completion.chunk\",\"created\":1792263761,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"In the context of testing a web API, an **Acceptance Matrix** (often referred to as a Decision Table or\"},\"finish_reason\":null,\"logprobs\":{\"content\":[{\"token\":\"In\",\"logprob\":-0.15394179545171272,\"bytes\":null,\"top_logprobs\":[{\"token\":\"In\",\"logprob\":-0.15394179545171272,\"bytes\":null},{\"token\":\"An\",\"logprob\":-2.932534858806205,\"bytes\":null}]},{\"token\":\" the\",\"logprob\":-0.001458370410330806,\"bytes\":null,\"top_logprobs\":[{\"token\":\" the\",\"logprob\":-0.001458370410330806,\"bytes\":null},{\"token\":\" testing\",\"logprob\":-7.202531063281425,\"bytes\":null}]},{\"token\":\" context\",\"logprob\":-1.4032926845582158e-05,\"bytes\":null,\"top_logprobs\":[{\"token\":\" context\",\"logprob\":-1.4032926845582158e-05,\"bytes\":null},{\"token\":\" software\",\"logprob\":-12.639018740263271,\"bytes\":null}]},{\"token\":\" of\",\"logprob\":-8.853638723855337e-06,\"bytes\":null,\"top_logprobs\":[{\"token\":\" of\",\"logprob\":-8.853638723855337e-06,\"bytes\":null},{\"token\":\" much\",\"logprob\":-11.67203071948345,\"bytes\":null}]},{\"token\":\" testing\",\"logprob\":-0.03224247501350087,\"bytes\":null,\"top_logprobs\":[{\"token\":\" testing\",\"logprob\":-0.03224247501350087,\"bytes\":null},{\"token\":\" web\",\"logprob\":-3.624302564124829,\"bytes\":null}]},{\"token\":\" a\",\"logprob\":-0.0011873117291836056,\"bytes\":null,\"top_logprobs\":[{\"token\":\" a\",\"logprob\":-0.0011873117291836056,\"bytes\":null},{\"token\":\" web\",\"logprob\":-6.8094568124616055,\"bytes\":null}]},{\"token\":\" web\",\"logprob\":-0.026034316518726074,\"bytes\":null,\"top_logprobs\":[{\"token\":\" web\",\"logprob\":-0.026034316518726074,\"bytes\":null},{\"token\":\" Web\",\"logprob\":-3.6618547053126713,\"bytes\":null}]},{\"token\":\" API\",\"logprob\":-1.0604587737342354e-07,\"bytes\":null,\"top_logprobs\":[{\"token\":\" API\",\"logprob\":-1.0604587737342354e-07,\"bytes\":null},{\"token\":\"-\",\"logprob\":-18.407155500600016,\"bytes\":null}]},{\"token\":\",\",\"logprob\":-1.244469768844462e-05,\"bytes\":null,\"top_logprobs\":[{\"token\":\",\",\"logprob\":-1.244469768844462e-05,\"bytes\":null},{\"token\":\" via\",\"logprob\":-12.075523423396419,\"bytes\":null}]},{\"token\":\" an\",\"logprob\":-0.006725519885818565,\"bytes\":null,\"top_logprobs\":[{\"token\":\" an\",\"logprob\":-0.006725519885818565,\"bytes\":null},{\"token\":\" the\",\"logprob\":-5.228990763416093,\"bytes\":null}]},{\"token\":\" **\",\"logprob\":-0.00011575371028808823,\"bytes\":null,\"top_logprobs\":[{\"token\":\" **\",\"logprob\":-0.00011575371028808823,\"bytes\":null},{\"token\":\" acceptance\",\"logprob\":-9.824725510180015,\"bytes\":null}]},{\"token\":\"Accept\",\"logprob\":-0.00016260227312240035,\"bytes\":null,\"top_logprobs\":[{\"token\":\"Accept\",\"logprob\":-0.00016260227312240035,\"bytes\":null},{\"token\":\"acceptance\",\"logprob\":-8.727406025735036,\"bytes\":null}]},{\"token\":\"ance\",\"logprob\":-9.730785682928072e-06,\"bytes\":null,\"top_logprobs\":[{\"token\":\"ance\",\"logprob\":-9.730785682928072e-06,\"bytes\":null},{\"token\":\"ation\",\"logprob\":-12.3803178820308,\"bytes\":null}]},{\"token\":\" Matrix\",\"logprob\":-1.512609737261715e-06,\"bytes\":null,\"top_logprobs\":[{\"token\":\" Matrix\",\"logprob\":-1.512609737261715e-06,\"bytes\":null},{\"token\":\" matrix\",\"logprob\":-13.458514295660274,\"bytes\":null}]},{\"token\":\"**\",\"logprob\":-2.3467579146901828e-07,\"bytes\":null,\"top_logprobs\":[{\"token\":\"**\",\"logprob\":-2.3467579146901828e-07,\"bytes\":null},{\"token\":\" (\",\"logprob\":-16.167766805720714,\"bytes\":null}]},{\"token\":\" (\",\"logprob\":-0.27216191546530816,\"bytes\":null,\"top_logprobs\":[{\"token\":\" (\",\"logprob\":-0.27216191546530816,\"bytes\":null},{\"token\":\" is\",\"logprob\":-1.443935825987769,\"bytes\":null}]},{\"token\":\"often\",\"logprob\":-0.025446850107006962,\"bytes\":null,\"top_logprobs\":[{\"token\":\"often\",\"logprob\":-0.025446850107006962,\"bytes\":null},{\"token\":\"sometimes\",\"logprob\":-4.343100506112866,\"bytes\":null}]},{\"token\":\" referred\",\"logprob\":-1.111761035631074,\"bytes\":null,\"top_logprobs\":[{\"token\":\" referred\",\"logprob\":-1.111761035631074,\"bytes\":null},{\"token\":\" used\",\"logprob\":-1.1449069401720897,\"bytes\":null}]},{\"token\":\" to\",\"logprob\":-4.979972090819789e-05,\"bytes\":null,\"top_logprobs\":[{\"token\":\" to\",\"logprob\":-4.979972090819789e-05,\"bytes\":null},{\"token\":\" as\",\"logprob\":-11.062094897071983,\"bytes\":null}]},{\"token\":\" as\",\"logprob\":-0.001915364037083335,\"bytes\":null,\"top_logprobs\":[{\"token\":\" as\",\"logprob\":-0.001915364037083335,\"bytes\":null},{\"token\":\" in\",\"logprob\":-6.300733952293919,\"bytes\":null}]},{\"token\":\" a\",\"logprob\":-0.12069637063026917,\"bytes\":null,\"top_logprobs\":[{\"token\":\" a\",\"logprob\":-0.12069637063026917,\"bytes\":null},{\"token\":\" an\",\"logprob\":-2.174392049341207,\"bytes\":null}]},{\"token\":\" Decision\",\"logprob\":-0.5840836638780854,\"bytes\":null,\"top_logprobs\":[{\"token\":\" Decision\",\"logprob\":-0.5840836638780854,\"bytes\":null},{\"token\":\" Truth\",\"logprob\":-1.5042706603380462,\"bytes\":null}]},{\"token\":\" Table\",\"logprob\":-4.7406985868618004e-05,\"bytes\":null,\"top_logprobs\":[{\"token\":\" Table\",\"logprob\":-4.7406985868618004e-05,\"bytes\":null},{\"token\":\" Matrix\",\"logprob\":-9.987931213214507,\"bytes\":null}]},{\"token\":\" or\",\"logprob\":-0.0035610580874456156,\"bytes\":null,\"top_logprobs\":[{\"token\":\" or\",\"logprob\":-0.0035610580874456156,\"bytes\":null},{\"token\":\")\",\"logprob\":-5.646783866925336,\"bytes\":null}]}],\"refusal\":null},\"hipengine\":{\"phase\":\"answer\",\"decode_state\":{\"row_index\":0,\"step_index\":8,\"prompt_tokens\":27,\"generated_tokens\":24,\"phase\":\"answer\",\"continuation_eligible\":false,\"sampler_mode\":\"greedy_speculative_mtp\",\"execution_path\":\"gemma4_mtp_batched_verify\"},\"event\":\"generation_complete\",\"diagnostics\":{\"speculative_provider\":\"gemma4_mtp\",\"candidate_budget\":4,\"proposed_draft_tokens\":23,\"accepted_draft_tokens\":15,\"draft_acceptance\":0.6521739130434783,\"tokens_per_cycle\":3.0,\"cycles\":[{\"start_position\":27,\"candidates\":[506,4403,529,7257],\"accepted\":4,\"committed\":5},{\"start_position\":32,\"candidates\":[4108,9299,236764,614],\"accepted\":4,\"committed\":5},{\"start_position\":37,\"candidates\":[24040,831,28707,1018],\"accepted\":4,\"committed\":5},{\"start_position\":42,\"candidates\":[74860,2760,614,122902],\"accepted\":1,\"committed\":2},{\"start_position\":44,\"candidates\":[531,618,614,122902],\"accepted\":2,\"committed\":3},{\"start_position\":47,\"candidates\":[64861,2109],\"accepted\":0,\"committed\":1},{\"start_position\":48,\"candidates\":[28707],\"accepted\":0,\"committed\":1},{\"start_position\":49,\"candidates\":[],\"accepted\":0,\"committed\":1}],\"target_verify\":\"batched_wmma\",\"draft_rollback\":\"cursor_rewind\",\"accept_rule\":\"min(1, p/q) with residual resampling\",\"draft_law\":\"point_mass\",\"verify_equivalence\":\"production_envelope_of_target_ar_greedy\",\"phase_census\":{\"cycles\":8,\"target_prefill\":{\"calls\":1,\"ms\":95.60525696724653},\"proposal\":{\"calls\":8,\"ms\":75.28053293935955},\"target_verify\":{\"calls\":8,\"rows\":31,\"ms\":282.31474297354},\"accept\":{\"calls\":8,\"ms\":389.5597709924914}}},\"tokens\":{\"streamed_tokens\":24,\"delta_tokens\":24,\"answer_tokens\":24}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"delta\",\"timing\":{\"elapsed_ms\":863.118,\"ttft_ms\":863.118},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-4d6e9f4880a04bffb5c302b62f775f22\",\"object\":\"chat.completion.chunk\",\"created\":1792263761,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\",\"finish_details\":{\"reason\":\"length\",\"length_limit\":24,\"sampler_mode\":\"greedy_speculative_mtp\",\"cache_action\":\"append_none\",\"phase\":\"answer\",\"continuation_eligible\":false},\"hipengine\":{\"phase\":\"done\",\"decode_state\":{\"row_index\":0,\"step_index\":8,\"prompt_tokens\":27,\"generated_tokens\":24,\"phase\":\"done\",\"continuation_eligible\":false,\"sampler_mode\":\"greedy_speculative_mtp\",\"execution_path\":\"gemma4_mtp_batched_verify\"},\"event\":\"generation_complete\",\"diagnostics\":{\"speculative_provider\":\"gemma4_mtp\",\"candidate_budget\":4,\"proposed_draft_tokens\":23,\"accepted_draft_tokens\":15,\"draft_acceptance\":0.6521739130434783,\"tokens_per_cycle\":3.0,\"cycles\":[{\"start_position\":27,\"candidates\":[506,4403,529,7257],\"accepted\":4,\"committed\":5},{\"start_position\":32,\"candidates\":[4108,9299,236764,614],\"accepted\":4,\"committed\":5},{\"start_position\":37,\"candidates\":[24040,831,28707,1018],\"accepted\":4,\"committed\":5},{\"start_position\":42,\"candidates\":[74860,2760,614,122902],\"accepted\":1,\"committed\":2},{\"start_position\":44,\"candidates\":[531,618,614,122902],\"accepted\":2,\"committed\":3},{\"start_position\":47,\"candidates\":[64861,2109],\"accepted\":0,\"committed\":1},{\"start_position\":48,\"candidates\":[28707],\"accepted\":0,\"committed\":1},{\"start_position\":49,\"candidates\":[],\"accepted\":0,\"committed\":1}],\"target_verify\":\"batched_wmma\",\"draft_rollback\":\"cursor_rewind\",\"accept_rule\":\"min(1, p/q) with residual resampling\",\"draft_law\":\"point_mass\",\"verify_equivalence\":\"production_envelope_of_target_ar_greedy\",\"phase_census\":{\"cycles\":8,\"target_prefill\":{\"calls\":1,\"ms\":95.60525696724653},\"proposal\":{\"calls\":8,\"ms\":75.28053293935955},\"target_verify\":{\"calls\":8,\"rows\":31,\"ms\":282.31474297354},\"accept\":{\"calls\":8,\"ms\":389.5597709924914}}},\"finish_details\":{\"reason\":\"length\",\"length_limit\":24,\"sampler_mode\":\"greedy_speculative_mtp\",\"cache_action\":\"append_none\",\"phase\":\"answer\",\"continuation_eligible\":false},\"generated_token_ids\":[902,506,4403,529,7257,496,4108,9299,236764,614,5213,24040,831,28707,1018,568,74860,11081,531,618,496,40954,6274,653],\"generated_tokens\":24,\"tokens\":{\"prompt_tokens\":27,\"completion_tokens\":24,\"total_tokens\":51,\"streamed_tokens\":24,\"answer_tokens\":24},\"generation_shape\":{\"route\":\"speculative_mtp\",\"route_decision\":{\"requested_route\":\"speculative_mtp\",\"request_mode\":\"explicit\",\"selected_route\":\"speculative_mtp\",\"reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"k0_class\":\"not_k0\",\"static_eligibility\":{\"state\":\"speculative_capable\",\"eligible\":true,\"reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"packed_c1_target\":false,\"max_candidate_count\":4,\"max_realized_group_rows\":1,\"automatic_eligible\":true,\"strict_fallback_key\":\"gguf_target_ar\",\"evidence_key\":null,\"evidence_fingerprint\":null,\"evidence_artifacts\":[],\"implementation_key\":\"gguf_gemma4_assistant_bf16_c1_chain\"},\"static_eligibility_fingerprint\":\"sha256:dc06263b48aa77d01f483c680d9e10082d5966388b0f5c2f524d82c325ab4f68\",\"static_intent_allowed\":true,\"policy_cell\":\"gguf_gemma4_assistant_bf16_c1_chain\",\"admission_basis\":\"implementation\",\"implementation_key\":\"gguf_gemma4_assistant_bf16_c1_chain\",\"effective_kv_storage\":\"bf16\",\"kv_layout\":\"uniform\",\"kv_scale_dtype\":null,\"kv_scale_granularity\":null,\"selected_candidate_count\":4,\"policy_reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"policy_fingerprint\":\"sha256:e8b07e023f864d8680c37b01722f1c88111f95c142a7989ab5504244fb3ebaac\",\"realized_group_rows\":1,\"output_horizon_tokens\":24,\"exact_default_required\":true,\"automatic_eligible\":true,\"evidence\":\"model_plugin_speculative_mtp_serving_plan\"}},\"speculative_mtp\":{\"effective_route\":\"speculative_mtp\",\"used\":true,\"draft_tokens\":23,\"accepted_draft_tokens\":15,\"rejected_draft_tokens\":8,\"acceptance_rate\":0.6521739130434783,\"draft_cycles\":8,\"requested_route\":\"speculative_mtp\",\"decision_reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"thinking_policy\":\"hint\",\"thinking_controls\":\"prompt_hint_only\"}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"done\",\"timing\":{\"elapsed_ms\":863.775,\"ttft_ms\":863.118},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-4d6e9f4880a04bffb5c302b62f775f22\",\"object\":\"chat.completion.chunk\",\"created\":1792263761,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[],\"usage\":{\"prompt_tokens\":27,\"completion_tokens\":24,\"total_tokens\":51,\"completion_tokens_details\":{\"accepted_prediction_tokens\":15,\"rejected_prediction_tokens\":8}},\"hipengine\":{\"metadata_version\":1,\"event\":\"usage\",\"timing\":{\"elapsed_ms\":863.827,\"ttft_ms\":863.118},\"usage\":{\"prompt_tokens\":27,\"completion_tokens\":24,\"total_tokens\":51,\"completion_tokens_details\":{\"accepted_prediction_tokens\":15,\"rejected_prediction_tokens\":8}},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: [DONE]\n\n"
+      },
+      "summary": {
+        "content": "In the context of testing a web API, an **Acceptance Matrix** (often referred to as a Decision Table or",
+        "reasoning_content": "",
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "usage",
+          "timing": {
+            "elapsed_ms": 863.827,
+            "ttft_ms": 863.118
+          },
+          "routing": {
+            "requested_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "served_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "phase": "done",
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 8,
+            "prompt_tokens": 27,
+            "generated_tokens": 24,
+            "phase": "done",
+            "continuation_eligible": false,
+            "sampler_mode": "greedy_speculative_mtp",
+            "execution_path": "gemma4_mtp_batched_verify"
+          },
+          "diagnostics": {
+            "speculative_provider": "gemma4_mtp",
+            "candidate_budget": 4,
+            "proposed_draft_tokens": 23,
+            "accepted_draft_tokens": 15,
+            "draft_acceptance": 0.6521739130434783,
+            "tokens_per_cycle": 3.0,
+            "cycles": [
+              {
+                "start_position": 27,
+                "candidates": [
+                  506,
+                  4403,
+                  529,
+                  7257
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 32,
+                "candidates": [
+                  4108,
+                  9299,
+                  236764,
+                  614
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 37,
+                "candidates": [
+                  24040,
+                  831,
+                  28707,
+                  1018
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 42,
+                "candidates": [
+                  74860,
+                  2760,
+                  614,
+                  122902
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 44,
+                "candidates": [
+                  531,
+                  618,
+                  614,
+                  122902
+                ],
+                "accepted": 2,
+                "committed": 3
+              },
+              {
+                "start_position": 47,
+                "candidates": [
+                  64861,
+                  2109
+                ],
+                "accepted": 0,
+                "committed": 1
+              },
+              {
+                "start_position": 48,
+                "candidates": [
+                  28707
+                ],
+                "accepted": 0,
+                "committed": 1
+              },
+              {
+                "start_position": 49,
+                "candidates": [],
+                "accepted": 0,
+                "committed": 1
+              }
+            ],
+            "target_verify": "batched_wmma",
+            "draft_rollback": "cursor_rewind",
+            "accept_rule": "min(1, p/q) with residual resampling",
+            "draft_law": "point_mass",
+            "verify_equivalence": "production_envelope_of_target_ar_greedy",
+            "phase_census": {
+              "cycles": 8,
+              "target_prefill": {
+                "calls": 1,
+                "ms": 95.60525696724653
+              },
+              "proposal": {
+                "calls": 8,
+                "ms": 75.28053293935955
+              },
+              "target_verify": {
+                "calls": 8,
+                "rows": 31,
+                "ms": 282.31474297354
+              },
+              "accept": {
+                "calls": 8,
+                "ms": 389.5597709924914
+              }
+            }
+          },
+          "tokens": {
+            "prompt_tokens": 27,
+            "completion_tokens": 24,
+            "total_tokens": 51,
+            "streamed_tokens": 24,
+            "answer_tokens": 24
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 24,
+            "sampler_mode": "greedy_speculative_mtp",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": false
+          },
+          "generated_token_ids": [
+            902,
+            506,
+            4403,
+            529,
+            7257,
+            496,
+            4108,
+            9299,
+            236764,
+            614,
+            5213,
+            24040,
+            831,
+            28707,
+            1018,
+            568,
+            74860,
+            11081,
+            531,
+            618,
+            496,
+            40954,
+            6274,
+            653
+          ],
+          "generated_tokens": 24,
+          "generation_shape": {
+            "route": "speculative_mtp",
+            "route_decision": {
+              "requested_route": "speculative_mtp",
+              "request_mode": "explicit",
+              "selected_route": "speculative_mtp",
+              "reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+              "k0_class": "not_k0",
+              "static_eligibility": {
+                "state": "speculative_capable",
+                "eligible": true,
+                "reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+                "packed_c1_target": false,
+                "max_candidate_count": 4,
+                "max_realized_group_rows": 1,
+                "automatic_eligible": true,
+                "strict_fallback_key": "gguf_target_ar",
+                "evidence_key": null,
+                "evidence_fingerprint": null,
+                "evidence_artifacts": [],
+                "implementation_key": "gguf_gemma4_assistant_bf16_c1_chain"
+              },
+              "static_eligibility_fingerprint": "sha256:dc06263b48aa77d01f483c680d9e10082d5966388b0f5c2f524d82c325ab4f68",
+              "static_intent_allowed": true,
+              "policy_cell": "gguf_gemma4_assistant_bf16_c1_chain",
+              "admission_basis": "implementation",
+              "implementation_key": "gguf_gemma4_assistant_bf16_c1_chain",
+              "effective_kv_storage": "bf16",
+              "kv_layout": "uniform",
+              "kv_scale_dtype": null,
+              "kv_scale_granularity": null,
+              "selected_candidate_count": 4,
+              "policy_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+              "policy_fingerprint": "sha256:e8b07e023f864d8680c37b01722f1c88111f95c142a7989ab5504244fb3ebaac",
+              "realized_group_rows": 1,
+              "output_horizon_tokens": 24,
+              "exact_default_required": true,
+              "automatic_eligible": true,
+              "evidence": "model_plugin_speculative_mtp_serving_plan"
+            }
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 23,
+            "accepted_draft_tokens": 15,
+            "rejected_draft_tokens": 8,
+            "acceptance_rate": 0.6521739130434783,
+            "draft_cycles": 8,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          },
+          "usage": {
+            "prompt_tokens": 27,
+            "completion_tokens": 24,
+            "total_tokens": 51,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 15,
+              "rejected_prediction_tokens": 8
+            }
+          }
+        },
+        "usage": {
+          "prompt_tokens": 27,
+          "completion_tokens": 24,
+          "total_tokens": 51,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 15,
+            "rejected_prediction_tokens": 8
+          }
+        },
+        "finish_reason": "length",
+        "errors": []
+      },
+      "failures": [],
+      "checks": {
+        "request_success": true,
+        "ids_match_before_timing_change": true,
+        "content_match": true,
+        "reasoning_match": true,
+        "ttft_present": true,
+        "buffered_flush_rate_absent": true,
+        "usage_matches_exact_ids": true
+      }
+    },
+    {
+      "label": "stream_thinking_hard_mtp",
+      "request": {
+        "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Acceptance matrix: explain one practical fact about testing a web API."
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 64,
+        "stream": true,
+        "speculative_mtp": {
+          "enabled": true,
+          "thinking": "hard"
+        },
+        "enable_thinking": true,
+        "max_think_tokens": 8,
+        "hard_think_cap": 8,
+        "min_answer_tokens": 16,
+        "stream_options": {
+          "include_usage": true,
+          "include_hipengine": true
+        }
+      },
+      "status": 200,
+      "wall_seconds": 1.002143609977793,
+      "response": {
+        "sse_raw": "data: {\"id\":\"chatcmpl-77198eea2e6d43dc8f3de25d78a9fbfb\",\"object\":\"chat.completion.chunk\",\"created\":1792263762,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"hipengine\":{\"metadata_version\":1,\"event\":\"role\",\"timing\":{\"elapsed_ms\":0.861},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-77198eea2e6d43dc8f3de25d78a9fbfb\",\"object\":\"chat.completion.chunk\",\"created\":1792263762,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"\\n*   Topic: Acceptance\"},\"finish_reason\":null,\"hipengine\":{\"phase\":\"think\",\"decode_state\":{\"row_index\":0,\"step_index\":18,\"prompt_tokens\":30,\"generated_tokens\":64,\"phase\":\"think\",\"continuation_eligible\":false,\"sampler_mode\":\"greedy_speculative_mtp\",\"execution_path\":\"gemma4_mtp_batched_verify\"},\"event\":\"generation_complete\",\"diagnostics\":{\"speculative_provider\":\"gemma4_mtp\",\"candidate_budget\":4,\"proposed_draft_tokens\":68,\"accepted_draft_tokens\":45,\"draft_acceptance\":0.6617647058823529,\"tokens_per_cycle\":3.5555555555555554,\"cycles\":[{\"start_position\":30,\"candidates\":[45518,108,236829,139],\"accepted\":4,\"committed\":5},{\"start_position\":35,\"candidates\":[236787,122902,954,36345],\"accepted\":4,\"committed\":5},{\"start_position\":40,\"candidates\":[24040,831,6113,236761],\"accepted\":0,\"committed\":1},{\"start_position\":41,\"candidates\":[8082,886,10231,1707],\"accepted\":1,\"committed\":2},{\"start_position\":43,\"candidates\":[10231,1707,1003,7257],\"accepted\":4,\"committed\":5},{\"start_position\":48,\"candidates\":[4108,9299,1699,614],\"accepted\":2,\"committed\":3},{\"start_position\":51,\"candidates\":[506,14970,529,614],\"accepted\":4,\"committed\":5},{\"start_position\":56,\"candidates\":[24040,831,28707,125546],\"accepted\":4,\"committed\":5},{\"start_position\":61,\"candidates\":[1171,1202,531,8540],\"accepted\":4,\"committed\":5},{\"start_position\":66,\"candidates\":[600,6113,563,236761],\"accepted\":1,\"committed\":2},{\"start_position\":68,\"candidates\":[236761,108,902,506],\"accepted\":0,\"committed\":1},{\"start_position\":69,\"candidates\":[506,4403,529,7257],\"accepted\":0,\"committed\":1},{\"start_position\":70,\"candidates\":[4403,236761,108,902],\"accepted\":4,\"committed\":5},{\"start_position\":75,\"candidates\":[7257,236764,614,5213],\"accepted\":4,\"committed\":5},{\"start_position\":80,\"candidates\":[831,28707,1018,568],\"accepted\":4,\"committed\":5},{\"start_position\":85,\"candidates\":[2760,496,122902,41183],\"accepted\":2,\"committed\":3},{\"start_position\":88,\"candidates\":[2109,28707,653,496],\"accepted\":3,\"committed\":4},{\"start_position\":92,\"candidates\":[],\"accepted\":0,\"committed\":1}],\"target_verify\":\"batched_wmma\",\"draft_rollback\":\"cursor_rewind\",\"accept_rule\":\"min(1, p/q) with residual resampling\",\"draft_law\":\"point_mass\",\"verify_equivalence\":\"production_envelope_of_target_ar_greedy\",\"phase_census\":{\"cycles\":18,\"target_prefill\":{\"calls\":1,\"ms\":100.60017800424248},\"proposal\":{\"calls\":18,\"ms\":197.1476239268668},\"target_verify\":{\"calls\":18,\"rows\":86,\"ms\":695.7983589963987},\"accept\":{\"calls\":18,\"ms\":2.8090691193938255}}},\"tokens\":{\"streamed_tokens\":6,\"delta_tokens\":6,\"reasoning_tokens\":6}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"delta\",\"timing\":{\"elapsed_ms\":999.082,\"ttft_ms\":999.082},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-77198eea2e6d43dc8f3de25d78a9fbfb\",\"object\":\"chat.completion.chunk\",\"created\":1792263762,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"To explain a practical fact about testing a web API through the lens of an **Acceptance Matrix**, we first need to define what that is in this context.\\n\\nIn API testing, an **Acceptance Matrix** (often called a Traceability Matrix or an Acceptance\"},\"finish_reason\":null,\"hipengine\":{\"phase\":\"answer\",\"decode_state\":{\"row_index\":0,\"step_index\":18,\"prompt_tokens\":30,\"generated_tokens\":64,\"phase\":\"answer\",\"continuation_eligible\":false,\"sampler_mode\":\"greedy_speculative_mtp\",\"execution_path\":\"gemma4_mtp_batched_verify\"},\"event\":\"generation_complete\",\"diagnostics\":{\"speculative_provider\":\"gemma4_mtp\",\"candidate_budget\":4,\"proposed_draft_tokens\":68,\"accepted_draft_tokens\":45,\"draft_acceptance\":0.6617647058823529,\"tokens_per_cycle\":3.5555555555555554,\"cycles\":[{\"start_position\":30,\"candidates\":[45518,108,236829,139],\"accepted\":4,\"committed\":5},{\"start_position\":35,\"candidates\":[236787,122902,954,36345],\"accepted\":4,\"committed\":5},{\"start_position\":40,\"candidates\":[24040,831,6113,236761],\"accepted\":0,\"committed\":1},{\"start_position\":41,\"candidates\":[8082,886,10231,1707],\"accepted\":1,\"committed\":2},{\"start_position\":43,\"candidates\":[10231,1707,1003,7257],\"accepted\":4,\"committed\":5},{\"start_position\":48,\"candidates\":[4108,9299,1699,614],\"accepted\":2,\"committed\":3},{\"start_position\":51,\"candidates\":[506,14970,529,614],\"accepted\":4,\"committed\":5},{\"start_position\":56,\"candidates\":[24040,831,28707,125546],\"accepted\":4,\"committed\":5},{\"start_position\":61,\"candidates\":[1171,1202,531,8540],\"accepted\":4,\"committed\":5},{\"start_position\":66,\"candidates\":[600,6113,563,236761],\"accepted\":1,\"committed\":2},{\"start_position\":68,\"candidates\":[236761,108,902,506],\"accepted\":0,\"committed\":1},{\"start_position\":69,\"candidates\":[506,4403,529,7257],\"accepted\":0,\"committed\":1},{\"start_position\":70,\"candidates\":[4403,236761,108,902],\"accepted\":4,\"committed\":5},{\"start_position\":75,\"candidates\":[7257,236764,614,5213],\"accepted\":4,\"committed\":5},{\"start_position\":80,\"candidates\":[831,28707,1018,568],\"accepted\":4,\"committed\":5},{\"start_position\":85,\"candidates\":[2760,496,122902,41183],\"accepted\":2,\"committed\":3},{\"start_position\":88,\"candidates\":[2109,28707,653,496],\"accepted\":3,\"committed\":4},{\"start_position\":92,\"candidates\":[],\"accepted\":0,\"committed\":1}],\"target_verify\":\"batched_wmma\",\"draft_rollback\":\"cursor_rewind\",\"accept_rule\":\"min(1, p/q) with residual resampling\",\"draft_law\":\"point_mass\",\"verify_equivalence\":\"production_envelope_of_target_ar_greedy\",\"phase_census\":{\"cycles\":18,\"target_prefill\":{\"calls\":1,\"ms\":100.60017800424248},\"proposal\":{\"calls\":18,\"ms\":197.1476239268668},\"target_verify\":{\"calls\":18,\"rows\":86,\"ms\":695.7983589963987},\"accept\":{\"calls\":18,\"ms\":2.8090691193938255}}},\"tokens\":{\"streamed_tokens\":59,\"delta_tokens\":53,\"reasoning_tokens\":6,\"answer_tokens\":53}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"delta\",\"timing\":{\"elapsed_ms\":999.33,\"ttft_ms\":999.082},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-77198eea2e6d43dc8f3de25d78a9fbfb\",\"object\":\"chat.completion.chunk\",\"created\":1792263762,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\",\"finish_details\":{\"reason\":\"length\",\"length_limit\":64,\"forced_close\":true,\"reasoning_tokens\":11,\"answer_tokens\":53,\"budget_pressure\":\"hard_close\",\"sampler_mode\":\"greedy_speculative_mtp\",\"phase\":\"answer\",\"cache_action\":\"append_none\",\"continuation_eligible\":false},\"hipengine\":{\"phase\":\"done\",\"decode_state\":{\"row_index\":0,\"step_index\":18,\"prompt_tokens\":30,\"generated_tokens\":64,\"phase\":\"done\",\"continuation_eligible\":false,\"sampler_mode\":\"greedy_speculative_mtp\",\"execution_path\":\"gemma4_mtp_batched_verify\"},\"event\":\"generation_complete\",\"diagnostics\":{\"speculative_provider\":\"gemma4_mtp\",\"candidate_budget\":4,\"proposed_draft_tokens\":68,\"accepted_draft_tokens\":45,\"draft_acceptance\":0.6617647058823529,\"tokens_per_cycle\":3.5555555555555554,\"cycles\":[{\"start_position\":30,\"candidates\":[45518,108,236829,139],\"accepted\":4,\"committed\":5},{\"start_position\":35,\"candidates\":[236787,122902,954,36345],\"accepted\":4,\"committed\":5},{\"start_position\":40,\"candidates\":[24040,831,6113,236761],\"accepted\":0,\"committed\":1},{\"start_position\":41,\"candidates\":[8082,886,10231,1707],\"accepted\":1,\"committed\":2},{\"start_position\":43,\"candidates\":[10231,1707,1003,7257],\"accepted\":4,\"committed\":5},{\"start_position\":48,\"candidates\":[4108,9299,1699,614],\"accepted\":2,\"committed\":3},{\"start_position\":51,\"candidates\":[506,14970,529,614],\"accepted\":4,\"committed\":5},{\"start_position\":56,\"candidates\":[24040,831,28707,125546],\"accepted\":4,\"committed\":5},{\"start_position\":61,\"candidates\":[1171,1202,531,8540],\"accepted\":4,\"committed\":5},{\"start_position\":66,\"candidates\":[600,6113,563,236761],\"accepted\":1,\"committed\":2},{\"start_position\":68,\"candidates\":[236761,108,902,506],\"accepted\":0,\"committed\":1},{\"start_position\":69,\"candidates\":[506,4403,529,7257],\"accepted\":0,\"committed\":1},{\"start_position\":70,\"candidates\":[4403,236761,108,902],\"accepted\":4,\"committed\":5},{\"start_position\":75,\"candidates\":[7257,236764,614,5213],\"accepted\":4,\"committed\":5},{\"start_position\":80,\"candidates\":[831,28707,1018,568],\"accepted\":4,\"committed\":5},{\"start_position\":85,\"candidates\":[2760,496,122902,41183],\"accepted\":2,\"committed\":3},{\"start_position\":88,\"candidates\":[2109,28707,653,496],\"accepted\":3,\"committed\":4},{\"start_position\":92,\"candidates\":[],\"accepted\":0,\"committed\":1}],\"target_verify\":\"batched_wmma\",\"draft_rollback\":\"cursor_rewind\",\"accept_rule\":\"min(1, p/q) with residual resampling\",\"draft_law\":\"point_mass\",\"verify_equivalence\":\"production_envelope_of_target_ar_greedy\",\"phase_census\":{\"cycles\":18,\"target_prefill\":{\"calls\":1,\"ms\":100.60017800424248},\"proposal\":{\"calls\":18,\"ms\":197.1476239268668},\"target_verify\":{\"calls\":18,\"rows\":86,\"ms\":695.7983589963987},\"accept\":{\"calls\":18,\"ms\":2.8090691193938255}}},\"finish_details\":{\"reason\":\"length\",\"length_limit\":64,\"forced_close\":true,\"reasoning_tokens\":11,\"answer_tokens\":53,\"budget_pressure\":\"hard_close\",\"sampler_mode\":\"greedy_speculative_mtp\",\"phase\":\"answer\",\"cache_action\":\"append_none\",\"continuation_eligible\":false},\"generated_token_ids\":[100,45518,108,236829,139,47589,236787,122902,954,36345,236813,2021,8082,496,10231,1707,1003,7257,496,4108,9299,1343,506,14970,529,614,5213,24040,831,28707,125546,692,1171,1202,531,8540,1144,600,563,528,672,4403,236761,108,902,9299,7257,236764,614,5213,24040,831,28707,1018,568,74860,2760,496,64861,2109,28707,653,614,122902],\"generated_tokens\":64,\"tokens\":{\"prompt_tokens\":30,\"completion_tokens\":64,\"total_tokens\":94,\"streamed_tokens\":59,\"reasoning_tokens\":6,\"answer_tokens\":53},\"generation_shape\":{\"route\":\"speculative_mtp\",\"route_decision\":{\"requested_route\":\"speculative_mtp\",\"request_mode\":\"explicit\",\"selected_route\":\"speculative_mtp\",\"reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"k0_class\":\"not_k0\",\"static_eligibility\":{\"state\":\"speculative_capable\",\"eligible\":true,\"reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"packed_c1_target\":false,\"max_candidate_count\":4,\"max_realized_group_rows\":1,\"automatic_eligible\":true,\"strict_fallback_key\":\"gguf_target_ar\",\"evidence_key\":null,\"evidence_fingerprint\":null,\"evidence_artifacts\":[],\"implementation_key\":\"gguf_gemma4_assistant_bf16_c1_chain\"},\"static_eligibility_fingerprint\":\"sha256:dc06263b48aa77d01f483c680d9e10082d5966388b0f5c2f524d82c325ab4f68\",\"static_intent_allowed\":true,\"policy_cell\":\"gguf_gemma4_assistant_bf16_c1_chain\",\"admission_basis\":\"implementation\",\"implementation_key\":\"gguf_gemma4_assistant_bf16_c1_chain\",\"effective_kv_storage\":\"bf16\",\"kv_layout\":\"uniform\",\"kv_scale_dtype\":null,\"kv_scale_granularity\":null,\"selected_candidate_count\":4,\"policy_reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"policy_fingerprint\":\"sha256:e8b07e023f864d8680c37b01722f1c88111f95c142a7989ab5504244fb3ebaac\",\"realized_group_rows\":1,\"output_horizon_tokens\":64,\"exact_default_required\":true,\"automatic_eligible\":true,\"evidence\":\"model_plugin_speculative_mtp_serving_plan\"}},\"speculative_mtp\":{\"effective_route\":\"speculative_mtp\",\"used\":true,\"draft_tokens\":68,\"accepted_draft_tokens\":45,\"rejected_draft_tokens\":23,\"acceptance_rate\":0.6617647058823529,\"draft_cycles\":18,\"requested_route\":\"speculative_mtp\",\"decision_reason\":\"implemented_gguf_gemma4_assistant_bf16_c1_chain\",\"thinking_policy\":\"hard\",\"thinking_controls\":\"hard_controls_preserved\"}}}],\"hipengine\":{\"metadata_version\":1,\"event\":\"done\",\"timing\":{\"elapsed_ms\":999.945,\"ttft_ms\":999.082},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: {\"id\":\"chatcmpl-77198eea2e6d43dc8f3de25d78a9fbfb\",\"object\":\"chat.completion.chunk\",\"created\":1792263762,\"model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"choices\":[],\"usage\":{\"prompt_tokens\":30,\"completion_tokens\":64,\"total_tokens\":94,\"reasoning_tokens\":11,\"completion_tokens_details\":{\"reasoning_tokens\":11,\"accepted_prediction_tokens\":45,\"rejected_prediction_tokens\":23}},\"hipengine\":{\"metadata_version\":1,\"event\":\"usage\",\"timing\":{\"elapsed_ms\":1000.052,\"ttft_ms\":999.082},\"usage\":{\"prompt_tokens\":30,\"completion_tokens\":64,\"total_tokens\":94,\"reasoning_tokens\":11,\"completion_tokens_details\":{\"reasoning_tokens\":11,\"accepted_prediction_tokens\":45,\"rejected_prediction_tokens\":23}},\"routing\":{\"requested_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"served_model\":\"gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf\",\"fallback_used\":false,\"policy\":\"single_model_exact\",\"loaded_model_count\":1,\"multiple_models\":false}}}\n\ndata: [DONE]\n\n"
+      },
+      "summary": {
+        "content": "To explain a practical fact about testing a web API through the lens of an **Acceptance Matrix**, we first need to define what that is in this context.\n\nIn API testing, an **Acceptance Matrix** (often called a Traceability Matrix or an Acceptance",
+        "reasoning_content": "\n*   Topic: Acceptance",
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "usage",
+          "timing": {
+            "elapsed_ms": 1000.052,
+            "ttft_ms": 999.082
+          },
+          "routing": {
+            "requested_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "served_model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "phase": "done",
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 18,
+            "prompt_tokens": 30,
+            "generated_tokens": 64,
+            "phase": "done",
+            "continuation_eligible": false,
+            "sampler_mode": "greedy_speculative_mtp",
+            "execution_path": "gemma4_mtp_batched_verify"
+          },
+          "diagnostics": {
+            "speculative_provider": "gemma4_mtp",
+            "candidate_budget": 4,
+            "proposed_draft_tokens": 68,
+            "accepted_draft_tokens": 45,
+            "draft_acceptance": 0.6617647058823529,
+            "tokens_per_cycle": 3.5555555555555554,
+            "cycles": [
+              {
+                "start_position": 30,
+                "candidates": [
+                  45518,
+                  108,
+                  236829,
+                  139
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 35,
+                "candidates": [
+                  236787,
+                  122902,
+                  954,
+                  36345
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 40,
+                "candidates": [
+                  24040,
+                  831,
+                  6113,
+                  236761
+                ],
+                "accepted": 0,
+                "committed": 1
+              },
+              {
+                "start_position": 41,
+                "candidates": [
+                  8082,
+                  886,
+                  10231,
+                  1707
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 43,
+                "candidates": [
+                  10231,
+                  1707,
+                  1003,
+                  7257
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 48,
+                "candidates": [
+                  4108,
+                  9299,
+                  1699,
+                  614
+                ],
+                "accepted": 2,
+                "committed": 3
+              },
+              {
+                "start_position": 51,
+                "candidates": [
+                  506,
+                  14970,
+                  529,
+                  614
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 56,
+                "candidates": [
+                  24040,
+                  831,
+                  28707,
+                  125546
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 61,
+                "candidates": [
+                  1171,
+                  1202,
+                  531,
+                  8540
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 66,
+                "candidates": [
+                  600,
+                  6113,
+                  563,
+                  236761
+                ],
+                "accepted": 1,
+                "committed": 2
+              },
+              {
+                "start_position": 68,
+                "candidates": [
+                  236761,
+                  108,
+                  902,
+                  506
+                ],
+                "accepted": 0,
+                "committed": 1
+              },
+              {
+                "start_position": 69,
+                "candidates": [
+                  506,
+                  4403,
+                  529,
+                  7257
+                ],
+                "accepted": 0,
+                "committed": 1
+              },
+              {
+                "start_position": 70,
+                "candidates": [
+                  4403,
+                  236761,
+                  108,
+                  902
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 75,
+                "candidates": [
+                  7257,
+                  236764,
+                  614,
+                  5213
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 80,
+                "candidates": [
+                  831,
+                  28707,
+                  1018,
+                  568
+                ],
+                "accepted": 4,
+                "committed": 5
+              },
+              {
+                "start_position": 85,
+                "candidates": [
+                  2760,
+                  496,
+                  122902,
+                  41183
+                ],
+                "accepted": 2,
+                "committed": 3
+              },
+              {
+                "start_position": 88,
+                "candidates": [
+                  2109,
+                  28707,
+                  653,
+                  496
+                ],
+                "accepted": 3,
+                "committed": 4
+              },
+              {
+                "start_position": 92,
+                "candidates": [],
+                "accepted": 0,
+                "committed": 1
+              }
+            ],
+            "target_verify": "batched_wmma",
+            "draft_rollback": "cursor_rewind",
+            "accept_rule": "min(1, p/q) with residual resampling",
+            "draft_law": "point_mass",
+            "verify_equivalence": "production_envelope_of_target_ar_greedy",
+            "phase_census": {
+              "cycles": 18,
+              "target_prefill": {
+                "calls": 1,
+                "ms": 100.60017800424248
+              },
+              "proposal": {
+                "calls": 18,
+                "ms": 197.1476239268668
+              },
+              "target_verify": {
+                "calls": 18,
+                "rows": 86,
+                "ms": 695.7983589963987
+              },
+              "accept": {
+                "calls": 18,
+                "ms": 2.8090691193938255
+              }
+            }
+          },
+          "tokens": {
+            "prompt_tokens": 30,
+            "completion_tokens": 64,
+            "total_tokens": 94,
+            "streamed_tokens": 59,
+            "reasoning_tokens": 6,
+            "answer_tokens": 53
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 64,
+            "forced_close": true,
+            "reasoning_tokens": 11,
+            "answer_tokens": 53,
+            "budget_pressure": "hard_close",
+            "sampler_mode": "greedy_speculative_mtp",
+            "phase": "answer",
+            "cache_action": "append_none",
+            "continuation_eligible": false
+          },
+          "generated_token_ids": [
+            100,
+            45518,
+            108,
+            236829,
+            139,
+            47589,
+            236787,
+            122902,
+            954,
+            36345,
+            236813,
+            2021,
+            8082,
+            496,
+            10231,
+            1707,
+            1003,
+            7257,
+            496,
+            4108,
+            9299,
+            1343,
+            506,
+            14970,
+            529,
+            614,
+            5213,
+            24040,
+            831,
+            28707,
+            125546,
+            692,
+            1171,
+            1202,
+            531,
+            8540,
+            1144,
+            600,
+            563,
+            528,
+            672,
+            4403,
+            236761,
+            108,
+            902,
+            9299,
+            7257,
+            236764,
+            614,
+            5213,
+            24040,
+            831,
+            28707,
+            1018,
+            568,
+            74860,
+            2760,
+            496,
+            64861,
+            2109,
+            28707,
+            653,
+            614,
+            122902
+          ],
+          "generated_tokens": 64,
+          "generation_shape": {
+            "route": "speculative_mtp",
+            "route_decision": {
+              "requested_route": "speculative_mtp",
+              "request_mode": "explicit",
+              "selected_route": "speculative_mtp",
+              "reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+              "k0_class": "not_k0",
+              "static_eligibility": {
+                "state": "speculative_capable",
+                "eligible": true,
+                "reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+                "packed_c1_target": false,
+                "max_candidate_count": 4,
+                "max_realized_group_rows": 1,
+                "automatic_eligible": true,
+                "strict_fallback_key": "gguf_target_ar",
+                "evidence_key": null,
+                "evidence_fingerprint": null,
+                "evidence_artifacts": [],
+                "implementation_key": "gguf_gemma4_assistant_bf16_c1_chain"
+              },
+              "static_eligibility_fingerprint": "sha256:dc06263b48aa77d01f483c680d9e10082d5966388b0f5c2f524d82c325ab4f68",
+              "static_intent_allowed": true,
+              "policy_cell": "gguf_gemma4_assistant_bf16_c1_chain",
+              "admission_basis": "implementation",
+              "implementation_key": "gguf_gemma4_assistant_bf16_c1_chain",
+              "effective_kv_storage": "bf16",
+              "kv_layout": "uniform",
+              "kv_scale_dtype": null,
+              "kv_scale_granularity": null,
+              "selected_candidate_count": 4,
+              "policy_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+              "policy_fingerprint": "sha256:e8b07e023f864d8680c37b01722f1c88111f95c142a7989ab5504244fb3ebaac",
+              "realized_group_rows": 1,
+              "output_horizon_tokens": 64,
+              "exact_default_required": true,
+              "automatic_eligible": true,
+              "evidence": "model_plugin_speculative_mtp_serving_plan"
+            }
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 68,
+            "accepted_draft_tokens": 45,
+            "rejected_draft_tokens": 23,
+            "acceptance_rate": 0.6617647058823529,
+            "draft_cycles": 18,
+            "requested_route": "speculative_mtp",
+            "decision_reason": "implemented_gguf_gemma4_assistant_bf16_c1_chain",
+            "thinking_policy": "hard",
+            "thinking_controls": "hard_controls_preserved"
+          },
+          "usage": {
+            "prompt_tokens": 30,
+            "completion_tokens": 64,
+            "total_tokens": 94,
+            "reasoning_tokens": 11,
+            "completion_tokens_details": {
+              "reasoning_tokens": 11,
+              "accepted_prediction_tokens": 45,
+              "rejected_prediction_tokens": 23
+            }
+          }
+        },
+        "usage": {
+          "prompt_tokens": 30,
+          "completion_tokens": 64,
+          "total_tokens": 94,
+          "reasoning_tokens": 11,
+          "completion_tokens_details": {
+            "reasoning_tokens": 11,
+            "accepted_prediction_tokens": 45,
+            "rejected_prediction_tokens": 23
+          }
+        },
+        "finish_reason": "length",
+        "errors": []
+      },
+      "failures": [],
+      "checks": {
+        "request_success": true,
+        "ids_match_before_timing_change": true,
+        "content_match": true,
+        "reasoning_match": true,
+        "ttft_present": true,
+        "buffered_flush_rate_absent": true,
+        "usage_matches_exact_ids": true
+      }
+    }
+  ],
+  "passed": true,
+  "performance_claim": false,
+  "purpose": "Validate buffered SSE timing semantics and preserve actual MTP execution, channels, token IDs and usage; not a throughput benchmark.",
+  "server_command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python -m hipengine.server --model /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --backend hip_gfx1151 --max-context-tokens 32768 --max-active-requests 4 --prefix-cache off --no-startup-chat-smoke --no-startup-scratch-probe --host 127.0.0.1 --port 18999 --log-color never",
+  "api_source_sha256": "c09af626b05488636b46625c901c233b11024d45cd4737dd0265132b30eb17ee",
+  "source_replay_sha256": "b32e0aba76b8da2b09f54e143c8caeb46179acb2b70b8c98e6dc3c5458c65af4",
+  "validation": "six requests passed all per-row checks; all six Gemma responses were buffered; live timing is covered by deterministic server tests"
+}

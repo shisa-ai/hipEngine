@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261017T073514.416099Z-overnight-followup-mtp-gfx1151-qwen36-moe-complete-090659.md",
+  "sha256": "e4dc2dee5fb35c6a0d5011f24b8e74989597a721b12115db99715e6bcb5b3569",
+  "defects": [
+    "abbreviated_base_commit"
+  ],
+  "reason": "base_commit recorded the 9-character abbreviation 464799f8d; it resolves to 464799f8d1d03bedd730a4c2c1200729a0bb3310 in this repository's history.",
+  "base_commit": "464799f8d1d03bedd730a4c2c1200729a0bb3310",
+  "superseded_by": null
+}

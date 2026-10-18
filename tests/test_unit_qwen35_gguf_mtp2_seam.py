@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import inspect
+import os
 from types import SimpleNamespace
 
 import numpy as np
@@ -28,7 +29,7 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
     PRIMING_SOURCE_RESTORED,
 )
 from hipengine.kernels.backends import backend_package_capability
-from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY, QWEN35_MOE_H2048_E256_GEOMETRY
 from hipengine.runtime import qwen35_gguf_runner as runner_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
@@ -112,11 +113,198 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
         "native", backend="hip_gfx1100", end_position=16384, target=target,
     ) == "native"
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1151", end_position=96
+        "native", backend="hip_gfx1151", end_position=96,
+        target=SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(config=SimpleNamespace(is_moe=True)),
+            ),
+        ),
+    ) == "native"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1151", end_position=96,
+        target=SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(
+                    config=SimpleNamespace(is_moe=False),
+                    file_type_name="MOSTLY_Q4_K_M",
+                ),
+            ),
+        ),
     ) == "native"
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=65545
     ) == "serial_exact"
+
+
+def test_gfx1151_dense_native_selection_ignores_quant_identity() -> None:
+    """Dense gfx1151 selects native from context, never from artifact identity.
+
+    A Q4_K_S target ran the native row verifier before a serial fallback was
+    keyed on its quant name. That fallback gated execution on artifact identity
+    rather than on a kernel capability, so a correctly executable route became
+    slower with no capability reason. Selection must stay identity-free.
+    """
+
+    def _target(*, file_type_name: str, is_moe: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(
+                    config=SimpleNamespace(is_moe=is_moe),
+                    file_type_name=file_type_name,
+                ),
+            ),
+        )
+
+    for file_type_name in (
+        "MOSTLY_Q4_K_M",
+        "MOSTLY_Q4_K_S",
+        "MOSTLY_Q4_K_S\x00garbage",
+        "",
+    ):
+        assert _target_verify_mode_for_context(
+            "native",
+            backend="hip_gfx1151",
+            end_position=96,
+            target=_target(file_type_name=file_type_name),
+        ) == "native", file_type_name
+    # The mode resolver has no quant/identity input at all, so no future
+    # quant-name containment can be reintroduced without changing this seam.
+    signature = inspect.signature(_target_verify_mode_for_context)
+    assert set(signature.parameters) == {
+        "requested",
+        "backend",
+        "end_position",
+        "target",
+    }
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_SPECDEC2_Q4KS_NATIVE_STATE_SAFE", None
+    ) is None
+
+
+@pytest.mark.parametrize("backend,end_position", [
+    ("hip_gfx1100", 17), ("hip_gfx1100", 64), ("hip_gfx1100", 95),
+    ("hip_gfx1151", 17), ("hip_gfx1151", 96), ("hip_gfx1151", 4096),
+])
+def test_moe_native_mode_is_not_blocked_by_cross_path_numerical_drift(
+    backend: str, end_position: int,
+) -> None:
+    """Generated-ID differences do not establish a state-ownership failure."""
+
+    moe = SimpleNamespace(
+        runner=SimpleNamespace(
+            weights=SimpleNamespace(
+                config=SimpleNamespace(is_moe=True),
+                file_type_name="MOSTLY_Q4_K_M",
+            ),
+        ),
+    )
+    assert backend_package_capability(
+        backend, "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", None
+    ) is None
+    assert _target_verify_mode_for_context(
+        "native", backend=backend, end_position=end_position, target=moe,
+    ) == "native"
+    assert _target_verify_mode_for_context(
+        "serial_exact", backend=backend, end_position=end_position, target=moe,
+    ) == "serial_exact"
+
+
+def test_native_chain_accept_commits_the_accepted_row_for_every_bucket() -> None:
+    """Pin the accepted-row offset contract the native accept kernel implements.
+
+    ``dflash_accept_chain_i32_native_cycle`` walks root-first candidate rows and
+    selects the last row whose target top-1 equals the next candidate token. The
+    committed row index, its position, and the published correction must follow
+    that walk for every B1-B7 bucket and at the decode-budget boundary; a
+    mismatch here installs the wrong linear/KV state and the wrong next-root
+    hidden while still emitting plausible tokens.
+    """
+
+    from hipengine.runtime.gguf_native_spec_cycle import build_native_b2_target_batch
+
+    start = 7
+    for rows in range(2, 9):
+        tokens = tuple(100 + index for index in range(rows))
+        batch = build_native_b2_target_batch(tokens, start_position=start, request_id=3)
+        assert batch.positions == tuple(range(start, start + rows))
+        assert batch.parent_rows == (-1, *tuple(range(rows - 1)))
+        assert batch.draft_depths == tuple(range(rows))
+        assert batch.root_rows == (0,)
+        assert batch.candidate_rows == tuple(range(1, rows))
+        # Row ``r`` predicts the token at position ``r + 1``, so full agreement
+        # commits the last candidate row and publishes one further token.
+        agreeing = (*tokens[1:], 999)
+        full = batch.accept_from_top1(agreeing, remaining_decode=(64,))
+        assert full.accepted_counts == (rows - 1,)
+        assert full.accepted_tokens == (tokens[1:],)
+        assert full.selected_candidate_rows == (rows - 1,)
+        assert full.next_tokens == (999,)
+        # A root mismatch commits row 0 and publishes the root row's own
+        # prediction, which is the correction the next root consumes.
+        rejected = batch.accept_from_top1(
+            (777, *agreeing[1:]), remaining_decode=(64,)
+        )
+        assert rejected.accepted_counts == (0,)
+        assert rejected.accepted_tokens == ((),)
+        assert rejected.selected_candidate_rows == (0,)
+        assert rejected.next_tokens == (777,)
+        # The remaining-decode budget caps acceptance at ``budget - 1`` drafts
+        # and never emits the exhausted sentinel, so every cycle publishes at
+        # least its correction token and the target cursor still advances by
+        # the visible count.
+        for budget in (1, 2, 3):
+            capped = batch.accept_from_top1(agreeing, remaining_decode=(budget,))
+            expected = min(budget - 1, rows - 1)
+            assert capped.accepted_counts == (expected,), (rows, budget)
+            assert capped.selected_candidate_rows == (expected,)
+            assert capped.next_tokens is not None
+            assert capped.next_tokens[0] == agreeing[expected]
+
+
+def test_native_accept_commit_result_refuses_a_commit_off_the_accepted_row() -> None:
+    """Pin the commit destination and next-root cursor of an N2 device result."""
+
+    from hipengine.runtime.gguf_native_spec_cycle import (
+        Qwen35GGUFNativeAcceptCommitResult,
+    )
+
+    base = {
+        "input_token_ids": [100, 101, 102],
+        "token_ids": [101, 102, 103],
+        "accepted_draft_tokens": 2,
+        "commit_row": 2,
+        "commit_token": 102,
+        "commit_position": 7,
+        "next_token": 103,
+        "full_accept": True,
+        "start_position": 5,
+        "end_position": 8,
+        "hidden_seed_rows_ptr": 0x1000,
+        "hidden_seed_row_count": 3,
+        "hidden_size": 8,
+        "target_top1": [101, 102, 103],
+    }
+    result = Qwen35GGUFNativeAcceptCommitResult(**base)
+    assert (result.commit_row, result.commit_position, result.end_position) == (2, 7, 8)
+
+    # Selecting an earlier row for the accepted prefix, or reporting a cursor
+    # that is not that row's position + 1, would commit another row's state.
+    with pytest.raises(ValueError, match="commit_row"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "commit_row": 1})
+    with pytest.raises(ValueError, match="commit_position"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "commit_position": 6})
+    with pytest.raises(ValueError, match="end_position"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "end_position": 9})
+    # The published correction is the committed row's own prediction, so a
+    # next-root token that is not the last visible token is a mismatch.
+    with pytest.raises(ValueError, match="next_token"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "next_token": 104})
+    with pytest.raises(ValueError, match="commit_token"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "commit_token": 101})
+    # The commit kernel indexes the hidden/linear row plane by commit_row, so
+    # the result must expose every verifier row, not just the accepted prefix.
+    with pytest.raises(ValueError, match="hidden rows"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "hidden_seed_row_count": 2})
 
 
 def test_backend_packages_expose_independently_qualified_adapter_scopes() -> None:
@@ -158,7 +346,9 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
         "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
         {},
     ) == {
+        (QWEN35_DENSE_H5120_GEOMETRY, None, "production"): (1, 2, 3, 4),
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3, 4),
+        (QWEN35_MOE_H2048_E256_GEOMETRY, None, "production"): (1, 2),
     }
     assert backend_package_capability(
         "hip_gfx1151",
@@ -203,6 +393,30 @@ def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c4() 
     assert adapter._physical_prompt_streaming_admitted(3) is True
     assert adapter._physical_prompt_streaming_admitted(4) is True
     assert adapter._physical_prompt_streaming_admitted(5) is False
+
+
+def test_qwen38_q4ks_prompt_streaming_uses_geometry_capability() -> None:
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1151",
+            execution_profile="production",
+        ),
+        capacity=4,
+        _shared_runner=SimpleNamespace(
+            weights=SimpleNamespace(
+                geometry=QWEN35_DENSE_H5120_GEOMETRY,
+                file_type_name="MOSTLY_Q4_K_S",
+            ),
+        ),
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+
+    assert adapter.physical_prompt_streaming_widths == (1, 2, 3, 4)
 
 
 def test_qwen_gguf_plugins_select_distinct_mtp2_adapters() -> None:
@@ -682,6 +896,35 @@ def test_resident_runner_resolves_model_plugin_mtp2_adapter_without_model_branch
         unregister_gguf_mtp2_adapter(key)
 
 
+@pytest.mark.parametrize("pinned_budget", [None, 1, 2])
+def test_resident_adapter_uses_generator_default_before_budget_publication(pinned_budget):
+    key = "test_prepublication_nextn"
+    calls = []
+
+    def factory(owner, **kwargs):
+        calls.append(kwargs["candidate_budget"])
+        return _AdapterDouble()
+
+    register_gguf_mtp2_adapter(key, factory)
+    try:
+        runner = object.__new__(Qwen35GGUFResidentModelRunner)
+        runner._mtp2_adapter = None
+        runner._mtp2_adapter_resolved = False
+        runner.capacity = 4
+        runner.generator = SimpleNamespace(
+            backend="hip_gfx1151", target_arch="gfx1151",
+            supports_speculative_mtp=True,
+            speculative_candidate_budget_default=lambda: 2,
+            model_plugin=SimpleNamespace(speculative_mtp2_adapter=key),
+        )
+        if pinned_budget is not None:
+            runner.generator.speculative_candidate_budget = pinned_budget
+        runner._resolved_mtp2_adapter()
+        assert calls == [2 if pinned_budget is None else pinned_budget]
+    finally:
+        unregister_gguf_mtp2_adapter(key)
+
+
 def _bare_runner() -> Qwen35GGUFResidentModelRunner:
     """A runner built without ``__init__``, carrying its cycle accounting."""
 
@@ -809,6 +1052,26 @@ def test_resident_runner_delegates_bounded_complete_cycle_when_plugin_selects_it
 
     assert runner.speculative_frontier_available("plan") is False
     assert runner.execute_speculative_cycle("plan", commit=True) == ("plan", True)
+
+
+def test_resident_runner_delegates_bounded_complete_cycle_with_gdn_capture(monkeypatch) -> None:
+    observed: list[str | None] = []
+
+    def execute(plan, commit):
+        observed.append(os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"))
+        return plan, commit
+
+    adapter = SimpleNamespace(staged_frontier=False, execute_cycle=execute)
+    runner = _bare_runner()
+    runner._mtp2_adapter = adapter
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(target_arch="gfx1100")
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
+
+    assert runner.speculative_frontier_available("plan") is False
+    assert runner.execute_speculative_cycle("plan", commit=True) == ("plan", True)
+    assert observed == ["1"]
+    assert "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN" not in os.environ
 
 
 def test_physical_specdec2_uses_qualified_eager_when_graph_is_uncached() -> None:
@@ -5334,7 +5597,7 @@ def test_sampled_prefill_hands_the_row_to_its_mtp_provider(monkeypatch) -> None:
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
     runner._mtp2_adapter = _Provider()
     runner._mtp2_adapter_resolved = True
-    runner.generator = SimpleNamespace(tokenizer=object())
+    runner.generator = SimpleNamespace(tokenizer=object(), target_arch="gfx1100")
     runner._route_counts = defaultdict(int)
     runner._fallback_reasons = defaultdict(int)
     runner._refresh_prefix_cache = lambda row: None
