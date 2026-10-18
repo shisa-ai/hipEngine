@@ -1,0 +1,1228 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_speculative_counter_audit",
+  "created_at": "2026-10-18T06:32:53Z",
+  "url": "http://127.0.0.1:18392",
+  "checks": [
+    {
+      "row": 0,
+      "name": "mtp.summary_present",
+      "passed": true,
+      "summary": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 54,
+        "accepted_draft_tokens": 20,
+        "rejected_draft_tokens": 34,
+        "acceptance_rate": 0.37037037037037035,
+        "draft_cycles": 19,
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      }
+    },
+    {
+      "row": 0,
+      "name": "mtp.used_true",
+      "passed": true,
+      "used": true
+    },
+    {
+      "row": 0,
+      "name": "mtp.used_has_provider",
+      "passed": true,
+      "used": true,
+      "provider": "qwen4_exp_mtp"
+    },
+    {
+      "row": 0,
+      "name": "mtp.used_has_cycles",
+      "passed": true,
+      "used": true,
+      "cycle_count": 19
+    },
+    {
+      "row": 0,
+      "name": "mtp.draft_matches_cycles",
+      "passed": true,
+      "cycle_draft": 54,
+      "summary_draft": 54
+    },
+    {
+      "row": 0,
+      "name": "mtp.accepted_matches_cycles",
+      "passed": true,
+      "cycle_accepted": 20,
+      "summary_accepted": 20
+    },
+    {
+      "row": 0,
+      "name": "mtp.rejected_is_the_remainder",
+      "passed": true,
+      "draft": 54,
+      "accepted": 20,
+      "rejected": 34
+    },
+    {
+      "row": 0,
+      "name": "mtp.accepted_within_draft",
+      "passed": true,
+      "draft": 54,
+      "accepted": 20
+    },
+    {
+      "row": 0,
+      "name": "mtp.acceptance_rate_matches_counts",
+      "passed": true,
+      "rate": 0.37037037037037035,
+      "implied": 0.37037037037037035
+    },
+    {
+      "row": 0,
+      "name": "mtp.usage_accepted_matches_summary",
+      "passed": true,
+      "usage_accepted": 20,
+      "summary_accepted": 20
+    },
+    {
+      "row": 0,
+      "name": "mtp.usage_rejected_matches_summary",
+      "passed": true,
+      "usage_rejected": 34,
+      "summary_rejected": 34
+    },
+    {
+      "row": 1,
+      "name": "mtp.summary_present",
+      "passed": true,
+      "summary": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 36,
+        "accepted_draft_tokens": 25,
+        "rejected_draft_tokens": 11,
+        "acceptance_rate": 0.6944444444444444,
+        "draft_cycles": 12,
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      }
+    },
+    {
+      "row": 1,
+      "name": "mtp.used_true",
+      "passed": true,
+      "used": true
+    },
+    {
+      "row": 1,
+      "name": "mtp.used_has_provider",
+      "passed": true,
+      "used": true,
+      "provider": "qwen4_exp_mtp"
+    },
+    {
+      "row": 1,
+      "name": "mtp.used_has_cycles",
+      "passed": true,
+      "used": true,
+      "cycle_count": 12
+    },
+    {
+      "row": 1,
+      "name": "mtp.draft_matches_cycles",
+      "passed": true,
+      "cycle_draft": 36,
+      "summary_draft": 36
+    },
+    {
+      "row": 1,
+      "name": "mtp.accepted_matches_cycles",
+      "passed": true,
+      "cycle_accepted": 25,
+      "summary_accepted": 25
+    },
+    {
+      "row": 1,
+      "name": "mtp.rejected_is_the_remainder",
+      "passed": true,
+      "draft": 36,
+      "accepted": 25,
+      "rejected": 11
+    },
+    {
+      "row": 1,
+      "name": "mtp.accepted_within_draft",
+      "passed": true,
+      "draft": 36,
+      "accepted": 25
+    },
+    {
+      "row": 1,
+      "name": "mtp.acceptance_rate_matches_counts",
+      "passed": true,
+      "rate": 0.6944444444444444,
+      "implied": 0.6944444444444444
+    },
+    {
+      "row": 1,
+      "name": "mtp.usage_accepted_matches_summary",
+      "passed": true,
+      "usage_accepted": 25,
+      "summary_accepted": 25
+    },
+    {
+      "row": 1,
+      "name": "mtp.usage_rejected_matches_summary",
+      "passed": true,
+      "usage_rejected": 11,
+      "summary_rejected": 11
+    },
+    {
+      "row": 2,
+      "name": "mtp.summary_present",
+      "passed": true,
+      "summary": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 47,
+        "accepted_draft_tokens": 23,
+        "rejected_draft_tokens": 24,
+        "acceptance_rate": 0.48936170212765956,
+        "draft_cycles": 16,
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      }
+    },
+    {
+      "row": 2,
+      "name": "mtp.used_true",
+      "passed": true,
+      "used": true
+    },
+    {
+      "row": 2,
+      "name": "mtp.used_has_provider",
+      "passed": true,
+      "used": true,
+      "provider": "qwen4_exp_mtp"
+    },
+    {
+      "row": 2,
+      "name": "mtp.used_has_cycles",
+      "passed": true,
+      "used": true,
+      "cycle_count": 16
+    },
+    {
+      "row": 2,
+      "name": "mtp.draft_matches_cycles",
+      "passed": true,
+      "cycle_draft": 47,
+      "summary_draft": 47
+    },
+    {
+      "row": 2,
+      "name": "mtp.accepted_matches_cycles",
+      "passed": true,
+      "cycle_accepted": 23,
+      "summary_accepted": 23
+    },
+    {
+      "row": 2,
+      "name": "mtp.rejected_is_the_remainder",
+      "passed": true,
+      "draft": 47,
+      "accepted": 23,
+      "rejected": 24
+    },
+    {
+      "row": 2,
+      "name": "mtp.accepted_within_draft",
+      "passed": true,
+      "draft": 47,
+      "accepted": 23
+    },
+    {
+      "row": 2,
+      "name": "mtp.acceptance_rate_matches_counts",
+      "passed": true,
+      "rate": 0.48936170212765956,
+      "implied": 0.48936170212765956
+    },
+    {
+      "row": 2,
+      "name": "mtp.usage_accepted_matches_summary",
+      "passed": true,
+      "usage_accepted": 23,
+      "summary_accepted": 23
+    },
+    {
+      "row": 2,
+      "name": "mtp.usage_rejected_matches_summary",
+      "passed": true,
+      "usage_rejected": 24,
+      "summary_rejected": 24
+    },
+    {
+      "row": 3,
+      "name": "plain.mtp_summary_absent_or_silent",
+      "passed": true,
+      "summary": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      }
+    },
+    {
+      "row": 3,
+      "name": "plain.no_accepted_prediction_tokens",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "row": 3,
+      "name": "plain.no_mtp_cycles",
+      "passed": true,
+      "cycles": []
+    },
+    {
+      "row": 4,
+      "name": "plain.mtp_summary_absent_or_silent",
+      "passed": true,
+      "summary": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      }
+    },
+    {
+      "row": 4,
+      "name": "plain.no_accepted_prediction_tokens",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "row": 4,
+      "name": "plain.no_mtp_cycles",
+      "passed": true,
+      "cycles": []
+    }
+  ],
+  "rows": [
+    {
+      "kind": "speculative_mtp",
+      "status": 200,
+      "finish_reason": "length",
+      "text": "A hash table achieves constant time complexity because a hash function directly computes the specific array index where the data is stored, allowing for immediate access without searching. This direct mapping ensures that the time required to retrieve",
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 54,
+        "accepted_draft_tokens": 20,
+        "rejected_draft_tokens": 34,
+        "acceptance_rate": 0.37037037037037035,
+        "draft_cycles": 19,
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "provider": "qwen4_exp_mtp",
+      "cycles": [
+        {
+          "start_position": 27,
+          "candidates": [
+            5010,
+            1898,
+            55288
+          ],
+          "accepted": 2,
+          "mismatch_token": 79744,
+          "committed_position": 30
+        },
+        {
+          "start_position": 30,
+          "candidates": [
+            496,
+            7,
+            16
+          ],
+          "accepted": 0,
+          "mismatch_token": 6570,
+          "committed_position": 31
+        },
+        {
+          "start_position": 31,
+          "candidates": [
+            854,
+            539,
+            1608
+          ],
+          "accepted": 1,
+          "mismatch_token": 22373,
+          "committed_position": 33
+        },
+        {
+          "start_position": 33,
+          "candidates": [
+            539,
+            1608,
+            264
+          ],
+          "accepted": 0,
+          "mismatch_token": 1521,
+          "committed_position": 34
+        },
+        {
+          "start_position": 34,
+          "candidates": [
+            424,
+            5533,
+            264
+          ],
+          "accepted": 0,
+          "mismatch_token": 264,
+          "committed_position": 35
+        },
+        {
+          "start_position": 35,
+          "candidates": [
+            5010,
+            709,
+            55288
+          ],
+          "accepted": 2,
+          "mismatch_token": 5774,
+          "committed_position": 38
+        },
+        {
+          "start_position": 38,
+          "candidates": [
+            13640,
+            279,
+            1879
+          ],
+          "accepted": 0,
+          "mismatch_token": 55288,
+          "committed_position": 39
+        },
+        {
+          "start_position": 39,
+          "candidates": [
+            279,
+            3050,
+            5638
+          ],
+          "accepted": 2,
+          "mismatch_token": 1287,
+          "committed_position": 42
+        },
+        {
+          "start_position": 42,
+          "candidates": [
+            1857,
+            1332,
+            279
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 46
+        },
+        {
+          "start_position": 46,
+          "candidates": [
+            369,
+            9476,
+            11
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 50
+        },
+        {
+          "start_position": 50,
+          "candidates": [
+            364,
+            13522,
+            2528
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 54
+        },
+        {
+          "start_position": 54,
+          "candidates": [
+            31733,
+            310,
+            8307
+          ],
+          "accepted": 0,
+          "mismatch_token": 14603,
+          "committed_position": 55
+        },
+        {
+          "start_position": 55,
+          "candidates": [
+            1472,
+            279,
+            4307
+          ],
+          "accepted": 0,
+          "mismatch_token": 13,
+          "committed_position": 56
+        },
+        {
+          "start_position": 56,
+          "candidates": [
+            733,
+            12503,
+            11
+          ],
+          "accepted": 0,
+          "mismatch_token": 1061,
+          "committed_position": 57
+        },
+        {
+          "start_position": 57,
+          "candidates": [
+            1817,
+            369,
+            5995
+          ],
+          "accepted": 0,
+          "mismatch_token": 2050,
+          "committed_position": 58
+        },
+        {
+          "start_position": 58,
+          "candidates": [
+            12366,
+            24546,
+            421
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 62
+        },
+        {
+          "start_position": 62,
+          "candidates": [
+            1324,
+            314,
+            7289
+          ],
+          "accepted": 0,
+          "mismatch_token": 854,
+          "committed_position": 63
+        },
+        {
+          "start_position": 63,
+          "candidates": [
+            22373,
+            369
+          ],
+          "accepted": 0,
+          "mismatch_token": 2483,
+          "committed_position": 64
+        },
+        {
+          "start_position": 64,
+          "candidates": [
+            310
+          ],
+          "accepted": 1,
+          "mismatch_token": null,
+          "committed_position": 66
+        }
+      ],
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 20,
+        "rejected_prediction_tokens": 34
+      },
+      "checks": [
+        {
+          "name": "mtp.summary_present",
+          "passed": true,
+          "summary": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 54,
+            "accepted_draft_tokens": 20,
+            "rejected_draft_tokens": 34,
+            "acceptance_rate": 0.37037037037037035,
+            "draft_cycles": 19,
+            "thinking_policy": "hard",
+            "thinking_controls": "hard_controls_preserved"
+          }
+        },
+        {
+          "name": "mtp.used_true",
+          "passed": true,
+          "used": true
+        },
+        {
+          "name": "mtp.used_has_provider",
+          "passed": true,
+          "used": true,
+          "provider": "qwen4_exp_mtp"
+        },
+        {
+          "name": "mtp.used_has_cycles",
+          "passed": true,
+          "used": true,
+          "cycle_count": 19
+        },
+        {
+          "name": "mtp.draft_matches_cycles",
+          "passed": true,
+          "cycle_draft": 54,
+          "summary_draft": 54
+        },
+        {
+          "name": "mtp.accepted_matches_cycles",
+          "passed": true,
+          "cycle_accepted": 20,
+          "summary_accepted": 20
+        },
+        {
+          "name": "mtp.rejected_is_the_remainder",
+          "passed": true,
+          "draft": 54,
+          "accepted": 20,
+          "rejected": 34
+        },
+        {
+          "name": "mtp.accepted_within_draft",
+          "passed": true,
+          "draft": 54,
+          "accepted": 20
+        },
+        {
+          "name": "mtp.acceptance_rate_matches_counts",
+          "passed": true,
+          "rate": 0.37037037037037035,
+          "implied": 0.37037037037037035
+        },
+        {
+          "name": "mtp.usage_accepted_matches_summary",
+          "passed": true,
+          "usage_accepted": 20,
+          "summary_accepted": 20
+        },
+        {
+          "name": "mtp.usage_rejected_matches_summary",
+          "passed": true,
+          "usage_rejected": 34,
+          "summary_rejected": 34
+        }
+      ]
+    },
+    {
+      "kind": "speculative_mtp",
+      "status": 200,
+      "finish_reason": "stop",
+      "text": "Batching improves GPU utilization by amortizing the overhead of kernel launches and memory transfers across multiple data samples, thereby keeping the GPU's parallel processing units fully occupied and reducing idle time.",
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 36,
+        "accepted_draft_tokens": 25,
+        "rejected_draft_tokens": 11,
+        "acceptance_rate": 0.6944444444444444,
+        "draft_cycles": 12,
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "provider": "qwen4_exp_mtp",
+      "cycles": [
+        {
+          "start_position": 22,
+          "candidates": [
+            286,
+            24469,
+            279
+          ],
+          "accepted": 1,
+          "mismatch_token": 33793,
+          "committed_position": 24
+        },
+        {
+          "start_position": 24,
+          "candidates": [
+            21966,
+            47785,
+            539
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 28
+        },
+        {
+          "start_position": 28,
+          "candidates": [
+            4694,
+            279,
+            52652
+          ],
+          "accepted": 2,
+          "mismatch_token": 29997,
+          "committed_position": 31
+        },
+        {
+          "start_position": 31,
+          "candidates": [
+            314,
+            9705,
+            35845
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 35
+        },
+        {
+          "start_position": 35,
+          "candidates": [
+            4779,
+            29612,
+            3808
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 39
+        },
+        {
+          "start_position": 39,
+          "candidates": [
+            795,
+            3387,
+            11
+          ],
+          "accepted": 1,
+          "mismatch_token": 10156,
+          "committed_position": 41
+        },
+        {
+          "start_position": 41,
+          "candidates": [
+            11,
+            26600,
+            17191
+          ],
+          "accepted": 2,
+          "mismatch_token": 9976,
+          "committed_position": 44
+        },
+        {
+          "start_position": 44,
+          "candidates": [
+            279,
+            21966,
+            579
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 48
+        },
+        {
+          "start_position": 48,
+          "candidates": [
+            8427,
+            7896,
+            6999
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 52
+        },
+        {
+          "start_position": 52,
+          "candidates": [
+            321,
+            47821,
+            440
+          ],
+          "accepted": 1,
+          "mismatch_token": 17191,
+          "committed_position": 54
+        },
+        {
+          "start_position": 54,
+          "candidates": [
+            279,
+            37972,
+            5634
+          ],
+          "accepted": 0,
+          "mismatch_token": 26750,
+          "committed_position": 55
+        },
+        {
+          "start_position": 55,
+          "candidates": [
+            854,
+            13,
+            248046
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 58
+        }
+      ],
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 25,
+        "rejected_prediction_tokens": 11
+      },
+      "checks": [
+        {
+          "name": "mtp.summary_present",
+          "passed": true,
+          "summary": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 36,
+            "accepted_draft_tokens": 25,
+            "rejected_draft_tokens": 11,
+            "acceptance_rate": 0.6944444444444444,
+            "draft_cycles": 12,
+            "thinking_policy": "hard",
+            "thinking_controls": "hard_controls_preserved"
+          }
+        },
+        {
+          "name": "mtp.used_true",
+          "passed": true,
+          "used": true
+        },
+        {
+          "name": "mtp.used_has_provider",
+          "passed": true,
+          "used": true,
+          "provider": "qwen4_exp_mtp"
+        },
+        {
+          "name": "mtp.used_has_cycles",
+          "passed": true,
+          "used": true,
+          "cycle_count": 12
+        },
+        {
+          "name": "mtp.draft_matches_cycles",
+          "passed": true,
+          "cycle_draft": 36,
+          "summary_draft": 36
+        },
+        {
+          "name": "mtp.accepted_matches_cycles",
+          "passed": true,
+          "cycle_accepted": 25,
+          "summary_accepted": 25
+        },
+        {
+          "name": "mtp.rejected_is_the_remainder",
+          "passed": true,
+          "draft": 36,
+          "accepted": 25,
+          "rejected": 11
+        },
+        {
+          "name": "mtp.accepted_within_draft",
+          "passed": true,
+          "draft": 36,
+          "accepted": 25
+        },
+        {
+          "name": "mtp.acceptance_rate_matches_counts",
+          "passed": true,
+          "rate": 0.6944444444444444,
+          "implied": 0.6944444444444444
+        },
+        {
+          "name": "mtp.usage_accepted_matches_summary",
+          "passed": true,
+          "usage_accepted": 25,
+          "summary_accepted": 25
+        },
+        {
+          "name": "mtp.usage_rejected_matches_summary",
+          "passed": true,
+          "usage_rejected": 11,
+          "summary_rejected": 11
+        }
+      ]
+    },
+    {
+      "kind": "speculative_mtp",
+      "status": 200,
+      "finish_reason": "length",
+      "text": "Based on the definition of a stable sorting algorithm, here are three key properties:\n\n### 1. Preservation of Relative Order\nThe defining property of a stable sort is that it maintains the relative order",
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 47,
+        "accepted_draft_tokens": 23,
+        "rejected_draft_tokens": 24,
+        "acceptance_rate": 0.48936170212765956,
+        "draft_cycles": 16,
+        "thinking_policy": "hard",
+        "thinking_controls": "hard_controls_preserved"
+      },
+      "provider": "qwen4_exp_mtp",
+      "cycles": [
+        {
+          "start_position": 21,
+          "candidates": [
+            383,
+            279,
+            15694
+          ],
+          "accepted": 2,
+          "mismatch_token": 7044,
+          "committed_position": 24
+        },
+        {
+          "start_position": 24,
+          "candidates": [
+            321,
+            16935,
+            314
+          ],
+          "accepted": 0,
+          "mismatch_token": 314,
+          "committed_position": 25
+        },
+        {
+          "start_position": 25,
+          "candidates": [
+            264,
+            2972,
+            27086
+          ],
+          "accepted": 1,
+          "mismatch_token": 14733,
+          "committed_position": 27
+        },
+        {
+          "start_position": 27,
+          "candidates": [
+            27355,
+            11767,
+            321
+          ],
+          "accepted": 2,
+          "mismatch_token": 11,
+          "committed_position": 30
+        },
+        {
+          "start_position": 30,
+          "candidates": [
+            1532,
+            369,
+            264
+          ],
+          "accepted": 1,
+          "mismatch_token": 513,
+          "committed_position": 32
+        },
+        {
+          "start_position": 32,
+          "candidates": [
+            2250,
+            1328,
+            5706
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 36
+        },
+        {
+          "start_position": 36,
+          "candidates": [
+            271,
+            13962,
+            220
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 40
+        },
+        {
+          "start_position": 40,
+          "candidates": [
+            13,
+            77375,
+            314
+          ],
+          "accepted": 1,
+          "mismatch_token": 87809,
+          "committed_position": 42
+        },
+        {
+          "start_position": 42,
+          "candidates": [
+            314,
+            38097,
+            6991
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 46
+        },
+        {
+          "start_position": 46,
+          "candidates": [
+            1919,
+            369,
+            279
+          ],
+          "accepted": 0,
+          "mismatch_token": 760,
+          "committed_position": 47
+        },
+        {
+          "start_position": 47,
+          "candidates": [
+            1379,
+            15346,
+            3234
+          ],
+          "accepted": 0,
+          "mismatch_token": 25471,
+          "committed_position": 48
+        },
+        {
+          "start_position": 48,
+          "candidates": [
+            27649,
+            314,
+            264
+          ],
+          "accepted": 0,
+          "mismatch_token": 3234,
+          "committed_position": 49
+        },
+        {
+          "start_position": 49,
+          "candidates": [
+            314,
+            264,
+            14733
+          ],
+          "accepted": 3,
+          "mismatch_token": null,
+          "committed_position": 53
+        },
+        {
+          "start_position": 53,
+          "candidates": [
+            369,
+            421,
+            279
+          ],
+          "accepted": 2,
+          "mismatch_token": 424,
+          "committed_position": 56
+        },
+        {
+          "start_position": 56,
+          "candidates": [
+            72346,
+            279,
+            8410
+          ],
+          "accepted": 0,
+          "mismatch_token": 30941,
+          "committed_position": 57
+        },
+        {
+          "start_position": 57,
+          "candidates": [
+            279,
+            8410
+          ],
+          "accepted": 2,
+          "mismatch_token": null,
+          "committed_position": 60
+        }
+      ],
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 23,
+        "rejected_prediction_tokens": 24
+      },
+      "checks": [
+        {
+          "name": "mtp.summary_present",
+          "passed": true,
+          "summary": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 47,
+            "accepted_draft_tokens": 23,
+            "rejected_draft_tokens": 24,
+            "acceptance_rate": 0.48936170212765956,
+            "draft_cycles": 16,
+            "thinking_policy": "hard",
+            "thinking_controls": "hard_controls_preserved"
+          }
+        },
+        {
+          "name": "mtp.used_true",
+          "passed": true,
+          "used": true
+        },
+        {
+          "name": "mtp.used_has_provider",
+          "passed": true,
+          "used": true,
+          "provider": "qwen4_exp_mtp"
+        },
+        {
+          "name": "mtp.used_has_cycles",
+          "passed": true,
+          "used": true,
+          "cycle_count": 16
+        },
+        {
+          "name": "mtp.draft_matches_cycles",
+          "passed": true,
+          "cycle_draft": 47,
+          "summary_draft": 47
+        },
+        {
+          "name": "mtp.accepted_matches_cycles",
+          "passed": true,
+          "cycle_accepted": 23,
+          "summary_accepted": 23
+        },
+        {
+          "name": "mtp.rejected_is_the_remainder",
+          "passed": true,
+          "draft": 47,
+          "accepted": 23,
+          "rejected": 24
+        },
+        {
+          "name": "mtp.accepted_within_draft",
+          "passed": true,
+          "draft": 47,
+          "accepted": 23
+        },
+        {
+          "name": "mtp.acceptance_rate_matches_counts",
+          "passed": true,
+          "rate": 0.48936170212765956,
+          "implied": 0.48936170212765956
+        },
+        {
+          "name": "mtp.usage_accepted_matches_summary",
+          "passed": true,
+          "usage_accepted": 23,
+          "summary_accepted": 23
+        },
+        {
+          "name": "mtp.usage_rejected_matches_summary",
+          "passed": true,
+          "usage_rejected": 24,
+          "summary_rejected": 24
+        }
+      ]
+    },
+    {
+      "kind": "plain",
+      "status": 200,
+      "finish_reason": "length",
+      "text": "During the decoding phase of a Large Language Model (LLM), the **KV cache** stores the **Key ($K$) and Value ($V$) tensors** generated from the attention mechanism for",
+      "speculative_mtp": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      },
+      "provider": null,
+      "cycles": [],
+      "completion_tokens_details": null,
+      "checks": [
+        {
+          "name": "plain.mtp_summary_absent_or_silent",
+          "passed": true,
+          "summary": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        {
+          "name": "plain.no_accepted_prediction_tokens",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "plain.no_mtp_cycles",
+          "passed": true,
+          "cycles": []
+        }
+      ]
+    },
+    {
+      "kind": "plain",
+      "status": 200,
+      "finish_reason": "length",
+      "text": "One significant risk of long-context inference is **performance degradation due to the \"Lost in the Middle\" phenomenon**.\n\n### Explanation:\nLarge Language Models (LLMs) often exhibit a U-shaped performance",
+      "speculative_mtp": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      },
+      "provider": null,
+      "cycles": [],
+      "completion_tokens_details": null,
+      "checks": [
+        {
+          "name": "plain.mtp_summary_absent_or_silent",
+          "passed": true,
+          "summary": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        {
+          "name": "plain.no_accepted_prediction_tokens",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "plain.no_mtp_cycles",
+          "passed": true,
+          "cycles": []
+        }
+      ]
+    }
+  ],
+  "model": "qwen38fn-capon",
+  "status": "passed",
+  "check_count": 39,
+  "failure_count": 0,
+  "note": "Five live requests on one host: three explicit MTP and two plain. The compact speculative summary, the per-cycle records and usage.completion_tokens_details agree, every used:true response names its provider, and the plain requests claim no speculative work.",
+  "server_command": "HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft HIPENGINE_QWEN4_EXP_AR_BATCH=1 HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS=4 python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --quant gguf_ud_q4_k_xl --execution-profile production --served-model-name qwen38fn-capon --max-context-tokens 2048 --kv-storage bf16 --max-active-requests 4 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --host 127.0.0.1 --port 18392"
+}

@@ -721,7 +721,10 @@ responses:
 
 `hipengine.generation_shape.route` records the selected scheduling route;
 `effective_route` and `used` are derived from ownership-bearing backend
-telemetry. An MTP execution path remains `used=true` even when it proposes zero
+telemetry. A request that neither asked for speculation nor ran a speculative
+route may carry this summary with `effective_route="default"`, `used=false`,
+and zero counts; what it never does is claim drafts, cycles, or a provider it
+did not use. An MTP execution path remains `used=true` even when it proposes zero
 drafts, in which case `acceptance_rate` is `null`. If an MTP-selected request
 realizes backend K0 before mutation, the compact summary reports
 `effective_route="default"`, `selected_route="speculative_mtp"`, `used=false`,
