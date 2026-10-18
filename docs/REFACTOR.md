@@ -40,6 +40,21 @@ runner, which already memsets the counter before every launch. A new
 contract: two launches without a reset report `2 * first`, and a reset returns
 the original count. Keep that test when this entry is retired.
 
+Confirmed green on 2026-10-18: `uv run pytest --suite all` reports 16,359 passed,
+208 skipped, 4 xfailed in 41:25 with no abort.
+
+## Cached-build tests key off a mutable /tmp compiler-version file
+
+`tests/test_gpu_qwen38_int8_batch_attention_gpu.py` and the other
+`require_cached=True` tests take the build-cache key from
+`/tmp/hipengine-hipcc-version.txt`, and skip only when that file is *absent*.
+Any change to its contents silently rekeys the cache: truncating it to
+`hipcc --version | head -1` instead of the documented full output produced four
+`FileNotFoundError: cached build artifact missing` failures that look like
+kernel defects but are pure environment drift. Either record the expected
+contents alongside the artifact and fail loudly on a mismatch, or have these
+tests build when the entry is missing instead of requiring a prebuild.
+
 ## Qwen4Exp MTP auto-admission and the AR batch width-1 gap
 
 Measured 2026-10-18 on gfx1151/zbook
