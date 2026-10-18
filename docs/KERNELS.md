@@ -708,6 +708,27 @@ epilogue can publish `half(core)` for the output projection. Test:
 `qwen4exp_sigmoid_strict_prefill`; rollback
 `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT=qwen4exp_gdn_tiled16_multi_prefill`.
 
+## Qwen4Exp indexed GDN decode primitive
+
+`linear_attn/qwen4_exp_gdn.{hip,py}` provides
+`qwen4_exp_gdn_decode_rowsplit_indexed_f32_kernel`, registered as
+`gdn_recurrence_norm_gate / f32_state / qwen4exp_gdn_indexed_decode`.
+Each row advances one independent recurrent-state slot, rather than one token
+in a shared causal chain. Inputs and outputs have explicit row strides; the
+state slab is `[state_slots, value_heads, 128, 128]` FP32. Slot indices must be
+unique and in range. The raw-pointer caller remains responsible for allocation
+sizes and lifetime. This variant is available through the gfx1100 kernel package
+and its gfx1151 registration; source location is not device qualification.
+
+The single-row `qwen4exp_gdn_rowsplit_decode` and
+`qwen4exp_sigmoid_strict` variants remain available as fallbacks/oracles.
+Focused tests are `tests/test_unit_qwen4exp_gdn_indexed_decode.py` and
+`tests/test_gpu_qwen4exp_gdn_indexed_decode.py`. Evidence and hardware scope:
+[primitive worklog](../worklog/entries/20261018T000834.117311Z-lhl-qwen4exp-gdn-indexed-decode-380030.md).
+This primitive is not selected by serving. Conv/PLE history, QSA index/KV
+ownership, runner integration and C2/C4 serving qualification are separate
+requirements; no model-level numerical or throughput claim follows from it.
+
 ## Workgroup size and CU mode on gfx1151
 
 Two measured facts that decide tile and build choices on this backend:

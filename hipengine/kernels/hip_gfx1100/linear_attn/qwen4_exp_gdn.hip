@@ -1013,6 +1013,211 @@ qwen4_exp_gdn_decode_rowsplit_f32_kernel(
   }
 }
 
+// Admitted row width and slab width of the indexed decode ABI. Mirrored by
+// ``QWEN4_EXP_GDN_INDEXED_MAX_ROWS`` / ``QWEN4_EXP_GDN_INDEXED_MAX_STATE_SLOTS``
+// in qwen4_exp_gdn.py; the pairs must agree.
+constexpr int64_t kQwen4ExpGdnIndexedMaxRows = 64;
+// The uniform batch check below is a shared-memory bitmap, so the slab is
+// bounded to keep that bitmap a fixed 512 bytes. A 4096-slot slab at 48 heads
+// already addresses ~12.9 GB of recurrent state, far past any decode regime.
+constexpr int64_t kQwen4ExpGdnIndexedMaxStateSlots = 4096;
+constexpr int kQwen4ExpGdnIndexedSlotBitmapWords =
+    static_cast<int>(kQwen4ExpGdnIndexedMaxStateSlots / 32);
+
+// Indexed multi-row decode step: the independent-request form of the row-split
+// decode kernel above. Row ``r`` (``blockIdx.y``) reads its own Conv, scalar,
+// gate and output rows and reads and writes exactly the recurrent-state slot
+// ``state_indices[r]``, so every row advances its own request state and a slot
+// no row selects is untouched. Each block executes the single-row kernel's
+// instruction sequence on its own row, so one row's output and state are the
+// single-row owner's bytes at the same inputs.
+//
+// The batch is validated as a whole before any read-modify-write. A slot that is
+// out of range, or two rows that name the same slot, rejects every block: two
+// rows sharing a slot would both read the same initial state and both write it,
+// so the survivor would depend on block completion order. That is an ownership
+// violation, and committing the unaffected rows anyway would be a silent partial
+// update, so the whole batch is a no-op instead. The scan is one bitmap clear per
+// thread plus one atomicOr per row; the decision is block-uniform and taken
+// before the first ``__syncthreads()`` in the compute path, so the early exit
+// cannot split a barrier.
+__global__ void __launch_bounds__(512)
+qwen4_exp_gdn_decode_rowsplit_indexed_f32_kernel(
+    const float* __restrict__ conv,
+    const float* __restrict__ output_gate,
+    const float* __restrict__ alpha,
+    const float* __restrict__ beta_logits,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a,
+    const float* __restrict__ norm_weight,
+    float* __restrict__ recurrent_state,
+    float* __restrict__ output,
+    const int64_t* __restrict__ state_indices,
+    int64_t state_slots,
+    int64_t conv_row_stride,
+    int64_t scalar_row_stride,
+    int64_t gate_row_stride,
+    int64_t output_row_stride,
+    int k_heads,
+    int v_heads) {
+  constexpr int d = 128;
+  __shared__ float4 s_q[32];
+  __shared__ float4 s_k[32];
+  __shared__ float s_misc[5];
+  __shared__ float s_core[d];
+  __shared__ unsigned int s_slot_bitmap[kQwen4ExpGdnIndexedSlotBitmapWords];
+  __shared__ int s_batch_rejected;
+
+  const int tid = threadIdx.x;
+  const int row_count = static_cast<int>(gridDim.y);
+  const int h = blockIdx.x;
+  const int row = blockIdx.y;
+  const int64_t slot = state_indices[row];
+  if (slot < 0 || slot >= state_slots) {
+    // Per-block guard first: it protects this block's own state read, which
+    // happens before the batch-wide decision below.
+    return;
+  }
+  // The clear and scan run inside warp 0 (see below), so nothing to do here
+  // before the loads.
+  const int kh = h % k_heads;
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  const int segment = lane & 3;
+  const int col = wave * 8 + (lane >> 2);
+  const float* conv_row = conv + static_cast<size_t>(row) * conv_row_stride;
+  const float* gate_row =
+      output_gate + static_cast<size_t>(row) * gate_row_stride;
+  float* output_row = output + static_cast<size_t>(row) * output_row_stride;
+  const int64_t scalar_base = static_cast<int64_t>(row) * scalar_row_stride;
+  float* state_slot = recurrent_state
+      + static_cast<size_t>(slot) * static_cast<size_t>(v_heads) * d * d;
+
+  if (wave == 0) {
+    // Clear and scan the slot bitmap inside one warp: 128 words over 32 lanes,
+    // then one bit per row. The result lands in ``s_batch_rejected`` before the
+    // block-wide barrier below, so the batch check costs no extra sync, and its
+    // global reads overlap this warp's Q/K load.
+    for (int i = lane; i < kQwen4ExpGdnIndexedSlotBitmapWords; i += 32) {
+      s_slot_bitmap[i] = 0u;
+    }
+    if (lane == 0) {
+      s_batch_rejected = 0;
+    }
+    __syncwarp();
+    for (int i = lane; i < row_count; i += 32) {
+      const int64_t scanned = state_indices[i];
+      if (scanned < 0 || scanned >= state_slots) {
+        atomicExch(&s_batch_rejected, 1);
+      } else {
+        const unsigned int bit = 1u << (scanned & 31);
+        if (atomicOr(&s_slot_bitmap[scanned >> 5], bit) & bit) {
+          atomicExch(&s_batch_rejected, 1);
+        }
+      }
+    }
+    const float4 q4 =
+        *reinterpret_cast<const float4*>(conv_row + kh * d + lane * 4);
+    const float4 k4 = *reinterpret_cast<const float4*>(
+        conv_row + (k_heads + kh) * d + lane * 4);
+    float qs = q4.x * q4.x + q4.y * q4.y + q4.z * q4.z + q4.w * q4.w;
+    float ks = k4.x * k4.x + k4.y * k4.y + k4.z * k4.z + k4.w * k4.w;
+    float kq = k4.x * q4.x + k4.y * q4.y + k4.z * q4.z + k4.w * q4.w;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      qs += __shfl_xor(qs, offset);
+      ks += __shfl_xor(ks, offset);
+      kq += __shfl_xor(kq, offset);
+    }
+    const int slot_index = ((lane % 8) * 4) + (lane / 8);
+    s_q[slot_index] = q4;
+    s_k[slot_index] = k4;
+    if (lane == 0) {
+      s_misc[0] = rsqrtf(ks + 1.0e-6f);
+      s_misc[1] = rsqrtf(qs + 1.0e-6f) * rsqrtf(static_cast<float>(d));
+      s_misc[2] = kq;
+      s_misc[3] = expf(
+          a[h] * softplus_f32(alpha[scalar_base + h] + dt_bias[h]));
+    } else if (lane == 1) {
+      s_misc[4] = sigmoid_f32(beta_logits[scalar_base + h]);
+    }
+  }
+
+  float* state_col = state_slot + static_cast<size_t>(h) * d * d + col;
+  float4 s[8];
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const int j = segment * 32 + i * 4;
+    s[i] = make_float4(state_col[static_cast<size_t>(j) * d],
+                       state_col[static_cast<size_t>(j + 1) * d],
+                       state_col[static_cast<size_t>(j + 2) * d],
+                       state_col[static_cast<size_t>(j + 3) * d]);
+  }
+  const float value = conv_row[2 * k_heads * d + h * d + col];
+  __syncthreads();
+
+  // Batch-wide ownership decision, taken in warp 0 before this barrier and
+  // published by it. Rejecting here is still before any write.
+  if (s_batch_rejected) {
+    return;
+  }
+
+  const float decay = s_misc[3];
+  float u = 0.0f;
+  float p = 0.0f;
+  float4 kc[8];
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const float4 qv = s_q[i * 4 + segment];
+    kc[i] = s_k[i * 4 + segment];
+    s[i].x *= decay;
+    s[i].y *= decay;
+    s[i].z *= decay;
+    s[i].w *= decay;
+    u += s[i].x * kc[i].x + s[i].y * kc[i].y + s[i].z * kc[i].z +
+         s[i].w * kc[i].w;
+    p += s[i].x * qv.x + s[i].y * qv.y + s[i].z * qv.z + s[i].w * qv.w;
+  }
+  u = gdn_rs_xor_add<1>(u);
+  p = gdn_rs_xor_add<1>(p);
+  u = gdn_rs_xor_add<2>(u);
+  p = gdn_rs_xor_add<2>(p);
+  const float inv_k = s_misc[0];
+  const float q_scale = s_misc[1];
+  const float delta = (value - u * inv_k) * s_misc[4];
+  const float core = p * q_scale + delta * inv_k * q_scale * s_misc[2];
+  const float update = delta * inv_k;
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const int j = segment * 32 + i * 4;
+    state_col[static_cast<size_t>(j) * d] = s[i].x + update * kc[i].x;
+    state_col[static_cast<size_t>(j + 1) * d] = s[i].y + update * kc[i].y;
+    state_col[static_cast<size_t>(j + 2) * d] = s[i].z + update * kc[i].z;
+    state_col[static_cast<size_t>(j + 3) * d] = s[i].w + update * kc[i].w;
+  }
+  if (segment == 0) {
+    s_core[col] = core;
+  }
+  __syncthreads();
+
+  float sumsq = 0.0f;
+#pragma unroll
+  for (int r = 0; r < 4; ++r) {
+    const float c = s_core[r * 32 + lane];
+    sumsq += c * c;
+  }
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    sumsq += __shfl_xor(sumsq, offset);
+  }
+  if (segment == 0) {
+    const size_t index = static_cast<size_t>(h) * d + col;
+    const float inv_rms = rsqrtf(sumsq / static_cast<float>(d) + 1.0e-6f);
+    output_row[index] =
+        core * inv_rms * norm_weight[col] * sigmoid_f32(gate_row[index]);
+  }
+}
+
 __global__ void qwen4_exp_gdn_state_transpose_f32_kernel(
     const float* __restrict__ source,
     float* __restrict__ destination,
@@ -1268,6 +1473,64 @@ extern "C" int hipengine_qwen4_exp_gdn_decode_rowsplit_f32(
       static_cast<const float*>(norm_weight), static_cast<float*>(recurrent_state),
       static_cast<float*>(output), static_cast<int>(num_k_heads),
       static_cast<int>(num_v_heads));
+  return static_cast<int>(hipGetLastError());
+}
+
+// Indexed multi-row decode step. Arguments as
+// hipengine_qwen4_exp_gdn_decode_rowsplit_f32, with one packed row per grid.y
+// index and one int64 state slot per row.
+//
+// Every bound the Python wrapper enforces is mirrored here, because this symbol
+// is reachable directly and a stride smaller than one packed row would make
+// adjacent rows overlap (row r would read row r+1's Conv values) while still
+// passing a "positive stride" check.
+extern "C" int hipengine_qwen4_exp_gdn_decode_rowsplit_indexed_f32(
+    const void* conv, const void* output_gate, const void* alpha,
+    const void* beta_logits, const void* dt_bias, const void* a,
+    const void* norm_weight, void* recurrent_state, void* output,
+    const void* state_indices, int64_t rows, int64_t state_slots,
+    int64_t conv_row_stride, int64_t scalar_row_stride,
+    int64_t gate_row_stride, int64_t output_row_stride,
+    int64_t num_k_heads, int64_t num_v_heads, int64_t head_k_dim,
+    int64_t head_v_dim, hipStream_t stream) {
+  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
+      !norm_weight || !recurrent_state || !output || !state_indices ||
+      num_k_heads <= 0 || num_k_heads > 64 || num_v_heads <= 0 ||
+      num_v_heads > 4096 || num_v_heads % num_k_heads ||
+      head_k_dim != 128 || head_v_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (rows <= 0 || rows > kQwen4ExpGdnIndexedMaxRows || state_slots <= 0 ||
+      state_slots < rows ||
+      state_slots > kQwen4ExpGdnIndexedMaxStateSlots) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t conv_width =
+      2 * num_k_heads * head_k_dim + num_v_heads * head_v_dim;
+  const int64_t core_width = num_v_heads * head_v_dim;
+  if (conv_row_stride < conv_width || scalar_row_stride < num_v_heads ||
+      gate_row_stride < core_width || output_row_stride < core_width) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  // The Conv Q/K loads are float4, so every row base must stay 16-byte aligned:
+  // the allocation base has to be aligned and the stride a whole float4.
+  if ((conv_row_stride & 3) ||
+      (reinterpret_cast<uintptr_t>(conv) & 15u) ||
+      (reinterpret_cast<uintptr_t>(state_indices) & 7u)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_decode_rowsplit_indexed_f32_kernel,
+      dim3(static_cast<uint32_t>(num_v_heads), static_cast<uint32_t>(rows)),
+      dim3(512), 0, stream,
+      static_cast<const float*>(conv), static_cast<const float*>(output_gate),
+      static_cast<const float*>(alpha), static_cast<const float*>(beta_logits),
+      static_cast<const float*>(dt_bias), static_cast<const float*>(a),
+      static_cast<const float*>(norm_weight),
+      static_cast<float*>(recurrent_state), static_cast<float*>(output),
+      static_cast<const int64_t*>(state_indices), state_slots,
+      conv_row_stride, scalar_row_stride, gate_row_stride, output_row_stride,
+      static_cast<int>(num_k_heads), static_cast<int>(num_v_heads));
   return static_cast<int>(hipGetLastError());
 }
 

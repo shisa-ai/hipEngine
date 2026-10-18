@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ctypes
+import operator
 from pathlib import Path
+
+import numpy as np
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
@@ -19,6 +22,23 @@ _GATE_ARGS = (ctypes.c_void_p,) * 3 + (ctypes.c_int64,) * 3 + (ctypes.c_void_p,)
 _STATE_LAYOUT_ARGS = (ctypes.c_void_p,) * 2 + (ctypes.c_int64,) * 3 + (ctypes.c_int32, ctypes.c_void_p)
 _STATE_INPLACE_ARGS = (ctypes.c_void_p, ctypes.c_int64, ctypes.c_int64, ctypes.c_void_p)
 _TRANSPOSED_DECODE_ARGS = (ctypes.c_void_p,) * 7 + (ctypes.c_int64,) * 4 + (ctypes.c_void_p,)
+_INDEXED_ARGS = (ctypes.c_void_p,) * 10 + (ctypes.c_int64,) * 10 + (ctypes.c_void_p,)
+
+QWEN4_EXP_GDN_INDEXED_MAX_ROWS = 64
+"""Admitted row width of the indexed decode ABI.
+
+Mirrors ``kQwen4ExpGdnIndexedMaxRows`` in ``qwen4_exp_gdn.hip``; the two must
+agree. The bound exists so a work item cannot ask for an unbounded state slab
+or an unbounded grid.y; it is wider than the serving campaign's C1..C8 range.
+"""
+
+QWEN4_EXP_GDN_INDEXED_MAX_STATE_SLOTS = 4096
+"""Admitted slab width of the indexed decode ABI.
+
+Mirrors ``kQwen4ExpGdnIndexedMaxStateSlots`` in ``qwen4_exp_gdn.hip``. The device
+rejects a duplicate-slot batch with a shared-memory bitmap over the declared
+slab, so the slab is bounded to keep that bitmap a fixed 512 bytes.
+"""
 
 
 def plan_qwen4_exp_gdn_build(
@@ -493,6 +513,193 @@ def qwen4_exp_gdn_decode_rowsplit_f32(
         runtime.check(int(error))
 
 
+def qwen4_exp_gdn_indexed_state_indices(
+    state_indices: object, *, rows: int, state_slots: int
+) -> np.ndarray:
+    """Validate per-row state-slot indices for the indexed decode ABI.
+
+    Returns a contiguous ``int64`` vector of ``rows`` entries in ``[0,
+    state_slots)``. This is the authoritative admission check for the primitive:
+    the kernel sees only a device pointer and can reject a malformed batch but
+    cannot report which row was wrong.
+
+    **Slots must be distinct.** Each row is one independent request's decode
+    step, so two rows naming one slot would both read the same initial state and
+    both write it: the surviving state would depend on block completion order,
+    which is an ownership violation rather than numerical drift. The kernel also
+    rejects a duplicate batch as a whole (see the device kernel), but a caller
+    that ignores this check has already lost the ability to tell which request
+    was dropped.
+    """
+
+    try:
+        values = [int(operator.index(value)) for value in state_indices]
+    except TypeError as error:
+        raise TypeError(
+            "state_indices must be a sequence of integers"
+        ) from error
+    count = int(rows)
+    slots = int(state_slots)
+    if not 1 <= count <= QWEN4_EXP_GDN_INDEXED_MAX_ROWS:
+        raise ValueError(
+            "indexed GDN decode rows must be in "
+            f"1..{QWEN4_EXP_GDN_INDEXED_MAX_ROWS}"
+        )
+    if slots <= 0:
+        raise ValueError("state_slots must be positive")
+    if slots > QWEN4_EXP_GDN_INDEXED_MAX_STATE_SLOTS:
+        raise ValueError(
+            "state_slots must be in "
+            f"1..{QWEN4_EXP_GDN_INDEXED_MAX_STATE_SLOTS}"
+        )
+    if len(values) != count:
+        raise ValueError("state_indices must contain one index per row")
+    seen: dict[int, int] = {}
+    for row, slot in enumerate(values):
+        if slot < 0:
+            raise ValueError("state_indices must be non-negative")
+        if slot >= slots:
+            raise ValueError(
+                f"state_indices[{row}]={slot} is outside the declared state slab "
+                f"of {slots} slots"
+            )
+        if slot in seen:
+            raise ValueError(
+                f"state_indices duplicate slot {slot}: rows {seen[slot]} and "
+                f"{row} name the same recurrent state; independent rows must "
+                "select distinct slots"
+            )
+        seen[slot] = row
+    return np.ascontiguousarray(values, dtype=np.int64)
+
+
+def qwen4_exp_gdn_decode_rowsplit_indexed_f32(
+    conv_ptr: int,
+    output_gate_ptr: int,
+    alpha_ptr: int,
+    beta_logits_ptr: int,
+    dt_bias_ptr: int,
+    a_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    output_ptr: int,
+    state_indices_ptr: int,
+    *,
+    rows: int,
+    state_slots: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    conv_row_stride: int | None = None,
+    scalar_row_stride: int | None = None,
+    gate_row_stride: int | None = None,
+    output_row_stride: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Row-split Qwen4Exp GDN decode for independent rows over state slots.
+
+    The multi-row form of :func:`qwen4_exp_gdn_decode_rowsplit_f32`. Row ``r``
+    of every packed operand is one independent request's decode step, and row
+    ``r`` reads and writes exactly the recurrent-state slot
+    ``state_indices[r]`` (an ``int64[rows]`` device vector). Slots no row
+    selects are not touched, so a ragged active subset leaves the other
+    requests' state byte-identical.
+
+    Each block runs the single-row owner's instruction sequence on its own row,
+    so one row's output and final state are that owner's bytes at the same
+    inputs. ``recurrent_state_ptr`` addresses a ``[state_slots][num_v_heads]
+    [128][128]`` FP32 slab; the per-row strides default to the tightly packed
+    ``2*num_k_heads*128 + num_v_heads*128`` Conv row, ``num_v_heads`` scalar row,
+    and ``num_v_heads*128`` gate/output row.
+
+    A slot outside the declared slab is rejected on the device before any write,
+    leaving that row's output and every slot unchanged; use
+    :func:`qwen4_exp_gdn_indexed_state_indices` to reject it on the host instead.
+    """
+
+    count = int(rows)
+    slots = int(state_slots)
+    if not 1 <= count <= QWEN4_EXP_GDN_INDEXED_MAX_ROWS:
+        raise ValueError(
+            "indexed GDN decode rows must be in "
+            f"1..{QWEN4_EXP_GDN_INDEXED_MAX_ROWS}"
+        )
+    if slots <= 0:
+        raise ValueError("state_slots must be positive")
+    if slots > QWEN4_EXP_GDN_INDEXED_MAX_STATE_SLOTS:
+        raise ValueError(
+            "state_slots must be in "
+            f"1..{QWEN4_EXP_GDN_INDEXED_MAX_STATE_SLOTS}"
+        )
+    if slots < count:
+        raise ValueError(
+            "state_slots must cover one slot per row (state slab too small)"
+        )
+    if num_k_heads <= 0 or num_v_heads <= 0 or num_v_heads % num_k_heads:
+        raise ValueError("num_v_heads must be divisible by positive num_k_heads")
+    if head_k_dim != 128 or head_v_dim != 128:
+        raise ValueError("indexed GDN decode requires 128x128 heads")
+    if conv_ptr % 16:
+        raise ValueError(
+            "conv must be 16-byte aligned for the float4 Q/K loads"
+        )
+    if state_indices_ptr % 8:
+        raise ValueError("state_indices must be 8-byte aligned for int64 loads")
+    conv_width = 2 * num_k_heads * head_k_dim + num_v_heads * head_v_dim
+    core_width = num_v_heads * head_v_dim
+    resolved_conv_stride = (
+        conv_width if conv_row_stride is None else int(conv_row_stride)
+    )
+    strides = (
+        ("conv_row_stride", resolved_conv_stride, conv_width),
+        (
+            "scalar_row_stride",
+            num_v_heads if scalar_row_stride is None else int(scalar_row_stride),
+            num_v_heads,
+        ),
+        (
+            "gate_row_stride",
+            core_width if gate_row_stride is None else int(gate_row_stride),
+            core_width,
+        ),
+        (
+            "output_row_stride",
+            core_width if output_row_stride is None else int(output_row_stride),
+            core_width,
+        ),
+    )
+    for name, value, minimum in strides:
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+        if value < minimum:
+            raise ValueError(f"{name} is shorter than one packed row")
+    if resolved_conv_stride % 4:
+        raise ValueError(
+            "conv_row_stride must be a multiple of 4 floats so every row base "
+            "stays 16-byte aligned for the float4 Q/K loads"
+        )
+    library = library or build_qwen4_exp_gdn_dpp(multi_column=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_gdn_decode_rowsplit_indexed_f32",
+        _INDEXED_ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        conv_ptr, output_gate_ptr, alpha_ptr, beta_logits_ptr, dt_bias_ptr,
+        a_ptr, norm_weight_ptr, recurrent_state_ptr, output_ptr,
+        state_indices_ptr, count, slots,
+        *(value for _, value, _ in strides),
+        num_k_heads, num_v_heads, head_k_dim, head_v_dim, stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def qwen4_exp_gdn_prefill_rowsplit_f32(
     conv_ptr: int,
     output_gate_ptr: int,
@@ -841,6 +1048,10 @@ def register_qwen4_exp_gdn_kernels(*, replace: bool = True) -> None:
         "qwen4exp_gdn_columnwarps_prefill": qwen4_exp_gdn_prefill_columnwarps_f32,
         "qwen4exp_gdn_tiled16_prefill": qwen4_exp_gdn_prefill_tiled16_f32,
         "qwen4exp_gdn_w32_prefill": qwen4_exp_gdn_prefill_w32_f32,
+        # Multi-row independent-request decode. Row r advances exactly its own
+        # state slot; the single-row owners above stay the strict fallback and
+        # the per-row arithmetic oracle.
+        "qwen4exp_gdn_indexed_decode": qwen4_exp_gdn_decode_rowsplit_indexed_f32,
     }
     for variant, function in registrations.items():
         register(
