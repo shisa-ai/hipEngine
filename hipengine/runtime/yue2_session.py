@@ -276,11 +276,12 @@ def generate_tokens(
             row = runtime.embed_row(token)
             position = runtime.context_length(0)
             runtime.push_token(row, position, branch=0)
-            runtime.forward_layers(position, branch=0)
             if negative is not None:
                 negative_position = runtime.context_length(1)
                 runtime.push_token(row, negative_position, branch=1)
-                runtime.forward_layers(negative_position, branch=1)
+                runtime.forward_layers_paired(position, negative_position)
+            else:
+                runtime.forward_layers(position, branch=0)
     seconds = time.perf_counter() - start
     count = len(history) + int(eos)
     timing = {

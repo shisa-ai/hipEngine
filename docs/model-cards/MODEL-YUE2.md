@@ -634,7 +634,10 @@ Milestone status:
   ODE steps): 1 862 latent frames / 74.48 s of finite, non-silent 48 kHz stereo
   audio in **90.36 s (RTF 1.21)** once warm, byte-identical on a repeat, with
   semantic decode 69.56 s (26.8 tok/s), solver 12.56 s and decoder 8.22 s, and
-  no torch import. `hipengine serve` builds the pipeline in 27.5 s at a
+  no torch import. Pairing the two CFG branches into one pass of two-row
+  projection launches (see the next entry) brings the same request to
+  **79.60 s (RTF 1.069)** with semantic decode 58.70 s (31.74 tok/s) and the
+  audio identity unchanged. `hipengine serve` builds the pipeline in 27.5 s at a
   13.23 GiB peak and returns a valid WAV from `POST /v1/audio/songs`. The fixed
   hipBLASLt index transfers: `scripts/hipblaslt_algo_scan.py` measures index 4
   fastest for all four solver shapes here (0.105-0.507 ms, 4.5-6.4x faster than
@@ -648,6 +651,23 @@ Milestone status:
   `yue2_session_gate_gfx1100_20261018.json`,
   `yue2_e2e_gate_gfx1100_20261018.json`, and
   `yue2_product_gfx1100_20261018.json`.
+- **Paired CFG branches** (2026-10-18): the AR decode runs both branches over one
+  set of weights, so `forward_layers_paired` issues each projection once for both
+  rows instead of once per branch, using two new BF16-output rowtile kernels
+  (`dense_gemv_out_bf16_rowtile2` for `o` and `down`,
+  `dense_dual_gemv_out_bf16_rowtile2` for `gate`/`up`) alongside the paired head.
+  Each row keeps the single-row kernel's K traversal and reduction order, so the
+  step is bit-identical to the serial path: 12 steps at product depth comparing
+  the logits and both branch hidden rows gave 0 mismatches. The AR step goes from
+  **37.96 ms to 32.10 ms (1.18x)**, of which the projection and attention forward
+  is 36.07 ms to 30.20 ms (1.19x); the head and sampler are unchanged. Per-branch
+  work stays per branch: the KV writes and attention reads target different caches
+  and spans, and the two rotary calls use different positions. At product depth the
+  projections are no longer the dominant term: the fixed part of a paired forward
+  is 12.18 ms at 98 tokens of context and 30.22 ms at 998, so 18.0 ms of the step
+  is span attention, which is 60% of the forward there and grows linearly in
+  context. Gate: `tests/test_unit_yue2_ar_gemv_rowtile2.py`. Artifact:
+  `benchmarks/results/yue2_ar_paired_forward_gfx1100_20261018.json`.
 - **M6 product path complete** (2026-09-16): the staged session
   (`hipengine/runtime/yue2_session.py`) over one resident AR runtime, registered
   as the `yue2` model plugin, plus `scripts/yue2_e2e_gate.py`. Each committed case

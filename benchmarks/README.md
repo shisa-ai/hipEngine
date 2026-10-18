@@ -2643,13 +2643,37 @@ plugin with no torch in the process.
 | End-to-end, 12 cases + live | **12/12** exact frame and sample counts, bit-identical repeat, 125.2 s | [`end-to-end gate`](results/yue2_e2e_gate_gfx1100_20261018.json) |
 
 The product path at its defaults (`cot="off"`, seed 20260916, 32 ODE steps, tiled decoder)
-produced 1 862 latent frames / 74.48 s of finite, non-silent 48 kHz stereo audio in **90.36 s
-(RTF 1.21)** once warm and byte-identical on a repeat, from semantic decode **69.56 s**
-(26.8 tok/s), solver **12.56 s** and decoder **8.22 s**. `hipengine serve` builds the pipeline in
+produced 1 862 latent frames / 74.48 s of finite, non-silent 48 kHz stereo audio in **79.60 s
+(RTF 1.069)** once warm and byte-identical on a repeat, from semantic decode **58.70 s**
+(31.74 tok/s), solver **12.63 s** and decoder **8.27 s**. `hipengine serve` builds the pipeline in
 27.5 s at a 13.23 GiB peak and serves `POST /v1/audio/songs`. There is no torch oracle on this
 host, so these are absolute `gfx1100` measurements with no reference arm; the matched comparison
 remains the `gfx1151` one above. Evidence:
-[`product path`](results/yue2_product_gfx1100_20261018.json).
+[`product path`](results/yue2_product_gfx1100_20261018.json),
+[`paired forward`](results/yue2_ar_paired_forward_gfx1100_20261018.json).
+
+#### Paired CFG branches
+
+Both CFG branches read the same weight matrices, so one two-row launch per projection replaces two
+one-row launches. Each row keeps the single-row kernel's K traversal and reduction order, which
+makes the paired step bit-identical to the serial one: 12 steps at product depth, comparing the
+logits and both branch hidden rows every step, produced 0 mismatches. BF16-output twins cover the
+`o`, `down` and `gate`/`up` projections; the LM head was already paired.
+
+| Segment | Serial | Paired | Speedup |
+| --- | ---: | ---: | ---: |
+| Projection and attention forward | 36.07 ms | **30.20 ms** | 1.19x |
+| Output head, both branches | 1.08 ms | 1.08 ms | 1.00x |
+| Sampler | 0.81 ms | 0.82 ms | 1.00x |
+| **AR step** | **37.96 ms** | **32.10 ms** | **1.18x** |
+
+150 timed steps after 900 warm steps at product depth, with a synchronize after each segment so a
+segment is not credited with the device's unfinished work. The end-to-end effect is 90.36 s →
+**79.60 s** and RTF 1.21 → **1.069** with the audio identity unchanged.
+
+At depth the projections are no longer the dominant term. The fixed part of a paired forward is
+12.18 ms at 98 tokens of context and 30.22 ms at 998, so 18.0 ms of the step is span attention,
+which is 60% of the forward there and grows linearly in context.
 
 ## Current concurrency scoreboards
 

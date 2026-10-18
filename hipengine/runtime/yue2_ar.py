@@ -310,6 +310,32 @@ class Yue2ArRuntime:
         # row that is -inf outside, which is exactly what `distribution` masks.
         self._logits_window_f32 = keep(_alloc(2 * spec.vocab_size * 4))
         self._logits_window_host = np.empty((2, spec.vocab_size), dtype=np.float32)
+        # Paired AR step. Both CFG branches advance one token per step and read the
+        # same weights, so one two-row launch per projection serves both rows and
+        # issues each weight stream once instead of twice. These buffers hold the
+        # two branches' scratch rows side by side; `forward_layers` keeps using the
+        # single-row scratch above.
+        pair = self.branches
+        self._p_normed = keep(_alloc(pair * hidden * 2))
+        self._p_q_f32 = _alloc(pair * heads * head_dim * 4)
+        self._p_q_bf16 = _alloc(pair * heads * head_dim * 2)
+        self._p_q_normed_bf16 = _alloc(pair * heads * head_dim * 2)
+        self._p_q_normed_f32 = _alloc(pair * heads * head_dim * 4)
+        self._p_q_out = _alloc(pair * heads * head_dim * 4)
+        self._p_k_f32 = _alloc(pair * kv_heads * head_dim * 4)
+        self._p_k_bf16 = _alloc(pair * kv_heads * head_dim * 2)
+        self._p_k_normed_bf16 = _alloc(pair * kv_heads * head_dim * 2)
+        self._p_k_normed_f32 = _alloc(pair * kv_heads * head_dim * 4)
+        self._p_k_out = _alloc(pair * kv_heads * head_dim * 4)
+        self._p_v_f32 = _alloc(pair * kv_heads * head_dim * 4)
+        self._p_v_bf16 = _alloc(pair * kv_heads * head_dim * 2)
+        self._p_attn = _alloc(pair * heads * head_dim * 4)
+        self._p_attn_bf16 = _alloc(pair * heads * head_dim * 2)
+        self._p_o_f32 = _alloc(pair * hidden * 4)
+        self._p_o_bf16 = _alloc(pair * hidden * 2)
+        self._p_gate_up = _alloc(pair * 2 * ffn * 2)
+        self._p_silu = _alloc(pair * ffn * 2)
+        self._p_down_bf16 = _alloc(pair * hidden * 2)
         self._logits_window_domain: tuple[int, int] | None = None
         self._logits_window_filled = False
         self._scale = 1.0 / float(np.sqrt(head_dim))
@@ -593,6 +619,135 @@ class Yue2ArRuntime:
                 self._hidden[branch].ptr, hidden, hidden,
                 library=self.library, runtime=self.runtime,
             )
+
+    def forward_layers_paired(self, positive_position: int, negative_position: int) -> None:
+        """Advance both CFG branches one token with paired two-row launches.
+
+        Both branches read the same weight matrices, so a projection's weight stream
+        serves both rows: the two-row kernels issue it once instead of once per
+        branch. Each row keeps the single-row kernel's reduction order, so the result
+        is bit-identical to two :meth:`forward_layers` calls. Per-branch work stays
+        per branch: the KV writes and attention reads target different caches and
+        spans, and the two rotary calls use different positions.
+        """
+        self._validate_position(positive_position)
+        self._validate_position(negative_position)
+        if self.branches < 2:
+            raise ValueError("paired forward needs a runtime built with two branches")
+        self._reset_logits_cache()
+        spec = self.spec
+        hidden = spec.hidden_size
+        heads = spec.num_attention_heads
+        kv_heads = spec.num_key_value_heads
+        head_dim = spec.head_dim
+        ffn = spec.intermediate_size
+        kernels = self.kernels
+        positions = (positive_position, negative_position)
+        for branch, position in enumerate(positions):
+            self._ctx_len_host[branch][0] = position + 1
+            copy_host_array_to_device(self._ctx_len[branch], self._ctx_len_host[branch])
+            copy_host_array_to_device(self._row_position[branch], np.array([position], dtype=np.int64))
+        spans = [self._spans(branch, 1) for branch in range(2)]
+        q_width = heads * head_dim
+        kv_width = kv_heads * head_dim
+        bf16 = 2
+        f32 = 4
+
+        for layer in self.layers:
+            for branch in range(2):
+                kernels.vv_rmsnorm_bf16(
+                    self._hidden[branch].ptr, layer.input_ln.ptr,
+                    self._p_normed.ptr + branch * hidden * bf16, 1, hidden,
+                    spec.rms_norm_eps, library=self.library, runtime=self.runtime,
+                )
+            for weight, out, width in (
+                (layer.q_w.ptr, self._p_q_f32.ptr, q_width),
+                (layer.k_w.ptr, self._p_k_f32.ptr, kv_width),
+                (layer.v_w.ptr, self._p_v_f32.ptr, kv_width),
+            ):
+                kernels.dense_gemv_bf16_f32_out_rowtile2(
+                    self._p_normed.ptr, weight, out, 2, hidden, width,
+                    stream=0, runtime=self.runtime,
+                )
+            # nn.Linear emits bf16, so the head norms see bf16-rounded inputs.
+            kernels.f32_to_bf16(self._p_q_f32.ptr, self._p_q_bf16.ptr, 2 * q_width, stream=0, runtime=self.runtime)
+            kernels.f32_to_bf16(self._p_k_f32.ptr, self._p_k_bf16.ptr, 2 * kv_width, stream=0, runtime=self.runtime)
+            kernels.vv_rmsnorm_bf16(
+                self._p_q_bf16.ptr, layer.q_norm.ptr, self._p_q_normed_bf16.ptr,
+                2 * heads, head_dim, spec.rms_norm_eps,
+                library=self.library, runtime=self.runtime,
+            )
+            kernels.vv_rmsnorm_bf16(
+                self._p_k_bf16.ptr, layer.k_norm.ptr, self._p_k_normed_bf16.ptr,
+                2 * kv_heads, head_dim, spec.rms_norm_eps,
+                library=self.library, runtime=self.runtime,
+            )
+            kernels.bf16_to_f32(self._p_q_normed_bf16.ptr, self._p_q_normed_f32.ptr, 2 * q_width, stream=0, runtime=self.runtime)
+            kernels.bf16_to_f32(self._p_k_normed_bf16.ptr, self._p_k_normed_f32.ptr, 2 * kv_width, stream=0, runtime=self.runtime)
+            for branch, position in enumerate(positions):
+                kernels.qwen35_partial_rotary_f32(
+                    self._p_q_normed_f32.ptr + branch * q_width * f32,
+                    self._p_k_normed_f32.ptr + branch * kv_width * f32,
+                    self._cos.ptr + position * head_dim * 4,
+                    self._sin.ptr + position * head_dim * 4,
+                    self._p_q_out.ptr + branch * q_width * f32,
+                    self._p_k_out.ptr + branch * kv_width * f32,
+                    heads, kv_heads, head_dim, head_dim,
+                    stream=0, runtime=self.runtime,
+                )
+            kernels.f32_to_bf16(self._p_k_out.ptr, self._p_k_bf16.ptr, 2 * kv_width, stream=0, runtime=self.runtime)
+            kernels.f32_to_bf16(self._p_v_f32.ptr, self._p_v_bf16.ptr, 2 * kv_width, stream=0, runtime=self.runtime)
+            for branch in range(2):
+                kernels.vv_kv_write_spans(
+                    self._p_k_bf16.ptr + branch * kv_width * bf16,
+                    self._p_v_bf16.ptr + branch * kv_width * bf16,
+                    layer.k_cache[branch].ptr, layer.v_cache[branch].ptr,
+                    spans[branch], 1, kv_heads, head_dim,
+                    library=self.library, runtime=self.runtime,
+                )
+                kernels.vv_attention_spans(
+                    self._p_q_out.ptr + branch * q_width * f32,
+                    layer.k_cache[branch].ptr, layer.v_cache[branch].ptr,
+                    self._p_attn.ptr + branch * q_width * f32,
+                    spans[branch], 1, heads, kv_heads, head_dim, self._scale,
+                    library=self.library, runtime=self.runtime,
+                )
+            kernels.f32_to_bf16(self._p_attn.ptr, self._p_attn_bf16.ptr, 2 * q_width, stream=0, runtime=self.runtime)
+            kernels.dense_gemv_bf16_f32_out_rowtile2(
+                self._p_attn_bf16.ptr, layer.o_w.ptr, self._p_o_f32.ptr, 2, q_width, hidden,
+                stream=0, runtime=self.runtime,
+            )
+            kernels.f32_to_bf16(self._p_o_f32.ptr, self._p_o_bf16.ptr, 2 * hidden, stream=0, runtime=self.runtime)
+            for branch in range(2):
+                kernels.vv_scale_residual_bf16(
+                    self._hidden[branch].ptr,
+                    self._p_o_bf16.ptr + branch * hidden * bf16,
+                    self._ones_hidden.ptr, self._hidden[branch].ptr, hidden, hidden,
+                    library=self.library, runtime=self.runtime,
+                )
+                kernels.vv_rmsnorm_bf16(
+                    self._hidden[branch].ptr, layer.post_ln.ptr,
+                    self._p_normed.ptr + branch * hidden * bf16, 1, hidden,
+                    spec.rms_norm_eps, library=self.library, runtime=self.runtime,
+                )
+            kernels.dense_dual_gemv_out_bf16_rowtile2(
+                self._p_normed.ptr, layer.gate_w.ptr, layer.up_w.ptr, self._p_gate_up.ptr,
+                2, hidden, ffn, ffn, stream=0, runtime=self.runtime,
+            )
+            kernels.silu_mul_dual_out_bf16(
+                self._p_gate_up.ptr, self._p_silu.ptr, 2, ffn, stream=0, runtime=self.runtime,
+            )
+            kernels.dense_gemv_out_bf16_rowtile2(
+                self._p_silu.ptr, layer.down_w.ptr, self._p_down_bf16.ptr, 2, ffn, hidden,
+                stream=0, runtime=self.runtime,
+            )
+            for branch in range(2):
+                kernels.vv_scale_residual_bf16(
+                    self._hidden[branch].ptr,
+                    self._p_down_bf16.ptr + branch * hidden * bf16,
+                    self._ones_hidden.ptr, self._hidden[branch].ptr, hidden, hidden,
+                    library=self.library, runtime=self.runtime,
+                )
 
     # ------------------------------------------------------------------
     # prefill

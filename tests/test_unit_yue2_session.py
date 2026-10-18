@@ -82,6 +82,12 @@ class FakeRuntime:
     def forward_layers(self, position: int, branch: int = 0) -> None:
         self.decoded.append((position, branch, self.lengths[branch]))
 
+    def forward_layers_paired(self, positive_position: int, negative_position: int) -> None:
+        # The real runtime runs both branches in one pass of two-row launches; the
+        # observable contract is the same two (position, branch, length) records.
+        self.decoded.append((positive_position, 0, self.lengths[0]))
+        self.decoded.append((negative_position, 1, self.lengths[1]))
+
     def logits(self, branch: int = 0, *, as_bf16: bool = True, domain=None) -> np.ndarray:
         if self._script:
             index = min(self._calls[branch], len(self._script) - 1)

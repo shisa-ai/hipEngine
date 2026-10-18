@@ -3,6 +3,7 @@
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     build_dense_gemv,
     dense_dual_gemv_out_bf16,
+    dense_dual_gemv_out_bf16_rowtile2,
     dense_dual_gemv_out_bf16_wmma,
     dense_dual_gemv_out_fp16,
     dense_dual_gemv_out_fp16_wmma,
@@ -15,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_pair_gemv_bf16_f32w_bf16_out,
     dense_gemv_out_bf16,
     dense_gemv_out_bf16_residual_bf16_out,
+    dense_gemv_out_bf16_rowtile2,
     dense_gemv_out_bf16_wmma,
     dense_gemv_out_f32,
     dense_gemv_out_fp16,
