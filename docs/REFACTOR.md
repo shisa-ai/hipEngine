@@ -1,42 +1,28 @@
-## Full-suite GPU abort: accumulated device state, not a named test
+## Full-suite GPU abort: an out-of-bounds index write in one test (fixed)
 
-`uv run pytest --suite all` and `uv run pytest --suite gpu` both die with
+`uv run pytest --suite all` and `uv run pytest --suite gpu` both died with
 `Fatal Python error: Aborted` (SIGABRT, no Python traceback) after a long GPU
-run, at a *different* file each time:
+run, at a different file each time, always inside `hipMemcpy` or `hipFree`. The
+cause was one test, not the kernels.
 
-- `--suite all`, tracked HEAD `998b7b0a4`, after 23 percent:
-  `tests/test_gpu_qwen4exp_q4_iu8_j32_tile.py::test_j32_tile_survives_the_exact_repair_chain`,
-  aborting inside `hipMemcpy` D2H (`hipengine/core/hip.py:114` via
-  `memory.copy_device_to_host`).
-- `--suite gpu`, same tree, after 73 percent:
-  `tests/test_gpu_qwen35_linear_attn_chain_journal.py::test_chain_journal_production_shape_is_byte_exact_to_scalar_decode`,
-  aborting inside `hipFree`.
-- `--suite gpu` with `HIP_LAUNCH_BLOCKING=1 AMD_SERIALIZE_KERNEL=1`, after 46
-  percent: `tests/test_gpu_qwen35_int8_prefill_attention_gpu.py`, aborting inside
-  `hipMemcpy` H2D.
+`tests/test_gpu_qwen4exp_q4_iu8_j32_tile.py::test_j32_tile_survives_the_exact_repair_chain`
+seeded the risk counter with the count measured by a preceding launch and sized
+the index queue to that count. The prefill publishes its queue through
+`atomicAdd(risk_count, 1)`, so the counter is an append cursor: the launch
+appended a second full queue behind the seeded one and wrote past the end of the
+allocation. Measured on the test's own fixture, the kernel published 2,480
+entries into a buffer sized for 1,240 int32, i.e. 4,960 bytes past the end. That
+corrupted the heap silently whenever the trailing allocation was unused, and
+terminated the process at whichever `hipMemcpy`/`hipFree` consumed the corrupted
+metadata next — which is why the abort moved between files and never reproduced
+for the file on its own (25 consecutive standalone runs passed).
 
-Three runs, three different files, always at a `hipMemcpy`/`hipFree`: the abort
-follows the position in the run, not the test.
-
-Both files pass alone (`18 passed`, `1 passed`) and inside their own module, and
-the 46 `test_gpu_qwen4exp_*` files that precede the first abort plus that file
-run clean together (`473 passed`). `HipError` is raised for a failing HIP call,
-so the abort is the runtime itself terminating, which is what a corrupted queue
-or allocator looks like; an earlier out-of-bounds kernel write is the leading
-hypothesis.
-
-The file is not itself at fault: it passes 25 consecutive standalone runs and
-inside a narrow `-k 'qwen4exp_q4 or qwen4exp_moe or qwen4exp_mmq'` GPU bundle.
-Next step is localization, not more reruns: run the tier with
-`HIP_LAUNCH_BLOCKING=1 AMD_SERIALIZE_KERNEL=1` so the offending launch is the one
-that fails, and bisect the prefix that reproduces it. If it localizes to a
-kernel, that kernel needs an in-tree bounds check plus a fixture. Until then the
-local milestone gate cannot be claimed green, and the campaign evidence rests on
-the targeted tiers (`--suite gpu` minus the long-run abort, the served-surface
-gates, and the 450-row numerical gates) rather than on a whole-suite pass.
-
-The served Qwen4Exp path does not reach either aborting file: both are Qwen3.5
-linear-attention and Q4_IU8 MoE tile kernels.
+The test now zeroes the counter and sizes the queue to the worst case
+(`compact_rows * out_features_total`), matching `_run_tile` and the production
+runner, which already memsets the counter before every launch. A new
+`test_risk_counter_accumulates_so_the_queue_must_start_zeroed` pins the append
+contract: two launches without a reset report `2 * first`, and a reset returns
+the original count. Keep that test when this entry is retired.
 
 ## Qwen4Exp MTP auto-admission and the AR batch width-1 gap
 

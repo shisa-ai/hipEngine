@@ -256,10 +256,16 @@ def test_j32_tile_survives_the_exact_repair_chain() -> None:
             copy_host_to_device(
                 d_out, host_array_ptr(np.ascontiguousarray(out)), runtime=runtime
             )
+            # The prefill appends through atomicAdd, so the counter must start
+            # at zero and the queue must hold the worst case: seeding it with
+            # ``count`` makes the kernel append a second queue past the end of
+            # a ``count``-sized index buffer.
+            capacity = fixture.compact_rows * total_out
+            assert count <= capacity
             d_count = _alloc(1, np.int32, runtime, allocations)
-            d_indices = _alloc(max(count, 1), np.int32, runtime, allocations)
+            d_indices = _alloc(capacity, np.int32, runtime, allocations)
             copy_host_to_device(
-                d_count, host_array_ptr(np.asarray([count], dtype=np.int32)),
+                d_count, host_array_ptr(np.zeros(1, dtype=np.int32)),
                 runtime=runtime,
             )
             # Re-run the risk prefill to fill the index buffer, then repair.
@@ -403,3 +409,65 @@ def test_down_registry_binds_both_tile_heights() -> None:
             backend="hip_gfx1151", layer="moe_linear", quant="gguf_q5_1",
             variant=name,
         ) is getattr(q51, variant)
+
+
+@pytest.mark.skipif(not hip_available(), reason="HIP runtime is not available")
+def test_risk_counter_accumulates_so_the_queue_must_start_zeroed() -> None:
+    """A seeded counter appends a second queue, which is what the OOB was.
+
+    The prefill publishes its queue through ``atomicAdd(risk_count, 1)``, so the
+    counter is an append cursor rather than an output. A caller that seeds it
+    with a previously measured count makes the kernel write a full extra queue
+    past the end of a count-sized index buffer: silent heap corruption when the
+    trailing allocation happens to be unused, ``SIGABRT`` inside the next
+    ``hipMemcpy`` or ``hipFree`` when it is not. This test pins the append
+    contract so the zeroing step cannot be dropped again.
+    """
+
+    counts, in_features, out_a, out_b = [17, 0, 64, 3, 129, 32], 256, 128, 128
+    runtime = get_hip_runtime()
+    library = q4.build_gguf_q4_k_selected_prefill(load=True)
+    fixture = _build_compact_fixture(
+        counts=counts, in_features=in_features, out_features_a=out_a,
+        out_features_b=out_b, dtype="bf16", seed=23,
+    )
+    allocations: list = []
+    try:
+        total_out = out_a + out_b
+        capacity = fixture.compact_rows * total_out
+        counts_arr = np.diff(fixture.expert_start_compact).tolist()
+        expert_start_wmma, tile_expert, wmma_total_rows = _tile_map(counts_arr, 32)
+        dx = _upload(fixture.x_host, runtime, allocations)
+        d_start = _upload(fixture.expert_start_compact, runtime, allocations)
+        d_wmma = _upload(expert_start_wmma, runtime, allocations)
+        d_tile = _upload(tile_expert, runtime, allocations)
+        d_qa = _upload(fixture.qweight_a, runtime, allocations)
+        d_qb = _upload(fixture.qweight_b, runtime, allocations)
+        d_out = _alloc(capacity, np.uint16, runtime, allocations)
+        d_count = _alloc(1, np.int32, runtime, allocations)
+        d_indices = _alloc(capacity, np.int32, runtime, allocations)
+
+        def launch() -> int:
+            q4.gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out(
+                dx.ptr, d_start.ptr, d_wmma.ptr, d_tile.ptr, d_qa.ptr, d_qb.ptr,
+                d_out.ptr, d_count.ptr, d_indices.ptr, capacity, 4.0,
+                fixture.compact_rows, in_features, out_a, out_b,
+                fixture.num_experts, wmma_total_rows,
+                library=library, runtime=runtime,
+            )
+            return int(_download(d_count, (1,), np.int32, runtime)[0])
+
+        copy_host_to_device(
+            d_count, host_array_ptr(np.zeros(1, dtype=np.int32)), runtime=runtime
+        )
+        first = launch()
+        assert 0 < first <= capacity
+        # No reset: the second launch appends behind the first queue.
+        assert launch() == 2 * first
+        copy_host_to_device(
+            d_count, host_array_ptr(np.zeros(1, dtype=np.int32)), runtime=runtime
+        )
+        assert launch() == first
+    finally:
+        for device in allocations:
+            free(device)
