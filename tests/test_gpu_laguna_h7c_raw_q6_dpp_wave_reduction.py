@@ -59,7 +59,10 @@ _GENERIC_WRAPPER_FACTORY_SHA256 = (
     "86e9b569b72c127e8b5be9633bf01da01b01940a83aef187fb6c126b26564cea"
 )
 _GENERIC_LAUNCH_WRAPPER_SHA256 = (
-    "3e67bcf8b32884ed203530024dbe4e77112c40aa84712667de258b02d8734208"
+    # Updated when the launch census added one telemetry call between the
+    # validation and the launch. Nothing else in the wrapper changed, so the
+    # generic launcher's arithmetic and admission are still the pinned ones.
+    "fe264362afb819218d5800768b9340d56bae3d7df5b45dc13972d23dc5324f9d"
 )
 _GENERIC_VALIDATE_SHA256 = (
     "bf1cd90230a61312a75acd401fe3a8c67eac00b59476d655c0d67db354a63e11"
@@ -253,17 +256,25 @@ def _key(
 
 
 def _declaration(source: str, anchor: str) -> str:
-    start = source.index(anchor)
-    brace = source.index("{", start)
-    depth = 0
-    for index in range(brace, len(source)):
-        if source[index] == "{":
-            depth += 1
-        elif source[index] == "}":
-            depth -= 1
-            if depth == 0:
-                return source[start : index + 1]
-    raise AssertionError(f"unterminated declaration: {anchor}")
+    search = 0
+    while True:
+        start = source.index(anchor, search)
+        brace = source.find("{", start)
+        semicolon = source.find(";", start)
+        if semicolon != -1 and (brace == -1 or semicolon < brace):
+            # A forward declaration ends before any body: skip it so the
+            # returned text is the definition the assertions inspect.
+            search = start + len(anchor)
+            continue
+        depth = 0
+        for index in range(brace, len(source)):
+            if source[index] == "{":
+                depth += 1
+            elif source[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    return source[start : index + 1]
+        raise AssertionError(f"unterminated declaration: {anchor}")
 
 
 def _sha256(text: str) -> str:
