@@ -1,0 +1,1623 @@
+{
+  "admission": {
+    "admitted": false,
+    "eligible": true,
+    "manifest_binding_bound": true,
+    "manifest_binding_missing": [],
+    "manifest_binding_reasons": [],
+    "manifest_binding_valid": true,
+    "observed": {
+      "batch_manifest_bound": true,
+      "decode_steps": 24,
+      "free_runs": 2,
+      "free_tokens": 32,
+      "prompt_count": 18,
+      "repeat_runs": 3,
+      "teacher_rows": 450,
+      "tracked_clean": true
+    },
+    "reasons": [
+      "task_gate_requires_review"
+    ],
+    "requirements": {
+      "batch_manifest_bound": true,
+      "decode_steps": 24,
+      "free_runs": 2,
+      "free_tokens": 32,
+      "prompt_count": 18,
+      "prompt_set": "full_named_fixture",
+      "repeat_runs": 3,
+      "teacher_rows": 450,
+      "tracked_clean": true
+    }
+  },
+  "batch_candidate": {
+    "composition": "fixture_order_consecutive_groups",
+    "configured_width": 4,
+    "decode_step": "owner.step(rows, capture_logits=True)",
+    "dispatch_record_count": 485750,
+    "free_step_count": 310,
+    "group_count": 15,
+    "group_widths": [
+      4,
+      4,
+      4,
+      4,
+      2,
+      4,
+      4,
+      4,
+      4,
+      2,
+      4,
+      4,
+      4,
+      4,
+      2
+    ],
+    "imports": 90,
+    "max_positions": 2048,
+    "mode": "qwen4_exp_ar_batch_w4",
+    "note": "670 actual owner.step calls = 360 teacher-forced steps + 310 free decode steps; each of the 18 prompts has 32 free tokens per run (the first free token comes from prefill, so 31 free steps per run). Widths are 4 for four groups and 2 for the final group.",
+    "prefill_source": "c1_qwen4_exp_gguf_resident_model_runner",
+    "step_widths": {
+      "2": 134,
+      "4": 536
+    },
+    "steps": 670,
+    "teacher_step_count": 360
+  },
+  "command": [
+    "qwen4exp_layer2_profile_gate.py",
+    "--candidate",
+    "ar_batch",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--batch-width",
+    "4",
+    "--decode-steps",
+    "24",
+    "--repeat-runs",
+    "3",
+    "--free-runs",
+    "2",
+    "--free-tokens",
+    "32",
+    "--output",
+    "/tmp/qwen4exp_ar_batch_w4_20261018T044348Z.json"
+  ],
+  "created_at": "2026-10-18T04:48:02.299253+00:00",
+  "decision": {
+    "admission_decision": {
+      "admitted": false,
+      "reasons": [
+        "task_gate_requires_review"
+      ]
+    },
+    "admission_eligible": true,
+    "admission_reasons": [],
+    "admitted": false,
+    "lifecycle_passed": true,
+    "next": "task review required for deterministic cross-route divergences",
+    "numerical_passed": true,
+    "passed": false,
+    "protocol_check_passed": true,
+    "state_passed": true,
+    "task_passed": false,
+    "task_status": "requires_review"
+  },
+  "execution_profile": "production",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S (gfx1151)",
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "7.2.9-1-cachyos",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_ar_batch_width4_normative_task_review",
+  "lifecycle": {
+    "candidate_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 84231770796,
+      "peak_allocations": 2028,
+      "total_allocated_bytes": 84254619132,
+      "total_freed_bytes": 84254619132
+    },
+    "passed": true,
+    "strict_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 83429817760,
+      "peak_allocations": 1625,
+      "total_allocated_bytes": 83429817760,
+      "total_freed_bytes": 83429817760
+    }
+  },
+  "manifest": {
+    "backend": "hip_gfx1151",
+    "decode_scope": "teacher_forced_batch_rows",
+    "entries": [
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.linear.lm_head.argmax_f32_rows_i32",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "argmax",
+        "scope": "free_decode_only",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "registry",
+        "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding.gguf_q8_0_embedding_bf16_out",
+        "oracle_identity": null,
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "embedding",
+            "quant": "gguf_q8_0",
+            "variant": "lookup_bf16_out"
+          }
+        ],
+        "registry_key": {
+          "backend": "hip_gfx1151",
+          "layer": "embedding",
+          "quant": "gguf_q8_0",
+          "variant": "lookup_bf16_out"
+        },
+        "role": "embedding",
+        "scope": "shared_c1",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.linear_attn.conv.qwen4_exp_linear_attn_conv_decode_indexed_f32",
+        "oracle_identity": "hipengine.kernels.hip_gfx1100.linear_attn.conv.qwen35_linear_attn_conv_decode_f32",
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "linear_attn_conv_decode",
+            "quant": "f32_state",
+            "variant": "qwen4exp_conv_indexed_decode"
+          }
+        ],
+        "registry_key": null,
+        "role": "gdn_conv_indexed",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.kernels.hip_gfx1100.linear_attn.conv.qwen35_linear_attn_conv_decode_f32"
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn.qwen4_exp_gdn_decode_rowsplit_indexed_f32",
+        "oracle_identity": "hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn.qwen4_exp_gdn_decode_f32",
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "gdn_recurrence_norm_gate",
+            "quant": "f32_state",
+            "variant": "qwen4exp_gdn_indexed_decode"
+          }
+        ],
+        "registry_key": null,
+        "role": "gdn_recurrence_norm_gate",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn.qwen4_exp_gdn_decode_f32"
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_gr_read",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "gr_read",
+        "scope": "shared_c1",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_gr_write_bf16_bf16",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "gr_write_bf16",
+        "scope": "shared_c1",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_gr_write_bf16_f32",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "gr_write_f32",
+        "scope": "shared_c1",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_moe",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "moe",
+        "scope": "shared_c1",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_add_delta_bf16_f32",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "ple_add_delta",
+        "scope": "batch_decode",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_grouped_rmsnorm_f32",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "ple_grouped_rmsnorm",
+        "scope": "batch_decode",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_grouped_rmsnorm_bf16_f32",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "ple_grouped_rmsnorm_bf16",
+        "scope": "batch_decode",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "registry",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_dilated_depthwise_conv_indexed_f32",
+        "oracle_identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_dilated_depthwise_conv_f32",
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "ple_dilated_depthwise_conv",
+            "quant": "f32",
+            "variant": "qwen4exp_ple_indexed_decode"
+          }
+        ],
+        "registry_key": {
+          "backend": "hip_gfx1151",
+          "layer": "ple_dilated_depthwise_conv",
+          "quant": "f32",
+          "variant": "qwen4exp_ple_indexed_decode"
+        },
+        "role": "ple_indexed_conv",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_dilated_depthwise_conv_f32"
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_repeat_gated_value_f32",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "ple_repeat_gated_value",
+        "scope": "batch_decode",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_scaled_silu_f32",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "ple_scaled_silu",
+        "scope": "batch_decode",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_signed_sqrt_gate_f32",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "ple_signed_sqrt_gate",
+        "scope": "batch_decode",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.runtime.qwen4_exp_batch_ple.run_qwen4_exp_batch_ple_stage",
+        "oracle_identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_ple",
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "ple_stage",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_ple"
+      },
+      {
+        "binding": "registry_dispatch",
+        "identity": "hipengine.runtime.gguf_linear.launch_gguf_linear",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "projection_dispatch",
+        "scope": "decode_rows_1_4",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_gate_context_f32",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "qsa_gate_context",
+        "scope": "batch_decode",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_scatter_index_key_device_position_f32",
+        "oracle_identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_scatter_index_keys_f32",
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "qsa_index_append",
+            "quant": "f32",
+            "variant": "strict_device_position_c1"
+          }
+        ],
+        "registry_key": null,
+        "role": "qsa_index_append",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_scatter_index_keys_f32"
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_pool_norm_rope_f32",
+        "oracle_identity": null,
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "qsa_pool_norm_rope",
+            "quant": "f32",
+            "variant": "strict"
+          }
+        ],
+        "registry_key": null,
+        "role": "qsa_index_pool_norm_rope",
+        "scope": "batch_decode",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_score_f32",
+        "oracle_identity": null,
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "qsa_index_score",
+            "quant": "f32",
+            "variant": "strict"
+          }
+        ],
+        "registry_key": null,
+        "role": "qsa_index_score",
+        "scope": "batch_decode",
+        "strict_fallback_identity": null
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_topk_expand_rows_f32_i64",
+        "oracle_identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_topk_expand_f32_i64",
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "qsa_select_blocks",
+            "quant": "f32_i64",
+            "variant": "strict_device_expand_rows"
+          }
+        ],
+        "registry_key": null,
+        "role": "qsa_index_select",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_topk_expand_f32_i64"
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.runtime.qwen4_exp_batch_qsa.run_qwen4_exp_batch_qsa_mixed_token_mixer",
+        "oracle_identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_dense_qsa_token_mixer",
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "qsa_mixed_mixer",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_dense_qsa_token_mixer"
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.paged_kv_write.qwen35_write_paged_kv_f32_batch_spans",
+        "oracle_identity": "hipengine.kernels.hip_gfx1100.attention.paged_kv_write.qwen35_write_paged_kv_f32_spans",
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "qsa_paged_kv_write",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.kernels.hip_gfx1100.attention.paged_kv_write.qwen35_write_paged_kv_f32_spans"
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
+        "oracle_identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "qsa_sparse_attention",
+            "quant": "bf16_kv",
+            "variant": "strict_rows_spans"
+          }
+        ],
+        "registry_key": null,
+        "role": "qsa_rows_attention",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_f32"
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_split_norm_rope_rows_f32",
+        "oracle_identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_split_norm_rope_f32",
+        "registered_keys": [
+          {
+            "backend": "hip_gfx1151",
+            "layer": "qsa_split_norm_rope",
+            "quant": "f32",
+            "variant": "strict_rows"
+          }
+        ],
+        "registry_key": null,
+        "role": "qsa_split_norm_rope",
+        "scope": "batch_decode",
+        "strict_fallback_identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_split_norm_rope_f32"
+      },
+      {
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_repeat_bf16_branches",
+        "oracle_identity": null,
+        "registered_keys": [],
+        "registry_key": null,
+        "role": "repeat_branches",
+        "scope": "shared_c1",
+        "strict_fallback_identity": null
+      }
+    ],
+    "execution_profile": "production",
+    "manifest_sha256": "b918cc4c761ef4543bbbd4eb514e5a27a8d3253bba2cf2fb1aa847b06549ddb6",
+    "model": "qwen4_exp_gguf",
+    "not_used": [
+      {
+        "reason": "batch runner passes no MRoPE position pointer",
+        "role": "qsa_split_norm_mrope"
+      },
+      {
+        "reason": "mixed QSA attends through the variable-selection rows kernel; the dense paged decode is not called",
+        "role": "dense_paged_decode"
+      }
+    ],
+    "observed_step_widths": {
+      "2": 134,
+      "4": 536
+    },
+    "prefill_source": "c1_qwen4_exp_gguf_resident_model_runner",
+    "profile_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+    "projection_dispatch": {
+      "observed": [
+        {
+          "abi": "dense_bf16",
+          "activation_dtype": "f32",
+          "calls": 1608,
+          "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_f32_bf16w_f32_out",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "dense_gemv",
+            "quant": "bf16",
+            "variant": "f32_hidden_f32_out"
+          },
+          "out_features": 128,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "dense_bf16",
+          "activation_dtype": "f32",
+          "calls": 6432,
+          "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "dense_gemv",
+            "quant": "f32",
+            "variant": "f32_hidden_f32_out"
+          },
+          "out_features": 1,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "dense_bf16",
+          "activation_dtype": "f32",
+          "calls": 9648,
+          "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "dense_gemv",
+            "quant": "f32",
+            "variant": "f32_hidden_f32_out"
+          },
+          "out_features": 48,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "dense_bf16",
+          "activation_dtype": "f32",
+          "calls": 12864,
+          "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+          "in_features": 10240,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "dense_gemv",
+            "quant": "f32",
+            "variant": "f32_hidden_f32_out"
+          },
+          "out_features": 4,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 12998,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 320,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 10240,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 6432,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 640,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 2560,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 3216,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 512,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 12864,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 640,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 134,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 2560,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 4824,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 6144,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 4958,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 10240,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 1608,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 12288,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 134,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 248320,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 6432,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 6144,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 2560,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 12998,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 10240,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 320,
+          "output_dtype": "f32",
+          "rows": 2
+        },
+        {
+          "abi": "dense_bf16",
+          "activation_dtype": "f32",
+          "calls": 6432,
+          "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_f32_bf16w_f32_out",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "dense_gemv",
+            "quant": "bf16",
+            "variant": "f32_hidden_f32_out"
+          },
+          "out_features": 128,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "dense_bf16",
+          "activation_dtype": "f32",
+          "calls": 25728,
+          "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "dense_gemv",
+            "quant": "f32",
+            "variant": "f32_hidden_f32_out"
+          },
+          "out_features": 1,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "dense_bf16",
+          "activation_dtype": "f32",
+          "calls": 38592,
+          "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "dense_gemv",
+            "quant": "f32",
+            "variant": "f32_hidden_f32_out"
+          },
+          "out_features": 48,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "dense_bf16",
+          "activation_dtype": "f32",
+          "calls": 51456,
+          "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+          "in_features": 10240,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "dense_gemv",
+            "quant": "f32",
+            "variant": "f32_hidden_f32_out"
+          },
+          "out_features": 4,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 51992,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 320,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 10240,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 25728,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 640,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 2560,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 12864,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 512,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 51456,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 640,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 536,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 2560,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 19296,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 6144,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 19832,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 10240,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 6432,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 12288,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 536,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 2560,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 248320,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 25728,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 6144,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 2560,
+          "output_dtype": "f32",
+          "rows": 4
+        },
+        {
+          "abi": "raw",
+          "activation_dtype": "f32",
+          "calls": 51992,
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_wrapper.<locals>.wrapper",
+          "in_features": 10240,
+          "key": {
+            "backend": "hip_gfx1151",
+            "layer": "linear",
+            "quant": "gguf_q8_0",
+            "variant": "rowtile_f32_f32_out"
+          },
+          "out_features": 320,
+          "output_dtype": "f32",
+          "rows": 4
+        }
+      ],
+      "required_rows": [
+        2,
+        4
+      ],
+      "resolver": "hipengine.runtime.gguf_linear.launch_gguf_linear",
+      "rows": [
+        2,
+        4
+      ]
+    },
+    "quant": "gguf_ud_q4_k_xl",
+    "required_roles": [
+      "gdn_conv_indexed",
+      "gdn_recurrence_norm_gate",
+      "qsa_mixed_mixer",
+      "qsa_split_norm_rope",
+      "qsa_paged_kv_write",
+      "qsa_rows_attention",
+      "qsa_gate_context",
+      "qsa_index_append",
+      "qsa_index_pool_norm_rope",
+      "qsa_index_score",
+      "qsa_index_select",
+      "projection_dispatch",
+      "ple_stage",
+      "ple_indexed_conv"
+    ],
+    "runtime": {
+      "class": "Qwen4ExpGGUFBatchRunner",
+      "function_sha256": "21fe612fcbea2a9e38e8c4a1e3d5088dfd4752797d64bb4ae4f0f094f9433074",
+      "identity": "hipengine.runtime.qwen4_exp_batch_runner.Qwen4ExpGGUFBatchRunner",
+      "source_sha256": "d131b8e084b8aca03ef1d8d04c779669da28ccee7a00e612addac5d9848e79b8"
+    },
+    "runtime_config": {
+      "context_length": 262144,
+      "gdn_layer_count": 36,
+      "hidden_size": 2560,
+      "layer_types": [
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa",
+        "gdn",
+        "gdn",
+        "gdn",
+        "qsa"
+      ],
+      "ple_layers": [
+        1
+      ],
+      "qsa_compression_ratio": 4,
+      "qsa_layer_count": 12
+    },
+    "source_revision": "1a39836962fa2ef2e38da423c7a588671a4c298f",
+    "unbound": [
+      {
+        "reason": "prefill is the committed c1 resident path and is excluded from the batch claim",
+        "role": "prefill"
+      },
+      {
+        "reason": "host CPU reference n-gram hash, not a registered device kernel",
+        "role": "ple_hash_rows"
+      },
+      {
+        "reason": "host staging helper, not a registered device kernel",
+        "role": "stage_qwen4_exp_ple_rows"
+      }
+    ]
+  },
+  "measurement_valid": true,
+  "model": {
+    "architecture": "qwen4exp",
+    "root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL"
+  },
+  "performance_claim": false,
+  "protocol": {
+    "candidate_free_runs": 2,
+    "candidate_repeat_runs": 3,
+    "complete_prompt_and_heldout_suite": true,
+    "decode_steps": 24,
+    "free_tokens": 32,
+    "kv": "BF16",
+    "prefill_chunk_size": 512,
+    "prompt_count": 18,
+    "prompt_suite_sha256": {
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a"
+    },
+    "prompt_suites": [
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "teacher_forced_rows": 450,
+    "thresholds": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "top1_min": 0.99
+    }
+  },
+  "protocol_check": false,
+  "quality": {
+    "by_scope": {
+      "category": {
+        "code": {
+          "candidate_teacher_nll_mean": 0.07255056178269688,
+          "flip_eligible_rows": 7,
+          "flip_eligible_share": 0.04666666666666667,
+          "kl_max": 0.0055012852688285105,
+          "kl_mean": 0.00019399246132736236,
+          "kl_p50": 1.6824309139530889e-06,
+          "kl_p95": 0.0008925189605474667,
+          "kl_p99": 0.003425021713776965,
+          "kl_within_global_limits": true,
+          "max_abs_logit_delta": 1.5546727180480957,
+          "passed": true,
+          "rows": 150,
+          "strict_margin_min": 0.00177001953125,
+          "strict_teacher_nll_mean": 0.07186836150177048,
+          "teacher_delta_p_mean": -0.00022904163778559973,
+          "teacher_nll_delta": 0.0006822002809264011,
+          "top1_agreement": 0.9933333333333333,
+          "top1_matches": 149,
+          "top1_mismatches_flip_eligible": 1,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.9760000000000001
+        },
+        "general_en": {
+          "candidate_teacher_nll_mean": 0.23942708751102823,
+          "flip_eligible_rows": 20,
+          "flip_eligible_share": 0.2,
+          "kl_max": 0.016074324691161636,
+          "kl_mean": 0.0009778311027651449,
+          "kl_p50": 0.00010092708797218954,
+          "kl_p95": 0.004384230411335422,
+          "kl_p99": 0.01590454119898218,
+          "kl_within_global_limits": true,
+          "max_abs_logit_delta": 3.0783047676086426,
+          "passed": true,
+          "rows": 100,
+          "strict_margin_min": 0.028398513793945312,
+          "strict_teacher_nll_mean": 0.2403022440199827,
+          "teacher_delta_p_mean": 0.000856528360104799,
+          "teacher_nll_delta": -0.0008751565089544777,
+          "top1_agreement": 0.99,
+          "top1_matches": 99,
+          "top1_mismatches_flip_eligible": 1,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.982
+        },
+        "general_ja": {
+          "candidate_teacher_nll_mean": 0.16529940762011555,
+          "flip_eligible_rows": 9,
+          "flip_eligible_share": 0.09,
+          "kl_max": 0.008643249806662062,
+          "kl_mean": 0.0007400189214614647,
+          "kl_p50": 6.512746947268385e-05,
+          "kl_p95": 0.003510684748008285,
+          "kl_p99": 0.005366511152229253,
+          "kl_within_global_limits": true,
+          "max_abs_logit_delta": 1.4799962043762207,
+          "passed": true,
+          "rows": 100,
+          "strict_margin_min": 0.06503677368164062,
+          "strict_teacher_nll_mean": 0.1651699331815763,
+          "teacher_delta_p_mean": -0.00036764616526196975,
+          "teacher_nll_delta": 0.000129474438539251,
+          "top1_agreement": 0.99,
+          "top1_matches": 99,
+          "top1_mismatches_flip_eligible": 1,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.978
+        },
+        "mixed_ja_en": {
+          "candidate_teacher_nll_mean": 0.27900054055142043,
+          "flip_eligible_rows": 21,
+          "flip_eligible_share": 0.21,
+          "kl_max": 0.014627828499048427,
+          "kl_mean": 0.000936651820502702,
+          "kl_p50": 0.00013106284076394397,
+          "kl_p95": 0.0041750564035089545,
+          "kl_p99": 0.007785505213441055,
+          "kl_within_global_limits": true,
+          "max_abs_logit_delta": 1.3737916946411133,
+          "passed": true,
+          "rows": 100,
+          "strict_margin_min": 0.027025222778320312,
+          "strict_teacher_nll_mean": 0.2709699618152557,
+          "teacher_delta_p_mean": -0.003955887707340214,
+          "teacher_nll_delta": 0.00803057873616475,
+          "top1_agreement": 1.0,
+          "top1_matches": 100,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.976
+        }
+      },
+      "shape": {
+        "batch_w2": {
+          "candidate_teacher_nll_mean": 0.3544276943177868,
+          "flip_eligible_rows": 13,
+          "flip_eligible_share": 0.2708333333333333,
+          "kl_max": 0.007406212345229184,
+          "kl_mean": 0.0008791473215729141,
+          "kl_p50": 0.00018774073034231472,
+          "kl_p95": 0.003550375347953533,
+          "kl_p99": 0.006952953287017918,
+          "kl_within_global_limits": true,
+          "max_abs_logit_delta": 1.3737916946411133,
+          "passed": true,
+          "rows": 48,
+          "strict_margin_min": 0.07705879211425781,
+          "strict_teacher_nll_mean": 0.34641858107828716,
+          "teacher_delta_p_mean": -0.0037974940192996623,
+          "teacher_nll_delta": 0.008009113239499654,
+          "top1_agreement": 1.0,
+          "top1_matches": 48,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.9791666666666666
+        },
+        "batch_w4": {
+          "candidate_teacher_nll_mean": 0.1476340311942757,
+          "flip_eligible_rows": 37,
+          "flip_eligible_share": 0.09635416666666667,
+          "kl_max": 0.016074324691161636,
+          "kl_mean": 0.0005603449243556965,
+          "kl_p50": 2.3449948578345543e-05,
+          "kl_p95": 0.0030133633974059955,
+          "kl_p99": 0.0062496464909776615,
+          "kl_within_global_limits": true,
+          "max_abs_logit_delta": 3.0783047676086426,
+          "passed": true,
+          "rows": 384,
+          "strict_margin_min": 0.00177001953125,
+          "strict_teacher_nll_mean": 0.14689029242143015,
+          "teacher_delta_p_mean": -0.0002984260248921971,
+          "teacher_nll_delta": 0.0007437387728455591,
+          "top1_agreement": 0.9921875,
+          "top1_matches": 381,
+          "top1_mismatches_flip_eligible": 3,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.978125
+        },
+        "prefill_last": {
+          "candidate_teacher_nll_mean": 0.3084050294336284,
+          "flip_eligible_rows": 7,
+          "flip_eligible_share": 0.3888888888888889,
+          "kl_max": 0.014627828499048427,
+          "kl_mean": 0.0020654184046637845,
+          "kl_p50": 0.0006566527102784364,
+          "kl_p95": 0.008753106486153168,
+          "kl_p99": 0.013452884096469366,
+          "kl_within_global_limits": false,
+          "max_abs_logit_delta": 1.26399564743042,
+          "passed": true,
+          "rows": 18,
+          "strict_margin_min": 0.208160400390625,
+          "strict_teacher_nll_mean": 0.2994724414088931,
+          "teacher_delta_p_mean": -0.004676749468477277,
+          "teacher_nll_delta": 0.008932588024735288,
+          "top1_agreement": 1.0,
+          "top1_matches": 18,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.9666666666666666
+        }
+      },
+      "transition": {
+        "prefill_to_batch": {
+          "candidate_teacher_nll_mean": 0.1666102742366341,
+          "flip_eligible_rows": 3,
+          "flip_eligible_share": 0.16666666666666666,
+          "kl_max": 0.005296624807333371,
+          "kl_mean": 0.0007211172990086846,
+          "kl_p50": 2.1359080593658798e-05,
+          "kl_p95": 0.004511502800163741,
+          "kl_p99": 0.005139600405899444,
+          "kl_within_global_limits": true,
+          "max_abs_logit_delta": 1.5546727180480957,
+          "passed": true,
+          "rows": 18,
+          "strict_margin_min": 0.128631591796875,
+          "strict_teacher_nll_mean": 0.15869052186038468,
+          "teacher_delta_p_mean": -0.005279312311909473,
+          "teacher_nll_delta": 0.007919752376249423,
+          "top1_agreement": 1.0,
+          "top1_matches": 18,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.9888888888888889
+        },
+        "prefill_to_c1": {
+          "candidate_teacher_nll_mean": 0.3084050294336284,
+          "flip_eligible_rows": 7,
+          "flip_eligible_share": 0.3888888888888889,
+          "kl_max": 0.014627828499048427,
+          "kl_mean": 0.0020654184046637845,
+          "kl_p50": 0.0006566527102784364,
+          "kl_p95": 0.008753106486153168,
+          "kl_p99": 0.013452884096469366,
+          "kl_within_global_limits": false,
+          "max_abs_logit_delta": 1.26399564743042,
+          "passed": true,
+          "rows": 18,
+          "strict_margin_min": 0.208160400390625,
+          "strict_teacher_nll_mean": 0.2994724414088931,
+          "teacher_delta_p_mean": -0.004676749468477277,
+          "teacher_nll_delta": 0.008932588024735288,
+          "top1_agreement": 1.0,
+          "top1_matches": 18,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.9666666666666666
+        },
+        "steady": {
+          "candidate_teacher_nll_mean": 0.1707850540328411,
+          "flip_eligible_rows": 47,
+          "flip_eligible_share": 0.11352657004830918,
+          "kl_max": 0.016074324691161636,
+          "kl_mean": 0.0005903174178887224,
+          "kl_p50": 2.6008353936879038e-05,
+          "kl_p95": 0.0032066144717001564,
+          "kl_p99": 0.0066591574328718406,
+          "kl_within_global_limits": true,
+          "max_abs_logit_delta": 3.0783047676086426,
+          "passed": true,
+          "rows": 414,
+          "strict_margin_min": 0.00177001953125,
+          "strict_teacher_nll_mean": 0.16951095359444457,
+          "teacher_delta_p_mean": -0.00048755479437347093,
+          "teacher_nll_delta": 0.0012741004383965415,
+          "top1_agreement": 0.9927536231884058,
+          "top1_matches": 411,
+          "top1_mismatches_flip_eligible": 3,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.9777777777777779
+        }
+      }
+    },
+    "candidate_logits_sha256": "590bf362e84901ae32b6e61f5f63c99df03d37bf030ae24a81c3f3e8777bd658",
+    "note": "prefill_to_c1 has kl_within_global_limits=false but passed=true under the gate transition policy; it is the 18-row c1 prefill-last scope, not the batch decode claim.",
+    "passed": true,
+    "repeat_determinism": {
+      "mismatches": [],
+      "passed": true,
+      "runs": 3
+    },
+    "rows": 450,
+    "strict_logits_sha256": "e5ae994ec331c32fb243bb6ad3c6ba2e7212ed188097b9fe929b124798e7b1da",
+    "summary": {
+      "candidate_teacher_nll_mean": 0.17612286185702433,
+      "flip_eligible_rows": 57,
+      "flip_eligible_share": 0.12666666666666668,
+      "kl_max": 0.016074324691161636,
+      "kl_mean": 0.0006545534526045234,
+      "kl_p50": 3.4776927634112144e-05,
+      "kl_p95": 0.003470909795879513,
+      "kl_p99": 0.007564403375939846,
+      "max_abs_logit_delta": 3.0783047676086426,
+      "rows": 450,
+      "strict_margin_min": 0.00177001953125,
+      "strict_teacher_nll_mean": 0.1742765958376601,
+      "teacher_delta_p_mean": -0.0008467928820390632,
+      "teacher_nll_delta": 0.0018462660193642455,
+      "top1_agreement": 0.9933333333333333,
+      "top1_matches": 447,
+      "top1_mismatches_flip_eligible": 3,
+      "top1_mismatches_outside_flip_eligible": 0,
+      "topk_overlap_mean": 0.9777777777777777
+    },
+    "thresholds": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "top1_min": 0.99
+    }
+  },
+  "quant": "gguf_ud_q4_k_xl",
+  "raw_artifacts": {
+    "gate_json": "/tmp/qwen4exp_ar_batch_w4_20261018T044348Z.json",
+    "gate_json_bytes": 367168,
+    "gate_json_sha256": "437953b1a90287cebd3c6d6cdcb224d117ffd8acc887f4b110b86c5761a2fb4b",
+    "log": "/tmp/qwen4exp_ar_batch_w4_20261018T044348Z.log",
+    "log_bytes": 370174,
+    "log_sha256": "f47d7c1f929836b31300c8ecab9e3bd3916ddff953a9a0f7e0c2bd7343c56185",
+    "note": "raw logs stay local in /tmp and are not part of this compact artifact"
+  },
+  "schema": 1,
+  "source": {
+    "head": "1a39836962fa2ef2e38da423c7a588671a4c298f",
+    "path": "/home/lhl/hipEngine",
+    "tracked_clean": true
+  },
+  "state_repeat_gate": {
+    "group_mismatches": [],
+    "kind": "batch_slot_state",
+    "layout_equivalence": "not_applicable: the batch runner owns a different physical layout; exactness is checked against repeats, positions, and ownership",
+    "metadata_exact_all": true,
+    "mismatches": [],
+    "note": "strict_candidate_state_exact=false is expected: the batch runner owns a different physical layout; the gate checks repeats, positions, and ownership instead of byte equality to c1.",
+    "passed": true,
+    "position_exact_all": true,
+    "prompt_count": 18,
+    "repeat_exact_all": true,
+    "strict_candidate_state_exact_all": false
+  },
+  "status": "requires_task_review",
+  "task_gate": {
+    "candidate_repeat_exact": true,
+    "divergences": [
+      {
+        "candidate_ids_sha256": "89dc81f256787a6332df1ce735e232b483c249cde124309bf63887f797410d85",
+        "candidate_text": "```python\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes",
+        "category": "code",
+        "id": "code_topological_sort",
+        "review": "Prefix-only divergence: strict starts with `from collections import deque`; candidate starts with the function and docstring. The 32-token window ends inside the docstring, before the algorithm or tests, so the candidate queue choice/import correctness is unresolved. No semantic failure is visible.",
+        "strict_ids_sha256": "77e6323f5d3a9b1cb1e2b588fa70139453f3e8a39c754b9d8ebba4cf15357336",
+        "strict_text": "```python\nfrom collections import deque\n\n\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n   "
+      },
+      {
+        "candidate_ids_sha256": "5274d5e4c6d6e93a2ad5f810ed60f136dd8359108f84c713d9ffa77e1ed36427",
+        "candidate_text": "Transformer inference on local GPUs is predominantly **memory-bandwidth limited** rather than compute-limited due to the fundamental architecture of the Transformer model, specifically the **Key",
+        "category": "general_en",
+        "id": "general_en_explain",
+        "review": "Both prefixes state the same thesis: transformer inference is memory-bandwidth limited. The candidate emphasizes the Transformer/KV-cache architecture; the strict emphasizes autoregressive decoding. Semantically consistent at the prefix; the 32-token window ends before examples or throughput changes.",
+        "strict_ids_sha256": "db2a093bac98ab682c5d698b8dd6fe26340069ebe731b685e8fc20c1070c2dbf",
+        "strict_text": "Transformer inference on local GPUs is predominantly **memory-bandwidth limited** rather than compute-limited due to the fundamental nature of the **autoregressive decoding process** and"
+      },
+      {
+        "candidate_ids_sha256": "5e9a625ef9175cc46b68bfad9bcc6cadbd2bc18c032ed850d62617c8f48d17a5",
+        "candidate_text": "# \u793e\u5185REST API\uff1a\u540c\u671f\u51e6\u7406\u304b\u3089\u975e\u540c\u671f\u30b8\u30e7\u30d6\u65b9\u5f0f\u3078\u306e\u79fb\u884c\u8a08\u753b\n\n## 1. \u79fb\u884c\u6982\u8981\n\u9ad8\u8ca0\u8377\u306a\u51e6\u7406\uff08",
+        "category": "general_ja",
+        "id": "heldout_general_ja_migration",
+        "review": "Both share the title; the candidate uses `## 1. \u79fb\u884c\u6982\u8981` instead of `## 1. \u80cc\u666f\u3068\u76ee\u7684`. Both are valid migration-plan headings. The window ends before compatibility, monitoring, and rollback coverage, so the full task requirement is not verifiable.",
+        "strict_ids_sha256": "1e4f6ce7fca7141648007213f07a680d2bdeaf925002042ddb4911309d2b2695",
+        "strict_text": "# \u793e\u5185REST API\uff1a\u540c\u671f\u51e6\u7406\u304b\u3089\u975e\u540c\u671f\u30b8\u30e7\u30d6\u65b9\u5f0f\u3078\u306e\u79fb\u884c\u8a08\u753b\n\n## 1. \u80cc\u666f\u3068\u76ee\u7684\n\u9ad8\u8ca0\u8377\u6642\u306e\u30ec\u30b9"
+      },
+      {
+        "candidate_ids_sha256": "00977757b6b9f12f190d514e60929379db2a7704accb951a4264620b190ad089",
+        "candidate_text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\uff08Speculative Decoding\uff09\u306f\u3001\u5c0f\u3055\u306a\u300c\u30c9\u30e9\u30d5\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u751f\u6210\u3057\u305f\u5019\u88dc\u30c8\u30fc\u30af\u30f3\u3092\u3001\u5927\u304d\u306a\u300c\u30bf\u30fc\u30b2\u30c3\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u4e26",
+        "category": "general_ja",
+        "id": "heldout_general_ja_speculative",
+        "review": "Both share the opening sentence; the candidate uses `\u4e26` where the strict uses `\u4e00\u62ec`. Both are valid descriptions of target-model verification. The window ends before acceptance rate, verification cost, and memory coverage, so the full task requirement is not verifiable.",
+        "strict_ids_sha256": "457d149d4d5385646d48c2e8ed9a23193e92c8456dfbda6287efcc4236c17768",
+        "strict_text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\uff08Speculative Decoding\uff09\u306f\u3001\u5c0f\u3055\u306a\u300c\u30c9\u30e9\u30d5\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u751f\u6210\u3057\u305f\u5019\u88dc\u30c8\u30fc\u30af\u30f3\u3092\u3001\u5927\u304d\u306a\u300c\u30bf\u30fc\u30b2\u30c3\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u4e00\u62ec"
+      }
+    ],
+    "repeat_mismatches": [],
+    "rows": [
+      {
+        "candidate_repeat_exact": true,
+        "category": "code",
+        "id": "code_merge_intervals",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "code",
+        "id": "code_topological_sort",
+        "strict_exact": false
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "code",
+        "id": "code_lru_cache",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "code",
+        "id": "code_markdown_table",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "general_en",
+        "id": "general_en_plan",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "general_en",
+        "id": "general_en_explain",
+        "strict_exact": false
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "general_ja",
+        "id": "general_ja_plan",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "general_ja",
+        "id": "general_ja_explain",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "mixed_ja_en",
+        "id": "mixed_ja_en_translate",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "mixed_ja_en",
+        "id": "mixed_ja_en_review",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "code",
+        "id": "heldout_code_rate_limiter",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "code",
+        "id": "heldout_code_interval_schedule",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "general_en",
+        "id": "heldout_general_en_incident",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "general_en",
+        "id": "heldout_general_en_quant",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "general_ja",
+        "id": "heldout_general_ja_migration",
+        "strict_exact": false
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "general_ja",
+        "id": "heldout_general_ja_speculative",
+        "strict_exact": false
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "mixed_ja_en",
+        "id": "heldout_mixed_summary",
+        "strict_exact": true
+      },
+      {
+        "candidate_repeat_exact": true,
+        "category": "mixed_ja_en",
+        "id": "heldout_mixed_review",
+        "strict_exact": true
+      }
+    ],
+    "status": "requires_review",
+    "strict_exact_count": 14,
+    "total": 18
+  },
+  "task_review": {
+    "divergence_reviews": {
+      "code_topological_sort": "Prefix-only divergence: strict starts with `from collections import deque`; candidate starts with the function and docstring. The 32-token window ends inside the docstring, before the algorithm or tests, so the candidate queue choice/import correctness is unresolved. No semantic failure is visible.",
+      "general_en_explain": "Both prefixes state the same thesis: transformer inference is memory-bandwidth limited. The candidate emphasizes the Transformer/KV-cache architecture; the strict emphasizes autoregressive decoding. Semantically consistent at the prefix; the 32-token window ends before examples or throughput changes.",
+      "heldout_general_ja_migration": "Both share the title; the candidate uses `## 1. \u79fb\u884c\u6982\u8981` instead of `## 1. \u80cc\u666f\u3068\u76ee\u7684`. Both are valid migration-plan headings. The window ends before compatibility, monitoring, and rollback coverage, so the full task requirement is not verifiable.",
+      "heldout_general_ja_speculative": "Both share the opening sentence; the candidate uses `\u4e26` where the strict uses `\u4e00\u62ec`. Both are valid descriptions of target-model verification. The window ends before acceptance rate, verification cost, and memory coverage, so the full task requirement is not verifiable."
+    },
+    "gate_effect": "admission.eligible=true, admission.admitted=false, reason=task_gate_requires_review; no promotion/default claim.",
+    "next": "Run a focused longer free-output review (128-256 tokens) for code_topological_sort, general_en_explain, heldout_general_ja_migration, and heldout_general_ja_speculative on the same width4 route, then review semantic task satisfaction. Do not rerun the full 450-row numerical gate; it passed.",
+    "scope": "32-token free outputs for the four divergent prompt IDs; full 450-row numerical/task gate evidence is in this artifact and the raw gate JSON.",
+    "verdict": "No semantic failure is visible in the 32-token prefixes; all four divergences are deterministic across repeats. The 32-token window is too short to certify the code prompt's algorithm/tests or the Japanese prompts' required coverage. The evaluator remains requires_task_review; do not override admission."
+  }
+}
