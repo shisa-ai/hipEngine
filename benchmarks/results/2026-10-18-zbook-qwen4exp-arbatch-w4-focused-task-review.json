@@ -1,0 +1,1274 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_arbatch_w4_focused_task_review",
+  "created_at": "2026-10-18T05:51:35Z",
+  "status": "no_semantic_failure_two_cases_inconclusive",
+  "scope": {
+    "purpose": "focused semantic task review of the four free-output divergences from the passed 450-row width-4 numerical gate",
+    "prompt_ids": [
+      "code_topological_sort",
+      "general_en_explain",
+      "heldout_general_ja_migration",
+      "heldout_general_ja_speculative"
+    ],
+    "group_indices": [
+      0,
+      1,
+      3
+    ],
+    "tokens": 1024,
+    "runs_per_route": 2,
+    "numerical_gate_rerun": false,
+    "runtime_or_default_changed": false,
+    "performance_claim": false
+  },
+  "source": {
+    "head": {
+      "path": "/home/lhl/hipEngine",
+      "head": "bd086b40be4ff65a78cd79b28e910eb7411bbde5",
+      "tracked_clean": true
+    },
+    "tracked_clean": true,
+    "numerical_source": "1a39836962fa2ef2e38da423c7a588671a4c298f",
+    "runtime_changes_since_numerical_source": [],
+    "diagnostic_script": {
+      "path": "scripts/qwen4exp_arbatch_task_review.py",
+      "sha256": "81a28db648e1482c79f28651c783cbc75de5a5b375a175c36bccb1ac59aa0237",
+      "status": "untracked diagnostic harness; not a runtime/default change"
+    }
+  },
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S (gfx1151)",
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "kernel": "7.2.9-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model": {
+    "root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "quant": "Q4_K_XL",
+    "backend": "hip_gfx1151",
+    "profile": "production"
+  },
+  "reference": {
+    "compact_artifact": {
+      "path": "benchmarks/results/2026-10-18-zbook-qwen4exp-arbatch-w4-normative-task-review.json",
+      "sha256": "aa861a913b8e74be521aed78fd63acc750294f6c4984a73ce0a94e20bf9d28b8",
+      "status": "requires_task_review",
+      "quality_rows": 450,
+      "quality_passed": true,
+      "admission_eligible": true,
+      "admission_admitted": false,
+      "admission_reasons": [
+        "task_gate_requires_review"
+      ],
+      "task_review": {
+        "divergence_reviews": {
+          "code_topological_sort": "Prefix-only divergence: strict starts with `from collections import deque`; candidate starts with the function and docstring. The 32-token window ends inside the docstring, before the algorithm or tests, so the candidate queue choice/import correctness is unresolved. No semantic failure is visible.",
+          "general_en_explain": "Both prefixes state the same thesis: transformer inference is memory-bandwidth limited. The candidate emphasizes the Transformer/KV-cache architecture; the strict emphasizes autoregressive decoding. Semantically consistent at the prefix; the 32-token window ends before examples or throughput changes.",
+          "heldout_general_ja_migration": "Both share the title; the candidate uses `## 1. 移行概要` instead of `## 1. 背景と目的`. Both are valid migration-plan headings. The window ends before compatibility, monitoring, and rollback coverage, so the full task requirement is not verifiable.",
+          "heldout_general_ja_speculative": "Both share the opening sentence; the candidate uses `並` where the strict uses `一括`. Both are valid descriptions of target-model verification. The window ends before acceptance rate, verification cost, and memory coverage, so the full task requirement is not verifiable."
+        },
+        "gate_effect": "admission.eligible=true, admission.admitted=false, reason=task_gate_requires_review; no promotion/default claim.",
+        "next": "Run a focused longer free-output review (128-256 tokens) for code_topological_sort, general_en_explain, heldout_general_ja_migration, and heldout_general_ja_speculative on the same width4 route, then review semantic task satisfaction. Do not rerun the full 450-row numerical gate; it passed.",
+        "scope": "32-token free outputs for the four divergent prompt IDs; full 450-row numerical/task gate evidence is in this artifact and the raw gate JSON.",
+        "verdict": "No semantic failure is visible in the 32-token prefixes; all four divergences are deterministic across repeats. The 32-token window is too short to certify the code prompt's algorithm/tests or the Japanese prompts' required coverage. The evaluator remains requires_task_review; do not override admission."
+      }
+    },
+    "raw_gate_json": {
+      "path": "/tmp/qwen4exp_ar_batch_w4_20261018T044348Z.json",
+      "sha256": "437953b1a90287cebd3c6d6cdcb224d117ffd8acc887f4b110b86c5761a2fb4b",
+      "status": "requires_task_review",
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "1a39836962fa2ef2e38da423c7a588671a4c298f",
+        "tracked_clean": true
+      }
+    }
+  },
+  "commands": [
+    {
+      "tokens": 256,
+      "shell_command": "source /tmp/hipenv.sh && set -o pipefail && $PY scripts/qwen4exp_arbatch_task_review.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --output /tmp/qwen4exp_arbatch_task_review_256.json --reference-raw-gate-json /tmp/qwen4exp_ar_batch_w4_20261018T044348Z.json --tokens 256 --runs 2 --groups 0,1,3 --strict-prompts code_topological_sort,general_en_explain,heldout_general_ja_migration,heldout_general_ja_speculative 2>&1 | tee /tmp/qwen4exp_arbatch_task_review_256.log",
+      "raw_json": "/tmp/qwen4exp_arbatch_task_review_256.json",
+      "raw_json_sha256": "538b1163b4dcc92cb17f484da97c0717f07ee1cc99ba0cb8c45f845c648f1efc",
+      "raw_json_bytes": 232691,
+      "elapsed_seconds": 326.689,
+      "raw_log": "/tmp/qwen4exp_arbatch_task_review_256.log",
+      "raw_log_sha256": "ee5e55d4b734ade544576423761789fdce03183b62d9a22a19028ac028e59c7c",
+      "raw_log_bytes": 2135
+    },
+    {
+      "tokens": 512,
+      "shell_command": "source /tmp/hipenv.sh && set -o pipefail && $PY scripts/qwen4exp_arbatch_task_review.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --output /tmp/qwen4exp_arbatch_task_review_512.json --reference-raw-gate-json /tmp/qwen4exp_ar_batch_w4_20261018T044348Z.json --tokens 512 --runs 2 --groups 0,1,3 --strict-prompts code_topological_sort,general_en_explain,heldout_general_ja_migration,heldout_general_ja_speculative 2>&1 | tee /tmp/qwen4exp_arbatch_task_review_512.log",
+      "raw_json": "/tmp/qwen4exp_arbatch_task_review_512.json",
+      "raw_json_sha256": "f3297c0810337933ca5404bbf090428d236f0ff2b459460d176fe4ce56d8cc7f",
+      "raw_json_bytes": 395807,
+      "elapsed_seconds": 607.883,
+      "raw_log": "/tmp/qwen4exp_arbatch_task_review_512.log",
+      "raw_log_sha256": "eb7a25368cfcdc7f0a90bf8c322cbb3ba61751ddf0d49dc6e99af1edfa29e5e2",
+      "raw_log_bytes": 2133
+    },
+    {
+      "tokens": 768,
+      "shell_command": "source /tmp/hipenv.sh && set -o pipefail && $PY scripts/qwen4exp_arbatch_task_review.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --output /tmp/qwen4exp_arbatch_task_review_768.json --reference-raw-gate-json /tmp/qwen4exp_ar_batch_w4_20261018T044348Z.json --tokens 768 --runs 2 --groups 0,1,3 --strict-prompts code_topological_sort,general_en_explain,heldout_general_ja_migration,heldout_general_ja_speculative 2>&1 | tee /tmp/qwen4exp_arbatch_task_review_768.log",
+      "raw_json": "/tmp/qwen4exp_arbatch_task_review_768.json",
+      "raw_json_sha256": "fdbf418c8c7a5c3fdce1bbc5112661d6534bd0effb25dbb3e7f4c460f7f362c6",
+      "raw_json_bytes": 562900,
+      "elapsed_seconds": 925.577,
+      "raw_log": "/tmp/qwen4exp_arbatch_task_review_768.log",
+      "raw_log_sha256": "6bf3a44721e759a112f029feb74cb7478d004121afe3c57cf0aaa46f0c7c7699",
+      "raw_log_bytes": 2169
+    },
+    {
+      "tokens": 1024,
+      "shell_command": "source /tmp/hipenv.sh && set -o pipefail && $PY scripts/qwen4exp_arbatch_task_review.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --output /tmp/qwen4exp_arbatch_task_review_1024.json --reference-raw-gate-json /tmp/qwen4exp_ar_batch_w4_20261018T044348Z.json --tokens 1024 --runs 2 --groups 0,1,3 --strict-prompts code_topological_sort,general_en_explain,heldout_general_ja_migration,heldout_general_ja_speculative 2>&1 | tee /tmp/qwen4exp_arbatch_task_review_1024.log",
+      "raw_json": "/tmp/qwen4exp_arbatch_task_review_1024.json",
+      "raw_json_sha256": "24f1526eea4708f51eac015e10bd6b3f6518e13de709d169ad0f978539952f0c",
+      "raw_json_bytes": 710450,
+      "elapsed_seconds": 1242.223,
+      "raw_log": "/tmp/qwen4exp_arbatch_task_review_1024.log",
+      "raw_log_sha256": "a6e80dab0cbf50aa1506edbb00fca9da287c590a0fab4361dd085d7330e4d85a",
+      "raw_log_bytes": 2236
+    }
+  ],
+  "original_composition": {
+    "batch_width": 4,
+    "composition": "fixture_order_consecutive_groups",
+    "groups": [
+      {
+        "index": 0,
+        "width": 4,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table"
+        ],
+        "request_ids": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "prompt_token_ids_sha256": {
+          "code_merge_intervals": "df2d91b35856f260bc0f83b53da392a38fb2c844139b8f2aaa308d42e37f1d76",
+          "code_topological_sort": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498",
+          "code_lru_cache": "3b7619476b9bbdeaf418a2e7463d244df53d3de5cd8def0adfbe13c1ed96380a",
+          "code_markdown_table": "826baa75301566149ab7fca4d8e37f7de27fb7381b5e61a528334c86528bdb9e"
+        }
+      },
+      {
+        "index": 1,
+        "width": 4,
+        "prompt_ids": [
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain"
+        ],
+        "request_ids": [
+          5,
+          6,
+          7,
+          8
+        ],
+        "prompt_token_ids_sha256": {
+          "general_en_plan": "fc1069fb8471bda5da1cafdae026d4a93ceacc425630d552d48c3d1aac651156",
+          "general_en_explain": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd",
+          "general_ja_plan": "79dbc18d76d4fc4a071da62e486d2e7a9d43237a5e773065d8f082bfa1c02de5",
+          "general_ja_explain": "155f9e514f5eba59e5eeecf2c94935827b5d7871ef7144e6e3aba5ea208bd814"
+        }
+      },
+      {
+        "index": 3,
+        "width": 4,
+        "prompt_ids": [
+          "heldout_general_en_incident",
+          "heldout_general_en_quant",
+          "heldout_general_ja_migration",
+          "heldout_general_ja_speculative"
+        ],
+        "request_ids": [
+          13,
+          14,
+          15,
+          16
+        ],
+        "prompt_token_ids_sha256": {
+          "heldout_general_en_incident": "d38575ce43649f7a5914b4e8e4f63f1d6d32229c08dd0e4fc3acb276c021339c",
+          "heldout_general_en_quant": "f1ed6521944613b3452e787a4cccb8c519fa1de7d6ff9d249b09fe6a0c4112b4",
+          "heldout_general_ja_migration": "337a40f73abf2f5814cbc626bfa520b90e66bf01e405d1472508253776f4a411",
+          "heldout_general_ja_speculative": "f4d1c423950e44fa485b2f84300fbffb8d3295059ad6992da9649947e0552d8e"
+        }
+      }
+    ],
+    "verification": "The derived group prompt IDs matched the raw gate JSON groups 0, 1, and 3; the prompt token hashes matched the raw gate JSON prompts. All companions were present and the divergent prompts were not regrouped."
+  },
+  "prompts": [
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt": "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.",
+      "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+      "prompt_tokens": 50,
+      "prompt_token_ids_sha256": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498",
+      "reference_prompt_tokens": 50,
+      "reference_prompt_token_ids_sha256": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498"
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt": "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.",
+      "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+      "prompt_tokens": 40,
+      "prompt_token_ids_sha256": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd",
+      "reference_prompt_tokens": 40,
+      "reference_prompt_token_ids_sha256": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt": "社内向けREST APIを同期処理から非同期ジョブ方式へ移行する計画を、日本語で簡潔に作成してください。互換性、監視、ロールバック条件を含めてください。",
+      "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+      "prompt_tokens": 53,
+      "prompt_token_ids_sha256": "337a40f73abf2f5814cbc626bfa520b90e66bf01e405d1472508253776f4a411",
+      "reference_prompt_tokens": 53,
+      "reference_prompt_token_ids_sha256": "337a40f73abf2f5814cbc626bfa520b90e66bf01e405d1472508253776f4a411"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt": "投機的デコードが常に高速化につながるわけではない理由を、日本語で技術的に説明してください。受理率、検証コスト、メモリ使用量に触れてください。",
+      "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+      "prompt_tokens": 45,
+      "prompt_token_ids_sha256": "f4d1c423950e44fa485b2f84300fbffb8d3295059ad6992da9649947e0552d8e",
+      "reference_prompt_tokens": 45,
+      "reference_prompt_token_ids_sha256": "f4d1c423950e44fa485b2f84300fbffb8d3295059ad6992da9649947e0552d8e"
+    }
+  ],
+  "determinism": {
+    "code_topological_sort": {
+      "strict": {
+        "runs": 2,
+        "repeat_exact": true,
+        "answer_repeat_exact": true,
+        "run_sha256": [
+          "b7198b215eea376a8c1db221e45bb5169dff6442050fb38d67f8a158371c7e4b",
+          "b7198b215eea376a8c1db221e45bb5169dff6442050fb38d67f8a158371c7e4b"
+        ],
+        "answer_sha256": [
+          "2b817e0bde49f3a0cc126c263c24cf7ec42d83ff898701dddf8b2eb634612233",
+          "2b817e0bde49f3a0cc126c263c24cf7ec42d83ff898701dddf8b2eb634612233"
+        ]
+      },
+      "batch": {
+        "runs": 2,
+        "repeat_exact": true,
+        "answer_repeat_exact": true,
+        "run_sha256": [
+          "9640d11045e61721eb06acc1dc174122b06a69daa24a716e7d0924b7d730da30",
+          "9640d11045e61721eb06acc1dc174122b06a69daa24a716e7d0924b7d730da30"
+        ],
+        "answer_sha256": [
+          "be2764e7077cbeb4ce5f074ce5fb42e3b3abf03e03b9e8f98357a44fa98a65c6",
+          "be2764e7077cbeb4ce5f074ce5fb42e3b3abf03e03b9e8f98357a44fa98a65c6"
+        ]
+      },
+      "strict_vs_batch_answer_exact": false,
+      "strict_vs_batch_ids_exact": false
+    },
+    "general_en_explain": {
+      "strict": {
+        "runs": 2,
+        "repeat_exact": true,
+        "answer_repeat_exact": true,
+        "run_sha256": [
+          "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee",
+          "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee"
+        ],
+        "answer_sha256": [
+          "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee",
+          "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee"
+        ]
+      },
+      "batch": {
+        "runs": 2,
+        "repeat_exact": true,
+        "answer_repeat_exact": true,
+        "run_sha256": [
+          "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab",
+          "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab"
+        ],
+        "answer_sha256": [
+          "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab",
+          "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab"
+        ]
+      },
+      "strict_vs_batch_answer_exact": false,
+      "strict_vs_batch_ids_exact": false
+    },
+    "heldout_general_ja_migration": {
+      "strict": {
+        "runs": 2,
+        "repeat_exact": true,
+        "answer_repeat_exact": true,
+        "run_sha256": [
+          "003165a5ac04c8ec9956d177145247db1c50ad5739daae31087e45dcf305f14b",
+          "003165a5ac04c8ec9956d177145247db1c50ad5739daae31087e45dcf305f14b"
+        ],
+        "answer_sha256": [
+          "ff7bf0e8a0f7d7d030fb1c8f4a35afe4a8060b7d282168c9f785e9df31813a4a",
+          "ff7bf0e8a0f7d7d030fb1c8f4a35afe4a8060b7d282168c9f785e9df31813a4a"
+        ]
+      },
+      "batch": {
+        "runs": 2,
+        "repeat_exact": true,
+        "answer_repeat_exact": true,
+        "run_sha256": [
+          "e091887de03b7fd646a266b6c7b33fd2efe90fa2428f85ca3c90256d59cd7f54",
+          "e091887de03b7fd646a266b6c7b33fd2efe90fa2428f85ca3c90256d59cd7f54"
+        ],
+        "answer_sha256": [
+          "988be6faad557419ee030f440b2a8ab4d1c7f6ce6017b067f1ad9cb5c9cf37cd",
+          "988be6faad557419ee030f440b2a8ab4d1c7f6ce6017b067f1ad9cb5c9cf37cd"
+        ]
+      },
+      "strict_vs_batch_answer_exact": false,
+      "strict_vs_batch_ids_exact": false
+    },
+    "heldout_general_ja_speculative": {
+      "strict": {
+        "runs": 2,
+        "repeat_exact": true,
+        "answer_repeat_exact": true,
+        "run_sha256": [
+          "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd",
+          "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd"
+        ],
+        "answer_sha256": [
+          "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd",
+          "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd"
+        ]
+      },
+      "batch": {
+        "runs": 2,
+        "repeat_exact": true,
+        "answer_repeat_exact": true,
+        "run_sha256": [
+          "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093",
+          "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093"
+        ],
+        "answer_sha256": [
+          "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093",
+          "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093"
+        ]
+      },
+      "strict_vs_batch_answer_exact": false,
+      "strict_vs_batch_ids_exact": false
+    }
+  },
+  "reviewed_outputs": {
+    "code_topological_sort": {
+      "prompt_id": "code_topological_sort",
+      "prompt": "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.",
+      "requirements": [
+        "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering.",
+        "Raise ValueError when the graph contains a cycle.",
+        "Include tests for a DAG and for a cyclic graph.",
+        "Return only code."
+      ],
+      "strict": {
+        "token_count": 1024,
+        "answer_token_count": 767,
+        "eos_index": 766,
+        "ended_with_eos": true,
+        "budget_exhausted": true,
+        "ids_sha256": "b7198b215eea376a8c1db221e45bb5169dff6442050fb38d67f8a158371c7e4b",
+        "answer_ids_sha256": "2b817e0bde49f3a0cc126c263c24cf7ec42d83ff898701dddf8b2eb634612233",
+        "run2_ids_sha256": "b7198b215eea376a8c1db221e45bb5169dff6442050fb38d67f8a158371c7e4b",
+        "run2_answer_ids_sha256": "2b817e0bde49f3a0cc126c263c24cf7ec42d83ff898701dddf8b2eb634612233",
+        "repeat_exact": true,
+        "text": "```python\nfrom collections import deque\n\n\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes: List of node identifiers.\n        edges: List of tuples (u, v) representing directed edge from u to v.\n    \n    Returns:\n        A list representing a valid topological ordering.\n    \n    Raises:\n        ValueError: If the graph contains a cycle.\n    \"\"\"\n    # Build adjacency list and in-degree count\n    adj = {node: [] for node in nodes}\n    in_degree = {node: 0 for node in nodes}\n    \n    for u, v in edges:\n        if u not in adj or v not in adj:\n            raise ValueError(f\"Edge ({u}, {v}) references unknown node\")\n        adj[u].append(v)\n        in_degree[v] += 1\n    \n    # Initialize queue with nodes having in-degree 0\n    queue = deque()\n    for node in nodes:\n        if in_degree[node] == 0:\n            queue.append(node)\n    \n    topo_order = []\n    while queue:\n        node = queue.popleft()\n        topo_order.append(node)\n        for neighbor in adj[node]:\n            in_degree[neighbor] -= 1\n            if in_degree[neighbor] == 0:\n                queue.append(neighbor)\n    \n    if len(topo_order) != len(nodes):\n        raise ValueError(\"Graph contains a cycle\")\n    \n    return topo_order\n\n\n# Tests\ndef test_dag():\n    nodes = ['A', 'B', 'C', 'D', 'E']\n    edges = [('A', 'B'), ('A', 'C'), ('B', 'D'), ('C', 'D'), ('D', 'E')]\n    result = topo_sort(nodes, edges)\n    # Verify it's a valid topological order\n    assert len(result) == len(nodes)\n    pos = {node: idx for idx, node in enumerate(result)}\n    for u, v in edges:\n        assert pos[u] < pos[v], f\"Edge ({u}, {v}) violated: {u} at {pos[u]}, {v} at {pos[v]}\"\n    print(\"test_dag passed\")\n\n\ndef test_cyclic():\n    nodes = ['A', 'B', 'C']\n    edges = [('A', 'B'), ('B', 'C'), ('C', 'A')]\n    try:\n        topo_sort(nodes, edges)\n        assert False, \"Should have raised ValueError\"\n    except ValueError as e:\n        assert \"cycle\" in str(e).lower()\n        print(\"test_cyclic passed\")\n\n\ndef test_single_node():\n    nodes = ['A']\n    edges = []\n    result = topo_sort(nodes, edges)\n    assert result == ['A']\n    print(\"test_single_node passed\")\n\n\ndef test_disconnected():\n    nodes = ['A', 'B', 'C', 'D']\n    edges = [('A', 'B'), ('C', 'D')]\n    result = topo_sort(nodes, edges)\n    assert len(result) == 4\n    pos = {node: idx for idx, node in enumerate(result)}\n    for u, v in edges:\n        assert pos[u] < pos[v]\n    print(\"test_disconnected passed\")\n\n\nif __name__ == \"__main__\":\n    test_dag()\n    test_cyclic()\n    test_single_node()\n    test_disconnected()\n```",
+        "code_review": {
+          "has_fence": true,
+          "fence_closed": true,
+          "has_function": true,
+          "has_cycle_error": true,
+          "has_tests": true,
+          "complete": true,
+          "code_sha256": "e0d442f4dc0340715d7f2b0686776719d1aeaa7d3e5a0e0da52dc832e9fd3477"
+        },
+        "code_execution": {
+          "code_sha256": "e0d442f4dc0340715d7f2b0686776719d1aeaa7d3e5a0e0da52dc832e9fd3477",
+          "timeout_seconds": 10,
+          "has_main": true,
+          "has_pytest": true,
+          "direct_relevant": true,
+          "pytest_relevant": true,
+          "direct": {
+            "command": [
+              "/home/lhl/hipEngine/.venv/bin/python",
+              "-I",
+              "/tmp/qwen4exp-task-review-vmvgyibx/generated_solution.py"
+            ],
+            "returncode": 0,
+            "timed_out": false,
+            "duration_seconds": 0.084,
+            "stdout": "test_dag passed\ntest_cyclic passed\ntest_single_node passed\ntest_disconnected passed\n",
+            "stderr": ""
+          },
+          "pytest": {
+            "command": [
+              "/home/lhl/hipEngine/.venv/bin/python",
+              "-I",
+              "-m",
+              "pytest",
+              "-q",
+              "/tmp/qwen4exp-task-review-vmvgyibx/generated_solution.py"
+            ],
+            "returncode": 0,
+            "timed_out": false,
+            "duration_seconds": 0.18,
+            "stdout": "....                                                                     [100%]\n4 passed in 0.00s\n",
+            "stderr": ""
+          },
+          "passed": true
+        }
+      },
+      "batch": {
+        "token_count": 1024,
+        "answer_token_count": 782,
+        "eos_index": 781,
+        "ended_with_eos": true,
+        "budget_exhausted": true,
+        "ids_sha256": "9640d11045e61721eb06acc1dc174122b06a69daa24a716e7d0924b7d730da30",
+        "answer_ids_sha256": "be2764e7077cbeb4ce5f074ce5fb42e3b3abf03e03b9e8f98357a44fa98a65c6",
+        "run2_ids_sha256": "9640d11045e61721eb06acc1dc174122b06a69daa24a716e7d0924b7d730da30",
+        "run2_answer_ids_sha256": "be2764e7077cbeb4ce5f074ce5fb42e3b3abf03e03b9e8f98357a44fa98a65c6",
+        "repeat_exact": true,
+        "text": "```python\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes: List of node identifiers.\n        edges: List of tuples (u, v) representing directed edges from u to v.\n    \n    Returns:\n        A list representing a valid topological ordering.\n    \n    Raises:\n        ValueError: If the graph contains a cycle.\n    \"\"\"\n    from collections import defaultdict, deque\n    \n    # Build adjacency list and in-degree count\n    adj = defaultdict(list)\n    in_degree = {node: 0 for node in nodes}\n    \n    for u, v in edges:\n        adj[u].append(v)\n        in_degree[v] += 1\n    \n    # Initialize queue with nodes having in-degree 0\n    queue = deque([node for node in nodes if in_degree[node] == 0])\n    result = []\n    \n    while queue:\n        node = queue.popleft()\n        result.append(node)\n        for neighbor in adj[node]:\n            in_degree[neighbor] -= 1\n            if in_degree[neighbor] == 0:\n                queue.append(neighbor)\n    \n    if len(result) != len(nodes):\n        raise ValueError(\"Graph contains a cycle\")\n    \n    return result\n\n\n# Tests\ndef test_topo_sort_dag():\n    # Simple DAG: A -> B -> C, A -> D -> C\n    nodes = ['A', 'B', 'C', 'D']\n    edges = [('A', 'B'), ('B', 'C'), ('A', 'D'), ('D', 'C')]\n    result = topo_sort(nodes, edges)\n    # Verify it's a valid topological order\n    assert len(result) == 4\n    assert set(result) == set(nodes)\n    # Check ordering constraints\n    pos = {node: i for i, node in enumerate(result)}\n    for u, v in edges:\n        assert pos[u] < pos[v], f\"Edge {u}->{v} violated: {u} at {pos[u]}, {v} at {pos[v]}\"\n\n\ndef test_topo_sort_cycle():\n    # Cyclic graph: A -> B -> C -> A\n    nodes = ['A', 'B', 'C']\n    edges = [('A', 'B'), ('B', 'C'), ('C', 'A')]\n    try:\n        topo_sort(nodes, edges)\n        assert False, \"Should have raised ValueError\"\n    except ValueError:\n        pass\n\n\ndef test_topo_sort_single_node():\n    nodes = ['A']\n    edges = []\n    result = topo_sort(nodes, edges)\n    assert result == ['A']\n\n\ndef test_topo_sort_no_edges():\n    nodes = ['A', 'B', 'C']\n    edges = []\n    result = topo_sort(nodes, edges)\n    assert len(result) == 3\n    assert set(result) == set(nodes)\n\n\ndef test_topo_sort_linear_chain():\n    nodes = ['A', 'B', 'C', 'D']\n    edges = [('A', 'B'), ('B', 'C'), ('C', 'D')]\n    result = topo_sort(nodes, edges)\n    assert result == ['A', 'B', 'C', 'D']\n\n\nif __name__ == '__main__':\n    test_topo_sort_dag()\n    test_topo_sort_cycle()\n    test_topo_sort_single_node()\n    test_topo_sort_no_edges()\n    test_topo_sort_linear_chain()\n    print(\"All tests passed!\")\n```",
+        "code_review": {
+          "has_fence": true,
+          "fence_closed": true,
+          "has_function": true,
+          "has_cycle_error": true,
+          "has_tests": true,
+          "complete": true,
+          "code_sha256": "b978741992c60c1a3250b2558f1777a2cc79261b06d8df278f9babffb0cba128"
+        },
+        "code_execution": {
+          "code_sha256": "b978741992c60c1a3250b2558f1777a2cc79261b06d8df278f9babffb0cba128",
+          "timeout_seconds": 10,
+          "has_main": true,
+          "has_pytest": true,
+          "direct_relevant": true,
+          "pytest_relevant": true,
+          "direct": {
+            "command": [
+              "/home/lhl/hipEngine/.venv/bin/python",
+              "-I",
+              "/tmp/qwen4exp-task-review-ib480m_g/generated_solution.py"
+            ],
+            "returncode": 0,
+            "timed_out": false,
+            "duration_seconds": 0.064,
+            "stdout": "All tests passed!\n",
+            "stderr": ""
+          },
+          "pytest": {
+            "command": [
+              "/home/lhl/hipEngine/.venv/bin/python",
+              "-I",
+              "-m",
+              "pytest",
+              "-q",
+              "/tmp/qwen4exp-task-review-ib480m_g/generated_solution.py"
+            ],
+            "returncode": 0,
+            "timed_out": false,
+            "duration_seconds": 0.172,
+            "stdout": ".....                                                                    [100%]\n5 passed in 0.00s\n",
+            "stderr": ""
+          },
+          "passed": true
+        }
+      },
+      "determinism": {
+        "strict": {
+          "runs": 2,
+          "repeat_exact": true,
+          "answer_repeat_exact": true,
+          "run_sha256": [
+            "b7198b215eea376a8c1db221e45bb5169dff6442050fb38d67f8a158371c7e4b",
+            "b7198b215eea376a8c1db221e45bb5169dff6442050fb38d67f8a158371c7e4b"
+          ],
+          "answer_sha256": [
+            "2b817e0bde49f3a0cc126c263c24cf7ec42d83ff898701dddf8b2eb634612233",
+            "2b817e0bde49f3a0cc126c263c24cf7ec42d83ff898701dddf8b2eb634612233"
+          ]
+        },
+        "batch": {
+          "runs": 2,
+          "repeat_exact": true,
+          "answer_repeat_exact": true,
+          "run_sha256": [
+            "9640d11045e61721eb06acc1dc174122b06a69daa24a716e7d0924b7d730da30",
+            "9640d11045e61721eb06acc1dc174122b06a69daa24a716e7d0924b7d730da30"
+          ],
+          "answer_sha256": [
+            "be2764e7077cbeb4ce5f074ce5fb42e3b3abf03e03b9e8f98357a44fa98a65c6",
+            "be2764e7077cbeb4ce5f074ce5fb42e3b3abf03e03b9e8f98357a44fa98a65c6"
+          ]
+        },
+        "strict_vs_batch_answer_exact": false,
+        "strict_vs_batch_ids_exact": false
+      },
+      "checklist": {
+        "function_signature": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both define topo_sort(nodes, edges)"
+        },
+        "valid_topological_order": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "generated DAG tests assert every edge constraint and pass"
+        },
+        "cycle_raises_value_error": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "generated cycle tests expect ValueError and pass"
+        },
+        "dag_and_cycle_tests_present": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "strict has 4 tests; batch has 5 tests, including DAG and cycle"
+        },
+        "only_code_returned": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "single fenced Python code block; no prose outside it"
+        },
+        "execution": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "direct rc=0 and pytest rc=0; 4 and 5 tests passed respectively"
+        },
+        "completion": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "EOS at token 766 (strict) and 781 (batch)"
+        }
+      },
+      "verdict": "pass",
+      "comparison": "Different code text and test sets; both satisfy the contract and both generated test suites pass. Strict adds unknown-node validation; the prompt did not require it.",
+      "reason": "Both routes produced EOS-complete code with a valid topological sort, cycle ValueError, and passing DAG/cycle tests.",
+      "completion_progression": {
+        "strict": [
+          {
+            "tokens": 256,
+            "token_count": 256,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "e90c62acaf5c8a7b4026da79231aca19d812f161ee46d0668a168d3046f30c8a"
+          },
+          {
+            "tokens": 512,
+            "token_count": 512,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "85473117e0b5383c588cec501eaec7679f947309aa57f40c0323ea4bb1fa05bd"
+          },
+          {
+            "tokens": 768,
+            "token_count": 768,
+            "eos_index": 766,
+            "ended_with_eos": true,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "2b817e0bde49f3a0cc126c263c24cf7ec42d83ff898701dddf8b2eb634612233"
+          },
+          {
+            "tokens": 1024,
+            "token_count": 1024,
+            "eos_index": 766,
+            "ended_with_eos": true,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "2b817e0bde49f3a0cc126c263c24cf7ec42d83ff898701dddf8b2eb634612233"
+          }
+        ],
+        "batch": [
+          {
+            "tokens": 256,
+            "token_count": 256,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "918a28e17437d9025988db0213b4fe3307f88c88cd80670d8415b7937433a22a"
+          },
+          {
+            "tokens": 512,
+            "token_count": 512,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "89b87aab2f4938ebb0aaf86b4d8f9d8dbc33dca003edfb2ef0ac0c03472eed34"
+          },
+          {
+            "tokens": 768,
+            "token_count": 768,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "07955fb62c1313c0cd96522e0cad597ac4f445b57abec67ad5bb272255ea88df"
+          },
+          {
+            "tokens": 1024,
+            "token_count": 1024,
+            "eos_index": 781,
+            "ended_with_eos": true,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "be2764e7077cbeb4ce5f074ce5fb42e3b3abf03e03b9e8f98357a44fa98a65c6"
+          }
+        ]
+      }
+    },
+    "general_en_explain": {
+      "prompt_id": "general_en_explain",
+      "prompt": "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.",
+      "requirements": [
+        "Explain why transformer inference is usually memory-bandwidth limited on local GPUs.",
+        "Be technical and concrete.",
+        "Give examples of what changes throughput."
+      ],
+      "strict": {
+        "token_count": 1024,
+        "answer_token_count": 1024,
+        "eos_index": null,
+        "ended_with_eos": false,
+        "budget_exhausted": true,
+        "ids_sha256": "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee",
+        "answer_ids_sha256": "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee",
+        "run2_ids_sha256": "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee",
+        "run2_answer_ids_sha256": "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee",
+        "repeat_exact": true,
+        "text": "Transformer inference on local GPUs is predominantly **memory-bandwidth limited** rather than compute-limited due to the fundamental nature of the **autoregressive decoding process** and the **memory access patterns** of the attention mechanism.\n\nHere’s a technical breakdown of why this happens, with concrete examples of what changes throughput.\n\n### 1. The Core Issue: Arithmetic Intensity in Autoregressive Decoding\n\nDuring **training** or **prefill** (processing the prompt), the model processes a sequence of tokens in parallel. This results in high **arithmetic intensity** (FLOPs per byte of memory accessed), making the operation **compute-bound**.\n\nHowever, during **autoregressive generation** (token-by-token decoding), the model generates one token at a time. For each new token:\n- The model must read the entire **Key-Value (KV) cache** for all previous tokens.\n- It performs a small amount of computation (matrix-vector multiplications) relative to the amount of data read.\n\nThis results in **low arithmetic intensity**, making the operation **memory-bandwidth-bound**.\n\n#### Concrete Example:\nConsider a 7B parameter model with FP16 weights (2 bytes/param):\n- **Weight size**: ~14 GB.\n- **KV Cache size**: For a 2048-token context, with 32 layers, 32 heads, and head_dim=128:\n  - KV cache per token ≈ 2 (K+V) × 32 layers × 32 heads × 128 dim × 2 bytes ≈ 524 KB/token.\n  - For 2048 tokens: ~1 GB.\n- **Total memory read per token**: ~15 GB (weights + KV cache).\n- **Computation per token**: ~14 GFLOPs (roughly 2 × params for a forward pass).\n\nOn a modern GPU like an RTX 4090:\n- **Memory Bandwidth**: ~1 TB/s.\n- **Compute Throughput**: ~80 TFLOPs (FP16).\n\n**Time to read memory**: 15 GB / 1 TB/s = **15 ms**.  \n**Time to compute**: 14 GFLOPs / 80 TFLOPs = **0.175 ms**.\n\nThe GPU spends **~99% of its time waiting for memory**, not computing. This is the definition of memory-bandwidth limitation.\n\n### 2. Why Local GPUs Are Particularly Affected\n\nLocal consumer GPUs (e.g., NVIDIA RTX 4090, AMD RX 7900 XTX) have:\n- **High compute power** (TFLOPs) relative to their **memory bandwidth**.\n- **Limited VRAM** (24 GB on 4090), which constrains batch size and context length.\n\nIn contrast, data-center GPUs (e.g., H100) have:\n- **Higher memory bandwidth** (3.35 TB/s on H100 vs. 1 TB/s on 4090).\n- **Larger VRAM** (80 GB), allowing larger batches that can amortize memory reads.\n\n### 3. What Changes Throughput?\n\nSince throughput is limited by how fast you can read weights and KV cache from VRAM to the compute units, any optimization that **reduces memory traffic** or **increases effective bandwidth** will improve throughput.\n\n#### A. Quantization (Reduces Memory Traffic)\n- **FP16 → INT8/INT4**: Halves or quarters the number of bytes read per weight.\n  - **Effect**: Directly proportional speedup in memory-bound regimes.\n  - **Example**: An INT4-quantized 7B model reads ~3.5 GB of weights instead of 14 GB. If bandwidth is the bottleneck, throughput can increase by **~4x**.\n  - **Caveat**: KV cache quantization (e.g., FP8 KV cache) also helps, especially for long contexts.\n\n#### B. Batching (Amortizes Weight Reads)\n- **Increase batch size**: When generating multiple sequences in parallel, the model reads the **same weights** once but applies them to multiple tokens.\n  - **Effect**: Increases arithmetic intensity. The KV cache reads scale with batch size, but weight reads do not.\n  - **Example**: With batch size 1, you read 14 GB of weights for 1 token. With batch size 8, you read 14 GB of weights for 8 tokens. The weight-read cost per token drops by 8x.\n  - **Limitation**: Local GPUs have limited VRAM, so batch size is constrained by KV cache size.\n\n#### C. FlashAttention & PagedAttention (Optimizes KV Cache"
+      },
+      "batch": {
+        "token_count": 1024,
+        "answer_token_count": 1024,
+        "eos_index": null,
+        "ended_with_eos": false,
+        "budget_exhausted": true,
+        "ids_sha256": "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab",
+        "answer_ids_sha256": "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab",
+        "run2_ids_sha256": "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab",
+        "run2_answer_ids_sha256": "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab",
+        "repeat_exact": true,
+        "text": "Transformer inference on local GPUs is predominantly **memory-bandwidth limited** rather than compute-limited due to the fundamental architecture of the Transformer model, specifically the **Key-Value (KV) Cache** mechanism and the nature of **autoregressive generation**.\n\nHere’s a technical breakdown of why this happens, with concrete examples.\n\n### 1. The Core Issue: Autoregressive Generation & KV Cache\n\nDuring **training** or **prefill** (processing the prompt), the model processes all tokens in parallel. This is **compute-bound** because the GPU performs massive matrix multiplications (GEMMs) with high arithmetic intensity.\n\nHowever, during **generation** (decoding), the model produces one token at a time. For each new token:\n1.  The model must attend to **all previous tokens** (the context window).\n2.  To avoid recomputing attention for past tokens, the **Key (K)** and **Value (V)** tensors for all previous tokens are stored in VRAM as the **KV Cache**.\n3.  For each new token, the GPU must:\n    -   **Read** the entire KV Cache from VRAM to SRAM (on-chip memory).\n    -   Perform a small amount of computation (dot product with the new query vector).\n    -   **Write** the new K and V vectors back to VRAM.\n\n#### Why This Is Bandwidth-Limited\n-   **Low Arithmetic Intensity**: The computation per byte of data moved is extremely low. You’re reading gigabytes of KV cache to perform a few floating-point operations per element.\n-   **Memory Access Pattern**: The KV Cache grows linearly with sequence length. For a 7B model with a 4K context window, the KV Cache can be **~1–2 GB**. Reading this entire cache for **every single token** generated saturates the GPU’s memory bandwidth.\n-   **Compute Underutilization**: Modern GPUs (e.g., RTX 4090) have enormous FLOPS (e.g., ~80 TFLOPS FP16) but limited memory bandwidth (e.g., ~1 TB/s). The GPU spends most of its time **waiting for data** from VRAM rather than computing.\n\n### 2. Concrete Example: Llama-2-7B on an RTX 4090\n\nLet’s analyze the bottleneck for generating one token with a 4K context window.\n\n#### Model Parameters\n-   **Model Size**: 7B parameters (~14 GB in FP16).\n-   **KV Cache Size**: For Llama-2-7B, each layer has 32 heads, head_dim=128.  \n    KV Cache per token ≈ `2 * num_layers * num_heads * head_dim * 2 bytes`  \n    ≈ `2 * 32 * 32 * 128 * 2` ≈ **524 KB per token**.  \n    For 4K tokens: `524 KB * 4096` ≈ **2.1 GB**.\n\n#### Bandwidth Calculation\n-   **RTX 4090 Memory Bandwidth**: ~1 TB/s.\n-   **Data Read per Token**: ~2.1 GB (KV Cache) + ~14 GB (model weights, if not cached in L2) ≈ **16 GB**.\n-   **Time to Read Data**: `16 GB / 1 TB/s` = **16 ms**.\n-   **Compute Time**: The actual matrix multiplications for one token are trivial (<1 ms).\n\n**Result**: The GPU is idle for ~15 ms per token, waiting for memory. Throughput is capped at ~60 tokens/sec, regardless of how fast the compute cores are.\n\n### 3. What Changes Throughput?\n\nSince the bottleneck is memory bandwidth, optimizations focus on **reducing data movement** or **increasing effective bandwidth**.\n\n#### A. Quantization (Most Effective)\nReducing the precision of weights and KV Cache directly reduces the amount of data read from VRAM.\n-   **FP16 → INT8**: Halves the data size. Throughput can nearly double.\n-   **FP16 → INT4 (e.g., GPTQ, AWQ)**: Reduces data size by 4x. Throughput can increase 3–4x.\n-   **KV Cache Quantization**: Storing KV Cache in INT8 or FP8 reduces the per-token read cost. This is critical for long contexts.\n\n#### B. FlashAttention & PagedAttention\n-   **FlashAttention**: Optimizes memory access patterns by tiling attention computations, reducing redundant reads/writes between VRAM and SRAM. It doesn’t reduce total data but improves **effective bandwidth utilization**.\n-   **PagedAttention (vLLM"
+      },
+      "determinism": {
+        "strict": {
+          "runs": 2,
+          "repeat_exact": true,
+          "answer_repeat_exact": true,
+          "run_sha256": [
+            "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee",
+            "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee"
+          ],
+          "answer_sha256": [
+            "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee",
+            "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee"
+          ]
+        },
+        "batch": {
+          "runs": 2,
+          "repeat_exact": true,
+          "answer_repeat_exact": true,
+          "run_sha256": [
+            "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab",
+            "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab"
+          ],
+          "answer_sha256": [
+            "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab",
+            "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab"
+          ]
+        },
+        "strict_vs_batch_answer_exact": false,
+        "strict_vs_batch_ids_exact": false
+      },
+      "checklist": {
+        "memory_bandwidth_thesis": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both contrast memory bandwidth with compute and state the decode bottleneck"
+        },
+        "autoregressive_decode_and_kv_cache": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both explain token-at-a-time decode and KV-cache reads"
+        },
+        "concrete_example": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "strict uses 7B/2048-context/RTX 4090 numbers; batch uses Llama-2-7B/4K/RTX 4090 numbers"
+        },
+        "throughput_change_examples": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both cover quantization, batching/arithmetic intensity, and FlashAttention/PagedAttention"
+        },
+        "completion": {
+          "strict": "inconclusive",
+          "batch": "inconclusive",
+          "evidence": "both exhausted 1024 tokens without EOS, cut inside the final PagedAttention example"
+        }
+      },
+      "verdict": "inconclusive_truncated_both",
+      "comparison": "Both cover the same required technical points with different illustrative numbers and section wording. Neither contradicts the other.",
+      "reason": "All required content is present in both routes, but both outputs exhausted the 1024-token budget before EOS, so completion is not certified. This is not a semantic failure.",
+      "completion_progression": {
+        "strict": [
+          {
+            "tokens": 256,
+            "token_count": 256,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "c16124c4f891336d844879237d97639e5eda254c01a60db844d0d722c687884a"
+          },
+          {
+            "tokens": 512,
+            "token_count": 512,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "4da2ca611ce7ecf3fe2de3fc764413d819fb621c3a982c9dff46753f2f61204d"
+          },
+          {
+            "tokens": 768,
+            "token_count": 768,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "4923de2cabf5b0f2cf9a1b3bb4efd967fc1e10fb0783d434a24cca3644619a90"
+          },
+          {
+            "tokens": 1024,
+            "token_count": 1024,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "73b33000cdbc49a5cec4e5b0db7ecd9eb92210fdb2d2a389ff4bed7d238adbee"
+          }
+        ],
+        "batch": [
+          {
+            "tokens": 256,
+            "token_count": 256,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "0f07898cda902f7120a54a379ccf42ddd4c0a4f997ab8da6455e613c9a46ffd0"
+          },
+          {
+            "tokens": 512,
+            "token_count": 512,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "911a6bd0eba28db4e56c6f9a80a686f616433f8e50d9c35c4a8988e93a05584a"
+          },
+          {
+            "tokens": 768,
+            "token_count": 768,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "d2c6aabc24f653c638f87fd0c5614a7410277a7e57aee91168bda40940d1307e"
+          },
+          {
+            "tokens": 1024,
+            "token_count": 1024,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "0d75341ec29fe8ba6f63abe68e45293467b552933c15d283d8f757d16eab3eab"
+          }
+        ]
+      }
+    },
+    "heldout_general_ja_migration": {
+      "prompt_id": "heldout_general_ja_migration",
+      "prompt": "社内向けREST APIを同期処理から非同期ジョブ方式へ移行する計画を、日本語で簡潔に作成してください。互換性、監視、ロールバック条件を含めてください。",
+      "requirements": [
+        "Propose a concise Japanese migration plan from a synchronous REST API to an asynchronous job model.",
+        "Include compatibility, monitoring, and rollback conditions."
+      ],
+      "strict": {
+        "token_count": 1024,
+        "answer_token_count": 770,
+        "eos_index": 769,
+        "ended_with_eos": true,
+        "budget_exhausted": true,
+        "ids_sha256": "003165a5ac04c8ec9956d177145247db1c50ad5739daae31087e45dcf305f14b",
+        "answer_ids_sha256": "ff7bf0e8a0f7d7d030fb1c8f4a35afe4a8060b7d282168c9f785e9df31813a4a",
+        "run2_ids_sha256": "003165a5ac04c8ec9956d177145247db1c50ad5739daae31087e45dcf305f14b",
+        "run2_answer_ids_sha256": "ff7bf0e8a0f7d7d030fb1c8f4a35afe4a8060b7d282168c9f785e9df31813a4a",
+        "repeat_exact": true,
+        "text": "# 社内REST API：同期処理から非同期ジョブ方式への移行計画\n\n## 1. 背景と目的\n高負荷時のレスポンス遅延やタイムアウトを解消し、システム全体の安定性とスループットを向上させる。\n\n## 2. 移行戦略（段階的リリース）\n1. **並行稼働期**: 既存の同期APIを維持しつつ、新API（`/v2/async`）をリリース。\n2. **段階的切替**: 機能フラグにより、特定ユーザー/部門から新APIへトラフィックを移行。\n3. **完全移行**: 全トラフィックを非同期方式へ切り替え、旧APIを廃止。\n\n## 3. 互換性確保\n- **APIバージョン管理**: 旧エンドポイント（`/v1/sync`）は最低6ヶ月間維持。\n- **レスポンス形式**: 非同期ジョブのステータス確認用エンドポイント（`GET /jobs/{id}`）を提供し、クライアント側でポーリングまたはWebhook通知に対応可能にする。\n- **データ整合性**: 移行期間中は、同期・非同期両方の処理結果が同一のデータベース状態に反映されるよう、冪等性（Idempotency）キーを必須とする。\n\n## 4. 監視体制\n- **主要メトリクス**:\n  - ジョブキューの滞留数・平均待ち時間\n  - ジョブ処理成功率・失敗率\n  - APIレスポンス時間（P95, P99）\n  - ワーカーノードのリソース使用率（CPU, Memory）\n- **アラート設定**:\n  - キュー滞留数が閾値超過時\n  - ジョブ失敗率が5%を超えた場合\n  - ワーカーのハートビート停止時\n\n## 5. ロールバック条件と手順\n### ロールバックトリガー\n- 非同期ジョブの失敗率が10%以上継続（15分間）\n- キュー滞留数が許容上限（例: 10,000件）を超過\n- データ不整合が検知された場合\n\n### ロールバック手順\n1. **機能フラグ無効化**: 新APIへのルーティングを即時停止し、旧同期APIへ全トラフィックを戻す。\n2. **未処理ジョブの再投入**: 失敗したジョブを再キューイングまたは手動復旧。\n3. **原因分析**: ログ・メトリクスを基に根本原因を特定し、修正後に再リリース。\n\n## 6. 想定スケジュール\n- **Week 1-2**: 非同期基盤構築・テスト環境での検証\n- **Week 3**: 本番環境での並行稼働開始（内部テストユーザー限定）\n- **Week 4-6**: 段階的トラフィック移行（10% → 50% → 100%）\n- **Week 7以降**: 旧APIの廃止検討\n\n## 7. リスクと対策\n- **リスク**: クライアント側の非同期対応遅延\n  - **対策**: SDK更新の先行提供、詳細な移行ガイドの配布\n- **リスク**: ジョブ処理の重複実行\n  - **対策**: 冪等性キーの実装、分散ロックの活用\n\n---\n**備考**: 本計画は、社内システムの変更管理プロセスに従い、関係者（開発、運用、セキュリティ）の承認を得て実行する。"
+      },
+      "batch": {
+        "token_count": 1024,
+        "answer_token_count": 610,
+        "eos_index": 609,
+        "ended_with_eos": true,
+        "budget_exhausted": true,
+        "ids_sha256": "e091887de03b7fd646a266b6c7b33fd2efe90fa2428f85ca3c90256d59cd7f54",
+        "answer_ids_sha256": "988be6faad557419ee030f440b2a8ab4d1c7f6ce6017b067f1ad9cb5c9cf37cd",
+        "run2_ids_sha256": "e091887de03b7fd646a266b6c7b33fd2efe90fa2428f85ca3c90256d59cd7f54",
+        "run2_answer_ids_sha256": "988be6faad557419ee030f440b2a8ab4d1c7f6ce6017b067f1ad9cb5c9cf37cd",
+        "repeat_exact": true,
+        "text": "# 社内REST API：同期処理から非同期ジョブ方式への移行計画\n\n## 1. 移行概要\n高負荷な処理（レポート生成、大量データ変換など）を、HTTPレスポンスを待たずにバックグラウンドで実行する非同期ジョブ方式へ移行します。\n\n## 2. アーキテクチャ変更\n- **同期API**: リクエスト → 処理 → レスポンス（ブロック）\n- **非同期API**: リクエスト → ジョブキュー投入 → `202 Accepted` + `job_id` 返却 → ポーリング/Webhookで結果取得\n\n## 3. 互換性確保\n- **段階的移行**: 既存同期エンドポイントを維持しつつ、新エンドポイント（例: `/api/v2/jobs`）を追加\n- **ヘッダー制御**: `X-Async-Mode: true` で非同期モードを切り替え可能に\n- **レスポンス形式**: 非同期完了後は、既存同期APIと同じJSONスキーマで結果を提供\n- **クライアントSDK**: 旧SDKは同期APIを、新SDKは非同期APIをデフォルト使用\n\n## 4. 監視体制\n- **メトリクス**:\n  - ジョブキュー滞留数、平均処理時間、失敗率\n  - APIレイテンシ（同期/非同期別）\n- **アラート**:\n  - キュー滞留が閾値超過時\n  - ジョブ失敗率が5%超時\n  - 非同期ジョブの完了遅延がSLA超過時\n- **ログ**: ジョブIDで追跡可能な分散トレーシング（OpenTelemetry）\n\n## 5. ロールバック条件\n以下のいずれかに該当する場合、同期方式へ即時ロールバック：\n1. **可用性**: 非同期APIの可用性が99.9%未満に低下\n2. **データ整合性**: ジョブ結果の欠損・重複が検出された場合\n3. **パフォーマンス**: 平均完了時間が同期方式の2倍超に悪化\n4. **運用負荷**: 障害対応が30分以内に完了しないケースが頻発\n\n## 6. ロールバック手順\n1. APIゲートウェイで非同期エンドポイントを無効化\n2. クライアントを同期APIへ強制リダイレクト\n3. 未完了ジョブは同期処理で再実行\n4. 原因分析後、修正版で再移行\n\n## 7. 移行スケジュール\n1. **フェーズ1**: 非同期基盤構築・テスト環境検証（2週間）\n2. **フェーズ2**: 低リスクエンドポイントで段階的リリース（1週間）\n3. **フェーズ3**: 全エンドポイント移行・旧API廃止計画策定（2週間）"
+      },
+      "determinism": {
+        "strict": {
+          "runs": 2,
+          "repeat_exact": true,
+          "answer_repeat_exact": true,
+          "run_sha256": [
+            "003165a5ac04c8ec9956d177145247db1c50ad5739daae31087e45dcf305f14b",
+            "003165a5ac04c8ec9956d177145247db1c50ad5739daae31087e45dcf305f14b"
+          ],
+          "answer_sha256": [
+            "ff7bf0e8a0f7d7d030fb1c8f4a35afe4a8060b7d282168c9f785e9df31813a4a",
+            "ff7bf0e8a0f7d7d030fb1c8f4a35afe4a8060b7d282168c9f785e9df31813a4a"
+          ]
+        },
+        "batch": {
+          "runs": 2,
+          "repeat_exact": true,
+          "answer_repeat_exact": true,
+          "run_sha256": [
+            "e091887de03b7fd646a266b6c7b33fd2efe90fa2428f85ca3c90256d59cd7f54",
+            "e091887de03b7fd646a266b6c7b33fd2efe90fa2428f85ca3c90256d59cd7f54"
+          ],
+          "answer_sha256": [
+            "988be6faad557419ee030f440b2a8ab4d1c7f6ce6017b067f1ad9cb5c9cf37cd",
+            "988be6faad557419ee030f440b2a8ab4d1c7f6ce6017b067f1ad9cb5c9cf37cd"
+          ]
+        },
+        "strict_vs_batch_answer_exact": false,
+        "strict_vs_batch_ids_exact": false
+      },
+      "checklist": {
+        "japanese_plan": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both are concise Japanese migration plans"
+        },
+        "async_job_design": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both use submit/202/job_id plus polling or webhook"
+        },
+        "compatibility": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both preserve the old endpoint, version the new one, and address schema/SDK compatibility and idempotency"
+        },
+        "monitoring": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both list queue depth, latency, failure rate, alerts, and tracing/logging"
+        },
+        "rollback_conditions": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both give explicit thresholds and a rollback procedure"
+        },
+        "completion": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "EOS at token 769 (strict) and 609 (batch)"
+        }
+      },
+      "verdict": "pass",
+      "comparison": "Both are complete Japanese plans covering compatibility, monitoring, and rollback conditions. Strict is more detailed; batch is more concise.",
+      "reason": "Both routes reached EOS and covered every required migration-plan element.",
+      "completion_progression": {
+        "strict": [
+          {
+            "tokens": 256,
+            "token_count": 256,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "021a30f71710c1d7a1e7123d77a45b8b20c2d3bc08949a2339aeae61d637e55e"
+          },
+          {
+            "tokens": 512,
+            "token_count": 512,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "c2a2b00784949993fad0dcdf14517506e10d0e3ceea137a8fa40b981efc52e86"
+          },
+          {
+            "tokens": 768,
+            "token_count": 768,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "1148e2c7093411b15551c3b0c04d448315e1e190223b16cb50df3bb4973a9a32"
+          },
+          {
+            "tokens": 1024,
+            "token_count": 1024,
+            "eos_index": 769,
+            "ended_with_eos": true,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "ff7bf0e8a0f7d7d030fb1c8f4a35afe4a8060b7d282168c9f785e9df31813a4a"
+          }
+        ],
+        "batch": [
+          {
+            "tokens": 256,
+            "token_count": 256,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "0b4bc76f332a5094121b6f55f3f3cfd7978950557ca8c232a74255a1519f30ff"
+          },
+          {
+            "tokens": 512,
+            "token_count": 512,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "b08a177faf15b7fe9703a2b7a86679655506cc5913ba5819da8b942c208fb0fe"
+          },
+          {
+            "tokens": 768,
+            "token_count": 768,
+            "eos_index": 609,
+            "ended_with_eos": true,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "988be6faad557419ee030f440b2a8ab4d1c7f6ce6017b067f1ad9cb5c9cf37cd"
+          },
+          {
+            "tokens": 1024,
+            "token_count": 1024,
+            "eos_index": 609,
+            "ended_with_eos": true,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "988be6faad557419ee030f440b2a8ab4d1c7f6ce6017b067f1ad9cb5c9cf37cd"
+          }
+        ]
+      }
+    },
+    "heldout_general_ja_speculative": {
+      "prompt_id": "heldout_general_ja_speculative",
+      "prompt": "投機的デコードが常に高速化につながるわけではない理由を、日本語で技術的に説明してください。受理率、検証コスト、メモリ使用量に触れてください。",
+      "requirements": [
+        "Explain technically why speculative decoding is not always faster.",
+        "Cover acceptance rate, verification cost, and memory usage."
+      ],
+      "strict": {
+        "token_count": 1024,
+        "answer_token_count": 1024,
+        "eos_index": null,
+        "ended_with_eos": false,
+        "budget_exhausted": true,
+        "ids_sha256": "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd",
+        "answer_ids_sha256": "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd",
+        "run2_ids_sha256": "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd",
+        "run2_answer_ids_sha256": "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd",
+        "repeat_exact": true,
+        "text": "投機的デコード（Speculative Decoding）は、小さな「ドラフトモデル」で生成した候補トークンを、大きな「ターゲットモデル」で一括検証することで推論速度を向上させる手法です。しかし、この手法が常に高速化につながるわけではなく、むしろ特定の条件下では性能が低下する可能性があります。その主な理由は、**受理率（Acceptance Rate）**、**検証コスト（Verification Cost）**、および**メモリ使用量（Memory Usage）**のバランスにあります。\n\n以下に、技術的な観点からその理由を説明します。\n\n### 1. 受理率（Acceptance Rate）の低さによるオーバーヘッド\n\n投機的デコードの速度向上は、ドラフトモデルが生成したトークンがターゲットモデルによって「受理」される割合に強く依存します。\n\n- **メカニズム**: ドラフトモデルが生成した $k$ 個のトークンに対し、ターゲットモデルが並列で確率分布を計算し、一致するトークンを採用します。一致しないトークンが出た時点で、その位置からターゲットモデルの出力に切り替わります。\n- **問題点**: ドラフトモデルとターゲットモデルの出力分布が乖離している場合、受理率が低下します。\n    - 受理率が低い場合、多くのドラフトトークンが破棄され、最終的にターゲットモデルが生成するトークン数は少なくなります。\n    - この場合、**「ドラフト生成コスト + 検証コスト」が「通常の逐次生成コスト」を上回る**ため、全体としてのレイテンシが増加します。\n    - 特に、ドラフトモデルがターゲットモデルと異なるアーキテクチャやパラメータサイズを持つ場合、分布の乖離が大きくなりやすく、受理率が低下する傾向があります。\n\n### 2. 検証コスト（Verification Cost）の非線形な増加\n\n検証ステップでは、ターゲットモデルがドラフトトークン列に対して並列でフォワードパスを実行します。このコストは、ドラフトトークン数 $k$ に対して線形に増加するわけではなく、ハードウェア特性や実装に依存します。\n\n- **バッチサイズと並列性の限界**:\n    - 検証は本質的に「バッチサイズ $k$ の推論」として扱われます。GPUなどの並列計算デバイスでは、バッチサイズが小さい場合、計算リソースを十分に活用できず、メモリ帯域幅（Memory Bandwidth）がボトルネックになります。\n    - $k$ が小さい場合、検証ステップ自体のオーバーヘッド（カーネル起動時間、メモリ読み込みなど）が相対的に大きくなり、高速化効果が薄れます。\n- **計算負荷の増加**:\n    - 通常の逐次生成では、1トークンごとに1回のフォワードパスで済みます。\n    - 投機的デコードでは、$k$ トークンを検証するために、ターゲットモデルの重み行列を $k$ 回分読み込む必要があり、メモリ帯域幅の消費が増加します。\n    - 受理率が低い場合、この検証コストが無駄になり、**「検証に費やした計算資源が、得られたトークン数に見合わない」**という状況が発生します。\n\n### 3. メモリ使用量（Memory Usage）の増加とキャッシュ効率の悪化\n\n投機的デコードは、通常の推論と比較してメモリ使用量が増加し、キャッシュ効率を悪化させる可能性があります。\n\n- **KVキャッシュの管理**:\n    - ドラフトトークンとターゲットトークンの両方について、KVキャッシュ（Key-Value Cache）を管理する必要があります。\n    - 検証後に破棄されたドラフトトークンのKVキャッシュは、メモリから削除または上書きされる必要があり、メモリ管理のオーバーヘッドが発生します。\n- **メモリ帯域幅のボトルネック**:\n    - LLM推論のボトルネックは、多くの場合、計算能力（FLOPS）ではなく、メモリ帯域幅（重み行列やKVキャッシュの読み込み速度）です。\n    - 検証ステップでは、ターゲットモデルの重み行列を複数回読み込む必要があり、メモリ帯域幅の消費が増加します。\n    - メモリ帯域幅が飽和している場合、検証ステップの遅延が増大し、高速化効果が相殺されます。\n- **ドラフトモデルのメモリ消費**:\n    - ドラフトモデル自体もメモリを消費します。特に、ドラフトモデルがターゲットモデルと同等以上のサイズを持つ場合、メモリ使用量の増加が顕著になり、バッチサイズを制限する要因となります。\n\n### 結論：高速化が成立する条件\n\n投機的デコードが高速化につながるためには、以下の条件が満たされる必要があります。\n\n1. **高い受理率**: ドラフトモデルとターゲットモデルの出力分布が十分に類似しており、ドラフトトークンの"
+      },
+      "batch": {
+        "token_count": 1024,
+        "answer_token_count": 1024,
+        "eos_index": null,
+        "ended_with_eos": false,
+        "budget_exhausted": true,
+        "ids_sha256": "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093",
+        "answer_ids_sha256": "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093",
+        "run2_ids_sha256": "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093",
+        "run2_answer_ids_sha256": "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093",
+        "repeat_exact": true,
+        "text": "投機的デコード（Speculative Decoding）は、小さな「ドラフトモデル」で生成した候補トークンを、大きな「ターゲットモデル」で並列に検証することで推論速度を向上させる手法です。しかし、この手法が常に高速化につながるわけではなく、むしろ特定の条件下では性能が低下する可能性があります。その主な理由は、**受理率（Acceptance Rate）**、**検証コスト（Verification Cost）**、および**メモリ使用量（Memory Usage）**のバランスにあります。\n\n以下に、技術的な観点からその理由を説明します。\n\n### 1. 受理率（Acceptance Rate）の低さによるオーバーヘッド\n\n投機的デコードの速度向上は、「ドラフトモデルが生成したトークンが、ターゲットモデルによってどの程度受け入れられるか」に強く依存します。\n\n- **メカニズム**: ドラフトモデルが生成した $k$ 個のトークンに対し、ターゲットモデルが1回のフォワードパスで検証を行います。もし最初の $i$ 個のトークンが一致し、$i+1$ 番目が不一致であれば、$i$ 個のトークンを確定し、$i+1$ 番目以降を破棄して再計算します。\n- **問題点**: ドラフトモデルとターゲットモデルの分布が乖離している場合、受理率が低下します。受理率が低いと、多くの計算リソースを「破棄されるトークンの検証」に費やすことになります。\n- **結果**: 受理率が一定の閾値（例えば、ドラフト長 $k$ に対して期待値が1.0を下回るような場合）を下回ると、検証に要する計算コストが、通常の逐次デコード（Autoregressive Decoding）の1ステップあたりのコストを上回り、全体としてのレイテンシが増加します。特に、ドラフトモデルがターゲットモデルの出力分布を十分に近似できていない場合、この効果が顕著になります。\n\n### 2. 検証コスト（Verification Cost）とバッチサイズのトレードオフ\n\n投機的デコードでは、1回のターゲットモデルのフォワードパスで $k+1$ 個のトークン（ドラフト $k$ 個 + 現在のトークン）を処理します。これは計算量的には、通常のデコードの $k+1$ ステップ分を1ステップで済ませることを意味しますが、実際のハードウェア効率には制約があります。\n\n- **メモリ帯域幅のボトルネック**: LLMの推論は、特にバッチサイズが小さい場合、計算能力（FLOPS）よりもメモリ帯域幅（Memory Bandwidth）がボトルネックになります。通常のデコードでは、1トークンごとに重み行列をメモリから読み込みます。投機的デコードでは、1回のパスで $k+1$ トークンを処理するため、重み行列の読み込み回数を減らし、計算密度を高めることができます。\n- **検証コストの非線形性**: しかし、$k$ を大きくしすぎると、1回のフォワードパスあたりの計算量が増加し、GPUの計算リソースを飽和させる可能性があります。また、検証プロセス自体（ドラフトトークンとターゲットモデルの出力の比較、不一致時の再計算）には追加のオーバーヘッドが発生します。\n- **バッチサイズの影響**: バッチサイズが大きい場合、GPUはすでに高い計算利用率で動作しているため、投機的デコードによる「計算密度の向上」効果が薄れます。さらに、バッチ内のすべてのサンプルで受理率が低い場合、検証コストが累積し、スループットが低下する可能性があります。\n\n### 3. メモリ使用量（Memory Usage）の増加\n\n投機的デコードは、追加のモデルと中間状態をメモリに保持する必要があるため、メモリ使用量が増加します。\n\n- **ドラフトモデルのメモリ**: ドラフトモデル自体の重みをメモリにロードする必要があります。これにより、ターゲットモデルに割り当てられるKVキャッシュのメモリが圧迫されます。\n- **KVキャッシュの複雑化**: 通常のデコードでは、各トークンごとにKVキャッシュを1ステップ分追加します。投機的デコードでは、ドラフトトークンの検証中に一時的なKVキャッシュを生成・管理する必要があり、メモリ管理が複雑になります。特に、不一致が発生した場合、破棄したトークンに対応するKVキャッシュをロールバックまたは無効化する処理が必要となり、メモリ帯域幅と計算リソースを消費します。\n- **バッチサイズの制限**: メモリ使用量の増加は、最大バッチサイズを制限します。バッチサイズが小さくなると、GPUの計算リソースを十分に活用できず、スループットが低下します。これは、特に大規模なモデルや長いコンテキストを扱う場合に顕著です。\n\n### 結論\n\n投機的デコードが高速化につながるのは、**"
+      },
+      "determinism": {
+        "strict": {
+          "runs": 2,
+          "repeat_exact": true,
+          "answer_repeat_exact": true,
+          "run_sha256": [
+            "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd",
+            "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd"
+          ],
+          "answer_sha256": [
+            "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd",
+            "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd"
+          ]
+        },
+        "batch": {
+          "runs": 2,
+          "repeat_exact": true,
+          "answer_repeat_exact": true,
+          "run_sha256": [
+            "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093",
+            "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093"
+          ],
+          "answer_sha256": [
+            "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093",
+            "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093"
+          ]
+        },
+        "strict_vs_batch_answer_exact": false,
+        "strict_vs_batch_ids_exact": false
+      },
+      "checklist": {
+        "acceptance_rate": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both explain the draft/target distribution gap and the acceptance-rate cost"
+        },
+        "verification_cost": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both explain target-model verification cost, batching, and wasted work at low acceptance"
+        },
+        "memory_usage": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both cover draft-model memory, KV-cache management/rollback, bandwidth, and batch-size limits"
+        },
+        "why_not_always_faster": {
+          "strict": "pass",
+          "batch": "pass",
+          "evidence": "both tie the three costs to the condition where draft+verify exceeds sequential decode"
+        },
+        "completion": {
+          "strict": "inconclusive",
+          "batch": "inconclusive",
+          "evidence": "both exhausted 1024 tokens without EOS, cut inside the conclusion"
+        }
+      },
+      "verdict": "inconclusive_truncated_both",
+      "comparison": "Both cover acceptance rate, verification cost, and memory usage with different wording and examples. Neither contradicts the other.",
+      "reason": "All three required sections are present in both routes, but both outputs exhausted the 1024-token budget before EOS, so completion is not certified. This is not a semantic failure.",
+      "completion_progression": {
+        "strict": [
+          {
+            "tokens": 256,
+            "token_count": 256,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "422f751a014dd17cf9fc7d65daf5f3d31e0e06d6c138bb54f6bcfb0ffeca5c94"
+          },
+          {
+            "tokens": 512,
+            "token_count": 512,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "bb4059f54286a3d1067fb48a619124cfe7485923527c3cc113c83cc4fef5151f"
+          },
+          {
+            "tokens": 768,
+            "token_count": 768,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "335fef909d61a12c48c189e02b6028312f0ac4424ca1882c6aca18d5be4dd951"
+          },
+          {
+            "tokens": 1024,
+            "token_count": 1024,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "7a2b4422b3cc4810c8e4d9ba556f62e84f6c2ff3e293cd814135b39351a7ffbd"
+          }
+        ],
+        "batch": [
+          {
+            "tokens": 256,
+            "token_count": 256,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "17fc42fe746e0cc72741a0129cdfd00cba1c10e0e9b9733ed57581fa6c7094b8"
+          },
+          {
+            "tokens": 512,
+            "token_count": 512,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "f981dd9381a21b6ea044b968720c3b1a2bbcaaae32dad548bc87342a37213f22"
+          },
+          {
+            "tokens": 768,
+            "token_count": 768,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "74f990d15e00f00fbe8ddcf5073377bb2598d96cb5df41bccf8f5d8239ed34e0"
+          },
+          {
+            "tokens": 1024,
+            "token_count": 1024,
+            "eos_index": null,
+            "ended_with_eos": false,
+            "budget_exhausted": true,
+            "answer_ids_sha256": "a059471ad0f3b05f81ef2b3d9cfae91798e93f0aafdcf54321d00da90fba9093"
+          }
+        ]
+      }
+    }
+  },
+  "code_execution": {
+    "e0d442f4dc0340715d7f2b0686776719d1aeaa7d3e5a0e0da52dc832e9fd3477": {
+      "code_sha256": "e0d442f4dc0340715d7f2b0686776719d1aeaa7d3e5a0e0da52dc832e9fd3477",
+      "timeout_seconds": 10,
+      "has_main": true,
+      "has_pytest": true,
+      "direct_relevant": true,
+      "pytest_relevant": true,
+      "direct": {
+        "command": [
+          "/home/lhl/hipEngine/.venv/bin/python",
+          "-I",
+          "/tmp/qwen4exp-task-review-vmvgyibx/generated_solution.py"
+        ],
+        "returncode": 0,
+        "timed_out": false,
+        "duration_seconds": 0.084,
+        "stdout": "test_dag passed\ntest_cyclic passed\ntest_single_node passed\ntest_disconnected passed\n",
+        "stderr": ""
+      },
+      "pytest": {
+        "command": [
+          "/home/lhl/hipEngine/.venv/bin/python",
+          "-I",
+          "-m",
+          "pytest",
+          "-q",
+          "/tmp/qwen4exp-task-review-vmvgyibx/generated_solution.py"
+        ],
+        "returncode": 0,
+        "timed_out": false,
+        "duration_seconds": 0.18,
+        "stdout": "....                                                                     [100%]\n4 passed in 0.00s\n",
+        "stderr": ""
+      },
+      "passed": true
+    },
+    "b978741992c60c1a3250b2558f1777a2cc79261b06d8df278f9babffb0cba128": {
+      "code_sha256": "b978741992c60c1a3250b2558f1777a2cc79261b06d8df278f9babffb0cba128",
+      "timeout_seconds": 10,
+      "has_main": true,
+      "has_pytest": true,
+      "direct_relevant": true,
+      "pytest_relevant": true,
+      "direct": {
+        "command": [
+          "/home/lhl/hipEngine/.venv/bin/python",
+          "-I",
+          "/tmp/qwen4exp-task-review-ib480m_g/generated_solution.py"
+        ],
+        "returncode": 0,
+        "timed_out": false,
+        "duration_seconds": 0.064,
+        "stdout": "All tests passed!\n",
+        "stderr": ""
+      },
+      "pytest": {
+        "command": [
+          "/home/lhl/hipEngine/.venv/bin/python",
+          "-I",
+          "-m",
+          "pytest",
+          "-q",
+          "/tmp/qwen4exp-task-review-ib480m_g/generated_solution.py"
+        ],
+        "returncode": 0,
+        "timed_out": false,
+        "duration_seconds": 0.172,
+        "stdout": ".....                                                                    [100%]\n5 passed in 0.00s\n",
+        "stderr": ""
+      },
+      "passed": true
+    }
+  },
+  "verdict": {
+    "overall": "No semantic failure is attributable to the width-4 batch route. Code and migration pass on both routes with EOS-complete outputs and executed code tests. The English explanation and speculative-decoding answers cover every required checklist item on both routes, but both routes exhausted the 1024-token budget before EOS; under the stated review rule their completion is inconclusive, not an automatic pass or fail.",
+    "case_verdicts": {
+      "code_topological_sort": "pass",
+      "general_en_explain": "inconclusive_truncated_both",
+      "heldout_general_ja_migration": "pass",
+      "heldout_general_ja_speculative": "inconclusive_truncated_both"
+    },
+    "gate_effect": "The calibrated numerical gate remains requires_task_review; admission.eligible=true, admission.admitted=false, reason=task_gate_requires_review. No promotion or default claim.",
+    "next": "If EOS certification is required for general_en_explain and heldout_general_ja_speculative, run a larger EOS-terminated budget (for example 1536) on the same groups 0, 1, and 3. Do not rerun the 450-row numerical gate; it passed. Code and migration are complete and pass at 1024 tokens."
+  },
+  "review_notes": [
+    "The original 32-token divergence was a prefix/order/wording difference, not a semantic failure.",
+    "All four cases are deterministic across two runs on both routes at every tested budget; strict-vs-batch token identities differ, which is why the task review was required.",
+    "The 256/512/768 runs are truncation evidence only; the 1024 run is the reviewed output.",
+    "The generated code was executed only in bounded, isolated subprocesses with a 10-second timeout, no network setup, a temporary working directory, and CPU/address-space limits.",
+    "No source/default behavior, dispatch, execution profile, or calibrated gate was changed. The diagnostic harness is untracked."
+  ],
+  "settings": {
+    "tokens": 1024,
+    "runs": 2,
+    "groups": [
+      0,
+      1,
+      3
+    ],
+    "strict_prompts": [
+      "code_topological_sort",
+      "general_en_explain",
+      "heldout_general_ja_migration",
+      "heldout_general_ja_speculative"
+    ],
+    "code_timeout_seconds": 10,
+    "max_sequence_length": 2051,
+    "prefill_chunk_size": 512,
+    "hip_arch": "gfx1151",
+    "batch_width": 4,
+    "batch_composition": "fixture_order_consecutive_groups",
+    "forced_ids_placeholder": [
+      0
+    ],
+    "forced_ids_note": "free generation does not consume forced_ids; the placeholder only satisfies the request dataclass and preserves group planning"
+  },
+  "profiles": {
+    "strict_manifest_sha256": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+    "batch_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+    "note": "full manifests are in the raw 1024 JSON; hashes bind the live execution profiles"
+  },
+  "performance_claim": false,
+  "measurement_valid": true
+}
