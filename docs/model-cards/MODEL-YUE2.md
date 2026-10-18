@@ -668,6 +668,25 @@ Milestone status:
   is span attention, which is 60% of the forward there and grows linearly in
   context. Gate: `tests/test_unit_yue2_ar_gemv_rowtile2.py`. Artifact:
   `benchmarks/results/yue2_ar_paired_forward_gfx1100_20261018.json`.
+- **Split-K decode attention** (2026-10-18): the decode attention route is now the
+  `vv_attention_spans` production variant, which cuts the KV range into blocks per KV
+  head and folds that KV head's query group into the block. The strict span kernel
+  launched one block per query head (16 blocks for 40 CUs) and read KV rows with a
+  per-token stride; the variant covers head_dim with a warp's lanes so each KV row is
+  one coalesced run and stages the split's scores in shared memory. Only the softmax
+  reduction order changes, so the strict kernel stays the registered parent and
+  `attention_route="strict"` selects it. The AR step at 98 / 998 / 2 098 tokens of
+  context goes **12.79 -> 11.93**, **30.81 -> 12.54**, **53.30 -> 13.52 ms**
+  (1.07x / 2.46x / 3.94x), and the step becomes nearly context-independent. Against
+  the strict parent over 48 teacher-forced rows the mean row KL is 5.1e-4-8.4e-4 with
+  max 2.1e-3 and top-1 agreement 47/48; against the pinned upstream oracle the
+  18-case / 576-row replay measures pooled mean KL **1.02e-3** and top-1 **96.18%**
+  against the strict route's 1.05e-3 and 95.31% on the same host. The route is not
+  bit-identical, so a sampled trajectory can diverge from the strict one: the product
+  request in the M8 entry emits 1 065 latent frames instead of 1 862, repeat
+  bit-identical within each route. Task quality is unrun on this host for either
+  route. Gate: `tests/test_unit_yue2_attention_splitk.py`. Artifact:
+  `benchmarks/results/yue2_ar_attention_splitk_gfx1100_20261018.json`.
 - **M6 product path complete** (2026-09-16): the staged session
   (`hipengine/runtime/yue2_session.py`) over one resident AR runtime, registered
   as the `yue2` model plugin, plus `scripts/yue2_e2e_gate.py`. Each committed case

@@ -1,5 +1,6 @@
 """Shared gfx11 VibeVoice registrations, installed by each backend peer."""
 from hipengine.kernels.registry import KernelKey, register, is_registered
+from hipengine.kernels.hip_gfx1100.vibevoice import attention_spans_splitk
 from hipengine.kernels.hip_gfx1100.vibevoice import encoder
 from hipengine.kernels.hip_gfx1100.vibevoice import decoder as tts_decoder
 from hipengine.kernels.hip_gfx1100.vibevoice import diffusion as tts_diffusion
@@ -51,6 +52,10 @@ def register_vibevoice_kernels(backend):
         key=KernelKey(backend,name,'bf16','strict')
         if not is_registered(key):register(key,fn)
     for layer,variant,fn in (
+        # Split-K decode attention: a production reassociation of the strict span
+        # kernel's softmax (docs/EXECUTION-PROFILES.md). Registered under the same
+        # layer, so a caller selects it by variant and `strict` stays the parent.
+        ('vv_attention_spans','production',attention_spans_splitk.vv_attention_spans_splitk),
         ('vv_depthwise_conv_bf16','fused',encoder.vv_depthwise_conv_bf16),
         ('vibevoice_frontend_gemm','wmma',frontend_gemm),
         ('vibevoice_frontend_gemm','strict',frontend_gemm_strict),

@@ -283,7 +283,8 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 
 | Source | Purpose |
 | --- | --- |
-| `vibevoice/encoder.hip` | Speech encoders/connectors and Qwen2 attention/cache operations. |
+| `vibevoice/encoder.hip` | Speech encoders/connectors and Qwen2 attention/cache operations. Its `vv_attention_spans` is the strict span-attention parent. |
+| `vibevoice/attention_spans_splitk.hip` | Split-K decode span attention: the production sibling of `vv_attention_spans`, one block per (KV head, KV split) with the query group folded in. |
 | `vibevoice/decoder.hip` | Streaming speech-decoder convolutions and upsampling. |
 | `vibevoice/diffusion.hip` | Diffusion-head normalization, modulation, and solver steps. |
 | `evie/evie_ops.hip` | Vision patch embedding, normalization, attention, and merger operations. |
@@ -299,6 +300,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `yue2/nar_wmma.hip` | Matrix-tiled non-autoregressive attention with changed arithmetic. |
 | `yue2/vae.hip` | FP32 audio-decoder convolutions, transposed convolutions, Snake activation, and residuals. |
 | `vibevoice/encoder.hip` | Shared normalization, rotary, span-cache writes, attention, and residual operations. |
+| `vibevoice/attention_spans_splitk.hip` | Decode span attention split over the KV range; the `production` variant of `vv_attention_spans`. |
 | `linear/dense_gemv.hip` | Shared autoregressive projections and output head, including exact paired-branch row tiles and phase-windowed output. |
 | `rotary/qwen35_rotary.hip`, `fused/paro_silu.hip` | Shared decode rotary and gated activation operations. |
 
@@ -338,7 +340,7 @@ strict fallback; backend packages supply shape-specific choices. See
 | Gemma 4 GGUF `gguf_q4_k_m` prefill attention | `gemma4_plain`: scalar strict attention with an exact decode twin | `gemma4_staged`: strict-order FP32 score, softmax and P*V stages with global score workspace and bounded LDS, the exact-chain variant for head_dim 256/512 and the rollback lever for the decode scope. `gemma4_flash`: key-sliced flash decode with per-slice partials and a combine. It serves one-token decode wherever the shape is admitted and the split policy asks for more than one slice (from about 1,024 keys), with no plan selection needed, and the production plan selects it explicitly for the untrimmed global step (head_dim 512, GQA ratio 8) past the resident LDS bound, where the launcher's flash request is honoured ahead of that bound and the native path would otherwise use its owned-global-logits class kernel. Below the bound the resident logits row still fits and the native path stays available. The slice count is the larger of the occupancy target and the smallest count whose per-block LDS logits fit. `gemma4_flash_long` is the same kernel with one slice per 128 keys past 8192 keys (at most 1024 slices); the gfx1100 production plan selects it. Staged score CTAs group up to eight query heads per KV head with exact-row variants, and the singleton PV is pipelined. `gemma4_wmma_flash` (sliding) and `gemma4_wmma_flash_full` (head_dim 512) are the production multi-row prefill defaults under the section 2.11 envelope (EXECUTION-PROFILES); strict `gemma4_plain` remains the registered fallback | `gemma4/gemma4_attention`, `gemma4/gemma4_attention_staged`, `gemma4/gemma4_attention_prefill_wmma`, `gemma4/gemma4_attention_prefill_wmma_full` |
 | VibeVoice BF16 | `strict` primitives and incremental prefill | Fused depthwise convolution, matrix-tiled frontend, and library prefill | `vibevoice/encoder`, `vibevoice/registered.py` |
 | TimesFM | FP32 attention | FP16 matrix-tiled flash attention | `timesfm/timesfm` |
-| YuE2 autoregressive BF16 | Row-by-row dense GEMV prefill | FP16-converted hipBLASLt batched prefill | Shared `linear/dense_gemv`, `hipengine/runtime/yue2_ar.py` |
+| YuE2 autoregressive BF16 | Row-by-row dense GEMV prefill; `vv_attention_spans` decode attention | FP16-converted hipBLASLt batched prefill; paired two-row projection row tiles; `vv_attention_spans` `production` variant, split over the KV range | Shared `linear/dense_gemv`, `vibevoice/encoder`, `vibevoice/attention_spans_splitk`, `hipengine/runtime/yue2_ar.py` |
 | YuE2 non-autoregressive attention | `nar_attention_f32` | `nar_attention_wmma` with changed arithmetic | `yue2/nar`, `yue2/nar_wmma` |
 
 These rows identify related implementations, not blanket profile assignments:

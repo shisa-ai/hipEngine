@@ -2675,6 +2675,38 @@ At depth the projections are no longer the dominant term. The fixed part of a pa
 12.18 ms at 98 tokens of context and 30.22 ms at 998, so 18.0 ms of the step is span attention,
 which is 60% of the forward there and grows linearly in context.
 
+#### Split-K decode attention
+
+The strict span kernel launches one block per query head, which is 16 blocks for 40 CUs on a decode
+step, and reads the KV rows with a per-token stride. The production route cuts the KV range into
+`splits` blocks per KV head (8 x 32 = 256 blocks at product depth), folds that KV head's query group
+into the block, covers head_dim with a warp's lanes so each KV row is one coalesced run, and stages
+the split's scores in shared memory. Only the softmax reduction order changes: per-split maxima and
+sums combined afterwards. The strict kernel stays registered as the parent and
+`attention_route="strict"` selects it.
+
+| Context | Strict step | Split-K step | Speedup |
+| ---: | ---: | ---: | ---: |
+| 98 | 12.79 ms | **11.93 ms** | 1.07x |
+| 998 | 30.81 ms | **12.54 ms** | 2.46x |
+| 2 098 | 53.30 ms | **13.52 ms** | 3.94x |
+
+Median of two repetitions per arm, the two routes alternating inside one repetition, through the
+product decode loop with both CFG branches paired. The step becomes nearly context-independent
+because the KV scan stops dominating. The product path goes from RTF 1.069 to **0.579**.
+
+Against the strict parent, 16 teacher-forced steps at each of the three depths: mean row KL
+**5.1e-4 - 8.4e-4**, max **2.1e-3**, top-1 agreement **47/48 rows**, largest branch-hidden relative
+delta **2.2%** on bf16 rows. Against the pinned upstream oracle through the committed 18-case /
+576-row replay, the promoted route measures pooled mean KL **1.02e-3** and top-1 **96.18%** against
+the strict route's 1.05e-3 and 95.31% on the same host, so the reassociation does not move agreement
+with the reference. The route is not bit-identical, so a sampled trajectory can diverge from the
+strict route's: this product request emits 1 065 latent frames against 1 862, each repeat
+bit-identical within its own route. Task quality (blinded listening, lyric adherence) is unrun on
+this host for either route. Evidence:
+[`split-K A/B and replay`](results/yue2_ar_attention_splitk_gfx1100_20261018.json), gate
+`tests/test_unit_yue2_attention_splitk.py`.
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the

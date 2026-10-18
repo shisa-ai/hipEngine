@@ -47,6 +47,9 @@ def resolve_vibevoice_kernels(backend='auto',*,frontend_variant='wmma',quant='bf
             ops[name]=resolve_vibevoice_kernel(backend,name,'strict',quant='q4_k_m')
         else:
             ops[name]=resolve_vibevoice_kernel(backend,name)
+    if is_registered(KernelKey(backend,'vv_attention_spans',quant,'production')):
+        ops['vv_attention_spans_production']=resolve_vibevoice_kernel(
+            backend,'vv_attention_spans','production')
     if frontend_variant != 'strict':
         ops['vv_depthwise_conv_bf16']=resolve_vibevoice_kernel(backend,'vv_depthwise_conv_bf16','fused')
     ops['frontend_gemm']=resolve_vibevoice_kernel(backend,'vibevoice_frontend_gemm',frontend_variant)

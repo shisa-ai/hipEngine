@@ -295,7 +295,7 @@ def generate_tokens(
         "negative_prefix_tokens": len(negative) if negative is not None else 0,
         "cfg_branches": 1 if negative is None else 2,
         "execution": "eager",
-        "attention": "spans",
+        "attention": runtime.attention_route,
         "random": generator.state(),
         # The live PCG64 position, not just the algorithm and seed: two runs that
         # consumed the same stream share it, and equal digests mean every later draw

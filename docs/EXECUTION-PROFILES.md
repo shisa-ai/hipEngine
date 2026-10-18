@@ -599,6 +599,53 @@ production default under this envelope, and the execution profile remains the
 rollback lever. The envelope is binding for new promotions on this model class
 from this decision's date; existing defaults are unaffected.
 
+### 2.12 YuE2 gfx1100 decode attention split-K decision (2026-10-18)
+
+**Decision.** The YuE2 autoregressive decode step selects
+`vv_attention_spans`/`bf16`/`production`
+(`vibevoice/attention_spans_splitk.hip`) by default. `vv_attention_spans`/`bf16`/`strict`
+(`vibevoice/encoder.hip`) stays registered as the exact parent, and
+`Yue2ArRuntime(attention_route="strict")` selects it.
+
+**Why the reassociation is admissible.** The strict span kernel launches one block
+per query head, so a decode step's grid is 16 blocks for 40 CUs, and its warps read
+the KV rows with a per-token stride (uncoalesced 2-byte loads). Its arithmetic is a
+whole-context max, then sum, then weighted value pass. The production kernel keeps
+the span ABI and the per-chunk softmax but cuts the KV range into `splits` blocks per
+KV head, folds the query group of that KV head into the block, covers head_dim with a
+warp's lanes so each KV row is one coalesced run, and stages the split's scores in
+shared memory. Only the reduction order changes: per-split maxima and sums combined
+afterwards, the standard split-softmax reassociation.
+
+**Gate measured on `epyc` / Radeon Pro W7900 (`gfx1100`, ROCm 7.2), YuE2-3B BF16.**
+Kernel level against the strict parent, 16 teacher-forced steps at each of three
+depths: mean row KL **5.1e-4 - 8.4e-4**, max row KL **2.1e-3**, top-1 agreement
+**47/48 rows**, largest branch-hidden relative delta **2.2%** on bf16 rows. Model
+level against the pinned upstream oracle through the committed 18-case / 576-row AR
+replay: pooled mean KL **1.02e-3** and top-1 **96.18%**, against the strict route's
+**1.05e-3** and **95.31%** on the same host, so the reassociation does not move
+agreement with the reference. Repeat determinism holds: the same request in the same
+process is bit-identical. The strict route's own gate remains the floor for this
+comparison, not a claim that the two routes agree bit for bit.
+
+**Measured effect (same host, paired two-branch forward, median of two repetitions
+inside one process).** AR step at 98 / 998 / 2098 tokens of context:
+**12.79 -> 11.93 ms**, **30.81 -> 12.54 ms**, **53.30 -> 13.52 ms** (1.07x, 2.46x,
+3.94x). The step becomes nearly context-independent, because the KV scan stops
+dominating. The product path drops from RTF 1.069 to **0.579**.
+
+**Consequence, stated because it is product-visible.** The route is not
+bit-identical, so a sampled trajectory can diverge from the strict route's. On the
+committed `cot="off"` product request the strict route emits 1 862 latent frames and
+this route emits 1 065 before its end token, with the repeat bit-identical inside
+each route. Task quality (blinded listening, lyric adherence) is unrun on this host
+for either route; it is the standing M8 gap, not a finding about this kernel.
+
+**Rollback.** `attention_route="strict"` on the runtime, and the registry's strict
+variant, both select the exact parent without a code change. Evidence:
+`benchmarks/results/yue2_ar_attention_splitk_gfx1100_20261018.json`, gate
+`tests/test_unit_yue2_attention_splitk.py`.
+
 
 ## 3. Profile is orthogonal to model representation
 

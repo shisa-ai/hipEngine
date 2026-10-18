@@ -40,6 +40,7 @@ class FakeRuntime:
 
     branches = 2
     prefill_fallback_reason: str | None = None
+    attention_route = "strict"
     max_context = 4096
 
     def __init__(self, logits=None, *, script=None, vocab: int = VOCAB):

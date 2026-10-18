@@ -381,6 +381,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rope-table", choices=("reference", "f64"), default="reference")
     parser.add_argument("--prefill-variant", choices=("strict", "hipblaslt"), default="hipblaslt")
     parser.add_argument("--backend", default="auto")
+    parser.add_argument("--attention-route", choices=("auto", "strict", "splitk"), default="auto",
+                        help="decode attention route; strict is the exact parent kernel")
     parser.add_argument("--repeat", type=int, default=0, help="repeat the first case and require bit equality")
     parser.add_argument(
         "--keep-host-weights",
@@ -423,9 +425,11 @@ def main(argv: list[str] | None = None) -> int:
         backend=args.backend,
         prefill_variant=args.prefill_variant,
         rope_table=args.rope_table,
+        attention_route=args.attention_route,
     )
     print(f"[replay] runtime ready: backend={runtime.backend} max_context={max_context} "
-          f"rope={args.rope_table} prefill={args.prefill_variant}", flush=True)
+          f"rope={args.rope_table} prefill={args.prefill_variant} "
+          f"attention={runtime.attention_route}", flush=True)
     weights_bytes = int(weights.bytes)
     if not args.keep_host_weights:
         # The runtime holds only the embedding row table; dropping the loader's

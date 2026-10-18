@@ -43,6 +43,7 @@ from hipengine.core.memory import (
 )
 from hipengine.core.runtime import MemcpyKind
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.hip_gfx1100.vibevoice import attention_spans_splitk
 from hipengine.kernels.vibevoice import resolve_vibevoice_kernels
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.yue2 import YuE2Weights
@@ -178,6 +179,7 @@ class Yue2ArRuntime:
         backend: str = "auto",
         prefill_variant: str = "hipblaslt",
         rope_table: str = "reference",
+        attention_route: str = "auto",
         library: ctypes.CDLL | None = None,
     ) -> None:
         if isinstance(max_context, bool) or not isinstance(max_context, Integral):
@@ -190,6 +192,8 @@ class Yue2ArRuntime:
             raise ValueError("branches must be 1 (no CFG) or 2 (CFG)")
         if prefill_variant not in ("strict", "hipblaslt"):
             raise ValueError("prefill_variant must be strict or hipblaslt")
+        if attention_route not in ("auto", "strict", "splitk"):
+            raise ValueError("attention_route must be auto, strict or splitk")
         spec = weights.config
         self.weights = weights
         self.spec = spec
@@ -339,6 +343,39 @@ class Yue2ArRuntime:
         self._logits_window_domain: tuple[int, int] | None = None
         self._logits_window_filled = False
         self._scale = 1.0 / float(np.sqrt(head_dim))
+        # Decode attention route. The split-K production variant divides the KV range
+        # across blocks, so its grid is kv_heads * splits instead of the query-head
+        # count; it reassociates the softmax and therefore stays a named variant with
+        # the strict span kernel as its parent.
+        production_attention = getattr(self.kernels, "vv_attention_spans_production", None)
+        if attention_route == "strict":
+            production_attention = None
+        if production_attention is not None and not attention_spans_splitk.supports(
+            heads, kv_heads, head_dim
+        ):
+            if attention_route == "splitk":
+                raise ValueError(
+                    f"split-K span attention covers head_dim "
+                    f"{attention_spans_splitk.SUPPORTED_HEAD_DIM} with "
+                    f"{attention_spans_splitk.SUPPORTED_Q_PER_KV} query heads per KV head; "
+                    f"this checkpoint has q_heads={heads}, kv_heads={kv_heads}, "
+                    f"head_dim={head_dim}"
+                )
+            production_attention = None
+        self._attn_splitk = production_attention
+        self.attention_route = "splitk" if production_attention is not None else "strict"
+        self._attn_splitk_workspace = (
+            keep(
+                _alloc(
+                    attention_spans_splitk.workspace_floats(
+                        1, heads, head_dim, attention_spans_splitk.MAX_SPLITS
+                    )
+                    * 4
+                )
+            )
+            if production_attention is not None
+            else None
+        )
         self._lt: HipblasLt | None = None
         self._lt_problems: dict[tuple[int, int, int], object] = {}
         self._lt_algos: dict[tuple[int, int, int], object] = {}
@@ -521,6 +558,31 @@ class Yue2ArRuntime:
     # ------------------------------------------------------------------
     # decode
     # ------------------------------------------------------------------
+    def _decode_attention(self, branch: int, layer: _LayerBuffers, position: int,
+                          query_ptr: int, out_ptr: int, spans: KVLiveSpans) -> None:
+        """Span attention for one decode row, on the resolved route.
+
+        ``splitk`` runs the production variant: the KV range is cut into ``splits``
+        blocks per KV head and combined afterwards, which reassociates the softmax.
+        ``strict`` runs the parent kernel unchanged, so an exact comparison stays one
+        constructor argument away.
+        """
+        if self._attn_splitk is None:
+            self.kernels.vv_attention_spans(
+                query_ptr, layer.k_cache[branch].ptr, layer.v_cache[branch].ptr, out_ptr,
+                spans, 1, self.spec.num_attention_heads, self.spec.num_key_value_heads,
+                self.spec.head_dim, self._scale,
+                library=self.library, runtime=self.runtime,
+            )
+            return
+        self._attn_splitk(
+            query_ptr, layer.k_cache[branch].ptr, layer.v_cache[branch].ptr, out_ptr,
+            self._attn_splitk_workspace.ptr, spans, 1,
+            self.spec.num_attention_heads, self.spec.num_key_value_heads, self.spec.head_dim,
+            self._scale, attention_spans_splitk.split_count(position + 1),
+            stream=0, runtime=self.runtime,
+        )
+
     def forward_layers(self, position: int, branch: int = 0) -> None:
         """Run the staged hidden row through the AR layer stack at ``position``."""
         self._validate_position(position)
@@ -583,11 +645,7 @@ class Yue2ArRuntime:
                 layer.v_cache[branch].ptr, spans, 1, kv_heads, head_dim,
                 library=self.library, runtime=self.runtime,
             )
-            kernels.vv_attention_spans(
-                self._q_out.ptr, layer.k_cache[branch].ptr, layer.v_cache[branch].ptr,
-                self._attn.ptr, spans, 1, heads, kv_heads, head_dim, self._scale,
-                library=self.library, runtime=self.runtime,
-            )
+            self._decode_attention(branch, layer, position, self._q_out.ptr, self._attn.ptr, spans)
             kernels.f32_to_bf16(self._attn.ptr, self._attn_bf16.ptr, heads * head_dim, stream=0, runtime=self.runtime)
             kernels.dense_gemv_bf16_f32_out(
                 self._attn_bf16.ptr, layer.o_w.ptr, self._o_f32.ptr, 1, heads * head_dim, hidden,
@@ -705,12 +763,11 @@ class Yue2ArRuntime:
                     spans[branch], 1, kv_heads, head_dim,
                     library=self.library, runtime=self.runtime,
                 )
-                kernels.vv_attention_spans(
+                self._decode_attention(
+                    branch, layer, positions[branch],
                     self._p_q_out.ptr + branch * q_width * f32,
-                    layer.k_cache[branch].ptr, layer.v_cache[branch].ptr,
                     self._p_attn.ptr + branch * q_width * f32,
-                    spans[branch], 1, heads, kv_heads, head_dim, self._scale,
-                    library=self.library, runtime=self.runtime,
+                    spans[branch],
                 )
             kernels.f32_to_bf16(self._p_attn.ptr, self._p_attn_bf16.ptr, 2 * q_width, stream=0, runtime=self.runtime)
             kernels.dense_gemv_bf16_f32_out_rowtile2(
