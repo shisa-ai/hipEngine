@@ -1,9 +1,24 @@
 ## Flash-Next batch decode runner: hand-off copies and owner reset duplication
 
 - `Qwen4ExpGGUFBatchRunner` (independent-request decode over physical state
-  slots) is not selected by serving; the committed `decode_batch` path still
-  loops c1 runners. The batch path and the c1 path therefore duplicate the
-  embedding/PLE-staging/head glue.
+  slots) is reachable from serving only through the default-off
+  `HIPENGINE_QWEN4_EXP_AR_BATCH` switch, owned by
+  `Qwen4ExpARBatchOwner` (`hipengine/generation/qwen4_exp_ar_batch.py`). With the
+  switch off, the committed `decode_batch` path still loops c1 runners, so the
+  batch path and the c1 path duplicate the embedding/PLE-staging/head glue.
+- Promotion is blocked on evidence this tree does not have yet, not on the
+  wiring: (1) the full production numerical gate against the strict teacher
+  (mean/p95/p99/max KL, top-1 by category, determinism, isolation, task
+  quality) on the full `mtpbench-code-general-ja` suite plus category
+  holdouts - the only real-checkpoint runs so far are the short c1-drift and
+  sparse-threshold diagnostics; (2) a live serving qualification (HTTP,
+  streaming, cancellation/disconnect under load) at width 2; (3) a decision on
+  MTP: the batch path is AR-only, so a mixed AR/MTP workload pays two KV
+  layouts and cannot share a step; (4) the memory cost of `state_slots` full
+  contexts on top of the c1 pool, which is why the width is a separate
+  `HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS` bound. Remove the switch only when the
+  batch path is the default and the c1 per-request step survives as the strict
+  fallback; remove the duplicated glue when one implementation serves both.
 - `import_prefilled` copies a prefilled c1 request into a slot with a host loop
   of three `hipMemcpy` calls per paged block per QSA layer (key, value, index
   keys), plus one copy per GDN layer and one for the PLE conv history. Collapse
@@ -11,6 +26,8 @@
   destination block table, so the per-block prefix arithmetic lives in one
   kernel instead of Python. Do not remove the per-block prefix limit: a
   whole-block copy would move the source's unwritten tail into the new request.
+  The serving path imports once per request at the end of prefill, so the cost
+  is per admission, not per tick.
 - `_zero_slot` hand-rolls a memset per owner (KV blocks, index blocks, GDN
   conv/recurrent, PLE history) and then calls the index owner's `reset_slot`.
   It should become one `reset_slot` protocol on the shared owner base that the
@@ -18,14 +35,20 @@
   consolidation already recorded for the mixer lineage. The index owner's
   generation bump is part of that protocol, not an extra step.
 - The batch runner keeps its own `_owners`/`_positions` host mirrors next to the
-  owners' `prepare` active sets. Once the batch runner is the serving path, one
-  admission object should own the request-to-slot map and the position mirror
-  for every stage, so a step cannot prepare two owners in disagreeing row order.
+  owners' `prepare` active sets. Now that the batch runner is reachable from
+  serving, one admission object should own the request-to-slot map and the
+  position mirror for every stage, so a step cannot prepare two owners in
+  disagreeing row order. The serving-side map
+  (`Qwen4ExpARBatchOwner._leases`) is the first half of that object; it should
+  absorb the runner's mirrors rather than sit beside them.
 - Regression gates: `tests/test_unit_qwen4exp_batch_runner.py` (dispatch shape,
-  admission, import preflight, per-block copy layout, owner reset) and
-  `tests/test_gpu_qwen4exp_batch_runner.py` (full-model two-row decode against
-  independent c1 runners, row permutation, determinism, slot reuse, c1 import,
-  argmax-only path).
+  admission, import preflight, per-block copy layout, owner reset),
+  `tests/test_unit_qwen4exp_ar_batch_decode.py` (generator wiring: one N-row
+  call per tick, physical-slot pinning, compaction no-op, cancel/reuse,
+  admission rollback, poisoned-step cleanup, MTP exclusion) and
+  `tests/test_gpu_qwen4exp_ar_batch_decode.py` (synthetic-model serving run:
+  two imports, two 2-row steps, per-row forced-token identity, c1 chain
+  agreement).
 
 ## Flash-Next indexed decode admission duplication
 

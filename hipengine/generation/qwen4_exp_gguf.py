@@ -17,6 +17,12 @@ from hipengine.generation.sampling import (
     select_token, thinking_budget_state_from_params,
 )
 from hipengine.generation.qwen4_exp_serving_mtp import Qwen4ExpServingMTP, _RequestRetired
+from hipengine.generation.qwen4_exp_ar_batch import (
+    Qwen4ExpARBatchOwner,
+    ar_batch_enabled,
+    ar_batch_state_slots,
+    make_qwen4_exp_ar_batch_runner,
+)
 from hipengine.generation.qwen4_exp_multimodal import (
     qwen4_exp_multimodal_token_control,
     render_qwen4_exp_multimodal_prompt,
@@ -517,6 +523,7 @@ class Qwen4ExpGGUFTextGenerator:
             "max_batch_size": batch,
             "max_sequence_length": required,
             "released_after_probe": False,
+            "decode": resident.decode_telemetry(),
         }
 
     def count_tokens(self, text: str) -> int:
@@ -846,6 +853,11 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         self._outputs: dict[int, GenerationOutput] = {}
         self._all_runners = [generator.runner]
         self._available = [generator.runner]
+        # Opt-in full-model AR decode batch. ``_ar_batch_mode`` is pinned at the
+        # first prepare() so one serving runner never mixes the c1 step path and
+        # the shared N-row step path across requests.
+        self._ar_batch: Qwen4ExpARBatchOwner | None = None
+        self._ar_batch_mode: str | None = None
         self._closed = False
         self._init_mtp()
 
@@ -875,8 +887,41 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             )
             self._all_runners.append(runner)
             self._available.append(runner)
+        self._prepare_ar_batch()
         self._prepare_mtp()
         return required
+
+    def _prepare_ar_batch(self) -> None:
+        """Select and build the opt-in AR decode path exactly once.
+
+        A build failure is not cached: the next prepare() retries and raises
+        again, so a caller that ignored the first error cannot fall through to
+        the c1 path with the switch still on.
+        """
+
+        if self._ar_batch is not None or self._ar_batch_mode is not None:
+            return
+        if not ar_batch_enabled():
+            self._ar_batch_mode = "qwen4exp_c1_request_owned_step"
+            return
+        if self.generator._resident is None:
+            # Fail closed instead of silently staying on c1: the operator asked
+            # for the batch path and this generator cannot own its weights.
+            raise RuntimeError(
+                "Qwen4Exp AR batch decode requires model-owned resident weights; "
+                "this generator was built with an external runner"
+            )
+        slots = ar_batch_state_slots(self.capacity)
+        owner = Qwen4ExpARBatchOwner(
+            batch_factory=lambda: make_qwen4_exp_ar_batch_runner(
+                self.generator, state_slots=slots
+            ),
+            state_slots=slots,
+            max_positions=self.generator.runner.max_sequence_length,
+        )
+        owner.ensure()
+        self._ar_batch = owner
+        self._ar_batch_mode = owner.label
 
     def prepare_request_scratch(
         self,
@@ -903,6 +948,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             "max_sequence_length": required,
             "resident_runners": batch,
             "released_after_probe": False,
+            "decode": self.decode_telemetry(),
         }
 
     def prompt_tokens(self, prompt: Any) -> tuple[int, ...]:
@@ -955,9 +1001,41 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         try:
             row.runner.reset()
             self._reserve_mtp(row)
+            self._reserve_ar_batch(row)
         except BaseException:
             self._release_runner(row)
             raise
+
+    def plan_admission(self, pending, *, max_items: int):
+        """Admit only as many AR rows as the shared batch can hold.
+
+        With the default width (one state slot per serving request) this is a
+        pure prefix. A narrower ``HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS`` leaves
+        the extra rows pending instead of failing admission inside the tick.
+        """
+
+        owner = self._ar_batch
+        selected: list[int] = []
+        free = 0 if owner is None else owner.free_slot_count
+        for request in tuple(pending)[: int(max_items)]:
+            request_id = int(request.request_id)
+            row = self._rows.get(request_id)
+            needs_slot = owner is not None and row is not None and not row.mtp_budget
+            if needs_slot:
+                if free <= 0:
+                    continue
+                free -= 1
+            selected.append(request_id)
+        return tuple(selected)
+
+    def _reserve_ar_batch(self, row) -> None:
+        owner = self._ar_batch
+        if owner is None or row.mtp_budget:
+            # MTP rows keep their request-owned c1 runner at width 1; a
+            # speculative candidate is never a batch row.
+            return
+        required = len(row.prompt_ids) + max(0, int(row.request.max_tokens) - 1)
+        owner.reserve(row.request_id, positions=required)
 
     def rollback_admission(self, request: RequestState) -> None:
         self._release_runner(self._row(request.request_id))
@@ -999,17 +1077,35 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         row.prefill_tokens_seen += len(chunk)
         if row.prefill_tokens_seen == len(row.prompt_ids):
             row.next_result = result
+            self._import_ar_batch(row)
+
+    def _import_ar_batch(self, row) -> None:
+        """Move a completed c1 prefill into the row's batch slot, once."""
+
+        owner = self._ar_batch
+        if owner is None or not owner.owns(row.request_id):
+            return
+        owner.import_prefilled(row.request_id, row.runner)
 
     def decode_batch(
         self, work: WorkItem, *, commit: bool
     ) -> tuple[GeneratedToken, ...]:
         if not commit:
             raise ValueError("Qwen4Exp native decode requires commit=True")
-        generated: list[GeneratedToken] = []
+        generated: list[GeneratedToken | None] = []
+        # Rows whose state lives in the shared AR batch. Their next token is
+        # sampled first and then stepped once for the whole row set, so
+        # publication waits until that single call returns.
+        batched: list[tuple[int, _Qwen4ExpServingRow, int]] = []
         for request_id in work.request_ids:
             row = self._row(request_id)
             if self.request_cancel_reason(request_id) is not None:
                 continue
+            if self._ar_batch is not None and self._ar_batch.failed(request_id):
+                raise RuntimeError(
+                    f"Qwen4Exp request {request_id} lost its AR batch slot to a "
+                    "failed step; it cannot continue on the c1 path"
+                )
             if int(row.request.max_tokens) == 0:
                 finish = FinishDetails(
                     reason="length", length_limit=0, sampler_mode="greedy"
@@ -1032,14 +1128,22 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                     continue
                 if len(progress.token_ids) != 1:
                     raise RuntimeError("Flash-Next root/K0 must emit one token")
-                token = progress.token_ids[0]
-            else:
-                token = self.generator._controlled_token(
-                    row.next_result, row.request, row.grammar, row.sampling_state, row.token_logprobs,
+                generated.append(
+                    self._published_token(row, progress.token_ids[0], self._finish(row))
                 )
-                row.generated_ids.append(token)
+                continue
+            token = self.generator._controlled_token(
+                row.next_result, row.request, row.grammar, row.sampling_state, row.token_logprobs,
+            )
+            row.generated_ids.append(token)
             finish = self._finish(row)
-            if finish is None and not row.mtp_budget:
+            if finish is None and self._ar_batch_owns(row):
+                # A placeholder keeps the published order equal to the work
+                # item's request order; it is filled or dropped below.
+                generated.append(None)
+                batched.append((len(generated) - 1, row, token))
+                continue
+            if finish is None:
                 step_kwargs = _qwen4_exp_compact_step_kwargs()
                 if row.controlled:
                     step_kwargs.update(capture_logits=True, token_id_resident=False)
@@ -1047,22 +1151,51 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                 if self.request_cancel_reason(request_id) is not None:
                     row.generated_ids.pop()
                     continue
-            visible = self._visible_ids(row, finish)
-            delta = self._stream_text_delta(row, visible, final=finish is not None)
-            generated.append(
-                GeneratedToken(
-                    int(request_id), token, finished=finish is not None,
-                    stream_chunk=GenerationStreamChunk(
-                        text=delta,
-                        token_logprobs=tuple(row.token_logprobs[-1:]) if len(visible) == len(row.generated_ids) else (),
-                        finish_details=finish,
-                        generated_token_ids=(
-                            tuple(row.generated_ids) if finish is not None else None
-                        ),
-                    ),
-                )
-            )
-        return tuple(generated)
+            generated.append(self._published_token(row, token, finish))
+        if batched:
+            self._step_ar_batch([(row, token) for _, row, token in batched])
+            for index, row, token in batched:
+                if self.request_cancel_reason(row.request_id) is not None:
+                    # The shared step advanced this slot, but the row cancelled
+                    # while it ran. Publish nothing; reclaim releases the slot.
+                    row.generated_ids.pop()
+                    continue
+                generated[index] = self._published_token(row, token, None)
+        return tuple(item for item in generated if item is not None)
+
+    def _published_token(self, row, token, finish):
+        visible = self._visible_ids(row, finish)
+        delta = self._stream_text_delta(row, visible, final=finish is not None)
+        return GeneratedToken(
+            int(row.request_id), token, finished=finish is not None,
+            stream_chunk=GenerationStreamChunk(
+                text=delta,
+                token_logprobs=tuple(row.token_logprobs[-1:]) if len(visible) == len(row.generated_ids) else (),
+                finish_details=finish,
+                generated_token_ids=(
+                    tuple(row.generated_ids) if finish is not None else None
+                ),
+            ),
+        )
+
+    def _ar_batch_owns(self, row) -> bool:
+        owner = self._ar_batch
+        return owner is not None and owner.owns(row.request_id)
+
+    def _step_ar_batch(self, rows) -> None:
+        """Advance every batched row with exactly one N-row batch call."""
+
+        owner = self._ar_batch
+        if owner is None:
+            raise RuntimeError("Qwen4Exp AR batch step without a batch owner")
+        results = owner.step(
+            [(row.request_id, token) for row, token in rows],
+            # One readback serves the whole row set: a controlled row needs its
+            # full logits, an uncontrolled row only needs the committed argmax.
+            capture_logits=any(row.controlled for row, _ in rows),
+        )
+        for row, _ in rows:
+            row.next_result = results[row.request_id]
 
     def _stream_text_delta(self, row, visible, *, final):
         text = self.generator.tokenizer.decode(visible, skip_special=False)
@@ -1107,8 +1240,16 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         return tuple(decorated)
 
     def compact_batch(self, moves: Sequence[SlotMove]) -> None:
+        # Physical batch slots are pinned per request at admission and never
+        # follow the scheduler's slot indices, so compaction moves no state.
         for move in moves:
-            self._row(move.request_id)
+            row = self._row(move.request_id)
+            if row.mtp_budget and self._ar_batch is not None and self._ar_batch.owns(
+                move.request_id
+            ):
+                raise RuntimeError(
+                    "a Flash-Next MTP row must not hold an AR batch slot"
+                )
 
     def reclaim(self, completed: CompletedRequest) -> None:
         row = self._rows.pop(int(completed.request_id), None)
@@ -1165,6 +1306,9 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             self._release_runner(row)
         self._rows.clear()
         self._outputs.clear()
+        if self._ar_batch is not None:
+            self._ar_batch.close()
+            self._ar_batch = None
         self._close_mtp()
         primary = self.generator.runner
         for runner in reversed(self._all_runners):
@@ -1183,9 +1327,21 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
 
     def _release_runner(self, row: _Qwen4ExpServingRow) -> None:
         self._release_mtp(row)
+        owner = self._ar_batch
+        if owner is not None:
+            owner.release(row.request_id)
         runner, row.runner = row.runner, None
         if runner is not None and runner in self._all_runners and runner not in self._available:
             self._available.append(runner)
+
+    def decode_telemetry(self) -> dict[str, Any]:
+        """Report which decode path this runner selected, and its width."""
+
+        owner = self._ar_batch
+        return {
+            "decode_path": self._ar_batch_mode or "qwen4exp_c1_request_owned_step",
+            "ar_batch": None if owner is None else owner.telemetry(),
+        }
 
     def _finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:
         if row.mtp_output is not None:
