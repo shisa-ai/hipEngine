@@ -161,6 +161,10 @@ def test_build_hip_dry_run_does_not_create_cache_or_run_compiler(
     source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
     monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
     monkeypatch.delenv("HIPENGINE_HIP_OFFLOAD_ARCH", raising=False)
+    # A developer shell exports HIP_DEVICE_LIB_PATH, which build_hip turns into
+    # a --rocm-device-lib-path flag; the dry-run plan must not depend on it.
+    monkeypatch.delenv("HIP_DEVICE_LIB_PATH", raising=False)
+    monkeypatch.delenv("HIPENGINE_ROCM_DEVICE_LIB_PATH", raising=False)
 
     artifact = build_hip(
         sources=[source],

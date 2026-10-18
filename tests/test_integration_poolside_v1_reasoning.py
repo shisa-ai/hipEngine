@@ -227,7 +227,14 @@ def test_poolside_v1_server_no_thinking_and_stop_boundary_do_not_leak_markers() 
         "content": "",
         "reasoning_content": "Stopped plan.",
     }
-    assert "</think>" not in stopped_response.text
+    # The documented telemetry names the stop string that matched, so the
+    # marker is expected there. It must not reach the served text: no marker in
+    # the message fields and nothing from behind the stop boundary.
+    choice = stopped_response.json()["choices"][0]
+    assert choice["finish_details"]["matched_stop"] == "</think>"
+    assert "</think>" not in json.dumps(
+        {key: choice["message"][key] for key in ("content", "reasoning_content")}
+    )
     assert "Never visible" not in stopped_response.text
 
 

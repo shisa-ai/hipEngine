@@ -97,6 +97,21 @@ def test_internal_quant_key_spelling_is_not_a_conflict(tmp_path):
     assert _load().check_repo(repo)["violations"] == []
 
 
+def test_doubly_decorated_quant_key_is_not_a_conflict(tmp_path):
+    """`gguf_ud_q4_k_xl` and `UD-Q4_K_XL` are one fact, like the single-prefix case."""
+    repo = _repo(
+        tmp_path,
+        {
+            "2026-01-01-a.json": {
+                **BASE,
+                "quant": "gguf_ud_q4_k_xl",
+                "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+            },
+        },
+    )
+    assert _load().check_repo(repo)["violations"] == []
+
+
 def test_model_without_a_quant_token_is_not_a_conflict(tmp_path):
     repo = _pair(tmp_path, {"model": "Qwen3.6-35B-A3B", "quant": "Q8_K_XL"})
     assert _load().check_repo(repo)["violations"] == []

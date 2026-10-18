@@ -17,6 +17,10 @@ def test_smoke_add_registers_lazy_wrapper_without_building() -> None:
 
 def test_smoke_add_build_plan_is_dry_run_safe(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
+    # A developer shell exports HIP_DEVICE_LIB_PATH, which build_hip turns into
+    # a --rocm-device-lib-path flag. The plan must be the same either way.
+    monkeypatch.delenv("HIP_DEVICE_LIB_PATH", raising=False)
+    monkeypatch.delenv("HIPENGINE_ROCM_DEVICE_LIB_PATH", raising=False)
     artifact = plan_smoke_add_build(
         cache_root=tmp_path / "cache",
         compiler_version="hipcc smoke test version",

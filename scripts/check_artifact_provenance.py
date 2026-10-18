@@ -68,10 +68,16 @@ def _norm_quant(text: str) -> str:
     same fact, and reading them as a conflict would make the gate cry wolf on real published rows.
     """
     out = re.sub(r"[^A-Z0-9]", "", (text or "").upper())
-    for prefix in ("GGUF", "UD", "IQ"):
-        if out.startswith(prefix):
-            return out[len(prefix):]
-    return out
+    # A key can carry two decorations (`gguf_ud_q4_k_xl`), so keep stripping
+    # until no prefix matches. Returning after the first strip made that key
+    # read as a different quant from its own display form `UD-Q4_K_XL`.
+    while True:
+        for prefix in ("GGUF", "UD", "IQ"):
+            if out.startswith(prefix) and len(out) > len(prefix):
+                out = out[len(prefix):]
+                break
+        else:
+            return out
 
 
 def quant_tokens(text: str) -> set[str]:

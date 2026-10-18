@@ -447,6 +447,213 @@ humans can see what we are testing against without opening every JSON artifact.
 
 Historical rollup changes are tracked in [`benchmarks/CHANGELOG.md`](CHANGELOG.md).
 
+## Archived scoreboard sections (moved 2026-10-18)
+
+These screens were superseded and moved out of the operational scoreboard, which
+has to stay under its 150 KB compactness contract.
+
+## Qwen4Exp MT-8 rollback/replay accounting diagnostic
+
+A CPU-only instrumented screen covers a four-token Qwen4Exp MTP proposal at all
+rejection depths, all-reject and full-accept. Target verification stops at the
+first mismatch, while the draft executes the proposal and trims its cursor.
+Target forwards are 1/2/3/4/4; draft forwards are 4 in every case. Restored
+bytes, restore allocations and per-cycle allocations are zero. The shared
+resident-weight attachment is counted once, not once per rollback case. No
+production default or performance claim changed.
+
+[Protocol, test and artifact](results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/README.md).
+
+## Qwen3.8 Flash Next dense Q8 checked/full-row complete-engine diagnostic
+
+On the Radeon 8060S/gfx1151 host, the checked-int32/full-four-row dense Q8 DPP
+sibling was run through the complete Qwen4Exp request path over all 12 canonical
+cases. The candidate remains diagnostic-only and the parent remains the default
+fallback.
+
+| Metric | Parent | Checked sibling | Ratio |
+| --- | ---: | ---: | ---: |
+| Prefill | 322.442 tok/s | 336.954 tok/s | **1.0450x** |
+| Decode | 16.211 tok/s | 16.409 tok/s | **1.0122x** |
+| Aggregate client wall | 493.845 s | 481.402 s | **0.9748x** |
+
+The one-residency run used 72 measured arms and engaged the candidate 3,564 times.
+All 12 trajectories were exact and deterministic, with zero active allocations
+at teardown. A cached one-case kernel trace observed 396 positive-duration
+candidate launches and 476 parent launches with the expected checked/parent
+signatures, workgroup 128, grid `5120x128` and scratch 0. This is complete-engine
+diagnostic evidence, not a promoted model-rate row or GUFO comparison.
+[Protocol, artifact and trace identity](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-engine-ab/README.md).
+
+
+On Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`,
+UD-Q4_K_XL production/BF16, warm PLE and chunk1024, interleaved unprofiled
+walls and profiled kernel sums cover 128 decode transitions at two depths.
+
+| Case | Wall ms/step | Kernel sum ms/step | Estimated remainder ms/step |
+| --- | ---: | ---: | ---: |
+| code-p512 | 47.700 | 44.242 | 3.457 |
+| code-p4096 | 55.946 | 45.050 | 10.896 |
+
+The remainder is the difference between separate measurements, not a directly
+observed host gap. Its cause is unresolved. This is a diagnostic, not a speedup
+or production promotion; defaults are unchanged.
+[Protocol, identity checks and artifact](results/2026-10-07-qwen4exp-de11-paired-decode-wall-kernel/README.md).
+
+## Qwen4Exp QA-6 raw-index key ring audit
+
+The current QSA index owner stores raw FP32 index keys at 6,144 B/token across
+12 QSA layers: 1.50 GiB at native 262K context. The full index owner is 1.896
+GiB before KV, recurrent-state and scratch owners. An audit found that raw keys
+are written by append paths, read only when newly completed blocks are pooled,
+and ordinary scoring reads the already-incremental pooled bank. Cursor rollback
+restores the logical count and pooled count; production transactions snapshot
+recurrent state rather than copying the full raw-key history.
+
+A raw-key ring remains a possible memory-saving representation, but it changes
+state and snapshot ownership. The current tests do not cover ring wrap,
+partial-block leftovers, dirty restore destinations, ring eviction, or pooled
+history lifetime under c2. No code, allocator, snapshot format or default
+changed. Reopen only if raw-key memory becomes binding in the native capacity
+ledger, then qualify a declared ring variant against full logits/KV/recurrent/
+index state, rollback, lifecycle, 2051/2052 and c2 gates. [Audit and artifact](results/2026-10-06-qwen4exp-qa6-raw-key-ring/README.md).
+
+## Qwen3.8 Flash Next host-sized routed-grid diagnostic
+
+Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+production/BF16/chunk4096. Six natural cases across four categories and
+p512/p1024/p4096 supply 30 Q4/Q5_1 owner cases with six counterbalanced
+pairs each. Downloading the exact tile total reduces grids by 8.03–34.75%
+but does not improve the charged operation.
+
+| Boundary | Static sum of owner medians ms | Host-sized ms | Change |
+| --- | ---: | ---: | ---: |
+| Tile-map, risk, repair and Q4 SiLU | 557.760 | 559.006 | +0.223% |
+
+All 420 replay calls preserve repaired outputs, risk membership, maps and
+input bytes; teardown is clean. Twenty-eight medians are slower and neither
+positive median wins both order strata. Q8 already uses the exact host-sized
+total. The serialized readback candidate is rejected; defaults are unchanged.
+This aggregate is not model wall, and overlapping readback behind independent
+work is untested.
+[Protocol and artifact](results/2026-10-06-qwen4exp-rt2-host-grid/README.md).
+
+## Qwen3.8 Flash Next first-scratch decode diagnostic
+
+Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+real layer4 weights and synthetic top-k10 decode activations/routes. Sixteen
+fresh-process sham/scratch runs measure the original 36-byte GDN and 92-byte
+F32 dense-wide triggers before zero-private Q4_K gate/up and Q8_0 down victims.
+
+| Trigger / victim | Scratch after/before range | Sham after/before range |
+| --- | ---: | ---: |
+| GDN / Q4 gate-up | 0.97600–0.98272 | 0.97518–0.99822 |
+| GDN / Q8 down | 0.98965–1.02339 | 0.98063–0.98278 |
+| Dense-wide / Q4 gate-up | 0.97557–0.97979 | 0.97549–0.97801 |
+| Dense-wide / Q8 down | 0.98041–1.00065 | 0.98099–0.99999 |
+
+All outputs are exact and finite; trigger checks pass. Four cached traces
+confirm first queue allocations of 1,638,400/3,932,160 bytes between baseline
+and trigger, with post-victim calls on the same queue. No multi-fold penalty
+appears for these pairs. The small Q8/GDN effect is unresolved; this is not
+universal throttle clearance or a performance improvement. No defaults change.
+[Protocol, timing correction and artifact](results/2026-10-06-qwen4exp-x5-decode-victims/README.md).
+
+## Qwen3.8 Flash Next checked Q4 gate/up index diagnostic
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, the diagnostic
+checked-int32 Q4_K gate/up sibling preserves the int64 host/map ABI and the
+wide parent's three-plane arithmetic, risk criterion and exact repair. It
+passes the focused bounds, correctness and lifecycle checks, but loses the
+wide parent in all 18 natural complete-operation medians by +0.089% to
++0.474%. The sibling is not selected in production; the wide parent remains
+the default.
+
+[Protocol and artifact](results/2026-10-06-qwen4exp-q4-narrow-index/README.md).
+
+
+Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
+measures a diagnostic F16-input Q8_0 HC-down GEMM sibling at K10240/N320.
+It computes zero-padded row fragments without K-loop branches while keeping
+load/store bounds and valid-row arithmetic. Production admission is
+reported separately above.
+
+| Natural input | Parent owner ms | Padded owner ms | Speedup |
+| --- | ---: | ---: | ---: |
+| code p512 | 55.228 | 42.099 | 1.312x |
+| code p1024 | 56.171 | 42.510 | 1.321x |
+| code p4096 | 188.502 | 138.471 | 1.361x |
+
+All 420 natural calls across six cases are exact, repeatable and preserve
+input/weight bytes; teardown is leak-free. Private scratch 92→0 bytes/lane,
+spills 58→0. CPU-reference/guard tests and cached trace pass. These are
+complete-GEMM sub-window timings, not model-wall rates. The full-model
+qualification and engine A/B are reported separately above.
+[Protocol and artifacts](results/2026-10-06-qwen4exp-dense-wide-padded-screen/README.md).
+
+## Qwen3.8 Flash Next ordered router DPP operation screen
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL
+real F32 router weights at layers 0/22/47, synthetic activations and 20
+counterbalanced pairs per case, the same-tree DPP leaf improves complete
+router logits plus top-10 selection with exact logits/IDs/routing.
+
+| Rows | Parent ms | Candidate ms | Speedup |
+| ---: | ---: | ---: | ---: |
+| 512 | 1.558–1.561 | 1.335–1.336 | 1.167–1.169x |
+| 1024 | 3.062–3.078 | 2.615–2.626 | 1.167–1.172x |
+| 4096 | 12.970–12.974 | 11.410–11.423 | 1.135–1.137x |
+
+Thirty-two GPU operation tests pass and cached trace confirms the leaf.
+The full-model correctness and prefill results are reported separately above.
+[Protocol and artifacts](results/2026-10-05-qwen4exp-router-dpp/README.md).
+
+## Qwen3.8 Flash Next current prefill owner diagnostic after DP-5
+
+On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, clean source
+`3e166ef12`, production UD-Q4_K_XL/BF16 `code-p4096` at chunk4096
+attributes all 2,691 launches per pass. Two separately marked cached-only
+profiler windows have kernel unions 12.443/12.438 s. Warm/profile final
+logits match and teardown is leak-free; the named publisher runs 70 times and
+zero HC-down staging casts remain. This is diagnostic attribution, not a
+throughput comparison.
+
+| Kernel owner | Mean ms/pass | Kernel-union share |
+| --- | ---: | ---: |
+| Dense F32 pipelined DPP coltile | 2241.114 | 18.01% |
+| MoE Q4_K gate/up iu8 risk | 2218.615 | 17.83% |
+| Q8_0 GR-up ordered DPP | 1571.855 | 12.63% |
+| MoE Q5_1 down iu8 risk | 1206.535 | 9.70% |
+| Checked-index GDN recurrence | 743.301 | 5.97% |
+| Router F32 ordered DPP | 544.003 | 4.37% |
+| Q5_1 sparse exact down repair | 535.045 | 4.30% |
+| Full-attention context | 454.615 | 3.65% |
+| Sparse attention rows | 448.076 | 3.60% |
+| Padded dense-wide HC-down tails | 187.558 | 1.51% |
+| Grouped-norm F32/F16 publisher | 119.042 | 0.96% |
+
+[Protocol and artifacts](results/2026-10-06-qwen4exp-post-dp5-prefill-owners/README.md).
+
+## Qwen3.8 Flash Next GR-up DPP operation screen
+
+On physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), Radeon
+8060S, UD-Q4_K_XL, the ordered data-parallel primitive (DPP) reduction
+preserves both F32 outputs and improves the complete GR-up composite on
+real Q8_0 attention/FFN up weights from layers 0 and 22. Twenty
+counterbalanced pairs per case, K=320, N=10240, synthetic F32 activations.
+
+| Rows | Wave-scale parent (ms) | DPP candidate (ms) | Speedup |
+| ---: | ---: | ---: | ---: |
+| 512 | 3.219–3.232 | 2.061–2.091 | 1.539–1.564x |
+| 1024 | 6.346–6.392 | 4.056–4.086 | 1.553–1.570x |
+| 4096 | 24.767–24.870 | 15.968–15.981 | 1.550–1.556x |
+
+All 12 engine state/KV cases pass exactly with measured route engagement.
+The DPP owner is now selected by the measured production profile after the
+tracked-clean engine A/B above. These table values remain operation-level
+results, not model throughput rates.
+[Protocol, correctness and artifacts](results/2026-10-05-qwen4exp-gr-dpp-reduction/README.md).
+
 ## Maintenance contract
 
 Update this file whenever a benchmark artifact is retained or a comparison

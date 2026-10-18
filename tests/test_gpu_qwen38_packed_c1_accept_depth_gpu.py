@@ -77,8 +77,12 @@ def test_native_c1_all_rejections_horizons_and_eos(runtime, depth, padding):
                 assert summary.next_tokens == (int(expected_top[accepted]),)
                 visible = summary.accepted_tokens[0] + summary.next_tokens
                 for eos_index, eos in enumerate(visible):
+                    # The fake request must carry every field the normalizer
+                    # reads: grammar and thinking_hard_token_cap decide whether
+                    # a stop is a grammar completion or a budget exhaustion.
                     state = NS(request=NS(max_tokens=horizon, min_tokens=0,
-                        eos_token_id=eos, stop_token_ids=(), stop_token_sequences=(), ignore_eos=False))
+                        eos_token_id=eos, stop_token_ids=(), stop_token_sequences=(),
+                        ignore_eos=False, grammar=None, thinking_hard_token_cap=None))
                     service = NS(_driver=NS(detokenize=lambda ids: str(tuple(ids))))
                     output = GenerationOutput(text=str(visible), generated_token_ids=visible,
                         token_logprobs=tuple(-float(i + 1) for i in range(len(visible))),

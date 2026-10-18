@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import pytest
 
 _BASELINE_KERNELS: dict[Any, Any] | None = None
 _BASELINE_RUNTIME_PROFILE_PLANS: dict[Any, Any] | None = None
+_BASELINE_HIPENGINE_ENV: dict[str, str] | None = None
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -79,9 +81,17 @@ def pytest_collection_finish(session: pytest.Session) -> None:  # pragma: no cov
     # keys after the teardown restore sees an incomplete registry.
     import_gfx1100_kernel_modules()
 
-    global _BASELINE_KERNELS, _BASELINE_RUNTIME_PROFILE_PLANS
+    global _BASELINE_KERNELS, _BASELINE_RUNTIME_PROFILE_PLANS, _BASELINE_HIPENGINE_ENV
     _BASELINE_KERNELS = dict(registry._KERNELS)
     _BASELINE_RUNTIME_PROFILE_PLANS = dict(execution_profiles._RUNTIME_PROFILE_PLANS)
+    # Profile binders write HIPENGINE_* variables straight into os.environ and
+    # never restore them, so a GPU or live test that binds a profile leaves
+    # flags behind for every later test in the same process. Unit tests that
+    # assert a flag's default then fail only in a whole-suite run. Restore the
+    # collection-time values after each test, like the registry baseline.
+    _BASELINE_HIPENGINE_ENV = {
+        name: value for name, value in os.environ.items() if name.startswith("HIPENGINE_")
+    }
 
 
 @pytest.hookimpl(trylast=True)
@@ -97,3 +107,10 @@ def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> 
         execution_profiles.restore_runtime_profile_registry_for_tests(
             _BASELINE_RUNTIME_PROFILE_PLANS
         )
+    if _BASELINE_HIPENGINE_ENV is not None:
+        for name in [n for n in os.environ if n.startswith("HIPENGINE_")]:
+            if name not in _BASELINE_HIPENGINE_ENV:
+                del os.environ[name]
+        for name, value in _BASELINE_HIPENGINE_ENV.items():
+            if os.environ.get(name) != value:
+                os.environ[name] = value
