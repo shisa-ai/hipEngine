@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import resource
 import sys
@@ -341,16 +342,30 @@ def _run_pass(
     order: Sequence[int],
     logits_by_row: dict[int, list[np.ndarray]],
     progress: bool,
+    reverse_rows: bool = False,
+    uniform: bool = False,
 ) -> list[dict[str, Any]]:
     """Advance the batch and the c1 references in lockstep over one schedule.
 
     ``order`` maps row position to slot: row ``r`` advances ``order[r]``, and the
     c1 reference for that slot is advanced with the same teacher-forced token.
+
+    ``reverse_rows`` reverses the row order *within* each step while keeping the
+    same row set, so every slot still advances the same number of times. That is
+    the composition-order invariance check: reversing the schedule itself would
+    give slots different histories and compare unrelated states. ``uniform``
+    advances every row in every step, which is the schedule the control pass
+    needs so that each slot's history is independent of the row order.
     """
 
     records: list[dict[str, Any]] = []
-    for step, row_set in enumerate(_schedule(rows, steps)):
+    schedule = [tuple(range(rows))] * steps if uniform else list(
+        _schedule(rows, steps)
+    )
+    for step, row_set in enumerate(schedule):
         slots = [int(order[index]) for index in row_set]
+        if reverse_rows:
+            slots = list(reversed(slots))
         tokens = []
         expected = []
         for slot in slots:
@@ -509,6 +524,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{plan_report['device']['free_bytes'] / GIB:.2f} GiB"
         )
 
+    # c1's decode is graph-captured as a single-request optimization; the batch
+    # runner is eager. Captured and eager execution are different profiles, and
+    # with capture on the control pass is not reproducible (measured: reset and
+    # re-prefill did not restore the captured state, so pass B differed from
+    # pass A on every slot). Off, the control pass is byte-identical. This is the
+    # same setting the synthetic GPU batch tests use.
+    os.environ["HIPENGINE_QWEN4_EXP_MOE_GRAPH"] = "0"
+    os.environ["HIPENGINE_QWEN4_EXP_LAYER_GRAPHS"] = "0"
+
     generator = None
     batch = None
     references: list[Qwen4ExpGGUFResidentModelRunner] = []
@@ -533,6 +557,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             resident_capacity=1,
             prefill_chunk_size=args.prefill_chunk_size,
         )
+        report["execution_profile_env"] = {
+            key: value
+            for key, value in sorted(os.environ.items())
+            if key.startswith("HIPENGINE_QWEN4_EXP_")
+            or key.startswith("HIPENGINE_EXECUTION_PROFILE")
+        }
         report["load_seconds"] = perf_counter() - load_started
         report["load_owned_bytes"] = memory_stats()
         free_after_load, _ = _device_bytes(runtime)
@@ -637,65 +667,86 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
         if not args.skip_control_pass:
-            print("control pass B: reset, re-import, reversed row order", flush=True)
-            for slot, owner in enumerate(owners):
-                batch.reset_slot(slot, owner)
-                if batch.is_poisoned(slot):
-                    raise RuntimeError(f"slot {slot} stayed poisoned after reset")
-            for reference, row in zip(references, prompts):
-                reference.reset()
-                result = reference.prefill_serial(row["tokens"])
-                reference.last_logits = np.asarray(
-                    result.logits, dtype=np.float32
-                ).copy()
-            for slot, row in enumerate(prompts):
-                position = batch.import_prefilled(
-                    slot, owners[slot], source=references[slot]
+            # Both control passes advance every row in every step from a fresh
+            # import, so each slot's history is identical between them and the
+            # only difference is the row order inside each step. Comparing the
+            # ladder schedule of pass A against a reversed ladder would compare
+            # slots that advanced a different number of times.
+            def _fresh_uniform_pass(
+                *, reverse_rows: bool, label: str
+            ) -> tuple[dict[int, dict[str, str]], dict[int, list[np.ndarray]]]:
+                print(
+                    f"control pass {label}: reset, re-import, "
+                    f"{'reversed' if reverse_rows else 'ascending'} row order",
+                    flush=True,
                 )
-                if position != row["prefill_position"]:
-                    raise RuntimeError(
-                        f"control import of slot {slot} landed at {position}"
+                for slot, owner in enumerate(owners):
+                    batch.reset_slot(slot, owner)
+                    if batch.is_poisoned(slot):
+                        raise RuntimeError(
+                            f"slot {slot} stayed poisoned after reset"
+                        )
+                for reference, row in zip(references, prompts):
+                    reference.reset()
+                    result = reference.prefill_serial(row["tokens"])
+                    reference.last_logits = np.asarray(
+                        result.logits, dtype=np.float32
+                    ).copy()
+                for slot, row in enumerate(prompts):
+                    position = batch.import_prefilled(
+                        slot, owners[slot], source=references[slot]
                     )
-            order = list(reversed(range(rows)))
-            logits_b: dict[int, list[np.ndarray]] = {}
-            records_b = _run_pass(
-                batch=batch,
-                references=references,
-                owners=owners,
-                rows=rows,
-                steps=args.steps,
-                order=order,
-                logits_by_row=logits_b,
-                progress=args.progress,
+                    if position != row["prefill_position"]:
+                        raise RuntimeError(
+                            f"control import of slot {slot} landed at {position}"
+                        )
+                logits: dict[int, list[np.ndarray]] = {}
+                _run_pass(
+                    batch=batch,
+                    references=references,
+                    owners=owners,
+                    rows=rows,
+                    steps=args.steps,
+                    order=list(range(rows)),
+                    logits_by_row=logits,
+                    progress=args.progress,
+                    reverse_rows=reverse_rows,
+                    uniform=True,
+                )
+                return _slot_digests(batch, runtime), logits
+
+            digests_c, logits_c = _fresh_uniform_pass(
+                reverse_rows=False, label="A2"
             )
-            digests_b = _slot_digests(batch, runtime)
+            digests_b, logits_b = _fresh_uniform_pass(
+                reverse_rows=True, label="B"
+            )
             identical = {
                 str(slot): bool(
-                    digests_a[slot] == digests_b[slot]
+                    digests_c[slot] == digests_b[slot]
                     and all(
                         np.array_equal(first, second)
                         for first, second in zip(
-                            logits_a[slot], logits_b[slot]
+                            logits_c[slot], logits_b[slot]
                         )
                     )
                 )
                 for slot in range(rows)
             }
             report["control_pass_b"] = {
-                "row_order": order,
-                "records": records_b,
-                "summary": _summary(records_b),
+                "row_order": "reversed within each step",
+                "baseline_digests": {str(k): v for k, v in digests_c.items()},
                 "digests": {str(k): v for k, v in digests_b.items()},
-                "identical_to_pass_a": identical,
+                "identical_to_ascending": identical,
             }
             if not all(identical.values()):
                 raise RuntimeError(
-                    "control pass diverged from pass A: "
+                    "control pass diverged from the ascending uniform pass: "
                     + json.dumps(identical, indent=2)
                 )
             print(
                 "control pass B: every slot's state and logits are byte-identical "
-                "to pass A",
+                "to the ascending uniform pass",
                 flush=True,
             )
 
