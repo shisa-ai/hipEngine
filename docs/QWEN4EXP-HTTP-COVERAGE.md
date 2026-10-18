@@ -259,6 +259,7 @@ count and speculative settings.
 | --- | --- |
 | Finish causes describe execution | [Five live cases](../benchmarks/results/2026-10-18-zbook-qwen4exp-finish-route-audit.json) (length, EOS, request stop, `ignore_eos`, sampled MTP) pass 20 checks. A server stop reports `matched_stop` and drops the backend `eos_token_id`/`length_limit`/`stop_sequence` so one finish cannot name two causes. |
 | Served text is user text | The same audit fails if `<|im_start|>`, `<|im_end|>` or `<|endoftext|>` appears in `content`; served text decodes with `skip_special=True`. |
+| Streaming usage matches blocking | With the documented `stream_options.include_usage` opt-in, the terminal SSE payload reports the same prompt/completion/total counts and the same text as the blocking response for one request. |
 | Sampled speculation is reported as run | A sampled MTP request reports `used: true`, names `qwen4_exp_mtp`, and its draft/accepted counts equal the sum over the reported cycles. |
 | Capacity envelope | [Ladder](../benchmarks/results/2026-10-18-zbook-qwen4exp-capacity-ladder.json): the admission planner admits 4 slots at the native 262,144 context, but the engine's qualified width there is 2 slots and a 4-slot request is refused with a structured 503 naming both remedies. |
 | Retrieval at depth | [HTTP gate](../benchmarks/results/2026-10-18-zbook-qwen4exp-http-long-context.json) passes 4/4 answers at 10/40/70/95% depth for 8,165, 16,337, 65,517 and 200,666 prompt tokens (English and Japanese). |

@@ -140,6 +140,54 @@ def audit_ignore_eos(body: dict[str, Any]) -> list[dict[str, Any]]:
     return checks
 
 
+def audit_sse_usage(blocking: dict[str, Any], streaming: dict[str, Any]) -> list[dict[str, Any]]:
+    """Streaming and blocking answers must report the same usage for one request."""
+
+    checks: list[dict[str, Any]] = []
+    left = blocking.get("usage") or {}
+    right = streaming.get("usage") or {}
+    _check(checks, "sse_usage.prompt_tokens_match",
+           left.get("prompt_tokens") == right.get("prompt_tokens"),
+           blocking=left.get("prompt_tokens"), streaming=right.get("prompt_tokens"))
+    _check(checks, "sse_usage.completion_tokens_match",
+           left.get("completion_tokens") == right.get("completion_tokens"),
+           blocking=left.get("completion_tokens"), streaming=right.get("completion_tokens"))
+    _check(checks, "sse_usage.total_tokens_match",
+           left.get("total_tokens") == right.get("total_tokens"),
+           blocking=left.get("total_tokens"), streaming=right.get("total_tokens"))
+    left_text = ((blocking.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+    right_text = "".join(
+        ((choice.get("delta") or {}).get("content") or "")
+        for choice in streaming.get("choices") or ()
+    )
+    _check(checks, "sse_usage.text_matches", left_text.strip() == right_text.strip(),
+           blocking_text=left_text, streaming_text=right_text)
+    _check(checks, "sse_usage.completion_tokens_counted",
+           int(left.get("completion_tokens") or 0) > 0, completion_tokens=left.get("completion_tokens"))
+    return checks
+
+
+def _stream_usage(client: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Collect the terminal usage and text deltas from an SSE response."""
+
+    usage: dict[str, Any] = {}
+    choices: list[dict[str, Any]] = []
+    # Usage is opt-in on a stream, exactly as the API documents.
+    request = {**payload, "stream": True, "stream_options": {"include_usage": True}}
+    with client.stream("POST", "/v1/chat/completions", json=request) as response:
+        for line in response.iter_lines():
+            if not line.startswith("data: "):
+                continue
+            data = line[len("data: "):].strip()
+            if data == "[DONE]":
+                break
+            event = json.loads(data)
+            if event.get("usage"):
+                usage = event["usage"]
+            choices.extend(event.get("choices") or ())
+    return {"usage": usage, "choices": choices}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:18392")
@@ -255,6 +303,29 @@ def main() -> int:
         },
         audit_sampled_mtp,
     )
+
+    # Streaming and blocking must agree on what the request cost.
+    usage_payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "Count from 1 to 20, one number per line."}],
+        "temperature": 0.0,
+        "max_tokens": 96,
+    }
+    with httpx.Client(base_url=args.url, timeout=httpx.Timeout(900.0)) as client:
+        blocking_body = client.post("/v1/chat/completions", json=usage_payload).json()
+        streaming_body = _stream_usage(client, usage_payload)
+    usage_checks = audit_sse_usage(blocking_body, streaming_body)
+    report["cases"].append({
+        "case": "sse_usage",
+        "status": 200,
+        "finish_reason": ((blocking_body.get("choices") or [{}])[0]).get("finish_reason"),
+        "finish_details": ((blocking_body.get("choices") or [{}])[0]).get("finish_details"),
+        "text": ((blocking_body.get("choices") or [{}])[0].get("message") or {}).get("content"),
+        "usage": blocking_body.get("usage"),
+        "streaming_usage": streaming_body.get("usage"),
+        "checks": usage_checks,
+    })
+    checks.extend({"case": "sse_usage", **item} for item in usage_checks)
 
     failures = [item for item in checks if not item["passed"]]
     report["status"] = "passed" if not failures else "failed"
