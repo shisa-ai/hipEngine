@@ -1,0 +1,102 @@
+{
+ "schema": "hipengine.qwen4exp.capacity_ladder.v1",
+ "date": "2026-10-18",
+ "host": "zbook",
+ "backend": "hip_gfx1151",
+ "quant": "gguf_ud_q4_k_xl",
+ "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "execution_profile": "production",
+ "tier1_command": ".venv/bin/python scripts/qwen4_exp_memory_plan.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --context 262144 --context 131072 --context 65536 --context 32768 --resident-capacity 4 --json-out /tmp/memplan_c4.json",
+ "tier1": {
+  "probe": "scripts/qwen4_exp_memory_plan.py (admission planner; scripts/gguf_capacity_probe.py rejects architecture qwen4exp)",
+  "available_device_bytes": 130570309632,
+  "physical_device_total_bytes": 133143986176,
+  "resident_capacity": 4,
+  "device_weight_bytes": 82523491840,
+  "ple_mmap_bytes": 28800138240,
+  "admissions": [
+   {
+    "context_tokens": 262144,
+    "passed": true,
+    "required_bytes": 125508736192,
+    "shortfall_bytes": 0,
+    "kv_bytes": 25769803776,
+    "index_bytes": 8142128832,
+    "runtime_state_bytes": 478134272
+   },
+   {
+    "context_tokens": 131072,
+    "passed": true,
+    "required_bytes": 108553262272,
+    "shortfall_bytes": 0,
+    "kv_bytes": 12884901888,
+    "index_bytes": 4071556800,
+    "runtime_state_bytes": 478134272
+   },
+   {
+    "context_tokens": 65536,
+    "passed": true,
+    "required_bytes": 100075525312,
+    "shortfall_bytes": 0,
+    "kv_bytes": 6442450944,
+    "index_bytes": 2036270784,
+    "runtime_state_bytes": 478134272
+   },
+   {
+    "context_tokens": 32768,
+    "passed": true,
+    "required_bytes": 95836656832,
+    "shortfall_bytes": 0,
+    "kv_bytes": 3221225472,
+    "index_bytes": 1018627776,
+    "runtime_state_bytes": 478134272
+   }
+  ],
+  "claim": "the memory envelope admits 4 resident slots at the native 262144 context"
+ },
+ "qualified_width": {
+  "engine_bound": "resident capacity must be within 1..2 for max_sequence_length=262144",
+  "measured": {
+   "context": 262144,
+   "max_active_requests": 2,
+   "startup": "prepared, ready",
+   "mtp": "serving=enabled engine_supported=True"
+  },
+  "refused": {
+   "context": 262144,
+   "max_active_requests": 4,
+   "response": {
+    "status_code": 503,
+    "code": "resident_prepare_failed",
+    "message_contains": "resident capacity must be within 1..2 for max_sequence_length=262144"
+   }
+  },
+  "note": "the allocation planner is memory math; the engine also enforces the qualified slot bound, which is narrower at long context"
+ },
+ "tier2_confirmations": [
+  {
+   "prompt_tokens": 8165,
+   "passed": true,
+   "source": "2026-10-18-zbook-qwen4exp-http-long-context.json"
+  },
+  {
+   "prompt_tokens": 16337,
+   "passed": true,
+   "source": "2026-10-18-zbook-qwen4exp-http-long-context.json"
+  },
+  {
+   "prompt_tokens": 65517,
+   "passed": true,
+   "source": "2026-10-18-zbook-qwen4exp-http-long-context.json"
+  },
+  {
+   "prompt_tokens": 200666,
+   "passed": true,
+   "source": "2026-10-18-zbook-qwen4exp-http-long-context.json"
+  }
+ ],
+ "artifacts": [
+  "benchmarks/results/2026-10-18-zbook-qwen4exp-http-long-context.json",
+  "benchmarks/results/2026-10-18-zbook-qwen4exp-http-lifecycle.json"
+ ]
+}

@@ -1,0 +1,257 @@
+{
+ "schema": "hipengine.qwen4exp.http_long_context_gate.v1",
+ "created_at": "2026-10-18T07:02:47Z",
+ "url": "http://127.0.0.1:18395",
+ "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "targets": [
+  8192,
+  16384,
+  65536
+ ],
+ "langs": [
+  "en",
+  "ja"
+ ],
+ "max_tokens": 160,
+ "cases": [
+  {
+   "id": "long_retrieval_en_p8192",
+   "passed": true,
+   "target_chat_tokens": 8165,
+   "prompt_tokens": 8165,
+   "completion_tokens": 32,
+   "expected": [
+    7360,
+    1218,
+    5072,
+    3599
+   ],
+   "got": [
+    7360,
+    1218,
+    5072,
+    3599
+   ],
+   "correct": 4,
+   "questions": 4,
+   "elapsed_s": 13.108,
+   "prefill_tokens_per_s": 622.9,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "text": "1: 7360\n2: 1218\n3: 5072\n4: 3599"
+  },
+  {
+   "id": "long_retrieval_ja_p8192",
+   "passed": true,
+   "target_chat_tokens": 8176,
+   "prompt_tokens": 8176,
+   "completion_tokens": 31,
+   "expected": [
+    8581,
+    8037,
+    9374,
+    265
+   ],
+   "got": [
+    8581,
+    8037,
+    9374,
+    265
+   ],
+   "correct": 4,
+   "questions": 4,
+   "elapsed_s": 10.874,
+   "prefill_tokens_per_s": 751.9,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "text": "1: 8581\n2: 8037\n3: 9374\n4: 265"
+  },
+  {
+   "id": "long_retrieval_en_p16384",
+   "passed": true,
+   "target_chat_tokens": 16337,
+   "prompt_tokens": 16337,
+   "completion_tokens": 32,
+   "expected": [
+    9498,
+    4771,
+    1623,
+    6543
+   ],
+   "got": [
+    9498,
+    4771,
+    1623,
+    6543
+   ],
+   "correct": 4,
+   "questions": 4,
+   "elapsed_s": 19.106,
+   "prefill_tokens_per_s": 855.1,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "text": "1: 9498\n2: 4771\n3: 1623\n4: 6543"
+  },
+  {
+   "id": "long_retrieval_ja_p16384",
+   "passed": true,
+   "target_chat_tokens": 16357,
+   "prompt_tokens": 16357,
+   "completion_tokens": 32,
+   "expected": [
+    7272,
+    9883,
+    9491,
+    3260
+   ],
+   "got": [
+    7272,
+    9883,
+    9491,
+    3260
+   ],
+   "correct": 4,
+   "questions": 4,
+   "elapsed_s": 18.477,
+   "prefill_tokens_per_s": 885.3,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "text": "1: 7272\n2: 9883\n3: 9491\n4: 3260"
+  },
+  {
+   "id": "long_retrieval_en_p65536",
+   "passed": true,
+   "target_chat_tokens": 65517,
+   "prompt_tokens": 65517,
+   "completion_tokens": 32,
+   "expected": [
+    2355,
+    4910,
+    2936,
+    1831
+   ],
+   "got": [
+    2355,
+    4910,
+    2936,
+    1831
+   ],
+   "correct": 4,
+   "questions": 4,
+   "elapsed_s": 75.876,
+   "prefill_tokens_per_s": 863.5,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "text": "1: 2355\n2: 4910\n3: 2936\n4: 1831"
+  },
+  {
+   "id": "long_retrieval_ja_p65536",
+   "passed": true,
+   "target_chat_tokens": 65534,
+   "prompt_tokens": 65534,
+   "completion_tokens": 31,
+   "expected": [
+    6284,
+    7442,
+    512,
+    2879
+   ],
+   "got": [
+    6284,
+    7442,
+    512,
+    2879
+   ],
+   "correct": 4,
+   "questions": 4,
+   "elapsed_s": 75.572,
+   "prefill_tokens_per_s": 867.2,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "text": "1: 6284\n2: 7442\n3: 512\n4: 2879"
+  },
+  {
+   "id": "long_retrieval_en_p200704",
+   "passed": true,
+   "target_chat_tokens": 200666,
+   "prompt_tokens": 200666,
+   "completion_tokens": 31,
+   "expected": [
+    5822,
+    8115,
+    8351,
+    660
+   ],
+   "got": [
+    5822,
+    8115,
+    8351,
+    660
+   ],
+   "correct": 4,
+   "questions": 4,
+   "elapsed_s": 314.254,
+   "prefill_tokens_per_s": 638.5,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "text": "1: 5822\n2: 8115\n3: 8351\n4: 660"
+  }
+ ],
+ "case_count": 7,
+ "failure_count": 0,
+ "status": "passed",
+ "server": {
+  "max_context_tokens": 262144,
+  "kv_storage": "bf16",
+  "max_active_requests": 2,
+  "ar_batch": {
+   "enabled": false,
+   "reason": "qualified only at <= 2048 positions"
+  },
+  "speculative_mtp": {
+   "serving": "opt_in",
+   "enabled": true
+  }
+ },
+ "command": ".venv/bin/python scripts/qwen4exp_http_long_context_gate.py --url http://127.0.0.1:18395 --targets 8192,16384,65536 --langs en,ja; then --targets 200704 --langs en",
+ "date": "2026-10-18",
+ "host": "zbook",
+ "backend": "hip_gfx1151",
+ "quant": "gguf_ud_q4_k_xl",
+ "execution_profile": "production"
+}

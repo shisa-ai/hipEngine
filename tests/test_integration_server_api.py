@@ -17,7 +17,7 @@ import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
-from hipengine import SamplingParams
+from hipengine import ResidentPreparationError, SamplingParams
 from hipengine.generation import (
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     FinishDetails,
@@ -22642,3 +22642,61 @@ def test_string_value_counts_escapes_label_values_that_would_break_the_format() 
     assert "\\n" in samples[0]
     assert '\\"' in samples[0]
     assert "\n" not in samples[0]
+
+
+def test_resident_prepare_refusal_returns_a_structured_remedy() -> None:
+    """An operator-level refusal must not surface as an opaque 500.
+
+    A wrong slot/context combination is refused when the resident session is
+    prepared. Every endpoint that touches the engine, including capabilities and
+    chat preparation, must report the refusal and its remedy.
+    """
+
+    class RefusingLLM(FakeLLM):
+        def prepare(self, *, max_sequence_length: int | None = None, sampling_params: SamplingParams) -> int:
+            raise ResidentPreparationError(
+                "resident capacity must be within 1..2 for max_sequence_length=262144"
+            )
+
+        @property
+        def supports_speculative(self) -> bool:
+            # The real engine builds the text generator to answer this, so a
+            # capability probe reaches the same refusal as a request does.
+            raise ResidentPreparationError(
+                "resident capacity must be within 1..2 for max_sequence_length=262144"
+            )
+
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            kv_storage="bf16",
+            kv_scale_dtype="fp32",
+            eager_load=True,
+            # A configured provider makes the capability probe reach the engine,
+            # which is how the refusal escaped as a bare 500 in production.
+            speculative_provider="qwen4_exp_mtp",
+            draft_model="fake-draft.gguf",
+        ),
+        llm=RefusingLLM(outputs=["never"]),
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    for path in ("/v1/hipengine/capabilities",):
+        response = client.get(path)
+        assert response.status_code == 503, (path, response.status_code, response.text)
+        body = response.json()
+        assert body["error"]["code"] == "resident_prepare_failed", body
+        assert "resident capacity must be within 1..2" in body["error"]["message"], body
+        assert body["error"]["hipengine"]["guidance"], body
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 4},
+    )
+    assert response.status_code == 503, (response.status_code, response.text)
+    assert response.json()["error"]["code"] == "resident_prepare_failed"
+
+    ready = client.get("/ready")
+    assert ready.status_code == 503
+    assert ready.json()["ready"] is False

@@ -5,6 +5,6 @@ Importing this module must remain torch-free. Optional torch interop belongs beh
 """
 
 from hipengine.execution_profiles import ExecutionProfile
-from hipengine.llm import LLM, SamplingParams
+from hipengine.llm import LLM, ResidentPreparationError, SamplingParams
 
-__all__ = ["ExecutionProfile", "LLM", "SamplingParams"]
+__all__ = ["ExecutionProfile", "LLM", "ResidentPreparationError", "SamplingParams"]

@@ -248,6 +248,27 @@ These functional checks do not qualify concurrent widths, a latency SLO, product
 numerical/task quality, automatic MTP selection or other hardware. The final campaign
 regression and soak remain required.
 
+## PS9 finish, route, capacity and lifecycle qualification
+
+Serving claims were audited against the executed path rather than the request.
+Every check below runs over HTTP against the resident server on zbook gfx1151
+with production `UD-Q4_K_XL`; each artifact states its context, KV policy, slot
+count and speculative settings.
+
+| Requirement | Evidence |
+| --- | --- |
+| Finish causes describe execution | [Five live cases](../benchmarks/results/2026-10-18-zbook-qwen4exp-finish-route-audit.json) (length, EOS, request stop, `ignore_eos`, sampled MTP) pass 20 checks. A server stop reports `matched_stop` and drops the backend `eos_token_id`/`length_limit`/`stop_sequence` so one finish cannot name two causes. |
+| Served text is user text | The same audit fails if `<|im_start|>`, `<|im_end|>` or `<|endoftext|>` appears in `content`; served text decodes with `skip_special=True`. |
+| Sampled speculation is reported as run | A sampled MTP request reports `used: true`, names `qwen4_exp_mtp`, and its draft/accepted counts equal the sum over the reported cycles. |
+| Capacity envelope | [Ladder](../benchmarks/results/2026-10-18-zbook-qwen4exp-capacity-ladder.json): the admission planner admits 4 slots at the native 262,144 context, but the engine's qualified width there is 2 slots and a 4-slot request is refused with a structured 503 naming both remedies. |
+| Retrieval at depth | [HTTP gate](../benchmarks/results/2026-10-18-zbook-qwen4exp-http-long-context.json) passes 4/4 answers at 10/40/70/95% depth for 8,165, 16,337, 65,517 and 200,666 prompt tokens (English and Japanese). |
+| Lifecycle | [14 checks](../benchmarks/results/2026-10-18-zbook-qwen4exp-http-lifecycle.json): 4 concurrent live slots observed then released to 0, oversubscription answered, a disconnected stream releases its slot and the server keeps serving, stateful session commit/list/delete. |
+
+Scope limits for this packet: prefix reuse is `off` and is not claimed;
+AR-batch slots are qualified only at `max_sequence_length <= 2048`, so
+long-context batching and long-context cancellation under batch stay open;
+capacity is a single physical machine and does not transfer.
+
 ## Baseline feature grid (before PS1/PS3/PS5 fixes)
 
 | Check | AR | Explicit MTP | Verdict |

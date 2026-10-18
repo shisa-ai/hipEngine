@@ -243,6 +243,16 @@ class SamplingParams:
         validate_sampling_params(self)
 
 
+class ResidentPreparationError(RuntimeError):
+    """The resident session/KV cache cannot be prepared for this configuration.
+
+    Raised when the generator refuses the requested context, resident slot
+    count, or KV policy. It is an operator-level refusal, so the message must
+    name the setting that was refused; the server turns it into a structured
+    error instead of an opaque 500.
+    """
+
+
 class LLM:
     """Minimal public LLM API.
 
@@ -930,11 +940,18 @@ class LLM:
             effective_factory,max_sequence_length=self.max_sequence_length,
             resident_capacity=(self.max_active_requests if self.max_active_requests is not None
                                else base_loop_config.max_active_requests)))
-        generator = (
-            factory(**factory_kwargs)
-            if profile_resolution is None
-            else profile_resolution.construct_generator(factory, **factory_kwargs)
-        )
+        try:
+            generator = (
+                factory(**factory_kwargs)
+                if profile_resolution is None
+                else profile_resolution.construct_generator(factory, **factory_kwargs)
+            )
+        except Exception as exc:
+            # Generator construction sizes the resident session, so its
+            # refusals are configuration errors, not request faults. Naming the
+            # type here keeps every caller (capability probes included) from
+            # reporting them as an unhandled failure.
+            raise ResidentPreparationError(str(exc)) from exc
         # The loaded resident model owns staged MTP candidate depth. Publish the
         # public LLM setting on that owner before its cold adapter is resolved;
         # model-plugin evidence still decides whether the resulting key admits.

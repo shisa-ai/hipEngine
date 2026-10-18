@@ -1,0 +1,141 @@
+{
+ "schema": "hipengine.qwen4exp.http_lifecycle_gate.v1",
+ "created_at": "2026-10-18T07:14:37Z",
+ "url": "http://127.0.0.1:18396",
+ "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "checks": [
+  {
+   "name": "sequential[0].status",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "sequential[1].status",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "sequential[2].status",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "sequential.no_leaked_slots",
+   "passed": true,
+   "live_slots": 0
+  },
+  {
+   "name": "concurrent.slots_were_used",
+   "passed": true,
+   "max_live_slots": 4
+  },
+  {
+   "name": "concurrent.all_completed",
+   "passed": true,
+   "statuses": [
+    200,
+    200,
+    200,
+    200
+   ]
+  },
+  {
+   "name": "concurrent.no_leaked_slots",
+   "passed": true,
+   "live_slots": 0
+  },
+  {
+   "name": "oversubscribe.answered_every_request",
+   "passed": true,
+   "statuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+   ]
+  },
+  {
+   "name": "cancel.slot_released",
+   "passed": true,
+   "live_slots": 0
+  },
+  {
+   "name": "cancel.server_still_serves",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "session.commit_action_reported",
+   "passed": true,
+   "cache_action": "append_visible_only"
+  },
+  {
+   "name": "session.listed_after_commit",
+   "passed": true,
+   "session_ids": [
+    "lifecycle-1792307677"
+   ]
+  },
+  {
+   "name": "session.delete_ok",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "session.removed_after_delete",
+   "passed": true,
+   "session_ids": []
+  }
+ ],
+ "details": {
+  "configured_width": 4,
+  "live_slots_before": 0,
+  "live_slots_after_sequential": 0,
+  "max_live_slots_during_concurrent": 4,
+  "concurrent_s": 1.258,
+  "concurrent_statuses": [
+   200,
+   200,
+   200,
+   200
+  ],
+  "live_slots_after_concurrent": 0,
+  "oversubscribe_statuses": [
+   200,
+   200,
+   200,
+   200,
+   200,
+   200
+  ],
+  "oversubscribe_codes": [],
+  "stream_chunks_before_disconnect": 4,
+  "stream_error": null,
+  "live_slots_after_cancel": 0,
+  "session_cache_action": "append_visible_only"
+ },
+ "check_count": 14,
+ "failure_count": 0,
+ "status": "passed",
+ "server": {
+  "max_context_tokens": 2048,
+  "kv_storage": "bf16",
+  "max_active_requests": 4,
+  "ar_batch": {
+   "enabled": true,
+   "slots": 4
+  },
+  "speculative_mtp": {
+   "serving": "opt_in",
+   "thinking": "hard"
+  }
+ },
+ "command": ".venv/bin/python scripts/qwen4exp_http_lifecycle_gate.py --url http://127.0.0.1:18396",
+ "date": "2026-10-18",
+ "host": "zbook",
+ "backend": "hip_gfx1151",
+ "quant": "gguf_ud_q4_k_xl",
+ "execution_profile": "production"
+}

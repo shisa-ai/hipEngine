@@ -48,3 +48,18 @@ def test_a_configuration_failure_points_at_the_setting(exc: BaseException) -> No
 
     assert guidance != _ALLOCATION_HINT
     assert "configuration error" in guidance
+
+
+def test_a_resident_slot_refusal_names_both_fixes() -> None:
+    """A slot bound at a long context is not fixed by a KV-storage change."""
+
+    guidance = _resident_prepare_guidance(
+        ValueError(
+            "Qwen4Exp resident capacity must be within 1..2 for "
+            "max_sequence_length=262144; the production bound is 2"
+        )
+    )
+
+    assert guidance != _ALLOCATION_HINT
+    assert "--max-active-requests" in guidance
+    assert "--max-context-tokens" in guidance

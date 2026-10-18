@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 
 from starlette.concurrency import run_in_threadpool
 
-from hipengine import LLM, SamplingParams
+from hipengine import LLM, ResidentPreparationError, SamplingParams
 from hipengine.generation import (
     DecodeState,
     FinishDetails,
@@ -580,6 +580,18 @@ class OpenAIHTTPError(Exception):
         self.extra = {} if extra is None else dict(extra)
         self.headers = {} if headers is None else dict(headers)
         super().__init__(message)
+
+
+def _resident_prepare_http_error(exc: BaseException) -> "OpenAIHTTPError":
+    """Report an operator-level resident refusal with the remedy it implies."""
+
+    return OpenAIHTTPError(
+        503,
+        str(exc),
+        error_type="server_error",
+        code="resident_prepare_failed",
+        extra={"hipengine": {"guidance": _resident_prepare_guidance(exc)}},
+    )
 
 
 def _generation_admission_http_error(
@@ -1356,6 +1368,13 @@ def _resident_prepare_guidance(exc: BaseException) -> str:
     )
     if states_a_quantity and names_memory:
         return "Try a lower --max-context-tokens or --kv-storage int8_per_token_head."
+    if "resident capacity" in message and "max_sequence_length" in message:
+        # The engine refuses a slot count at this context, not a memory size.
+        # Lowering context and lowering slots are different fixes; say both.
+        return (
+            "Lower --max-active-requests to the resident slot bound, or lower "
+            "--max-context-tokens to the width the qualified slot count covers."
+        )
     return (
         "Fix the reported configuration error; the server logs name the exact "
         "setting that was refused."
@@ -4944,11 +4963,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             raise
         except MemoryError as exc:
+            guidance = (
+                "Try a lower --max-context-tokens or --kv-storage int8_per_token_head."
+            )
             _LOGGER.error(
-                "hipEngine %s failed to allocate resident KV cache: %s. "
-                "Try a lower --max-context-tokens or --kv-storage int8_per_token_head.",
+                "hipEngine %s failed to allocate resident KV cache: %s. %s",
                 phase,
                 exc,
+                guidance,
+            )
+            raise ResidentPreparationError(str(exc)) from exc
+        except ResidentPreparationError as exc:
+            _LOGGER.error(
+                "hipEngine %s failed to prepare resident session/KV cache: %s. %s",
+                phase,
+                exc,
+                _resident_prepare_guidance(exc.__cause__ or exc),
             )
             raise
         except Exception as exc:
@@ -4959,7 +4989,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 exc,
                 guidance,
             )
-            raise
+            raise ResidentPreparationError(str(exc)) from exc
         finally:
             if previous_sigint is not None:
                 signal.signal(signal.SIGINT, previous_sigint)
@@ -5393,6 +5423,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         return f"bearer_sha256:{_sha256_text(config.api_key)}"
 
+    @app.exception_handler(ResidentPreparationError)
+    async def resident_prepare_error_handler(
+        request: Request, exc: ResidentPreparationError
+    ) -> JSONResponse:
+        return await openai_error_handler(request, _resident_prepare_http_error(exc))
+
     @app.exception_handler(OpenAIHTTPError)
     async def openai_error_handler(request: Request, exc: OpenAIHTTPError) -> JSONResponse:
         _log_request_failure(
@@ -5737,6 +5773,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         except ValueError as exc:
             app.state.hipengine_server_metrics.record_failure()
             raise OpenAIHTTPError(400, str(exc), code="invalid_request") from exc
+        except ResidentPreparationError as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            raise _resident_prepare_http_error(exc) from exc
         except Exception as exc:  # pragma: no cover - exercised by real runtime failures
             app.state.hipengine_server_metrics.record_failure()
             raise OpenAIHTTPError(
@@ -6646,6 +6685,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     @app.get("/v1/hipengine/capabilities")
     async def capabilities(_auth: None = Depends(require_auth)) -> dict[str, Any]:
+        # Introspection must answer even when the resident session could not be
+        # prepared: a refusal has to name the refused setting, not surface as an
+        # unhandled 500 that hides the remedy from the operator.
+        try:
+            return _capabilities_payload()
+        except ResidentPreparationError as exc:
+            raise _resident_prepare_http_error(exc) from exc
+        except OpenAIHTTPError:
+            raise
+        except Exception as exc:
+            raise OpenAIHTTPError(
+                503,
+                f"capabilities unavailable: {exc}",
+                error_type="server_error",
+                code="capabilities_unavailable",
+            ) from exc
+
+    def _capabilities_payload() -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
         model_identity = _server_model_identity(config, engine)
         tokenizer_caps = _tokenizer_capability_flags(engine)
