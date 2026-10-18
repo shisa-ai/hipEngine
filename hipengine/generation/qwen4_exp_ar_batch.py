@@ -33,7 +33,7 @@ Three properties are control, not arithmetic, and are asserted exactly:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import operator
 import os
 import threading
@@ -162,6 +162,11 @@ class _Lease:
     owner: int
     positions: int
     imported: bool = False
+    #: Physical widths this request's own decode steps ran at, keyed by row
+    #: count. A request that shared a step with three peers reports ``{4: n}``,
+    #: so a response can describe the work it actually took part in instead of
+    #: the queue shape it was planned under.
+    step_widths: dict[int, int] = field(default_factory=dict)
 
 
 class Qwen4ExpARBatchOwner:
@@ -425,7 +430,10 @@ class Qwen4ExpARBatchOwner:
             raise Qwen4ExpARBatchStepError(request_ids, slots, error) from error
         with self._state_lock:
             self._steps += 1
-            self._widths[len(request_ids)] = self._widths.get(len(request_ids), 0) + 1
+            width = len(request_ids)
+            self._widths[width] = self._widths.get(width, 0) + 1
+            for lease in leases:
+                lease.step_widths[width] = lease.step_widths.get(width, 0) + 1
         return decoded
 
     def _decode_rows(
@@ -491,7 +499,6 @@ class Qwen4ExpARBatchOwner:
 
     def release(self, request_id: int) -> bool:
         """Drop ``request_id``'s slot. Idempotent, and safe after a failure."""
-
         rid = int(request_id)
         with self._state_lock:
             lease = self._leases.pop(rid, None)
@@ -539,6 +546,29 @@ class Qwen4ExpARBatchOwner:
         self._closed = True
 
     # -- reporting --------------------------------------------------------
+
+    def request_telemetry(self, request_id: int) -> dict[str, Any] | None:
+        """Widths this one request's decode steps ran at, before its release.
+
+        Returns ``None`` for a request that never held a slot. The caller reads
+        this at completion, while the lease still exists: releasing the slot
+        discards the per-request history, exactly like the global histogram is
+        discarded at close.
+        """
+
+        rid = int(request_id)
+        with self._state_lock:
+            lease = self._leases.get(rid)
+            if lease is None:
+                return None
+            widths = dict(lease.step_widths)
+        return {
+            "execution_path": self.label,
+            "steps": sum(widths.values()),
+            "step_widths": {str(width): count for width, count in sorted(widths.items())},
+            "max_width": max(widths) if widths else 0,
+            "state_slots": self.state_slots,
+        }
 
     def telemetry(self) -> dict[str, Any]:
         """Physical-width evidence for the scratch probe and worklog.

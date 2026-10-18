@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_per_request_decode_width",
+  "created_at": "2026-10-18T06:31:11Z",
+  "note": "Four concurrent plain AR requests; the queue shape reports one request each while the response now names the width its own decode steps ran at",
+  "server_command": "HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft HIPENGINE_QWEN4_EXP_AR_BATCH=1 HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS=4 python -m hipengine.server --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --quant gguf_ud_q4_k_xl --execution-profile production --served-model-name qwen38fn-capon --max-context-tokens 2048 --kv-storage bf16 --max-active-requests 4 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --host 127.0.0.1 --port 18392",
+  "requests": 4,
+  "rows": [
+    {
+      "text": "R0",
+      "finish_reason": "stop",
+      "generation_shape_request_count": 1,
+      "generation_shape_verifier_rows": 0,
+      "decode_batch": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "steps": 2,
+        "step_widths": {
+          "4": 2
+        },
+        "max_width": 4,
+        "state_slots": 4
+      }
+    },
+    {
+      "text": "R1",
+      "finish_reason": "stop",
+      "generation_shape_request_count": 1,
+      "generation_shape_verifier_rows": 0,
+      "decode_batch": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "steps": 2,
+        "step_widths": {
+          "4": 2
+        },
+        "max_width": 4,
+        "state_slots": 4
+      }
+    },
+    {
+      "text": "R2",
+      "finish_reason": "stop",
+      "generation_shape_request_count": 1,
+      "generation_shape_verifier_rows": 0,
+      "decode_batch": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "steps": 2,
+        "step_widths": {
+          "4": 2
+        },
+        "max_width": 4,
+        "state_slots": 4
+      }
+    },
+    {
+      "text": "R3",
+      "finish_reason": "stop",
+      "generation_shape_request_count": 1,
+      "generation_shape_verifier_rows": 0,
+      "decode_batch": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "steps": 2,
+        "step_widths": {
+          "4": 2
+        },
+        "max_width": 4,
+        "state_slots": 4
+      }
+    }
+  ],
+  "global_before": {
+    "execution_path": "qwen4exp_full_model_ar_batch",
+    "state_slots": 4,
+    "max_positions": 2048,
+    "live_slots": 0,
+    "steps": 2,
+    "step_widths": {
+      "4": 2
+    },
+    "imports": 6,
+    "releases": 6,
+    "failure": null
+  },
+  "global_after": {
+    "execution_path": "qwen4exp_full_model_ar_batch",
+    "state_slots": 4,
+    "max_positions": 2048,
+    "live_slots": 0,
+    "steps": 4,
+    "step_widths": {
+      "4": 4
+    },
+    "imports": 10,
+    "releases": 10,
+    "failure": null
+  },
+  "checks": [
+    {
+      "name": "all_requests_200",
+      "passed": true
+    },
+    {
+      "name": "each_response_reports_batch_width",
+      "passed": true
+    },
+    {
+      "name": "each_response_width_histogram_matches_execution",
+      "passed": true
+    },
+    {
+      "name": "global_histogram_agrees",
+      "passed": true
+    },
+    {
+      "name": "queue_shape_still_describes_the_queue",
+      "passed": true
+    }
+  ],
+  "status": "passed",
+  "failure_count": 0
+}

@@ -33,10 +33,12 @@ from hipengine.generation.qwen4_exp_multimodal import (
 )
 from hipengine.generation.logprobs import token_bytes_for_id
 from hipengine.generation.registry import (
+    DecodeState,
     FinishDetails,
     GenerationOutput,
     GenerationRequest,
     GenerationStreamChunk,
+    GenerationTelemetry,
     TokenLogprob,
     register_text_generator,
 )
@@ -1302,12 +1304,15 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         else:
             finish = self._finish(row) or completed.finish_details
         visible = self._visible_ids(row, finish)
+        telemetry = None if row.mtp_output is None else row.mtp_output.telemetry
+        if telemetry is None:
+            telemetry = self._ar_batch_telemetry(row)
         self._outputs[row.request_id] = GenerationOutput(
             text=self.generator.tokenizer.decode(visible, skip_special=False),
             generated_token_ids=tuple(row.generated_ids),
             token_logprobs=tuple(row.token_logprobs[:len(visible)]),
             finish_details=finish,
-            telemetry=None if row.mtp_output is None else row.mtp_output.telemetry,
+            telemetry=telemetry,
         )
         self._release_runner(row)
 
@@ -1362,6 +1367,32 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             return self._rows[int(request_id)]
         except KeyError as exc:
             raise KeyError(f"unknown Qwen4Exp request_id {request_id}") from exc
+
+    def _ar_batch_telemetry(self, row: _Qwen4ExpServingRow) -> GenerationTelemetry | None:
+        """Report the physical widths this row's own decode steps ran at.
+
+        Read before ``_release_runner`` discards the lease. A row that never
+        held a batch slot reports nothing here rather than a fabricated width,
+        and an MTP row keeps its own provider telemetry.
+        """
+
+        owner = self._ar_batch
+        if owner is None:
+            return None
+        batch = owner.request_telemetry(row.request_id)
+        if batch is None:
+            return None
+        return GenerationTelemetry(
+            decode_state=DecodeState(
+                request_id=str(row.request_id),
+                prompt_tokens=len(row.prompt_ids),
+                generated_tokens=len(row.generated_ids),
+                step_index=len(row.generated_ids),
+                execution_path=str(batch["execution_path"]),
+            ),
+            event="generation_complete",
+            diagnostics={"decode_batch": batch},
+        )
 
     def _release_runner(self, row: _Qwen4ExpServingRow) -> None:
         self._release_mtp(row)

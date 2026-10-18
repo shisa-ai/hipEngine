@@ -199,6 +199,17 @@ def test_driver_decodes_two_rows_with_one_step_per_tick(batch_env, monkeypatch) 
         assert native.decode_telemetry()["decode_path"] == "qwen4exp_full_model_ar_batch"
         assert _batch(native)["step_widths"] == {"2": 2}
         assert _batch(native)["imports"] == 2
+        # Each response names the physical width its own steps ran at, so a
+        # caller cannot read a per-request "1" and conclude it was serial.
+        for output in outputs:
+            batch = (output.telemetry.diagnostics or {})["decode_batch"]
+            assert batch["execution_path"] == "qwen4exp_full_model_ar_batch"
+            assert batch["step_widths"] == {"2": 2}
+            assert batch["max_width"] == 2
+            assert batch["steps"] == 2
+            assert output.telemetry.decode_state.execution_path == (
+                "qwen4exp_full_model_ar_batch"
+            )
         # No c1 runner took a decode step: every c1 position still equals the
         # prompt it prefilled.
         assert sorted(int(runner.position) for runner in native._all_runners) == sorted(

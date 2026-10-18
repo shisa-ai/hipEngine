@@ -292,9 +292,33 @@ batch key, an `ar_batch` envelope: `enabled`, `env`, `slots_env`,
 they cannot disagree about the active path. `active` is the live snapshot and
 is `null` before the runner selects a path; an unusable
 `HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS` value is reported in
-`invalid_configuration` rather than failing the manifest, while the request
-path still refuses to serve with it. A provider whose telemetry has no batch
-key reports `ar_batch: null` instead of inheriting this envelope.
+`invalid_configuration` rather than failing the manifest, while the startup
+refuses to become ready with it. A provider whose telemetry does not carry the
+batch key reports `ar_batch: null` instead of inheriting this envelope.
+
+#### Per-request decode width
+
+`generation_shape` describes the queue: each HTTP request that arrived on its
+own is its own queue group, so `queue_group.request_count` and
+`verifier_rows` describe planning, not the physical decode width. A completed
+response therefore also reports the width its own decode steps ran at, under
+`choices[].hipengine.diagnostics.decode_batch`:
+
+```json
+{
+  "execution_path": "qwen4exp_full_model_ar_batch",
+  "steps": 2,
+  "step_widths": {"4": 2},
+  "max_width": 4,
+  "state_slots": 4
+}
+```
+
+`step_widths` is this request's own histogram, so a request that shared every
+step with three peers reports `{"4": n}` while a request that ran alone reports
+`{"1": n}`. The field is absent for a request that never held a batch slot and
+for an MTP row, which reports its own provider telemetry instead. The server-wide
+histogram stays at `/v1/hipengine/decode`.
 
 #### Qualification configuration for physical widths above 2
 
