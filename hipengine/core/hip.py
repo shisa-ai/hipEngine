@@ -619,6 +619,64 @@ def get_hip_runtime(path: str = DEFAULT_HIP_LIBRARY) -> HipRuntime:
     return _DEFAULT_RUNTIME
 
 
+_COMPUTE_UNITS: dict[int, int] = {}
+
+
+def parse_rocminfo_compute_units(text: str) -> tuple[int, ...]:
+    """Compute units of each GPU agent in ``rocminfo`` output, in device order.
+
+    Only agents whose ``Name`` is an ISA (``gfx...``) are counted; ``rocminfo`` also
+    reports the CPU agent, which has its own unrelated "Compute Unit" count. Keeping
+    the per-agent values in order lets the caller select by device ordinal instead of
+    guessing from a maximum.
+    """
+
+    import re
+
+    units: list[int] = []
+    for block in re.split(r"^Agent \d+", text, flags=re.M)[1:]:
+        name = re.search(r"^\s*Name:\s*(gfx[0-9a-z]+)\s*$", block, re.M)
+        count = re.search(r"^\s*Compute Unit:\s*(\d+)\s*$", block, re.M)
+        if name is not None and count is not None:
+            units.append(int(count.group(1)))
+    return tuple(units)
+
+
+def _rocminfo_compute_units(device: int) -> int | None:
+    import subprocess
+
+    try:
+        completed = subprocess.run(
+            ["rocminfo"], check=False, text=True, capture_output=True, timeout=30
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    units = parse_rocminfo_compute_units(completed.stdout)
+    return units[device] if 0 <= device < len(units) else None
+
+
+def device_compute_units(device: int = 0) -> int | None:
+    """Compute units on ``device``, or ``None`` when the probe cannot answer.
+
+    Grid sizing reads this, so an unknown answer stays ``None`` and the caller picks
+    its own documented fallback rather than inheriting a number that silently
+    under-fills a device of a different size.
+
+    ``rocminfo`` is the source because HIP's scalar attribute is not usable here:
+    ``hipDeviceGetAttribute(hipDeviceAttributeMultiprocessorCount, dev)`` reports 48
+    on a 96-CU gfx1100 under ROCm 7.2 (it counts compute units per shader engine),
+    and no attribute ordinal reports the total. The value is cached per device; the
+    probe is a subprocess, so call it once at runtime construction, not per launch.
+    """
+
+    if device in _COMPUTE_UNITS:
+        return _COMPUTE_UNITS[device]
+    units = _rocminfo_compute_units(device)
+    if units is not None:
+        _COMPUTE_UNITS[device] = units
+    return units
+
+
 def is_default_runtime_loaded() -> bool:
     return _DEFAULT_RUNTIME is not None
 

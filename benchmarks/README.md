@@ -2685,6 +2685,16 @@ the split's scores in shared memory. Only the softmax reduction order changes: p
 sums combined afterwards. The strict kernel stays registered as the parent and
 `attention_route="strict"` selects it.
 
+The split count is planned per step from the context and from the device's compute-unit count, so
+the same kernel fills 40 CUs on gfx1151 and 96 on gfx1100: the plan takes the larger of a 32-token
+chunk target and two blocks per compute unit, bounded to 64 splits and never finer than eight tokens
+a split. At product depth the chunk target already fills both parts, so both plan 32 splits. A
+kernel-only sweep at 998 tokens on the 96-CU W7900 put the floor at 24-32 splits (0.026 ms per call)
+against 0.032 ms at 48, which is where the two-blocks-per-unit bound comes from; at 4 098 tokens the
+plan reaches the 64-split cap and costs 0.062 ms against the 0.056 ms floor at 48. Evidence:
+[`split-K plan sweep`](results/yue2_splitk_plan_sweep_gfx1100_20261018.json),
+`scripts/yue2_splitk_plan_sweep.py`.
+
 | Context | Strict step | Split-K step | Speedup |
 | ---: | ---: | ---: | ---: |
 | 98 | 12.79 ms | **11.93 ms** | 1.07x |

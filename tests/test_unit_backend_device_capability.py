@@ -43,6 +43,7 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.core.build import plan_hip_build
+from hipengine.core.hip import parse_rocminfo_compute_units
 from hipengine.kernels.backends import (
     CPU_BACKEND,
     BackendDeviceCapabilityError,
@@ -672,3 +673,60 @@ def test_public_llm_seam_keeps_auto_selection(monkeypatch: pytest.MonkeyPatch) -
     llm = _llm(monkeypatch, "auto", ("gfx1100",))
 
     assert llm.resolved_backend == "hip_gfx1100"
+
+
+# --- compute-unit probe -----------------------------------------------------
+
+ROCMINFO_TWO_GPU = """\
+=====================
+HSA System Attributes
+=====================
+Agent 1
+*******
+  Name:                    CPU
+  Uuid:                    CPU-XX
+  Compute Unit:            32
+  Marketing Name:          AMD Ryzen 9 5950X 16-Core Processor
+
+Agent 2
+*******
+  Name:                    gfx1100
+  Uuid:                    GPU-XX
+  Marketing Name:          AMD Radeon Pro W7900
+  Compute Unit:            96
+
+Agent 3
+*******
+  Name:                    gfx1151
+  Uuid:                    GPU-YY
+  Marketing Name:          AMD Radeon 8060S
+  Compute Unit:            40
+"""
+
+
+def test_rocminfo_compute_units_skips_the_cpu_agent() -> None:
+    """The CPU agent reports its own core count; it must not be read as a GPU size."""
+
+    assert parse_rocminfo_compute_units(ROCMINFO_TWO_GPU) == (96, 40)
+
+
+def test_rocminfo_compute_units_keeps_device_order() -> None:
+    """Values are indexed by device ordinal, so a mixed host resolves per device."""
+
+    units = parse_rocminfo_compute_units(ROCMINFO_TWO_GPU)
+    assert units[0] == 96
+    assert units[1] == 40
+
+
+def test_rocminfo_compute_units_ignores_unrelated_agents() -> None:
+    text = """Agent 1
+  Name:                    CPU
+  Compute Unit:            128
+
+Agent 2
+  Name:                    gfx1101
+  Compute Unit:            32
+"""
+
+    assert parse_rocminfo_compute_units(text) == (32,)
+    assert parse_rocminfo_compute_units("") == ()

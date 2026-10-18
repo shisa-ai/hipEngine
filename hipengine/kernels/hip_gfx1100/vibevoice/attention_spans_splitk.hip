@@ -19,13 +19,18 @@
 //   * the split's scores are staged in shared memory, so the value pass reads them
 //     from shared instead of recomputing.
 //
+// The split count comes from the host, which sizes it from the device's compute-unit
+// count as well as the context (see plan_split in attention_spans_splitk.py), and it
+// arrives with the chunk length so the shared scores are exactly ``chunk`` wide
+// instead of a fixed worst case.
+//
 // Arithmetic differs from the strict kernel only in the reduction order (per-split
 // maxima and sums combined afterwards instead of one whole-context pass), which is
 // the standard split-softmax reassociation. It is therefore a production variant,
 // not a strict one: see docs/EXECUTION-PROFILES.md.
 
-#define VV_SPLITK_MAX_CHUNK 256
 #define VV_SPLITK_THREADS 256
+#define VV_SPLITK_WARPS (VV_SPLITK_THREADS / 32)
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
@@ -60,6 +65,7 @@ __global__ void vv_attention_spans_splitk_kernel(
     int64_t num_kv_heads,
     int64_t max_ctx,
     int64_t num_splits,
+    int64_t chunk,
     float scale) {
   const int64_t kv_head = blockIdx.x;
   const int64_t split_idx = blockIdx.y;
@@ -72,19 +78,19 @@ __global__ void vv_attention_spans_splitk_kernel(
   const int64_t warp_id = threadIdx.x / warpSize;
 
   // Same context derivation as the strict kernel: the row's own position, the live
-  // span count, and the kernel's context bound.
+  // span count, and the kernel's context bound. ``chunk`` and ``num_splits`` come from
+  // the host plan, which guarantees num_splits * chunk covers every row's context in
+  // this launch (the wrapper checks it, because a kernel has no way to report it).
   const int64_t requested = row_positions[row] + 1;
   const int64_t ctx = live_counts ? min(min(requested, live_counts[row]), max_ctx) : requested;
-  const int64_t chunk = ctx > 0 ? (ctx + num_splits - 1) / num_splits : 0;
   const int64_t token_start = split_idx * chunk;
   const int64_t token_end = min(token_start + chunk, ctx);
 
-  extern __shared__ float shared[];
-  float* scores = shared;                                  // [kQPerKv, VV_SPLITK_MAX_CHUNK]
-  float* partial = scores + kQPerKv * VV_SPLITK_MAX_CHUNK; // [kQPerKv, warps]
-  float* q_shared = partial + kQPerKv * (VV_SPLITK_THREADS / 32); // [kQPerKv, kHeadDim]
-
   const int64_t num_warps = blockDim.x / warpSize;
+  extern __shared__ float shared[];
+  float* scores = shared;                            // [kQPerKv, chunk]
+  float* partial = scores + kQPerKv * chunk;         // [kQPerKv, warps]
+  float* q_shared = partial + kQPerKv * num_warps;   // [kQPerKv, kHeadDim]
 
   // A split past the context contributes nothing: publish the identity so the
   // combine pass can skip it without special-casing.
@@ -132,7 +138,7 @@ __global__ void vv_attention_spans_splitk_kernel(
     if (masked) {
 #pragma unroll
       for (int64_t h = 0; h < kQPerKv; ++h) {
-        scores[h * VV_SPLITK_MAX_CHUNK + lt] = -INFINITY;
+        scores[h * chunk + lt] = -INFINITY;
       }
       continue;
     }
@@ -164,7 +170,7 @@ __global__ void vv_attention_spans_splitk_kernel(
         reduced += __shfl_xor(reduced, offset);
       }
       const float score = reduced * scale;
-      scores[h * VV_SPLITK_MAX_CHUNK + lt] = score;
+      scores[h * chunk + lt] = score;
       local_max[h] = fmaxf(local_max[h], score);
     }
   }
@@ -201,8 +207,8 @@ __global__ void vv_attention_spans_splitk_kernel(
   for (int64_t lt = warp_id; lt < chunk_len; lt += num_warps) {
 #pragma unroll
     for (int64_t h = 0; h < kQPerKv; ++h) {
-      const float e = expf(scores[h * VV_SPLITK_MAX_CHUNK + lt] - chunk_max[h]);
-      scores[h * VV_SPLITK_MAX_CHUNK + lt] = e;
+      const float e = expf(scores[h * chunk + lt] - chunk_max[h]);
+      scores[h * chunk + lt] = e;
       local_sum[h] += e;
     }
   }
@@ -240,7 +246,7 @@ __global__ void vv_attention_spans_splitk_kernel(
       const float v = bf16_bits_to_float(value_cache[v_offset]);
 #pragma unroll
       for (int64_t h = 0; h < kQPerKv; ++h) {
-        acc[h] = fmaf(scores[h * VV_SPLITK_MAX_CHUNK + lt], v, acc[h]);
+        acc[h] = fmaf(scores[h * chunk + lt], v, acc[h]);
       }
     }
 #pragma unroll
@@ -316,10 +322,12 @@ extern "C" int hipengine_vv_attention_spans_splitk(
     int64_t head_dim,
     int64_t max_ctx,
     int64_t num_splits,
+    int64_t chunk,
     float scale,
     hipStream_t stream) {
   if (rows <= 0 || q_heads <= 0 || kv_heads <= 0 || head_dim <= 0 || max_ctx <= 0
-      || num_splits <= 0 || num_splits > 64 || workspace == nullptr) {
+      || num_splits <= 0 || num_splits > 64 || chunk <= 0 || chunk > 256
+      || workspace == nullptr) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int64_t q_per_kv = q_heads / kv_heads;
@@ -336,9 +344,8 @@ extern "C" int hipengine_vv_attention_spans_splitk(
   // compile-time trip count instead of a loop bound.
 #define HIPENGINE_LAUNCH_SPLITK(Q_PER_KV)                                                     \
   do {                                                                                        \
-    const size_t shared_bytes =                                                               \
-        static_cast<size_t>(q_per_kv * VV_SPLITK_MAX_CHUNK + q_per_kv * (VV_SPLITK_THREADS / 32) \
-                            + q_per_kv * head_dim) * sizeof(float);                           \
+    const size_t shared_bytes = static_cast<size_t>(q_per_kv * chunk + q_per_kv * VV_SPLITK_WARPS \
+                                                    + q_per_kv * head_dim) * sizeof(float);    \
     hipLaunchKernelGGL(                                                                       \
         HIP_KERNEL_NAME(vv_attention_spans_splitk_kernel<Q_PER_KV, 128>),                      \
         dim3(static_cast<unsigned int>(kv_heads), static_cast<unsigned int>(num_splits),       \
@@ -362,6 +369,7 @@ extern "C" int hipengine_vv_attention_spans_splitk(
         kv_heads,                                                                             \
         max_ctx,                                                                              \
         num_splits,                                                                           \
+        chunk,                                                                                \
         scale);                                                                               \
   } while (0)
   if (q_per_kv == 8) {

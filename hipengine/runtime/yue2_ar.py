@@ -29,7 +29,7 @@ from typing import Sequence
 import numpy as np
 
 from hipengine.core.device import Device
-from hipengine.core.hip import get_hip_runtime
+from hipengine.core.hip import device_compute_units, get_hip_runtime
 from hipengine.core.hipblaslt import HipblasLt
 from hipengine.core.memory import (
     DeviceBuffer,
@@ -364,6 +364,12 @@ class Yue2ArRuntime:
             production_attention = None
         self._attn_splitk = production_attention
         self.attention_route = "splitk" if production_attention is not None else "strict"
+        # The split-K grid is kv_heads * splits, so the split count has to know how
+        # wide this device is: 40 compute units on gfx1151, 96 on gfx1100, and whatever
+        # an unlisted part reports. Probed once here (it shells out to rocminfo) rather
+        # than per step; None means the probe could not answer and plan_split falls
+        # back to its documented smallest-part default.
+        self._attn_compute_units = device_compute_units() if production_attention else None
         self._attn_splitk_workspace = (
             keep(
                 _alloc(
@@ -579,8 +585,8 @@ class Yue2ArRuntime:
             query_ptr, layer.k_cache[branch].ptr, layer.v_cache[branch].ptr, out_ptr,
             self._attn_splitk_workspace.ptr, spans, 1,
             self.spec.num_attention_heads, self.spec.num_key_value_heads, self.spec.head_dim,
-            self._scale, attention_spans_splitk.split_count(position + 1),
-            stream=0, runtime=self.runtime,
+            self._scale, position + 1,
+            compute_units=self._attn_compute_units, stream=0, runtime=self.runtime,
         )
 
     def forward_layers(self, position: int, branch: int = 0) -> None:

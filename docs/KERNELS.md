@@ -300,7 +300,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `yue2/nar_wmma.hip` | Matrix-tiled non-autoregressive attention with changed arithmetic. |
 | `yue2/vae.hip` | FP32 audio-decoder convolutions, transposed convolutions, Snake activation, and residuals. |
 | `vibevoice/encoder.hip` | Shared normalization, rotary, span-cache writes, attention, and residual operations. |
-| `vibevoice/attention_spans_splitk.hip` | Decode span attention split over the KV range; the `production` variant of `vv_attention_spans`. |
+| `vibevoice/attention_spans_splitk.hip` | Decode span attention split over the KV range; the `production` variant of `vv_attention_spans`. The host plan sizes the split count from the context and the device compute-unit count. |
 | `linear/dense_gemv.hip` | Shared autoregressive projections and output head, including exact paired-branch row tiles and phase-windowed output. |
 | `rotary/qwen35_rotary.hip`, `fused/paro_silu.hip` | Shared decode rotary and gated activation operations. |
 
