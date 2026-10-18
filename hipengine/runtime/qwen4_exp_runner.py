@@ -8595,6 +8595,16 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._ple_hash_states = {}
         self.position = 0
 
+    @property
+    def ple_hash_states(self) -> Mapping[int, PLEHashState]:
+        """Request-local PLE n-gram history, keyed by sequence id.
+
+        Read-only copy for a hand-off owner (the batch runner's
+        ``import_prefilled``) that must not alias this runner's history.
+        """
+
+        return MappingProxyType(dict(self._ple_hash_states))
+
     def _finish_lm_head(
         self,
         *,

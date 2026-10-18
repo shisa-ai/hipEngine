@@ -1,3 +1,32 @@
+## Flash-Next batch decode runner: hand-off copies and owner reset duplication
+
+- `Qwen4ExpGGUFBatchRunner` (independent-request decode over physical state
+  slots) is not selected by serving; the committed `decode_batch` path still
+  loops c1 runners. The batch path and the c1 path therefore duplicate the
+  embedding/PLE-staging/head glue.
+- `import_prefilled` copies a prefilled c1 request into a slot with a host loop
+  of three `hipMemcpy` calls per paged block per QSA layer (key, value, index
+  keys), plus one copy per GDN layer and one for the PLE conv history. Collapse
+  it into one device-side copy once a paged-copy kernel takes a source and a
+  destination block table, so the per-block prefix arithmetic lives in one
+  kernel instead of Python. Do not remove the per-block prefix limit: a
+  whole-block copy would move the source's unwritten tail into the new request.
+- `_zero_slot` hand-rolls a memset per owner (KV blocks, index blocks, GDN
+  conv/recurrent, PLE history) and then calls the index owner's `reset_slot`.
+  It should become one `reset_slot` protocol on the shared owner base that the
+  four owners (attention, index, GDN, PLE) implement, matching the owner-base
+  consolidation already recorded for the mixer lineage. The index owner's
+  generation bump is part of that protocol, not an extra step.
+- The batch runner keeps its own `_owners`/`_positions` host mirrors next to the
+  owners' `prepare` active sets. Once the batch runner is the serving path, one
+  admission object should own the request-to-slot map and the position mirror
+  for every stage, so a step cannot prepare two owners in disagreeing row order.
+- Regression gates: `tests/test_unit_qwen4exp_batch_runner.py` (dispatch shape,
+  admission, import preflight, per-block copy layout, owner reset) and
+  `tests/test_gpu_qwen4exp_batch_runner.py` (full-model two-row decode against
+  independent c1 runners, row permutation, determinism, slot reuse, c1 import,
+  argmax-only path).
+
 ## Flash-Next indexed decode admission duplication
 
 - The new GDN, F32 Conv and PLE primitives each validate bounded, unique state-slot
