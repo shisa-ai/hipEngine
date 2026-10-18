@@ -729,6 +729,23 @@ This primitive is not selected by serving. Conv/PLE history, QSA index/KV
 ownership, runner integration and C2/C4 serving qualification are separate
 requirements; no model-level numerical or throughput claim follows from it.
 
+## Qwen4Exp indexed F32 convolution decode primitive
+
+`linear_attn/conv.{hip,py}` registers
+`linear_attn_conv_decode / f32_state / qwen4exp_conv_indexed_decode` in the
+gfx1100 package and its gfx1151 mirror. One packed input row advances one unique
+slot in a `[state_slots, channels, kernel_size]` FP32 history slab. Duplicate
+or out-of-range slots reject the entire batch before any state/output write;
+host index validation provides the diagnostic. Raw-pointer callers own buffer
+sizes, lifetimes and validation before using output. The single-row
+`qwen35_linear_attn_conv_decode_f32` remains the arithmetic oracle/fallback.
+
+Tests: `tests/test_unit_qwen4exp_conv_indexed_decode.py` and
+`tests/test_gpu_qwen4exp_conv_indexed_decode.py`. The
+[worklog](../worklog/entries/20261018T002058.635279Z-lhl-qwen4exp-conv-indexed-decode-6eb613.md)
+records zbook/gfx1151 primitive correctness and dispatch evidence, not gfx1100
+qualification or serving performance. Serving integration remains open.
+
 ## Workgroup size and CU mode on gfx1151
 
 Two measured facts that decide tile and build choices on this backend:

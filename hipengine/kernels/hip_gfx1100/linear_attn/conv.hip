@@ -967,7 +967,150 @@ bool valid_conv_shape(int64_t channels, int64_t kernel_size) {
   return channels > 0 && kernel_size > 0;
 }
 
+// Admission bounds for the request-indexed F32 decode ABI. Mirrored by
+// ``QWEN4_EXP_CONV_INDEXED_MAX_*`` in conv.py; the pairs must agree.
+//
+// The row and slab bounds exist because the batch ownership check is a fixed
+// 512-byte shared bitmap over the declared slab. The channel and kernel bounds
+// are what make every derived element and byte offset fit in signed 64 bits,
+// including the state-slot multiplier, so device index arithmetic cannot wrap.
+constexpr int64_t kQwen4ExpConvIndexedMaxRows = 64;
+constexpr int64_t kQwen4ExpConvIndexedMaxStateSlots = 4096;
+constexpr int64_t kQwen4ExpConvIndexedMaxChannels = 1048576;
+constexpr int64_t kQwen4ExpConvIndexedMaxKernelSize = 1024;
+constexpr int kQwen4ExpConvIndexedSlotBitmapWords =
+    static_cast<int>(kQwen4ExpConvIndexedMaxStateSlots / 32);
+
+// Request-indexed F32 decode convolution: the independent-request form of
+// qwen35_linear_attn_conv_decode_kernel. Row ``r`` (``blockIdx.y``) reads its own
+// hidden row and writes its own output row, and reads and writes exactly the Conv
+// state slot ``state_indices[r]``. The arithmetic statements repeat the
+// single-row owner's in the same order, so one row's output and committed state
+// are the single-row owner's bytes at the same inputs.
+//
+// The decode body shifts and appends inside the slot as it goes, so the writes
+// begin in the first loop iteration. The batch is therefore validated as a whole
+// before any of them: an out-of-range slot, or two rows naming one slot, rejects
+// every block. Two rows sharing a slot would interleave their shifts, and
+// committing the rows that happen not to collide would be a silent partial
+// update. Warp 0 does the clear and scan with ``__syncwarp()`` only, so the
+// check costs one block barrier rather than two.
+__global__ void qwen4_exp_linear_attn_conv_decode_indexed_f32_kernel(
+    const float* __restrict__ hidden_states,
+    float* __restrict__ conv_state,
+    const float* __restrict__ conv_weight,
+    float* __restrict__ out,
+    const int64_t* __restrict__ state_indices,
+    int64_t rows,
+    int64_t state_slots,
+    int64_t channels,
+    int64_t kernel_size) {
+  __shared__ unsigned int s_slot_bitmap[kQwen4ExpConvIndexedSlotBitmapWords];
+  __shared__ int s_batch_rejected;
+
+  const int warp = static_cast<int>(threadIdx.x) >> 5;
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  if (warp == 0) {
+    for (int64_t i = lane; i < kQwen4ExpConvIndexedSlotBitmapWords; i += 32) {
+      s_slot_bitmap[i] = 0u;
+    }
+    if (lane == 0) {
+      atomicExch(&s_batch_rejected, 0);
+    }
+    __syncwarp();
+    for (int64_t i = lane; i < rows; i += 32) {
+      const int64_t scanned = state_indices[i];
+      if (scanned < 0 || scanned >= state_slots) {
+        atomicExch(&s_batch_rejected, 1);
+      } else {
+        const unsigned int bit = 1u << (scanned & 31);
+        if (atomicOr(&s_slot_bitmap[scanned >> 5], bit) & bit) {
+          atomicExch(&s_batch_rejected, 1);
+        }
+      }
+    }
+  }
+  __syncthreads();
+  if (s_batch_rejected) {
+    return;
+  }
+
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t channel = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (row >= rows || channel >= channels) {
+    return;
+  }
+
+  const int64_t state_slot = state_indices[row];
+  const int64_t state_stride = channels * kernel_size;
+  const int64_t offset = state_slot * state_stride + channel * kernel_size;
+  const int64_t weight_offset = channel * kernel_size;
+  float acc = 0.0f;
+  for (int64_t idx = 0; idx < kernel_size - 1; ++idx) {
+    const float value = conv_state[offset + idx + 1];
+    acc += value * conv_weight[weight_offset + idx];
+    conv_state[offset + idx] = value;
+  }
+  const float newest = hidden_states[row * channels + channel];
+  acc += newest * conv_weight[weight_offset + kernel_size - 1];
+  conv_state[offset + kernel_size - 1] = newest;
+  out[row * channels + channel] = silu_f32(acc);
+}
+
 }  // namespace
+
+extern "C" int hipengine_qwen4_exp_linear_attn_conv_decode_indexed_f32(
+    const float* hidden_states,
+    float* conv_state,
+    const float* conv_weight,
+    float* out,
+    const int64_t* state_indices,
+    int64_t rows,
+    int64_t state_slots,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  // Every bound the Python wrapper enforces is mirrored here, because this
+  // symbol is reachable directly. The ABI is packed-only, like the single-row
+  // owner: hidden rows stride by ``channels`` and the output rows likewise, and
+  // the state strides by ``channels * kernel_size`` per slot. All operand
+  // accesses are scalar 32-bit, so only the int64 slot vector needs an
+  // alignment term.
+  if (!hidden_states || !conv_state || !conv_weight || !out || !state_indices) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (channels <= 0 || kernel_size <= 0 ||
+      channels > kQwen4ExpConvIndexedMaxChannels ||
+      kernel_size > kQwen4ExpConvIndexedMaxKernelSize) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (rows <= 0 || rows > kQwen4ExpConvIndexedMaxRows || state_slots <= 0 ||
+      state_slots < rows ||
+      state_slots > kQwen4ExpConvIndexedMaxStateSlots) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (reinterpret_cast<uintptr_t>(state_indices) & 7u) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((channels + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      qwen4_exp_linear_attn_conv_decode_indexed_f32_kernel,
+      dim3(static_cast<unsigned int>(blocks), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      conv_state,
+      conv_weight,
+      out,
+      state_indices,
+      rows,
+      state_slots,
+      channels,
+      kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_qwen35_linear_attn_conv_decode_f32(
     const float* hidden_states,

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ctypes
+import operator
 from pathlib import Path
+
+import numpy as np
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
@@ -39,7 +42,47 @@ _SYMBOL_PREFILL_F32_STATE_ROWS = "hipengine_qwen35_linear_attn_conv_prefill_f32_
 _SYMBOL_PREFILL_FP16 = "hipengine_qwen35_linear_attn_conv_prefill_fp16"
 _SYMBOL_PREFILL_SEGMENTS_F32 = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32"
 _SYMBOL_PREFILL_SEGMENTS_F32_STATE_ROWS = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32_state_rows"
+_SYMBOL_QWEN4_EXP_DECODE_INDEXED_F32 = (
+    "hipengine_qwen4_exp_linear_attn_conv_decode_indexed_f32"
+)
 
+QWEN4_EXP_CONV_INDEXED_MAX_ROWS = 64
+"""Admitted row width of the request-indexed F32 conv decode ABI.
+
+Mirrors ``kQwen4ExpConvIndexedMaxRows`` in ``conv.hip``; the two must agree.
+Wider than the serving campaign's C1..C8 range.
+"""
+
+QWEN4_EXP_CONV_INDEXED_MAX_STATE_SLOTS = 4096
+"""Admitted Conv state slab width of the same ABI.
+
+Mirrors ``kQwen4ExpConvIndexedMaxStateSlots``. The device rejects a
+malformed batch with a shared-memory bitmap over the declared slab, so the slab
+is bounded to keep that bitmap a fixed 512 bytes.
+"""
+
+QWEN4_EXP_CONV_INDEXED_MAX_CHANNELS = 1 << 20
+"""Admitted ``channels`` bound.
+
+Together with the kernel-size and state-slot bounds, all derived element and
+byte offsets fit in signed 64 bits; callers still own allocation-size checks.
+"""
+
+QWEN4_EXP_CONV_INDEXED_MAX_KERNEL_SIZE = 1 << 10
+"""Admitted ``kernel_size`` bound; see ``..._MAX_CHANNELS``."""
+
+_ARGTYPES_QWEN4_EXP_DECODE_INDEXED_F32 = (
+    ctypes.c_void_p,  # hidden_states
+    ctypes.c_void_p,  # conv_state
+    ctypes.c_void_p,  # conv_weight
+    ctypes.c_void_p,  # out
+    ctypes.c_void_p,  # state_indices
+    ctypes.c_int64,   # rows
+    ctypes.c_int64,   # state_slots
+    ctypes.c_int64,   # channels
+    ctypes.c_int64,   # kernel_size
+    ctypes.c_void_p,  # stream
+)
 _ARGTYPES_ALPHA_BETA_CHAIN_CONV_SNAPSHOT = (
     ctypes.c_void_p,  # norm
     ctypes.c_void_p,  # weight_a
@@ -216,6 +259,158 @@ def qwen35_linear_attn_conv_decode_indexed_bf16(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def qwen4_exp_conv_indexed_state_indices(
+    state_indices: object, *, rows: int, state_slots: int
+) -> np.ndarray:
+    """Validate per-row Conv state-slot indices for the indexed decode ABI.
+
+    Returns a contiguous ``int64`` vector of ``rows`` entries in ``[0,
+    state_slots)``. This is the authoritative admission check: the kernel sees
+    only a device pointer and can reject a malformed batch but cannot report
+    which row was wrong.
+
+    **Slots must be distinct.** Each row is one independent request's decode
+    step, and the decode body shifts and appends inside its slot as it runs, so
+    two rows naming one slot would interleave their shifts and commit a state
+    that is neither row's result. The kernel also rejects such a batch as a
+    whole, but a caller that ignores this check has already lost the ability to
+    tell which request was dropped.
+
+    ``state_slots >= rows`` is a capacity bound and is not a uniqueness check;
+    uniqueness is enforced separately below.
+    """
+
+    try:
+        values = [int(operator.index(value)) for value in state_indices]
+    except TypeError as error:
+        raise TypeError(
+            "state_indices must be a sequence of integers"
+        ) from error
+    count = int(rows)
+    slots = int(state_slots)
+    if not 1 <= count <= QWEN4_EXP_CONV_INDEXED_MAX_ROWS:
+        raise ValueError(
+            "indexed conv decode rows must be in "
+            f"1..{QWEN4_EXP_CONV_INDEXED_MAX_ROWS}"
+        )
+    if slots <= 0:
+        raise ValueError("state_slots must be positive")
+    if slots > QWEN4_EXP_CONV_INDEXED_MAX_STATE_SLOTS:
+        raise ValueError(
+            "state_slots must be in "
+            f"1..{QWEN4_EXP_CONV_INDEXED_MAX_STATE_SLOTS}"
+        )
+    if len(values) != count:
+        raise ValueError("state_indices must contain one index per row")
+    seen: dict[int, int] = {}
+    for row, slot in enumerate(values):
+        if slot < 0:
+            raise ValueError("state_indices must be non-negative")
+        if slot >= slots:
+            raise ValueError(
+                f"state_indices[{row}]={slot} is outside the declared state slab "
+                f"of {slots} slots"
+            )
+        if slot in seen:
+            raise ValueError(
+                f"state_indices duplicate slot {slot}: rows {seen[slot]} and "
+                f"{row} name the same Conv state; independent rows must "
+                "select distinct slots"
+            )
+        seen[slot] = row
+    return np.ascontiguousarray(values, dtype=np.int64)
+
+
+def qwen4_exp_linear_attn_conv_decode_indexed_f32(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    state_indices_ptr: int,
+    *,
+    rows: int,
+    state_slots: int,
+    channels: int,
+    kernel_size: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Request-indexed F32 decode convolution for independent rows.
+
+    The multi-row form of :func:`qwen35_linear_attn_conv_decode_f32`. Row ``r``
+    of the packed ``hidden_states`` block is one independent request's decode
+    step, and row ``r`` reads and writes exactly the Conv state slot
+    ``state_indices[r]`` of a ``[state_slots][channels][kernel_size]`` FP32 slab.
+    Slots no row selects are not touched.
+
+    The ABI is packed-only, like the single-row owner: hidden and output rows
+    stride by ``channels``, the weight by ``channels * kernel_size``, and the
+    state by ``channels * kernel_size`` per slot. There are no stride arguments
+    to bound; the shape bounds below are what keep the derived offsets in range.
+
+    A malformed batch (a slot outside the slab, or two rows naming one slot) is
+    rejected on the device as a whole, leaving every slot and every output row
+    unchanged. Use :func:`qwen4_exp_conv_indexed_state_indices` to reject it on
+    the host instead, with a diagnosable error.
+    """
+
+    count = int(rows)
+    slots = int(state_slots)
+    if not 1 <= count <= QWEN4_EXP_CONV_INDEXED_MAX_ROWS:
+        raise ValueError(
+            "indexed conv decode rows must be in "
+            f"1..{QWEN4_EXP_CONV_INDEXED_MAX_ROWS}"
+        )
+    if slots <= 0:
+        raise ValueError("state_slots must be positive")
+    if slots > QWEN4_EXP_CONV_INDEXED_MAX_STATE_SLOTS:
+        raise ValueError(
+            "state_slots must be in "
+            f"1..{QWEN4_EXP_CONV_INDEXED_MAX_STATE_SLOTS}"
+        )
+    if slots < count:
+        raise ValueError(
+            "state_slots must cover one slot per row (state slab too small)"
+        )
+    if channels <= 0:
+        raise ValueError("channels must be positive")
+    if channels > QWEN4_EXP_CONV_INDEXED_MAX_CHANNELS:
+        raise ValueError(
+            f"channels must be in 1..{QWEN4_EXP_CONV_INDEXED_MAX_CHANNELS}"
+        )
+    if kernel_size <= 0:
+        raise ValueError("kernel_size must be positive")
+    if kernel_size > QWEN4_EXP_CONV_INDEXED_MAX_KERNEL_SIZE:
+        raise ValueError(
+            "kernel_size must be in "
+            f"1..{QWEN4_EXP_CONV_INDEXED_MAX_KERNEL_SIZE}"
+        )
+    if state_indices_ptr % 8:
+        raise ValueError("state_indices must be 8-byte aligned for int64 loads")
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_QWEN4_EXP_DECODE_INDEXED_F32,
+        _ARGTYPES_QWEN4_EXP_DECODE_INDEXED_F32,
+        ctypes.c_int,
+    )
+    error = fn(
+        hidden_states_ptr,
+        conv_state_ptr,
+        conv_weight_ptr,
+        out_ptr,
+        state_indices_ptr,
+        count,
+        slots,
+        channels,
+        kernel_size,
+        stream,
+    )
+    _check_launch(runtime, error)
 
 
 def qwen35_linear_attn_conv_decode_fp16(
@@ -871,6 +1066,19 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_attn_conv_decode", "gguf_qwen35", "bf16_indexed"),
         qwen35_linear_attn_conv_decode_indexed_bf16,
+        replace=replace,
+    )
+    # Request-indexed F32 decode: row r advances exactly its own Conv state slot.
+    # The single-row F32 owner above stays the strict fallback and the per-row
+    # arithmetic oracle.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_attn_conv_decode",
+            "f32_state",
+            "qwen4exp_conv_indexed_decode",
+        ),
+        qwen4_exp_linear_attn_conv_decode_indexed_f32,
         replace=replace,
     )
     register(
