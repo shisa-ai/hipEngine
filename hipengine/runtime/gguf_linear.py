@@ -9,7 +9,7 @@ import warnings
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
@@ -4406,6 +4406,72 @@ def _native_rowtile_chunk_groups(
     return _rowtile8_row_chunks(rows)
 
 
+#: Optional context-local recorder for the final dispatch chosen by
+#: :func:`launch_gguf_linear`. It is off by default so the hot path pays only a
+#: context-variable read per launch. The batch numerical candidate enables it
+#: around decode steps to bind the row-dependent projection variants it actually
+#: ran instead of inferring them from a static policy.
+_GGUF_LINEAR_DISPATCH_RECORDER: ContextVar[list[dict[str, Any]] | None] = (
+    ContextVar("gguf_linear_dispatch_recorder", default=None)
+)
+
+
+@contextlib.contextmanager
+def record_gguf_linear_dispatch(
+    records: list[dict[str, Any]] | None = None,
+) -> Iterator[list[dict[str, Any]]]:
+    """Record the final registry dispatch selected by ``launch_gguf_linear``.
+
+    The recorder is context-local and records every launch that reaches the
+    shared dispatch path while the context is active. It deliberately does not
+    infer a dispatch from an environment flag or a static policy: the recorded
+    key is the one the launch used. BF16-only early returns in
+    ``launch_gguf_linear`` are outside this recorder; the batch candidate uses
+    F32 activation and output dtypes, so its projections reach the shared path.
+    """
+
+    target = [] if records is None else records
+    token = _GGUF_LINEAR_DISPATCH_RECORDER.set(target)
+    try:
+        yield target
+    finally:
+        _GGUF_LINEAR_DISPATCH_RECORDER.reset(token)
+
+
+def _record_gguf_linear_dispatch(
+    *,
+    backend: str,
+    layer: str,
+    quant: str,
+    variant: str,
+    abi: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    activation_dtype: str,
+    output_dtype: str,
+) -> None:
+    records = _GGUF_LINEAR_DISPATCH_RECORDER.get()
+    if records is None:
+        return
+    records.append(
+        {
+            "key": {
+                "backend": str(backend),
+                "layer": str(layer),
+                "quant": str(quant),
+                "variant": str(variant),
+            },
+            "abi": str(abi),
+            "rows": int(rows),
+            "in_features": int(in_features),
+            "out_features": int(out_features),
+            "activation_dtype": str(activation_dtype),
+            "output_dtype": str(output_dtype),
+        }
+    )
+
+
 def launch_gguf_linear(
     weight: GGUFDeviceWeight,
     x_ptr: int,
@@ -5011,12 +5077,25 @@ def launch_gguf_linear(
         cached = (
             dispatch.abi,
             fn,
+            dispatch.key.backend,
             dispatch.key.layer,
             dispatch.key.quant,
             dispatch.key.variant,
         )
         _DISPATCH_RESOLVE_CACHE[cache_key] = cached
-    abi, fn, layer, quant, variant = cached
+    abi, fn, dispatch_backend, layer, quant, variant = cached
+    _record_gguf_linear_dispatch(
+        backend=dispatch_backend,
+        layer=layer,
+        quant=quant,
+        variant=variant,
+        abi=abi,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+        activation_dtype=activation_dtype,
+        output_dtype=output_dtype,
+    )
     if abi != "raw":
         _invalidate_wide_f16_publication()
     library = None

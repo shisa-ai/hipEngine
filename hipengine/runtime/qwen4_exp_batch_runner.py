@@ -54,7 +54,7 @@ from __future__ import annotations
 import operator
 from dataclasses import dataclass, fields
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
@@ -1655,10 +1655,30 @@ def _copy_ple_hash_state(state: PLEHashState) -> PLEHashState:
     )
 
 
+def batch_runner_call_table() -> dict[str, Callable[..., Any]]:
+    """The exact row-generic helpers the batch runner calls outside mixers.
+
+    These helpers are shared with the c1 path, so they are recorded as shared
+    bindings rather than as batch-specific arithmetic. The batch-specific
+    mixers, indexed kernels, and projection dispatch are bound by the batch
+    manifest from their own modules.
+    """
+
+    return {
+        "gr_read": run_qwen4_exp_gr_read,
+        "gr_write_f32": qwen4_exp_gr_write_bf16_f32,
+        "gr_write_bf16": qwen4_exp_gr_write_bf16_bf16,
+        "moe": run_qwen4_exp_moe,
+        "repeat_branches": qwen4_exp_repeat_bf16_branches,
+        "argmax": argmax_f32_rows_i32,
+    }
+
+
 __all__ = [
     "QWEN4_EXP_BATCH_BLOCK_SIZE",
     "Qwen4ExpBatchDecodeResult",
     "Qwen4ExpGGUFBatchRunner",
+    "batch_runner_call_table",
     "run_qwen4_exp_batch_gdn_layer",
     "run_qwen4_exp_batch_qsa_layer",
 ]

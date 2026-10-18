@@ -396,6 +396,8 @@ class Qwen4ExpARBatchCandidate:
         self._failure: str | None = None
         self._groups: list[dict[str, Any]] = []
         self._step_widths: dict[int, int] = {}
+        self._dispatch_records: list[dict[str, Any]] = []
+        self._variant_manifest: dict[str, Any] | None = None
         self._imports = 0
         self._steps = 0
 
@@ -444,14 +446,64 @@ class Qwen4ExpARBatchCandidate:
     def step_widths(self) -> dict[int, int]:
         return dict(self._step_widths)
 
+    def build_variant_manifest(self, *, source_revision: str) -> dict[str, Any]:
+        """Build the structured batch manifest from the live runner and records.
+
+        This must be called before :meth:`close`: the manifest names the live
+        runner class and its config, and the projection dispatch records were
+        collected around the measured steps.
+        """
+
+        if self._variant_manifest is not None:
+            return dict(self._variant_manifest)
+        owner = self._owner
+        if owner is None:
+            raise RuntimeError("batch candidate has no open owner")
+        runner = getattr(owner, "runner", None)
+        if runner is None:
+            raise RuntimeError("batch owner exposes no runner")
+        profile_manifest = getattr(self.generator, "execution_profile_manifest", None)
+        if not isinstance(profile_manifest, Mapping):
+            raise RuntimeError(
+                "candidate generator has no execution profile manifest; the batch "
+                "manifest cannot bind the execution profile"
+            )
+        from hipengine.runtime.qwen4_exp_batch_manifest import (
+            build_qwen4_exp_batch_variant_manifest,
+        )
+
+        manifest = build_qwen4_exp_batch_variant_manifest(
+            runner=runner,
+            profile_manifest=profile_manifest,
+            source_revision=source_revision,
+            dispatch_records=self._dispatch_records,
+            step_widths=self._step_widths,
+        )
+        self._variant_manifest = manifest
+        return dict(manifest)
+
     @property
     def evidence(self) -> dict[str, Any]:
+        manifest = self._variant_manifest
         return {
             "mode": self.label,
             "configured_width": self.width,
             "max_positions": self._max_positions,
             "prefill_source": BATCH_PREFILL_SOURCE,
-            "path_identities": list(batch_path_identities()),
+            "path_identities": (
+                [
+                    {
+                        "role": entry["role"],
+                        "binding": entry["binding"],
+                        "identity": entry["identity"],
+                    }
+                    for entry in manifest["entries"]
+                ]
+                if manifest is not None
+                else list(batch_path_identities())
+            ),
+            "variant_manifest": dict(manifest) if manifest is not None else None,
+            "dispatch_record_count": len(self._dispatch_records),
             "decode_step": "owner.step(rows, capture_logits=True)",
             "composition": "fixture_order_consecutive_groups",
             "imports": self._imports,
@@ -473,6 +525,7 @@ class Qwen4ExpARBatchCandidate:
         }
         slots: dict[int, int] = {}
         imported_positions: dict[int, int] = {}
+        from hipengine.runtime.gguf_linear import record_gguf_linear_dispatch
         try:
             for request in group.requests:
                 source.reset()
@@ -510,7 +563,8 @@ class Qwen4ExpARBatchCandidate:
                     (request.request_id, int(request.forced_ids[step]))
                     for request in group.requests
                 ]
-                results = owner.step(rows, capture_logits=True)
+                with record_gguf_linear_dispatch(self._dispatch_records):
+                    results = owner.step(rows, capture_logits=True)
                 self._steps += 1
                 self._step_widths[len(rows)] = self._step_widths.get(len(rows), 0) + 1
                 for request in group.requests:
@@ -583,6 +637,7 @@ class Qwen4ExpARBatchCandidate:
         slots: dict[int, int] = {}
         ids: dict[str, list[int]] = {request.prompt_id: [] for request in group.requests}
         current: dict[str, int] = {}
+        from hipengine.runtime.gguf_linear import record_gguf_linear_dispatch
         try:
             for request in group.requests:
                 source.reset()
@@ -605,7 +660,8 @@ class Qwen4ExpARBatchCandidate:
                     (request.request_id, current[request.prompt_id])
                     for request in group.requests
                 ]
-                results = owner.step(rows, capture_logits=False)
+                with record_gguf_linear_dispatch(self._dispatch_records):
+                    results = owner.step(rows, capture_logits=False)
                 self._steps += 1
                 self._step_widths[len(rows)] = self._step_widths.get(len(rows), 0) + 1
                 for request in group.requests:

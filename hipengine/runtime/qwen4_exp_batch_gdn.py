@@ -44,8 +44,9 @@ resolution and the rest are the two public indexed wrappers.
 from __future__ import annotations
 
 import operator
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -717,3 +718,19 @@ def _index_sequence(values: object, name: str) -> list[int]:
     except TypeError:
         raise TypeError(f"{name} must be a sequence of integers") from None
     return [_int_index(item, name) for item in items]
+
+
+def batch_gdn_call_table() -> dict[str, Callable[..., Any]]:
+    """The exact direct callables this module uses for one batch GDN step.
+
+    The projections are not listed here: they go through
+    :func:`launch_gguf_linear`'s row-dependent registry dispatch and are bound
+    separately as a dispatch record. These two indexed owners are imported and
+    called directly by this module, so the manifest must not describe them as
+    registry-resolved even though matching registry keys exist.
+    """
+
+    return {
+        "gdn_conv_indexed": qwen4_exp_linear_attn_conv_decode_indexed_f32,
+        "gdn_recurrence_norm_gate": qwen4_exp_gdn_decode_rowsplit_indexed_f32,
+    }

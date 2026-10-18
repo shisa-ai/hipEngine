@@ -96,8 +96,9 @@ from __future__ import annotations
 import itertools
 import math
 import operator
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -945,3 +946,19 @@ def _index_sequence(values: object, name: str) -> list[int]:
     except TypeError:
         raise TypeError(f"{name} must be a sequence of integers") from None
     return [_index_int(item, name) for item in items]
+
+
+def batch_qsa_index_call_table() -> dict[str, Callable[..., Any]]:
+    """The exact direct callables this module uses for index maintenance.
+
+    Append, pooled-key normalization, scoring, and selection are called directly
+    here; their matching registry keys are recorded as fallback identities, not
+    as evidence that this module resolved them through the registry.
+    """
+
+    return {
+        "qsa_index_append": qwen4_exp_qsa_scatter_index_key_device_position_f32,
+        "qsa_index_pool_norm_rope": qwen4_exp_qsa_pool_norm_rope_f32,
+        "qsa_index_score": qwen4_exp_qsa_score_f32,
+        "qsa_index_select": qwen4_exp_qsa_topk_expand_rows_f32_i64,
+    }

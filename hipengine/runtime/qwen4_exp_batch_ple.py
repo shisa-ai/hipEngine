@@ -48,6 +48,7 @@ import math
 import operator
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -333,6 +334,28 @@ class Qwen4ExpBatchPleState:
         return self.active
 
 
+def batch_ple_indexed_conv_key(backend: str) -> KernelKey:
+    """The registry key the batch PLE stage resolves for its indexed Conv."""
+
+    return KernelKey(
+        str(backend),
+        _INDEXED_CONV_LAYER,
+        _INDEXED_CONV_QUANT,
+        _INDEXED_CONV_VARIANT,
+    )
+
+
+def batch_ple_indexed_conv_fallback_key(backend: str) -> KernelKey:
+    """The single-request strict Conv owner that remains the fallback."""
+
+    return KernelKey(
+        str(backend),
+        _INDEXED_CONV_LAYER,
+        _INDEXED_CONV_QUANT,
+        "strict",
+    )
+
+
 def _resolve_indexed_conv(
     weights: Mapping[str, GGUFDeviceWeight],
 ) -> Callable[..., None]:
@@ -345,11 +368,9 @@ def _resolve_indexed_conv(
     mechanism, not a backend branch.
     """
 
-    backend = str(weights["ple_key"].backend)
+    key = batch_ple_indexed_conv_key(str(weights["ple_key"].backend))
+    backend = key.backend
     load_backend_kernel_package(backend)
-    key = KernelKey(
-        backend, _INDEXED_CONV_LAYER, _INDEXED_CONV_QUANT, _INDEXED_CONV_VARIANT
-    )
     if not is_registered(key):
         raise RuntimeError(
             "the request-indexed PLE Conv decode "
@@ -769,3 +790,22 @@ def _index_sequence(values: object, name: str) -> list[int]:
     except TypeError:
         raise TypeError(f"{name} must be a sequence of integers") from None
     return [_int_index(item, name) for item in items]
+
+
+def batch_ple_call_table() -> dict[str, Callable[..., Any]]:
+    """The exact direct callables this module uses for one batch PLE stage.
+
+    The indexed Conv is resolved through the registry and is bound separately
+    with its registry key and strict fallback. Projections are bound as
+    row-dependent registry dispatch records.
+    """
+
+    return {
+        "ple_stage": run_qwen4_exp_batch_ple_stage,
+        "ple_grouped_rmsnorm": qwen4_exp_grouped_rmsnorm_f32,
+        "ple_grouped_rmsnorm_bf16": qwen4_exp_grouped_rmsnorm_bf16_f32,
+        "ple_signed_sqrt_gate": qwen4_exp_ple_signed_sqrt_gate_f32,
+        "ple_repeat_gated_value": qwen4_exp_ple_repeat_gated_value_f32,
+        "ple_scaled_silu": qwen4_exp_scaled_silu_f32,
+        "ple_add_delta": qwen4_exp_ple_add_delta_bf16_f32,
+    }

@@ -676,6 +676,37 @@ def test_batch_step_is_deterministic_across_runs(model) -> None:
         right.close()
 
 
+def test_batch_step_records_projection_dispatch(model) -> None:
+    """A real batch step records the exact projection dispatch it launched."""
+
+    from hipengine.runtime.gguf_linear import record_gguf_linear_dispatch
+
+    batch = _batch(model)
+    records: list[dict] = []
+    try:
+        owners = [batch.admit(slot) for slot in (0, 1)]
+        with record_gguf_linear_dispatch(records):
+            result = batch.step([3, 11], slots=[0, 1], owners=owners)
+        assert result.logits is not None
+        assert records, "no projection dispatch was recorded"
+        assert {int(record["rows"]) for record in records} == {2}
+        assert {record["activation_dtype"] for record in records} == {"f32"}
+        assert {record["output_dtype"] for record in records} == {"f32"}
+        for record in records:
+            key = record["key"]
+            assert str(key["backend"]).startswith("hip_gfx")
+            assert key["layer"]
+            assert key["quant"]
+            assert key["variant"]
+            assert record["abi"]
+            assert int(record["in_features"]) > 0
+            assert int(record["out_features"]) > 0
+            assert record["activation_dtype"]
+            assert record["output_dtype"]
+    finally:
+        batch.close()
+
+
 def test_batch_slot_reuse_starts_from_zero_state(model) -> None:
     """Release and re-admit zero every slab, and a stale token is refused."""
 

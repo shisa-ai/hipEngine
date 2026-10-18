@@ -9362,3 +9362,14 @@ output width is a multiple of eight. Bit-identical to the one-column
 row-tile kernel. `=0` (read at each launch) keeps the row-tile kernel.
 Remove the flag and the one-column body once no caller needs widths that
 are not multiples of eight.
+
+## Batch manifest legacy substring binding
+
+`scripts/qwen4exp_ar_batch_candidate.py:batch_manifest_binding` and
+`BATCH_PATH_IDENTITIES` remain only for the legacy admission unit tests. The
+layer-2 gate now validates the structured
+`hipengine.runtime.qwen4_exp_batch_manifest` artifact: live direct identities,
+registry keys, projection dispatch keys, step widths, and the profile/source
+binding. Delete the substring helper, its identity table, and the fake-scope
+tests in `tests/test_unit_qwen4exp_ar_batch_admission.py` once the structured
+manifest is committed and no older evidence needs the legacy binding.

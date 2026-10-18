@@ -282,6 +282,42 @@ def test_adapter_refuses_unsupported_width():
         candidate.Qwen4ExpARBatchCandidate(FakeGenerator(), width=3)
 
 
+def test_build_variant_manifest_uses_live_runner_and_dispatch_records(
+    fake_adapter, monkeypatch
+):
+    adapter, owner, generator = fake_adapter()
+    generator.execution_profile_manifest = {"kind": "profile"}
+    adapter.open()
+    calls = []
+
+    def fake_build(**kwargs):
+        calls.append(kwargs)
+        return {"manifest_sha256": "a" * 64, "entries": []}
+
+    monkeypatch.setattr(
+        "hipengine.runtime.qwen4_exp_batch_manifest."
+        "build_qwen4_exp_batch_variant_manifest",
+        fake_build,
+    )
+
+    manifest = adapter.build_variant_manifest(source_revision="b" * 40)
+
+    assert manifest["manifest_sha256"] == "a" * 64
+    assert calls[0]["source_revision"] == "b" * 40
+    assert calls[0]["runner"] is owner.runner
+    assert calls[0]["profile_manifest"] == generator.execution_profile_manifest
+    assert calls[0]["dispatch_records"] == []
+    assert calls[0]["step_widths"] == {}
+    assert adapter.evidence["variant_manifest"]["manifest_sha256"] == "a" * 64
+
+
+def test_build_variant_manifest_requires_profile_manifest(fake_adapter):
+    adapter, _owner, _generator = fake_adapter()
+    adapter.open()
+    with pytest.raises(RuntimeError, match="execution profile manifest"):
+        adapter.build_variant_manifest(source_revision="b" * 40)
+
+
 # -- state gate -------------------------------------------------------------
 
 

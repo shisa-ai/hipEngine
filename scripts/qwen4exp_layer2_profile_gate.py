@@ -1050,13 +1050,11 @@ def batch_admission_eligibility(
         )
     if not tracked_clean:
         reasons.append("tracked_tree_not_clean")
-    if not bool(binding.get("bound", False)):
-        missing = tuple(binding.get("missing", ()))
-        if missing:
-            reasons.extend(
-                f"batch_manifest_missing:{row.get('role')}:{row.get('identity')}"
-                for row in missing
-            )
+    binding_valid = bool(binding.get("valid", binding.get("bound", False)))
+    if not binding_valid:
+        binding_reasons = tuple(str(reason) for reason in binding.get("reasons", ()))
+        if binding_reasons:
+            reasons.extend(f"batch_manifest:{reason}" for reason in binding_reasons)
         else:
             reasons.append("batch_manifest_not_bound")
     observed_rows = len(prompt_ids) * (int(decode_steps) + 1)
@@ -1082,7 +1080,7 @@ def batch_admission_eligibility(
             "free_tokens": int(free_tokens),
             "free_runs": int(free_runs),
             "tracked_clean": bool(tracked_clean),
-            "batch_manifest_bound": bool(binding.get("bound", False)),
+            "batch_manifest_bound": binding_valid,
         },
         "manifest_binding": binding,
     }
@@ -1452,6 +1450,7 @@ def _run_batch_candidate(
     *,
     candidate_mode: str,
     width: int,
+    source_revision: str,
 ) -> tuple[
     dict[str, list[tuple[Mapping[str, Any], ...]]],
     dict[str, list[Mapping[str, Any]]],
@@ -1512,6 +1511,7 @@ def _run_batch_candidate(
                 free = adapter.run_free_group(group, steps=int(args.free_tokens))
                 for prompt_id, task in free.items():
                     tasks[prompt_id].append(task)
+        adapter.build_variant_manifest(source_revision=source_revision)
     finally:
         adapter.close()
     return runs, states, tasks, adapter.evidence
@@ -1668,12 +1668,6 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         args, candidate_spec.base_profile, candidate_spec.quant
     )
     batch_manifest_binding_value = None
-    if batch_candidate:
-        from scripts.qwen4exp_ar_batch_candidate import batch_manifest_binding
-
-        batch_manifest_binding_value = batch_manifest_binding(
-            candidate_profile.manifest
-        )
     t16_hook = _post_construct_hook(candidate_generator, args)
     if t16_hook:
         print(json.dumps({"t16_populate": t16_hook}), flush=True)
@@ -1699,6 +1693,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 candidate_generator,
                 candidate_mode=candidate_mode,
                 width=int(batch_width),
+                source_revision=str(source["head"] or ""),
             )
         else:
             bound_environment = {
@@ -1763,6 +1758,18 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     candidate_after_close = memory_stats()
 
     if batch_candidate:
+        from hipengine.runtime.qwen4_exp_batch_manifest import (
+            validate_batch_variant_manifest,
+        )
+
+        batch_manifest_binding_value = validate_batch_variant_manifest(
+            batch_evidence.get("variant_manifest"),
+            expected_profile_manifest_sha256=candidate_profile.manifest_sha256,
+            expected_source_revision=str(source["head"] or ""),
+            expected_backend=candidate_profile.manifest["backend"],
+            expected_model=candidate_profile.manifest["model"],
+            expected_quant=candidate_profile.manifest["quant"],
+        )
         batch_evidence = {
             **batch_evidence,
             "manifest_binding": batch_manifest_binding_value,
@@ -1937,6 +1944,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "measurement_valid": measurement_valid,
         "protocol_check": protocol_check,
         "batch_candidate": batch_evidence,
+        "batch_variant_manifest_sha256": (
+            batch_manifest_binding_value.get("manifest_sha256")
+            if batch_manifest_binding_value is not None
+            else None
+        ),
         "admission": admission,
         "candidate_dispatch_calls": counter["calls"] if candidate_spec.requires_dispatch_count else None,
         "candidate_dispatch_shapes": shape_records(counter),

@@ -52,7 +52,9 @@ from __future__ import annotations
 
 import math
 import operator
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -1101,3 +1103,22 @@ def _is_finite_positive(value: object, name: str) -> bool:
     except OverflowError:
         return False
     return math.isfinite(parsed) and parsed > 0.0
+
+
+def batch_qsa_call_table() -> dict[str, Callable[..., Any]]:
+    """The exact direct callables this module uses for one mixed QSA step.
+
+    The mixed path attends every row through the variable-selection rows
+    kernel. The dense paged decode kernel is not called by this module and is
+    therefore not part of the batch claim. Projections are bound separately as
+    row-dependent registry dispatch records.
+    """
+
+    return {
+        "qsa_mixed_mixer": run_qwen4_exp_batch_qsa_mixed_token_mixer,
+        "qsa_split_norm_rope": qwen4_exp_qsa_split_norm_rope_rows_f32,
+        "qsa_split_norm_mrope": qwen4_exp_qsa_split_norm_mrope_rows_f32,
+        "qsa_paged_kv_write": qwen35_write_paged_kv_f32_batch_spans,
+        "qsa_rows_attention": qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
+        "qsa_gate_context": qwen4_exp_qsa_gate_context_f32,
+    }

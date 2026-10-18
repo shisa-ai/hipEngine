@@ -111,6 +111,30 @@ def test_short_protocol_parameters_are_ineligible(field, value, reason):
 # -- manifest binding -------------------------------------------------------
 
 
+def test_structured_invalid_binding_blocks_admission_even_if_legacy_bound_is_true():
+    binding = {
+        "bound": True,
+        "valid": False,
+        "reasons": ["direct_identity_mismatch:gdn_conv_indexed"],
+        "missing": [],
+    }
+    eligibility = batch_admission_eligibility(
+        **eligibility_kwargs(manifest_binding=binding)
+    )
+    assert eligibility["eligible"] is False
+    assert any(
+        "batch_manifest:direct_identity_mismatch" in reason
+        for reason in eligibility["reasons"]
+    )
+    decision = batch_admission_decision(
+        eligibility=eligibility,
+        measurement_valid=True,
+        numerical_pass=True,
+        task_pass=True,
+    )
+    assert decision["admitted"] is False
+
+
 def test_c1_only_manifest_does_not_bind_the_batch_path():
     manifest = {
         "kind": "hipengine_execution_profile_manifest",
