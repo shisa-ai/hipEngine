@@ -840,10 +840,16 @@ select `default` with a stable reason such as `context_bucket_not_qualified` or
 Completion and chat choices include a hipEngine extension field,
 `finish_details`, next to the OpenAI-compatible `finish_reason`. The extension
 always contains `reason` and may include `eos_token_id`, `stop_sequence`,
-`length_limit`, `deadline_exceeded`, `cancelled`, `forced_close`,
-`synthetic_tokens`, `reasoning_tokens`, `answer_tokens`, `tool_call_tokens`,
-`structured_tokens`, `budget_pressure`, `cache_action`, `sampler_mode`, `phase`,
-`continuation_eligible`, and `continuation_id`.
+`matched_stop`, `length_limit`, `deadline_exceeded`, `cancelled`,
+`forced_close`, `synthetic_tokens`, `reasoning_tokens`, `answer_tokens`,
+`tool_call_tokens`, `structured_tokens`, `budget_pressure`, `cache_action`,
+`sampler_mode`, `phase`, `continuation_eligible`, and `continuation_id`.
+
+`reason` names one cause. A request `stop` string trimmed on the server sets
+`reason: "stop"` and `matched_stop` to the string that matched, and drops the
+backend's `eos_token_id`, `length_limit`, and `stop_sequence` from the same
+payload: generation may have also reached EOS, but that is not the reported
+cause and a second cause field beside `reason` would contradict it.
 
 `finish_reason` remains the coarse OpenAI value for compatibility. For example,
 backend `reason: "eos"` is exposed as `finish_reason: "stop"` with

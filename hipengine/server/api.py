@@ -6181,7 +6181,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             return
 
         raw_text = "".join(full_text)
-        text, finish_reason = _apply_stop(raw_text, request.stop)
+        text, finish_reason, matched_stop = _apply_stop(raw_text, request.stop)
         server_stop = text != raw_text
         backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
         done_stream_chunk = None if server_stop else last_stream_chunk
@@ -6210,6 +6210,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 backend_detail,
                 finish_reason,
                 cache_action=cache_action,
+                matched_stop=matched_stop,
             ),
             tokens=final_tokens,
             stream_chunk=done_stream_chunk,
@@ -7170,7 +7171,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         for index, (prompt, output, detail) in enumerate(zip(expanded_prompts, batch.outputs, batch.details, strict=True)):
             previous_text = "" if continuation is None else continuation.generated_texts[index]
             output = f"{previous_text}{output}"
-            generated_text, finish_reason = _apply_stop(output, request.stop)
+            generated_text, finish_reason, matched_stop = _apply_stop(output, request.stop)
             server_stop = generated_text != output
             finish_reason = _finish_reason_for_output(detail, finish_reason, server_stop=server_stop)
             text = prompt + generated_text if request.echo else generated_text
@@ -7201,6 +7202,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     or structured_length_failure
                     or ("stop" if server_stop else None),
                     cache_action=cache_action,
+                    matched_stop=matched_stop,
                 ),
             }
             _mark_structured_length_failure(request, structured_length_failure, choice["finish_details"])
@@ -7559,7 +7561,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
                 previous_text = "" if continuation is None else continuation.generated_texts[index]
                 output = f"{previous_text}{output}"
-                text, finish_reason = _apply_stop(output, request.stop)
+                text, finish_reason, matched_stop = _apply_stop(output, request.stop)
                 server_stop = text != output
                 raw_parsed = _parse_chat_tool_calls_for_engine(
                     getattr(app.state, "hipengine_llm", None),
@@ -7624,6 +7626,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         cache_action=requested_cache_action,
                         parsed=parsed,
                         token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
+                        matched_stop=matched_stop,
                     ),
                 }
                 _mark_structured_length_failure(request, structured_length_failure, choice["finish_details"])
@@ -7969,7 +7972,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine=getattr(app.state, "hipengine_llm", None),
                 )
             for index, output in enumerate(batch.outputs):
-                text, finish_reason = _apply_stop(output, request.stop)
+                text, finish_reason, matched_stop = _apply_stop(output, request.stop)
                 server_stop = text != output
                 raw_parsed = _parse_chat_tool_calls_for_engine(
                     getattr(app.state, "hipengine_llm", None),
@@ -8039,6 +8042,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     cache_action=_session_cache_action(request),
                     parsed=parsed,
                     token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
+                    matched_stop=matched_stop,
                 )
                 _mark_structured_length_failure(request, structured_length_failure, finish_details)
                 _mark_structured_length_phase(request, finish_details)
@@ -8806,7 +8810,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             return
 
         raw_text = "".join(full_text)
-        text, finish_reason = _apply_stop(raw_text, request.stop)
+        text, finish_reason, matched_stop = _apply_stop(raw_text, request.stop)
         server_stop = text != raw_text
         backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
         done_stream_chunk = None if server_stop else last_stream_chunk
@@ -8856,6 +8860,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 cache_action=cache_action,
                 parsed=parsed,
                 token_counter=getattr(engine, "count_tokens", None),
+                matched_stop=matched_stop,
             )
             _mark_structured_length_phase(request, finish_details)
             hard_error = _invalid_tool_call_hard_error(
@@ -8945,6 +8950,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     finish_reason,
                     text,
                     cache_action=cache_action,
+                    matched_stop=matched_stop,
                 ),
                 tokens=final_tokens,
                 stream_chunk=done_stream_chunk,
@@ -14844,20 +14850,30 @@ def _message_content_text(content: str | list[Any] | None, message_index: int) -
     return "".join(text_parts)
 
 
-def _apply_stop(text: str, stop: str | list[str] | None) -> tuple[str, str]:
+def _apply_stop(text: str, stop: str | list[str] | None) -> tuple[str, str, str | None]:
+    """Trim at the earliest requested stop string and name the one that matched.
+
+    The matched string is returned so the response can say which stop fired. A
+    caller that only compares lengths loses that, and a caller that rewrites
+    ``reason`` to ``stop`` while keeping the backend's ``eos_token_id`` reports
+    two different causes for one finish.
+    """
+
     stops = _stop_strings(stop)
     if not stops:
-        return text, "stop"
+        return text, "stop", None
     earliest: int | None = None
+    matched: str | None = None
     for item in stops:
         if not item:
             continue
         index = text.find(item)
         if index >= 0 and (earliest is None or index < earliest):
             earliest = index
+            matched = item
     if earliest is None:
-        return text, "stop"
-    return text[:earliest], "stop"
+        return text, "stop", None
+    return text[:earliest], "stop", matched
 
 
 def _finish_reason_for_output(
@@ -14907,11 +14923,19 @@ def _finish_details_payload(
     *,
     reason_override: str | None = None,
     cache_action: str | None = None,
+    matched_stop: str | None = None,
 ) -> dict[str, Any]:
     finish = None if detail is None else detail.finish_details
     if finish is None:
         finish = FinishDetails(reason=finish_reason)
     payload = finish.to_json_dict(reason=reason_override)
+    if matched_stop is not None:
+        # The server's own text stop is the reported cause, so the backend's
+        # original cause must not survive beside it: an eos_token_id or a
+        # length_limit here would name a second, contradictory reason.
+        for stale in ("eos_token_id", "length_limit", "stop_sequence"):
+            payload.pop(stale, None)
+        payload["matched_stop"] = str(matched_stop)
     if cache_action is not None:
         payload.setdefault("cache_action", str(cache_action))
     return payload
@@ -14926,12 +14950,14 @@ def _chat_finish_details_payload(
     cache_action: str | None = None,
     parsed: _ParsedChatOutput | None = None,
     token_counter: Any | None = None,
+    matched_stop: str | None = None,
 ) -> dict[str, Any]:
     payload = _finish_details_payload(
         detail,
         finish_reason,
         reason_override=reason_override,
         cache_action=cache_action,
+        matched_stop=matched_stop,
     )
     _enrich_chat_tool_finish_details(payload, parsed=parsed, token_counter=token_counter)
     if _is_length_finish(finish_reason, payload):

@@ -6795,7 +6795,12 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     assert body["hipengine"]["routing"] == _routing_metadata()
     assert [choice["text"] for choice in body["choices"]] == ["alpha", "beta"]
     assert [choice["finish_reason"] for choice in body["choices"]] == ["stop", "stop"]
-    assert [choice["finish_details"] for choice in body["choices"]] == [_stateless_finish_details("stop"), _stateless_finish_details("stop")]
+    # A server-side stop names the string that matched, and does not keep a
+    # backend cause beside it.
+    assert [choice["finish_details"] for choice in body["choices"]] == [
+        _stateless_finish_details("stop", matched_stop="<stop>"),
+        _stateless_finish_details("stop", matched_stop="<stop>"),
+    ]
     assert body["usage"] == {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4}
     assert fake.calls == [
         (
