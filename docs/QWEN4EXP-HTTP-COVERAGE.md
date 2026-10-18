@@ -11,7 +11,9 @@ comparisons: stops, alternate EOS, minimum tokens, ignore-EOS, JSON Schema,
 required/automatic tools and hard-thinking controls. C1 unstructured MTP SSE,
 including logprobs and text stops, now publishes committed output incrementally.
 Schema-validated and tool-enabled SSE intentionally buffers output until complete
-validation; it is not token-live. True multi-request batching remains open.
+validation; it is not token-live. Multi-request AR batching is implemented and
+qualified separately as an opt-in path ([PS8](QWEN4EXP-PRODUCTION-SERVING.md));
+the October 17 audit's single-row observation below stands as history.
 A passing unit suite does not establish those product capabilities.
 
 Implementation and final qualification are tracked by the approved
