@@ -1331,6 +1331,110 @@ def _grammar_capability(engine=None) -> dict[str, Any]:
     }
 
 
+def _probe_decode_telemetry(engine: Any | None) -> dict[str, Any]:
+    """Read the live decode path without building or warming anything.
+
+    ``/v1/hipengine/decode`` and the capabilities payload both call this so the
+    two surfaces cannot disagree about the route the engine is running. A hook
+    that raises or returns a non-mapping is reported as unavailable with a
+    fixed reason: the hook runs on the decode thread and its message can carry
+    device pointers or paths.
+    """
+
+    for target in (getattr(engine, "_text_generator", None), engine):
+        if target is None:
+            continue
+        probe = getattr(target, "decode_telemetry", None)
+        if not callable(probe):
+            continue
+        try:
+            payload = probe()
+        except Exception as exc:
+            _LOGGER.warning("decode telemetry hook failed: %s", exc, exc_info=True)
+            return {"available": False, "reason": "decode_telemetry_unavailable"}
+        if not isinstance(payload, Mapping):
+            # A hook that returns a list, string, or None is a bug in the
+            # engine, not evidence of a decode path. Fail closed instead of
+            # reporting available:true with a fabricated path.
+            _LOGGER.warning(
+                "decode telemetry hook returned %s, expected a mapping",
+                type(payload).__name__,
+            )
+            return {"available": False, "reason": "decode_telemetry_malformed"}
+        return {"available": True, "decode": dict(payload)}
+    return {"available": False, "reason": "engine_has_no_decode_telemetry"}
+
+
+def _decode_capability_summary(engine: Any | None) -> dict[str, Any]:
+    """Describe the decode route and its physical-width envelope.
+
+    The envelope is the build's qualification bound, so it is reported even
+    before the first request selects a path. The live width comes from the same
+    probe the decode endpoint uses. ``ar_batch`` is reported only for an engine
+    whose telemetry carries that key, so a provider without the opt-in batch
+    path never inherits its envelope.
+    """
+
+    probe = _probe_decode_telemetry(engine)
+    summary: dict[str, Any] = {
+        "telemetry_url": "/v1/hipengine/decode",
+        "available": bool(probe["available"]),
+        "ar_batch": None,
+    }
+    if not probe["available"]:
+        summary["reason"] = probe["reason"]
+        return summary
+    decode = probe["decode"]
+    summary["path"] = decode.get("decode_path")
+    if "ar_batch" not in decode:
+        return summary
+
+    # Imported here so the server module keeps no import-time dependency on the
+    # provider's batch implementation.
+    from hipengine.generation.qwen4_exp_ar_batch import (
+        AR_BATCH_ENV,
+        AR_BATCH_QUALIFIED_MAX_POSITIONS,
+        AR_BATCH_QUALIFIED_MAX_SLOTS,
+        AR_BATCH_SLOTS_ENV,
+        ar_batch_enabled,
+    )
+
+    raw_slots = os.environ.get(AR_BATCH_SLOTS_ENV, "").strip()
+    configured: int | None = None
+    invalid: str | None = None
+    if raw_slots:
+        try:
+            parsed = int(raw_slots)
+        except ValueError:
+            invalid = f"{AR_BATCH_SLOTS_ENV} is not an integer"
+        else:
+            if not 1 <= parsed <= AR_BATCH_QUALIFIED_MAX_SLOTS:
+                invalid = (
+                    f"{AR_BATCH_SLOTS_ENV}={parsed} is outside "
+                    f"1..{AR_BATCH_QUALIFIED_MAX_SLOTS}"
+                )
+            else:
+                configured = parsed
+    summary["ar_batch"] = {
+        "enabled": ar_batch_enabled(),
+        "env": AR_BATCH_ENV,
+        "slots_env": AR_BATCH_SLOTS_ENV,
+        "configured_slots": configured,
+        "invalid_configuration": invalid,
+        "qualified_max_slots": AR_BATCH_QUALIFIED_MAX_SLOTS,
+        "qualified_max_positions": AR_BATCH_QUALIFIED_MAX_POSITIONS,
+        "above_qualified_positions": "production_capacity_bound",
+        "mtp_rows_join_batch": False,
+        "active": decode.get("ar_batch"),
+        "scope": (
+            "opt-in plain-AR decode rows; MTP rows keep a request-owned c1 "
+            "runner; the raised capacity ceiling applies only at or below "
+            "qualified_max_positions"
+        ),
+    }
+    return summary
+
+
 def _parallelism_capability() -> dict[str, Any]:
     return {
         "tensor_parallel": {
@@ -6242,45 +6346,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         """
 
         engine = getattr(app.state, "hipengine_llm", None)
-        for target in (getattr(engine, "_text_generator", None), engine):
-            if target is None:
-                continue
-            probe = getattr(target, "decode_telemetry", None)
-            if not callable(probe):
-                continue
-            try:
-                payload = probe()
-            except Exception as exc:
-                # The hook runs on the decode thread and its message can carry
-                # device pointers or paths. Log the detail, return a fixed code.
-                _LOGGER.warning("decode telemetry hook failed: %s", exc, exc_info=True)
-                return {
-                    "object": "hipengine.decode_telemetry",
-                    "available": False,
-                    "reason": "decode_telemetry_unavailable",
-                }
-            if not isinstance(payload, Mapping):
-                # A hook that returns a list, string, or None is a bug in the
-                # engine, not evidence of a decode path. Fail closed instead of
-                # reporting available:true with a fabricated path.
-                _LOGGER.warning(
-                    "decode telemetry hook returned %s, expected a mapping",
-                    type(payload).__name__,
-                )
-                return {
-                    "object": "hipengine.decode_telemetry",
-                    "available": False,
-                    "reason": "decode_telemetry_malformed",
-                }
+        probe = _probe_decode_telemetry(engine)
+        if not probe["available"]:
             return {
                 "object": "hipengine.decode_telemetry",
-                "available": True,
-                "decode": dict(payload),
+                "available": False,
+                "reason": probe["reason"],
             }
         return {
             "object": "hipengine.decode_telemetry",
-            "available": False,
-            "reason": "engine_has_no_decode_telemetry",
+            "available": True,
+            "decode": probe["decode"],
         }
 
     @app.delete("/v1/hipengine/sessions/{session_id}")
@@ -6863,6 +6939,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "multiple_models": False,
             },
             "parallelism": _parallelism_capability(),
+            "decode": _decode_capability_summary(engine),
             "errors": _error_taxonomy_manifest(),
             "unsupported_fields": _known_unsupported_fields(engine),
         }

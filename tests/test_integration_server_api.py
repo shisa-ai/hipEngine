@@ -1247,6 +1247,30 @@ def test_decode_telemetry_endpoint_reports_physical_state_and_auth() -> None:
     assert body["available"] is True
     assert body["decode"]["ar_batch"]["step_widths"] == {"2": 3}
 
+    # Capabilities must describe the same route the telemetry endpoint reports,
+    # not a second opinion about it.
+    advertised = TestClient(service_app).get(
+        "/v1/hipengine/capabilities", headers={"Authorization": "Bearer secret"}
+    ).json()["decode"]
+    assert advertised["available"] is True
+    assert advertised["telemetry_url"] == "/v1/hipengine/decode"
+    assert advertised["path"] == body["decode"]["decode_path"]
+    assert advertised["ar_batch"]["active"] == body["decode"]["ar_batch"]
+    assert advertised["ar_batch"]["mtp_rows_join_batch"] is False
+    assert advertised["ar_batch"]["qualified_max_slots"] == 4
+    assert advertised["ar_batch"]["qualified_max_positions"] == 2048
+
+    # An engine without the hook advertises no path and no envelope.
+    advertised_unavailable = TestClient(app).get(
+        "/v1/hipengine/capabilities", headers={"Authorization": "Bearer secret"}
+    ).json()["decode"]
+    assert advertised_unavailable == {
+        "telemetry_url": "/v1/hipengine/decode",
+        "available": False,
+        "reason": "engine_has_no_decode_telemetry",
+        "ar_batch": None,
+    }
+
 
 def test_decode_telemetry_endpoint_sanitizes_hook_failures_and_bad_payloads() -> None:
     class FailingLLM(FakeLLM):

@@ -226,7 +226,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /health` | Built in | Unauthenticated liveness probe; does not imply model readiness. |
 | `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready or the engine service cannot accept work; loaded-model metadata includes artifact-scoped approximate-KV capability provenance. |
 | `GET /v1/models` | Built in | Returns the single served model id plus `hipengine` status metadata: backend/quant, loaded state, compact capability summary, context defaults, KV policy/estimate and artifact-scoped capability decision, routing count, and capabilities URL. |
-| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, immutable approximate-KV capability identity/decision, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP/generic speculative-provider status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, and unsupported fields. |
+| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, immutable approximate-KV capability identity/decision, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP/generic speculative-provider status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, the decode route with its opt-in AR batch envelope, and unsupported fields. |
 | `POST /v1/hipengine/speculative_mtp/rollback` | Built in | Authenticated runtime rollback: routes every new MTP request to AR until server restart, while in-flight owned cycles retire through the RF3 lifecycle contract. Returns direct circuit-breaker state. |
 | `GET /v1/hipengine/decode` | Built in | Authenticated read-only decode-path telemetry: the active execution path and, when the engine batches decode, the physical batch state (state slots, max positions, live slots, steps, step-width histogram, imports, releases, failure). Reports `available: false` with a fixed `reason` when the engine has no hook or the hook fails. |
 | `GET /v1/hipengine/sessions` | Built in | Authenticated metadata-only listing for app-local chat transcript sessions plus continuation-handle counts. Does not include prompt, generated, or tool-result text. |
@@ -281,6 +281,20 @@ raises, it is `available: false` with `reason: decode_telemetry_unavailable`
 and the exception detail is logged server-side rather than returned; when the
 hook returns a non-object payload, it is `available: false` with
 `reason: decode_telemetry_malformed`.
+
+`GET /v1/hipengine/capabilities` publishes the same probe under a top-level
+`decode` key, so a client can discover the route before sending a request. It
+reports `available`, `path`, and, for an engine whose telemetry carries the
+batch key, an `ar_batch` envelope: `enabled`, `env`, `slots_env`,
+`configured_slots`, `invalid_configuration`, `qualified_max_slots`,
+`qualified_max_positions`, `above_qualified_positions`,
+`mtp_rows_join_batch`, `active`, and `scope`. Both surfaces call one probe, so
+they cannot disagree about the active path. `active` is the live snapshot and
+is `null` before the runner selects a path; an unusable
+`HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS` value is reported in
+`invalid_configuration` rather than failing the manifest, while the request
+path still refuses to serve with it. A provider whose telemetry has no batch
+key reports `ar_batch: null` instead of inheriting this envelope.
 
 #### Qualification configuration for physical widths above 2
 
