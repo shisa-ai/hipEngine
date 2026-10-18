@@ -1,9 +1,108 @@
 ---
 status: closed
-owns: The recorded acceptance requirements and evidence checklist for the gfx1151 default MTP serving campaign.
+owns: The acceptance requirements, final repair status, validation tables, and limitations for the gfx1151 default MTP serving campaign.
 ---
 
 # Task: MTP on by default, end to end, for every model on this gfx1151 host, through `hipengine serve`
+
+## Final repair status — 2026-10-17
+
+The tracked repair tasks and the corrected **four-model** public acceptance
+matrix are complete at `af024e122`. Concrete defects found during this work
+were repaired and validated. This is not a claim that the original default-on
+objective below is fully satisfied: Qwen MoE automatic selection still uses AR,
+and Qwen3.8-Flash-Next is not included in this four-model validation packet.
+It is also not a full production numerical-quality verdict or a speedup claim.
+
+The lead subsequently authorized publishing `gfx1151-mtp-default`, merging it
+into `main`, and pushing `origin/main`. That authorization supersedes the
+historical branch-only publication instruction in §6. The original assignment
+below is preserved as historical scope, not a statement that every acceptance
+criterion passed.
+
+### Repairs completed
+
+| Area | What was fixed or corrected | Status |
+| --- | --- | --- |
+| Explicit MTP requests | Requests losing MTP intent or taking an unintended route | Fixed |
+| Identity-free admission | Native selection depending on artifact/quantization identity rather than implementation capability | Fixed |
+| Qwen native execution | Native-route restrictions and sampled graph-capture mismatch | Fixed |
+| MoE concurrent verification | Convolution state addressed incorrectly across resident slots | Fixed |
+| Diagnostic correctness | AR control replayed output predictions instead of consumed inputs; attribution was misleading | Corrected |
+| Gemma generation controls | Thinking budgets, minimum tokens, logprobs, and multi-token stops | Implemented and validated |
+| Minimum-token API requests | Missing explicit EOS caused rejection even when the model supplied EOS metadata | Fixed |
+| Stop handling | Context-dependent tokenization missed stops; speculative metadata ordering exposed stop text | Fixed |
+| Gemma single-token stops | Stop tokens appeared in text and were mislabeled as EOS | Fixed |
+| Streaming UTF-8 | Multibyte characters were corrupted; special-token suppression could cross requests | Fixed |
+| Literal SSE stops | Stops split across chunks or inside tokens leaked into visible output | Fixed |
+| Final stream metadata | Stop handling discarded generated IDs, usage, or MTP attribution | Fixed |
+| Evidence and reporting | Concurrency claims, failed captures, and numerical comparisons were mischaracterized | Corrected and archived |
+
+### Four-model public validation
+
+These results cover the recorded `gfx1151`, BF16-KV configurations through
+`hipengine serve`, with context capacity 32768, prefix cache off, and up to four
+active requests. They do not establish every backend or configuration. C2–C4
+means two through four concurrent client submissions; physical batching is
+reported separately.
+
+| Model | Explicit MTP / alias | Default route observed | Controls and streaming | Concurrent submissions | Physical MTP batching observed | Long-context completion |
+| --- | --- | --- | --- | --- | --- | --- |
+| Qwen3.8-27B Q4_K_S | Passed | MTP | Passed after focused repairs | C2–C4 passed | Proposal widths 2, 3, 4 | 30078 prompt tokens; 32 output tokens |
+| Qwen3.8-27B Q4_K_M | Passed | MTP | Passed | C2–C4 passed | Proposal widths 2, 3, 4 | 30078 prompt tokens; 32 output tokens |
+| Qwen3.6-35B-A3B Q4_K_M | Passed | AR | Passed | C2–C4 passed | Two-row proposal batches in this capture, not physical C4 | 30078 prompt tokens; 32 output tokens |
+| Gemma4-26B-A4B Q4_K_XL | Passed | MTP | Passed after focused repairs; whitespace caveat below | C2–C4 passed | Single-request MTP route, not multi-request batching | 30083 prompt tokens; 2 output tokens, then EOS |
+
+Controls covered thinking on/off and hard budgets, minimum output, logprobs,
+tokenizable stops, Unicode, seeded sampling, and blocking/SSE comparisons.
+Q4_K_S has five original streaming pairs plus six focused control pairs;
+thinking SSE was not repeated for that quantization. The other models have ten
+original streaming pairs each. Additional literal-stop checks exercised Qwen
+Q4_K_M and Gemma through real HTTP requests. Original failed captures remain
+unchanged and are linked to focused repair evidence.
+
+### Remaining limitations and unproven claims
+
+| Item | Current state | Meaning |
+| --- | --- | --- |
+| MoE automatic MTP | Automatic selection still chooses AR (`automatic_mtp_scope_not_promoted`) | Explicit `speculative_mtp` and the alias work; universal default-on MTP is not the delivered state |
+| Gemma physical concurrency | MTP route is capped at one request | Concurrent clients work, but this is not physical multi-request MTP batching |
+| Literal-only stop efficiency | Output is suppressed, but the backend is drained to retain authoritative accounting | A stop inside an unmatched token does not guarantee immediate compute termination |
+| Exact text parity | Blocking chat trims trailing whitespace; SSE preserves it | Gemma's thinking-output pair had identical IDs and reasoning apart from trailing whitespace |
+| Production numerical quality | MoE and Gemma production AR/MTP IDs differed on the recorded 256-token prompts | This alone does not prove a defect; a full numerical-quality verdict has not been established |
+| Performance | Recorded API and control checks passed after repairs | No blanket MTP speedup claim; older timing rows do not establish performance of the final repaired state |
+| Coverage | Representative configurations and targeted regressions were tested | Not exhaustive across all models, contexts, sampling settings, or backends; the original Flash-Next row is not covered by this packet |
+
+### Verification and delivered commits
+
+| Evidence | Result |
+| --- | --- |
+| Final CPU unit + server API bundle | 14052 passed, 91 skipped |
+| Final literal-stop HTTP validation | 16 requests passed; 8 blocking/SSE pairs matched under the existing whitespace policy |
+| Corrected public matrix | 131 original request outcomes, linked to 20 focused control-repair checks |
+| Documentation, audit, worklog, fixtures, and CPU smoke gates | Passed for the repair units |
+| Explicit MTP intent and Gemma controls | `e9a80c4f5` |
+| Identity-free Qwen admission | `06c25be33` |
+| Packed decode width and physical telemetry | `0ec4aa482` |
+| MoE resident-slot state repair | `95b3595e3` |
+| Consumed-state attribution correction | `b53353ec5` |
+| Native MoE route and sampled graph capture | `2a96d5d46` |
+| Qwen streaming UTF-8 repair | `95d80f58b` |
+| Minimum-output EOS and streamed token stops | `6b70e99c8` |
+| Gemma single-stop repair | `f541f93e6` |
+| Corrected matrix | `273c614d4` |
+| Literal SSE repair; implementation snapshot for this report | `af024e122` |
+
+Evidence and exact request/server parameters:
+
+- [Corrected public matrix](../../benchmarks/results/2026-10-17-mtp-corrected-public-matrix.json): request summaries, source/raw-capture hashes, original checker outcomes, physical counters, and limitations.
+- [Minimum-token and token-stop repairs](../../benchmarks/results/2026-10-17-mtp-public-token-control-repair.json): 12 focused Q4_K_S requests.
+- [Gemma single-stop repair](../../benchmarks/results/2026-10-17-gemma-single-stop-repair.json): eight focused requests.
+- [Literal SSE stop repair](../../benchmarks/results/2026-10-17-literal-sse-stop-repair.json): 16 requests after the matrix; resolves its recorded literal-SSE leak limitation without changing the original captures.
+- [Qwen native state attribution](../../benchmarks/results/2026-10-17-qwen-native-commit-attribution.json) and [Gemma prefix attribution](../../benchmarks/results/2026-10-17-gemma-mtp-prefix-attribution.json): ownership, repeatability, and numerical observations, not a whole-model quality verdict.
+- [Final repair worklog](../../worklog/entries/20261017T221108.080636Z-mtp-controls-literal-stream-stops-d6e758.md): exact final CPU command, HTTP checks, and validation history.
+
+## Original assignment
 
 You are working unattended overnight. The lead will review your commits and report in the morning. **No one will answer questions before then.** Don't stop to ask and don't end with "want me to run it?". Every decision you might want to ask about is already made below. If you still hit an unknown, pick the option that gets MTP serving users, write down why, and keep going.
 
