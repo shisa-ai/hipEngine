@@ -469,7 +469,7 @@ Effect by call site on this host:
 | --- | --- |
 | `benchmarks/micro/collect_env.py` | Degrades safely. `run_command` checks `shutil.which` and records `available: false` with empty output when the binary is absent. With `/opt/rocm` on `PATH` it instead records the stale 7.2.3 tool, so `rocm_smi_lines` is populated but does not describe the active stack. `amd_smi_*` fields are the reliable ones. |
 | `scripts/gemma4_campaign_bench.py` | Degrades safely; its `_run` catches `OSError` and returns an empty string. |
-| `scripts/gemma4_scoreboard_snapshot.py` | **Hard failure.** Its `_run` does not catch `OSError`, so a missing `rocm-smi` raises and provenance capture aborts. On this host it resolves the stale `/opt/rocm` binary instead, so the snapshot records 7.2.3-era identity. |
+| `scripts/gemma4_scoreboard_snapshot.py` | Degrades safely. `_tool_capture` resolves each tool with `shutil.which` and records `rocm_smi_available`/`rocm_smi_path` and `amd_smi_available`/`amd_smi_path`, so a missing tool leaves an empty list instead of aborting, and a stale `/opt/rocm` binary is visible in the artifact. |
 | `scripts/gguf_c1_decode_attribution.py` | Degrades safely; guarded by `shutil.which`. |
 | `scripts/gguf_pack8_dual_wmma_row_microbench.py` | Calls `rocm-smi` for GPU identity; same stale-binary caveat. |
 
