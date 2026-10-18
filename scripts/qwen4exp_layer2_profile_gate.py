@@ -9,6 +9,20 @@ full-vocabulary rows by default (18 prompts x prefill-last plus 24 c1 rows),
 three candidate repeats, request-local state fingerprints, and 32-token free
 outputs. A cross-route free-output difference requires a separate task review;
 it is never silently accepted by this harness.
+
+``--candidate ar_batch`` runs the AR batch adapter instead of a c1 candidate
+loop. Prefill stays on the committed c1 path (one request at a time, imported
+once per request); every recorded decode row is a genuine N-row
+``owner.step`` at ``--batch-width``. The prefill-last row keeps its
+``prefill_last``/``prefill_to_c1`` label; decode rows are labeled ``batch_wN``
+and the first one ``prefill_to_batch``. The state gate compares batch-slot
+fingerprints across repeats, positions, and ownership rather than
+byte-for-byte to the c1 layout. ``--protocol-check`` permits an uncommitted
+tracked tree and exits 0 with ``status=protocol_check`` when the adapter,
+state gate, determinism, and teardown are sound; it never marks the candidate
+admitted. A non-protocol batch run outside the normative 18-prompt/24-step/
+450-row scope, or one whose profile manifest does not bind the batch path,
+reports ``status=ineligible`` with the reasons under ``admission``.
 """
 
 from __future__ import annotations
@@ -48,6 +62,16 @@ from scripts.qwen4exp_canonical_ar_bench import (
 )
 
 KIND = "qwen4exp_execution_profile_candidate_gate"
+
+#: Normative AR batch admission scope: 18 named prompts x (24 decode steps + 1
+#: prefill-last row) = 450 teacher-forced rows, three repeats, and 32-token
+#: free outputs over two runs. A shorter run validates the adapter protocol but
+#: is not eligible for admission, regardless of a clean tracked tree.
+BATCH_NORMATIVE_DECODE_STEPS = 24
+BATCH_NORMATIVE_REPEAT_RUNS = 3
+BATCH_NORMATIVE_FREE_TOKENS = 32
+BATCH_NORMATIVE_FREE_RUNS = 2
+BATCH_NORMATIVE_TEACHER_ROWS = 450
 
 
 @dataclass(frozen=True, slots=True)
@@ -638,6 +662,22 @@ CANDIDATES = {
 }
 
 
+CANDIDATES["ar_batch"] = CandidateSpec(
+    name="qwen4_exp_ar_batch",
+    classification="T2",
+    mechanism=(
+        "committed c1 prefill (one request at a time) imported once into one "
+        "physical batch slot per request, then one genuine N-row AR decode step "
+        "per teacher-forced position; width-specific association is the change"
+    ),
+    environment={},
+    base_profile="production",
+    scenario_id="qwen4exp-ar-batch",
+    candidate_key=None,
+    fallback_key=None,
+)
+
+
 CANDIDATES["bounded_kv_reset"] = CandidateSpec(
     name="bounded_kv_reset",
     classification="T1",
@@ -960,6 +1000,130 @@ class GateError(RuntimeError):
     """Raised when the profile gate cannot be evaluated safely."""
 
 
+def batch_admission_eligibility(
+    *,
+    prompt_ids: Sequence[str],
+    named_prompt_ids: Sequence[str],
+    prompt_selection_unrestricted: bool,
+    decode_steps: int,
+    repeat_runs: int,
+    free_tokens: int,
+    free_runs: int,
+    tracked_clean: bool,
+    manifest_binding: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Decide whether an AR batch run covers the normative admission scope.
+
+    Eligibility is deliberately separate from numerical quality: a run can be
+    clean, deterministic, and numerically strong at 8 steps and still be
+    ineligible because it measured 162 rows instead of 450. The caller must not
+    fold this into a protocol check.
+    """
+
+    reasons: list[str] = []
+    binding = dict(manifest_binding or {})
+    if not prompt_selection_unrestricted:
+        reasons.append("prompt_selection_truncated")
+    if tuple(str(prompt) for prompt in prompt_ids) != tuple(
+        str(prompt) for prompt in named_prompt_ids
+    ):
+        reasons.append("prompt_set_not_named_fixture")
+    if int(decode_steps) < BATCH_NORMATIVE_DECODE_STEPS:
+        reasons.append(
+            f"decode_steps_below_normative:{int(decode_steps)}"
+            f"<{BATCH_NORMATIVE_DECODE_STEPS}"
+        )
+    if int(repeat_runs) < BATCH_NORMATIVE_REPEAT_RUNS:
+        reasons.append(
+            f"repeat_runs_below_normative:{int(repeat_runs)}"
+            f"<{BATCH_NORMATIVE_REPEAT_RUNS}"
+        )
+    if int(free_tokens) < BATCH_NORMATIVE_FREE_TOKENS:
+        reasons.append(
+            f"free_tokens_below_normative:{int(free_tokens)}"
+            f"<{BATCH_NORMATIVE_FREE_TOKENS}"
+        )
+    if int(free_runs) < BATCH_NORMATIVE_FREE_RUNS:
+        reasons.append(
+            f"free_runs_below_normative:{int(free_runs)}"
+            f"<{BATCH_NORMATIVE_FREE_RUNS}"
+        )
+    if not tracked_clean:
+        reasons.append("tracked_tree_not_clean")
+    if not bool(binding.get("bound", False)):
+        missing = tuple(binding.get("missing", ()))
+        if missing:
+            reasons.extend(
+                f"batch_manifest_missing:{row.get('role')}:{row.get('identity')}"
+                for row in missing
+            )
+        else:
+            reasons.append("batch_manifest_not_bound")
+    observed_rows = len(prompt_ids) * (int(decode_steps) + 1)
+    return {
+        "eligible": not reasons,
+        "reasons": reasons,
+        "requirements": {
+            "prompt_set": "full_named_fixture",
+            "prompt_count": len(named_prompt_ids),
+            "decode_steps": BATCH_NORMATIVE_DECODE_STEPS,
+            "teacher_rows": BATCH_NORMATIVE_TEACHER_ROWS,
+            "repeat_runs": BATCH_NORMATIVE_REPEAT_RUNS,
+            "free_tokens": BATCH_NORMATIVE_FREE_TOKENS,
+            "free_runs": BATCH_NORMATIVE_FREE_RUNS,
+            "tracked_clean": True,
+            "batch_manifest_bound": True,
+        },
+        "observed": {
+            "prompt_count": len(prompt_ids),
+            "decode_steps": int(decode_steps),
+            "teacher_rows": observed_rows,
+            "repeat_runs": int(repeat_runs),
+            "free_tokens": int(free_tokens),
+            "free_runs": int(free_runs),
+            "tracked_clean": bool(tracked_clean),
+            "batch_manifest_bound": bool(binding.get("bound", False)),
+        },
+        "manifest_binding": binding,
+    }
+
+
+def batch_admission_decision(
+    *,
+    eligibility: Mapping[str, Any],
+    measurement_valid: bool,
+    numerical_pass: bool,
+    task_pass: bool,
+    protocol_check: bool = False,
+) -> dict[str, Any]:
+    """Combine scope eligibility with the measurement, numerical, and task gates.
+
+    ``measurement_valid`` normally already includes eligibility. It is passed
+    separately so a caller that reports a valid measurement for a short run
+    still cannot mark that run admitted.
+    """
+
+    reasons = list(eligibility.get("reasons", ()))
+    if not measurement_valid:
+        reasons.append("measurement_invalid")
+    if not numerical_pass:
+        reasons.append("numerical_gate_failed")
+    if not task_pass:
+        reasons.append("task_gate_requires_review")
+    if protocol_check:
+        reasons.append("protocol_check_only")
+    return {
+        "admitted": bool(
+            eligibility.get("eligible")
+            and measurement_valid
+            and numerical_pass
+            and task_pass
+            and not protocol_check
+        ),
+        "reasons": reasons,
+    }
+
+
 def _bf16_to_f32(bits: np.ndarray) -> np.ndarray:
     values = np.asarray(bits, dtype=np.uint16)
     return (values.astype(np.uint32) << 16).view(np.float32)
@@ -1279,22 +1443,137 @@ def _post_construct_hook(generator, args) -> dict:
     return {}
 
 
+def _run_batch_candidate(
+    args: argparse.Namespace,
+    prompt_rows: Sequence[Mapping[str, Any]],
+    prompt_tokens: Mapping[str, Sequence[int]],
+    strict_trajectories: Mapping[str, Sequence[Mapping[str, Any]]],
+    candidate_generator: Any,
+    *,
+    candidate_mode: str,
+    width: int,
+) -> tuple[
+    dict[str, list[tuple[Mapping[str, Any], ...]]],
+    dict[str, list[Mapping[str, Any]]],
+    dict[str, list[dict[str, Any]]],
+    dict[str, Any],
+]:
+    """Drive the AR batch adapter for every prompt, group, and repeat."""
+
+    from scripts.qwen4exp_ar_batch_candidate import (
+        BatchCandidateRequest,
+        Qwen4ExpARBatchCandidate,
+        plan_batch_composition,
+    )
+
+    requests = []
+    for index, row in enumerate(prompt_rows, 1):
+        prompt_id = str(row["id"])
+        forced = tuple(
+            int(step["token_id"]) for step in strict_trajectories[prompt_id][:-1]
+        )
+        requests.append(
+            BatchCandidateRequest(
+                prompt_id=prompt_id,
+                request_id=index,
+                prompt_ids=tuple(int(token) for token in prompt_tokens[prompt_id]),
+                forced_ids=forced,
+            )
+        )
+    groups = plan_batch_composition(requests, width)
+    adapter = Qwen4ExpARBatchCandidate(
+        candidate_generator, width=width, label=candidate_mode
+    )
+    runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {
+        request.prompt_id: [] for request in requests
+    }
+    states: dict[str, list[Mapping[str, Any]]] = {
+        request.prompt_id: [] for request in requests
+    }
+    tasks: dict[str, list[dict[str, Any]]] = {
+        request.prompt_id: [] for request in requests
+    }
+    try:
+        adapter.open()
+        for _ in range(int(args.repeat_runs)):
+            for group in groups:
+                result = adapter.run_group(group)
+                for prompt_id, trajectory in result.trajectories.items():
+                    runs[prompt_id].append(tuple(trajectory))
+                for prompt_id, state in result.states.items():
+                    states[prompt_id].append(state)
+                print(
+                    f"candidate batch group {group.index} width {group.width} "
+                    f"{list(group.prompt_ids)}",
+                    flush=True,
+                )
+        for _ in range(int(args.free_runs)):
+            for group in groups:
+                free = adapter.run_free_group(group, steps=int(args.free_tokens))
+                for prompt_id, task in free.items():
+                    tasks[prompt_id].append(task)
+    finally:
+        adapter.close()
+    return runs, states, tasks, adapter.evidence
+
+
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if not args.model_root.is_dir():
         raise GateError(f"model root does not exist: {args.model_root}")
-    if not _git_metadata(ROOT)["tracked_clean"]:
-        raise GateError("profile qualification requires a clean committed tracked tree")
+    source = _git_metadata(ROOT)
+    tracked_clean = bool(source["tracked_clean"])
+    protocol_check = bool(getattr(args, "protocol_check", False))
+    if not tracked_clean and not protocol_check:
+        raise GateError(
+            "profile qualification requires a clean committed tracked tree; "
+            "use --protocol-check only to validate an uncommitted adapter"
+        )
     if args.decode_steps <= 0 or args.repeat_runs < 3 or args.free_runs < 2:
         raise GateError("decode steps must be positive; candidate repeats >=3; free runs >=2")
     prompt_rows = _load_suites(args.prompts)
-    if args.limit is not None:
+    limit_per_category = getattr(args, "limit_per_category", None)
+    if args.limit is not None and limit_per_category is not None:
+        raise GateError("--limit and --limit-per-category are mutually exclusive")
+    if limit_per_category is not None:
+        if int(limit_per_category) <= 0:
+            raise GateError("--limit-per-category must be positive")
+        selected = []
+        taken: dict[str, int] = {}
+        for row in prompt_rows:
+            category = str(row["category"])
+            if taken.get(category, 0) < int(limit_per_category):
+                taken[category] = taken.get(category, 0) + 1
+                selected.append(row)
+        prompt_rows = selected
+    elif args.limit is not None:
         prompt_rows = prompt_rows[: max(0, int(args.limit))]
     if not prompt_rows:
         raise GateError("selected prompt suite is empty")
-    complete_suite = args.limit is None
+    complete_suite = args.limit is None and limit_per_category is None
     candidate_spec = CANDIDATES[str(args.candidate)]
     if candidate_spec.compact_output and args.free_runs < 3:
         raise GateError("compact-output candidates require at least three free runs")
+    batch_candidate = candidate_spec.name == "qwen4_exp_ar_batch"
+    batch_width = getattr(args, "batch_width", None)
+    if protocol_check and not batch_candidate:
+        raise GateError("--protocol-check is only valid with --candidate ar_batch")
+    if batch_candidate:
+        if batch_width not in (1, 2, 4):
+            raise GateError(
+                "--candidate ar_batch requires --batch-width 1, 2, or 4"
+            )
+    elif batch_width is not None:
+        raise GateError("--batch-width is only valid with --candidate ar_batch")
+    candidate_mode = (
+        f"{candidate_spec.name}_w{int(batch_width)}"
+        if batch_candidate
+        else candidate_spec.name
+    )
+    named_prompt_ids = (
+        tuple(str(row["id"]) for row in _load_suites(list(DEFAULT_PROMPTS)))
+        if batch_candidate
+        else ()
+    )
 
     from hipengine.core.memory import memory_stats, reset_memory_stats
     from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
@@ -1388,58 +1667,89 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     candidate_generator, candidate_profile, _ = _make_generator(
         args, candidate_spec.base_profile, candidate_spec.quant
     )
+    batch_manifest_binding_value = None
+    if batch_candidate:
+        from scripts.qwen4exp_ar_batch_candidate import batch_manifest_binding
+
+        batch_manifest_binding_value = batch_manifest_binding(
+            candidate_profile.manifest
+        )
     t16_hook = _post_construct_hook(candidate_generator, args)
     if t16_hook:
         print(json.dumps({"t16_populate": t16_hook}), flush=True)
-    bound_environment = {
-        key: os.environ.get(key) for key in candidate_spec.environment
-    }
-    os.environ.update(candidate_spec.environment)
+    bound_environment: dict[str, str | None] = {}
     dispatch_stack = ExitStack()
     counter = {"calls": 0, "shapes": {}}
+    batch_evidence = None
+    batch_runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}
+    batch_states: dict[str, list[Mapping[str, Any]]] = {}
+    batch_tasks: dict[str, list[dict[str, Any]]] = {}
     try:
-        if candidate_spec.environment.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
-            candidate_generator.runner.configure_mmq_prefill_resources()
-        if candidate_spec.requires_dispatch_count:
-            from hipengine.kernels.registry import KernelKey
-            counter = dispatch_stack.enter_context(count_candidate_dispatch(
-                key=KernelKey(*candidate_spec.candidate_key) if candidate_spec.candidate_key is not None else None,
-                direct_target=candidate_spec.direct_dispatch_target,
-                direct_reference=candidate_spec.direct_dispatch_reference,
-                shape_positions=candidate_spec.dispatch_shape_positions))
-        for number, row in enumerate(prompt_rows, 1):
-            prompt_id = str(row["id"])
-            strict = strict_trajectories[prompt_id]
-            forced = [int(step["token_id"]) for step in strict[:-1]]
-            runs: list[tuple[Mapping[str, Any], ...]] = []
-            states: list[dict[str, Any]] = []
-            for _ in range(int(args.repeat_runs)):
-                run = _candidate_trajectory(
-                    candidate_generator.runner,
-                    prompt_tokens[prompt_id],
-                    forced,
-                )
-                state = _state_summary(candidate_generator.runner)
-                state["prompt_id"] = prompt_id
-                runs.append(run)
-                states.append(state)
-            candidate_runs[prompt_id] = runs
-            candidate_states.append(states)
-            candidate_tasks[prompt_id] = [
-                _free_trajectory(
-                    candidate_generator.runner,
-                    candidate_generator.tokenizer,
-                    prompt_tokens[prompt_id],
-                    int(args.free_tokens),
-                    compact_output=candidate_spec.compact_output,
-                )
-                for _ in range(int(args.free_runs))
-            ]
-            print(
-                f"candidate {number}/{len(prompt_rows)} {prompt_id}: "
-                f"{args.repeat_runs} numerical + {args.free_runs} free",
-                flush=True,
+        if batch_candidate:
+            (
+                batch_runs,
+                batch_states,
+                batch_tasks,
+                batch_evidence,
+            ) = _run_batch_candidate(
+                args,
+                prompt_rows,
+                prompt_tokens,
+                strict_trajectories,
+                candidate_generator,
+                candidate_mode=candidate_mode,
+                width=int(batch_width),
             )
+        else:
+            bound_environment = {
+                key: os.environ.get(key) for key in candidate_spec.environment
+            }
+            os.environ.update(candidate_spec.environment)
+            candidate_runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}
+            candidate_states: list[list[dict[str, Any]]] = []
+            candidate_tasks: dict[str, list[dict[str, Any]]] = {}
+            if candidate_spec.environment.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
+                candidate_generator.runner.configure_mmq_prefill_resources()
+            if candidate_spec.requires_dispatch_count:
+                from hipengine.kernels.registry import KernelKey
+                counter = dispatch_stack.enter_context(count_candidate_dispatch(
+                    key=KernelKey(*candidate_spec.candidate_key) if candidate_spec.candidate_key is not None else None,
+                    direct_target=candidate_spec.direct_dispatch_target,
+                    direct_reference=candidate_spec.direct_dispatch_reference,
+                    shape_positions=candidate_spec.dispatch_shape_positions))
+            for number, row in enumerate(prompt_rows, 1):
+                prompt_id = str(row["id"])
+                strict = strict_trajectories[prompt_id]
+                forced = [int(step["token_id"]) for step in strict[:-1]]
+                runs: list[tuple[Mapping[str, Any], ...]] = []
+                states: list[dict[str, Any]] = []
+                for _ in range(int(args.repeat_runs)):
+                    run = _candidate_trajectory(
+                        candidate_generator.runner,
+                        prompt_tokens[prompt_id],
+                        forced,
+                    )
+                    state = _state_summary(candidate_generator.runner)
+                    state["prompt_id"] = prompt_id
+                    runs.append(run)
+                    states.append(state)
+                candidate_runs[prompt_id] = runs
+                candidate_states.append(states)
+                candidate_tasks[prompt_id] = [
+                    _free_trajectory(
+                        candidate_generator.runner,
+                        candidate_generator.tokenizer,
+                        prompt_tokens[prompt_id],
+                        int(args.free_tokens),
+                        compact_output=candidate_spec.compact_output,
+                    )
+                    for _ in range(int(args.free_runs))
+                ]
+                print(
+                    f"candidate {number}/{len(prompt_rows)} {prompt_id}: "
+                    f"{args.repeat_runs} numerical + {args.free_runs} free",
+                    flush=True,
+                )
     finally:
         for key, value in bound_environment.items():
             if value is None:
@@ -1452,25 +1762,68 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             dispatch_stack.close()
     candidate_after_close = memory_stats()
 
+    if batch_candidate:
+        batch_evidence = {
+            **batch_evidence,
+            "manifest_binding": batch_manifest_binding_value,
+        }
+        candidate_runs = batch_runs
+        candidate_states = [
+            list(batch_states[str(row["id"])]) for row in prompt_rows
+        ]
+        candidate_tasks = batch_tasks
     captures = tuple(
         PromptCalibrationCapture(
             prompt_id=str(row["id"]),
             category=str(row["category"]),
             strict=strict_trajectories[str(row["id"])],
             candidate_runs={
-                candidate_spec.name: tuple(candidate_runs[str(row["id"])])
+                candidate_mode: tuple(candidate_runs[str(row["id"])])
             },
         )
         for row in prompt_rows
     )
     thresholds = EvaluationThresholds()
-    quality = build_candidate_quality(
-        captures,
-        candidate_mode=candidate_spec.name,
-        scenario_id=candidate_spec.scenario_id,
-        thresholds=thresholds,
-    )
-    state_gate = _state_repeat_gate(strict_states, candidate_states)
+    if batch_candidate:
+        from scripts.qwen4exp_ar_batch_candidate import batch_state_gate
+
+        # The final composition chunk keeps its natural width, so a row's scope
+        # names the width it actually ran at, not the configured maximum.
+        width_by_prompt: dict[str, int] = {}
+        for group in batch_evidence["groups"]:
+            for prompt_id in group["prompt_ids"]:
+                width_by_prompt[str(prompt_id)] = int(group["width"])
+        quality = build_candidate_quality(
+            captures,
+            candidate_mode=candidate_mode,
+            scenario_id=candidate_spec.scenario_id,
+            thresholds=thresholds,
+            shape_for_step=lambda step, prompt_id: (
+                "prefill_last"
+                if step == 0
+                else f"batch_w{width_by_prompt[str(prompt_id)]}"
+            ),
+            transition_for_step=lambda step, prompt_id: (
+                "prefill_to_c1"
+                if step == 0
+                else "prefill_to_batch"
+                if step == 1
+                else "steady"
+            ),
+        )
+        state_gate = batch_state_gate(
+            strict_states,
+            candidate_states,
+            groups=batch_evidence["groups"],
+        )
+    else:
+        quality = build_candidate_quality(
+            captures,
+            candidate_mode=candidate_mode,
+            scenario_id=candidate_spec.scenario_id,
+            thresholds=thresholds,
+        )
+        state_gate = _state_repeat_gate(strict_states, candidate_states)
     compact_state_gate = None
     if candidate_spec.compact_output:
         strict_task_states = []
@@ -1509,8 +1862,6 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         )
     categories = {str(row["id"]): str(row["category"]) for row in prompt_rows}
     task_gate = _task_gate(strict_tasks, candidate_tasks, categories=categories)
-    source = _git_metadata(ROOT)
-    tracked_clean = bool(source["tracked_clean"])
     teardown = bool(
         strict_after_close["current_allocated_bytes"] == 0
         and candidate_after_close["current_allocated_bytes"] == 0
@@ -1520,6 +1871,20 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         and quality["repeat_determinism"]["passed"]
     )
     task_pass = task_gate["status"] == "passed_exact"
+    admission = None
+    admission_decision = None
+    if batch_candidate:
+        admission = batch_admission_eligibility(
+            prompt_ids=tuple(str(row["id"]) for row in prompt_rows),
+            named_prompt_ids=named_prompt_ids,
+            prompt_selection_unrestricted=bool(complete_suite),
+            decode_steps=int(args.decode_steps),
+            repeat_runs=int(args.repeat_runs),
+            free_tokens=int(args.free_tokens),
+            free_runs=int(args.free_runs),
+            tracked_clean=tracked_clean,
+            manifest_binding=batch_manifest_binding_value,
+        )
     measurement_valid = bool(
         complete_suite
         and tracked_clean
@@ -1527,15 +1892,42 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         and state_gate["passed"]
         and (compact_state_gate is None or compact_state_gate["passed"])
         and (not candidate_spec.requires_dispatch_count or counter["calls"] > 0)
+        and (admission is None or admission["eligible"])
     )
     passed = bool(measurement_valid and numerical_pass and task_pass)
-    status = (
-        "passed"
-        if passed
-        else "requires_task_review"
-        if measurement_valid and numerical_pass and task_gate["status"] == "requires_review"
-        else "failed"
-    )
+    if batch_candidate:
+        admission_decision = batch_admission_decision(
+            eligibility=admission,
+            measurement_valid=measurement_valid,
+            numerical_pass=numerical_pass,
+            task_pass=task_pass,
+            protocol_check=protocol_check,
+        )
+        passed = bool(admission_decision["admitted"])
+    protocol_ok = None
+    if batch_candidate:
+        protocol_ok = bool(
+            state_gate["passed"]
+            and teardown
+            and quality["repeat_determinism"]["passed"]
+            and quality["quality"]["finite"]
+            and batch_evidence is not None
+            and batch_evidence["failure"] is None
+            and all(bool(group["state_distinct"]) for group in batch_evidence["groups"])
+            and bool(batch_evidence["step_widths"])
+        )
+    if protocol_check:
+        status = "protocol_check" if protocol_ok else "failed"
+    elif batch_candidate and admission is not None and not admission["eligible"]:
+        status = "ineligible"
+    else:
+        status = (
+            "passed"
+            if passed
+            else "requires_task_review"
+            if measurement_valid and numerical_pass and task_gate["status"] == "requires_review"
+            else "failed"
+        )
     return {
         "schema": 1,
         "kind": KIND,
@@ -1543,6 +1935,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "performance_claim": False,
         "measurement_valid": measurement_valid,
+        "protocol_check": protocol_check,
+        "batch_candidate": batch_evidence,
+        "admission": admission,
         "candidate_dispatch_calls": counter["calls"] if candidate_spec.requires_dispatch_count else None,
         "candidate_dispatch_shapes": shape_records(counter),
         "source": source,
@@ -1575,6 +1970,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 candidate_kernel is not None and candidate_spec.direct_dispatch_target is None),
             "related_registry_variant_available": candidate_kernel is not None,
             "strict_fallback_registered": strict_fallback is not None,
+            "batch_width": int(batch_width) if batch_candidate else None,
         },
         "profiles": {
             "strict_manifest": _json_value(strict_profile.manifest),
@@ -1612,12 +2008,25 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         },
         "decision": {
             "passed": passed,
+            "admitted": passed,
             "numerical_passed": numerical_pass,
             "state_passed": state_gate["passed"],
             "task_passed": task_pass,
+            "task_status": task_gate["status"],
             "lifecycle_passed": teardown,
+            "protocol_check_passed": protocol_ok,
+            "admission_eligible": admission["eligible"] if admission else None,
+            "admission_reasons": admission["reasons"] if admission else [],
+            "admission_decision": admission_decision,
             "next": (
-                "complete prompt and heldout suite required"
+                "protocol validation only; admission requires a clean committed "
+                "tree and the complete suite"
+                if protocol_check
+                else "admission blocked: " + "; ".join(admission["reasons"])
+                if batch_candidate
+                and admission is not None
+                and not admission["eligible"]
+                else "complete prompt and heldout suite required"
                 if not complete_suite
                 else "task review required for deterministic cross-route divergences"
                 if status == "requires_task_review"
@@ -1639,6 +2048,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--prompts", action="append", type=Path, default=None)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--limit-per-category", type=int)
+    parser.add_argument("--batch-width", type=int, choices=(1, 2, 4))
+    parser.add_argument("--protocol-check", action="store_true")
     parser.add_argument("--decode-steps", type=int, default=24)
     parser.add_argument("--repeat-runs", type=int, default=3)
     parser.add_argument("--free-tokens", type=int, default=32)
@@ -1667,7 +2079,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload = run(args, command=[str(Path(sys.argv[0]).name), *sys.argv[1:]])
     _write_json(args.output, payload)
     print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
-    return 0 if payload["status"] == "passed" else 2 if payload["status"] == "requires_task_review" else 1
+    return (
+        0
+        if payload["status"] in ("passed", "protocol_check")
+        else 2
+        if payload["status"] == "requires_task_review"
+        else 1
+    )
 
 
 if __name__ == "__main__":

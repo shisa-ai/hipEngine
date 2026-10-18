@@ -18,7 +18,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
@@ -141,8 +141,23 @@ def build_candidate_quality(
     candidate_mode: str,
     scenario_id: str,
     thresholds: EvaluationThresholds | None = None,
+    shape_for_step: Callable[[int, str], str] | None = None,
+    transition_for_step: Callable[[int, str], str] | None = None,
 ) -> dict[str, Any]:
-    """Run the profile numerical evaluator over one full-logit control."""
+    """Run the profile numerical evaluator over one full-logit control.
+
+    ``shape_for_step``/``transition_for_step`` let a non-c1 execution path
+    declare its own row scopes (for example the AR batch candidate reports
+    ``batch_w4`` rows and a ``prefill_to_batch`` transition). The defaults keep
+    the original c1 labeling, so existing callers are unchanged.
+    """
+
+    shape_of = shape_for_step or (
+        lambda step, prompt_id: "prefill_last" if step == 0 else "c1"
+    )
+    transition_of = transition_for_step or (
+        lambda step, prompt_id: "prefill_to_c1" if step == 0 else "steady"
+    )
 
     prompt_captures = tuple(captures)
     if not prompt_captures:
@@ -195,8 +210,8 @@ def build_candidate_quality(
                     request_id=capture.prompt_id,
                     teacher_step=teacher_step,
                     category=capture.category,
-                    shape="prefill_last" if teacher_step == 0 else "c1",
-                    transition="prefill_to_c1" if teacher_step == 0 else "steady",
+                    shape=str(shape_of(teacher_step, capture.prompt_id)),
+                    transition=str(transition_of(teacher_step, capture.prompt_id)),
                     teacher_token_id=teacher_token_id,
                 )
             )
