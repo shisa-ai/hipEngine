@@ -33,11 +33,22 @@ from tests import _qwen4_exp_batch_fixtures as fixture
 class _FakeRuntime:
     def __init__(self) -> None:
         self.calls: list[tuple] = []
+        # 1-based index of the copy/zero that raises, for fault injection.
+        self.fail_memcpy_at: int | None = None
+        self.fail_memset_at: int | None = None
+        self.memcpy_count = 0
+        self.memset_count = 0
 
     def memset(self, ptr, value, nbytes) -> None:
+        self.memset_count += 1
+        if self.fail_memset_at == self.memset_count:
+            raise RuntimeError("injected device zero failure")
         self.calls.append(("memset", int(ptr), int(value), int(nbytes)))
 
     def memcpy(self, destination, source, nbytes, kind) -> None:
+        self.memcpy_count += 1
+        if self.fail_memcpy_at == self.memcpy_count:
+            raise RuntimeError("injected device copy failure")
         self.calls.append(("memcpy", int(destination), int(source), int(nbytes)))
 
     def device_synchronize(self) -> None:
@@ -220,6 +231,7 @@ def _fake_runner(*, slots: int = 3) -> Qwen4ExpGGUFBatchRunner:
     runner._owned = []
     runner._buffers = None
     runner._owners = [0] * slots
+    runner._poisoned = set()
     runner._next_owner = 0
     runner._positions = np.zeros(slots, dtype=np.int64)
     runner._ple_hash_states = {}
@@ -371,9 +383,11 @@ def _install_step_fakes(monkeypatch) -> list[tuple]:
 def test_step_dispatches_every_stage_at_physical_width(monkeypatch) -> None:
     events = _install_step_fakes(monkeypatch)
     runner = _fake_runner(slots=3)
-    runner.admit(2)
-    runner.admit(0)
-    result = runner.step([7, 9], slots=[2, 0], capture_logits=False)
+    owner_two = runner.admit(2)
+    owner_zero = runner.admit(0)
+    result = runner.step(
+        [7, 9], slots=[2, 0], owners=[owner_two, owner_zero], capture_logits=False
+    )
     names = [event[0] for event in events]
     assert names.count("ple") == 1
     assert names.count("gdn") == 2
@@ -405,8 +419,8 @@ def test_step_dispatches_every_stage_at_physical_width(monkeypatch) -> None:
 def test_step_keeps_the_persistent_state_of_unstepped_slots(monkeypatch) -> None:
     _install_step_fakes(monkeypatch)
     runner = _fake_runner(slots=3)
-    runner.admit(1)
-    runner.step([3], slots=[1], capture_logits=False)
+    owner = runner.admit(1)
+    runner.step([3], slots=[1], owners=[owner], capture_logits=False)
     assert runner.index_states[0].cursor_host.tolist() == [0, 0, 0]
     assert runner.position(1) == 1
     assert runner.free_slots == (0, 2)
@@ -415,21 +429,21 @@ def test_step_keeps_the_persistent_state_of_unstepped_slots(monkeypatch) -> None
 def test_step_rejects_a_bad_row_set_before_any_prepare(monkeypatch) -> None:
     _install_step_fakes(monkeypatch)
     runner = _fake_runner(slots=3)
-    runner.admit(2)
+    owner = runner.admit(2)
     attention = runner.attention_state
     index_state = runner.index_states[0]
     gdn_state = runner.gdn_states[0]
     ple_state = runner.ple_state
     with pytest.raises(RuntimeError, match="not admitted"):
-        runner.step([1], slots=[0])
+        runner.step([1], slots=[0], owners=[owner])
     with pytest.raises(ValueError, match="outside"):
-        runner.step([1], slots=[3])
+        runner.step([1], slots=[3], owners=[owner])
     with pytest.raises(ValueError, match="equal length"):
-        runner.step([1, 2], slots=[2])
+        runner.step([1, 2], slots=[2], owners=[owner])
     with pytest.raises(ValueError, match="appears twice"):
-        runner.step([1, 2], slots=[2, 2])
+        runner.step([1, 2], slots=[2, 2], owners=[owner, owner])
     with pytest.raises(ValueError, match="vocabulary"):
-        runner.step([fixture.VOCAB], slots=[2])
+        runner.step([fixture.VOCAB], slots=[2], owners=[owner])
     with pytest.raises(ValueError, match="at least one token"):
         runner.step([], slots=[])
     assert attention.prepared == []
@@ -440,7 +454,7 @@ def test_step_rejects_a_bad_row_set_before_any_prepare(monkeypatch) -> None:
     # Capacity is checked against the per-slot position mirror before dispatch.
     runner._positions[2] = fixture.MAX_POSITIONS
     with pytest.raises(ValueError, match="capacity"):
-        runner.step([1], slots=[2])
+        runner.step([1], slots=[2], owners=[owner])
     assert attention.prepared == []
     assert runner.position(2) == fixture.MAX_POSITIONS
 
@@ -705,3 +719,213 @@ def test_import_copies_each_block_prefix_from_its_own_physical_block(
     assert int(runner.index_states[0].pooled_count_host[0]) == 0
     assert runner.position(0) == 300
     assert runner.ple_hash_states[0].next_position == 300
+
+
+def test_step_rejects_non_integral_slots_tokens_and_owners(monkeypatch) -> None:
+    """A float or bool slot/token/owner is refused, never truncated.
+
+    ``int()`` and ``np.asarray(dtype=np.int64)`` both accept ``3.7`` as ``3`` and
+    ``True`` as ``1``, which would silently advance the wrong slot or embed the
+    wrong token.
+    """
+
+    events = _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=3)
+    owner = runner.admit(2)
+    attention = runner.attention_state
+    for call in (
+        dict(token_ids=[1], slots=[2.0], owners=[owner]),
+        dict(token_ids=[1], slots=[True], owners=[owner]),
+        dict(token_ids=[1], slots=[np.float32(2)], owners=[owner]),
+        dict(token_ids=[1], slots=[2], owners=[1.5]),
+        dict(token_ids=[1], slots=[2], owners=[True]),
+        dict(token_ids=[2.5], slots=[2], owners=[owner]),
+        dict(token_ids=[True], slots=[2], owners=[owner]),
+        dict(token_ids=np.asarray([[1, 2]]), slots=[2], owners=[owner]),
+        dict(token_ids=3, slots=[2], owners=[owner]),
+    ):
+        with pytest.raises(ValueError, match="must be an integer|must be a sequence"):
+            runner.step(**call)
+    assert events == [], "a rejected call must dispatch nothing"
+    assert attention.prepared == []
+    assert runner.poisoned_slots == ()
+    assert runner.position(2) == 0
+
+
+def test_step_requires_the_owner_token_of_every_named_slot(monkeypatch) -> None:
+    """A named slot without a matching owner token cannot be advanced.
+
+    Without this a scheduler holding a handle to a released request would step
+    whichever request was re-admitted into the same physical slot.
+    """
+
+    events = _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=3)
+    stale = runner.admit(2)
+    runner.release(2, stale)
+    fresh = runner.admit(2)
+    assert fresh != stale
+    with pytest.raises(ValueError, match="requires the owner token"):
+        runner.step([1], slots=[2])
+    with pytest.raises(RuntimeError, match="owned by request"):
+        runner.step([1], slots=[2], owners=[stale])
+    with pytest.raises(ValueError, match="only meaningful with explicit slots"):
+        runner.step([1], owners=[fresh])
+    assert events == [], "a rejected call must dispatch nothing"
+    assert runner.position(2) == 0
+    assert runner.poisoned_slots == ()
+    # The live token still works.
+    runner.step([1], slots=[2], owners=[fresh], capture_logits=False)
+    assert runner.position(2) == 1
+
+
+def test_failed_step_poisons_only_its_rows(monkeypatch) -> None:
+    """A failure after mutation started refuses a retry until an explicit reset."""
+
+    events = _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=3)
+    owner_zero = runner.admit(0)
+    owner_two = runner.admit(2)
+
+    def failing_qsa_layer(*args, **kwargs):
+        raise RuntimeError("injected failure after the index append")
+
+    monkeypatch.setattr(runner_module, "run_qwen4_exp_batch_qsa_layer", failing_qsa_layer)
+    with pytest.raises(RuntimeError, match="injected failure"):
+        runner.step([1], slots=[2], owners=[owner_two])
+    assert runner.poisoned_slots == (2,)
+    assert runner.is_poisoned(2)
+    assert not runner.is_poisoned(0)
+    # The failed step must not have advanced the position mirror.
+    assert runner.position(2) == 0
+    # A retry refuses instead of appending on top of the half-applied step.
+    with pytest.raises(RuntimeError, match="poisoned"):
+        runner.step([1], slots=[2], owners=[owner_two])
+    with pytest.raises(RuntimeError, match="poisoned"):
+        runner.step([1, 1], slots=[2, 0], owners=[owner_two, owner_zero])
+    # The default row set (every admitted slot) refuses too.
+    with pytest.raises(RuntimeError, match="poisoned"):
+        runner.step([1, 1])
+    # A slot that was not a row of the failed call is still usable.
+    monkeypatch.setattr(
+        runner_module,
+        "run_qwen4_exp_batch_qsa_layer",
+        lambda residual_ptr, weights, *, rows, **kwargs: SimpleNamespace(
+            ptr=residual_ptr + 0x10
+        ),
+    )
+    healthy = runner.step([1], slots=[0], owners=[owner_zero], capture_logits=False)
+    assert healthy.slot_ids == (0,)
+    assert runner.position(0) == 1
+    assert runner.poisoned_slots == (2,)
+    # reset_slot is the in-place recovery path.
+    runner.reset_slot(2, owner_two)
+    assert runner.poisoned_slots == ()
+    runner.step([1], slots=[2], owners=[owner_two], capture_logits=False)
+    assert runner.position(2) == 1
+    # release + admit is the other one.
+    monkeypatch.setattr(runner_module, "run_qwen4_exp_batch_qsa_layer", failing_qsa_layer)
+    with pytest.raises(RuntimeError, match="injected failure"):
+        runner.step([1], slots=[2], owners=[owner_two])
+    assert runner.poisoned_slots == (2,)
+    # A reset whose zeroing fails must leave the slot refusing work.
+    runner.runtime.fail_memset_at = runner.runtime.memset_count + 1
+    with pytest.raises(RuntimeError, match="injected device zero failure"):
+        runner.reset_slot(2, owner_two)
+    assert runner.poisoned_slots == (2,)
+    with pytest.raises(RuntimeError, match="poisoned"):
+        runner.step([1], slots=[2], owners=[owner_two])
+    runner.runtime.fail_memset_at = None
+    runner.reset_slot(2, owner_two)
+    assert runner.poisoned_slots == ()
+    monkeypatch.setattr(runner_module, "run_qwen4_exp_batch_qsa_layer", failing_qsa_layer)
+    with pytest.raises(RuntimeError, match="injected failure"):
+        runner.step([1], slots=[2], owners=[owner_two])
+    assert runner.poisoned_slots == (2,)
+    runner.release(2, owner_two)
+    assert runner.poisoned_slots == ()
+    again = runner.admit(2)
+    assert runner.poisoned_slots == ()
+    assert runner.position(2) == 0
+    assert again not in (owner_two, owner_zero)
+    assert len(events) > 0
+
+
+def test_preflight_rejection_never_poisons_a_slot(monkeypatch) -> None:
+    """Only a call that started mutating poisons; validation failures do not."""
+
+    _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=3)
+    owner = runner.admit(2)
+    runner._positions[2] = fixture.MAX_POSITIONS
+    for call in (
+        dict(token_ids=[1], slots=[2], owners=[owner]),
+        dict(token_ids=[fixture.VOCAB], slots=[2], owners=[owner]),
+        dict(token_ids=[1], slots=[9], owners=[owner]),
+        dict(token_ids=[1], slots=[2], owners=[owner + 7]),
+        dict(token_ids=[1.5], slots=[2], owners=[owner]),
+    ):
+        with pytest.raises((ValueError, RuntimeError)):
+            runner.step(**call)
+        assert runner.poisoned_slots == (), f"{call} poisoned a healthy slot"
+    assert runner.position(2) == fixture.MAX_POSITIONS
+
+
+def test_failed_import_poisons_the_target_slot_only(monkeypatch) -> None:
+    """A copy that dies part-way refuses a retry until the slot is reset."""
+
+    _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=2)
+    owner_one = runner.admit(1)
+    owner_zero = runner.admit(0)
+    source_attention = _FakeAttention(1, 2)
+    source_attention.key_cache = DeviceBuffer(
+        0x1100000, source_attention.key_cache.nbytes
+    )
+    source_attention.value_cache = DeviceBuffer(
+        0x1200000, source_attention.value_cache.nbytes
+    )
+    source_index = _FakeIndex(1)
+    source_index.raw_keys = DeviceBuffer(0x1300000, source_index.raw_keys.nbytes)
+    source_index.count = 300
+    source_index.capacity = fixture.MAX_POSITIONS
+    source = SimpleNamespace(
+        closed=False,
+        config=fixture.config(),
+        position=300,
+        attention_states=(source_attention,),
+        index_states=(source_index,),
+        state=SimpleNamespace(
+            gdn_conv=DeviceBuffer(
+                0x5000000,
+                len(runner.gdn_states) * runner.gdn_states[0].conv_bytes_per_slot,
+            ),
+            gdn_matrix=DeviceBuffer(
+                0x6000000,
+                len(runner.gdn_states) * runner.gdn_states[0].recurrent_bytes_per_slot,
+            ),
+            ple_conv=DeviceBuffer(0x7000000, runner.ple_state.history_bytes_per_slot),
+        ),
+        ple_hash_states={0: SimpleNamespace(tokens=(1, 2), next_position=300)},
+    )
+    runner.runtime.fail_memcpy_at = 3
+    with pytest.raises(RuntimeError, match="injected device copy failure"):
+        runner.import_prefilled(1, owner_one, source=source)
+    assert runner.poisoned_slots == (1,)
+    assert not runner.is_poisoned(0)
+    assert runner.position(1) == 0
+    # The retry is refused: the slot holds a mix of copied and zeroed state.
+    with pytest.raises(RuntimeError, match="poisoned"):
+        runner.import_prefilled(1, owner_one, source=source)
+    with pytest.raises(RuntimeError, match="poisoned"):
+        runner.step([1], slots=[1], owners=[owner_one])
+    # The untouched slot keeps working.
+    runner.step([1], slots=[0], owners=[owner_zero], capture_logits=False)
+    assert runner.position(0) == 1
+    # A reset clears the poison and the import then succeeds end to end.
+    runner.reset_slot(1, owner_one)
+    assert runner.poisoned_slots == ()
+    runner.runtime.fail_memcpy_at = None
+    assert runner.import_prefilled(1, owner_one, source=source) == 300
+    assert runner.position(1) == 300
+    assert int(runner.index_states[0].cursor_host[1]) == 300

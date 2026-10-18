@@ -35,15 +35,23 @@ Step semantics
 --------------
 
 ``step`` validates the whole row set (slots, ownership, positions, token ids,
-paged and index capacity) before the first mutation. The stages that follow are
-not transactional: a device failure after the index append leaves the affected
-slots' device state partially advanced and their PLE n-gram history advanced.
-Recovery is :meth:`release` (or :meth:`reset_slot`) and re-admission, not a
-retry of the failed step.
+paged and index capacity) before the first mutation, and a rejected call leaves
+every slot healthy. The stages that follow are not transactional: a failure
+after the index append leaves the affected slots' device state partially
+advanced and their PLE n-gram history advanced. So a failed step *poisons* its
+rows, and a poisoned slot refuses ``step`` and ``import_prefilled`` until the
+caller resets it (:meth:`reset_slot`) or releases and re-admits it. Slots that
+were not rows of the failed call stay usable. A retry of the failed row set
+therefore cannot silently continue corrupted state.
+
+A row set that names slots explicitly must also name each slot's owner token,
+so a scheduler holding a stale handle cannot advance a request that was
+released and re-admitted into the same physical slot.
 """
 
 from __future__ import annotations
 
+import operator
 from dataclasses import dataclass, fields
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
@@ -437,6 +445,7 @@ class Qwen4ExpGGUFBatchRunner:
         self._owned: list[Any] = []
         self._buffers: _BufferGroup | None = None
         self._owners = [0] * slots
+        self._poisoned: set[int] = set()
         self._next_owner = 0
         self._positions = np.zeros(slots, dtype=np.int64)
         self._ple_hash_states: dict[int, PLEHashState] = {}
@@ -649,7 +658,12 @@ class Qwen4ExpGGUFBatchRunner:
 
     @property
     def active_slots(self) -> tuple[int, ...]:
-        """Admitted slots in admission order."""
+        """Admitted slots in ascending slot order.
+
+        This is the row set a ``step`` without an explicit ``slots`` argument
+        advances, and its order is the physical slot order rather than the order
+        the slots were admitted in.
+        """
 
         return tuple(slot for slot, owner in enumerate(self._owners) if owner)
 
@@ -675,6 +689,26 @@ class Qwen4ExpGGUFBatchRunner:
 
         return MappingProxyType(dict(self._ple_hash_states))
 
+    @property
+    def poisoned_slots(self) -> tuple[int, ...]:
+        """Slots whose device state a failed call left partially advanced."""
+
+        return tuple(sorted(self._poisoned))
+
+    def is_poisoned(self, slot: int) -> bool:
+        """Whether ``slot`` needs an explicit reset before it can be used."""
+
+        return self._require_slot(slot) in self._poisoned
+
+    def _require_healthy(self, slot: int) -> None:
+        if slot in self._poisoned:
+            raise RuntimeError(
+                f"slot {slot} is poisoned by a failed step: its device state is "
+                "partially advanced, so advancing it again would continue "
+                "corrupted state. Call reset_slot(slot, owner) or release the "
+                "slot and admit it again first."
+            )
+
     def admit(self, slot: int) -> int:
         """Take ownership of ``slot`` and zero the request state it holds.
 
@@ -690,6 +724,7 @@ class Qwen4ExpGGUFBatchRunner:
                 f"slot {parsed} is already owned by request {self._owners[parsed]}"
             )
         self._zero_slot(parsed)
+        self._poisoned.discard(parsed)
         self._next_owner += 1
         self._owners[parsed] = self._next_owner
         self._positions[parsed] = 0
@@ -703,6 +738,7 @@ class Qwen4ExpGGUFBatchRunner:
         parsed = self._require_slot(slot)
         self._require_owner(parsed, owner)
         self._zero_slot(parsed)
+        self._poisoned.discard(parsed)
         self._owners[parsed] = 0
         self._positions[parsed] = 0
         self._ple_hash_states.pop(parsed, None)
@@ -711,14 +747,17 @@ class Qwen4ExpGGUFBatchRunner:
         """Zero an owned slot in place, keeping the owner token and position 0.
 
         This is the slot-reuse path for a request that is replaced without
-        releasing the slot; the owner token stays valid because the physical
-        owner did not change.
+        releasing the slot, and it is also the recovery path for a poisoned
+        slot: the owner token stays valid because the physical owner did not
+        change. The poison mark is cleared only after the zeroing succeeded, so
+        a reset that fails leaves the slot refusing work.
         """
 
         self._require_open()
         parsed = self._require_slot(slot)
         self._require_owner(parsed, owner)
         self._zero_slot(parsed)
+        self._poisoned.discard(parsed)
         self._positions[parsed] = 0
         self._ple_hash_states.pop(parsed, None)
 
@@ -794,6 +833,7 @@ class Qwen4ExpGGUFBatchRunner:
         self._require_open()
         parsed = self._require_slot(slot)
         self._require_owner(parsed, owner)
+        self._require_healthy(parsed)
         if int(self._positions[parsed]) != 0 or any(
             state.cursor_host[parsed] for state in self.index_states
         ):
@@ -944,11 +984,50 @@ class Qwen4ExpGGUFBatchRunner:
             )
 
         # Copy phase. The slot is admitted and zeroed, so every write below is
-        # the slot's first state. Only the valid prefix of the last block is
-        # copied: the source's unwritten tail must not land in this slot.
+        # the slot's first state. A failure part-way through leaves the slot
+        # holding a mix of copied and zeroed state, so it is poisoned rather
+        # than left usable.
+        try:
+            self._copy_prefilled_state(
+                parsed,
+                position=position,
+                needed_blocks=needed_blocks,
+                source_attention=source_attention,
+                source_blocks=source_blocks,
+                source_index=source_index,
+                source_decode=source_decode,
+                ple_hash_state=(
+                    source.ple_hash_states[0] if self.ple_state is not None else None
+                ),
+            )
+        except BaseException:
+            self._poisoned.add(parsed)
+            raise
+        self._positions[parsed] = position
+        return position
+
+    def _copy_prefilled_state(
+        self,
+        slot: int,
+        *,
+        position: int,
+        needed_blocks: int,
+        source_attention: Sequence[object],
+        source_blocks: Sequence[np.ndarray],
+        source_index: Sequence[object],
+        source_decode: object,
+        ple_hash_state: PLEHashState | None,
+    ) -> None:
+        """Copy a validated source's per-slot state into ``slot``.
+
+        Only the valid prefix of the last paged block is copied: the source's
+        unwritten tail must not land in this slot.
+        """
+
+        attention = self._require_attention()
         row_bytes = attention.kv_heads * attention.head_dim * DType.BF16.itemsize
         block_bytes = attention.block_size * row_bytes
-        slot_blocks = attention.block_host[parsed]
+        slot_blocks = attention.block_host[slot]
         for layer, state in enumerate(source_attention):
             index_state = self.index_states[layer]
             index_row_bytes = index_state.index_dim * DType.FP32.itemsize
@@ -979,8 +1058,8 @@ class Qwen4ExpGGUFBatchRunner:
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                 )
             # Pooled keys are re-derived by the next selection, not copied.
-            index_state.cursor_host[parsed] = position
-            index_state.pooled_count_host[parsed] = 0
+            index_state.cursor_host[slot] = position
+            index_state.pooled_count_host[slot] = 0
         if self.gdn_states:
             layers = len(self.gdn_states)
             conv_bytes = int(self.gdn_states[0].conv_bytes_per_slot)
@@ -989,29 +1068,29 @@ class Qwen4ExpGGUFBatchRunner:
             source_matrix_stride = int(source_decode.gdn_matrix.nbytes) // layers
             for layer, gdn_state in enumerate(self.gdn_states):
                 self.runtime.memcpy(
-                    gdn_state.conv_slot_ptr(parsed),
+                    gdn_state.conv_slot_ptr(slot),
                     source_decode.gdn_conv.ptr + layer * source_conv_stride,
                     conv_bytes,
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                 )
                 self.runtime.memcpy(
-                    gdn_state.recurrent_slot_ptr(parsed),
+                    gdn_state.recurrent_slot_ptr(slot),
                     source_decode.gdn_matrix.ptr + layer * source_matrix_stride,
                     matrix_bytes,
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                 )
         if self.ple_state is not None:
             self.runtime.memcpy(
-                self.ple_state.history_slot_ptr(parsed),
+                self.ple_state.history_slot_ptr(slot),
                 source_decode.ple_conv.ptr,
                 int(self.ple_state.history_bytes_per_slot),
                 HipMemcpyKind.DEVICE_TO_DEVICE,
             )
-            self._ple_hash_states[parsed] = _copy_ple_hash_state(
-                source.ple_hash_states[0]
-            )
-        self._positions[parsed] = position
-        return position
+            if ple_hash_state is None:
+                raise RuntimeError(
+                    "a PLE layer needs the source request's n-gram history"
+                )
+            self._ple_hash_states[slot] = _copy_ple_hash_state(ple_hash_state)
 
     # -- decode step ------------------------------------------------------
 
@@ -1020,42 +1099,43 @@ class Qwen4ExpGGUFBatchRunner:
         token_ids: Sequence[int],
         *,
         slots: Sequence[int] | None = None,
+        owners: Sequence[int] | None = None,
         capture_logits: bool = True,
     ) -> Qwen4ExpBatchDecodeResult:
-        """Advance every admitted row by one token and return its logits.
+        """Advance every row by one token and return its logits.
 
         ``slots`` is the row-to-slot mapping: row ``r`` advances slot
         ``slots[r]``, in any order, and the returned result keeps that order.
-        It defaults to the admitted slots in admission order. All rows must
-        already be admitted; the whole row set is validated before the first
-        device write.
+        It defaults to every admitted slot in ascending slot order, and that
+        default is the only form that does not need ``owners``.
+
+        Naming slots explicitly requires ``owners``: the owner token each slot's
+        admission returned. A token that no longer matches means the request
+        that held the slot was released and another one was admitted into the
+        same physical slot, so the call is refused instead of advancing a
+        stranger's state.
+
+        Token ids and slot indices must be integers (``operator.index``), so a
+        float or a bool is rejected instead of being truncated. The whole row
+        set is validated before the first device write; a rejected call leaves
+        every slot healthy. A call that fails *after* it started mutating
+        poisons its rows (see :attr:`poisoned_slots`).
 
         ``capture_logits=False`` skips the ``[rows, vocab]`` readback and
         returns only greedy ids from the committed row-wise argmax kernel.
         """
 
         self._require_open()
-        tokens = np.ascontiguousarray(
-            np.asarray(token_ids, dtype=np.int64).reshape(-1)
-        )
-        plan = self._plan_step(tokens, slots)
-        cfg = self.config
-        attention = self._require_attention()
-        selection = self.selection
-        gdn_scratch = self.gdn_scratch
-        qsa_scratch = self.qsa_scratch
-        ple_scratch = self.ple_scratch
-        head_scratch = self.head_scratch
+        tokens = _token_ids(token_ids)
+        plan = self._plan_step(tokens, slots, owners)
         if (
-            selection is None
-            or gdn_scratch is None
-            or qsa_scratch is None
-            or head_scratch is None
-            or (self._ple_layers and ple_scratch is None)
+            self.selection is None
+            or self.gdn_scratch is None
+            or self.qsa_scratch is None
+            or self.head_scratch is None
+            or (self._ple_layers and self.ple_scratch is None)
         ):
             raise RuntimeError("Qwen4Exp batch runner has no live decode scratch")
-        rows = plan.rows
-        position_host = np.ascontiguousarray(plan.positions)
         token_weight = self.resident.weight("root.token_embedding")
         embedding_kernel = resolve(
             backend=self.backend,
@@ -1063,6 +1143,41 @@ class Qwen4ExpGGUFBatchRunner:
             quant=token_weight.spec.quant_key,
             variant="lookup_bf16_out",
         )
+        # Everything above is host-side validation and lookup. From here on the
+        # slots' device state changes, so a failure poisons the rows: a retry
+        # would append and advance on top of a half-applied step.
+        try:
+            return self._execute_step(
+                plan,
+                tokens,
+                embedding_kernel=embedding_kernel,
+                token_weight=token_weight,
+                capture_logits=capture_logits,
+            )
+        except BaseException:
+            self._poisoned.update(plan.slots)
+            raise
+
+    def _execute_step(
+        self,
+        plan: _StepPlan,
+        tokens: np.ndarray,
+        *,
+        embedding_kernel: object,
+        token_weight: object,
+        capture_logits: bool,
+    ) -> Qwen4ExpBatchDecodeResult:
+        """Run one validated step. Callers must poison ``plan.slots`` on failure."""
+
+        cfg = self.config
+        attention = self._require_attention()
+        selection = self.selection
+        gdn_scratch = self.gdn_scratch
+        qsa_scratch = self.qsa_scratch
+        ple_scratch = self.ple_scratch
+        head_scratch = self.head_scratch
+        rows = plan.rows
+        position_host = np.ascontiguousarray(plan.positions)
         copy_host_to_device(
             self.token_ids,
             host_array_ptr(tokens),
@@ -1261,9 +1376,16 @@ class Qwen4ExpGGUFBatchRunner:
     # -- validation -------------------------------------------------------
 
     def _plan_step(
-        self, tokens: np.ndarray, slots: Sequence[int] | None
+        self,
+        tokens: np.ndarray,
+        slots: Sequence[int] | None,
+        owners: Sequence[int] | None,
     ) -> _StepPlan:
-        """Validate the whole row set before the step mutates anything."""
+        """Validate the whole row set before the step mutates anything.
+
+        Nothing here writes device or host state, so a rejection leaves every
+        slot healthy.
+        """
 
         attention = self._require_attention()
         cfg = self.config
@@ -1275,17 +1397,39 @@ class Qwen4ExpGGUFBatchRunner:
                 f"step admits at most {self.state_slots} rows, got {rows}"
             )
         if slots is None:
+            if owners is not None:
+                raise ValueError(
+                    "owners is only meaningful with explicit slots; a default "
+                    "step advances the currently admitted slots"
+                )
             chosen = self.active_slots
             if not chosen:
                 raise RuntimeError(
                     "no slots are admitted; admit a slot before stepping"
                 )
+            granted = None
         else:
-            chosen = tuple(int(slot) for slot in slots)
+            if owners is None:
+                raise ValueError(
+                    "step with explicit slots requires the owner token of every "
+                    "named slot; pass owners= (the tokens admit() returned) or "
+                    "omit slots to advance the currently admitted slots"
+                )
+            chosen = tuple(
+                self._row_slot(row, value) for row, value in enumerate(slots)
+            )
+            granted = tuple(
+                _row_owner_token(row, value) for row, value in enumerate(owners)
+            )
         if len(chosen) != rows:
             raise ValueError(
                 f"slots and token_ids must have equal length, got {len(chosen)} "
                 f"and {rows}"
+            )
+        if granted is not None and len(granted) != rows:
+            raise ValueError(
+                f"owners and token_ids must have equal length, got "
+                f"{len(granted)} and {rows}"
             )
         if len(set(chosen)) != len(chosen):
             raise ValueError("a slot appears twice in one step's row set")
@@ -1295,6 +1439,9 @@ class Qwen4ExpGGUFBatchRunner:
                     f"row {row} slot {slot} is outside [0, {self.state_slots})"
                 )
             self._require_admitted(slot)
+            if granted is not None:
+                self._require_owner(slot, granted[row])
+            self._require_healthy(slot)
         if np.any(tokens < 0) or np.any(tokens >= int(cfg.vocab_size)):
             raise ValueError("token ids must be inside the model vocabulary")
         positions = np.ascontiguousarray(self._positions[list(chosen)])
@@ -1341,6 +1488,19 @@ class Qwen4ExpGGUFBatchRunner:
     def _require_open(self) -> None:
         if self.closed or self.closing:
             raise RuntimeError("Qwen4Exp batch runner is closed")
+
+    def _row_slot(self, row: int, value: object) -> int:
+        """Parse one row's slot index, rejecting a non-integral value."""
+
+        if isinstance(value, (bool, np.bool_)):
+            raise ValueError(f"row {row} slot must be an integer, got a bool")
+        try:
+            parsed = operator.index(value)
+        except TypeError:
+            raise ValueError(
+                f"row {row} slot must be an integer, got {type(value).__name__}"
+            ) from None
+        return int(parsed)
 
     def _require_slot(self, slot: object) -> int:
         if isinstance(slot, bool) or not isinstance(slot, (int, np.integer)):
@@ -1408,6 +1568,7 @@ class Qwen4ExpGGUFBatchRunner:
         self.argmax_ids = None
         self.argmax_values = None
         self.argmax_blocks_i32 = None
+        self._poisoned.clear()
         self.closed = True
 
     def __enter__(self) -> "Qwen4ExpGGUFBatchRunner":
@@ -1416,6 +1577,44 @@ class Qwen4ExpGGUFBatchRunner:
 
     def __exit__(self, *exc_info: object) -> None:
         self.close()
+
+
+def _token_ids(token_ids: object) -> np.ndarray:
+    """Parse a row set of token ids, rejecting anything non-integral.
+
+    ``np.asarray(..., dtype=np.int64)`` would silently truncate ``3.7`` to ``3``
+    and accept ``True`` as ``1``, which turns a caller's bug into a wrong token.
+    """
+
+    try:
+        values = list(token_ids)
+    except TypeError:
+        raise ValueError("token_ids must be a sequence of integers") from None
+    parsed = []
+    for row, value in enumerate(values):
+        if isinstance(value, (bool, np.bool_)):
+            raise ValueError(f"row {row} token id must be an integer, got a bool")
+        try:
+            parsed.append(int(operator.index(value)))
+        except TypeError:
+            raise ValueError(
+                f"row {row} token id must be an integer, got "
+                f"{type(value).__name__}"
+            ) from None
+    return np.ascontiguousarray(np.asarray(parsed, dtype=np.int64))
+
+
+def _row_owner_token(row: int, value: object) -> int:
+    """Parse one row's owner token, rejecting a non-integral value."""
+
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError(f"row {row} owner token must be an integer, got a bool")
+    try:
+        return int(operator.index(value))
+    except TypeError:
+        raise ValueError(
+            f"row {row} owner token must be an integer, got {type(value).__name__}"
+        ) from None
 
 
 def _require_disjoint(

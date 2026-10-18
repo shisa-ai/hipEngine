@@ -462,7 +462,9 @@ def test_batch_step_matches_independent_c1_runners(model) -> None:
         owners = [batch.admit(slot) for slot in (2, 0)]
         for step, token in enumerate(tokens):
             expected = [reference.step(token) for reference in references]
-            result = batch.step([token, token], slots=[2, 0])
+            result = batch.step(
+                [token, token], slots=[2, 0], owners=owners
+            )
             assert result.slot_ids == (2, 0)
             assert result.positions.tolist() == [step, step]
             assert result.logits is not None
@@ -575,9 +577,13 @@ def test_batch_step_row_order_does_not_change_slot_state(model) -> None:
         forward.admit(1)
         reverse.admit(0)
         reverse.admit(1)
+        forward_owners = [forward.owner_of(0), forward.owner_of(1)]
+        reverse_owners = [reverse.owner_of(0), reverse.owner_of(1)]
         for step, (left, right) in enumerate(tokens):
-            first = forward.step([left, right], slots=[0, 1])
-            second = reverse.step([right, left], slots=[1, 0])
+            first = forward.step([left, right], slots=[0, 1], owners=forward_owners)
+            second = reverse.step(
+                [right, left], slots=[1, 0], owners=reverse_owners[::-1]
+            )
             # Row order is the caller's: row r belongs to slot_ids[r].
             assert second.slot_ids == (1, 0)
             assert np.array_equal(first.logits[0], second.logits[1])
@@ -615,9 +621,11 @@ def test_batch_step_is_deterministic_across_runs(model) -> None:
         for slot in (0, 2):
             left.admit(slot)
             right.admit(slot)
+        left_owners = [left.owner_of(0), left.owner_of(2)]
+        right_owners = [right.owner_of(0), right.owner_of(2)]
         for token in tokens:
-            first = left.step([token, token], slots=[0, 2])
-            second = right.step([token, token], slots=[0, 2])
+            first = left.step([token, token], slots=[0, 2], owners=left_owners)
+            second = right.step([token, token], slots=[0, 2], owners=right_owners)
             assert first.logits.tobytes() == second.logits.tobytes()
             assert first.tokens.tolist() == second.tokens.tolist()
             assert first.positions.tolist() == second.positions.tolist()
@@ -702,15 +710,15 @@ def test_batch_step_rejects_bad_rows_before_mutating(model) -> None:
         before_keys, before_values = _slot_kv(batch, 2)
         before_cursor = int(batch.index_states[0].cursor_host[2])
         with pytest.raises(RuntimeError, match="not admitted"):
-            batch.step([1], slots=[0])
+            batch.step([1], slots=[0], owners=[owner])
         with pytest.raises(ValueError, match="outside"):
-            batch.step([1], slots=[9])
+            batch.step([1], slots=[9], owners=[owner])
         with pytest.raises(ValueError, match="equal length"):
-            batch.step([1, 2], slots=[2])
+            batch.step([1, 2], slots=[2], owners=[owner])
         with pytest.raises(ValueError, match="appears twice"):
-            batch.step([1, 2], slots=[2, 2])
+            batch.step([1, 2], slots=[2, 2], owners=[owner, owner])
         with pytest.raises(ValueError, match="vocabulary"):
-            batch.step([fixture.VOCAB], slots=[2])
+            batch.step([fixture.VOCAB], slots=[2], owners=[owner])
         with pytest.raises(RuntimeError, match="no slots are admitted"):
             _batch(model).step([1])
         after_keys, after_values = _slot_kv(batch, 2)
@@ -718,6 +726,9 @@ def test_batch_step_rejects_bad_rows_before_mutating(model) -> None:
         assert before_values.tobytes() == after_values.tobytes()
         assert int(batch.index_states[0].cursor_host[2]) == before_cursor
         assert batch.position(2) == 0
+        # A rejected call leaves the slot healthy, not poisoned.
+        assert batch.poisoned_slots == ()
+        assert not batch.is_poisoned(2)
         with pytest.raises(RuntimeError, match="owned by request"):
             batch.release(2, owner + 1)
         batch.release(2, owner)
@@ -785,9 +796,18 @@ def test_step_argmax_path_matches_the_captured_logits(model) -> None:
         for slot in (0, 2):
             capturing.admit(slot)
             greedy.admit(slot)
+        capturing_owners = [capturing.owner_of(0), capturing.owner_of(2)]
+        greedy_owners = [greedy.owner_of(0), greedy.owner_of(2)]
         for token in tokens:
-            with_logits = capturing.step([token, token], slots=[0, 2])
-            without = greedy.step([token, token], slots=[0, 2], capture_logits=False)
+            with_logits = capturing.step(
+                [token, token], slots=[0, 2], owners=capturing_owners
+            )
+            without = greedy.step(
+                [token, token],
+                slots=[0, 2],
+                owners=greedy_owners,
+                capture_logits=False,
+            )
             assert without.logits is None
             expected = np.argmax(with_logits.logits, axis=1)
             assert without.tokens.tolist() == expected.tolist()
@@ -802,3 +822,169 @@ def test_step_argmax_path_matches_the_captured_logits(model) -> None:
     finally:
         capturing.close()
         greedy.close()
+
+
+@pytest.mark.parametrize("fault", ["gdn", "index"])
+def test_failed_step_poisons_its_rows_and_spares_the_others(model, fault, monkeypatch):
+    """A step that dies after mutating refuses a retry until an explicit reset.
+
+    The failure is injected *after* the real stage ran, so the rows' device state
+    really is partially advanced while the position mirror still says 0. A retry
+    would append and advance on top of that, so the rows must refuse work while a
+    slot that was not in the row set keeps decoding.
+    """
+
+    from hipengine.runtime import qwen4_exp_batch_runner as runner_module
+
+    batch = _batch(model)
+    reference = _c1(model)
+    token = 9
+    try:
+        owners = [batch.admit(slot) for slot in (0, 1, 2)]
+        # One-shot fault: the stage runs for real, then the step fails, so later
+        # steps on healthy slots take the normal path.
+        armed = {"value": True}
+        if fault == "gdn":
+            real = runner_module.run_qwen4_exp_batch_gdn_layer
+
+            def failing(*args, **kwargs):
+                output = real(*args, **kwargs)
+                if armed["value"]:
+                    armed["value"] = False
+                    raise RuntimeError("injected failure after the GDN mutation")
+                return output
+
+            monkeypatch.setattr(
+                runner_module, "run_qwen4_exp_batch_gdn_layer", failing
+            )
+        else:
+            real = runner_module.run_qwen4_exp_batch_qsa_layer
+
+            def failing(*args, **kwargs):
+                output = real(*args, **kwargs)
+                if armed["value"]:
+                    armed["value"] = False
+                    raise RuntimeError("injected failure after the index mutation")
+                return output
+
+            monkeypatch.setattr(
+                runner_module, "run_qwen4_exp_batch_qsa_layer", failing
+            )
+        with pytest.raises(RuntimeError, match="injected failure"):
+            batch.step([token, token], slots=[0, 2], owners=[owners[0], owners[2]])
+        assert batch.poisoned_slots == (0, 2)
+        assert not batch.is_poisoned(1)
+        # The position mirror did not advance, which is exactly why a retry
+        # cannot be allowed: the device state did.
+        assert batch.position(0) == 0 and batch.position(2) == 0
+        if fault == "gdn":
+            gdn_state = batch.gdn_states[0]
+            recurrent = _download(
+                _slot_buffer(
+                    gdn_state.recurrent_slot_ptr(0),
+                    gdn_state.recurrent_bytes_per_slot,
+                ),
+                (gdn_state.recurrent_bytes_per_slot // 4,),
+                np.float32,
+                model.runtime,
+            )
+            assert np.any(recurrent), "the GDN row really was advanced before failing"
+        else:
+            assert int(batch.index_states[0].cursor_host[0]) == 1
+        with pytest.raises(RuntimeError, match="poisoned"):
+            batch.step([token, token], slots=[0, 2], owners=[owners[0], owners[2]])
+        with pytest.raises(RuntimeError, match="poisoned"):
+            batch.step([token], slots=[2], owners=[owners[2]])
+        # A slot outside the failed row set decodes normally.
+        expected = reference.step(token)
+        healthy = batch.step([token], slots=[1], owners=[owners[1]])
+        deviation = _max_abs(healthy.logits[0], expected.logits)
+        assert deviation <= LOGIT_ATOL, f"healthy slot deviation {deviation:.3e}"
+        assert int(np.argmax(healthy.logits[0])) == int(np.argmax(expected.logits))
+        assert batch.position(1) == 1
+        assert batch.poisoned_slots == (0, 2)
+        # reset_slot clears one slot and only that slot.
+        batch.reset_slot(0, owners[0])
+        assert batch.poisoned_slots == (2,)
+        fresh = _c1(model)
+        try:
+            expected = fresh.step(token)
+            recovered = batch.step([token], slots=[0], owners=[owners[0]])
+            deviation = _max_abs(recovered.logits[0], expected.logits)
+            assert deviation <= LOGIT_ATOL, f"reset slot deviation {deviation:.3e}"
+        finally:
+            fresh.close()
+        assert batch.position(0) == 1
+        # release + admit is the other recovery path.
+        batch.release(2, owners[2])
+        assert batch.poisoned_slots == ()
+        replacement = batch.admit(2)
+        assert replacement not in owners
+        fresh = _c1(model)
+        try:
+            expected = fresh.step(token)
+            recovered = batch.step([token], slots=[2], owners=[replacement])
+            deviation = _max_abs(recovered.logits[0], expected.logits)
+            assert deviation <= LOGIT_ATOL, f"re-admit deviation {deviation:.3e}"
+        finally:
+            fresh.close()
+    finally:
+        reference.close()
+        batch.close()
+
+
+def test_failed_import_poisons_only_the_target_slot(model, monkeypatch) -> None:
+    """A copy that dies part-way refuses a retry until the slot is reset."""
+
+    batch = _batch(model)
+    reference = _c1(model)
+    prefix = [9, 4, 27, 15]
+    try:
+        reference.prefill_serial(prefix)
+        owner = batch.admit(0)
+        spare = batch.admit(2)
+
+        class _FailingRuntime:
+            def __init__(self, inner, fail_at):
+                self._inner = inner
+                self._fail_at = fail_at
+                self._calls = 0
+
+            def memcpy(self, *args, **kwargs):
+                self._calls += 1
+                if self._calls == self._fail_at:
+                    raise RuntimeError("injected device copy failure")
+                return self._inner.memcpy(*args, **kwargs)
+
+            def __getattr__(self, name):
+                return getattr(self._inner, name)
+
+        batch.runtime = _FailingRuntime(model.runtime, 3)
+        with pytest.raises(RuntimeError, match="injected device copy failure"):
+            batch.import_prefilled(0, owner, source=reference)
+        batch.runtime = model.runtime
+        assert batch.poisoned_slots == (0,)
+        assert not batch.is_poisoned(2)
+        assert batch.position(0) == 0
+        with pytest.raises(RuntimeError, match="poisoned"):
+            batch.import_prefilled(0, owner, source=reference)
+        with pytest.raises(RuntimeError, match="poisoned"):
+            batch.step([9], slots=[0], owners=[owner])
+        # The spare slot is untouched by the failed import.
+        assert batch.step([9], slots=[2], owners=[spare]).positions.tolist() == [0]
+        # A reset clears the poison and the import then completes.
+        batch.reset_slot(0, owner)
+        assert batch.poisoned_slots == ()
+        assert batch.import_prefilled(0, owner, source=reference) == len(prefix)
+        assert batch.position(0) == len(prefix)
+        assert int(batch.index_states[0].cursor_host[0]) == len(prefix)
+        expected = reference.step(22)
+        actual = batch.step([22], slots=[0], owners=[owner])
+        deviation = _max_abs(actual.logits[0], expected.logits)
+        assert deviation <= LOGIT_ATOL, f"imported logit deviation {deviation:.3e}"
+        batch_keys, _ = _slot_kv(batch, 0)
+        c1_keys, _ = _c1_kv(reference)
+        assert _max_abs(_float_view(batch_keys), _float_view(c1_keys)) <= STATE_ATOL
+    finally:
+        reference.close()
+        batch.close()
