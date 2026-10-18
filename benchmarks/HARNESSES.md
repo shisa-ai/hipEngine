@@ -112,10 +112,12 @@ gates, each requiring a clean committed tree:
 - `scripts/qwen4exp_layer2_profile_gate.py --candidate <id>`: the 18-prompt
   calibrated envelope against `strict` (about 5 minutes).
 - `scripts/qwen4exp_long_context_gate.py --candidate <id>`: the long-prompt
-  gate (`docs/EXECUTION-PROFILES.md` section 6.1). Its KL limits come from
-  `strict` reruns with one rounding flip in the prompt embeddings, and it
-  scores retrieval answers at 8K and 16K tokens (about 25 minutes, most of
-  it `strict` prefilling the 16K prompts at about 63 tok/s).
+  gate (`docs/EXECUTION-PROFILES.md` section 6.1). The AR batch arm uses
+  `--candidate ar_batch --batch-width 1|2`; width 4 is rejected rather than run
+  below its 2,048-position bound. Its KL limits come from `strict` reruns with
+  one rounding flip in the prompt embeddings, and it scores retrieval answers at
+  8K and 16K tokens (about 25 minutes, most of it `strict` prefilling the 16K
+  prompts at about 63 tok/s).
 
 ## Profiling these harnesses under rocprofv3 (read before launching)
 

@@ -28,11 +28,18 @@ stay meaningful at length (EXECUTION-PROFILES section 6.1):
 
 Also binding: candidate repeats are bit-identical, controls are effective (a
 control that changes nothing measures no floor) and below a sanity cap.
+
+For the AR batch arm, pass ``--candidate ar_batch --batch-width 1`` or ``2``.
+Prefill stays on the c1 runner; decode is a genuine N-row ``owner.step``. Width
+4 is rejected because its live bound is 2048 positions, below these fixtures.
+The batch state/ownership gate and the batch variant manifest binding are
+binding, and the arm needs at least three repeats.
 """
 
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from datetime import datetime, timezone
 import json
 import os
@@ -61,6 +68,7 @@ from scripts.qwen4exp_layer2_profile_gate import (
     _candidate_trajectory,
     _make_generator,
     _post_construct_hook,
+    _state_summary,
     _strict_trajectory,
 )
 
@@ -69,6 +77,16 @@ DEFAULT_NUMERIC = ROOT / "benchmarks" / "prompts" / "qwen4exp-long-context-gate.
 DEFAULT_RETRIEVAL = ROOT / "benchmarks" / "prompts" / "qwen4exp-long-retrieval-v1.jsonl"
 # A control whose mean KL exceeds this is no longer a round-off-sized floor.
 CONTROL_MEAN_KL_CAP = 1e-2
+#: Long-context AR batch widths with a measured adapter path. Width 4 is
+#: refused because its live runtime bound is 2048 positions, below this gate's
+#: 2K-class numerical and 8K/16K retrieval fixtures; the gate must not lower
+#: the context to make width 4 appear supported.
+SUPPORTED_BATCH_WIDTHS = (1, 2)
+#: The batch state gate compares at least three repeats.
+BATCH_STATE_REPEATS = 3
+#: Exact control basis: a prompt-embedding override, not a residual control.
+CONTROL_BASIS = "prompt_embedding_row_one_bf16_ulp"
+CONTROL_APPLICATION = "runner.prefill(embedding_overrides=...)"
 
 
 def _load(path: Path) -> list[dict[str, Any]]:
@@ -168,7 +186,13 @@ def _summary(strict: Mapping[str, Sequence[Mapping[str, Any]]],
     rows: list[RowDescriptor] = []
     left, right = [], []
     for prompt_id, teacher in strict.items():
-        for step, (s_row, c_row) in enumerate(zip(teacher, arm[prompt_id])):
+        candidate_rows = arm[prompt_id]
+        if len(teacher) != len(candidate_rows):
+            raise GateError(
+                f"strict/candidate trajectory length mismatch for {prompt_id!r}: "
+                f"{len(teacher)} != {len(candidate_rows)}"
+            )
+        for step, (s_row, c_row) in enumerate(zip(teacher, candidate_rows)):
             rows.append(RowDescriptor(
                 scenario_id=name, scenario_step=len(rows), request_id=prompt_id,
                 teacher_step=step, category=categories[prompt_id],
@@ -182,8 +206,9 @@ def _summary(strict: Mapping[str, Sequence[Mapping[str, Any]]],
 
 
 def decide(candidate: Mapping[str, Any], controls: Sequence[Mapping[str, Any]],
-           candidate_retrieval: int, strict_retrieval: int, *, deterministic: bool
-           ) -> dict[str, Any]:
+           candidate_retrieval: int, strict_retrieval: int, *, deterministic: bool,
+           batch_state_passed: bool | None = None,
+           batch_manifest_bound: bool | None = None) -> dict[str, Any]:
     """The binding rules, separated from measurement so they can be unit-tested."""
 
     floor = {
@@ -202,17 +227,200 @@ def decide(candidate: Mapping[str, Any], controls: Sequence[Mapping[str, Any]],
         "retrieval_not_below_strict": int(candidate_retrieval) >= int(strict_retrieval),
         "candidate_repeats_identical": bool(deterministic),
     }
+    if batch_state_passed is not None:
+        checks["batch_state_gate"] = bool(batch_state_passed)
+    if batch_manifest_bound is not None:
+        checks["batch_manifest_bound"] = bool(batch_manifest_bound)
     valid = checks["controls_effective"] and checks["controls_round_off_sized"]
+    if batch_manifest_bound is False:
+        # A batch manifest that does not name the measured path is not evidence.
+        valid = False
     passed = valid and all(checks.values())
     return {"floor": floor, "checks": checks, "measurement_valid": valid,
             "status": "passed" if passed else "failed" if valid else "invalid"}
 
 
+def candidate_arm_kind(spec: Any) -> str:
+    """Return the execution arm for a candidate; ``ar_batch`` is never c1."""
+
+    return "batch" if str(spec.name) == "qwen4_exp_ar_batch" else "c1"
+
+
+def resolve_batch_width(args: argparse.Namespace, spec: Any) -> int | None:
+    """Resolve and fail closed on the long-context batch width."""
+
+    requested = getattr(args, "batch_width", None)
+    if candidate_arm_kind(spec) != "batch":
+        if requested is not None:
+            raise GateError("--batch-width is only valid with --candidate ar_batch")
+        return None
+    if requested is None:
+        raise GateError(
+            "--candidate ar_batch requires --batch-width 1 or 2; "
+            "the long-context gate has no c1 fallback"
+        )
+    width = int(requested)
+    if width == 4:
+        raise GateError(
+            "--candidate ar_batch --batch-width 4 is unsupported by the "
+            "long-context gate: the width-4 runtime is qualified only to 2048 "
+            "positions, below the 2K-class/8K/16K fixtures; use --batch-width "
+            "1 or 2; do not lower context"
+        )
+    if width not in SUPPORTED_BATCH_WIDTHS:
+        raise GateError("--candidate ar_batch requires --batch-width 1 or 2")
+    return width
+
+
+def plan_long_batch_groups(
+    numeric_requests: Sequence[Any],
+    retrieval_requests: Sequence[Any],
+    width: int,
+) -> tuple[list[Any], dict[str, dict[str, Any]]]:
+    """Plan honest N-row groups for numeric and retrieval schedules.
+
+    Numeric prompts share the teacher-forced length. Retrieval prompts are
+    bucketed by gold-answer length because the adapter requires one forced
+    length per group; a bucket with one request keeps its natural width 1.
+    """
+
+    from scripts.qwen4exp_ar_batch_candidate import plan_batch_composition
+
+    parsed_width = int(width)
+    if parsed_width not in SUPPORTED_BATCH_WIDTHS:
+        raise ValueError(
+            f"long-context batch width must be one of {SUPPORTED_BATCH_WIDTHS}, "
+            f"got {width!r}"
+        )
+    all_requests = tuple(numeric_requests) + tuple(retrieval_requests)
+    if not all_requests:
+        raise ValueError("long-context batch composition needs at least one request")
+    prompt_ids = [str(request.prompt_id) for request in all_requests]
+    request_ids = [int(request.request_id) for request in all_requests]
+    if len(set(prompt_ids)) != len(prompt_ids):
+        raise ValueError("long-context batch composition has duplicate prompt ids")
+    if len(set(request_ids)) != len(request_ids):
+        raise ValueError("long-context batch composition has duplicate request ids")
+
+    groups: list[Any] = []
+    schedule: dict[str, dict[str, Any]] = {}
+    for schedule_name, requests in (
+        ("numeric", tuple(numeric_requests)),
+        ("retrieval", tuple(retrieval_requests)),
+    ):
+        buckets: dict[int, list[Any]] = {}
+        order: list[int] = []
+        for request in requests:
+            forced_length = len(request.forced_ids)
+            if forced_length not in buckets:
+                buckets[forced_length] = []
+                order.append(forced_length)
+            buckets[forced_length].append(request)
+        for forced_length in order:
+            for group in plan_batch_composition(buckets[forced_length], parsed_width):
+                groups.append(replace(group, index=len(groups)))
+                for request in group.requests:
+                    schedule[str(request.prompt_id)] = {
+                        "schedule": schedule_name,
+                        "forced_length": int(forced_length),
+                    }
+    return groups, schedule
+
+
+def _run_batch_candidate(
+    candidate_generator: Any,
+    *,
+    groups: Sequence[Any],
+    width: int,
+    repeats: int,
+    candidate_mode: str,
+    source_revision: str,
+    owner_factory: Any | None = None,
+) -> dict[str, Any]:
+    """Run the existing AR batch adapter for every group and repeat."""
+
+    from scripts.qwen4exp_ar_batch_candidate import Qwen4ExpARBatchCandidate
+
+    adapter = Qwen4ExpARBatchCandidate(
+        candidate_generator,
+        width=int(width),
+        label=str(candidate_mode),
+        owner_factory=owner_factory,
+    )
+    runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}
+    states: dict[str, list[Mapping[str, Any]]] = {}
+    groups_by_repeat: list[list[dict[str, Any]]] = []
+    try:
+        adapter.open()
+        for repeat in range(int(repeats)):
+            before = len(adapter.evidence["groups"])
+            for group in groups:
+                result = adapter.run_group(group)
+                for prompt_id, trajectory in result.trajectories.items():
+                    runs.setdefault(str(prompt_id), []).append(tuple(trajectory))
+                for prompt_id, state in result.states.items():
+                    states.setdefault(str(prompt_id), []).append(state)
+                print(
+                    f"candidate batch group {group.index} width {group.width} "
+                    f"{list(group.prompt_ids)}",
+                    flush=True,
+                )
+            groups_by_repeat.append(
+                [
+                    {**group, "repeat": repeat}
+                    for group in adapter.evidence["groups"][before:]
+                ]
+            )
+        manifest = adapter.build_variant_manifest(source_revision=str(source_revision))
+        evidence = adapter.evidence
+    finally:
+        adapter.close()
+    return {
+        "runs": runs,
+        "states": states,
+        "groups_by_repeat": groups_by_repeat,
+        "evidence": evidence,
+        "manifest": manifest,
+    }
+
+
+def _batch_manifest_binding(
+    manifest: Mapping[str, Any],
+    *,
+    candidate_profile: Any,
+    source_revision: str,
+) -> dict[str, Any]:
+    """Bind the batch manifest to the live profile and source revision."""
+
+    from hipengine.runtime.qwen4_exp_batch_manifest import (
+        validate_batch_variant_manifest,
+    )
+
+    profile_manifest = candidate_profile.manifest
+    return validate_batch_variant_manifest(
+        manifest,
+        expected_profile_manifest_sha256=candidate_profile.manifest_sha256,
+        expected_source_revision=str(source_revision),
+        expected_backend=profile_manifest["backend"],
+        expected_model=profile_manifest["model"],
+        expected_quant=profile_manifest["quant"],
+    )
+
+
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
-    if not _git_metadata(ROOT)["tracked_clean"]:
+    source = _git_metadata(ROOT)
+    if not source["tracked_clean"]:
         raise GateError("profile qualification requires a clean committed tracked tree")
     if args.controls < 2 or args.candidate_repeats < 2:
         raise GateError("the floor needs at least two controls; determinism two repeats")
+    spec = CANDIDATES[str(args.candidate)]
+    batch_width = resolve_batch_width(args, spec)
+    batch_candidate = candidate_arm_kind(spec) == "batch"
+    if batch_candidate and int(args.candidate_repeats) < BATCH_STATE_REPEATS:
+        raise GateError(
+            "the AR batch ownership/repeat gate requires at least "
+            f"{BATCH_STATE_REPEATS} candidate repeats"
+        )
     from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
         register_gguf_q4_k_selected_prefill_kernels,
@@ -222,7 +430,6 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     register_gfx1151_kernels(replace=True)
     register_gguf_q4_k_selected_prefill_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
-    spec = CANDIDATES[str(args.candidate)]
     numeric = _load(args.numeric_prompts)
     retrieval = _load(args.retrieval_prompts)
     categories = {str(r["id"]): str(r["category"]) for r in numeric}
@@ -230,10 +437,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
 
     prompt_ids: dict[str, list[int]] = {}
     strict_numeric: dict[str, tuple] = {}
+    strict_numeric_states: dict[str, dict[str, Any]] = {}
     control_runs: list[dict[str, tuple]] = [{} for _ in range(args.controls)]
     control_meta: list[dict[str, Any]] = [{} for _ in range(args.controls)]
     gold: dict[str, tuple[list[int], list[list[int]]]] = {}
     strict_retrieval: dict[str, dict[str, Any]] = {}
+    strict_retrieval_states: dict[str, dict[str, Any]] = {}
     strict_gen, strict_profile, _ = _make_generator(args, "strict")
     try:
         runner, tokenizer = strict_gen.runner, strict_gen.tokenizer
@@ -243,6 +452,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             prompt_ids[pid] = ids
             teacher = _strict_trajectory(runner, ids, int(args.decode_steps))
             strict_numeric[pid] = teacher
+            strict_numeric_states[pid] = _state_summary(runner)
             forced = [int(step["token_id"]) for step in teacher[:-1]]
             for index in range(args.controls):
                 override, meta = roundoff_override(runner, ids, args.control_seed + index)
@@ -257,6 +467,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             trajectory = _forced_trajectory(runner, ids, gold[pid][0][:-1])
             strict_retrieval[pid] = {"trajectory": trajectory,
                                      **score_retrieval(trajectory, *gold[pid])}
+            strict_retrieval_states[pid] = _state_summary(runner)
             print(f"strict retrieval {pid}: {strict_retrieval[pid]['correct']}", flush=True)
     finally:
         strict_gen.close()
@@ -264,22 +475,119 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     candidate_numeric: list[dict[str, tuple]] = [{} for _ in range(args.candidate_repeats)]
     candidate_retrieval: list[dict[str, dict[str, Any]]] = [
         {} for _ in range(args.candidate_repeats)]
+    batch_result: dict[str, Any] | None = None
+    batch_binding: dict[str, Any] | None = None
+    batch_state_gate_result: dict[str, Any] | None = None
+    batch_schedule: dict[str, dict[str, Any]] = {}
+    batch_groups: tuple[Any, ...] = ()
     saved = {key: os.environ.get(key) for key in spec.environment}
     gen, candidate_profile, _ = _make_generator(args, spec.base_profile, spec.quant)
     _post_construct_hook(gen, args)
     os.environ.update(spec.environment)
     try:
-        runner = gen.runner
-        for repeat in range(args.candidate_repeats):
+        if batch_candidate:
+            from scripts.qwen4exp_ar_batch_candidate import BatchCandidateRequest
+
+            numeric_requests: list[Any] = []
+            request_id = 1
             for pid, teacher in strict_numeric.items():
-                forced = [int(step["token_id"]) for step in teacher[:-1]]
-                candidate_numeric[repeat][pid] = _forced_trajectory(runner, prompt_ids[pid], forced)
-            for row in retrieval:
-                pid = str(row["id"])
-                trajectory = _forced_trajectory(runner, prompt_ids[pid], gold[pid][0][:-1])
-                candidate_retrieval[repeat][pid] = {
-                    "trajectory": trajectory, **score_retrieval(trajectory, *gold[pid])}
-            print(f"candidate repeat {repeat + 1}/{args.candidate_repeats}", flush=True)
+                forced = tuple(int(step["token_id"]) for step in teacher[:-1])
+                numeric_requests.append(
+                    BatchCandidateRequest(
+                        prompt_id=str(pid),
+                        request_id=request_id,
+                        prompt_ids=tuple(int(token) for token in prompt_ids[pid]),
+                        forced_ids=forced,
+                    )
+                )
+                request_id += 1
+            retrieval_requests: list[Any] = []
+            for pid in strict_retrieval:
+                forced = tuple(int(token) for token in gold[pid][0][:-1])
+                retrieval_requests.append(
+                    BatchCandidateRequest(
+                        prompt_id=str(pid),
+                        request_id=request_id,
+                        prompt_ids=tuple(int(token) for token in prompt_ids[pid]),
+                        forced_ids=forced,
+                    )
+                )
+                request_id += 1
+            try:
+                planned_groups, batch_schedule = plan_long_batch_groups(
+                    numeric_requests, retrieval_requests, int(batch_width)
+                )
+            except ValueError as error:
+                raise GateError(f"batch composition rejected: {error}") from error
+            batch_groups = tuple(planned_groups)
+            batch_result = _run_batch_candidate(
+                gen,
+                groups=batch_groups,
+                width=int(batch_width),
+                repeats=int(args.candidate_repeats),
+                candidate_mode=f"{spec.name}_w{int(batch_width)}",
+                source_revision=str(source["head"] or ""),
+            )
+            for repeat in range(int(args.candidate_repeats)):
+                for pid in strict_numeric:
+                    candidate_numeric[repeat][pid] = batch_result["runs"][pid][repeat]
+                for pid in strict_retrieval:
+                    trajectory = batch_result["runs"][pid][repeat]
+                    candidate_retrieval[repeat][pid] = {
+                        "trajectory": trajectory,
+                        **score_retrieval(trajectory, *gold[pid]),
+                    }
+                print(
+                    f"candidate batch repeat {repeat + 1}/"
+                    f"{args.candidate_repeats}",
+                    flush=True,
+                )
+            batch_binding = _batch_manifest_binding(
+                batch_result["manifest"],
+                candidate_profile=candidate_profile,
+                source_revision=str(source["head"] or ""),
+            )
+            strict_state_order = [
+                {**strict_numeric_states[pid], "prompt_id": str(pid)}
+                for pid in strict_numeric
+            ] + [
+                {**strict_retrieval_states[pid], "prompt_id": str(pid)}
+                for pid in strict_retrieval
+            ]
+            candidate_state_order = [
+                batch_result["states"][pid] for pid in strict_numeric
+            ] + [
+                batch_result["states"][pid] for pid in strict_retrieval
+            ]
+            from scripts.qwen4exp_ar_batch_candidate import batch_state_gate
+
+            batch_state_gate_result = batch_state_gate(
+                strict_state_order,
+                candidate_state_order,
+                groups=[
+                    group
+                    for repeat_groups in batch_result["groups_by_repeat"]
+                    for group in repeat_groups
+                ],
+            )
+        else:
+            runner = gen.runner
+            for repeat in range(args.candidate_repeats):
+                for pid, teacher in strict_numeric.items():
+                    forced = [int(step["token_id"]) for step in teacher[:-1]]
+                    candidate_numeric[repeat][pid] = _forced_trajectory(
+                        runner, prompt_ids[pid], forced
+                    )
+                for row in retrieval:
+                    pid = str(row["id"])
+                    trajectory = _forced_trajectory(
+                        runner, prompt_ids[pid], gold[pid][0][:-1]
+                    )
+                    candidate_retrieval[repeat][pid] = {
+                        "trajectory": trajectory,
+                        **score_retrieval(trajectory, *gold[pid]),
+                    }
+                print(f"candidate repeat {repeat + 1}/{args.candidate_repeats}", flush=True)
     finally:
         for key, value in saved.items():
             if value is None:
@@ -289,7 +597,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         gen.close()
 
     def same(a: Sequence[Mapping[str, Any]], b: Sequence[Mapping[str, Any]]) -> bool:
-        return all(np.array_equal(x["logits"], y["logits"]) for x, y in zip(a, b))
+        return len(a) == len(b) and all(
+            np.array_equal(x["logits"], y["logits"]) for x, y in zip(a, b)
+        )
 
     deterministic = all(
         same(candidate_numeric[0][pid], run[pid])
@@ -308,8 +618,23 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         retrieval_categories, spec.name + "_retrieval")
     strict_correct = sum(v["correct_count"] for v in strict_retrieval.values())
     candidate_correct = sum(v["correct_count"] for v in candidate_retrieval[0].values())
-    decision = decide(candidate, controls, candidate_correct, strict_correct,
-                      deterministic=deterministic)
+    decision = decide(
+        candidate,
+        controls,
+        candidate_correct,
+        strict_correct,
+        deterministic=deterministic,
+        batch_state_passed=(
+            bool(batch_state_gate_result["passed"])
+            if batch_state_gate_result is not None
+            else None
+        ),
+        batch_manifest_bound=(
+            bool(batch_binding["valid"] and batch_binding["bound"])
+            if batch_binding is not None
+            else None
+        ),
+    )
     source = _git_metadata(ROOT)
     if not source["tracked_clean"]:
         decision["status"] = "invalid"
@@ -330,9 +655,15 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "host": _host_metadata(),
         "command": list(command),
         "candidate": {"id": str(args.candidate), "name": spec.name,
+                      "arm_kind": candidate_arm_kind(spec),
+                      "batch_width": batch_width,
                       "base_profile": spec.base_profile,
                       "environment": dict(spec.environment),
-                      "manifest_sha256": candidate_profile.manifest_sha256},
+                      "manifest_sha256": candidate_profile.manifest_sha256,
+                      "batch_manifest_sha256": (
+                          batch_binding.get("manifest_sha256")
+                          if batch_binding is not None else None
+                      )},
         "strict_manifest_sha256": strict_profile.manifest_sha256,
         "protocol": {
             "numeric_prompts": str(args.numeric_prompts),
@@ -344,13 +675,40 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "controls": int(args.controls),
             "control_seed": int(args.control_seed),
             "control_perturbation": "one BF16 ulp in one element of one prompt embedding row",
+            "control_basis": CONTROL_BASIS,
+            "control_application": CONTROL_APPLICATION,
             "candidate_repeats": int(args.candidate_repeats),
+            "batch_width": batch_width,
+            "batch_widths_supported": list(SUPPORTED_BATCH_WIDTHS),
+            "batch_state_repeats": (
+                int(args.candidate_repeats) if batch_candidate else None
+            ),
             "prefill_chunk_size": int(args.prefill_chunk_size),
             "max_sequence_length": int(args.max_sequence_length),
             "control_mean_kl_cap": CONTROL_MEAN_KL_CAP,
         },
         "numeric": {"candidate": candidate, "controls": controls,
                     "control_perturbations": control_meta},
+        "batch": (
+            {
+                "width": batch_width,
+                "groups": batch_result["evidence"].get("groups", []),
+                "groups_by_repeat": batch_result["groups_by_repeat"],
+                "schedule": batch_schedule,
+                "request_count": sum(
+                    len(group.requests) for group in batch_groups
+                ),
+                "step_widths": batch_result["evidence"].get("step_widths"),
+                "imports": batch_result["evidence"].get("imports"),
+                "steps": batch_result["evidence"].get("steps"),
+                "prefill_source": batch_result["evidence"].get("prefill_source"),
+                "manifest": batch_result["manifest"],
+                "manifest_binding": batch_binding,
+                "state_gate": batch_state_gate_result,
+            }
+            if batch_result is not None
+            else None
+        ),
         "retrieval": {
             "strict_correct": strict_correct,
             "candidate_correct": candidate_correct,
@@ -368,6 +726,15 @@ def build_parser() -> argparse.ArgumentParser:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--candidate", default="production_baseline", choices=tuple(CANDIDATES))
+    parser.add_argument(
+        "--batch-width",
+        type=int,
+        default=None,
+        help=(
+            "AR batch width for --candidate ar_batch; this long-context gate "
+            "supports 1 or 2 and rejects width 4 rather than lowering context"
+        ),
+    )
     parser.add_argument("--numeric-prompts", type=Path, default=DEFAULT_NUMERIC)
     parser.add_argument("--retrieval-prompts", type=Path, default=DEFAULT_RETRIEVAL)
     parser.add_argument("--controls", type=int, default=3)

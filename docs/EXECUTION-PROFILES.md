@@ -568,6 +568,17 @@ the gate"), a long-prompt gate binds alongside the short suite,
   least as many questions as `strict`.
 - Candidate repeats must be bit-identical.
 
+The AR batch arm is selected with `--candidate ar_batch --batch-width 1` or
+`2`. It prefills each request on the c1 runner, imports the state into distinct
+batch slots, and advances every group with genuine N-row `owner.step` calls;
+the gate records the composition plan, request/slot/owner map, step-width
+histogram, and batch variant manifest. Width 4 is rejected because its live
+qualification bound is 2,048 positions, below the 2K-class, 8K, and 16K
+fixtures; the gate never lowers context to admit it. A missing width is a hard
+error, never a c1 fallback. Batch candidates require at least three repeats and
+bind the per-request state/ownership gate plus the batch manifest to the live
+profile and source revision.
+
 The short-suite gate, its top-1 floors and task checks still bind. A single
 rounding flip measures mean KL `4.5e-3` to `7.7e-3` on the four 2K-2.6K
 prompts, so this gate admits drift of round-off size and nothing larger.
