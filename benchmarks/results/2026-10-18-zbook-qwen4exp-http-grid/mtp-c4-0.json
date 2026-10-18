@@ -1,0 +1,527 @@
+{
+  "name": "mtp-c4-0",
+  "endpoint": "/v1/chat/completions",
+  "request": {
+    "model": "qwen38fn-capon",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code."
+      }
+    ],
+    "temperature": 0,
+    "top_p": 1,
+    "max_tokens": 64,
+    "enable_thinking": false,
+    "speculative_mtp": true
+  },
+  "started_unix": 1792315897.4334705,
+  "status": 200,
+  "body": {
+    "id": "chatcmpl-8a9c780c190744918d410cce881558db",
+    "object": "chat.completion",
+    "created": 1792315899,
+    "model": "qwen38fn-capon",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "```python\ndef merge_intervals(intervals):\n    if not intervals:\n        return []\n    \n    # Sort intervals by start time\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    \n    merged = [sorted_intervals[0]]\n    \n    for current in sorted_intervals"
+        },
+        "finish_reason": "length",
+        "finish_details": {
+          "reason": "length",
+          "length_limit": 64,
+          "sampler_mode": "greedy_speculative_mtp",
+          "cache_action": "append_none",
+          "phase": "answer",
+          "continuation_eligible": true,
+          "continuation_id": "gen_80e9e2edebbb43358990779c7a206aa3"
+        },
+        "continuation_id": "gen_80e9e2edebbb43358990779c7a206aa3",
+        "hipengine": {
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 64,
+            "prompt_tokens": 40,
+            "generated_tokens": 64,
+            "phase": "done",
+            "continuation_eligible": true,
+            "sampler_mode": "greedy_speculative_mtp",
+            "execution_path": "qwen4exp_mtp_batched_state_rows_verify"
+          },
+          "event": "generation_complete",
+          "timing": {
+            "mtp_generated_draft_tokens": 53.0,
+            "mtp_accepted_draft_tokens": 45.0,
+            "mtp_cycles_count": 18.0
+          },
+          "timing_scope": "choice",
+          "group_rows": 1,
+          "timing_owner": true,
+          "diagnostics": {
+            "speculative_provider": "qwen4_exp_mtp",
+            "candidate_budget": 3,
+            "proposed_draft_tokens": 53,
+            "accepted_draft_tokens": 45,
+            "draft_acceptance": 0.8490566037735849,
+            "cycles": [
+              {
+                "start_position": 40,
+                "candidates": [
+                  12305,
+                  198,
+                  727
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 44
+              },
+              {
+                "start_position": 44,
+                "candidates": [
+                  87682,
+                  1494,
+                  40798
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 48
+              },
+              {
+                "start_position": 48,
+                "candidates": [
+                  198,
+                  262,
+                  4071
+                ],
+                "accepted": 2,
+                "mismatch_token": 413,
+                "committed_position": 51
+              },
+              {
+                "start_position": 51,
+                "candidates": [
+                  524,
+                  26126,
+                  25
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 55
+              },
+              {
+                "start_position": 55,
+                "candidates": [
+                  285,
+                  460,
+                  2958
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 59
+              },
+              {
+                "start_position": 59,
+                "candidates": [
+                  262,
+                  653,
+                  15495
+                ],
+                "accepted": 0,
+                "mismatch_token": 1031,
+                "committed_position": 60
+              },
+              {
+                "start_position": 60,
+                "candidates": [
+                  262,
+                  653,
+                  15495
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 64
+              },
+              {
+                "start_position": 64,
+                "candidates": [
+                  539,
+                  1151,
+                  1406
+                ],
+                "accepted": 2,
+                "mismatch_token": 854,
+                "committed_position": 67
+              },
+              {
+                "start_position": 67,
+                "candidates": [
+                  198,
+                  262,
+                  26126
+                ],
+                "accepted": 2,
+                "mismatch_token": 10300,
+                "committed_position": 70
+              },
+              {
+                "start_position": 70,
+                "candidates": [
+                  87682,
+                  283,
+                  10300
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 74
+              },
+              {
+                "start_position": 74,
+                "candidates": [
+                  40798,
+                  11,
+                  1328
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 78
+              },
+              {
+                "start_position": 78,
+                "candidates": [
+                  830,
+                  25,
+                  830
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 82
+              },
+              {
+                "start_position": 82,
+                "candidates": [
+                  15,
+                  2387,
+                  198
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 86
+              },
+              {
+                "start_position": 86,
+                "candidates": [
+                  262,
+                  25170,
+                  283
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 90
+              },
+              {
+                "start_position": 90,
+                "candidates": [
+                  27379,
+                  87682,
+                  58
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 94
+              },
+              {
+                "start_position": 94,
+                "candidates": [
+                  4891,
+                  198,
+                  1031
+                ],
+                "accepted": 3,
+                "mismatch_token": null,
+                "committed_position": 98
+              },
+              {
+                "start_position": 98,
+                "candidates": [
+                  364,
+                  1151,
+                  11
+                ],
+                "accepted": 1,
+                "mismatch_token": 1428,
+                "committed_position": 100
+              },
+              {
+                "start_position": 100,
+                "candidates": [
+                  303,
+                  10300
+                ],
+                "accepted": 2,
+                "mismatch_token": null,
+                "committed_position": 103
+              }
+            ],
+            "target_verify": "batched_state_rows",
+            "sampling_algorithm": "raw_argmax_match",
+            "draft_rollback": "cursor_trim",
+            "target_hidden_handoff": "host",
+            "phase_census": {
+              "cycles": 18,
+              "target_verify_rows": 18,
+              "target_prefill_hidden_export": {
+                "calls": 0,
+                "ms": 0.0
+              },
+              "proposal": {
+                "calls": 18,
+                "ms": 281.21137735433877
+              },
+              "target_verify": {
+                "calls": 18,
+                "ms": 1392.8696031216532,
+                "includes_hidden_export": true
+              },
+              "target_k0": {
+                "calls": 0,
+                "ms": 0.0
+              },
+              "acceptance_control": {
+                "calls": 18,
+                "ms": 34.82246235944331
+              },
+              "draft_commit_or_rollback": {
+                "calls": 18,
+                "ms": 4.687888780608773
+              },
+              "draft_stages_ms": {
+                "draft_candidate_packet_d2h": 59.54661616124213,
+                "draft_device_argmax": 1.267128624022007,
+                "draft_head_gr": 3.2416386529803276,
+                "draft_input_fusion": 30.809527030214667,
+                "draft_layer": 181.55814823694527,
+                "draft_lm_head": 3.02341696806252
+              }
+            }
+          },
+          "generated_token_ids": [
+            71093,
+            12305,
+            198,
+            727,
+            10562,
+            87682,
+            1494,
+            40798,
+            1590,
+            198,
+            262,
+            413,
+            524,
+            26126,
+            25,
+            198,
+            285,
+            460,
+            2958,
+            198,
+            1031,
+            262,
+            653,
+            15495,
+            26126,
+            539,
+            1151,
+            854,
+            198,
+            262,
+            10300,
+            87682,
+            283,
+            10300,
+            1494,
+            40798,
+            11,
+            1328,
+            26612,
+            830,
+            25,
+            830,
+            58,
+            15,
+            2387,
+            198,
+            1031,
+            262,
+            25170,
+            283,
+            498,
+            27379,
+            87682,
+            58,
+            15,
+            4891,
+            198,
+            1031,
+            262,
+            364,
+            1428,
+            303,
+            10300,
+            87682
+          ],
+          "generated_tokens": 64,
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 64,
+            "sampler_mode": "greedy_speculative_mtp",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": true,
+            "continuation_id": "gen_80e9e2edebbb43358990779c7a206aa3"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 40,
+      "completion_tokens": 64,
+      "total_tokens": 104,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 45,
+        "rejected_prediction_tokens": 8
+      }
+    },
+    "hipengine": {
+      "routing": {
+        "requested_model": "qwen38fn-capon",
+        "served_model": "qwen38fn-capon",
+        "fallback_used": false,
+        "policy": "single_model_exact",
+        "loaded_model_count": 1,
+        "multiple_models": false
+      },
+      "token_accounting": {
+        "choice_generated_token_ids": [
+          [
+            71093,
+            12305,
+            198,
+            727,
+            10562,
+            87682,
+            1494,
+            40798,
+            1590,
+            198,
+            262,
+            413,
+            524,
+            26126,
+            25,
+            198,
+            285,
+            460,
+            2958,
+            198,
+            1031,
+            262,
+            653,
+            15495,
+            26126,
+            539,
+            1151,
+            854,
+            198,
+            262,
+            10300,
+            87682,
+            283,
+            10300,
+            1494,
+            40798,
+            11,
+            1328,
+            26612,
+            830,
+            25,
+            830,
+            58,
+            15,
+            2387,
+            198,
+            1031,
+            262,
+            25170,
+            283,
+            498,
+            27379,
+            87682,
+            58,
+            15,
+            4891,
+            198,
+            1031,
+            262,
+            364,
+            1428,
+            303,
+            10300,
+            87682
+          ]
+        ],
+        "choice_generated_tokens": [
+          64
+        ],
+        "total_generated_tokens": 64,
+        "retokenized_visible_tokens": 64
+      },
+      "generation_shape": {
+        "schema_version": 1,
+        "route": "speculative_mtp",
+        "route_cap": {
+          "scope": "queue_requests",
+          "value": 2,
+          "applied": true
+        },
+        "queue_group": {
+          "id": "queue-f4c4973d7c40412aa1b28570cafa7471",
+          "request_count": 1,
+          "prompt_rows": 1,
+          "item_index": 0,
+          "item_prompt_offset": 0,
+          "item_prompt_rows": 1
+        },
+        "backend_groups": [
+          {
+            "id": "backend-8d118007cf1d40adb3c9fedac54f6b0b",
+            "call_index": 0,
+            "prompt_offset": 0,
+            "input_rows": 1,
+            "actual_group_rows": [
+              1
+            ],
+            "max_actual_group_rows": 1,
+            "verifier_rows": 0
+          }
+        ],
+        "verifier_rows": 0
+      },
+      "speculative_mtp": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 53,
+        "accepted_draft_tokens": 45,
+        "rejected_draft_tokens": 8,
+        "acceptance_rate": 0.8490566037735849,
+        "draft_cycles": 18,
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      }
+    }
+  },
+  "wall_s": 2.1585716248955578
+}

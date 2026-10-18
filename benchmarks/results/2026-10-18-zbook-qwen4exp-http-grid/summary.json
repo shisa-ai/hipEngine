@@ -1,0 +1,34 @@
+{
+ "date": "2026-10-18",
+ "host": "zbook",
+ "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+ "backend": "hip_gfx1151",
+ "quant": "gguf_ud_q4_k_xl",
+ "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "execution_profile": "production",
+ "server": {
+  "max_context_tokens": 32768,
+  "kv_storage": "bf16",
+  "max_active_requests": 2,
+  "ar_batch": 1,
+  "speculative_mtp": "opt_in",
+  "candidate_budget": 3
+ },
+ "command": ".venv/bin/python scripts/qwen4exp_http_grid.py --url http://127.0.0.1:18400 --model qwen38fn-capon --long-tokens 30000 --output <dir>",
+ "schema": "hipengine.qwen4exp.http_grid.ps14.v1",
+ "summary": {
+  "probes": 50,
+  "non_200": [],
+  "stream_probes": 2,
+  "long_prompt_tokens": 29912,
+  "ar_c4_wall_s": 11.657343154074624,
+  "mtp_c4_wall_s": 9.19088350306265,
+  "ready_after_status": "ready",
+  "routes": {
+   "default|mtp_used=False": 24,
+   "speculative_mtp|mtp_used=True": 23,
+   "speculative|mtp_used=True": 1,
+   "None|mtp_used=None": 2
+  }
+ }
+}

@@ -1,0 +1,1349 @@
+{
+ "schema": "hipengine.qwen4exp.http_soak.v1",
+ "created_at": "2026-10-18T09:43:19Z",
+ "url": "http://127.0.0.1:18400",
+ "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "rounds": 3,
+ "checks": [
+  {
+   "name": "round1.recovery",
+   "passed": true,
+   "recovery": {
+    "status": 200,
+    "text": "SOAK-PROBE",
+    "finish_reason": "stop",
+    "code": null,
+    "retry_after": null,
+    "attempts": 1,
+    "usage": {
+     "prompt_tokens": 21,
+     "completion_tokens": 6,
+     "total_tokens": 27
+    }
+   }
+  },
+  {
+   "name": "round1.ready",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round1.ar_blocking",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round1.mtp_blocking",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round1.stream_mtp",
+   "passed": true,
+   "chunks": 41,
+   "usage": {
+    "prompt_tokens": 21,
+    "completion_tokens": 39,
+    "total_tokens": 60,
+    "completion_tokens_details": {
+     "accepted_prediction_tokens": 28,
+     "rejected_prediction_tokens": 5
+    }
+   }
+  },
+  {
+   "name": "round1.stream_abandoned",
+   "passed": true,
+   "chunks": 2
+  },
+  {
+   "name": "round1.refused_oversized",
+   "passed": true,
+   "status": 400,
+   "code": "context_length_exceeded"
+  },
+  {
+   "name": "round1.logprobs",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round1.structured",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round1.session_isolated",
+   "passed": true,
+   "expected": "4001",
+   "answer": "4001"
+  },
+  {
+   "name": "round1.backpressure_retryable",
+   "passed": true,
+   "retried": {}
+  },
+  {
+   "name": "round2.recovery",
+   "passed": true,
+   "recovery": {
+    "status": 200,
+    "text": "SOAK-PROBE",
+    "finish_reason": "stop",
+    "code": null,
+    "retry_after": null,
+    "attempts": 1,
+    "usage": {
+     "prompt_tokens": 21,
+     "completion_tokens": 6,
+     "total_tokens": 27
+    }
+   }
+  },
+  {
+   "name": "round2.ready",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round2.ar_blocking",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round2.mtp_blocking",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round2.stream_mtp",
+   "passed": true,
+   "chunks": 41,
+   "usage": {
+    "prompt_tokens": 21,
+    "completion_tokens": 39,
+    "total_tokens": 60,
+    "completion_tokens_details": {
+     "accepted_prediction_tokens": 28,
+     "rejected_prediction_tokens": 5
+    }
+   }
+  },
+  {
+   "name": "round2.stream_abandoned",
+   "passed": true,
+   "chunks": 2
+  },
+  {
+   "name": "round2.refused_oversized",
+   "passed": true,
+   "status": 400,
+   "code": "context_length_exceeded"
+  },
+  {
+   "name": "round2.logprobs",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round2.structured",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round2.session_isolated",
+   "passed": true,
+   "expected": "4002",
+   "answer": "4002"
+  },
+  {
+   "name": "round2.backpressure_retryable",
+   "passed": true,
+   "retried": {}
+  },
+  {
+   "name": "round3.recovery",
+   "passed": true,
+   "recovery": {
+    "status": 200,
+    "text": "SOAK-PROBE",
+    "finish_reason": "stop",
+    "code": null,
+    "retry_after": null,
+    "attempts": 1,
+    "usage": {
+     "prompt_tokens": 21,
+     "completion_tokens": 6,
+     "total_tokens": 27
+    }
+   }
+  },
+  {
+   "name": "round3.ready",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round3.ar_blocking",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round3.mtp_blocking",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round3.stream_mtp",
+   "passed": true,
+   "chunks": 41,
+   "usage": {
+    "prompt_tokens": 21,
+    "completion_tokens": 39,
+    "total_tokens": 60,
+    "completion_tokens_details": {
+     "accepted_prediction_tokens": 28,
+     "rejected_prediction_tokens": 5
+    }
+   }
+  },
+  {
+   "name": "round3.stream_abandoned",
+   "passed": true,
+   "chunks": 2
+  },
+  {
+   "name": "round3.refused_oversized",
+   "passed": true,
+   "status": 400,
+   "code": "context_length_exceeded"
+  },
+  {
+   "name": "round3.logprobs",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round3.structured",
+   "passed": true,
+   "status": 200
+  },
+  {
+   "name": "round3.session_isolated",
+   "passed": true,
+   "expected": "4003",
+   "answer": "4003"
+  },
+  {
+   "name": "round3.backpressure_retryable",
+   "passed": true,
+   "retried": {}
+  },
+  {
+   "name": "churn.determinism",
+   "passed": true,
+   "texts": [
+    "Paris",
+    "Paris",
+    "Paris"
+   ]
+  },
+  {
+   "name": "churn.engine_never_closed",
+   "passed": true,
+   "closed": []
+  }
+ ],
+ "results": [
+  {
+   "round": 1,
+   "session_code": "4001",
+   "wall_s": 5.713,
+   "requests": {
+    "stream_abandoned": {
+     "status": 200,
+     "chunks": 2,
+     "text": "R",
+     "abandoned": true,
+     "usage": null
+    },
+    "refused_oversized": {
+     "status": 400,
+     "text": "",
+     "finish_reason": null,
+     "code": "context_length_exceeded",
+     "retry_after": null,
+     "attempts": 1,
+     "usage": null
+    },
+    "determinism": {
+     "status": 200,
+     "text": "Paris",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 2,
+      "total_tokens": 23
+     }
+    },
+    "ar_blocking": {
+     "status": 200,
+     "text": "SOAK-PROBE",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 6,
+      "total_tokens": 27
+     }
+    },
+    "structured": {
+     "status": 200,
+     "text": "{\"answer\": 42}",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 61,
+      "completion_tokens": 7,
+      "total_tokens": 68
+     }
+    },
+    "logprobs": {
+     "status": 200,
+     "text": "SOAK-PROBE",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 6,
+      "total_tokens": 27
+     }
+    },
+    "mtp_blocking": {
+     "status": 200,
+     "text": "The three primary colors depend on the color model being used, but in the most common context (traditional art and painting), they are:\n\n1. **Red**\n2. **Blue**\n3. **Yellow**\n\n*(Note",
+     "finish_reason": "length",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 17,
+      "completion_tokens": 48,
+      "total_tokens": 65,
+      "completion_tokens_details": {
+       "accepted_prediction_tokens": 30,
+       "rejected_prediction_tokens": 19
+      }
+     }
+    },
+    "stream_mtp": {
+     "status": 200,
+     "chunks": 41,
+     "text": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12.",
+     "abandoned": false,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 39,
+      "total_tokens": 60,
+      "completion_tokens_details": {
+       "accepted_prediction_tokens": 28,
+       "rejected_prediction_tokens": 5
+      }
+     }
+    },
+    "session_write": {
+     "status": 200,
+     "text": "Understood. I have noted that the code is **4001**.",
+     "finish_reason": "length",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 23,
+      "completion_tokens": 16,
+      "total_tokens": 39
+     }
+    },
+    "session_read": {
+     "status": 200,
+     "text": "4001",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 38,
+      "completion_tokens": 5,
+      "total_tokens": 43
+     }
+    }
+   },
+   "ready_status": 200,
+   "ready": {
+    "object": "hipengine.readiness",
+    "status": "ready",
+    "ready": true,
+    "diagnostics": [],
+    "model": {
+     "id": "qwen38fn-capon",
+     "backend": "hip_gfx1151",
+     "quant": "gguf_ud_q4_k_xl",
+     "loaded": true,
+     "loaded_model_count": 1,
+     "kv_capability": {
+      "schema_version": 1,
+      "status": "unavailable",
+      "runtime_action": "not_applicable",
+      "promotion_eligible": false,
+      "diagnostic_override": false,
+      "requested": null,
+      "effective_kv_storage": null,
+      "artifact": null,
+      "evidence": null,
+      "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+     }
+    },
+    "startup": {
+     "eager_load": true,
+     "warmup_complete": true,
+     "last_timings_s": {
+      "engine_create_s": 0.000694,
+      "resident_prepare_s": 20.871727,
+      "warmup_s": 0.19331,
+      "scratch_probe_s": 0.000337,
+      "chat_smoke_s": 0.182441,
+      "startup_total_s": 21.284437
+     },
+     "checks": {
+      "raw_warmup": {
+       "status": "passed",
+       "max_tokens": 1
+      },
+      "scratch_probe": {
+       "enabled": true,
+       "status": "passed",
+       "max_prompt_tokens": 2047,
+       "probe_prompt_tokens": 2047,
+       "context_unknown": false,
+       "result": {
+        "schema": 1,
+        "backend": "hip_gfx1151",
+        "execution_path": "qwen4exp_request_owned_runner_pool",
+        "max_batch_size": 4,
+        "max_sequence_length": 2047,
+        "released_after_probe": false,
+        "decode": {
+         "decode_path": "qwen4exp_full_model_ar_batch",
+         "ar_batch": {
+          "execution_path": "qwen4exp_full_model_ar_batch",
+          "state_slots": 4,
+          "max_positions": 2048,
+          "live_slots": 0,
+          "steps": 0,
+          "step_widths": {},
+          "imports": 1,
+          "releases": 1,
+          "failure": null
+         }
+        }
+       }
+      },
+      "chat_smoke": {
+       "enabled": true,
+       "status": "passed",
+       "prompt_tokens": 13,
+       "max_tokens": 1
+      }
+     },
+     "memory": {
+      "startup_begin": {
+       "free_bytes": 130570309632,
+       "total_bytes": 133143986176,
+       "used_bytes": 2573676544,
+       "free_gib": 121.603077,
+       "used_gib": 2.396923
+      },
+      "after_resident_prepare": {
+       "free_bytes": 29670871040,
+       "total_bytes": 133143986176,
+       "used_bytes": 103473115136,
+       "free_gib": 27.633152,
+       "used_gib": 96.366848
+      },
+      "after_raw_warmup": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      },
+      "after_scratch_probe": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      },
+      "after_chat_smoke": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      },
+      "guard": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      }
+     },
+     "error": null
+    },
+    "context": {
+     "configured_max_context_tokens": 2048,
+     "effective_max_context_tokens": 2048,
+     "chat_default_max_tokens": 4096
+    },
+    "kv_capacity": {
+     "storage": "bf16",
+     "scale_dtype": "fp32",
+     "scale_granularity": "per_token_head",
+     "estimate": null,
+     "pool": {
+      "current_bytes": 0.0,
+      "high_water_observed_bytes": 0.0,
+      "current_pages": 0.0,
+      "high_water_observed_pages": 0.0,
+      "grow_events": 0.0,
+      "grow_failures": 0.0,
+      "shrink_events": 0.0,
+      "free_pages": 0.0,
+      "refcounted_pages": 0.0,
+      "pinned_pages": 0.0,
+      "max_pages": 0.0,
+      "budget_bytes": 0.0,
+      "retired_pages": 0.0,
+      "retired_bytes": 0.0
+     }
+    },
+    "prefix_cache": {
+     "mode": "off",
+     "block_size_tokens": 256,
+     "snapshot_entries": 0,
+     "snapshot_limit": 0,
+     "retained_snapshot_entries": 0,
+     "snapshot_bytes": 0,
+     "retained_kv_pages": 0,
+     "retained_kv_bytes": 0,
+     "resident_bytes": 0,
+     "resident_limit_bytes": 0
+    },
+    "graph_cache": {
+     "entries": 0.0,
+     "hits": 0.0,
+     "misses": 0.0,
+     "replay_hit_rate": 0.0
+    },
+    "device": {
+     "backend": "hip_gfx1151",
+     "hip_visible_devices": null,
+     "rocr_visible_devices": null,
+     "visible_devices": [],
+     "selected_visible_device": null,
+     "selection_source": null
+    },
+    "queue": {
+     "depth": 0,
+     "max_depth": null,
+     "worker_active": false,
+     "active_requests": 0,
+     "max_active_requests": 4,
+     "scheduler_fairness": {
+      "policy": "fifo_compatible_sampling_key",
+      "compatible_sampling_coalescing": true,
+      "continuous_decode": true,
+      "preemptive_fairness": false
+     },
+     "batch_window_ms": 0.0
+    },
+    "sessions": {
+     "resident_context": true,
+     "active": 1,
+     "pending_creations": 0,
+     "max_active": null,
+     "storage": "app_local_transcript",
+     "resident_state_reuse": false,
+     "total_messages": 3,
+     "continuations": {
+      "active": 14,
+      "ttl_seconds": 900
+     }
+    },
+    "service": {
+     "accepting_requests": true,
+     "driver_alive": true,
+     "closing": false,
+     "closed": false,
+     "failure": null
+    }
+   },
+   "recovery": {
+    "status": 200,
+    "text": "SOAK-PROBE",
+    "finish_reason": "stop",
+    "code": null,
+    "retry_after": null,
+    "attempts": 1,
+    "usage": {
+     "prompt_tokens": 21,
+     "completion_tokens": 6,
+     "total_tokens": 27
+    }
+   }
+  },
+  {
+   "round": 2,
+   "session_code": "4002",
+   "wall_s": 6.179,
+   "requests": {
+    "ar_blocking": {
+     "status": 200,
+     "text": "SOAK-PROBE",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 6,
+      "total_tokens": 27
+     }
+    },
+    "refused_oversized": {
+     "status": 400,
+     "text": "",
+     "finish_reason": null,
+     "code": "context_length_exceeded",
+     "retry_after": null,
+     "attempts": 1,
+     "usage": null
+    },
+    "logprobs": {
+     "status": 200,
+     "text": "SOAK-PROBE",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 6,
+      "total_tokens": 27
+     }
+    },
+    "stream_mtp": {
+     "status": 200,
+     "chunks": 41,
+     "text": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12.",
+     "abandoned": false,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 39,
+      "total_tokens": 60,
+      "completion_tokens_details": {
+       "accepted_prediction_tokens": 28,
+       "rejected_prediction_tokens": 5
+      }
+     }
+    },
+    "mtp_blocking": {
+     "status": 200,
+     "text": "The three primary colors depend on the color model being used, but in the most common context (traditional art and painting), they are:\n\n1. **Red**\n2. **Blue**\n3. **Yellow**\n\n*(Note",
+     "finish_reason": "length",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 17,
+      "completion_tokens": 48,
+      "total_tokens": 65,
+      "completion_tokens_details": {
+       "accepted_prediction_tokens": 30,
+       "rejected_prediction_tokens": 19
+      }
+     }
+    },
+    "stream_abandoned": {
+     "status": 200,
+     "chunks": 2,
+     "text": "R",
+     "abandoned": true,
+     "usage": null
+    },
+    "determinism": {
+     "status": 200,
+     "text": "Paris",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 2,
+      "total_tokens": 23
+     }
+    },
+    "structured": {
+     "status": 200,
+     "text": "{\"answer\": 42}",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 61,
+      "completion_tokens": 7,
+      "total_tokens": 68
+     }
+    },
+    "session_write": {
+     "status": 200,
+     "text": "Understood. I have noted that the code is **4002**.",
+     "finish_reason": "length",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 23,
+      "completion_tokens": 16,
+      "total_tokens": 39
+     }
+    },
+    "session_read": {
+     "status": 200,
+     "text": "4002",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 38,
+      "completion_tokens": 5,
+      "total_tokens": 43
+     }
+    }
+   },
+   "ready_status": 200,
+   "ready": {
+    "object": "hipengine.readiness",
+    "status": "ready",
+    "ready": true,
+    "diagnostics": [],
+    "model": {
+     "id": "qwen38fn-capon",
+     "backend": "hip_gfx1151",
+     "quant": "gguf_ud_q4_k_xl",
+     "loaded": true,
+     "loaded_model_count": 1,
+     "kv_capability": {
+      "schema_version": 1,
+      "status": "unavailable",
+      "runtime_action": "not_applicable",
+      "promotion_eligible": false,
+      "diagnostic_override": false,
+      "requested": null,
+      "effective_kv_storage": null,
+      "artifact": null,
+      "evidence": null,
+      "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+     }
+    },
+    "startup": {
+     "eager_load": true,
+     "warmup_complete": true,
+     "last_timings_s": {
+      "engine_create_s": 0.000694,
+      "resident_prepare_s": 20.871727,
+      "warmup_s": 0.19331,
+      "scratch_probe_s": 0.000337,
+      "chat_smoke_s": 0.182441,
+      "startup_total_s": 21.284437
+     },
+     "checks": {
+      "raw_warmup": {
+       "status": "passed",
+       "max_tokens": 1
+      },
+      "scratch_probe": {
+       "enabled": true,
+       "status": "passed",
+       "max_prompt_tokens": 2047,
+       "probe_prompt_tokens": 2047,
+       "context_unknown": false,
+       "result": {
+        "schema": 1,
+        "backend": "hip_gfx1151",
+        "execution_path": "qwen4exp_request_owned_runner_pool",
+        "max_batch_size": 4,
+        "max_sequence_length": 2047,
+        "released_after_probe": false,
+        "decode": {
+         "decode_path": "qwen4exp_full_model_ar_batch",
+         "ar_batch": {
+          "execution_path": "qwen4exp_full_model_ar_batch",
+          "state_slots": 4,
+          "max_positions": 2048,
+          "live_slots": 0,
+          "steps": 0,
+          "step_widths": {},
+          "imports": 1,
+          "releases": 1,
+          "failure": null
+         }
+        }
+       }
+      },
+      "chat_smoke": {
+       "enabled": true,
+       "status": "passed",
+       "prompt_tokens": 13,
+       "max_tokens": 1
+      }
+     },
+     "memory": {
+      "startup_begin": {
+       "free_bytes": 130570309632,
+       "total_bytes": 133143986176,
+       "used_bytes": 2573676544,
+       "free_gib": 121.603077,
+       "used_gib": 2.396923
+      },
+      "after_resident_prepare": {
+       "free_bytes": 29670871040,
+       "total_bytes": 133143986176,
+       "used_bytes": 103473115136,
+       "free_gib": 27.633152,
+       "used_gib": 96.366848
+      },
+      "after_raw_warmup": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      },
+      "after_scratch_probe": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      },
+      "after_chat_smoke": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      },
+      "guard": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      }
+     },
+     "error": null
+    },
+    "context": {
+     "configured_max_context_tokens": 2048,
+     "effective_max_context_tokens": 2048,
+     "chat_default_max_tokens": 4096
+    },
+    "kv_capacity": {
+     "storage": "bf16",
+     "scale_dtype": "fp32",
+     "scale_granularity": "per_token_head",
+     "estimate": null,
+     "pool": {
+      "current_bytes": 0.0,
+      "high_water_observed_bytes": 0.0,
+      "current_pages": 0.0,
+      "high_water_observed_pages": 0.0,
+      "grow_events": 0.0,
+      "grow_failures": 0.0,
+      "shrink_events": 0.0,
+      "free_pages": 0.0,
+      "refcounted_pages": 0.0,
+      "pinned_pages": 0.0,
+      "max_pages": 0.0,
+      "budget_bytes": 0.0,
+      "retired_pages": 0.0,
+      "retired_bytes": 0.0
+     }
+    },
+    "prefix_cache": {
+     "mode": "off",
+     "block_size_tokens": 256,
+     "snapshot_entries": 0,
+     "snapshot_limit": 0,
+     "retained_snapshot_entries": 0,
+     "snapshot_bytes": 0,
+     "retained_kv_pages": 0,
+     "retained_kv_bytes": 0,
+     "resident_bytes": 0,
+     "resident_limit_bytes": 0
+    },
+    "graph_cache": {
+     "entries": 0.0,
+     "hits": 0.0,
+     "misses": 0.0,
+     "replay_hit_rate": 0.0
+    },
+    "device": {
+     "backend": "hip_gfx1151",
+     "hip_visible_devices": null,
+     "rocr_visible_devices": null,
+     "visible_devices": [],
+     "selected_visible_device": null,
+     "selection_source": null
+    },
+    "queue": {
+     "depth": 0,
+     "max_depth": null,
+     "worker_active": false,
+     "active_requests": 0,
+     "max_active_requests": 4,
+     "scheduler_fairness": {
+      "policy": "fifo_compatible_sampling_key",
+      "compatible_sampling_coalescing": true,
+      "continuous_decode": true,
+      "preemptive_fairness": false
+     },
+     "batch_window_ms": 0.0
+    },
+    "sessions": {
+     "resident_context": true,
+     "active": 1,
+     "pending_creations": 0,
+     "max_active": null,
+     "storage": "app_local_transcript",
+     "resident_state_reuse": false,
+     "total_messages": 3,
+     "continuations": {
+      "active": 16,
+      "ttl_seconds": 900
+     }
+    },
+    "service": {
+     "accepting_requests": true,
+     "driver_alive": true,
+     "closing": false,
+     "closed": false,
+     "failure": null
+    }
+   },
+   "recovery": {
+    "status": 200,
+    "text": "SOAK-PROBE",
+    "finish_reason": "stop",
+    "code": null,
+    "retry_after": null,
+    "attempts": 1,
+    "usage": {
+     "prompt_tokens": 21,
+     "completion_tokens": 6,
+     "total_tokens": 27
+    }
+   }
+  },
+  {
+   "round": 3,
+   "session_code": "4003",
+   "wall_s": 5.603,
+   "requests": {
+    "refused_oversized": {
+     "status": 400,
+     "text": "",
+     "finish_reason": null,
+     "code": "context_length_exceeded",
+     "retry_after": null,
+     "attempts": 1,
+     "usage": null
+    },
+    "logprobs": {
+     "status": 200,
+     "text": "SOAK-PROBE",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 6,
+      "total_tokens": 27
+     }
+    },
+    "stream_mtp": {
+     "status": 200,
+     "chunks": 41,
+     "text": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12.",
+     "abandoned": false,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 39,
+      "total_tokens": 60,
+      "completion_tokens_details": {
+       "accepted_prediction_tokens": 28,
+       "rejected_prediction_tokens": 5
+      }
+     }
+    },
+    "mtp_blocking": {
+     "status": 200,
+     "text": "The three primary colors depend on the color model being used, but in the most common context (traditional art and painting), they are:\n\n1. **Red**\n2. **Blue**\n3. **Yellow**\n\n*(Note",
+     "finish_reason": "length",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 17,
+      "completion_tokens": 48,
+      "total_tokens": 65,
+      "completion_tokens_details": {
+       "accepted_prediction_tokens": 30,
+       "rejected_prediction_tokens": 19
+      }
+     }
+    },
+    "stream_abandoned": {
+     "status": 200,
+     "chunks": 2,
+     "text": "R",
+     "abandoned": true,
+     "usage": null
+    },
+    "determinism": {
+     "status": 200,
+     "text": "Paris",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 2,
+      "total_tokens": 23
+     }
+    },
+    "ar_blocking": {
+     "status": 200,
+     "text": "SOAK-PROBE",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 6,
+      "total_tokens": 27
+     }
+    },
+    "structured": {
+     "status": 200,
+     "text": "{\"answer\": 42}",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 61,
+      "completion_tokens": 7,
+      "total_tokens": 68
+     }
+    },
+    "session_write": {
+     "status": 200,
+     "text": "Understood. I have noted that the code is **4003**.",
+     "finish_reason": "length",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 23,
+      "completion_tokens": 16,
+      "total_tokens": 39
+     }
+    },
+    "session_read": {
+     "status": 200,
+     "text": "4003",
+     "finish_reason": "stop",
+     "code": null,
+     "retry_after": null,
+     "attempts": 1,
+     "usage": {
+      "prompt_tokens": 38,
+      "completion_tokens": 5,
+      "total_tokens": 43
+     }
+    }
+   },
+   "ready_status": 200,
+   "ready": {
+    "object": "hipengine.readiness",
+    "status": "ready",
+    "ready": true,
+    "diagnostics": [],
+    "model": {
+     "id": "qwen38fn-capon",
+     "backend": "hip_gfx1151",
+     "quant": "gguf_ud_q4_k_xl",
+     "loaded": true,
+     "loaded_model_count": 1,
+     "kv_capability": {
+      "schema_version": 1,
+      "status": "unavailable",
+      "runtime_action": "not_applicable",
+      "promotion_eligible": false,
+      "diagnostic_override": false,
+      "requested": null,
+      "effective_kv_storage": null,
+      "artifact": null,
+      "evidence": null,
+      "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+     }
+    },
+    "startup": {
+     "eager_load": true,
+     "warmup_complete": true,
+     "last_timings_s": {
+      "engine_create_s": 0.000694,
+      "resident_prepare_s": 20.871727,
+      "warmup_s": 0.19331,
+      "scratch_probe_s": 0.000337,
+      "chat_smoke_s": 0.182441,
+      "startup_total_s": 21.284437
+     },
+     "checks": {
+      "raw_warmup": {
+       "status": "passed",
+       "max_tokens": 1
+      },
+      "scratch_probe": {
+       "enabled": true,
+       "status": "passed",
+       "max_prompt_tokens": 2047,
+       "probe_prompt_tokens": 2047,
+       "context_unknown": false,
+       "result": {
+        "schema": 1,
+        "backend": "hip_gfx1151",
+        "execution_path": "qwen4exp_request_owned_runner_pool",
+        "max_batch_size": 4,
+        "max_sequence_length": 2047,
+        "released_after_probe": false,
+        "decode": {
+         "decode_path": "qwen4exp_full_model_ar_batch",
+         "ar_batch": {
+          "execution_path": "qwen4exp_full_model_ar_batch",
+          "state_slots": 4,
+          "max_positions": 2048,
+          "live_slots": 0,
+          "steps": 0,
+          "step_widths": {},
+          "imports": 1,
+          "releases": 1,
+          "failure": null
+         }
+        }
+       }
+      },
+      "chat_smoke": {
+       "enabled": true,
+       "status": "passed",
+       "prompt_tokens": 13,
+       "max_tokens": 1
+      }
+     },
+     "memory": {
+      "startup_begin": {
+       "free_bytes": 130570309632,
+       "total_bytes": 133143986176,
+       "used_bytes": 2573676544,
+       "free_gib": 121.603077,
+       "used_gib": 2.396923
+      },
+      "after_resident_prepare": {
+       "free_bytes": 29670871040,
+       "total_bytes": 133143986176,
+       "used_bytes": 103473115136,
+       "free_gib": 27.633152,
+       "used_gib": 96.366848
+      },
+      "after_raw_warmup": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      },
+      "after_scratch_probe": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      },
+      "after_chat_smoke": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      },
+      "guard": {
+       "free_bytes": 29620891648,
+       "total_bytes": 133143986176,
+       "used_bytes": 103523094528,
+       "free_gib": 27.586605,
+       "used_gib": 96.413395
+      }
+     },
+     "error": null
+    },
+    "context": {
+     "configured_max_context_tokens": 2048,
+     "effective_max_context_tokens": 2048,
+     "chat_default_max_tokens": 4096
+    },
+    "kv_capacity": {
+     "storage": "bf16",
+     "scale_dtype": "fp32",
+     "scale_granularity": "per_token_head",
+     "estimate": null,
+     "pool": {
+      "current_bytes": 0.0,
+      "high_water_observed_bytes": 0.0,
+      "current_pages": 0.0,
+      "high_water_observed_pages": 0.0,
+      "grow_events": 0.0,
+      "grow_failures": 0.0,
+      "shrink_events": 0.0,
+      "free_pages": 0.0,
+      "refcounted_pages": 0.0,
+      "pinned_pages": 0.0,
+      "max_pages": 0.0,
+      "budget_bytes": 0.0,
+      "retired_pages": 0.0,
+      "retired_bytes": 0.0
+     }
+    },
+    "prefix_cache": {
+     "mode": "off",
+     "block_size_tokens": 256,
+     "snapshot_entries": 0,
+     "snapshot_limit": 0,
+     "retained_snapshot_entries": 0,
+     "snapshot_bytes": 0,
+     "retained_kv_pages": 0,
+     "retained_kv_bytes": 0,
+     "resident_bytes": 0,
+     "resident_limit_bytes": 0
+    },
+    "graph_cache": {
+     "entries": 0.0,
+     "hits": 0.0,
+     "misses": 0.0,
+     "replay_hit_rate": 0.0
+    },
+    "device": {
+     "backend": "hip_gfx1151",
+     "hip_visible_devices": null,
+     "rocr_visible_devices": null,
+     "visible_devices": [],
+     "selected_visible_device": null,
+     "selection_source": null
+    },
+    "queue": {
+     "depth": 0,
+     "max_depth": null,
+     "worker_active": false,
+     "active_requests": 0,
+     "max_active_requests": 4,
+     "scheduler_fairness": {
+      "policy": "fifo_compatible_sampling_key",
+      "compatible_sampling_coalescing": true,
+      "continuous_decode": true,
+      "preemptive_fairness": false
+     },
+     "batch_window_ms": 0.0
+    },
+    "sessions": {
+     "resident_context": true,
+     "active": 1,
+     "pending_creations": 0,
+     "max_active": null,
+     "storage": "app_local_transcript",
+     "resident_state_reuse": false,
+     "total_messages": 3,
+     "continuations": {
+      "active": 18,
+      "ttl_seconds": 900
+     }
+    },
+    "service": {
+     "accepting_requests": true,
+     "driver_alive": true,
+     "closing": false,
+     "closed": false,
+     "failure": null
+    }
+   },
+   "recovery": {
+    "status": 200,
+    "text": "SOAK-PROBE",
+    "finish_reason": "stop",
+    "code": null,
+    "retry_after": null,
+    "attempts": 1,
+    "usage": {
+     "prompt_tokens": 21,
+     "completion_tokens": 6,
+     "total_tokens": 27
+    }
+   }
+  }
+ ],
+ "check_count": 35,
+ "failure_count": 0,
+ "status": "passed",
+ "date": "2026-10-18",
+ "host": "zbook",
+ "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+ "backend": "hip_gfx1151",
+ "quant": "gguf_ud_q4_k_xl",
+ "execution_profile": "production",
+ "server": {
+  "max_context_tokens": 2048,
+  "kv_storage": "bf16",
+  "max_active_requests": 4,
+  "ar_batch": 1,
+  "ar_batch_slots": 4,
+  "speculative_mtp": "opt_in",
+  "candidate_budget": 3
+ },
+ "command": ".venv/bin/python scripts/qwen4exp_http_soak.py --url http://127.0.0.1:18400 --rounds 3 --output /tmp/soak_ps14c.json"
+}

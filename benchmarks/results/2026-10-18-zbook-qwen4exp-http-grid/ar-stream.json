@@ -1,0 +1,3763 @@
+{
+  "name": "ar-stream",
+  "endpoint": "/v1/chat/completions",
+  "request": {
+    "model": "qwen38fn-capon",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code."
+      }
+    ],
+    "temperature": 0,
+    "top_p": 1,
+    "max_tokens": 64,
+    "enable_thinking": false,
+    "speculative_mtp": false,
+    "stream": true,
+    "stream_options": {
+      "include_usage": true,
+      "include_hipengine": true
+    }
+  },
+  "started_unix": 1792315847.4227283,
+  "events": [
+    {
+      "elapsed_s": 0.0026695309206843376,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant"
+            },
+            "finish_reason": null
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "role",
+          "timing": {
+            "elapsed_ms": 0.43
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.4402068960480392,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "```"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 1,
+                "prompt_tokens": 40,
+                "generated_tokens": 1,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 1,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 1,
+                "delta_tokens": 1,
+                "answer_tokens": 1
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 437.587,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.5014971550554037,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "python"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 2,
+                "prompt_tokens": 40,
+                "generated_tokens": 2,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 2,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 2,
+                "delta_tokens": 1,
+                "answer_tokens": 2
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 499.026,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.5612766239792109,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "\n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 3,
+                "prompt_tokens": 40,
+                "generated_tokens": 3,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 3,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 3,
+                "delta_tokens": 1,
+                "answer_tokens": 3
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 558.862,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.6251371479593217,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "def"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 4,
+                "prompt_tokens": 40,
+                "generated_tokens": 4,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 4,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 4,
+                "delta_tokens": 1,
+                "answer_tokens": 4
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 622.701,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.686291391029954,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " merge"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 5,
+                "prompt_tokens": 40,
+                "generated_tokens": 5,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 5,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 5,
+                "delta_tokens": 1,
+                "answer_tokens": 5
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 683.91,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.7444784750696272,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "_intervals"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 6,
+                "prompt_tokens": 40,
+                "generated_tokens": 6,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 6,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 6,
+                "delta_tokens": 1,
+                "answer_tokens": 6
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 742.012,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.8058099320624024,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "(int"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 7,
+                "prompt_tokens": 40,
+                "generated_tokens": 7,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 7,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 7,
+                "delta_tokens": 1,
+                "answer_tokens": 7
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 803.378,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.8652144749648869,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "ervals"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 8,
+                "prompt_tokens": 40,
+                "generated_tokens": 8,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 8,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 8,
+                "delta_tokens": 1,
+                "answer_tokens": 8
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 862.651,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.9253918218892068,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "):"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 9,
+                "prompt_tokens": 40,
+                "generated_tokens": 9,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 9,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 9,
+                "delta_tokens": 1,
+                "answer_tokens": 9
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 923.01,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 0.9839080739766359,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "\n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 10,
+                "prompt_tokens": 40,
+                "generated_tokens": 10,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 10,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 10,
+                "delta_tokens": 1,
+                "answer_tokens": 10
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 981.495,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.0429998999461532,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "   "
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 11,
+                "prompt_tokens": 40,
+                "generated_tokens": 11,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 11,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 11,
+                "delta_tokens": 1,
+                "answer_tokens": 11
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1040.627,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.1007332298904657,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " if"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 12,
+                "prompt_tokens": 40,
+                "generated_tokens": 12,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 12,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 12,
+                "delta_tokens": 1,
+                "answer_tokens": 12
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1098.393,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.1583610309753567,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " not"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 13,
+                "prompt_tokens": 40,
+                "generated_tokens": 13,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 13,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 13,
+                "delta_tokens": 1,
+                "answer_tokens": 13
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1155.982,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.2159263349603862,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " intervals"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 14,
+                "prompt_tokens": 40,
+                "generated_tokens": 14,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 14,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 14,
+                "delta_tokens": 1,
+                "answer_tokens": 14
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1213.491,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.2749074718449265,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": ":"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 15,
+                "prompt_tokens": 40,
+                "generated_tokens": 15,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 15,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 15,
+                "delta_tokens": 1,
+                "answer_tokens": 15
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1272.501,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.331417331006378,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "\n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 16,
+                "prompt_tokens": 40,
+                "generated_tokens": 16,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 16,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 16,
+                "delta_tokens": 1,
+                "answer_tokens": 16
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1329.04,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.3885897570289671,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "       "
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 17,
+                "prompt_tokens": 40,
+                "generated_tokens": 17,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 17,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 17,
+                "delta_tokens": 1,
+                "answer_tokens": 17
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1386.2,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.4472835229244083,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " return"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 18,
+                "prompt_tokens": 40,
+                "generated_tokens": 18,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 18,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 18,
+                "delta_tokens": 1,
+                "answer_tokens": 18
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1444.858,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.504593787016347,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " []"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 19,
+                "prompt_tokens": 40,
+                "generated_tokens": 19,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 19,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 19,
+                "delta_tokens": 1,
+                "answer_tokens": 19
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1502.202,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.5641112129669636,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "\n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 20,
+                "prompt_tokens": 40,
+                "generated_tokens": 20,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 20,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 20,
+                "delta_tokens": 1,
+                "answer_tokens": 20
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1561.548,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.623182469047606,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "    \n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 21,
+                "prompt_tokens": 40,
+                "generated_tokens": 21,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 21,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 21,
+                "delta_tokens": 1,
+                "answer_tokens": 21
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1620.791,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.6829843600280583,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "   "
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 22,
+                "prompt_tokens": 40,
+                "generated_tokens": 22,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 22,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 22,
+                "delta_tokens": 1,
+                "answer_tokens": 22
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1680.578,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.7433976100292057,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " #"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 23,
+                "prompt_tokens": 40,
+                "generated_tokens": 23,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 23,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 23,
+                "delta_tokens": 1,
+                "answer_tokens": 23
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1740.978,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.8072321850340813,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " Sort"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 24,
+                "prompt_tokens": 40,
+                "generated_tokens": 24,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 24,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 24,
+                "delta_tokens": 1,
+                "answer_tokens": 24
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1804.713,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.8673799550160766,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " intervals"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 25,
+                "prompt_tokens": 40,
+                "generated_tokens": 25,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 25,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 25,
+                "delta_tokens": 1,
+                "answer_tokens": 25
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1864.897,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.9257558539975435,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " by"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 26,
+                "prompt_tokens": 40,
+                "generated_tokens": 26,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 26,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 26,
+                "delta_tokens": 1,
+                "answer_tokens": 26
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1923.394,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 1.9886845948640257,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " start"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 27,
+                "prompt_tokens": 40,
+                "generated_tokens": 27,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 27,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 27,
+                "delta_tokens": 1,
+                "answer_tokens": 27
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 1986.131,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.051251756027341,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " time"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 28,
+                "prompt_tokens": 40,
+                "generated_tokens": 28,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 28,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 28,
+                "delta_tokens": 1,
+                "answer_tokens": 28
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2048.719,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.111651591025293,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "\n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 29,
+                "prompt_tokens": 40,
+                "generated_tokens": 29,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 29,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 29,
+                "delta_tokens": 1,
+                "answer_tokens": 29
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2109.272,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.1686113958712667,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "   "
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 30,
+                "prompt_tokens": 40,
+                "generated_tokens": 30,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 30,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 30,
+                "delta_tokens": 1,
+                "answer_tokens": 30
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2166.251,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.227795765036717,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " sorted"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 31,
+                "prompt_tokens": 40,
+                "generated_tokens": 31,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 31,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 31,
+                "delta_tokens": 1,
+                "answer_tokens": 31
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2225.454,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.2860520489048213,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "_intervals"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 32,
+                "prompt_tokens": 40,
+                "generated_tokens": 32,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 32,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 32,
+                "delta_tokens": 1,
+                "answer_tokens": 32
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2283.633,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.344398822868243,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " ="
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 33,
+                "prompt_tokens": 40,
+                "generated_tokens": 33,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 33,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 33,
+                "delta_tokens": 1,
+                "answer_tokens": 33
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2341.953,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.402617354877293,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " sorted"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 34,
+                "prompt_tokens": 40,
+                "generated_tokens": 34,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 34,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 34,
+                "delta_tokens": 1,
+                "answer_tokens": 34
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2400.237,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.4601791428867728,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "(int"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 35,
+                "prompt_tokens": 40,
+                "generated_tokens": 35,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 35,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 35,
+                "delta_tokens": 1,
+                "answer_tokens": 35
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2457.809,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.519980792887509,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "ervals"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 36,
+                "prompt_tokens": 40,
+                "generated_tokens": 36,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 36,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 36,
+                "delta_tokens": 1,
+                "answer_tokens": 36
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2517.555,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.579184487927705,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": ","
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 37,
+                "prompt_tokens": 40,
+                "generated_tokens": 37,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 37,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 37,
+                "delta_tokens": 1,
+                "answer_tokens": 37
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2576.723,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.6396020259708166,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " key"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 38,
+                "prompt_tokens": 40,
+                "generated_tokens": 38,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 38,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 38,
+                "delta_tokens": 1,
+                "answer_tokens": 38
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2637.27,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.7036827229894698,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "=lambda"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 39,
+                "prompt_tokens": 40,
+                "generated_tokens": 39,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 39,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 39,
+                "delta_tokens": 1,
+                "answer_tokens": 39
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2701.22,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.7620076260063797,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " x"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 40,
+                "prompt_tokens": 40,
+                "generated_tokens": 40,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 40,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 40,
+                "delta_tokens": 1,
+                "answer_tokens": 40
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2759.506,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.8233591108582914,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": ":"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 41,
+                "prompt_tokens": 40,
+                "generated_tokens": 41,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 41,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 41,
+                "delta_tokens": 1,
+                "answer_tokens": 41
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2820.882,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.883847712073475,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " x"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 42,
+                "prompt_tokens": 40,
+                "generated_tokens": 42,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 42,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 42,
+                "delta_tokens": 1,
+                "answer_tokens": 42
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2881.446,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.9427864789031446,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "["
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 43,
+                "prompt_tokens": 40,
+                "generated_tokens": 43,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 43,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 43,
+                "delta_tokens": 1,
+                "answer_tokens": 43
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2940.36,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 2.999922996852547,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "0"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 44,
+                "prompt_tokens": 40,
+                "generated_tokens": 44,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 44,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 44,
+                "delta_tokens": 1,
+                "answer_tokens": 44
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 2997.535,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.0589839338790625,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "])"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 45,
+                "prompt_tokens": 40,
+                "generated_tokens": 45,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 45,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 45,
+                "delta_tokens": 1,
+                "answer_tokens": 45
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3056.62,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.122232266003266,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "\n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 46,
+                "prompt_tokens": 40,
+                "generated_tokens": 46,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 46,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 46,
+                "delta_tokens": 1,
+                "answer_tokens": 46
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3119.834,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.1794029269367456,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "    \n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 47,
+                "prompt_tokens": 40,
+                "generated_tokens": 47,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 47,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 47,
+                "delta_tokens": 1,
+                "answer_tokens": 47
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3177.014,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.236461078049615,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "   "
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 48,
+                "prompt_tokens": 40,
+                "generated_tokens": 48,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 48,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 48,
+                "delta_tokens": 1,
+                "answer_tokens": 48
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3234.076,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.296936604892835,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " merged"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 49,
+                "prompt_tokens": 40,
+                "generated_tokens": 49,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 49,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 49,
+                "delta_tokens": 1,
+                "answer_tokens": 49
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3294.523,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.3573991979938,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " ="
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 50,
+                "prompt_tokens": 40,
+                "generated_tokens": 50,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 50,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 50,
+                "delta_tokens": 1,
+                "answer_tokens": 50
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3354.985,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.415298769949004,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " ["
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 51,
+                "prompt_tokens": 40,
+                "generated_tokens": 51,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 51,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 51,
+                "delta_tokens": 1,
+                "answer_tokens": 51
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3412.93,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.4737016989383847,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "sorted"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 52,
+                "prompt_tokens": 40,
+                "generated_tokens": 52,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 52,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 52,
+                "delta_tokens": 1,
+                "answer_tokens": 52
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3471.202,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.5324185888748616,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "_intervals"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 53,
+                "prompt_tokens": 40,
+                "generated_tokens": 53,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 53,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 53,
+                "delta_tokens": 1,
+                "answer_tokens": 53
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3530.051,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.590898953843862,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "["
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 54,
+                "prompt_tokens": 40,
+                "generated_tokens": 54,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 54,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 54,
+                "delta_tokens": 1,
+                "answer_tokens": 54
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3588.509,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.6484582568518817,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "0"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 55,
+                "prompt_tokens": 40,
+                "generated_tokens": 55,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 55,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 55,
+                "delta_tokens": 1,
+                "answer_tokens": 55
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3646.046,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.7062821269501,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "]]"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 56,
+                "prompt_tokens": 40,
+                "generated_tokens": 56,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 56,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 56,
+                "delta_tokens": 1,
+                "answer_tokens": 56
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3703.937,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.7637864460702986,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "\n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 57,
+                "prompt_tokens": 40,
+                "generated_tokens": 57,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 57,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 57,
+                "delta_tokens": 1,
+                "answer_tokens": 57
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3761.304,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.8255417600739747,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "    \n"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 58,
+                "prompt_tokens": 40,
+                "generated_tokens": 58,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 58,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 58,
+                "delta_tokens": 1,
+                "answer_tokens": 58
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3823.094,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.8840942098759115,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "   "
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 59,
+                "prompt_tokens": 40,
+                "generated_tokens": 59,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 59,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 59,
+                "delta_tokens": 1,
+                "answer_tokens": 59
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3881.646,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 3.9432893190532923,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " for"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 60,
+                "prompt_tokens": 40,
+                "generated_tokens": 60,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 60,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 60,
+                "delta_tokens": 1,
+                "answer_tokens": 60
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 3940.874,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 4.003499177051708,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " current"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 61,
+                "prompt_tokens": 40,
+                "generated_tokens": 61,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 61,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 61,
+                "delta_tokens": 1,
+                "answer_tokens": 61
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 4000.95,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 4.0623898829799145,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " in"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 62,
+                "prompt_tokens": 40,
+                "generated_tokens": 62,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 62,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 62,
+                "delta_tokens": 1,
+                "answer_tokens": 62
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 4059.895,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 4.121623585000634,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": " sorted"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 63,
+                "prompt_tokens": 40,
+                "generated_tokens": 63,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 63,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 63,
+                "delta_tokens": 1,
+                "answer_tokens": 63
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 4119.089,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 4.1779557089321315,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "_intervals"
+            },
+            "finish_reason": null,
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 64,
+                "prompt_tokens": 40,
+                "generated_tokens": 64,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 64,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "tokens": {
+                "streamed_tokens": 64,
+                "delta_tokens": 1,
+                "answer_tokens": 64
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "delta",
+          "timing": {
+            "elapsed_ms": 4175.497,
+            "ttft_ms": 437.587
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 4.179165433859453,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 64,
+              "sampler_mode": "greedy",
+              "cache_action": "append_none",
+              "phase": "answer",
+              "continuation_eligible": false
+            },
+            "hipengine": {
+              "phase": "answer",
+              "decode_state": {
+                "row_index": 26,
+                "step_index": 64,
+                "prompt_tokens": 40,
+                "generated_tokens": 64,
+                "phase": "answer",
+                "continuation_eligible": false,
+                "request_id": "26",
+                "answer_tokens": 64,
+                "sampler_mode": "greedy_fast",
+                "full_vocab_logits_d2h": false,
+                "execution_path": "resident_scheduler"
+              },
+              "finish_details": {
+                "reason": "length",
+                "length_limit": 64,
+                "sampler_mode": "greedy",
+                "cache_action": "append_none",
+                "phase": "answer",
+                "continuation_eligible": false
+              },
+              "generated_token_ids": [
+                71093,
+                12305,
+                198,
+                727,
+                10562,
+                87682,
+                1494,
+                40798,
+                1590,
+                198,
+                262,
+                413,
+                524,
+                26126,
+                25,
+                198,
+                285,
+                460,
+                2958,
+                198,
+                1031,
+                262,
+                653,
+                15495,
+                26126,
+                539,
+                1151,
+                854,
+                198,
+                262,
+                10300,
+                87682,
+                283,
+                10300,
+                1494,
+                40798,
+                11,
+                1328,
+                26612,
+                830,
+                25,
+                830,
+                58,
+                15,
+                2387,
+                198,
+                1031,
+                262,
+                25170,
+                283,
+                498,
+                27379,
+                87682,
+                58,
+                15,
+                4891,
+                198,
+                1031,
+                262,
+                364,
+                1428,
+                303,
+                10300,
+                87682
+              ],
+              "generated_tokens": 64,
+              "tokens": {
+                "prompt_tokens": 40,
+                "completion_tokens": 64,
+                "total_tokens": 104,
+                "streamed_tokens": 64,
+                "answer_tokens": 64
+              }
+            }
+          }
+        ],
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "done",
+          "timing": {
+            "elapsed_ms": 4176.791,
+            "ttft_ms": 437.587,
+            "decode_elapsed_ms": 3739.204,
+            "decode_tokens_per_second": 17.116
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 4.1792417778633535,
+      "data": {
+        "id": "chatcmpl-29690d23982e4531b4573a507965df73",
+        "object": "chat.completion.chunk",
+        "created": 1792315847,
+        "model": "qwen38fn-capon",
+        "choices": [],
+        "usage": {
+          "prompt_tokens": 40,
+          "completion_tokens": 64,
+          "total_tokens": 104
+        },
+        "hipengine": {
+          "metadata_version": 1,
+          "event": "usage",
+          "timing": {
+            "elapsed_ms": 4176.835,
+            "ttft_ms": 437.587,
+            "decode_elapsed_ms": 3739.248,
+            "decode_tokens_per_second": 17.116
+          },
+          "usage": {
+            "prompt_tokens": 40,
+            "completion_tokens": 64,
+            "total_tokens": 104
+          },
+          "routing": {
+            "requested_model": "qwen38fn-capon",
+            "served_model": "qwen38fn-capon",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          }
+        }
+      }
+    },
+    {
+      "elapsed_s": 4.179266363848001,
+      "data": "[DONE]"
+    }
+  ],
+  "status": 200,
+  "wall_s": 4.179666236042976
+}

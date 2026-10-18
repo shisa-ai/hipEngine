@@ -1,0 +1,181 @@
+{
+  "name": "recovery-ar",
+  "endpoint": "/v1/chat/completions",
+  "request": {
+    "model": "qwen38fn-capon",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code."
+      }
+    ],
+    "temperature": 0,
+    "top_p": 1,
+    "max_tokens": 16,
+    "enable_thinking": false,
+    "speculative_mtp": false
+  },
+  "started_unix": 1792316030.88746,
+  "status": 200,
+  "body": {
+    "id": "chatcmpl-45b39c8a71f04bd8b1388de295c7251d",
+    "object": "chat.completion",
+    "created": 1792316032,
+    "model": "qwen38fn-capon",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "```python\ndef merge_intervals(intervals):\n    if not intervals:\n"
+        },
+        "finish_reason": "length",
+        "finish_details": {
+          "reason": "length",
+          "length_limit": 16,
+          "sampler_mode": "greedy",
+          "cache_action": "append_none",
+          "phase": "answer",
+          "continuation_eligible": true,
+          "continuation_id": "gen_2d8d6aac14674e26af975d8fa3e294ff"
+        },
+        "continuation_id": "gen_2d8d6aac14674e26af975d8fa3e294ff",
+        "hipengine": {
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 16,
+            "prompt_tokens": 40,
+            "generated_tokens": 16,
+            "phase": "done",
+            "continuation_eligible": true,
+            "request_id": "51",
+            "execution_path": "qwen4exp_full_model_ar_batch"
+          },
+          "event": "generation_complete",
+          "diagnostics": {
+            "decode_batch": {
+              "execution_path": "qwen4exp_full_model_ar_batch",
+              "steps": 15,
+              "step_widths": {
+                "1": 15
+              },
+              "max_width": 1,
+              "state_slots": 2
+            }
+          },
+          "generated_token_ids": [
+            71093,
+            12305,
+            198,
+            727,
+            10562,
+            87682,
+            1494,
+            40798,
+            1590,
+            198,
+            262,
+            413,
+            524,
+            26126,
+            25,
+            198
+          ],
+          "generated_tokens": 16,
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 16,
+            "sampler_mode": "greedy",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": true,
+            "continuation_id": "gen_2d8d6aac14674e26af975d8fa3e294ff"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 40,
+      "completion_tokens": 16,
+      "total_tokens": 56
+    },
+    "hipengine": {
+      "routing": {
+        "requested_model": "qwen38fn-capon",
+        "served_model": "qwen38fn-capon",
+        "fallback_used": false,
+        "policy": "single_model_exact",
+        "loaded_model_count": 1,
+        "multiple_models": false
+      },
+      "token_accounting": {
+        "choice_generated_token_ids": [
+          [
+            71093,
+            12305,
+            198,
+            727,
+            10562,
+            87682,
+            1494,
+            40798,
+            1590,
+            198,
+            262,
+            413,
+            524,
+            26126,
+            25,
+            198
+          ]
+        ],
+        "choice_generated_tokens": [
+          16
+        ],
+        "total_generated_tokens": 16,
+        "retokenized_visible_tokens": 16
+      },
+      "generation_shape": {
+        "schema_version": 1,
+        "route": "default",
+        "route_cap": {
+          "scope": "queue_requests",
+          "value": 2,
+          "applied": true
+        },
+        "queue_group": {
+          "id": "queue-fe40472c7caa41e18dd361c05b4ac190",
+          "request_count": 1,
+          "prompt_rows": 1,
+          "item_index": 0,
+          "item_prompt_offset": 0,
+          "item_prompt_rows": 1
+        },
+        "backend_groups": [
+          {
+            "id": "backend-8d7c70075d7a4751bdd542c861b31e63",
+            "call_index": 0,
+            "prompt_offset": 0,
+            "input_rows": 1,
+            "actual_group_rows": [
+              1
+            ],
+            "max_actual_group_rows": 1,
+            "verifier_rows": 0
+          }
+        ],
+        "verifier_rows": 0
+      },
+      "speculative_mtp": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      }
+    }
+  },
+  "wall_s": 1.4077287048567086
+}
