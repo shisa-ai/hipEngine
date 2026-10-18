@@ -1,5 +1,23 @@
 # Qwen3.8-Flash-Next (Qwen4Exp) Optimization Status
 
+**2026-10-18 serving qualification:** the served path now passes the
+production gates the audit left open. Isolation and determinism hold at width
+four: eight distinct prompts replayed concurrently reproduce their solo answers
+exactly, including token ids; three different budgets in one batch each stop at
+their own limit; two interleaved sessions answer from their own history with no
+cross-contamination. Semantic task quality over the full mtp-bench category
+suite plus category heldouts is 18 pass / 0 partial / 0 fail, with no
+chat-template leakage, no degenerate repetition, and the requested language in
+every case. That resolves the 13/18 strict-exact count as diagnostic: the
+binding gates on the same packet are mean/p95/p99/max KL
+6.364e-4/3.637e-3/8.069e-3/9.880e-3 with top-1 446/450 and bit-identical
+repeats. Multimodal serving is qualified for one bounded route (base64 PNG data
+URL, blocking, no tools) with the BF16 mmproj sidecar, and
+`features.multimodal` publishes that scope
+([isolation](../benchmarks/results/2026-10-18-zbook-qwen4exp-http-isolation.json),
+[task quality](../benchmarks/results/2026-10-18-zbook-qwen4exp-http-task-quality.json),
+[multimodal](../benchmarks/results/2026-10-18-zbook-qwen4exp-http-multimodal.json)).
+
 **2026-10-17 served-feature audit:** [HTTP coverage grid](QWEN4EXP-HTTP-COVERAGE.md).
 On zbook, short explicit MTP executes, but approximately 30K HTTP MTP times out,
 hard thinking budgets are ignored, logprobs are unsupported, C4 requests run

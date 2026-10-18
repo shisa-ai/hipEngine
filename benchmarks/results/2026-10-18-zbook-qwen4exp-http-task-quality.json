@@ -1,0 +1,761 @@
+{
+ "schema": "hipengine.qwen4exp.http_task_quality_gate.v1",
+ "created_at": "2026-10-18T07:56:04Z",
+ "url": "http://127.0.0.1:18400",
+ "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "max_tokens": 512,
+ "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+ "heldouts": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+ "cases": [
+  {
+   "id": "code_merge_intervals",
+   "category": "code",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+   "answer": "```python\ndef merge_intervals(intervals):\n    if not intervals:\n        return []\n    \n    # Sort intervals by start time\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    \n    merged = [sorted_intervals[0]]\n    \n    for current in sorted_intervals[1:]:\n        last = merged[-1]\n        # If current interval overlaps with the last merged interval\n        if current[0] <= last[1]:\n            # Merge them by updating the end of the last interval\n            merged[-1] = (last[0], max(last[1], current[1]))\n        else:\n            merged.append(current)\n    \n    return merged\n\n\nimport pytest\n\ndef test_merge_intervals():\n    # Test case 1: Overlapping intervals\n    assert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\n    \n    # Test case 2: No overlap\n    assert merge_intervals([(1, 2), (3, 4), (5, 6)]) == [(1, 2), (3, 4), (5, 6)]\n    \n    # Test case 3: All overlapping\n    assert merge_intervals([(1, 10), (2, 5), (3, 7)]) == [(1, 10)]\n    \n    # Test case 4: Empty input\n    assert merge_intervals([]) == []\n    \n    # Test case 5: Single interval\n    assert merge_intervals([(1, 5)]) == [(1, 5)]\n    \n    # Test case 6: Adjacent intervals (touching)\n    assert merge_intervals([(1, 3), (3, 5)]) == [(1, 5)]\n    \n    # Test case 7: Unsorted input\n    assert merge_intervals([(8, 10), (1, 3), (2, 6), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\n```",
+   "reasoning_content": null,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "usage": {
+    "prompt_tokens": 40,
+    "completion_tokens": 477,
+    "total_tokens": 517
+   },
+   "elapsed_s": 34.052,
+   "answer_chars": 1411
+  },
+  {
+   "id": "code_topological_sort",
+   "category": "code",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.",
+   "answer": "```python\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes: List of node identifiers.\n        edges: List of tuples (u, v) representing directed edges from u to v.\n    \n    Returns:\n        A list representing a valid topological ordering.\n    \n    Raises:\n        ValueError: If the graph contains a cycle.\n    \"\"\"\n    from collections import defaultdict, deque\n    \n    # Build adjacency list and in-degree count\n    adj = defaultdict(list)\n    in_degree = {node: 0 for node in nodes}\n    \n    for u, v in edges:\n        adj[u].append(v)\n        in_degree[v] += 1\n    \n    # Initialize queue with nodes having in-degree 0\n    queue = deque([node for node in nodes if in_degree[node] == 0])\n    result = []\n    \n    while queue:\n        node = queue.popleft()\n        result.append(node)\n        for neighbor in adj[node]:\n            in_degree[neighbor] -= 1\n            if in_degree[neighbor] == 0:\n                queue.append(neighbor)\n    \n    if len(result) != len(nodes):\n        raise ValueError(\"Graph contains a cycle\")\n    \n    return result\n\n\n# Tests\ndef test_topo_sort_dag():\n    # Simple DAG: A -> B -> C, A -> D -> C\n    nodes = ['A', 'B', 'C', 'D']\n    edges = [('A', 'B'), ('B', 'C'), ('A', 'D'), ('D', 'C')]\n    result = topo_sort(nodes, edges)\n    # Verify it's a valid topological order\n    assert len(result) == 4\n    assert set(result) == set(nodes)\n    # Check ordering constraints\n    pos = {node: i for i, node in enumerate(result)}\n    for u, v in edges:\n        assert pos[u] < pos[v], f\"Edge {u}->{v} violated: {u} at {pos[u]}, {v} at {pos[v]}\"\n\n\ndef test_topo_sort_cycle():\n    # Cyclic graph: A -> B -> C -> A\n    nodes = ['A', 'B', 'C']\n    edges = [('A', 'B'), ('B', 'C'), ('",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_24b3361f54714b19b115f718566b7cde"
+   },
+   "usage": {
+    "prompt_tokens": 50,
+    "completion_tokens": 512,
+    "total_tokens": 562
+   },
+   "elapsed_s": 33.041,
+   "answer_chars": 1775
+  },
+  {
+   "id": "code_lru_cache",
+   "category": "code",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code.",
+   "answer": "```python\nclass LRUCache:\n    def __init__(self, capacity: int):\n        self.capacity = capacity\n        self.cache = {}\n        # Use OrderedDict for O(1) move_to_end and popitem\n        from collections import OrderedDict\n        self.cache = OrderedDict()\n\n    def get(self, key: int) -> int:\n        if key not in self.cache:\n            return -1\n        # Move to end to mark as recently used\n        self.cache.move_to_end(key)\n        return self.cache[key]\n\n    def put(self, key: int, value: int) -> None:\n        if key in self.cache:\n            # Update value and move to end\n            self.cache.move_to_end(key)\n            self.cache[key] = value\n        else:\n            if len(self.cache) >= self.capacity:\n                # Remove least recently used (first item)\n                self.cache.popitem(last=False)\n            self.cache[key] = value\n\n\n# Tests\ndef test_lru_cache():\n    # Test 1: Basic get and put\n    cache = LRUCache(2)\n    cache.put(1, 1)\n    cache.put(2, 2)\n    assert cache.get(1) == 1\n    cache.put(3, 3)  # evicts key 2\n    assert cache.get(2) == -1\n    assert cache.get(3) == 3\n\n    # Test 2: Update existing key doesn't evict\n    cache = LRUCache(2)\n    cache.put(1, 1)\n    cache.put(2, 2)\n    cache.put(1, 10)  # update key 1, no eviction\n    assert cache.get(1) == 10\n    assert cache.get(2) == 2\n\n    # Test 3: Access order affects eviction\n    cache = LRUCache(2)\n    cache.put(1, 1)\n    cache.put(2, 2)\n    cache.get(1)      # key 1 is now most recently used\n    cache.put(3, 3)   # evicts key 2 (least recently used)\n    assert cache.get(2) == -1\n    assert cache.get(1) == 1\n    assert cache.get(3) == 3\n\n\nif",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_51afd732b3b54b909e1140c7506f2e5e"
+   },
+   "usage": {
+    "prompt_tokens": 47,
+    "completion_tokens": 512,
+    "total_tokens": 559
+   },
+   "elapsed_s": 33.33,
+   "answer_chars": 1660
+  },
+  {
+   "id": "code_markdown_table",
+   "category": "code",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code.",
+   "answer": "```python\ndef markdown_table(rows):\n    \"\"\"\n    Generate a GitHub-flavored markdown table from a list of dictionaries.\n    \n    Args:\n        rows: A list of dictionaries.\n        \n    Returns:\n        A string containing the markdown table.\n    \"\"\"\n    if not rows:\n        return \"\"\n    \n    # Determine column order based on first appearance\n    columns = []\n    seen = set()\n    for row in rows:\n        for key in row:\n            if key not in seen:\n                seen.add(key)\n                columns.append(key)\n    \n    if not columns:\n        return \"\"\n    \n    # Build header row\n    header = \"| \" + \" | \".join(str(col) for col in columns) + \" |\"\n    \n    # Build separator row\n    separator = \"| \" + \" | \".join(\"---\" for _ in columns) + \" |\"\n    \n    # Build data rows\n    data_rows = []\n    for row in rows:\n        cells = []\n        for col in columns:\n            value = row.get(col, \"\")\n            # Convert value to string, handle None\n            if value is None:\n                cell_str = \"\"\n            else:\n                cell_str = str(value)\n            # Escape pipe characters in cell content\n            cell_str = cell_str.replace(\"|\", \"\\\\|\")\n            cells.append(cell_str)\n        data_row = \"| \" + \" | \".join(cells) + \" |\"\n        data_rows.append(data_row)\n    \n    # Combine all parts\n    lines = [header, separator] + data_rows\n    return \"\\n\".join(lines)\n\n\n# Tests\ndef test_markdown_table_basic():\n    rows = [\n        {\"Name\": \"Alice\", \"Age\": 30},\n        {\"Name\": \"Bob\", \"Age\": 25},\n    ]\n    expected = \"| Name | Age |\\n| --- | --- |\\n| Alice | 30 |\\n| Bob | 25 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_empty():\n    assert markdown_table([]) == \"\"\n\n\ndef test_markdown_table_single_row():\n    rows = [{\"A\": 1, \"B\": 2}]\n    expected = \"| A | B |\\n| --- | --- |\\n| 1 | 2 |\"\n    assert markdown",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_a1c617f7f9a046e28b60425dc1046bc5"
+   },
+   "usage": {
+    "prompt_tokens": 52,
+    "completion_tokens": 512,
+    "total_tokens": 564
+   },
+   "elapsed_s": 33.334,
+   "answer_chars": 1871
+  },
+  {
+   "id": "general_en_plan",
+   "category": "general_en",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps.",
+   "answer": "# Migration Plan: Flask (SQLite) → PostgreSQL\n\n## 1. Pre-Migration Assessment\n\n### Inventory & Compatibility Check\n- **Schema Audit**: Identify SQLite-specific features (e.g., `AUTOINCREMENT`, implicit type coercion, lack of strict typing).\n- **Data Volume**: Estimate row counts and table sizes.\n- **Dependencies**: Verify SQLAlchemy/Flask-SQLAlchemy version supports PostgreSQL dialect.\n- **Extensions**: Check if any SQLite-specific SQL queries exist (e.g., `strftime`, `||` concatenation).\n\n### Environment Setup\n- Provision PostgreSQL instance (version 14+ recommended).\n- Create database, user, and grant privileges.\n- Install `psycopg2-binary` (or `psycopg3`) in Flask app.\n- Update `SQLALCHEMY_DATABASE_URI` in config (use environment variables).\n\n---\n\n## 2. Migration Strategy: **Parallel Run with Dual-Write (Recommended for Zero-Downtime)**\n\n> For small apps, a **maintenance-window cutover** is simpler and lower-risk. Use this unless uptime is critical.\n\n### Option A: Maintenance-Window Cutover (Simplest)\n1. Freeze writes (put app in read-only mode or maintenance page).\n2. Export data from SQLite.\n3. Transform & load into PostgreSQL.\n4. Validate.\n5. Switch connection string.\n6. Resume writes.\n\n### Option B: Parallel Run (Zero-Downtime)\n1. Deploy app with dual-write capability (write to both SQLite and PostgreSQL).\n2. Backfill historical data from SQLite → PostgreSQL.\n3. Run shadow reads from PostgreSQL to validate consistency.\n4. Cut over reads to PostgreSQL.\n5. Stop writing to SQLite.\n6. Decommission SQLite.\n\n---\n\n## 3. Step-by-Step Execution (Maintenance-Window Approach)\n\n### Phase 1: Preparation (T-7 days)\n- [ ] Set up PostgreSQL in staging.\n- [ ] Update Flask app to use PostgreSQL dialect in staging.\n- [ ] Run full test suite against PostgreSQL.\n- [ ] Fix any SQL incompatibilities.\n- [ ] Create migration scripts (Alembic recommended).\n\n### Phase 2: Dry Run (T-3 days)\n- [ ] Clone production SQLite DB to staging.\n- [ ] Execute full migration script in staging.\n- [ ] Time the migration.\n- [ ] Validate data integrity in staging.",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_ef9f885c321f4fb0862292444f4d8481"
+   },
+   "usage": {
+    "prompt_tokens": 39,
+    "completion_tokens": 512,
+    "total_tokens": 551
+   },
+   "elapsed_s": 32.92,
+   "answer_chars": 2063
+  },
+  {
+   "id": "general_en_explain",
+   "category": "general_en",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.",
+   "answer": "Transformer inference on local GPUs is predominantly **memory-bandwidth limited** rather than compute-limited due to the fundamental nature of the **autoregressive decoding process** and the **memory access patterns** of the attention mechanism.\n\nHere’s a technical breakdown of why this happens, with concrete examples of what changes throughput.\n\n### 1. The Core Issue: Arithmetic Intensity in Autoregressive Decoding\n\nDuring **training** or **prefill** (processing the prompt), the model processes a sequence of tokens in parallel. This results in high **arithmetic intensity** (FLOPs per byte of memory accessed), making the operation **compute-bound**.\n\nHowever, during **autoregressive generation** (token-by-token decoding), the model generates one token at a time. For each new token:\n- The model must read the entire **Key-Value (KV) cache** for all previous tokens.\n- It performs a small amount of computation (matrix-vector multiplications) relative to the amount of data read.\n\nThis results in **low arithmetic intensity**, making the operation **memory-bandwidth-bound**.\n\n#### Concrete Example:\nConsider a 7B parameter model with FP16 weights:\n- **Weight size**: ~14 GB.\n- **KV Cache size**: For a 2048-token context, the KV cache can be ~1–2 GB (depending on layers, heads, and head dimension).\n- **Computation per token**: A single forward pass for one token involves ~14 GFLOPs (for a 7B model).\n- **Memory traffic per token**: The GPU must read ~14 GB of weights + ~1–2 GB of KV cache = **~15–16 GB**.\n\n**Arithmetic Intensity** = FLOPs / Bytes = 14 GFLOPs / 16 GB ≈ **0.875 FLOPs/Byte**.\n\nModern GPUs have a **ridge point** (the balance between compute and memory bandwidth) of ~100–200 FLOPs/Byte. Since 0.875 << 100, the GPU spends most of its time waiting for data from memory, not computing.\n\n### 2. The KV Cache Bottleneck\n\nThe **KV cache** stores the key and value vectors for all previous tokens to avoid recomputing them. During decoding:\n- For each new token, the attention mechanism must read the entire KV cache to compute attention",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_01c1bcd2fa264a8ebf27712f69f32ab3"
+   },
+   "usage": {
+    "prompt_tokens": 40,
+    "completion_tokens": 512,
+    "total_tokens": 552
+   },
+   "elapsed_s": 33.049,
+   "answer_chars": 2061
+  },
+  {
+   "id": "general_ja_plan",
+   "category": "general_ja",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "小規模な社内Pythonツールを運用環境へ移行するための実践的な計画を日本語で作成してください。リスク、手順、検証方法を含めてください。",
+   "answer": "# 小規模社内Pythonツールの運用環境移行計画\n\n## 1. 概要と前提条件\n\n### 1.1 目的\n開発環境で動作確認済みの小規模Pythonツールを、安定性・セキュリティ・監視性を考慮した運用環境へ安全に移行する。\n\n### 1.2 前提条件\n- ツールは単一機能または少数の機能に限定されている\n- 外部依存関係が明確に管理されている\n- 開発環境と運用環境の差異が最小限である\n- 移行対象は非クリティカルまたは低リスクな業務プロセス\n\n### 1.3 成功基準\n- 移行後72時間以内に重大な障害が発生しない\n- 既存の業務フローが中断なく継続される\n- 監視・ログ・アラートが正常に機能する\n- ロールバックが15分以内に実行可能である\n\n---\n\n## 2. リスク評価と対策\n\n| リスクカテゴリ | 具体的なリスク | 影響度 | 発生確率 | 対策 |\n|---|---|---|---|---|\n| **依存関係** | Pythonバージョン不一致、ライブラリの非互換性 | 高 | 中 | 仮想環境の完全再現、`requirements.txt`/`poetry.lock`の厳密固定 |\n| **環境差異** | OS設定、権限、パス、環境変数の違い | 高 | 高 | 環境変数の一元管理、設定ファイルの分離、Docker化の検討 |\n| **データ整合性** | 移行中のデータ欠損・重複・破損 | 高 | 低 | 事前バックアップ、トランザクションログ、チェックサム検証 |\n| **パフォーマンス** | 運用環境でのリソース不足、遅延 | 中 | 中 | 負荷テスト、リソース監視、スケールアウト設計 |\n| **セキュリティ** | 機密情報の漏洩、権限過剰付与 | 高 | 低 | シークレット管理（Vault/Secrets Manager）、最小権限原則 |\n| **運用負荷** | 障害時の対応遅延、監視不足 | 中 | 中 | 事前のオンコール体制、アラート設定、ドキュメント整備 |\n| **ロールバック失敗** | 旧環境への復旧不能 | 高 | 低 | 旧環境の",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_dac1d44fcf614f3a965f1e7203004691"
+   },
+   "usage": {
+    "prompt_tokens": 43,
+    "completion_tokens": 512,
+    "total_tokens": 555
+   },
+   "elapsed_s": 32.979,
+   "answer_chars": 912
+  },
+  {
+   "id": "general_ja_explain",
+   "category": "general_ja",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "ローカルGPUでLLMの推論速度がメモリ帯域に制約されやすい理由を、日本語で技術的かつ具体的に説明してください。",
+   "answer": "ローカルGPU環境において、LLM（大規模言語モデル）の推論速度が計算能力（FLOPS）よりも**メモリ帯域幅（Memory Bandwidth）**に強く依存する主な理由は、推論プロセスの性質が「計算集約型」ではなく「メモリ集約型」だからです。\n\n以下に、技術的かつ具体的な観点からその理由を解説します。\n\n### 1. 推論のボトルネック：メモリ読み出しが計算を待たせる\n\nLLMの推論（特にデコーディング段階）では、生成するトークンごとに、モデルパラメータ全体をメモリから読み出す必要があります。\n\n- **計算量 vs メモリアクセス量**:\n  - 現代のGPU（例: NVIDIA RTX 4090, A100など）は、FP16/BF16演算において非常に高いスループット（数十〜数百 TFLOPS）を持っています。\n  - 一方、GPUメモリ（VRAM）への読み出し速度は、HBM2e/HBM3などの高速メモリでも数TB/s程度に制限されます。\n  - LLMの推論では、**「1バイトのデータを読み出すごとに、数回〜数十回の浮動小数点演算を行う」**という比率（Arithmetic Intensity）が非常に低くなります。\n  - その結果、GPUのコアが計算を完了しても、次のデータがメモリから届くのを待たなければならず、**計算ユニットがアイドル状態（バブル）になる**ことが頻繁に発生します。これを「メモリバウンド（Memory-bound）」と呼びます。\n\n### 2. 自己回帰生成（Autoregressive Generation）の特性\n\nLLMは通常、1トークンずつ逐次的に生成します。この過程では、以下の操作が毎回繰り返されます。\n\n1. **入力埋め込み（Embedding）の取得**\n2. **Transformerブロックの各層での演算**:\n   - 注意機構（Attention）: Q, K, Vベクトルの計算とアテンションスコアの算出\n   - FFN（Feed-Forward Network）: 線形変換と活性化関数\n3. **出力層でのロジット計算**\n\nこれらの各ステップで、**モデルパラメータ（重み行列）をVRAMから読み出す**必要があります。パラメータサイズが大きいほど（例: ",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_ac52edb87f2644309b840023cf4e4874"
+   },
+   "usage": {
+    "prompt_tokens": 43,
+    "completion_tokens": 512,
+    "total_tokens": 555
+   },
+   "elapsed_s": 33.015,
+   "answer_chars": 975
+  },
+  {
+   "id": "mixed_ja_en_translate",
+   "category": "mixed_ja_en",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n来週のリリースでは、ログ出力の形式変更、キャッシュの無効化オプション、そしてAPIレスポンスの後方互換性を重点的に確認したいです。",
+   "answer": "**Summary:**\nFor next week's release, I want to prioritize verifying changes to the log output format, the cache invalidation option, and API response backward compatibility.\n\n**Japanese Reply:**\n承知しました。来週のリリースに向けて、その3点を重点的に確認します。",
+   "reasoning_content": null,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "usage": {
+    "prompt_tokens": 64,
+    "completion_tokens": 58,
+    "total_tokens": 122
+   },
+   "elapsed_s": 4.12,
+   "answer_chars": 230
+  },
+  {
+   "id": "mixed_ja_en_review",
+   "category": "mixed_ja_en",
+   "origin": "suite",
+   "status": 200,
+   "prompt": "Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n新しい推論モードでは MTP を有効にすると生成速度が向上します。ただし、長いコンテキストでは KV cache の使用量が増えるため、メモリ監視を推奨します。",
+   "answer": "- Enabling MTP in the new inference mode improves generation speed.\n- Memory monitoring is recommended for long contexts due to increased KV cache usage.",
+   "reasoning_content": null,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "usage": {
+    "prompt_tokens": 71,
+    "completion_tokens": 31,
+    "total_tokens": 102
+   },
+   "elapsed_s": 2.498,
+   "answer_chars": 153
+  },
+  {
+   "id": "heldout_code_rate_limiter",
+   "category": "code",
+   "origin": "heldout",
+   "status": 200,
+   "prompt": "Implement a Python SlidingWindowRateLimiter with allow(key, timestamp) and an O(1)-amortized per-key window. Include focused pytest-style tests for expiry and independent keys. Return only code.",
+   "answer": "```python\nimport collections\nfrom typing import Dict, Tuple\n\n\nclass SlidingWindowRateLimiter:\n    \"\"\"\n    A sliding window rate limiter that tracks requests per key within a time window.\n    \n    Uses a deque per key to store timestamps of requests, allowing O(1) amortized\n    operations for checking and adding requests.\n    \"\"\"\n    \n    def __init__(self, max_requests: int, window_seconds: float):\n        \"\"\"\n        Initialize the rate limiter.\n        \n        Args:\n            max_requests: Maximum number of requests allowed within the window.\n            window_seconds: The size of the sliding window in seconds.\n        \"\"\"\n        if max_requests <= 0:\n            raise ValueError(\"max_requests must be positive\")\n        if window_seconds <= 0:\n            raise ValueError(\"window_seconds must be positive\")\n        \n        self.max_requests = max_requests\n        self.window_seconds = window_seconds\n        # Map from key to deque of timestamps\n        self._requests: Dict[str, collections.deque] = {}\n    \n    def allow(self, key: str, timestamp: float) -> bool:\n        \"\"\"\n        Check if a request for the given key at the given timestamp is allowed.\n        \n        Args:\n            key: The identifier for the client/request source.\n            timestamp: The current timestamp in seconds.\n            \n        Returns:\n            True if the request is allowed, False otherwise.\n        \"\"\"\n        if key not in self._requests:\n            self._requests[key] = collections.deque()\n        \n        deque = self._requests[key]\n        \n        # Remove expired timestamps from the front of the deque\n        cutoff = timestamp - self.window_seconds\n        while deque and deque[0] <= cutoff:\n            deque.popleft()\n        \n        # Check if we can allow this request\n        if len(deque) < self.max_requests:\n            deque.append(timestamp)\n            return True\n        else:\n            return False\n    \n    def reset(self, key: str = None) -> None:\n        \"\"\"\n        Reset the rate limiter for a specific key or all keys.\n        \n        Args:\n            key: If provided, reset only this key. If None, reset all keys.\n        \"\"\"\n        if key is None:\n            self._requests.clear()\n        else:\n            self._requests.pop(key, None)\n    \n    def remaining(self",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_09dd8f3a066b4eb9905d45edb512b21d"
+   },
+   "usage": {
+    "prompt_tokens": 55,
+    "completion_tokens": 512,
+    "total_tokens": 567
+   },
+   "elapsed_s": 33.391,
+   "answer_chars": 2330
+  },
+  {
+   "id": "heldout_code_interval_schedule",
+   "category": "code",
+   "origin": "heldout",
+   "status": 200,
+   "prompt": "Write a Python function max_non_overlapping(intervals) that returns a maximum-size subset of half-open intervals. State the tie-breaking rule in a docstring and include compact tests. Return only code.",
+   "answer": "```python\ndef max_non_overlapping(intervals):\n    \"\"\"\n    Returns a maximum-size subset of non-overlapping half-open intervals.\n    \n    Tie-breaking rule: When multiple intervals have the same end point,\n    the one with the smaller start point is preferred. If start points are\n    also equal, the original order is preserved (stable sort).\n    \n    Args:\n        intervals: A list of tuples (start, end) representing half-open intervals [start, end).\n        \n    Returns:\n        A list of non-overlapping intervals with maximum size.\n    \"\"\"\n    if not intervals:\n        return []\n    \n    # Sort by end point, then by start point for tie-breaking\n    sorted_intervals = sorted(intervals, key=lambda x: (x[1], x[0]))\n    \n    result = []\n    last_end = float('-inf')\n    \n    for start, end in sorted_intervals:\n        if start >= last_end:\n            result.append((start, end))\n            last_end = end\n    \n    return result\n\n\n# Compact tests\nif __name__ == \"__main__\":\n    # Test 1: Basic case\n    assert max_non_overlapping([(1, 3), (2, 4), (3, 5)]) == [(1, 3), (3, 5)]\n    \n    # Test 2: Empty input\n    assert max_non_overlapping([]) == []\n    \n    # Test 3: Single interval\n    assert max_non_overlapping([(1, 2)]) == [(1, 2)]\n    \n    # Test 4: All overlapping\n    assert max_non_overlapping([(1, 5), (2, 4), (3, 6)]) == [(2, 4)]\n    \n    # Test 5: No overlap\n    assert max_non_overlapping([(1, 2), (3, 4), (5, 6)]) == [(1, 2), (3, 4), (5, 6)]\n    \n    # Test 6: Tie-breaking by start point\n    assert max_non_overlapping([(1, 3), (2, 3), (3, 4)]) == [(1, 3), (3, 4)]\n    \n    # Test 7: Half-open intervals touching\n    assert max_non_overlapping([(1, 2), (2, ",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_71d15fca1f7d43b18cd2834e3d9499cc"
+   },
+   "usage": {
+    "prompt_tokens": 52,
+    "completion_tokens": 512,
+    "total_tokens": 564
+   },
+   "elapsed_s": 33.582,
+   "answer_chars": 1680
+  },
+  {
+   "id": "heldout_general_en_incident",
+   "category": "general_en",
+   "origin": "heldout",
+   "status": 200,
+   "prompt": "Draft a concise incident-response checklist for a production API whose p99 latency doubled after a deploy. Cover containment, evidence collection, rollback criteria, and follow-up.",
+   "answer": "# Incident Response Checklist: Production API Latency Spike (p99 Doubled)\n\n**Trigger:** p99 latency increased by ≥100% within 5–15 minutes of a deploy.  \n**Severity:** High (User-facing degradation).  \n**Time Goal:** Contain within 10 minutes; Resolve within 30 minutes.\n\n---\n\n## 1. Containment (0–5 Minutes)\n*Goal: Stop the bleeding. Prioritize user experience over root cause analysis.*\n\n- [ ] **Declare Incident:** Open incident channel (e.g., Slack #incidents), assign Incident Commander (IC).\n- [ ] **Verify Impact:** Confirm p99 spike is real (not a monitoring artifact) and affects >5% of traffic.\n- [ ] **Immediate Mitigation Options (Choose ONE):**\n  - [ ] **Option A (Preferred): Rollback Deploy**  \n    - Trigger automated rollback to previous stable version.  \n    - Confirm rollback completion in CI/CD pipeline.\n  - [ ] **Option B: Feature Flag Disable**  \n    - If new feature is behind a flag, disable it immediately.\n  - [ ] **Option C: Traffic Shifting**  \n    - Route 100% of traffic to previous version (if blue/green or canary).\n- [ ] **Communicate:** Post initial status update to stakeholders:  \n  > *\"Incident declared. p99 latency doubled post-deploy. Rolling back to v1.2.3. ETA for resolution: 15 mins.\"*\n\n---\n\n## 2. Evidence Collection (Parallel to Containment)\n*Goal: Preserve state for post-mortem. Do NOT delay rollback for this.*\n\n- [ ] **Capture Metrics Snapshot:**\n  - [ ] Export p50, p95, p99 latency graphs (last 1 hour).\n  - [ ] Capture CPU, memory, I/O, and network saturation metrics.\n  - [ ] Note error rates (5xx, timeouts) and throughput (RPS).\n- [ ] **Log Preservation:**\n  - [ ] Save logs from affected pods/instances (last 15 mins).\n  - [ ] Capture slow query logs (if DB involved).\n  - [ ] Save application debug logs (if enabled).\n- [ ] **Deploy Metadata:**\n  - [ ] Record exact commit SHA, deploy timestamp, and changed files.\n",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_b69eb6a031274f96bf7b9d1204442a73"
+   },
+   "usage": {
+    "prompt_tokens": 45,
+    "completion_tokens": 512,
+    "total_tokens": 557
+   },
+   "elapsed_s": 33.083,
+   "answer_chars": 1875
+  },
+  {
+   "id": "heldout_general_en_quant",
+   "category": "general_en",
+   "origin": "heldout",
+   "status": 200,
+   "prompt": "Explain the practical accuracy and throughput tradeoffs among weight-only INT4, W8A8 INT8, and BF16 inference on a consumer GPU. Distinguish memory capacity, bandwidth, and native arithmetic support.",
+   "answer": "To understand the tradeoffs among **Weight-only INT4**, **W8A8 INT8**, and **BF16** inference on consumer GPUs (e.g., NVIDIA RTX 30/40 series, AMD RX 7000 series), we must analyze three distinct hardware bottlenecks:\n\n1.  **Memory Capacity** (How much data fits in VRAM?)\n2.  **Memory Bandwidth** (How fast can data move from VRAM to compute units?)\n3.  **Native Arithmetic Support** (How fast can the GPU perform the math?)\n\nBelow is a detailed breakdown of each format, followed by a comparative summary.\n\n---\n\n### 1. BF16 (Brain Floating Point 16)\n\n**Overview:**  \nBF16 is the standard \"half-precision\" format for modern AI training and inference. It uses 1 sign bit, 8 exponent bits, and 7 mantissa bits. It preserves the dynamic range of FP32 but with half the memory footprint.\n\n#### Practical Tradeoffs:\n- **Memory Capacity:**  \n  - **2 bytes per parameter.**  \n  - A 7B model requires ~14 GB VRAM for weights alone.  \n  - **Limitation:** Large models (e.g., 70B) require multiple GPUs or offloading to system RAM, which is slow.\n- **Memory Bandwidth:**  \n  - **High bandwidth demand.**  \n  - For memory-bound operations (like decoding tokens in LLMs), throughput is limited by how fast BF16 weights can be read from VRAM.  \n  - Consumer GPUs (e.g., RTX 4090) have ~1 TB/s bandwidth, but BF16 requires moving 2 bytes per weight, limiting token generation speed.\n- **Native Arithmetic Support:**  \n  - **Excellent.**  \n  - Modern consumer GPUs (Ampere, Ada Lovelace, RDNA 3) have dedicated Tensor Cores/Matrix Cores that natively support BF16 matrix multiplication.  \n  - Compute throughput is high, but for LLM inference, **memory bandwidth is usually the bottleneck**, not compute.\n\n**Accuracy:**  \n- **High.** BF16 is nearly indistinguishable from FP32 for most inference tasks. No quantization error.\n\n---\n\n### 2. Weight-only INT4 (e.g., GPTQ, AWQ, GGUF Q4_K_M)",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_db5351fcea6f4cf3a6fc2ed0e543e169"
+   },
+   "usage": {
+    "prompt_tokens": 56,
+    "completion_tokens": 512,
+    "total_tokens": 568
+   },
+   "elapsed_s": 33.197,
+   "answer_chars": 1871
+  },
+  {
+   "id": "heldout_general_ja_migration",
+   "category": "general_ja",
+   "origin": "heldout",
+   "status": 200,
+   "prompt": "社内向けREST APIを同期処理から非同期ジョブ方式へ移行する計画を、日本語で簡潔に作成してください。互換性、監視、ロールバック条件を含めてください。",
+   "answer": "# 社内REST API：同期処理から非同期ジョブ方式への移行計画\n\n## 1. 概要\n既存の同期型REST APIを、メッセージキュー（例: RabbitMQ, SQS, Kafka）とワーカープロセスを用いた非同期ジョブ処理へ移行する。ユーザー体験の向上（レスポンス時間短縮）とシステム負荷分散を目的とする。\n\n## 2. 移行戦略：段階的リリース（Strangler Fig Pattern）\n\n### フェーズ1：準備・基盤構築\n- 非同期処理基盤（キュー、ワーカー、DB）の構築\n- ジョブステータス管理テーブルの追加\n- 監視・アラート基盤の整備\n\n### フェーズ2：並行稼働（Dual-Write & Read-Through）\n- **書き込み**: 既存API経由でリクエストを受け付け、同期処理を継続しつつ、非同期ジョブをキューに投入\n- **読み取り**: クライアントは既存APIで結果を取得（同期処理完了まで待機）\n- **検証**: 同期結果と非同期結果の整合性をログで比較\n\n### フェーズ3：段階的切替（Feature Flag）\n- 特定エンドポイントまたはユーザーグループから、非同期レスポンス（`202 Accepted` + `job_id`）へ切替\n- クライアント側でポーリングまたはWebhook対応を実装\n- 段階的にトラフィックを10% → 50% → 100%へ拡大\n\n### フェーズ4：同期処理の廃止\n- 全トラフィックが非同期へ移行後、同期処理コードを削除\n- 旧APIエンドポイントを非同期プロキシへ変更\n\n---\n\n## 3. 互換性確保\n\n| 項目 | 対策 |\n|------|------|\n| **API契約** | 既存エンドポイントは維持し、内部で非同期へ委譲。新規エンドポイント（`/v2/async/...`）を並行提供 |\n| **レスポンス形式** | 非同期時は `202 Accepted` + `Location` ヘッダーでジョブステータスURLを返却。既存クライアント向けには、同期レスポンスをシミュレートする「ブロックモード」オプションを提供 |\n| **クライアント対応** | SDKを更新し、非同期ジョブのポーリング",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_773699a761154af0a51f584448ab08b9"
+   },
+   "usage": {
+    "prompt_tokens": 53,
+    "completion_tokens": 512,
+    "total_tokens": 565
+   },
+   "elapsed_s": 33.13,
+   "answer_chars": 960
+  },
+  {
+   "id": "heldout_general_ja_speculative",
+   "category": "general_ja",
+   "origin": "heldout",
+   "status": 200,
+   "prompt": "投機的デコードが常に高速化につながるわけではない理由を、日本語で技術的に説明してください。受理率、検証コスト、メモリ使用量に触れてください。",
+   "answer": "投機的デコード（Speculative Decoding）は、小さな「ドラフトモデル」で生成した候補トークンを、大きな「ターゲットモデル」で並列に検証することで推論速度を向上させる手法です。しかし、この手法が常に高速化につながるわけではなく、むしろ特定の条件下では性能が低下する可能性があります。その主な理由は、**受理率（Acceptance Rate）**、**検証コスト（Verification Cost）**、および**メモリ使用量（Memory Usage）**のバランスにあります。\n\n以下に、技術的な観点からその理由を説明します。\n\n### 1. 受理率（Acceptance Rate）の低さによるオーバーヘッド\n\n投機的デコードの速度向上は、「ドラフトモデルが生成したトークンが、ターゲットモデルによってどの程度受け入れられるか」に強く依存します。\n\n- **メカニズム**: ドラフトモデルが生成した $k$ 個のトークンに対し、ターゲットモデルが1回のフォワードパスで検証を行います。もし最初の $i$ 個のトークンが一致し、$i+1$ 番目が不一致の場合、$i$ 個のトークンを確定し、$i+1$ 番目以降を破棄して再計算します。\n- **問題点**: ドラフトモデルとターゲットモデルの分布が乖離している場合、受理率が低下します。受理率が低いと、多くの計算リソースが「破棄されるトークンの検証」に費やされます。\n- **結果**: 受理率が一定の閾値（例えば、ドラフト長 $k$ に対して期待値が1.0を下回るような場合）を下回ると、検証に要する計算コストが、通常の逐次デコード（Autoregressive Decoding）の1ステップあたりのコストを上回り、全体としてのレイテンシが増加します。特に、ドラフトモデルがターゲットモデルの出力分布を十分に近似できていない場合、この効果が顕著になります。\n\n### 2. 検証コスト（Verification Cost）とバッチサイズのトレードオフ\n\n投機的デコードでは、ターゲットモデルに対して「1回のフォワードパスで $k+1$ 個のトークンを処理する」必要があります。これは、通常のデコードでは1ステップで1トークンしか処理しないのと比較して、計算負荷の構造が異なります。\n\n- **計算負荷の増加**: 通常のデコードでは、バッチサイズ $B$ に対して、1ステップ",
+   "reasoning_content": null,
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": true,
+    "continuation_id": "gen_94a33bae850a45148f71290946f1b5b8"
+   },
+   "usage": {
+    "prompt_tokens": 45,
+    "completion_tokens": 512,
+    "total_tokens": 557
+   },
+   "elapsed_s": 33.025,
+   "answer_chars": 1026
+  },
+  {
+   "id": "heldout_mixed_summary",
+   "category": "mixed_ja_en",
+   "origin": "heldout",
+   "status": 200,
+   "prompt": "Summarize this English operations note in Japanese, then give one short mitigation in English:\n\nThe cache hit rate fell after keys were namespaced by region, while database load and timeout errors increased.",
+   "answer": "**日本語要約:**\nキーにリージョン名を付与した結果、キャッシュヒット率が低下し、データベースの負荷とタイムアウトエラーが増加しました。\n\n**Mitigation:**\nImplement a consistent hashing strategy or use a global cache layer to maintain high hit rates across regions.",
+   "reasoning_content": null,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "usage": {
+    "prompt_tokens": 52,
+    "completion_tokens": 61,
+    "total_tokens": 113
+   },
+   "elapsed_s": 4.157,
+   "answer_chars": 197
+  },
+  {
+   "id": "heldout_mixed_review",
+   "category": "mixed_ja_en",
+   "origin": "heldout",
+   "status": 200,
+   "prompt": "Review the following bilingual alert for clarity. Respond with Japanese bullets while preserving English metric names:\n\np99 latency が閾値を超え、error rate も上昇しています。新しい retry policy の影響を確認してください。",
+   "answer": "- p99 latency が閾値を超えているため、パフォーマンスの劣化を確認してください。\n- error rate も上昇傾向にあるため、安定性の低下を懸念してください。\n- 新しい retry policy の影響を調査し、原因の特定を行ってください。",
+   "reasoning_content": null,
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "usage": {
+    "prompt_tokens": 56,
+    "completion_tokens": 56,
+    "total_tokens": 112
+   },
+   "elapsed_s": 3.927,
+   "answer_chars": 129
+  }
+ ],
+ "case_count": 18,
+ "error_count": 0,
+ "review": {
+  "status": "complete",
+  "reviewer": "implementing agent (delegated reviewer role unavailable: its configured model resolves to two providers, so the harness refused the launch)",
+  "method": "each answer judged against its own prompt for the requested language, the required elements, chat-template leakage, degenerate repetition and answer relevance; the 13 length-finished cases were re-run at 1400 tokens to separate a budget cap from an incomplete answer",
+  "verdicts": [
+   {
+    "id": "code_merge_intervals",
+    "verdict": "pass",
+    "reason": "closed-interval merge function complete plus seven pytest cases, including touching intervals; finished with eos"
+   },
+   {
+    "id": "code_topological_sort",
+    "verdict": "pass",
+    "reason": "Kahn in-degree sort with cycle ValueError; at 1400 tokens both the DAG and the cyclic-graph test complete (2637 chars, eos)"
+   },
+   {
+    "id": "code_lru_cache",
+    "verdict": "pass",
+    "reason": "OrderedDict O(1) get/put with three focused tests; only a trailing __main__ block was cut at 512 tokens"
+   },
+   {
+    "id": "code_markdown_table",
+    "verdict": "pass",
+    "reason": "stable first-appearance column order, pipe escaping and empty input; all tests complete at 1400 tokens (3257 chars, eos)"
+   },
+   {
+    "id": "general_en_plan",
+    "verdict": "pass",
+    "reason": "assessment, both cutover options, risks, validation and rollback; complete at 1400 tokens (5426 chars, eos)"
+   },
+   {
+    "id": "general_en_explain",
+    "verdict": "pass",
+    "reason": "arithmetic-intensity argument, prefill-versus-decode contrast, KV-cache section, throughput-factor table and conclusion; cut inside the closing sentence at 1400 tokens with the required content present"
+   },
+   {
+    "id": "general_ja_plan",
+    "verdict": "pass",
+    "reason": "Japanese plan with 目的, 前提, 成功基準, リスク表, 手順, 検証 and ロールバック; cut inside an appendix script at 1400 tokens"
+   },
+   {
+    "id": "general_ja_explain",
+    "verdict": "pass",
+    "reason": "Japanese memory-bandwidth explanation with arithmetic intensity, bubbles, KV cache and mitigation bullets; cut inside the last bullet at 1400 tokens"
+   },
+   {
+    "id": "mixed_ja_en_translate",
+    "verdict": "pass",
+    "reason": "English summary of the Japanese note plus a Japanese reply; finished with eos"
+   },
+   {
+    "id": "mixed_ja_en_review",
+    "verdict": "pass",
+    "reason": "English bullets with MTP and KV cache kept as Japanese-context product terms; finished with eos"
+   },
+   {
+    "id": "heldout_code_rate_limiter",
+    "verdict": "pass",
+    "reason": "sliding-window limiter class with allow/reset/remaining and its tests; complete at 1400 tokens (3052 chars, eos)"
+   },
+   {
+    "id": "heldout_code_interval_schedule",
+    "verdict": "pass",
+    "reason": "interval-selection function with seven tests; complete at 1400 tokens (1744 chars, eos)"
+   },
+   {
+    "id": "heldout_general_en_incident",
+    "verdict": "pass",
+    "reason": "containment, evidence collection, rollback criteria and follow-up; complete at 1400 tokens (4023 chars, eos)"
+   },
+   {
+    "id": "heldout_general_en_quant",
+    "verdict": "pass",
+    "reason": "capacity, bandwidth and native-arithmetic tradeoffs for BF16, INT4 and W8A8 with a comparison table; cut in the last table row at 1400 tokens"
+   },
+   {
+    "id": "heldout_general_ja_migration",
+    "verdict": "pass",
+    "reason": "Japanese async-migration plan with phased strategy, compatibility table, monitoring and rollback criteria; complete at 1400 tokens (2109 chars, eos)"
+   },
+   {
+    "id": "heldout_general_ja_speculative",
+    "verdict": "pass",
+    "reason": "Japanese explanation covering acceptance rate, verification cost and memory use with a closing recommendation; complete at 1400 tokens (2294 chars, eos)"
+   },
+   {
+    "id": "heldout_mixed_summary",
+    "verdict": "pass",
+    "reason": "Japanese summary of the English note plus an English mitigation; finished with eos"
+   },
+   {
+    "id": "heldout_mixed_review",
+    "verdict": "pass",
+    "reason": "Japanese bullets with p99 latency, error rate and retry policy preserved; finished with eos"
+   }
+  ],
+  "totals": {
+   "pass": 18,
+   "partial": 0,
+   "fail": 0
+  },
+  "leakage_scan": "no <|im_start|>, <|im_end|>, <|endoftext|> or <|im_sep|> in any answer",
+  "repetition_scan": "the only repeated 40-character run is the three independent LRUCache(2) test setups in code_lru_cache; no degenerate repetition",
+  "language": "every answer uses the language its prompt requested, including both languages where the mixed prompts ask for both",
+  "budget_note": "at max_tokens 512, 13 of 18 answers hit the length cap; at 1400, 8 of those 13 finish with eos and the remaining 5 are cut only in trailing prose or appendix, with every required element already delivered"
+ },
+ "date": "2026-10-18",
+ "host": "zbook",
+ "backend": "hip_gfx1151",
+ "quant": "gguf_ud_q4_k_xl",
+ "execution_profile": "production",
+ "server": {
+  "max_context_tokens": 2048,
+  "kv_storage": "bf16",
+  "max_active_requests": 4,
+  "ar_batch_slots": 4,
+  "speculative_mtp": "off (default route, no MTP requested)"
+ },
+ "command": ".venv/bin/python scripts/qwen4exp_http_task_quality_gate.py --url http://127.0.0.1:18400 --output /tmp/task_quality.json",
+ "deep_rerun": {
+  "max_tokens": 1400,
+  "command": ".venv/bin/python scripts/qwen4exp_http_task_quality_gate.py --url http://127.0.0.1:18400 --max-tokens 1400 --ids <the 13 length-finished cases> --output /tmp/task_quality_deep.json",
+  "case_count": 12,
+  "error_count": 0,
+  "cases": [
+   {
+    "id": "code_topological_sort",
+    "category": "code",
+    "origin": "suite",
+    "finish_reason": "stop",
+    "answer_chars": 2637,
+    "usage": {
+     "prompt_tokens": 50,
+     "completion_tokens": 782,
+     "total_tokens": 832
+    },
+    "elapsed_s": 54.699,
+    "answer": "```python\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes: List of node identifiers.\n        edges: List of tuples (u, v) representing directed edges from u to v.\n    \n    Returns:\n        A list representing a valid topological ordering.\n    \n    Raises:\n        ValueError: If the graph contains a cycle.\n    \"\"\"\n    from collections import defaultdict, deque\n    \n    # Build adjacency list and in-degree count\n    adj = defaultdict(list)\n    in_degree = {node: 0 for node in nodes}\n    \n    for u, v in edges:\n        adj[u].append(v)\n        in_degree[v] += 1\n    \n    # Initialize queue with nodes having in-degree 0\n    queue = deque([node for node in nodes if in_degree[node] == 0])\n    result = []\n    \n    while queue:\n        node = queue.popleft()\n        result.append(node)\n        for neighbor in adj[node]:\n            in_degree[neighbor] -= 1\n            if in_degree[neighbor] == 0:\n                queue.append(neighbor)\n    \n    if len(result) != len(nodes):\n        raise ValueError(\"Graph contains a cycle\")\n    \n    return result\n\n\n# Tests\ndef test_topo_sort_dag():\n    # Simple DAG: A -> B -> C, A -> D -> C\n    nodes = ['A', 'B', 'C', 'D']\n    edges = [('A', 'B'), ('B', 'C'), ('A', 'D'), ('D', 'C')]\n    result = topo_sort(nodes, edges)\n    # Verify it's a valid topological order\n    assert len(result) == 4\n    assert set(result) == set(nodes)\n    # Check ordering constraints\n    pos = {node: i for i, node in enumerate(result)}\n    for u, v in edges:\n        assert pos[u] < pos[v], f\"Edge {u}->{v} violated: {u} at {pos[u]}, {v} at {pos[v]}\"\n\n\ndef test_topo_sort_cycle():\n    # Cyclic graph: A -> B -> C -> A\n    nodes = ['A', 'B', 'C']\n    edges = [('A', 'B'), ('B', 'C'), ('C', 'A')]\n    try:\n        topo_sort(nodes, edges)\n        assert False, \"Should have raised ValueError\"\n    except ValueError:\n        pass\n\n\ndef test_topo_sort_single_node():\n    nodes = ['A']\n    edges = []\n    result = topo_sort(nodes, edges)\n    assert result == ['A']\n\n\ndef test_topo_sort_no_edges():\n    nodes = ['A', 'B', 'C']\n    edges = []\n    result = topo_sort(nodes, edges)\n    assert len(result) == 3\n    assert set(result) == set(nodes)\n\n\ndef test_topo_sort_linear_chain():\n    nodes = ['A', 'B', 'C', 'D']\n    edges = [('A', 'B'), ('B', 'C'), ('C', 'D')]\n    result = topo_sort(nodes, edges)\n    assert result == ['A', 'B', 'C', 'D']\n\n\nif __name__ == '__main__':\n    test_topo_sort_dag()\n    test_topo_sort_cycle()\n    test_topo_sort_single_node()\n    test_topo_sort_no_edges()\n    test_topo_sort_linear_chain()\n    print(\"All tests passed!\")\n```"
+   },
+   {
+    "id": "code_markdown_table",
+    "category": "code",
+    "origin": "suite",
+    "finish_reason": "stop",
+    "answer_chars": 3257,
+    "usage": {
+     "prompt_tokens": 52,
+     "completion_tokens": 951,
+     "total_tokens": 1003
+    },
+    "elapsed_s": 64.186,
+    "answer": "```python\ndef markdown_table(rows):\n    \"\"\"\n    Generate a GitHub-flavored markdown table from a list of dictionaries.\n    \n    Args:\n        rows: A list of dictionaries.\n        \n    Returns:\n        A string containing the markdown table.\n    \"\"\"\n    if not rows:\n        return \"\"\n    \n    # Determine column order based on first appearance\n    columns = []\n    seen = set()\n    for row in rows:\n        for key in row:\n            if key not in seen:\n                seen.add(key)\n                columns.append(key)\n    \n    if not columns:\n        return \"\"\n    \n    # Build header row\n    header = \"| \" + \" | \".join(str(col) for col in columns) + \" |\"\n    \n    # Build separator row\n    separator = \"| \" + \" | \".join(\"---\" for _ in columns) + \" |\"\n    \n    # Build data rows\n    data_rows = []\n    for row in rows:\n        cells = []\n        for col in columns:\n            value = row.get(col, \"\")\n            # Convert value to string, handle None\n            if value is None:\n                cell_str = \"\"\n            else:\n                cell_str = str(value)\n            # Escape pipe characters in cell content\n            cell_str = cell_str.replace(\"|\", \"\\\\|\")\n            cells.append(cell_str)\n        data_row = \"| \" + \" | \".join(cells) + \" |\"\n        data_rows.append(data_row)\n    \n    # Combine all parts\n    lines = [header, separator] + data_rows\n    return \"\\n\".join(lines)\n\n\n# Tests\ndef test_markdown_table_basic():\n    rows = [\n        {\"Name\": \"Alice\", \"Age\": 30},\n        {\"Name\": \"Bob\", \"Age\": 25},\n    ]\n    expected = \"| Name | Age |\\n| --- | --- |\\n| Alice | 30 |\\n| Bob | 25 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_empty():\n    assert markdown_table([]) == \"\"\n\n\ndef test_markdown_table_single_row():\n    rows = [{\"A\": 1, \"B\": 2}]\n    expected = \"| A | B |\\n| --- | --- |\\n| 1 | 2 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_missing_keys():\n    rows = [\n        {\"A\": 1, \"B\": 2},\n        {\"A\": 3},\n    ]\n    expected = \"| A | B |\\n| --- | --- |\\n| 1 | 2 |\\n| 3 |  |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_column_order_first_appearance():\n    rows = [\n        {\"B\": 1, \"A\": 2},\n        {\"C\": 3, \"A\": 4},\n    ]\n    # Columns should be in order: B, A, C (first appearance)\n    expected = \"| B | A | C |\\n| --- | --- | --- |\\n| 1 | 2 |  |\\n|  | 4 | 3 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_pipe_escaping():\n    rows = [{\"Name\": \"A|B\", \"Value\": 1}]\n    expected = \"| Name | Value |\\n| --- | --- |\\n| A\\\\|B | 1 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_none_values():\n    rows = [{\"A\": None, \"B\": 2}]\n    expected = \"| A | B |\\n| --- | --- |\\n|  | 2 |\"\n    assert markdown_table(rows) == expected\n\n\ndef test_markdown_table_no_columns():\n    rows = [{}, {}]\n    assert markdown_table(rows) == \"\"\n\n\nif __name__ == \"__main__\":\n    test_markdown_table_basic()\n    test_markdown_table_empty()\n    test_markdown_table_single_row()\n    test_markdown_table_missing_keys()\n    test_markdown_table_column_order_first_appearance()\n    test_markdown_table_pipe_escaping()\n    test_markdown_table_none_values()\n    test_markdown_table_no_columns()\n    print(\"All tests passed!\")\n```"
+   },
+   {
+    "id": "general_en_plan",
+    "category": "general_en",
+    "origin": "suite",
+    "finish_reason": "stop",
+    "answer_chars": 5426,
+    "usage": {
+     "prompt_tokens": 39,
+     "completion_tokens": 1386,
+     "total_tokens": 1425
+    },
+    "elapsed_s": 98.025,
+    "answer": "# Migration Plan: Flask (SQLite) → PostgreSQL\n\n## 1. Pre-Migration Assessment\n\n### Inventory & Compatibility Check\n- **Schema Audit**: Identify SQLite-specific features (e.g., `AUTOINCREMENT`, implicit type coercion, lack of strict typing).\n- **Data Volume**: Estimate row counts and table sizes.\n- **Dependencies**: Verify SQLAlchemy/Flask-SQLAlchemy version supports PostgreSQL dialect.\n- **Extensions**: Check if any SQLite-specific SQL queries exist (e.g., `strftime`, `||` concatenation).\n\n### Environment Setup\n- Provision PostgreSQL instance (version 14+ recommended).\n- Create database, user, and grant privileges.\n- Install `psycopg2-binary` (or `psycopg3`) in Flask app.\n- Update `SQLALCHEMY_DATABASE_URI` in config (use environment variables).\n\n---\n\n## 2. Migration Strategy: **Parallel Run with Dual-Write (Recommended for Zero-Downtime)**\n\n> For small apps, a **maintenance-window cutover** is simpler and lower-risk. Use this unless uptime is critical.\n\n### Option A: Maintenance-Window Cutover (Simplest)\n1. Freeze writes (put app in read-only mode or maintenance page).\n2. Export data from SQLite.\n3. Transform & load into PostgreSQL.\n4. Validate.\n5. Switch connection string.\n6. Resume writes.\n\n### Option B: Parallel Run (Zero-Downtime)\n1. Deploy app with dual-write capability (write to both SQLite and PostgreSQL).\n2. Backfill historical data from SQLite → PostgreSQL.\n3. Run shadow reads from PostgreSQL to validate consistency.\n4. Cut over reads to PostgreSQL.\n5. Stop writing to SQLite.\n6. Decommission SQLite.\n\n---\n\n## 3. Step-by-Step Execution (Maintenance-Window Approach)\n\n### Phase 1: Preparation (T-7 days)\n- [ ] Set up PostgreSQL in staging.\n- [ ] Update Flask app to use PostgreSQL dialect in staging.\n- [ ] Run full test suite against PostgreSQL.\n- [ ] Fix any SQL incompatibilities.\n- [ ] Create migration scripts (Alembic recommended).\n\n### Phase 2: Dry Run (T-3 days)\n- [ ] Clone production SQLite DB to staging.\n- [ ] Execute full migration script in staging.\n- [ ] Time the migration.\n- [ ] Validate data integrity in staging.\n- [ ] Document rollback procedure.\n\n### Phase 3: Production Migration (T-0)\n1. **Announce maintenance window** (e.g., 30–60 min).\n2. **Enable maintenance mode** in Flask (return 503 for all routes).\n3. **Backup SQLite DB**:\n   ```bash\n   cp app.db app.db.backup.$(date +%Y%m%d%H%M%S)\n   ```\n4. **Export data from SQLite**:\n   ```python\n   # Use SQLAlchemy to read all tables\n   from sqlalchemy import create_engine, MetaData, Table\n   sqlite_engine = create_engine('sqlite:///app.db')\n   metadata = MetaData()\n   metadata.reflect(bind=sqlite_engine)\n   ```\n5. **Transform & Load into PostgreSQL**:\n   - Use `pandas` or direct SQLAlchemy inserts.\n   - Handle type conversions (e.g., SQLite `TEXT` → PostgreSQL `VARCHAR`, `INTEGER` → `SERIAL`/`BIGSERIAL`).\n   - Reset sequences after bulk insert:\n     ```sql\n     SELECT setval('table_id_seq', (SELECT MAX(id) FROM table));\n     ```\n6. **Update Flask config** to point to PostgreSQL.\n7. **Restart Flask app**.\n8. **Disable maintenance mode**.\n\n---\n\n## 4. Validation Steps\n\n### Automated Checks\n- [ ] **Row Count Comparison**: Verify `COUNT(*)` matches for every table.\n- [ ] **Checksum Validation**: Compare MD5/SHA256 of key columns (e.g., `id`, `created_at`) across a sample.\n- [ ] **Referential Integrity**: Ensure no orphaned foreign keys.\n- [ ] **Application Smoke Tests**: Run critical user flows (login, create, read, update, delete).\n\n### Manual Spot Checks\n- [ ] Verify timestamps are correctly converted (SQLite stores as text; PostgreSQL uses `TIMESTAMP`).\n- [ ] Check boolean fields (`0/1` in SQLite → `true/false` in PostgreSQL).\n- [ ] Confirm auto-increment IDs continue correctly.\n\n---\n\n## 5. Risks & Mitigations\n\n| Risk | Impact | Mitigation |\n|------|--------|------------|\n| **Data Loss** | Critical | Full backup before migration; test restore procedure. |\n| **Type Mismatches** | High | Explicitly define column types in SQLAlchemy models; test in staging. |\n| **Sequence Desync** | Medium | Reset PostgreSQL sequences after bulk load. |\n| **Performance Regression** | Medium | Benchmark queries in staging; add indexes as needed. |\n| **Downtime Overrun** | Medium | Practice migration in staging; have rollback ready. |\n| **SQL Incompatibility** | High | Audit raw SQL queries; replace SQLite-specific functions. |\n\n---\n\n## 6. Rollback Plan\n\n1. **If migration fails mid-way**:\n   - Restore SQLite DB from backup.\n   - Revert Flask config to SQLite URI.\n   - Restart app.\n   - Investigate failure in staging.\n\n2. **If issues arise post-cutover**:\n   - Keep SQLite DB intact for 7–14 days.\n   - If critical bug found, revert to SQLite and fix in staging.\n\n---\n\n## 7. Post-Migration Tasks\n\n- [ ] Monitor PostgreSQL performance (slow queries, connection pool).\n- [ ] Remove SQLite dependency from codebase.\n- [ ] Update CI/CD pipeline to use PostgreSQL for tests.\n- [ ] Document new database setup for team.\n- [ ] Schedule regular PostgreSQL backups.\n\n---\n\n## Key Tools\n\n- **Alembic**: For schema migrations.\n- **pgloader**: Optional, for automated SQLite → PostgreSQL data transfer.\n- **SQLAlchemy**: ORM abstraction minimizes dialect-specific code.\n- **psql**: For manual validation and sequence resets.\n\n> **Recommendation**: For a small Flask app, use the **maintenance-window cutover** with thorough staging testing. It’s simpler, lower-risk, and sufficient for most small-scale applications."
+   },
+   {
+    "id": "general_en_explain",
+    "category": "general_en",
+    "origin": "suite",
+    "finish_reason": "length",
+    "answer_chars": 5374,
+    "usage": {
+     "prompt_tokens": 40,
+     "completion_tokens": 1400,
+     "total_tokens": 1440
+    },
+    "elapsed_s": 99.373,
+    "answer": "Transformer inference on local GPUs is predominantly **memory-bandwidth limited** rather than compute-limited due to the fundamental nature of the **autoregressive decoding process** and the **memory access patterns** of the attention mechanism.\n\nHere’s a technical breakdown of why this happens, with concrete examples of what changes throughput.\n\n### 1. The Core Issue: Arithmetic Intensity in Autoregressive Decoding\n\nDuring **training** or **prefill** (processing the prompt), the model processes a sequence of tokens in parallel. This results in high **arithmetic intensity** (FLOPs per byte of memory accessed), making the operation **compute-bound**.\n\nHowever, during **autoregressive generation** (token-by-token decoding), the model generates one token at a time. For each new token:\n- The model must read the entire **Key-Value (KV) cache** for all previous tokens.\n- It performs a small amount of computation (matrix-vector multiplications) relative to the amount of data read.\n\nThis results in **low arithmetic intensity**, making the operation **memory-bandwidth-bound**.\n\n#### Concrete Example:\nConsider a 7B parameter model with FP16 weights:\n- **Weight size**: ~14 GB.\n- **KV Cache size**: For a 2048-token context, the KV cache can be ~1–2 GB (depending on layers, heads, and head dimension).\n- **Computation per token**: A single forward pass for one token involves ~14 GFLOPs (for a 7B model).\n- **Memory traffic per token**: The GPU must read ~14 GB of weights + ~1–2 GB of KV cache = **~15–16 GB**.\n\n**Arithmetic Intensity** = FLOPs / Bytes = 14 GFLOPs / 16 GB ≈ **0.875 FLOPs/Byte**.\n\nModern GPUs have a **ridge point** (the balance between compute and memory bandwidth) of ~100–200 FLOPs/Byte. Since 0.875 << 100, the GPU spends most of its time waiting for data from memory, not computing.\n\n### 2. The KV Cache Bottleneck\n\nThe **KV cache** stores the key and value vectors for all previous tokens to avoid recomputing them. During decoding:\n- For each new token, the attention mechanism must read the entire KV cache to compute attention scores.\n- This is a **linear scan** over memory, which is bandwidth-intensive.\n- As the context length grows, the KV cache grows linearly, increasing memory traffic per token.\n\n#### Example:\n- **Short context (128 tokens)**: KV cache is small. Memory traffic is dominated by model weights.\n- **Long context (32k tokens)**: KV cache can be >10 GB. Memory traffic is dominated by KV cache reads. Throughput drops significantly because the GPU must stream more data per token.\n\n### 3. What Changes Throughput?\n\nSince inference is memory-bound, **throughput (tokens/sec)** is primarily determined by **memory bandwidth** and **memory access efficiency**, not raw FLOPS.\n\n#### A. Memory Bandwidth (GB/s)\n- **Higher bandwidth = Higher throughput**.\n- **Example**: \n  - **RTX 3090**: ~936 GB/s bandwidth.\n  - **RTX 4090**: ~1008 GB/s bandwidth.\n  - **A100 (80GB)**: ~2039 GB/s bandwidth.\n  - **H100**: ~3350 GB/s bandwidth.\n  - The H100 will have ~3.5x higher throughput than the RTX 3090 for the same model, despite similar compute capabilities, because it can feed data to the compute units faster.\n\n#### B. Model Quantization (Reducing Memory Traffic)\n- **FP16 → INT8/INT4**: Reduces the size of weights and KV cache, directly reducing memory traffic.\n- **Example**: \n  - A 7B model in FP16 requires ~14 GB of weight reads per token.\n  - In INT4, it requires ~3.5 GB.\n  - **Throughput increases ~4x** because the GPU reads 4x less data per token.\n  - **KV Cache Quantization**: Quantizing the KV cache to INT8 or INT4 reduces the bandwidth needed for attention, especially for long contexts.\n\n#### C. Batch Size (Amortizing Memory Traffic)\n- **Batching multiple requests** allows the GPU to reuse the same weight reads for multiple tokens.\n- **Example**: \n  - **Batch size 1**: Read 14 GB of weights to generate 1 token.\n  - **Batch size 32**: Read 14 GB of weights to generate 32 tokens.\n  - **Arithmetic intensity increases** from 0.875 to ~28 FLOPs/Byte.\n  - Throughput increases nearly linearly with batch size until the GPU becomes compute-bound or runs out of memory for the KV cache.\n\n#### D. Context Length (KV Cache Size)\n- **Longer contexts = More KV cache reads = Lower throughput**.\n- **Example**: \n  - Generating a token with a 1k context might take 10 ms.\n  - Generating a token with a 32k context might take 50 ms because the KV cache is 32x larger, requiring more memory bandwidth.\n\n#### E. GPU Memory Hierarchy and Caching\n- **L2 Cache**: If the KV cache or weights fit in L2 cache, memory traffic is reduced. However, for large models, this is rarely the case.\n- **PagedAttention (vLLM)**: Reduces memory fragmentation and improves KV cache access efficiency, allowing larger batch sizes and better bandwidth utilization.\n\n### Summary Table\n\n| Factor | Impact on Throughput | Why |\n|--------|----------------------|-----|\n| **Memory Bandwidth** | Directly proportional | Higher GB/s means faster data loading. |\n| **Quantization (INT4/INT8)** | Increases throughput | Reduces bytes read per token. |\n| **Batch Size** | Increases throughput | Amortizes weight reads over multiple tokens. |\n| **Context Length** | Decreases throughput | Larger KV cache requires more bandwidth. |\n| **Compute FLOPS** | Minimal impact | GPU is idle waiting for memory. |\n\n### Conclusion\n\nTransformer inference on local"
+   },
+   {
+    "id": "general_ja_plan",
+    "category": "general_ja",
+    "origin": "suite",
+    "finish_reason": "length",
+    "answer_chars": 3335,
+    "usage": {
+     "prompt_tokens": 43,
+     "completion_tokens": 1400,
+     "total_tokens": 1443
+    },
+    "elapsed_s": 99.853,
+    "answer": "# 小規模社内Pythonツールの運用環境移行計画\n\n## 1. 概要と前提条件\n\n### 1.1 目的\n開発環境で動作確認済みの小規模Pythonツールを、安定性・セキュリティ・監視性を考慮した運用環境へ安全に移行する。\n\n### 1.2 前提条件\n- ツールは単一機能または少数の機能に限定されている\n- 外部依存関係が明確に管理されている\n- 開発環境と運用環境の差異が最小限である\n- 移行対象は非クリティカルまたは低リスクな業務プロセス\n\n### 1.3 成功基準\n- 移行後72時間以内に重大な障害が発生しない\n- 既存の業務フローが中断なく継続される\n- 監視・ログ・アラートが正常に機能する\n- ロールバックが15分以内に実行可能である\n\n---\n\n## 2. リスク評価と対策\n\n| リスクカテゴリ | 具体的なリスク | 影響度 | 発生確率 | 対策 |\n|---|---|---|---|---|\n| **依存関係** | Pythonバージョン不一致、ライブラリの非互換性 | 高 | 中 | 仮想環境の完全再現、`requirements.txt`/`poetry.lock`の厳密固定 |\n| **環境差異** | OS設定、権限、パス、環境変数の違い | 高 | 高 | 環境変数の一元管理、設定ファイルの分離、Docker化の検討 |\n| **データ整合性** | 移行中のデータ欠損・重複・破損 | 高 | 低 | 事前バックアップ、トランザクションログ、チェックサム検証 |\n| **パフォーマンス** | 運用環境でのリソース不足、遅延 | 中 | 中 | 負荷テスト、リソース監視、スケールアウト設計 |\n| **セキュリティ** | 機密情報の漏洩、権限過剰付与 | 高 | 低 | シークレット管理（Vault/Secrets Manager）、最小権限原則 |\n| **運用負荷** | 障害時の対応遅延、監視不足 | 中 | 中 | 事前のオンコール体制、アラート設定、ドキュメント整備 |\n| **ロールバック失敗** | 旧環境への復旧不能 | 高 | 低 | 旧環境の保持期間延長、ロールバック手順の事前テスト |\n\n---\n\n## 3. 移行前準備フェーズ\n\n### 3.1 環境整備\n\n#### 3.1.1 運用環境の構築\n```bash\n# 運用サーバーの基本設定例\n# 1. Pythonバージョンの固定\nsudo apt install python3.11 python3.11-venv python3.11-dev\n\n# 2. 専用ユーザーの作成（最小権限）\nsudo useradd -m -s /bin/bash appuser\nsudo usermod -aG www-data appuser  # 必要に応じて\n\n# 3. ディレクトリ構造の作成\nsudo mkdir -p /opt/app/{bin,config,logs,data,backups}\nsudo chown -R appuser:appuser /opt/app\n```\n\n#### 3.1.2 依存関係の固定\n```txt\n# requirements.txt の例（バージョン厳密固定）\nrequests==2.31.0\npandas==2.1.4\nsqlalchemy==2.0.23\npydantic==2.5.2\n```\n\n```bash\n# 仮想環境の作成と依存関係のインストール\npython3.11 -m venv /opt/app/venv\nsource /opt/app/venv/bin/activate\npip install --no-cache-dir -r requirements.txt\n```\n\n#### 3.1.3 設定ファイルの分離\n```yaml\n# config/prod.yaml\ndatabase:\n  host: prod-db.internal\n  port: 5432\n  name: app_prod\n  user: ${DB_USER}        # 環境変数から注入\n  password: ${DB_PASSWORD}\n\nlogging:\n  level: INFO\n  file: /opt/app/logs/app.log\n  max_bytes: 10485760\n  backup_count: 5\n\nfeature_flags:\n  enable_new_feature: false\n```\n\n### 3.2 シークレット管理\n```bash\n# 環境変数ファイル（git管理外、権限600）\n# /opt/app/config/.env\nDB_USER=app_prod_user\nDB_PASSWORD=********\nAPI_KEY=********\n```\n\n```bash\n# systemdサービスで環境変数を参照\n# /etc/systemd/system/app-tool.service\n[Service]\nEnvironmentFile=/opt/app/config/.env\nUser=appuser\nGroup=appuser\nWorkingDirectory=/opt/app\nExecStart=/opt/app/venv/bin/python /opt/app/bin/main.py\nRestart=on-failure\nRestartSec=10\n```\n\n### 3.3 監視・ログ基盤の準備\n```python\n# logging_config.py\nimport logging\nimport logging.handlers\nimport os\n\ndef setup_logging():\n    logger = logging.getLogger('app_tool')\n    logger.setLevel(logging.INFO)\n    \n    # ファイルハンドラ（ローテーション付き）\n    file_handler = logging.handlers.RotatingFileHandler(\n        '/opt/app/logs/app.log',\n        maxBytes=10*1024*1024,  # 10MB\n        backupCount=5\n    )\n    file_handler.setLevel(logging.INFO)\n    \n    # フォーマット\n    formatter = logging.Formatter(\n        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'\n    )\n    file_handler.setFormatter(formatter)\n    \n    logger.addHandler(file_handler)\n    \n    # 必要に応じてCloudWatch/Sentry等のハンドラを追加\n    return logger\n```\n\n### 3.4 バックアップ戦略\n```bash\n#!/bin/bash\n# backup.sh - 移行前バックアップ\nBACKUP_DIR=\"/opt/app/backups\"\nTIMESTAMP=$(date +%Y%m%d_%H%M%S)\n\n# データベースバックアップ\npg_dump -h prod-db.internal -U app_prod_user app_prod > \\\n    ${BACKUP_DIR}/db_backup_${TIMESTAMP}.sql\n\n# 設定ファイルバックアップ\ntar -czf ${BACKUP_DIR}/config_backup_${TIMESTAMP}.tar.gz \\\n    /opt"
+   },
+   {
+    "id": "general_ja_explain",
+    "category": "general_ja",
+    "origin": "suite",
+    "finish_reason": "length",
+    "answer_chars": 2580,
+    "usage": {
+     "prompt_tokens": 43,
+     "completion_tokens": 1400,
+     "total_tokens": 1443
+    },
+    "elapsed_s": 100.295,
+    "answer": "ローカルGPU環境において、LLM（大規模言語モデル）の推論速度が計算能力（FLOPS）よりも**メモリ帯域幅（Memory Bandwidth）**に強く依存する主な理由は、推論プロセスの性質が「計算集約型」ではなく「メモリ集約型」だからです。\n\n以下に、技術的かつ具体的な観点からその理由を解説します。\n\n### 1. 推論のボトルネック：メモリ読み出しが計算を待たせる\n\nLLMの推論（特にデコーディング段階）では、生成するトークンごとに、モデルパラメータ全体をメモリから読み出す必要があります。\n\n- **計算量 vs メモリアクセス量**:\n  - 現代のGPU（例: NVIDIA RTX 4090, A100など）は、FP16/BF16演算において非常に高いスループット（数十〜数百 TFLOPS）を持っています。\n  - 一方、GPUメモリ（VRAM）への読み出し速度は、HBM2e/HBM3などの高速メモリでも数TB/s程度に制限されます。\n  - LLMの推論では、**「1バイトのデータを読み出すごとに、数回〜数十回の浮動小数点演算を行う」**という比率（Arithmetic Intensity）が非常に低くなります。\n  - その結果、GPUのコアが計算を完了しても、次のデータがメモリから届くのを待たなければならず、**計算ユニットがアイドル状態（バブル）になる**ことが頻繁に発生します。これを「メモリバウンド（Memory-bound）」と呼びます。\n\n### 2. 自己回帰生成（Autoregressive Generation）の特性\n\nLLMは通常、1トークンずつ逐次的に生成します。この過程では、以下の操作が毎回繰り返されます。\n\n1. **入力埋め込み（Embedding）の取得**\n2. **Transformerブロックの各層での演算**:\n   - 注意機構（Attention）: Q, K, Vベクトルの計算とアテンションスコアの算出\n   - FFN（Feed-Forward Network）: 線形変換と活性化関数\n3. **出力層でのロジット計算**\n\nこれらの各ステップで、**モデルパラメータ（重み行列）をVRAMから読み出す**必要があります。パラメータサイズが大きいほど（例: 7B, 13B, 70Bモデル）、読み出すデータ量が増え、メモリ帯域幅の制約がより顕著になります。\n\n### 3. KVキャッシュのメモリ帯域圧迫\n\n推論速度をさらに遅くする要因として、**KVキャッシュ（Key-Value Cache）**の存在があります。\n\n- **KVキャッシュとは**: 生成済みのトークンのKeyベクトルとValueベクトルをメモリに保持し、再計算を避けるための仕組みです。\n- **問題点**:\n  - 生成トークン数が増えるにつれて、KVキャッシュのサイズは線形に増加します。\n  - 各トークン生成時に、**すべての層のKVキャッシュをメモリから読み出し、新しいトークンとのアテンション計算を行う**必要があります。\n  - 長文コンテキスト（Long Context）では、KVキャッシュがパラメータサイズを上回るほど大きくなり、**メモリ帯域幅の大部分がKVキャッシュの読み出しに消費**されます。\n  - これにより、パラメータ読み出しとKVキャッシュ読み出しの両方でメモリ帯域が飽和し、推論速度が劇的に低下します。\n\n### 4. ローカルGPUのメモリ帯域幅の限界\n\nクラウド環境で使用されるデータセンター向けGPU（例: H100, A100）は、HBM3/HBM2eメモリを採用し、**2〜3 TB/s**以上の帯域幅を提供します。\n\n一方、ローカルで一般的なコンシューマー向けGPU（例: RTX 4090, RTX 3090）は、GDDR6Xメモリを採用しており、帯域幅は**約1 TB/s**程度です。\n\n- **比較**:\n  - H100: ~3.35 TB/s\n  - RTX 4090: ~1.01 TB/s\n- **影響**:\n  - 同じモデルを推論する場合、RTX 4090はH100の約1/3の帯域幅しか持たないため、**メモリ読み出し待ち時間が3倍近く長くなる**可能性があります。\n  - 特にパラメータサイズが大きいモデル（例: 70B以上）では、帯域幅の差が推論速度に直結します。\n\n### 5. 具体的な数値例：なぜメモリ帯域が支配的か？\n\n例えば、**7Bパラメータのモデル**をFP16（2バイト/パラメータ）で推論する場合を考えます。\n\n- **パラメータサイズ**: 7B × 2 bytes = **14 GB**\n- **1トークン生成時に必要なメモリ読み出し量**:\n  - パラメータ全体を1回読み出す必要があるため、約14 GB。\n  - KVキャッシュの読み出しも加算されるため、実際にはこれ以上になります。\n- **RTX 4090の帯域幅**: 約1 TB/s = 1000 GB/s\n- **理論上の最小読み出し時間**: 14 GB / 1000 GB/s = **14 ms**\n\nつまり、**計算が一切かからなくても、メモリからデータを読み出すだけで1トークンあたり14msかかる**ことになります。実際の計算時間（FLOPSで決まる）はこれより短いため、**メモリ読み出しがボトルネック**であることが明確です。\n\n### 結論\n\nローカルGPUでLLM推論が遅い主な理由は、**GPUの計算能力がメモリ帯域幅の供給速度を上回っており、パラメータとKVキャッシュの読み出しが推論の主要な時間を占めているため**です。\n\nこの制約を緩和するためには、以下のような技術が有効です：\n- **量子化（Quantization）**: FP16 → INT8/INT4 に変換し、読み出すデータ量を削減。\n- **推論エンジン最適化**: llama.cpp, vLLM, TensorRT-LLMなど、メモリアクセスパターンを最適化するエンジンを使用。\n- **モデルアーキテクチャの選択**: GQA"
+   },
+   {
+    "id": "heldout_code_rate_limiter",
+    "category": "code",
+    "origin": "heldout",
+    "finish_reason": "stop",
+    "answer_chars": 3052,
+    "usage": {
+     "prompt_tokens": 55,
+     "completion_tokens": 665,
+     "total_tokens": 720
+    },
+    "elapsed_s": 44.365,
+    "answer": "```python\nimport collections\nfrom typing import Dict, Tuple\n\n\nclass SlidingWindowRateLimiter:\n    \"\"\"\n    A sliding window rate limiter that tracks requests per key within a time window.\n    \n    Uses a deque per key to store timestamps of requests, allowing O(1) amortized\n    operations for checking and adding requests.\n    \"\"\"\n    \n    def __init__(self, max_requests: int, window_seconds: float):\n        \"\"\"\n        Initialize the rate limiter.\n        \n        Args:\n            max_requests: Maximum number of requests allowed within the window.\n            window_seconds: The size of the sliding window in seconds.\n        \"\"\"\n        if max_requests <= 0:\n            raise ValueError(\"max_requests must be positive\")\n        if window_seconds <= 0:\n            raise ValueError(\"window_seconds must be positive\")\n        \n        self.max_requests = max_requests\n        self.window_seconds = window_seconds\n        # Map from key to deque of timestamps\n        self._requests: Dict[str, collections.deque] = {}\n    \n    def allow(self, key: str, timestamp: float) -> bool:\n        \"\"\"\n        Check if a request for the given key at the given timestamp is allowed.\n        \n        Args:\n            key: The identifier for the client/request source.\n            timestamp: The current timestamp in seconds.\n            \n        Returns:\n            True if the request is allowed, False otherwise.\n        \"\"\"\n        if key not in self._requests:\n            self._requests[key] = collections.deque()\n        \n        deque = self._requests[key]\n        \n        # Remove expired timestamps from the front of the deque\n        cutoff = timestamp - self.window_seconds\n        while deque and deque[0] <= cutoff:\n            deque.popleft()\n        \n        # Check if we can allow this request\n        if len(deque) < self.max_requests:\n            deque.append(timestamp)\n            return True\n        else:\n            return False\n    \n    def reset(self, key: str = None) -> None:\n        \"\"\"\n        Reset the rate limiter for a specific key or all keys.\n        \n        Args:\n            key: If provided, reset only this key. If None, reset all keys.\n        \"\"\"\n        if key is None:\n            self._requests.clear()\n        else:\n            self._requests.pop(key, None)\n    \n    def remaining(self, key: str, timestamp: float) -> int:\n        \"\"\"\n        Get the number of remaining requests allowed for a key at a given timestamp.\n        \n        Args:\n            key: The identifier for the client/request source.\n            timestamp: The current timestamp in seconds.\n            \n        Returns:\n            Number of remaining requests allowed.\n        \"\"\"\n        if key not in self._requests:\n            return self.max_requests\n        \n        deque = self._requests[key]\n        \n        # Remove expired timestamps\n        cutoff = timestamp - self.window_seconds\n        while deque and deque[0] <= cutoff:\n            deque.popleft()\n        \n        return max(0, self.max_requests - len(deque))\n```"
+   },
+   {
+    "id": "heldout_code_interval_schedule",
+    "category": "code",
+    "origin": "heldout",
+    "finish_reason": "stop",
+    "answer_chars": 1744,
+    "usage": {
+     "prompt_tokens": 52,
+     "completion_tokens": 539,
+     "total_tokens": 591
+    },
+    "elapsed_s": 35.676,
+    "answer": "```python\ndef max_non_overlapping(intervals):\n    \"\"\"\n    Returns a maximum-size subset of non-overlapping half-open intervals.\n    \n    Tie-breaking rule: When multiple intervals have the same end point,\n    the one with the smaller start point is preferred. If start points are\n    also equal, the original order is preserved (stable sort).\n    \n    Args:\n        intervals: A list of tuples (start, end) representing half-open intervals [start, end).\n        \n    Returns:\n        A list of non-overlapping intervals with maximum size.\n    \"\"\"\n    if not intervals:\n        return []\n    \n    # Sort by end point, then by start point for tie-breaking\n    sorted_intervals = sorted(intervals, key=lambda x: (x[1], x[0]))\n    \n    result = []\n    last_end = float('-inf')\n    \n    for start, end in sorted_intervals:\n        if start >= last_end:\n            result.append((start, end))\n            last_end = end\n    \n    return result\n\n\n# Compact tests\nif __name__ == \"__main__\":\n    # Test 1: Basic case\n    assert max_non_overlapping([(1, 3), (2, 4), (3, 5)]) == [(1, 3), (3, 5)]\n    \n    # Test 2: Empty input\n    assert max_non_overlapping([]) == []\n    \n    # Test 3: Single interval\n    assert max_non_overlapping([(1, 2)]) == [(1, 2)]\n    \n    # Test 4: All overlapping\n    assert max_non_overlapping([(1, 5), (2, 4), (3, 6)]) == [(2, 4)]\n    \n    # Test 5: No overlap\n    assert max_non_overlapping([(1, 2), (3, 4), (5, 6)]) == [(1, 2), (3, 4), (5, 6)]\n    \n    # Test 6: Tie-breaking by start point\n    assert max_non_overlapping([(1, 3), (2, 3), (3, 4)]) == [(1, 3), (3, 4)]\n    \n    # Test 7: Half-open intervals touching\n    assert max_non_overlapping([(1, 2), (2, 3)]) == [(1, 2), (2, 3)]\n    \n    print(\"All tests passed.\")\n```"
+   },
+   {
+    "id": "heldout_general_en_incident",
+    "category": "general_en",
+    "origin": "heldout",
+    "finish_reason": "stop",
+    "answer_chars": 4023,
+    "usage": {
+     "prompt_tokens": 45,
+     "completion_tokens": 1080,
+     "total_tokens": 1125
+    },
+    "elapsed_s": 74.644,
+    "answer": "# Incident Response Checklist: Production API Latency Spike (p99 Doubled)\n\n**Trigger:** p99 latency increased by ≥100% within 5–15 minutes of a deploy.  \n**Severity:** High (User-facing degradation).  \n**Time Goal:** Contain within 10 minutes; Resolve within 30 minutes.\n\n---\n\n## 1. Containment (0–5 Minutes)\n*Goal: Stop the bleeding. Prioritize user experience over root cause analysis.*\n\n- [ ] **Declare Incident:** Open incident channel (e.g., Slack #incidents), assign Incident Commander (IC).\n- [ ] **Verify Impact:** Confirm p99 spike is real (not a monitoring artifact) and affects >5% of traffic.\n- [ ] **Immediate Mitigation Options (Choose ONE):**\n  - [ ] **Option A (Preferred): Rollback Deploy**  \n    - Trigger automated rollback to previous stable version.  \n    - Confirm rollback completion in CI/CD pipeline.\n  - [ ] **Option B: Feature Flag Disable**  \n    - If new feature is behind a flag, disable it immediately.\n  - [ ] **Option C: Traffic Shifting**  \n    - Route 100% of traffic to previous version (if blue/green or canary).\n- [ ] **Communicate:** Post initial status update to stakeholders:  \n  > *\"Incident declared. p99 latency doubled post-deploy. Rolling back to v1.2.3. ETA for resolution: 15 mins.\"*\n\n---\n\n## 2. Evidence Collection (Parallel to Containment)\n*Goal: Preserve state for post-mortem. Do NOT delay rollback for this.*\n\n- [ ] **Capture Metrics Snapshot:**\n  - [ ] Export p50, p95, p99 latency graphs (last 1 hour).\n  - [ ] Capture CPU, memory, I/O, and network saturation metrics.\n  - [ ] Note error rates (5xx, timeouts) and throughput (RPS).\n- [ ] **Log Preservation:**\n  - [ ] Save logs from affected pods/instances (last 15 mins).\n  - [ ] Capture slow query logs (if DB involved).\n  - [ ] Save application debug logs (if enabled).\n- [ ] **Deploy Metadata:**\n  - [ ] Record exact commit SHA, deploy timestamp, and changed files.\n  - [ ] Note any config changes (env vars, feature flags, DB migrations).\n- [ ] **Dependency Check:**\n  - [ ] Check downstream services (DB, cache, third-party APIs) for correlated latency.\n  - [ ] Verify if the spike is isolated to the new version or affects all instances.\n\n---\n\n## 3. Rollback Criteria & Execution\n*Goal: Ensure rollback is safe and effective.*\n\n- [ ] **Pre-Rollback Checks:**\n  - [ ] Confirm no breaking DB schema changes (if applicable, ensure backward compatibility).\n  - [ ] Verify previous version is healthy in staging/canary.\n- [ ] **Execute Rollback:**\n  - [ ] Trigger rollback via CI/CD (automated preferred).\n  - [ ] Monitor rollback progress in real-time.\n- [ ] **Post-Rollback Validation:**\n  - [ ] Confirm p99 latency returns to baseline (<10 mins).\n  - [ ] Verify error rates drop to normal levels.\n  - [ ] Check for new errors introduced by rollback (e.g., cache misses, cold starts).\n- [ ] **If Rollback Fails:**\n  - [ ] Escalate to senior engineer/SRE.\n  - [ ] Consider scaling out (add instances) to mitigate load.\n  - [ ] Consider disabling non-critical endpoints to preserve core functionality.\n\n---\n\n## 4. Follow-Up & Post-Mortem (Within 24–48 Hours)\n*Goal: Prevent recurrence. Blameless culture.*\n\n- [ ] **Root Cause Analysis (RCA):**\n  - [ ] Identify *why* latency doubled (e.g., N+1 queries, missing index, inefficient algorithm, lock contention).\n  - [ ] Determine why it wasn’t caught in staging/load testing.\n- [ ] **Action Items:**\n  - [ ] Fix the code/config issue.\n  - [ ] Add regression test for latency (e.g., k6, Gatling) in CI/CD.\n  - [ ] Improve monitoring: Add alerts for p99 latency *rate of change*, not just absolute thresholds.\n  - [ ] Review deploy process: Was canary analysis sufficient?\n- [ ] **Documentation:**\n  - [ ] Write post-mortem doc (timeline, impact, root cause, action items).\n  - [ ] Share with engineering team.\n- [ ] **Process Improvement:**\n  - [ ] Update runbook with new mitigation steps.\n  - [ ] Schedule follow-up review to ensure action items are completed.\n\n---\n\n**Key Principle:** *Contain first, investigate later. Never sacrifice user experience for debugging.*"
+   },
+   {
+    "id": "heldout_general_en_quant",
+    "category": "general_en",
+    "origin": "heldout",
+    "finish_reason": "length",
+    "answer_chars": 4972,
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 1400,
+     "total_tokens": 1456
+    },
+    "elapsed_s": 100.822,
+    "answer": "To understand the tradeoffs among **Weight-only INT4**, **W8A8 INT8**, and **BF16** inference on consumer GPUs (e.g., NVIDIA RTX 30/40 series, AMD RX 7000 series), we must analyze three distinct hardware bottlenecks:\n\n1.  **Memory Capacity** (How much data fits in VRAM?)\n2.  **Memory Bandwidth** (How fast can data move from VRAM to compute units?)\n3.  **Native Arithmetic Support** (How fast can the GPU perform the math?)\n\nBelow is a detailed breakdown of each format, followed by a comparative summary.\n\n---\n\n### 1. BF16 (Brain Floating Point 16)\n\n**Overview:**  \nBF16 is the standard \"half-precision\" format for modern AI training and inference. It uses 1 sign bit, 8 exponent bits, and 7 mantissa bits. It preserves the dynamic range of FP32 but with half the memory footprint.\n\n#### Practical Tradeoffs:\n- **Memory Capacity:**  \n  - **2 bytes per parameter.**  \n  - A 7B model requires ~14 GB VRAM for weights alone.  \n  - **Limitation:** Large models (e.g., 70B) require multiple GPUs or offloading to system RAM, which is slow.\n- **Memory Bandwidth:**  \n  - **High bandwidth demand.**  \n  - For memory-bound operations (like decoding tokens in LLMs), throughput is limited by how fast BF16 weights can be read from VRAM.  \n  - Consumer GPUs (e.g., RTX 4090) have ~1 TB/s bandwidth, but BF16 requires moving 2 bytes per weight, limiting token generation speed.\n- **Native Arithmetic Support:**  \n  - **Excellent.**  \n  - Modern consumer GPUs (Ampere, Ada Lovelace, RDNA 3) have dedicated Tensor Cores/Matrix Cores that natively support BF16 matrix multiplication.  \n  - Compute throughput is high, but for LLM inference, **memory bandwidth is usually the bottleneck**, not compute.\n\n**Accuracy:**  \n- **High.** BF16 is nearly indistinguishable from FP32 for most inference tasks. No quantization error.\n\n---\n\n### 2. Weight-only INT4 (e.g., GPTQ, AWQ, GGUF Q4_K_M)\n\n**Overview:**  \nOnly the **weights** are quantized to 4 bits (INT4). Activations (inputs/outputs of layers) remain in FP16/BF16. Dequantization happens on-the-fly during inference.\n\n#### Practical Tradeoffs:\n- **Memory Capacity:**  \n  - **~0.5–0.6 bytes per parameter** (including scale/zero-point overhead).  \n  - A 7B model requires ~3.5–4 GB VRAM.  \n  - **Advantage:** Enables running large models (e.g., 13B–34B) on consumer GPUs with 8–12 GB VRAM.\n- **Memory Bandwidth:**  \n  - **Low bandwidth demand.**  \n  - Since weights are 4 bits, you move **half the data** compared to BF16.  \n  - For memory-bound LLM decoding, this can yield **~2–3x speedup** over BF16, as the bottleneck is reading weights from VRAM.\n- **Native Arithmetic Support:**  \n  - **Poor.**  \n  - Consumer GPUs **do not** have native INT4 matrix multiplication units.  \n  - **Process:**  \n    1. Load INT4 weights from VRAM.  \n    2. **Dequantize** to FP16/BF16 in registers (using CUDA kernels).  \n    3. Perform FP16/BF16 matrix multiplication.  \n  - **Overhead:** Dequantization adds compute overhead, but since LLM inference is memory-bound, the bandwidth savings outweigh the compute cost.\n\n**Accuracy:**  \n- **Moderate to Good.**  \n  - Modern quantization methods (AWQ, GPTQ) minimize accuracy loss.  \n  - Perplexity increase is typically <1–2% for 7B–13B models.  \n  - May degrade performance on complex reasoning or code generation tasks.\n\n---\n\n### 3. W8A8 INT8 (Weight 8-bit, Activation 8-bit)\n\n**Overview:**  \nBoth **weights** and **activations** are quantized to 8-bit integers. Requires specialized kernels (e.g., TensorRT, CUTLASS) to handle integer matrix multiplication.\n\n#### Practical Tradeoffs:\n- **Memory Capacity:**  \n  - **1 byte per parameter.**  \n  - A 7B model requires ~7 GB VRAM.  \n  - **Advantage:** Better than BF16, worse than INT4.\n- **Memory Bandwidth:**  \n  - **Medium bandwidth demand.**  \n  - Moves 1 byte per weight (half of BF16, double of INT4).  \n  - Faster than BF16, slower than INT4 for memory-bound tasks.\n- **Native Arithmetic Support:**  \n  - **Good (with caveats).**  \n  - Consumer GPUs (Ampere+) have **INT8 Tensor Cores**.  \n  - **Process:**  \n    1. Load INT8 weights and INT8 activations.  \n    2. Perform **native INT8 matrix multiplication** on Tensor Cores.  \n    3. Dequantize results to FP16/BF16 for subsequent layers.  \n  - **Advantage:** Compute throughput is **2x higher** than BF16 for matrix multiplications.  \n  - **Caveat:** Requires careful calibration to avoid activation overflow. Not all layers benefit equally.\n\n**Accuracy:**  \n- **Good, but sensitive.**  \n  - INT8 quantization of activations is harder than weights.  \n  - Requires per-channel or per-tensor scaling.  \n  - Accuracy loss is typically <1% if well-calibrated, but can be significant for outlier-heavy activations (e.g., in LLMs).\n\n---\n\n### Comparative Summary Table\n\n| Feature | BF16 | Weight-only INT4 | W8A8 INT8 |\n| :--- | :--- | :--- | :--- |\n| **VRAM Usage** | High (2 bytes/param) | **Lowest** (~0.5–0.6 bytes/param) | Medium (1 byte/param) |\n| **Memory Bandwidth** | High (bottleneck for"
+   },
+   {
+    "id": "heldout_general_ja_migration",
+    "category": "general_ja",
+    "origin": "heldout",
+    "finish_reason": "stop",
+    "answer_chars": 2109,
+    "usage": {
+     "prompt_tokens": 53,
+     "completion_tokens": 1172,
+     "total_tokens": 1225
+    },
+    "elapsed_s": 82.555,
+    "answer": "# 社内REST API：同期処理から非同期ジョブ方式への移行計画\n\n## 1. 概要\n既存の同期型REST APIを、メッセージキュー（例: RabbitMQ, SQS, Kafka）とワーカープロセスを用いた非同期ジョブ処理へ移行する。ユーザー体験の向上（レスポンス時間短縮）とシステム負荷分散を目的とする。\n\n## 2. 移行戦略：段階的リリース（Strangler Fig Pattern）\n\n### フェーズ1：準備・基盤構築\n- 非同期処理基盤（キュー、ワーカー、DB）の構築\n- ジョブステータス管理テーブルの追加\n- 監視・アラート基盤の整備\n\n### フェーズ2：並行稼働（Dual-Write & Read-Through）\n- **書き込み**: 既存API経由でリクエストを受け付け、同期処理を継続しつつ、非同期ジョブをキューに投入\n- **読み取り**: クライアントは既存APIで結果を取得（同期処理完了まで待機）\n- **検証**: 同期結果と非同期結果の整合性をログで比較\n\n### フェーズ3：段階的切替（Feature Flag）\n- 特定エンドポイントまたはユーザーグループから、非同期レスポンス（`202 Accepted` + `job_id`）へ切替\n- クライアント側でポーリングまたはWebhook対応を実装\n- 段階的にトラフィックを10% → 50% → 100%へ拡大\n\n### フェーズ4：同期処理の廃止\n- 全トラフィックが非同期へ移行後、同期処理コードを削除\n- 旧APIエンドポイントを非同期プロキシへ変更\n\n---\n\n## 3. 互換性確保\n\n| 項目 | 対策 |\n|------|------|\n| **API契約** | 既存エンドポイントは維持し、内部で非同期へ委譲。新規エンドポイント（`/v2/async/...`）を並行提供 |\n| **レスポンス形式** | 非同期時は `202 Accepted` + `Location` ヘッダーでジョブステータスURLを返却。既存クライアント向けには、同期レスポンスをシミュレートする「ブロックモード」オプションを提供 |\n| **クライアント対応** | SDKを更新し、非同期ジョブのポーリング/Webhook処理を抽象化。旧SDKは同期モードで動作継続 |\n| **データ整合性** | 同期・非同期両経路で同一のビジネスロジックを共有し、結果の差分を監視 |\n\n---\n\n## 4. 監視・可観測性\n\n### 主要メトリクス\n- **キュー遅延**: メッセージ投入からワーカー取得までの時間\n- **ジョブ成功率**: 成功/失敗/リトライ回数\n- **ワーカー負荷**: CPU/メモリ使用率、同時実行ジョブ数\n- **エンドツーエンド遅延**: リクエスト受付からジョブ完了までの時間\n\n### アラート条件\n- キュー滞留数が閾値（例: 1,000件）を5分間超過\n- ジョブ失敗率が1%を10分間超過\n- ワーカープロセスの異常終了が検知された場合\n\n### トレース\n- 分散トレーシング（OpenTelemetry）で、APIリクエストからジョブ実行、DB更新までを一貫して追跡可能にする\n\n---\n\n## 5. ロールバック条件と手順\n\n### ロールバックトリガー\n1. **重大な機能障害**: 非同期ジョブのデータ破損または結果の不整合が検知された場合\n2. **性能劣化**: 非同期処理の遅延がSLA（例: 5分以内）を15分間超過し、ユーザー影響が大きい場合\n3. **基盤障害**: キューサービスまたはワーカークラスタの可用性が99.9%を下回った場合\n\n### ロールバック手順\n1. **Feature Flag切替**: 非同期処理へのトラフィックを0%へ即座に戻す（同期処理へ全振り）\n2. **キュー処理停止**: 新規ジョブの投入を停止し、既存ジョブは完了まで監視\n3. **データ整合性確認**: 非同期で処理されたジョブの結果が同期DBに正しく反映されているか検証\n4. **原因分析**: 障害ログを収集し、修正後に再移行を計画\n\n### 注意点\n- ロールバックは**5分以内**に完了できるよう、Feature Flagは動的に制御可能にする\n- 非同期ジョブの冪等性を確保し、再実行による重複処理を防ぐ\n\n---\n\n## 6. リスクと対策\n\n| リスク | 対策 |\n|--------|------|\n| クライアント対応遅延 | 同期モードを長期間維持し、移行期限を明確に通知 |\n| ジョブの重複実行 | 冪等キー（Idempotency Key）を必須化 |\n| キュー障害 | 複数AZに分散配置し、DLQ（デッドレターキュー）で失敗ジョブを隔離 |\n\n---\n\n## 7. 成果物\n- 移行完了レポート（性能比較、エラー率比較）\n- 更新されたAPIドキュメント\n- 運用マニュアル（監視ダッシュボード、障害対応手順）"
+   },
+   {
+    "id": "heldout_general_ja_speculative",
+    "category": "general_ja",
+    "origin": "heldout",
+    "finish_reason": "stop",
+    "answer_chars": 2294,
+    "usage": {
+     "prompt_tokens": 45,
+     "completion_tokens": 1170,
+     "total_tokens": 1215
+    },
+    "elapsed_s": 82.601,
+    "answer": "投機的デコード（Speculative Decoding）は、小さな「ドラフトモデル」で生成した候補トークンを、大きな「ターゲットモデル」で並列に検証することで推論速度を向上させる手法です。しかし、この手法が常に高速化につながるわけではなく、むしろ特定の条件下では性能が低下する可能性があります。その主な理由は、**受理率（Acceptance Rate）**、**検証コスト（Verification Cost）**、および**メモリ使用量（Memory Usage）**のバランスにあります。\n\n以下に、技術的な観点からその理由を説明します。\n\n### 1. 受理率（Acceptance Rate）の低さによるオーバーヘッド\n\n投機的デコードの速度向上は、「ドラフトモデルが生成したトークンが、ターゲットモデルによってどの程度受け入れられるか」に強く依存します。\n\n- **メカニズム**: ドラフトモデルが生成した $k$ 個のトークンに対し、ターゲットモデルが1回のフォワードパスで検証を行います。もし最初の $i$ 個のトークンが一致し、$i+1$ 番目が不一致の場合、$i$ 個のトークンを確定し、$i+1$ 番目以降を破棄して再計算します。\n- **問題点**: ドラフトモデルとターゲットモデルの分布が乖離している場合、受理率が低下します。受理率が低いと、多くの計算リソースが「破棄されるトークンの検証」に費やされます。\n- **結果**: 受理率が一定の閾値（例えば、ドラフト長 $k$ に対して期待値が1.0を下回るような場合）を下回ると、検証に要する計算コストが、通常の逐次デコード（Autoregressive Decoding）の1ステップあたりのコストを上回り、全体としてのレイテンシが増加します。特に、ドラフトモデルがターゲットモデルの出力分布を十分に近似できていない場合、この効果が顕著になります。\n\n### 2. 検証コスト（Verification Cost）とバッチサイズのトレードオフ\n\n投機的デコードでは、ターゲットモデルに対して「1回のフォワードパスで $k+1$ 個のトークンを処理する」必要があります。これは、通常のデコードでは1ステップで1トークンしか処理しないのと比較して、計算負荷の構造が異なります。\n\n- **計算負荷の増加**: 通常のデコードでは、バッチサイズ $B$ に対して、1ステップあたりの計算量は $O(B \\cdot d^2)$ （$d$ はモデル次元）程度です。一方、投機的デコードでは、1ステップあたりの計算量が $O(B \\cdot (k+1) \\cdot d^2)$ 程度に増加します。\n- **メモリ帯域幅のボトルネック**: LLMの推論は、特にバッチサイズが小さい場合、計算能力（FLOPS）よりもメモリ帯域幅（Memory Bandwidth）がボトルネックになることが一般的です。投機的デコードでは、KVキャッシュの読み書きやアテンション計算のデータ量が $(k+1)$ 倍になるため、メモリ帯域幅の消費が増大します。\n- **結果**: 受理率が十分に高くない場合、この増大した検証コストを相殺できず、スループットが低下します。また、GPUの計算リソースが飽和している場合（大規模バッチ推論など）、並列検証による利点が薄れ、むしろオーバーヘッドが支配的になることがあります。\n\n### 3. メモリ使用量（Memory Usage）の増加\n\n投機的デコードは、追加のモデルと中間状態をメモリに保持する必要があるため、メモリ使用量が増加します。\n\n- **ドラフトモデルのメモリ**: ドラフトモデル自体のパラメータをメモリにロードする必要があります。これにより、ターゲットモデルに割り当てられるKVキャッシュの容量が圧迫されます。\n- **KVキャッシュの複雑化**: 投機的デコードでは、ドラフトトークンの検証中に一時的なKVキャッシュの更新やロールバックが必要になる場合があります。実装によっては、ドラフトトークン分のKVキャッシュを別途管理する必要があり、メモリフラグメンテーションや追加のメモリオーバーヘッドを引き起こします。\n- **結果**: メモリ使用量の増加は、バッチサイズの上限を低下させます。バッチサイズが小さくなると、GPUの計算効率が低下し、スループットが落ちるため、結果として全体の推論速度が低下する可能性があります。特に、メモリ帯域幅が限られているデバイスでは、この影響が顕著です。\n\n### 結論\n\n投機的デコードが高速化につながるのは、**「ドラフトモデルの精度が高く、受理率が十分に高い」**かつ**「検証コストの増加を相殺できるほど多くのトークンを一度に確定できる」**場合に限られます。\n\n逆に、以下の条件では性能が低下する可能性があります：\n1. **受理率が低い**: ドラフトモデルとターゲットモデルの分布が異なる場合。\n2. **検証コストが支配的**: 受理率が低く、破棄されるトークンの検証に無駄な計算リソースを消費する場合。\n3. **メモリ制約が厳しい**: ドラフトモデルのメモリ使用量により、バッチサイズが制限され、GPUの計算効率が低下する場合。\n\nしたがって、投機的デコードの適用には、ドラフトモデルの選択、ドラフト長 $k$ のチューニング、およびハードウェアの特性（メモリ帯域幅 vs 計算能力）を考慮した慎重な評価が必要です。"
+   }
+  ]
+ }
+}

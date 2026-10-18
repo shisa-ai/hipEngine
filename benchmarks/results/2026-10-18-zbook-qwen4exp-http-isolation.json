@@ -1,0 +1,203 @@
+{
+ "date": "2026-10-18",
+ "host": "zbook",
+ "backend": "hip_gfx1151",
+ "quant": "gguf_ud_q4_k_xl",
+ "model": "qwen38fn-capon",
+ "execution_profile": "production",
+ "server": {
+  "max_context_tokens": 2048,
+  "kv_storage": "bf16",
+  "max_active_requests": 4,
+  "ar_batch_slots": 4,
+  "speculative_mtp": "off (default route)"
+ },
+ "command": ".venv/bin/python scripts/qwen4exp_http_isolation_gate.py --url http://127.0.0.1:18400 --output /tmp/isolation.json",
+ "schema": "hipengine.qwen4exp.http_isolation_gate.v1",
+ "url": "http://127.0.0.1:18400",
+ "checks": [
+  {
+   "name": "solo.all_served",
+   "passed": true,
+   "statuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+   ]
+  },
+  {
+   "name": "concurrent.all_served",
+   "passed": true,
+   "statuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+   ]
+  },
+  {
+   "name": "concurrent.text_matches_solo",
+   "passed": true,
+   "mismatched": []
+  },
+  {
+   "name": "concurrent.ids_match_solo",
+   "passed": true,
+   "mismatched": []
+  },
+  {
+   "name": "repeat.identical",
+   "passed": true,
+   "texts": [
+    "Paris",
+    "Paris",
+    "Paris"
+   ]
+  },
+  {
+   "name": "mixed_budget.each_respects_its_own_limit",
+   "passed": true,
+   "budgets": [
+    16,
+    32,
+    64
+   ],
+   "got": [
+    16,
+    32,
+    64
+   ]
+  },
+  {
+   "name": "session.answers_from_own_history",
+   "passed": true,
+   "answers": {
+    "iso-session-a": "4417",
+    "iso-session-b": "9028"
+   }
+  },
+  {
+   "name": "session.no_cross_contamination",
+   "passed": true,
+   "answers": {
+    "iso-session-a": "4417",
+    "iso-session-b": "9028"
+   }
+  }
+ ],
+ "details": {
+  "configured_width": 4,
+  "solo": [
+   {
+    "prompt": "Name the capital of France in one word.",
+    "text": "Paris",
+    "ids": null
+   },
+   {
+    "prompt": "Name the capital of Japan in one word.",
+    "text": "Tokyo",
+    "ids": null
+   },
+   {
+    "prompt": "Write the first eight prime numbers, comma separated.",
+    "text": "2, 3, 5, 7, 11, 13, 17, 19",
+    "ids": null
+   },
+   {
+    "prompt": "Reply with exactly: ISOLATION-OK",
+    "text": "ISOLATION-OK",
+    "ids": null
+   },
+   {
+    "prompt": "List three primary colors, comma separated.",
+    "text": "Red, Blue, Yellow",
+    "ids": null
+   },
+   {
+    "prompt": "What is 13 multiplied by 17? Answer with the number only.",
+    "text": "221",
+    "ids": null
+   },
+   {
+    "prompt": "Write the word 'stable' five times separated by spaces.",
+    "text": "stable stable stable stable stable",
+    "ids": null
+   },
+   {
+    "prompt": "Name two planets that have rings, comma separated.",
+    "text": "Saturn, Jupiter",
+    "ids": null
+   }
+  ],
+  "concurrent": [
+   {
+    "prompt": "Name the capital of France in one word.",
+    "text": "Paris",
+    "ids": null
+   },
+   {
+    "prompt": "Name the capital of Japan in one word.",
+    "text": "Tokyo",
+    "ids": null
+   },
+   {
+    "prompt": "Write the first eight prime numbers, comma separated.",
+    "text": "2, 3, 5, 7, 11, 13, 17, 19",
+    "ids": null
+   },
+   {
+    "prompt": "Reply with exactly: ISOLATION-OK",
+    "text": "ISOLATION-OK",
+    "ids": null
+   },
+   {
+    "prompt": "List three primary colors, comma separated.",
+    "text": "Red, Blue, Yellow",
+    "ids": null
+   },
+   {
+    "prompt": "What is 13 multiplied by 17? Answer with the number only.",
+    "text": "221",
+    "ids": null
+   },
+   {
+    "prompt": "Write the word 'stable' five times separated by spaces.",
+    "text": "stable stable stable stable stable",
+    "ids": null
+   },
+   {
+    "prompt": "Name two planets that have rings, comma separated.",
+    "text": "Saturn, Jupiter",
+    "ids": null
+   }
+  ],
+  "mismatched_text": [],
+  "mismatched_ids": [],
+  "repeat_texts": [
+   "Paris",
+   "Paris",
+   "Paris"
+  ],
+  "mixed_budget_completion_tokens": [
+   16,
+   32,
+   64
+  ],
+  "session_answers": {
+   "iso-session-a": "4417",
+   "iso-session-b": "9028"
+  }
+ },
+ "check_count": 8,
+ "failure_count": 0,
+ "status": "passed"
+}
