@@ -256,7 +256,7 @@ performance. hipEngine will not silently use PyTorch when a GPU is unsupported.
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
 ROCm 7.x is the safest choice for the current wheel (ROCm 10.0 has been tested and works fine as well).
-See the [TheRock setup guide](docs/THEROCK.md) for retained ROCm 7.13 and gfx1151 ROCm 10 setup/JIT validation.
+See the [TheRock setup guide](docs/THEROCK.md) for ROCm 7.13 and gfx1151 ROCm 10 setup and JIT validation.
 The first model load compiles and caches kernels, so it takes longer than later starts.
 
 Install from PyPI:
