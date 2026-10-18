@@ -16,6 +16,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out,
+    gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_fp16_fp16_out,
     plan_gguf_q4_k_t16_selected_prefill_build,
 )
 from hipengine.kernels.registry import resolve
@@ -163,6 +165,7 @@ def _run_t16_selected_dual_gpu(
     shared_x: bool = False,
     qmicro: bool = False,
     column_major: bool = False,
+    pair32_nwave: bool = False,
     raw_bits: bool = False,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
@@ -173,7 +176,15 @@ def _run_t16_selected_dual_gpu(
         raise ValueError("shared_x and qmicro are mutually exclusive test routes")
     if column_major and (shared_x or qmicro or dtype != "bf16"):
         raise ValueError("the K-major decode is bf16 row-major-route only")
-    if dtype == "bf16":
+    if pair32_nwave and (shared_x or qmicro or column_major):
+        raise ValueError("pair32_nwave is a plain row-major T16 route")
+    if pair32_nwave:
+        wrapper = (
+            gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_bf16_bf16_out
+            if dtype == "bf16"
+            else gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_fp16_fp16_out
+        )
+    elif dtype == "bf16":
         wrapper = (
             gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out
             if column_major
@@ -368,6 +379,34 @@ def test_q4_k_t16_shared_x_candidate_matches_baseline_bytes(dtype: str) -> None:
     )
     baseline = _run_t16_selected_dual_gpu(fixture, dtype, raw_bits=True)
     candidate = _run_t16_selected_dual_gpu(fixture, dtype, shared_x=True, raw_bits=True)
+    np.testing.assert_array_equal(candidate, baseline)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("dtype", ["bf16", "fp16"])
+@pytest.mark.parametrize(
+    "counts",
+    [[0, 16, 17, 31], [5, 11, 0, 23], [16, 16], [1, 31, 16, 16]],
+)
+def test_q4_k_t16_pair32_nwave_matches_baseline_bytes(dtype: str, counts: list[int]) -> None:
+    """The multi-wave 32-row-pair gate+up kernel reproduces compact32 bit for bit.
+
+    Both launches decode the same tiles with the same K order and operand
+    order, so any byte difference is a decode or addressing bug.  Odd nibbles
+    are the ones a wrong per-lane shift corrupts, so every fixture spans full
+    16-column tiles on both legs.
+    """
+
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=512,
+        out_features_a=48,
+        out_features_b=64,
+        dtype=dtype,
+        seed=23,
+    )
+    baseline = _run_t16_selected_dual_gpu(fixture, dtype, raw_bits=True)
+    candidate = _run_t16_selected_dual_gpu(fixture, dtype, pair32_nwave=True, raw_bits=True)
     np.testing.assert_array_equal(candidate, baseline)
 
 

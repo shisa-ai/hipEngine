@@ -754,6 +754,9 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_kernel(
   }
 
   const int32_t blocks_per_row = blocks_per_row32;
+  // Per-lane nibble shift for load_q4_t16_b_reg. An invalid column or expert
+  // decodes from the clamped ``sel`` base above; the store loop drops it.
+  const int q_shift = (lane16 & 1) * 4;
 
   __shared__ half16_t activation_tile[TN * 16];
 
@@ -799,13 +802,13 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_pair32_nwave_kernel(
 #pragma unroll
         for (int tm = 0; tm < TM; ++tm) {
           half16_t b_reg;
-          load_q4_t16_b_reg<qmicro>(tile_base0[tm] + blk * TILE_BYTES, sb, kt, lane16, valid_col[tm] && expert0_valid, b_reg);
+          load_q4_t16_b_reg<qmicro>(tile_base0[tm] + blk * TILE_BYTES, sb, kt, lane16, q_shift, b_reg);
           acc[tm][0] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg[0], b_reg, acc[tm][0]);
           if (same_expert) {
             acc[tm][1] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg[1], b_reg, acc[tm][1]);
           } else {
             half16_t b_reg1;
-            load_q4_t16_b_reg<qmicro>(tile_base1[tm] + blk * TILE_BYTES, sb, kt, lane16, valid_col[tm] && expert1_valid, b_reg1);
+            load_q4_t16_b_reg<qmicro>(tile_base1[tm] + blk * TILE_BYTES, sb, kt, lane16, q_shift, b_reg1);
             acc[tm][1] =
                 __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg[1], b_reg1, acc[tm][1]);
           }

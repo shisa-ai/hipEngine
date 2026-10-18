@@ -618,6 +618,9 @@ def test_split_prefill_divergence_boundaries_are_unchanged() -> None:
 
             return not np.array_equal(arm(split=False), arm(split=True))
 
-    assert diverges(256, 1), "single-token-suffix divergence disappeared"
+    # 255 keeps the single call inside one outer chunk on every arch: the
+    # gfx1151 profile chunks linear/MoE prefill at 256 rows, so a 257-token
+    # single call is itself 256 + 1 and cannot differ from the split.
+    assert diverges(255, 1), "single-token-suffix divergence disappeared"
     assert diverges(1024, 1028), "above-2048 split divergence disappeared"
     assert not diverges(1024, 1024), "at-2048 split must still be bit-exact"
