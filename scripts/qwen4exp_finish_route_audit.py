@@ -126,6 +126,20 @@ def audit_sampled_mtp(body: dict[str, Any]) -> list[dict[str, Any]]:
     return checks
 
 
+def audit_ignore_eos(body: dict[str, Any]) -> list[dict[str, Any]]:
+    """A raw continuation must not publish chat-template scaffolding as text."""
+
+    checks: list[dict[str, Any]] = []
+    choice, details = _finish(body)
+    text = (choice.get("message") or {}).get("content") or ""
+    leaked = sorted({marker for marker in ("<|im_start|>", "<|im_end|>", "<|endoftext|>")
+                     if marker in text})
+    _check(checks, "ignore_eos.no_special_token_text", not leaked, leaked=leaked, tail=text[-80:])
+    _check(checks, "ignore_eos.reason_is_length_or_stop",
+           choice.get("finish_reason") in {"length", "stop"}, got=choice.get("finish_reason"))
+    return checks
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:18392")
@@ -217,6 +231,17 @@ def main() -> int:
             "stop": [stop],
         },
         lambda body: audit_stop(body, stop),
+    )
+    run(
+        "ignore_eos",
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": "Count from 1 upward, one number per line."}],
+            "temperature": 0.0,
+            "max_tokens": 512,
+            "ignore_eos": True,
+        },
+        audit_ignore_eos,
     )
     run(
         "sampled_mtp",

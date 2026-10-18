@@ -631,7 +631,7 @@ class Qwen4ExpGGUFTextGenerator:
                     )
             outputs.append(
                 GenerationOutput(
-                    text=self.tokenizer.decode(generated, skip_special=False),
+                    text=self.tokenizer.decode(generated, skip_special=True),
                     generated_token_ids=tuple(generated),
                     token_logprobs=tuple(token_logprobs),
                     finish_details=finish_details_with_sampling_state(
@@ -785,7 +785,7 @@ class Qwen4ExpGGUFTextGenerator:
                     **_qwen4_exp_compact_step_kwargs(),
                 )
         return GenerationOutput(
-            text=self.tokenizer.decode(generated, skip_special=False),
+            text=self.tokenizer.decode(generated, skip_special=True),
             generated_token_ids=tuple(generated),
             finish_details=FinishDetails(
                 reason=reason,
@@ -1238,7 +1238,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             row.next_result = results[row.request_id]
 
     def _stream_text_delta(self, row, visible, *, final):
-        text = self.generator.tokenizer.decode(visible, skip_special=False)
+        text = self.generator.tokenizer.decode(visible, skip_special=True)
         if not final:
             # Byte-fallback tokens may end inside a UTF-8 codepoint. Do not
             # publish a replacement character that the next token will repair.
@@ -1308,7 +1308,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         if telemetry is None:
             telemetry = self._ar_batch_telemetry(row)
         self._outputs[row.request_id] = GenerationOutput(
-            text=self.generator.tokenizer.decode(visible, skip_special=False),
+            text=self.generator.tokenizer.decode(visible, skip_special=True),
             generated_token_ids=tuple(row.generated_ids),
             token_logprobs=tuple(row.token_logprobs[:len(visible)]),
             finish_details=finish,

@@ -1,0 +1,257 @@
+{
+ "schema": "hipengine.qwen4exp.finish_route_audit.v1",
+ "date": "2026-10-18",
+ "host": "zbook",
+ "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "quant": "gguf_ud_q4_k_xl",
+ "backend": "hip_gfx1151",
+ "execution_profile": "production",
+ "server": {
+  "max_context_tokens": 2048,
+  "kv_storage": "bf16",
+  "max_active_requests": 4,
+  "ar_batch": {
+   "enabled": true,
+   "slots": 4
+  },
+  "speculative": {
+   "provider": "qwen4_exp_mtp",
+   "candidate_budget": 3,
+   "serving": "opt_in",
+   "thinking": "hard"
+  }
+ },
+ "command": ".venv/bin/python scripts/qwen4exp_finish_route_audit.py --url http://127.0.0.1:18392 --output /tmp/finish_route3.json",
+ "status": "passed",
+ "check_count": 20,
+ "failure_count": 0,
+ "cases": [
+  {
+   "case": "length",
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 5,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": false
+   },
+   "text": "1, 2,"
+  },
+  {
+   "case": "eos",
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   },
+   "text": "OMEGA"
+  },
+  {
+   "case": "stop",
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "stop",
+    "sampler_mode": "processed_argmax",
+    "matched_stop": "STOPHERE",
+    "cache_action": "append_none"
+   },
+   "text": "ALPHA BETA GAMMA "
+  },
+  {
+   "case": "ignore_eos",
+   "finish_reason": "length",
+   "finish_details": {
+    "reason": "length",
+    "length_limit": 512,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none",
+    "phase": "answer",
+    "continuation_eligible": false
+   },
+   "text": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n\nuser\nassistant\n\n\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\nuser\nassistant\n\n\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\nuser\nassistant\n\n\n31\n32\n33\n34\n35\n36\n37\n38\n39\n40\nuser\nassistant\n\n\n41\n42\n43\n44\n45\n46\n47\n48\n49\n50\nuser\nassistant\n\n\n51\n52\n53\n54\n55\n56\n57\n58\n59\n60\nuser\nassistant\n\n\n61\n62\n63\n64\n6"
+  },
+  {
+   "case": "sampled_mtp",
+   "finish_reason": "stop",
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "sampled_speculative_mtp",
+    "cache_action": "append_none"
+   },
+   "text": "BRAVO"
+  }
+ ],
+ "checks": [
+  {
+   "case": "length",
+   "name": "length.finish_reason",
+   "passed": true,
+   "got": "length"
+  },
+  {
+   "case": "length",
+   "name": "length.finish_details_reason",
+   "passed": true,
+   "got": "length"
+  },
+  {
+   "case": "length",
+   "name": "length.usage_equals_budget",
+   "passed": true,
+   "usage": 5,
+   "budget": 5
+  },
+  {
+   "case": "eos",
+   "name": "eos.finish_reason",
+   "passed": true,
+   "got": "stop"
+  },
+  {
+   "case": "eos",
+   "name": "eos.finish_details_reason",
+   "passed": true,
+   "got": "eos"
+  },
+  {
+   "case": "eos",
+   "name": "eos.reports_the_eos_id",
+   "passed": true,
+   "finish_details": {
+    "reason": "eos",
+    "eos_token_id": 248046,
+    "sampler_mode": "greedy",
+    "cache_action": "append_none"
+   }
+  },
+  {
+   "case": "stop",
+   "name": "stop.finish_reason",
+   "passed": true,
+   "got": "stop"
+  },
+  {
+   "case": "stop",
+   "name": "stop.finish_details_reason",
+   "passed": true,
+   "got": "stop"
+  },
+  {
+   "case": "stop",
+   "name": "stop.names_the_matched_string",
+   "passed": true,
+   "matched_stop": "STOPHERE",
+   "expected": "STOPHERE"
+  },
+  {
+   "case": "stop",
+   "name": "stop.no_contradictory_eos",
+   "passed": true,
+   "finish_details": {
+    "reason": "stop",
+    "sampler_mode": "processed_argmax",
+    "matched_stop": "STOPHERE",
+    "cache_action": "append_none"
+   }
+  },
+  {
+   "case": "stop",
+   "name": "stop.no_contradictory_length",
+   "passed": true,
+   "finish_details": {
+    "reason": "stop",
+    "sampler_mode": "processed_argmax",
+    "matched_stop": "STOPHERE",
+    "cache_action": "append_none"
+   }
+  },
+  {
+   "case": "stop",
+   "name": "stop.text_excludes_the_stop_string",
+   "passed": true,
+   "text": "ALPHA BETA GAMMA "
+  },
+  {
+   "case": "ignore_eos",
+   "name": "ignore_eos.no_special_token_text",
+   "passed": true,
+   "leaked": [],
+   "tail": "50\nuser\nassistant\n\n\n51\n52\n53\n54\n55\n56\n57\n58\n59\n60\nuser\nassistant\n\n\n61\n62\n63\n64\n6"
+  },
+  {
+   "case": "ignore_eos",
+   "name": "ignore_eos.reason_is_length_or_stop",
+   "passed": true,
+   "got": "length"
+  },
+  {
+   "case": "sampled_mtp",
+   "name": "sampled_mtp.used",
+   "passed": true,
+   "summary": {
+    "effective_route": "speculative_mtp",
+    "used": true,
+    "draft_tokens": 3,
+    "accepted_draft_tokens": 2,
+    "rejected_draft_tokens": 1,
+    "acceptance_rate": 0.6666666666666666,
+    "draft_cycles": 1,
+    "thinking_policy": "hard",
+    "thinking_controls": "hard_controls_preserved"
+   }
+  },
+  {
+   "case": "sampled_mtp",
+   "name": "sampled_mtp.provider_named",
+   "passed": true,
+   "provider": "qwen4_exp_mtp"
+  },
+  {
+   "case": "sampled_mtp",
+   "name": "sampled_mtp.cycles_reported",
+   "passed": true,
+   "cycle_count": 1
+  },
+  {
+   "case": "sampled_mtp",
+   "name": "sampled_mtp.draft_matches_cycles",
+   "passed": true,
+   "draft": 3,
+   "cycles": [
+    {
+     "start_position": 20,
+     "candidates": [
+      10844,
+      248046,
+      198
+     ],
+     "accepted": 2,
+     "mismatch_token": null,
+     "committed_position": 22
+    }
+   ]
+  },
+  {
+   "case": "sampled_mtp",
+   "name": "sampled_mtp.accepted_matches_cycles",
+   "passed": true,
+   "accepted": 2
+  },
+  {
+   "case": "sampled_mtp",
+   "name": "sampled_mtp.no_false_fallback_reason",
+   "passed": true,
+   "decision_reason": null
+  }
+ ],
+ "findings": [
+  "a server stop reports matched_stop and drops the backend eos_token_id/length_limit/stop_sequence",
+  "ignore_eos continuations no longer publish chat-template special tokens as text",
+  "sampled speculative MTP reports used=true with a named provider and cycle-consistent counts"
+ ]
+}
