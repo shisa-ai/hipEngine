@@ -210,22 +210,28 @@ Concrete audit questions for the gfx1151 pass:
 Reference setup lives in [`THEROCK.md`](THEROCK.md). Current local gfx1151 stack:
 
 - Hardware: AMD Ryzen AI MAX+ 395 / Radeon 8060S, `gfx1151`.
-- ROCm platform: stable TheRock `10.0.0` from
-  `~/miniforge3/envs/therock` (Python 3.12).
-- HIP component/compiler: `7.15.26333-0000000`, AMD clang 23 commit
-  `8f497e0992f`; the HIP component version is expected inside ROCm 10.
+- ROCm platform: stable TheRock `10.1.0` from
+  `~/mambaforge/envs/therock` (Python 3.12).
+- HIP component/compiler: `7.16.26385-0000000`, AMD clang 24 commit
+  `d6f6cb69186`; the HIP component version is expected inside ROCm 10.
 - TheRock package lane: `https://stable.repo.amd.com/rocm/whl-next/`, with the
   `device-gfx1151` extras.
-- PyTorch/reference stack: `2.13.0+rocm10.0.0`; hipEngine's generation hot path
-  remains torch-free.
-- ROCm 10 has SDK, fresh-JIT, graph-replay, framework, and profiler smoke
-  coverage. Historical ROCm 7.15 model-performance rows remain attributed to
-  that old stack until they are rerun; do not treat this setup refresh as a
-  performance promotion.
+- PyTorch/reference stack: `2.14.0+rocm10.1.0`, with `torchvision`
+  `0.29.0+rocm10.0.0` because AMD published no `10.1.0` build of `0.29.0`;
+  hipEngine's generation hot path remains torch-free.
+- ROCm 10.1 has SDK, fresh-JIT, graph-replay, framework, profiler, and
+  full-model generation smoke coverage (`Qwen3.6-35B-A3B-UD-Q4_K_S.gguf`
+  produced the correct continuation through `backend="hip_gfx1151"`).
+  Historical ROCm 7.15
+  model-performance rows remain attributed to that old stack until they are
+  rerun; do not treat this setup refresh as a performance promotion.
+- ROCm 10.1.0 no longer ships `rocm-smi`; use `amd-smi`. See
+  [`THEROCK.md`](THEROCK.md) "Known Issues On ROCm 10.1.0" for the call sites
+  that still depend on it.
 - For hipEngine JIT/profiling, set:
 
 ```bash
-ENV_PREFIX=~/miniforge3/envs/therock
+ENV_PREFIX=~/mambaforge/envs/therock
 PYSDK=$ENV_PREFIX/bin/python
 ROOT=$("$PYSDK" -m rocm_sdk path --root)
 SITE=$ENV_PREFIX/lib/python3.12/site-packages

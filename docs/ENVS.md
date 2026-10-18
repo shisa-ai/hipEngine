@@ -58,11 +58,11 @@ shows the current gfx1151 clean-process wrapper.
 TheRock installs ROCm pieces inside the Python environment. Build the process
 environment around that prefix rather than mixing its libraries with
 `/opt/rocm`. The canonical gfx1151 prefix is the dedicated `therock` environment
-(Python 3.12, ROCm 10.0.0), not the Miniforge base prefix; the base interpreter
-has no ROCm packages installed:
+(Python 3.12, ROCm 10.1.0) in the `mambaforge` prefix, not the base interpreter;
+the base interpreter has no ROCm packages installed:
 
 ```bash
-ENV_PREFIX=~/miniforge3/envs/therock
+ENV_PREFIX=~/mambaforge/envs/therock
 PY=$ENV_PREFIX/bin/python
 ROOT=$("$PY" -m rocm_sdk path --root)
 SITE=$ENV_PREFIX/lib/python3.12/site-packages

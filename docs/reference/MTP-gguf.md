@@ -864,7 +864,7 @@ validated GGUF tensor names, qtypes, scalar kwargs, and runtime inputs for the
 `cpu_reference` NextN oracle without materializing weights:
 
 ```bash
-~/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py \
+~/mambaforge/envs/therock/bin/python scripts/gguf_mtp_call_spec.py \
   /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   --require-mtp --layer 40 --indent 2
 ```
