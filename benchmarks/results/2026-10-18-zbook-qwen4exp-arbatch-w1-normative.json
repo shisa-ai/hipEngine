@@ -1,0 +1,4259 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_arbatch_w1_normative_gate",
+  "created_at": "2026-10-18T06:06:53Z",
+  "status": "requires_task_review",
+  "performance_claim": false,
+  "measurement_valid": true,
+  "protocol_check": false,
+  "gate_effect": {
+    "status": "requires_task_review",
+    "numerical_passed": true,
+    "state_passed": true,
+    "task_status": "requires_review",
+    "task_passed": false,
+    "lifecycle_passed": true,
+    "admission_eligible": true,
+    "admitted": false,
+    "admission_reasons": [
+      "task_gate_requires_review"
+    ],
+    "no_default_promotion": true
+  },
+  "source": {
+    "head": "6b7c70e784446dc216b74faf82be772483f2bdd0",
+    "tracked_clean": true,
+    "numerical_source": "1a39836962fa2ef2e38da423c7a588671a4c298f",
+    "runtime_changes_since_numerical_source": [],
+    "gate_script": {
+      "path": "scripts/qwen4exp_layer2_profile_gate.py",
+      "sha256": "030303ea2b87f6e6f7d26995187db158a16d6263c5b25c14f7266711fb679cb5",
+      "unchanged_since_numerical_source": true
+    },
+    "source_revision": "6b7c70e784446dc216b74faf82be772483f2bdd0"
+  },
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "kernel": "7.2.9-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S (gfx1151)",
+  "model": {
+    "root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "architecture": "qwen4exp"
+  },
+  "quant": "gguf_ud_q4_k_xl",
+  "execution_profile": "production",
+  "candidate": {
+    "name": "qwen4_exp_ar_batch",
+    "candidate_id": "ar_batch",
+    "classification": "T2",
+    "mechanism": "committed c1 prefill (one request at a time) imported once into one physical batch slot per request, then one genuine N-row AR decode step per teacher-forced position; width-specific association is the change",
+    "environment": {},
+    "base_profile": "production",
+    "bound_environment": {},
+    "direct_dispatch_target": null,
+    "direct_dispatch_reference": null,
+    "dispatch_shape_positions": null,
+    "candidate_kernel": null,
+    "registered_candidate_callable": null,
+    "dispatch_count_mode": "not_counted",
+    "strict_fallback": null,
+    "candidate_kernel_registered": false,
+    "related_registry_variant_available": false,
+    "strict_fallback_registered": false,
+    "batch_width": 1
+  },
+  "command": {
+    "argv": [
+      "qwen4exp_layer2_profile_gate.py",
+      "--candidate",
+      "ar_batch",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--batch-width",
+      "1",
+      "--decode-steps",
+      "24",
+      "--repeat-runs",
+      "3",
+      "--free-runs",
+      "2",
+      "--free-tokens",
+      "32",
+      "--output",
+      "/tmp/qwen4exp_ar_batch_w1_20261018T055440Z.json"
+    ],
+    "shell": "source /tmp/hipenv.sh && set -o pipefail && $PY scripts/qwen4exp_layer2_profile_gate.py --candidate ar_batch --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --batch-width 1 --decode-steps 24 --repeat-runs 3 --free-runs 2 --free-tokens 32 --output /tmp/qwen4exp_ar_batch_w1_20261018T055440Z.json 2>&1 | tee /tmp/qwen4exp_ar_batch_w1_20261018T055440Z.log",
+    "started_at": "2026-10-18T05:54:40Z",
+    "finished_at": "2026-10-18T06:00:20.789772Z",
+    "wall_clock_seconds": 340.789772
+  },
+  "raw_artifacts": {
+    "json": {
+      "path": "/tmp/qwen4exp_ar_batch_w1_20261018T055440Z.json",
+      "bytes": 295149,
+      "sha256": "1613b3ea251851f2d2f8a97e5ecbed6d8d543c91c08548b1288154a07f56d224"
+    },
+    "log": {
+      "path": "/tmp/qwen4exp_ar_batch_w1_20261018T055440Z.log",
+      "bytes": 299460,
+      "sha256": "89ac7d49e19bb02e21fb1ab9cc81db375e23c126f5cd4b5cff4d4f4c8f4ba362"
+    }
+  },
+  "protocol": {
+    "prompt_suites": [
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "prompt_suite_sha256": {
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+    },
+    "complete_prompt_and_heldout_suite": true,
+    "prompt_count": 18,
+    "decode_steps": 24,
+    "teacher_forced_rows": 450,
+    "candidate_repeat_runs": 3,
+    "free_tokens": 32,
+    "candidate_free_runs": 2,
+    "prefill_chunk_size": 512,
+    "kv": "BF16",
+    "thresholds": {
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "max_kl_max": 0.05,
+      "top1_min": 0.99,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02
+    }
+  },
+  "thresholds": {
+    "mean_kl_max": 0.001,
+    "p95_kl_max": 0.005,
+    "p99_kl_max": 0.02,
+    "max_kl_max": 0.05,
+    "top1_min": 0.99,
+    "per_scope_top1_min": 0.97,
+    "review_kl": 0.02
+  },
+  "quality": {
+    "quality": {
+      "finite": true,
+      "top_k": 5,
+      "thresholds": {
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "max_kl_max": 0.05,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02
+      },
+      "summary": {
+        "rows": 450,
+        "kl_mean": 0.0006669077979798835,
+        "kl_p50": 3.896674671212635e-05,
+        "kl_p95": 0.004299337701495698,
+        "kl_p99": 0.008287488234606002,
+        "kl_max": 0.014627828499048427,
+        "top1_agreement": 0.9955555555555555,
+        "top1_matches": 448,
+        "topk_overlap_mean": 0.9773333333333335,
+        "strict_teacher_nll_mean": 0.1742765958376601,
+        "candidate_teacher_nll_mean": 0.17554455751395304,
+        "teacher_nll_delta": 0.0012679616762929502,
+        "teacher_delta_p_mean": -0.0005955395898866467,
+        "strict_margin_min": 0.00177001953125,
+        "max_abs_logit_delta": 1.8321599960327148,
+        "flip_eligible_rows": 57,
+        "flip_eligible_share": 0.12666666666666668,
+        "top1_mismatches_flip_eligible": 2,
+        "top1_mismatches_outside_flip_eligible": 0
+      },
+      "by_scope": {
+        "category": {
+          "code": {
+            "rows": 150,
+            "kl_mean": 0.00022679489305727334,
+            "kl_p50": 1.939774645165008e-06,
+            "kl_p95": 0.001013439153845217,
+            "kl_p99": 0.004310950510643315,
+            "kl_max": 0.006529202070166629,
+            "top1_agreement": 0.9933333333333333,
+            "top1_matches": 149,
+            "topk_overlap_mean": 0.9733333333333334,
+            "strict_teacher_nll_mean": 0.07186836150177048,
+            "candidate_teacher_nll_mean": 0.07288073851527405,
+            "teacher_nll_delta": 0.0010123770135035681,
+            "teacher_delta_p_mean": -0.0003727764166679622,
+            "strict_margin_min": 0.00177001953125,
+            "max_abs_logit_delta": 1.4519548416137695,
+            "flip_eligible_rows": 7,
+            "flip_eligible_share": 0.04666666666666667,
+            "top1_mismatches_flip_eligible": 1,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "general_en": {
+            "rows": 100,
+            "kl_mean": 0.0007877090901649491,
+            "kl_p50": 0.00015781652256659156,
+            "kl_p95": 0.003461623376230041,
+            "kl_p99": 0.00630835734220863,
+            "kl_max": 0.01166343311176454,
+            "top1_agreement": 1.0,
+            "top1_matches": 100,
+            "topk_overlap_mean": 0.982,
+            "strict_teacher_nll_mean": 0.2403022440199827,
+            "candidate_teacher_nll_mean": 0.24082611475749008,
+            "teacher_nll_delta": 0.0005238707375073703,
+            "teacher_delta_p_mean": 0.00025461871202894613,
+            "strict_margin_min": 0.028398513793945312,
+            "max_abs_logit_delta": 1.6243791580200195,
+            "flip_eligible_rows": 18,
+            "flip_eligible_share": 0.18,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "general_ja": {
+            "rows": 100,
+            "kl_mean": 0.0007767687676928165,
+            "kl_p50": 7.474485850881012e-05,
+            "kl_p95": 0.0043556711488923075,
+            "kl_p99": 0.008765859408734096,
+            "kl_max": 0.011006735368849566,
+            "top1_agreement": 0.99,
+            "top1_matches": 99,
+            "topk_overlap_mean": 0.9780000000000001,
+            "strict_teacher_nll_mean": 0.1651699331815763,
+            "candidate_teacher_nll_mean": 0.16315246100442204,
+            "teacher_nll_delta": -0.002017472177154256,
+            "teacher_delta_p_mean": 0.0009235912306926325,
+            "strict_margin_min": 0.06503677368164062,
+            "max_abs_logit_delta": 1.106715440750122,
+            "flip_eligible_rows": 10,
+            "flip_eligible_share": 0.1,
+            "top1_mismatches_flip_eligible": 1,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "mixed_ja_en": {
+            "rows": 100,
+            "kl_mean": 0.0010964148934657994,
+            "kl_p50": 0.00012909606012978498,
+            "kl_p95": 0.0068919398599085364,
+            "kl_p99": 0.00958253261826329,
+            "kl_max": 0.014627828499048427,
+            "top1_agreement": 1.0,
+            "top1_matches": 100,
+            "topk_overlap_mean": 0.978,
+            "strict_teacher_nll_mean": 0.2709699618152557,
+            "candidate_teacher_nll_mean": 0.27665082527796536,
+            "teacher_nll_delta": 0.005680863462709684,
+            "teacher_delta_p_mean": -0.003298973472209546,
+            "strict_margin_min": 0.027025222778320312,
+            "max_abs_logit_delta": 1.8321599960327148,
+            "flip_eligible_rows": 22,
+            "flip_eligible_share": 0.22,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "kl_within_global_limits": false,
+            "passed": true
+          }
+        },
+        "shape": {
+          "batch_w1": {
+            "rows": 432,
+            "kl_mean": 0.0006086365227013875,
+            "kl_p50": 2.9287045687100204e-05,
+            "kl_p95": 0.003552686580176802,
+            "kl_p99": 0.007612894474304888,
+            "kl_max": 0.01166343311176454,
+            "top1_agreement": 0.9953703703703703,
+            "top1_matches": 430,
+            "topk_overlap_mean": 0.9777777777777779,
+            "strict_teacher_nll_mean": 0.169060102272192,
+            "candidate_teacher_nll_mean": 0.1700087045172999,
+            "teacher_nll_delta": 0.000948602245107899,
+            "teacher_delta_p_mean": -0.0004254891782787038,
+            "strict_margin_min": 0.00177001953125,
+            "max_abs_logit_delta": 1.8321599960327148,
+            "flip_eligible_rows": 50,
+            "flip_eligible_share": 0.11574074074074074,
+            "top1_mismatches_flip_eligible": 2,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "prefill_last": {
+            "rows": 18,
+            "kl_mean": 0.0020654184046637845,
+            "kl_p50": 0.0006566527102784364,
+            "kl_p95": 0.008753106486153168,
+            "kl_p99": 0.013452884096469366,
+            "kl_max": 0.014627828499048427,
+            "top1_agreement": 1.0,
+            "top1_matches": 18,
+            "topk_overlap_mean": 0.9666666666666666,
+            "strict_teacher_nll_mean": 0.2994724414088931,
+            "candidate_teacher_nll_mean": 0.3084050294336284,
+            "teacher_nll_delta": 0.008932588024735288,
+            "teacher_delta_p_mean": -0.004676749468477277,
+            "strict_margin_min": 0.208160400390625,
+            "max_abs_logit_delta": 1.26399564743042,
+            "flip_eligible_rows": 7,
+            "flip_eligible_share": 0.3888888888888889,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "kl_within_global_limits": false,
+            "passed": true
+          }
+        },
+        "transition": {
+          "prefill_to_batch": {
+            "rows": 18,
+            "kl_mean": 0.001202044196614091,
+            "kl_p50": 7.717959652431478e-05,
+            "kl_p95": 0.0063415728593353435,
+            "kl_p99": 0.01059906106127869,
+            "kl_max": 0.01166343311176454,
+            "top1_agreement": 1.0,
+            "top1_matches": 18,
+            "topk_overlap_mean": 0.9666666666666666,
+            "strict_teacher_nll_mean": 0.15869052186038468,
+            "candidate_teacher_nll_mean": 0.16889648143302738,
+            "teacher_nll_delta": 0.010205959572642698,
+            "teacher_delta_p_mean": -0.006772106148998647,
+            "strict_margin_min": 0.128631591796875,
+            "max_abs_logit_delta": 1.4519548416137695,
+            "flip_eligible_rows": 3,
+            "flip_eligible_share": 0.16666666666666666,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "kl_within_global_limits": false,
+            "passed": true
+          },
+          "prefill_to_c1": {
+            "rows": 18,
+            "kl_mean": 0.0020654184046637845,
+            "kl_p50": 0.0006566527102784364,
+            "kl_p95": 0.008753106486153168,
+            "kl_p99": 0.013452884096469366,
+            "kl_max": 0.014627828499048427,
+            "top1_agreement": 1.0,
+            "top1_matches": 18,
+            "topk_overlap_mean": 0.9666666666666666,
+            "strict_teacher_nll_mean": 0.2994724414088931,
+            "candidate_teacher_nll_mean": 0.3084050294336284,
+            "teacher_nll_delta": 0.008932588024735288,
+            "teacher_delta_p_mean": -0.004676749468477277,
+            "strict_margin_min": 0.208160400390625,
+            "max_abs_logit_delta": 1.26399564743042,
+            "flip_eligible_rows": 7,
+            "flip_eligible_share": 0.3888888888888889,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "kl_within_global_limits": false,
+            "passed": true
+          },
+          "steady": {
+            "rows": 414,
+            "kl_mean": 0.000582836189053009,
+            "kl_p50": 2.8458420581842832e-05,
+            "kl_p95": 0.003437024420517411,
+            "kl_p99": 0.007129500779868891,
+            "kl_max": 0.011006735368849566,
+            "top1_agreement": 0.9951690821256038,
+            "top1_matches": 412,
+            "topk_overlap_mean": 0.9782608695652174,
+            "strict_teacher_nll_mean": 0.16951095359444457,
+            "candidate_teacher_nll_mean": 0.17005706204270304,
+            "teacher_nll_delta": 0.0005461084482584755,
+            "teacher_delta_p_mean": -0.0001495493099865324,
+            "strict_margin_min": 0.00177001953125,
+            "max_abs_logit_delta": 1.8321599960327148,
+            "flip_eligible_rows": 47,
+            "flip_eligible_share": 0.11352657004830918,
+            "top1_mismatches_flip_eligible": 2,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "kl_within_global_limits": true,
+            "passed": true
+          }
+        }
+      },
+      "scope_failures": [],
+      "scope_kl_advisories": [
+        {
+          "dimension": "category",
+          "value": "mixed_ja_en"
+        },
+        {
+          "dimension": "shape",
+          "value": "prefill_last"
+        },
+        {
+          "dimension": "transition",
+          "value": "prefill_to_batch"
+        },
+        {
+          "dimension": "transition",
+          "value": "prefill_to_c1"
+        }
+      ],
+      "rows_over_review_boundary": [],
+      "top1_mismatch_rows": [
+        {
+          "scenario_id": "qwen4exp-ar-batch",
+          "scenario_step": 28,
+          "request_id": "code_topological_sort",
+          "teacher_step": 3,
+          "category": "code",
+          "shape": "batch_w1",
+          "transition": "steady",
+          "teacher_token_id": 1445,
+          "row_index": 28,
+          "kl": 0.00015219468393459613,
+          "top1_equal": false,
+          "strict_top1_token_id": 1445,
+          "candidate_top1_token_id": 727,
+          "topk_overlap": 1.0,
+          "strict_margin": 0.00177001953125,
+          "strict_top1_candidate_rank": 2,
+          "strict_teacher_nll": 0.6973949390013924,
+          "candidate_teacher_nll": 0.7119218624393548,
+          "teacher_delta_p": -0.00718039294151801,
+          "max_abs_logit_delta": 0.40608882904052734
+        },
+        {
+          "scenario_id": "qwen4exp-ar-batch",
+          "scenario_step": 373,
+          "request_id": "heldout_general_ja_migration",
+          "teacher_step": 23,
+          "category": "general_ja",
+          "shape": "batch_w1",
+          "transition": "steady",
+          "teacher_token_id": 98462,
+          "row_index": 373,
+          "kl": 0.002343349354418718,
+          "top1_equal": false,
+          "strict_top1_token_id": 98462,
+          "candidate_top1_token_id": 125907,
+          "topk_overlap": 1.0,
+          "strict_margin": 0.06503677368164062,
+          "strict_top1_candidate_rank": 2,
+          "strict_teacher_nll": 1.2995937208792174,
+          "candidate_teacher_nll": 1.3915001522687456,
+          "teacher_delta_p": -0.023940605631886547,
+          "max_abs_logit_delta": 0.33365440368652344
+        }
+      ],
+      "hard_gates_passed": true,
+      "requires_outlier_review": false,
+      "eligible_for_automatic_admission": true
+    },
+    "repeat_determinism": {
+      "runs": 3,
+      "passed": true,
+      "mismatches": [],
+      "trajectory_sha256_by_prompt": [
+        [
+          "d043c502b524f02b3ca1e4b28d72cb90073ce76559cc3aad5cbd7a7a3f939304",
+          "d043c502b524f02b3ca1e4b28d72cb90073ce76559cc3aad5cbd7a7a3f939304",
+          "d043c502b524f02b3ca1e4b28d72cb90073ce76559cc3aad5cbd7a7a3f939304"
+        ],
+        [
+          "c7e74b49cbec209e7b34506c6e11d7c8c3a6ccd104a6808217a9310f2103ee42",
+          "c7e74b49cbec209e7b34506c6e11d7c8c3a6ccd104a6808217a9310f2103ee42",
+          "c7e74b49cbec209e7b34506c6e11d7c8c3a6ccd104a6808217a9310f2103ee42"
+        ],
+        [
+          "1b65552da0f1761896cb77d66f6cc3aabfa0952b10b0eb1156d33ac9f98b5873",
+          "1b65552da0f1761896cb77d66f6cc3aabfa0952b10b0eb1156d33ac9f98b5873",
+          "1b65552da0f1761896cb77d66f6cc3aabfa0952b10b0eb1156d33ac9f98b5873"
+        ],
+        [
+          "3bc1ffc5d1e059ae4f77af485aa8f4e59a62e88b9bf08bc737ea423c7d15fc7e",
+          "3bc1ffc5d1e059ae4f77af485aa8f4e59a62e88b9bf08bc737ea423c7d15fc7e",
+          "3bc1ffc5d1e059ae4f77af485aa8f4e59a62e88b9bf08bc737ea423c7d15fc7e"
+        ],
+        [
+          "1c18d12b7439106165a023523a348deb7de41dd2f4bb447e562565555c764b3d",
+          "1c18d12b7439106165a023523a348deb7de41dd2f4bb447e562565555c764b3d",
+          "1c18d12b7439106165a023523a348deb7de41dd2f4bb447e562565555c764b3d"
+        ],
+        [
+          "9dd86c6d8cb38e132093f8410005c485b2c0e27192fdd1b2a4208cae864a37ea",
+          "9dd86c6d8cb38e132093f8410005c485b2c0e27192fdd1b2a4208cae864a37ea",
+          "9dd86c6d8cb38e132093f8410005c485b2c0e27192fdd1b2a4208cae864a37ea"
+        ],
+        [
+          "65aafcbe8587b19087a6aa0cc02e0be6b73887ba4ff1b244d2ddb107346a70e3",
+          "65aafcbe8587b19087a6aa0cc02e0be6b73887ba4ff1b244d2ddb107346a70e3",
+          "65aafcbe8587b19087a6aa0cc02e0be6b73887ba4ff1b244d2ddb107346a70e3"
+        ],
+        [
+          "7e2651330145425332dfb2d179ca3df83f0db4c515b375d94be35bb63b1155f1",
+          "7e2651330145425332dfb2d179ca3df83f0db4c515b375d94be35bb63b1155f1",
+          "7e2651330145425332dfb2d179ca3df83f0db4c515b375d94be35bb63b1155f1"
+        ],
+        [
+          "2e83efe41a233613ba6db01b59907709acf8571325a2348b40af026c992967a3",
+          "2e83efe41a233613ba6db01b59907709acf8571325a2348b40af026c992967a3",
+          "2e83efe41a233613ba6db01b59907709acf8571325a2348b40af026c992967a3"
+        ],
+        [
+          "77441a374b429c2552f5720eb890d0babfc57c2cf1bf689a653c5d8b9186e02d",
+          "77441a374b429c2552f5720eb890d0babfc57c2cf1bf689a653c5d8b9186e02d",
+          "77441a374b429c2552f5720eb890d0babfc57c2cf1bf689a653c5d8b9186e02d"
+        ],
+        [
+          "55fcb305dc1fa93df17b2b1edbf003ce91ea0e442a19d5223bfa8d0077130f52",
+          "55fcb305dc1fa93df17b2b1edbf003ce91ea0e442a19d5223bfa8d0077130f52",
+          "55fcb305dc1fa93df17b2b1edbf003ce91ea0e442a19d5223bfa8d0077130f52"
+        ],
+        [
+          "9b0850cd713114e07bb470e6c7aa66a1982bb2ab469eeeee59d1b5bc8f850e36",
+          "9b0850cd713114e07bb470e6c7aa66a1982bb2ab469eeeee59d1b5bc8f850e36",
+          "9b0850cd713114e07bb470e6c7aa66a1982bb2ab469eeeee59d1b5bc8f850e36"
+        ],
+        [
+          "f579dd92e9ec2db67c0036f93aa15a6016497d5eae238ce43acd17fa2831a7d0",
+          "f579dd92e9ec2db67c0036f93aa15a6016497d5eae238ce43acd17fa2831a7d0",
+          "f579dd92e9ec2db67c0036f93aa15a6016497d5eae238ce43acd17fa2831a7d0"
+        ],
+        [
+          "0d9cdc2617cc872424c209d7eba1e88d05bb89e332b2d5944f1dc456ea3f9140",
+          "0d9cdc2617cc872424c209d7eba1e88d05bb89e332b2d5944f1dc456ea3f9140",
+          "0d9cdc2617cc872424c209d7eba1e88d05bb89e332b2d5944f1dc456ea3f9140"
+        ],
+        [
+          "776eaffd8734c52252341f531e5bd6322b9dbfea9cfd887ca7f4d23d71083006",
+          "776eaffd8734c52252341f531e5bd6322b9dbfea9cfd887ca7f4d23d71083006",
+          "776eaffd8734c52252341f531e5bd6322b9dbfea9cfd887ca7f4d23d71083006"
+        ],
+        [
+          "21349d3fafa34f8691862655d6594c53c50d05bd3b199dedf84e53c455a112dd",
+          "21349d3fafa34f8691862655d6594c53c50d05bd3b199dedf84e53c455a112dd",
+          "21349d3fafa34f8691862655d6594c53c50d05bd3b199dedf84e53c455a112dd"
+        ],
+        [
+          "01649875817f005736b3652f3555a346094823db2503b9c2c183e892dc5555a5",
+          "01649875817f005736b3652f3555a346094823db2503b9c2c183e892dc5555a5",
+          "01649875817f005736b3652f3555a346094823db2503b9c2c183e892dc5555a5"
+        ],
+        [
+          "7392a2e340ea74989169c6f3dbf5a52753d8ad82c57a9c489552decaf1ac06a7",
+          "7392a2e340ea74989169c6f3dbf5a52753d8ad82c57a9c489552decaf1ac06a7",
+          "7392a2e340ea74989169c6f3dbf5a52753d8ad82c57a9c489552decaf1ac06a7"
+        ]
+      ]
+    },
+    "strict_logits_sha256": "e5ae994ec331c32fb243bb6ad3c6ba2e7212ed188097b9fe929b124798e7b1da",
+    "candidate_logits_sha256": "4cdba9a8661c36043b562ff21efc120e49ea4fa46d6d0453cf61227149048923",
+    "strict_selected_token_ids_sha256": "1b7ffc91b13346f5b0c277a7bc0aaf1246956c66c3058a51d1a737a08af3c4bd",
+    "note": "hard_gates_passed=true; scope advisories and per-scope kl_within_global_limits flags are diagnostic, not gate failures. scope_failures is empty and every scope reports passed=true."
+  },
+  "state_repeat_gate": {
+    "kind": "batch_slot_state",
+    "layout_equivalence": "not_applicable: the batch runner owns a different physical layout; exactness is checked against repeats, positions, and ownership",
+    "passed": true,
+    "mismatches": [],
+    "group_mismatches": [],
+    "prompts": [
+      {
+        "prompt_id": "code_merge_intervals",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "069b106f078cebe7622a8ae45cdab632df1fa136969bef4cd73209d81d5f4563",
+          "069b106f078cebe7622a8ae45cdab632df1fa136969bef4cd73209d81d5f4563",
+          "069b106f078cebe7622a8ae45cdab632df1fa136969bef4cd73209d81d5f4563"
+        ],
+        "strict_position": 64,
+        "batch_position": 64,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "code_topological_sort",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "6ae3542829791bbbb5d6c625ec9bf9e7c517decb482952351dbc94ca3cba2a89",
+          "6ae3542829791bbbb5d6c625ec9bf9e7c517decb482952351dbc94ca3cba2a89",
+          "6ae3542829791bbbb5d6c625ec9bf9e7c517decb482952351dbc94ca3cba2a89"
+        ],
+        "strict_position": 74,
+        "batch_position": 74,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "code_lru_cache",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "060ba74ab863bb87522932bdfe8d3d61acea12a99fdd54534d85fcda834a2205",
+          "060ba74ab863bb87522932bdfe8d3d61acea12a99fdd54534d85fcda834a2205",
+          "060ba74ab863bb87522932bdfe8d3d61acea12a99fdd54534d85fcda834a2205"
+        ],
+        "strict_position": 71,
+        "batch_position": 71,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "code_markdown_table",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "e583d4004c8bc3fbce791e5856152969740fb380f4fac446571c37ffd31e35ba",
+          "e583d4004c8bc3fbce791e5856152969740fb380f4fac446571c37ffd31e35ba",
+          "e583d4004c8bc3fbce791e5856152969740fb380f4fac446571c37ffd31e35ba"
+        ],
+        "strict_position": 76,
+        "batch_position": 76,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_en_plan",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "c3ebd29d64304f4b440140fea64ad5d4b186d6294b8d666fceeb1bc4b2bbc544",
+          "c3ebd29d64304f4b440140fea64ad5d4b186d6294b8d666fceeb1bc4b2bbc544",
+          "c3ebd29d64304f4b440140fea64ad5d4b186d6294b8d666fceeb1bc4b2bbc544"
+        ],
+        "strict_position": 63,
+        "batch_position": 63,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_en_explain",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "d5ad0b6f1533ac985dd7978ee2fb470f2e5a31e808d74dc92a1282f04e607f9c",
+          "d5ad0b6f1533ac985dd7978ee2fb470f2e5a31e808d74dc92a1282f04e607f9c",
+          "d5ad0b6f1533ac985dd7978ee2fb470f2e5a31e808d74dc92a1282f04e607f9c"
+        ],
+        "strict_position": 64,
+        "batch_position": 64,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_ja_plan",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "398e857f5999825de67f9f2474123ea977d55617ac0fb07c88fd844b89cff5d4",
+          "398e857f5999825de67f9f2474123ea977d55617ac0fb07c88fd844b89cff5d4",
+          "398e857f5999825de67f9f2474123ea977d55617ac0fb07c88fd844b89cff5d4"
+        ],
+        "strict_position": 67,
+        "batch_position": 67,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "general_ja_explain",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "bb18b002d75cfc10cdee2d97b729c4d8208dd82b269787290282ba852b837ea1",
+          "bb18b002d75cfc10cdee2d97b729c4d8208dd82b269787290282ba852b837ea1",
+          "bb18b002d75cfc10cdee2d97b729c4d8208dd82b269787290282ba852b837ea1"
+        ],
+        "strict_position": 67,
+        "batch_position": 67,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "mixed_ja_en_translate",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "dc0b88cdb81c03f2153be830344d4ff1c5e2af3e6a87af0199de3daa4c979d34",
+          "dc0b88cdb81c03f2153be830344d4ff1c5e2af3e6a87af0199de3daa4c979d34",
+          "dc0b88cdb81c03f2153be830344d4ff1c5e2af3e6a87af0199de3daa4c979d34"
+        ],
+        "strict_position": 88,
+        "batch_position": 88,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "mixed_ja_en_review",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "f9e72fa359922ebb54fc69c2f331f474c126cf6c9389f8b4fee9db8015a67da9",
+          "f9e72fa359922ebb54fc69c2f331f474c126cf6c9389f8b4fee9db8015a67da9",
+          "f9e72fa359922ebb54fc69c2f331f474c126cf6c9389f8b4fee9db8015a67da9"
+        ],
+        "strict_position": 95,
+        "batch_position": 95,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "heldout_code_rate_limiter",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "9fc5a2bf680e1bb2d706406cdc6e6080530191c9b8455174165c96cd1bb4e9b6",
+          "9fc5a2bf680e1bb2d706406cdc6e6080530191c9b8455174165c96cd1bb4e9b6",
+          "9fc5a2bf680e1bb2d706406cdc6e6080530191c9b8455174165c96cd1bb4e9b6"
+        ],
+        "strict_position": 79,
+        "batch_position": 79,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "heldout_code_interval_schedule",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "05d3996df36e71b3f823664652bd75d17d18ed48e6127a791e9eda77617e1c1c",
+          "05d3996df36e71b3f823664652bd75d17d18ed48e6127a791e9eda77617e1c1c",
+          "05d3996df36e71b3f823664652bd75d17d18ed48e6127a791e9eda77617e1c1c"
+        ],
+        "strict_position": 76,
+        "batch_position": 76,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "heldout_general_en_incident",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "8bca70d7b0f3d0f4df30be5c491c435f6346ca6617ca34004018827b0e6797c9",
+          "8bca70d7b0f3d0f4df30be5c491c435f6346ca6617ca34004018827b0e6797c9",
+          "8bca70d7b0f3d0f4df30be5c491c435f6346ca6617ca34004018827b0e6797c9"
+        ],
+        "strict_position": 69,
+        "batch_position": 69,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "heldout_general_en_quant",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "028dcea427aaea76f5227d49915745f790b8c56b26e48f49ff40ff583f8366ce",
+          "028dcea427aaea76f5227d49915745f790b8c56b26e48f49ff40ff583f8366ce",
+          "028dcea427aaea76f5227d49915745f790b8c56b26e48f49ff40ff583f8366ce"
+        ],
+        "strict_position": 80,
+        "batch_position": 80,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "heldout_general_ja_migration",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "641b20cb1e36cf02f46ca73803022be767fb73d6b828d70c76218e72e3bbcfd9",
+          "641b20cb1e36cf02f46ca73803022be767fb73d6b828d70c76218e72e3bbcfd9",
+          "641b20cb1e36cf02f46ca73803022be767fb73d6b828d70c76218e72e3bbcfd9"
+        ],
+        "strict_position": 77,
+        "batch_position": 77,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "heldout_general_ja_speculative",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "83748387b86527e2d49fcca7bb8c88ac395af08b2584157d44f81f8ad5c65418",
+          "83748387b86527e2d49fcca7bb8c88ac395af08b2584157d44f81f8ad5c65418",
+          "83748387b86527e2d49fcca7bb8c88ac395af08b2584157d44f81f8ad5c65418"
+        ],
+        "strict_position": 69,
+        "batch_position": 69,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "heldout_mixed_summary",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "2d930a97584a90e87b69d984d55073becdfb48fdc5eb96e3361169974c4d7759",
+          "2d930a97584a90e87b69d984d55073becdfb48fdc5eb96e3361169974c4d7759",
+          "2d930a97584a90e87b69d984d55073becdfb48fdc5eb96e3361169974c4d7759"
+        ],
+        "strict_position": 76,
+        "batch_position": 76,
+        "strict_candidate_state_exact": false
+      },
+      {
+        "prompt_id": "heldout_mixed_review",
+        "finite": true,
+        "layout_exact": true,
+        "repeat_exact": true,
+        "position_exact": true,
+        "metadata_exact": true,
+        "batch_state_sha256": [
+          "4cd6f4578bfffe61c2d1e22c8582f18861096de117641805e5b646bf4a967147",
+          "4cd6f4578bfffe61c2d1e22c8582f18861096de117641805e5b646bf4a967147",
+          "4cd6f4578bfffe61c2d1e22c8582f18861096de117641805e5b646bf4a967147"
+        ],
+        "strict_position": 80,
+        "batch_position": 80,
+        "strict_candidate_state_exact": false
+      }
+    ]
+  },
+  "compact_output_state_repeat_gate": null,
+  "ownership_summary": {
+    "prompt_count": 18,
+    "group_count": 54,
+    "group_widths": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "groups_per_repeat": 18,
+    "step_widths": {
+      "1": 2412
+    },
+    "observed_step_widths": {
+      "1": 2412
+    },
+    "steps": 2412,
+    "teacher_step_count": 1296,
+    "free_step_count": 1116,
+    "all_groups_state_distinct": true,
+    "all_rows_have_owner_slot_request": true,
+    "manifest_binding_valid": true,
+    "manifest_binding_bound": true,
+    "manifest_sha256": "db5fd3ffaf9e0150b968d6fb431b1f6f85eafddf73a04a726f72648751051f34",
+    "projection_dispatch_observed_rows": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "note": "strict_candidate_state_exact is false by design for the batch physical layout; the gate requires exact repeats, positions, metadata, and ownership. state_repeat_gate.passed=true."
+  },
+  "batch_candidate": {
+    "mode": "qwen4_exp_ar_batch_w1",
+    "configured_width": 1,
+    "max_positions": 2051,
+    "prefill_source": "c1_qwen4_exp_gguf_resident_model_runner",
+    "path_identities": [
+      {
+        "role": "argmax",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.linear.lm_head.argmax_f32_rows_i32"
+      },
+      {
+        "role": "embedding",
+        "binding": "registry",
+        "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding.gguf_q8_0_embedding_bf16_out"
+      },
+      {
+        "role": "gdn_conv_indexed",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.linear_attn.conv.qwen4_exp_linear_attn_conv_decode_indexed_f32"
+      },
+      {
+        "role": "gdn_recurrence_norm_gate",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn.qwen4_exp_gdn_decode_rowsplit_indexed_f32"
+      },
+      {
+        "role": "gr_read",
+        "binding": "direct",
+        "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_gr_read"
+      },
+      {
+        "role": "gr_write_bf16",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_gr_write_bf16_bf16"
+      },
+      {
+        "role": "gr_write_f32",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_gr_write_bf16_f32"
+      },
+      {
+        "role": "moe",
+        "binding": "direct",
+        "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_moe"
+      },
+      {
+        "role": "ple_add_delta",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_add_delta_bf16_f32"
+      },
+      {
+        "role": "ple_grouped_rmsnorm",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_grouped_rmsnorm_f32"
+      },
+      {
+        "role": "ple_grouped_rmsnorm_bf16",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_grouped_rmsnorm_bf16_f32"
+      },
+      {
+        "role": "ple_indexed_conv",
+        "binding": "registry",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_dilated_depthwise_conv_indexed_f32"
+      },
+      {
+        "role": "ple_repeat_gated_value",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_repeat_gated_value_f32"
+      },
+      {
+        "role": "ple_scaled_silu",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_scaled_silu_f32"
+      },
+      {
+        "role": "ple_signed_sqrt_gate",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_signed_sqrt_gate_f32"
+      },
+      {
+        "role": "ple_stage",
+        "binding": "direct",
+        "identity": "hipengine.runtime.qwen4_exp_batch_ple.run_qwen4_exp_batch_ple_stage"
+      },
+      {
+        "role": "projection_dispatch",
+        "binding": "registry_dispatch",
+        "identity": "hipengine.runtime.gguf_linear.launch_gguf_linear"
+      },
+      {
+        "role": "qsa_gate_context",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_gate_context_f32"
+      },
+      {
+        "role": "qsa_index_append",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_scatter_index_key_device_position_f32"
+      },
+      {
+        "role": "qsa_index_pool_norm_rope",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_pool_norm_rope_f32"
+      },
+      {
+        "role": "qsa_index_score",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_score_f32"
+      },
+      {
+        "role": "qsa_index_select",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_topk_expand_rows_f32_i64"
+      },
+      {
+        "role": "qsa_mixed_mixer",
+        "binding": "direct",
+        "identity": "hipengine.runtime.qwen4_exp_batch_qsa.run_qwen4_exp_batch_qsa_mixed_token_mixer"
+      },
+      {
+        "role": "qsa_paged_kv_write",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.paged_kv_write.qwen35_write_paged_kv_f32_batch_spans"
+      },
+      {
+        "role": "qsa_rows_attention",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32"
+      },
+      {
+        "role": "qsa_split_norm_rope",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_split_norm_rope_rows_f32"
+      },
+      {
+        "role": "repeat_branches",
+        "binding": "direct",
+        "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_repeat_bf16_branches"
+      }
+    ],
+    "variant_manifest": {
+      "kind": "hipengine_batch_variant_manifest",
+      "schema_version": 1,
+      "backend": "hip_gfx1151",
+      "model": "qwen4_exp_gguf",
+      "quant": "gguf_ud_q4_k_xl",
+      "execution_profile": "production",
+      "profile_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+      "source_revision": "6b7c70e784446dc216b74faf82be772483f2bdd0",
+      "prefill_source": "c1_qwen4_exp_gguf_resident_model_runner",
+      "decode_scope": "teacher_forced_batch_rows",
+      "runtime": {
+        "module": "hipengine.runtime.qwen4_exp_batch_runner",
+        "class": "Qwen4ExpGGUFBatchRunner",
+        "identity": "hipengine.runtime.qwen4_exp_batch_runner.Qwen4ExpGGUFBatchRunner",
+        "source": "hipengine/runtime/qwen4_exp_batch_runner.py",
+        "source_sha256": "d131b8e084b8aca03ef1d8d04c779669da28ccee7a00e612addac5d9848e79b8",
+        "function_sha256": "21fe612fcbea2a9e38e8c4a1e3d5088dfd4752797d64bb4ae4f0f094f9433074",
+        "build_identity": "6265bb790d26aa131e708b218172c7cef6643df4358b181cb2e6709263bf1371"
+      },
+      "runtime_config": {
+        "hidden_size": 2560,
+        "context_length": 262144,
+        "qsa_compression_ratio": 4,
+        "layer_types": [
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa",
+          "gdn",
+          "gdn",
+          "gdn",
+          "qsa"
+        ],
+        "gdn_layer_count": 36,
+        "qsa_layer_count": 12,
+        "ple_layers": [
+          1
+        ]
+      },
+      "required_roles": [
+        "gdn_conv_indexed",
+        "gdn_recurrence_norm_gate",
+        "qsa_mixed_mixer",
+        "qsa_split_norm_rope",
+        "qsa_paged_kv_write",
+        "qsa_rows_attention",
+        "qsa_gate_context",
+        "qsa_index_append",
+        "qsa_index_pool_norm_rope",
+        "qsa_index_score",
+        "qsa_index_select",
+        "projection_dispatch",
+        "ple_stage",
+        "ple_indexed_conv"
+      ],
+      "unbound": [
+        {
+          "role": "prefill",
+          "reason": "prefill is the committed c1 resident path and is excluded from the batch claim"
+        },
+        {
+          "role": "ple_hash_rows",
+          "reason": "host CPU reference n-gram hash, not a registered device kernel"
+        },
+        {
+          "role": "stage_qwen4_exp_ple_rows",
+          "reason": "host staging helper, not a registered device kernel"
+        }
+      ],
+      "not_used": [
+        {
+          "role": "qsa_split_norm_mrope",
+          "reason": "batch runner passes no MRoPE position pointer"
+        },
+        {
+          "role": "dense_paged_decode",
+          "reason": "mixed QSA attends through the variable-selection rows kernel; the dense paged decode is not called"
+        }
+      ],
+      "observed_step_widths": {
+        "1": 2412
+      },
+      "manifest_sha256": "db5fd3ffaf9e0150b968d6fb431b1f6f85eafddf73a04a726f72648751051f34",
+      "entries_omitted": true,
+      "entries_count": 27,
+      "entries_note": "full entries are in batch_candidate.manifest_binding.entries"
+    },
+    "dispatch_record_count": 1164996,
+    "decode_step": "owner.step(rows, capture_logits=True)",
+    "composition": "fixture_order_consecutive_groups",
+    "imports": 90,
+    "steps": 2412,
+    "step_widths": {
+      "1": 2412
+    },
+    "groups": [
+      {
+        "group_index": 0,
+        "width": 1,
+        "prompt_ids": [
+          "code_merge_intervals"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_merge_intervals",
+            "request_id": 1,
+            "slot": 0,
+            "owner": 1,
+            "import_position": 40,
+            "final_position": 64,
+            "state_sha256": "069b106f078cebe7622a8ae45cdab632df1fa136969bef4cd73209d81d5f4563"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "acaaa8f540c6e8b43830c4098b30d9ec5b264c8a5099d88d70bd9494bdd2e34a",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 1,
+        "width": 1,
+        "prompt_ids": [
+          "code_topological_sort"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_topological_sort",
+            "request_id": 2,
+            "slot": 0,
+            "owner": 2,
+            "import_position": 50,
+            "final_position": 74,
+            "state_sha256": "6ae3542829791bbbb5d6c625ec9bf9e7c517decb482952351dbc94ca3cba2a89"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "6d81b4919e24e39a165054a0d64137f4530d0a84a6fe1733ec0f6bc0a22680e7",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 2,
+        "width": 1,
+        "prompt_ids": [
+          "code_lru_cache"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_lru_cache",
+            "request_id": 3,
+            "slot": 0,
+            "owner": 3,
+            "import_position": 47,
+            "final_position": 71,
+            "state_sha256": "060ba74ab863bb87522932bdfe8d3d61acea12a99fdd54534d85fcda834a2205"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "0ee7e27e404f388ec963a323037ec42df86e00c6491d294c4f3cb8b4239913da",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 3,
+        "width": 1,
+        "prompt_ids": [
+          "code_markdown_table"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_markdown_table",
+            "request_id": 4,
+            "slot": 0,
+            "owner": 4,
+            "import_position": 52,
+            "final_position": 76,
+            "state_sha256": "e583d4004c8bc3fbce791e5856152969740fb380f4fac446571c37ffd31e35ba"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "12efabec6f1750f4d6516beaac2b65c886e8ee0acce1b2e25d904dd5aeb38f52",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 4,
+        "width": 1,
+        "prompt_ids": [
+          "general_en_plan"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_en_plan",
+            "request_id": 5,
+            "slot": 0,
+            "owner": 5,
+            "import_position": 39,
+            "final_position": 63,
+            "state_sha256": "c3ebd29d64304f4b440140fea64ad5d4b186d6294b8d666fceeb1bc4b2bbc544"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "400693e282e544767a90fa7e0525ea1b0b818e01c59427d09d13a596d8312d9e",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 5,
+        "width": 1,
+        "prompt_ids": [
+          "general_en_explain"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_en_explain",
+            "request_id": 6,
+            "slot": 0,
+            "owner": 6,
+            "import_position": 40,
+            "final_position": 64,
+            "state_sha256": "d5ad0b6f1533ac985dd7978ee2fb470f2e5a31e808d74dc92a1282f04e607f9c"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "ec516a3ffd25899501986daa02ffbb012db9d7561d108e2e7793d688968784b7",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 6,
+        "width": 1,
+        "prompt_ids": [
+          "general_ja_plan"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_ja_plan",
+            "request_id": 7,
+            "slot": 0,
+            "owner": 7,
+            "import_position": 43,
+            "final_position": 67,
+            "state_sha256": "398e857f5999825de67f9f2474123ea977d55617ac0fb07c88fd844b89cff5d4"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "ab2e5829990ae3bbab02f66545fa68d828604fe98d5ef508b3eeeba64f449ec9",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 7,
+        "width": 1,
+        "prompt_ids": [
+          "general_ja_explain"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_ja_explain",
+            "request_id": 8,
+            "slot": 0,
+            "owner": 8,
+            "import_position": 43,
+            "final_position": 67,
+            "state_sha256": "bb18b002d75cfc10cdee2d97b729c4d8208dd82b269787290282ba852b837ea1"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "c2a0a64c072be2cad4bdbad8cd4606c3983933c4e8ad3be9d6394605b5deb977",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 8,
+        "width": 1,
+        "prompt_ids": [
+          "mixed_ja_en_translate"
+        ],
+        "rows": [
+          {
+            "prompt_id": "mixed_ja_en_translate",
+            "request_id": 9,
+            "slot": 0,
+            "owner": 9,
+            "import_position": 64,
+            "final_position": 88,
+            "state_sha256": "dc0b88cdb81c03f2153be830344d4ff1c5e2af3e6a87af0199de3daa4c979d34"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "39c94a97501a3d8b1f3f13b7a61a375debe2fde2bfb8b2c0ccf2be7b7e13b2c9",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 9,
+        "width": 1,
+        "prompt_ids": [
+          "mixed_ja_en_review"
+        ],
+        "rows": [
+          {
+            "prompt_id": "mixed_ja_en_review",
+            "request_id": 10,
+            "slot": 0,
+            "owner": 10,
+            "import_position": 71,
+            "final_position": 95,
+            "state_sha256": "f9e72fa359922ebb54fc69c2f331f474c126cf6c9389f8b4fee9db8015a67da9"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "d55115ca9ad6b18255c8ef75e605d624098429576e430a239c72b943d05e1417",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 10,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_code_rate_limiter"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_code_rate_limiter",
+            "request_id": 11,
+            "slot": 0,
+            "owner": 11,
+            "import_position": 55,
+            "final_position": 79,
+            "state_sha256": "9fc5a2bf680e1bb2d706406cdc6e6080530191c9b8455174165c96cd1bb4e9b6"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "053798d28727cb7fd3ddc8182ef5ccdb2d8c8d0e74c82c1a8cec2a96a7b4f105",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 11,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_code_interval_schedule"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_code_interval_schedule",
+            "request_id": 12,
+            "slot": 0,
+            "owner": 12,
+            "import_position": 52,
+            "final_position": 76,
+            "state_sha256": "05d3996df36e71b3f823664652bd75d17d18ed48e6127a791e9eda77617e1c1c"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "a9ce1481a03242276cfc87cdc101197806a93225e5d2d3e629f85c3092592e74",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 12,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_en_incident"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_en_incident",
+            "request_id": 13,
+            "slot": 0,
+            "owner": 13,
+            "import_position": 45,
+            "final_position": 69,
+            "state_sha256": "8bca70d7b0f3d0f4df30be5c491c435f6346ca6617ca34004018827b0e6797c9"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "932a1b333f7edd077c4ae983fe41d3468b73acacf2058e6d25eb17eef63ef950",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 13,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_en_quant"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_en_quant",
+            "request_id": 14,
+            "slot": 0,
+            "owner": 14,
+            "import_position": 56,
+            "final_position": 80,
+            "state_sha256": "028dcea427aaea76f5227d49915745f790b8c56b26e48f49ff40ff583f8366ce"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "ea2cc522c7d5264c03b11ce50e0d2d7148280c0c8823e272283b2e2a7ee4e548",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 14,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_ja_migration"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_ja_migration",
+            "request_id": 15,
+            "slot": 0,
+            "owner": 15,
+            "import_position": 53,
+            "final_position": 77,
+            "state_sha256": "641b20cb1e36cf02f46ca73803022be767fb73d6b828d70c76218e72e3bbcfd9"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "cea33e7576566675c068992d75ed93f0e97b3b61e08c80ec5b3e995beb32c051",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 15,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_ja_speculative"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_ja_speculative",
+            "request_id": 16,
+            "slot": 0,
+            "owner": 16,
+            "import_position": 45,
+            "final_position": 69,
+            "state_sha256": "83748387b86527e2d49fcca7bb8c88ac395af08b2584157d44f81f8ad5c65418"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "3ddbf75a03c451f42808cfb0cb5df20f04f325f1072122184dd1a951f65ede8f",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 16,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_mixed_summary"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_mixed_summary",
+            "request_id": 17,
+            "slot": 0,
+            "owner": 17,
+            "import_position": 52,
+            "final_position": 76,
+            "state_sha256": "2d930a97584a90e87b69d984d55073becdfb48fdc5eb96e3361169974c4d7759"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "c8d7cadf9a9c12778581b9ea627474cf79e57828648352baa394f8aa7fc5e5e4",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 17,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_mixed_review"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_mixed_review",
+            "request_id": 18,
+            "slot": 0,
+            "owner": 18,
+            "import_position": 56,
+            "final_position": 80,
+            "state_sha256": "4cd6f4578bfffe61c2d1e22c8582f18861096de117641805e5b646bf4a967147"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "5cf47ce5559eb817f585cb7524edff2ecfdd39633842e6d875515e52ab4c442c",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 0,
+        "width": 1,
+        "prompt_ids": [
+          "code_merge_intervals"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_merge_intervals",
+            "request_id": 1,
+            "slot": 0,
+            "owner": 19,
+            "import_position": 40,
+            "final_position": 64,
+            "state_sha256": "069b106f078cebe7622a8ae45cdab632df1fa136969bef4cd73209d81d5f4563"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "acaaa8f540c6e8b43830c4098b30d9ec5b264c8a5099d88d70bd9494bdd2e34a",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 1,
+        "width": 1,
+        "prompt_ids": [
+          "code_topological_sort"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_topological_sort",
+            "request_id": 2,
+            "slot": 0,
+            "owner": 20,
+            "import_position": 50,
+            "final_position": 74,
+            "state_sha256": "6ae3542829791bbbb5d6c625ec9bf9e7c517decb482952351dbc94ca3cba2a89"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "6d81b4919e24e39a165054a0d64137f4530d0a84a6fe1733ec0f6bc0a22680e7",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 2,
+        "width": 1,
+        "prompt_ids": [
+          "code_lru_cache"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_lru_cache",
+            "request_id": 3,
+            "slot": 0,
+            "owner": 21,
+            "import_position": 47,
+            "final_position": 71,
+            "state_sha256": "060ba74ab863bb87522932bdfe8d3d61acea12a99fdd54534d85fcda834a2205"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "0ee7e27e404f388ec963a323037ec42df86e00c6491d294c4f3cb8b4239913da",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 3,
+        "width": 1,
+        "prompt_ids": [
+          "code_markdown_table"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_markdown_table",
+            "request_id": 4,
+            "slot": 0,
+            "owner": 22,
+            "import_position": 52,
+            "final_position": 76,
+            "state_sha256": "e583d4004c8bc3fbce791e5856152969740fb380f4fac446571c37ffd31e35ba"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "12efabec6f1750f4d6516beaac2b65c886e8ee0acce1b2e25d904dd5aeb38f52",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 4,
+        "width": 1,
+        "prompt_ids": [
+          "general_en_plan"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_en_plan",
+            "request_id": 5,
+            "slot": 0,
+            "owner": 23,
+            "import_position": 39,
+            "final_position": 63,
+            "state_sha256": "c3ebd29d64304f4b440140fea64ad5d4b186d6294b8d666fceeb1bc4b2bbc544"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "400693e282e544767a90fa7e0525ea1b0b818e01c59427d09d13a596d8312d9e",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 5,
+        "width": 1,
+        "prompt_ids": [
+          "general_en_explain"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_en_explain",
+            "request_id": 6,
+            "slot": 0,
+            "owner": 24,
+            "import_position": 40,
+            "final_position": 64,
+            "state_sha256": "d5ad0b6f1533ac985dd7978ee2fb470f2e5a31e808d74dc92a1282f04e607f9c"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "ec516a3ffd25899501986daa02ffbb012db9d7561d108e2e7793d688968784b7",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 6,
+        "width": 1,
+        "prompt_ids": [
+          "general_ja_plan"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_ja_plan",
+            "request_id": 7,
+            "slot": 0,
+            "owner": 25,
+            "import_position": 43,
+            "final_position": 67,
+            "state_sha256": "398e857f5999825de67f9f2474123ea977d55617ac0fb07c88fd844b89cff5d4"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "ab2e5829990ae3bbab02f66545fa68d828604fe98d5ef508b3eeeba64f449ec9",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 7,
+        "width": 1,
+        "prompt_ids": [
+          "general_ja_explain"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_ja_explain",
+            "request_id": 8,
+            "slot": 0,
+            "owner": 26,
+            "import_position": 43,
+            "final_position": 67,
+            "state_sha256": "bb18b002d75cfc10cdee2d97b729c4d8208dd82b269787290282ba852b837ea1"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "c2a0a64c072be2cad4bdbad8cd4606c3983933c4e8ad3be9d6394605b5deb977",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 8,
+        "width": 1,
+        "prompt_ids": [
+          "mixed_ja_en_translate"
+        ],
+        "rows": [
+          {
+            "prompt_id": "mixed_ja_en_translate",
+            "request_id": 9,
+            "slot": 0,
+            "owner": 27,
+            "import_position": 64,
+            "final_position": 88,
+            "state_sha256": "dc0b88cdb81c03f2153be830344d4ff1c5e2af3e6a87af0199de3daa4c979d34"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "39c94a97501a3d8b1f3f13b7a61a375debe2fde2bfb8b2c0ccf2be7b7e13b2c9",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 9,
+        "width": 1,
+        "prompt_ids": [
+          "mixed_ja_en_review"
+        ],
+        "rows": [
+          {
+            "prompt_id": "mixed_ja_en_review",
+            "request_id": 10,
+            "slot": 0,
+            "owner": 28,
+            "import_position": 71,
+            "final_position": 95,
+            "state_sha256": "f9e72fa359922ebb54fc69c2f331f474c126cf6c9389f8b4fee9db8015a67da9"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "d55115ca9ad6b18255c8ef75e605d624098429576e430a239c72b943d05e1417",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 10,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_code_rate_limiter"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_code_rate_limiter",
+            "request_id": 11,
+            "slot": 0,
+            "owner": 29,
+            "import_position": 55,
+            "final_position": 79,
+            "state_sha256": "9fc5a2bf680e1bb2d706406cdc6e6080530191c9b8455174165c96cd1bb4e9b6"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "053798d28727cb7fd3ddc8182ef5ccdb2d8c8d0e74c82c1a8cec2a96a7b4f105",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 11,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_code_interval_schedule"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_code_interval_schedule",
+            "request_id": 12,
+            "slot": 0,
+            "owner": 30,
+            "import_position": 52,
+            "final_position": 76,
+            "state_sha256": "05d3996df36e71b3f823664652bd75d17d18ed48e6127a791e9eda77617e1c1c"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "a9ce1481a03242276cfc87cdc101197806a93225e5d2d3e629f85c3092592e74",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 12,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_en_incident"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_en_incident",
+            "request_id": 13,
+            "slot": 0,
+            "owner": 31,
+            "import_position": 45,
+            "final_position": 69,
+            "state_sha256": "8bca70d7b0f3d0f4df30be5c491c435f6346ca6617ca34004018827b0e6797c9"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "932a1b333f7edd077c4ae983fe41d3468b73acacf2058e6d25eb17eef63ef950",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 13,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_en_quant"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_en_quant",
+            "request_id": 14,
+            "slot": 0,
+            "owner": 32,
+            "import_position": 56,
+            "final_position": 80,
+            "state_sha256": "028dcea427aaea76f5227d49915745f790b8c56b26e48f49ff40ff583f8366ce"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "ea2cc522c7d5264c03b11ce50e0d2d7148280c0c8823e272283b2e2a7ee4e548",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 14,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_ja_migration"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_ja_migration",
+            "request_id": 15,
+            "slot": 0,
+            "owner": 33,
+            "import_position": 53,
+            "final_position": 77,
+            "state_sha256": "641b20cb1e36cf02f46ca73803022be767fb73d6b828d70c76218e72e3bbcfd9"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "cea33e7576566675c068992d75ed93f0e97b3b61e08c80ec5b3e995beb32c051",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 15,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_ja_speculative"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_ja_speculative",
+            "request_id": 16,
+            "slot": 0,
+            "owner": 34,
+            "import_position": 45,
+            "final_position": 69,
+            "state_sha256": "83748387b86527e2d49fcca7bb8c88ac395af08b2584157d44f81f8ad5c65418"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "3ddbf75a03c451f42808cfb0cb5df20f04f325f1072122184dd1a951f65ede8f",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 16,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_mixed_summary"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_mixed_summary",
+            "request_id": 17,
+            "slot": 0,
+            "owner": 35,
+            "import_position": 52,
+            "final_position": 76,
+            "state_sha256": "2d930a97584a90e87b69d984d55073becdfb48fdc5eb96e3361169974c4d7759"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "c8d7cadf9a9c12778581b9ea627474cf79e57828648352baa394f8aa7fc5e5e4",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 17,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_mixed_review"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_mixed_review",
+            "request_id": 18,
+            "slot": 0,
+            "owner": 36,
+            "import_position": 56,
+            "final_position": 80,
+            "state_sha256": "4cd6f4578bfffe61c2d1e22c8582f18861096de117641805e5b646bf4a967147"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "5cf47ce5559eb817f585cb7524edff2ecfdd39633842e6d875515e52ab4c442c",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 0,
+        "width": 1,
+        "prompt_ids": [
+          "code_merge_intervals"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_merge_intervals",
+            "request_id": 1,
+            "slot": 0,
+            "owner": 37,
+            "import_position": 40,
+            "final_position": 64,
+            "state_sha256": "069b106f078cebe7622a8ae45cdab632df1fa136969bef4cd73209d81d5f4563"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "acaaa8f540c6e8b43830c4098b30d9ec5b264c8a5099d88d70bd9494bdd2e34a",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 1,
+        "width": 1,
+        "prompt_ids": [
+          "code_topological_sort"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_topological_sort",
+            "request_id": 2,
+            "slot": 0,
+            "owner": 38,
+            "import_position": 50,
+            "final_position": 74,
+            "state_sha256": "6ae3542829791bbbb5d6c625ec9bf9e7c517decb482952351dbc94ca3cba2a89"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "6d81b4919e24e39a165054a0d64137f4530d0a84a6fe1733ec0f6bc0a22680e7",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 2,
+        "width": 1,
+        "prompt_ids": [
+          "code_lru_cache"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_lru_cache",
+            "request_id": 3,
+            "slot": 0,
+            "owner": 39,
+            "import_position": 47,
+            "final_position": 71,
+            "state_sha256": "060ba74ab863bb87522932bdfe8d3d61acea12a99fdd54534d85fcda834a2205"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "0ee7e27e404f388ec963a323037ec42df86e00c6491d294c4f3cb8b4239913da",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 3,
+        "width": 1,
+        "prompt_ids": [
+          "code_markdown_table"
+        ],
+        "rows": [
+          {
+            "prompt_id": "code_markdown_table",
+            "request_id": 4,
+            "slot": 0,
+            "owner": 40,
+            "import_position": 52,
+            "final_position": 76,
+            "state_sha256": "e583d4004c8bc3fbce791e5856152969740fb380f4fac446571c37ffd31e35ba"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "12efabec6f1750f4d6516beaac2b65c886e8ee0acce1b2e25d904dd5aeb38f52",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 4,
+        "width": 1,
+        "prompt_ids": [
+          "general_en_plan"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_en_plan",
+            "request_id": 5,
+            "slot": 0,
+            "owner": 41,
+            "import_position": 39,
+            "final_position": 63,
+            "state_sha256": "c3ebd29d64304f4b440140fea64ad5d4b186d6294b8d666fceeb1bc4b2bbc544"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "400693e282e544767a90fa7e0525ea1b0b818e01c59427d09d13a596d8312d9e",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 5,
+        "width": 1,
+        "prompt_ids": [
+          "general_en_explain"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_en_explain",
+            "request_id": 6,
+            "slot": 0,
+            "owner": 42,
+            "import_position": 40,
+            "final_position": 64,
+            "state_sha256": "d5ad0b6f1533ac985dd7978ee2fb470f2e5a31e808d74dc92a1282f04e607f9c"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "ec516a3ffd25899501986daa02ffbb012db9d7561d108e2e7793d688968784b7",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 6,
+        "width": 1,
+        "prompt_ids": [
+          "general_ja_plan"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_ja_plan",
+            "request_id": 7,
+            "slot": 0,
+            "owner": 43,
+            "import_position": 43,
+            "final_position": 67,
+            "state_sha256": "398e857f5999825de67f9f2474123ea977d55617ac0fb07c88fd844b89cff5d4"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "ab2e5829990ae3bbab02f66545fa68d828604fe98d5ef508b3eeeba64f449ec9",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 7,
+        "width": 1,
+        "prompt_ids": [
+          "general_ja_explain"
+        ],
+        "rows": [
+          {
+            "prompt_id": "general_ja_explain",
+            "request_id": 8,
+            "slot": 0,
+            "owner": 44,
+            "import_position": 43,
+            "final_position": 67,
+            "state_sha256": "bb18b002d75cfc10cdee2d97b729c4d8208dd82b269787290282ba852b837ea1"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "c2a0a64c072be2cad4bdbad8cd4606c3983933c4e8ad3be9d6394605b5deb977",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 8,
+        "width": 1,
+        "prompt_ids": [
+          "mixed_ja_en_translate"
+        ],
+        "rows": [
+          {
+            "prompt_id": "mixed_ja_en_translate",
+            "request_id": 9,
+            "slot": 0,
+            "owner": 45,
+            "import_position": 64,
+            "final_position": 88,
+            "state_sha256": "dc0b88cdb81c03f2153be830344d4ff1c5e2af3e6a87af0199de3daa4c979d34"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "39c94a97501a3d8b1f3f13b7a61a375debe2fde2bfb8b2c0ccf2be7b7e13b2c9",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 9,
+        "width": 1,
+        "prompt_ids": [
+          "mixed_ja_en_review"
+        ],
+        "rows": [
+          {
+            "prompt_id": "mixed_ja_en_review",
+            "request_id": 10,
+            "slot": 0,
+            "owner": 46,
+            "import_position": 71,
+            "final_position": 95,
+            "state_sha256": "f9e72fa359922ebb54fc69c2f331f474c126cf6c9389f8b4fee9db8015a67da9"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "d55115ca9ad6b18255c8ef75e605d624098429576e430a239c72b943d05e1417",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 10,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_code_rate_limiter"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_code_rate_limiter",
+            "request_id": 11,
+            "slot": 0,
+            "owner": 47,
+            "import_position": 55,
+            "final_position": 79,
+            "state_sha256": "9fc5a2bf680e1bb2d706406cdc6e6080530191c9b8455174165c96cd1bb4e9b6"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "053798d28727cb7fd3ddc8182ef5ccdb2d8c8d0e74c82c1a8cec2a96a7b4f105",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 11,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_code_interval_schedule"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_code_interval_schedule",
+            "request_id": 12,
+            "slot": 0,
+            "owner": 48,
+            "import_position": 52,
+            "final_position": 76,
+            "state_sha256": "05d3996df36e71b3f823664652bd75d17d18ed48e6127a791e9eda77617e1c1c"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "a9ce1481a03242276cfc87cdc101197806a93225e5d2d3e629f85c3092592e74",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 12,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_en_incident"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_en_incident",
+            "request_id": 13,
+            "slot": 0,
+            "owner": 49,
+            "import_position": 45,
+            "final_position": 69,
+            "state_sha256": "8bca70d7b0f3d0f4df30be5c491c435f6346ca6617ca34004018827b0e6797c9"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "932a1b333f7edd077c4ae983fe41d3468b73acacf2058e6d25eb17eef63ef950",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 13,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_en_quant"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_en_quant",
+            "request_id": 14,
+            "slot": 0,
+            "owner": 50,
+            "import_position": 56,
+            "final_position": 80,
+            "state_sha256": "028dcea427aaea76f5227d49915745f790b8c56b26e48f49ff40ff583f8366ce"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "ea2cc522c7d5264c03b11ce50e0d2d7148280c0c8823e272283b2e2a7ee4e548",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 14,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_ja_migration"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_ja_migration",
+            "request_id": 15,
+            "slot": 0,
+            "owner": 51,
+            "import_position": 53,
+            "final_position": 77,
+            "state_sha256": "641b20cb1e36cf02f46ca73803022be767fb73d6b828d70c76218e72e3bbcfd9"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "cea33e7576566675c068992d75ed93f0e97b3b61e08c80ec5b3e995beb32c051",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 15,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_general_ja_speculative"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_general_ja_speculative",
+            "request_id": 16,
+            "slot": 0,
+            "owner": 52,
+            "import_position": 45,
+            "final_position": 69,
+            "state_sha256": "83748387b86527e2d49fcca7bb8c88ac395af08b2584157d44f81f8ad5c65418"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "3ddbf75a03c451f42808cfb0cb5df20f04f325f1072122184dd1a951f65ede8f",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 16,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_mixed_summary"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_mixed_summary",
+            "request_id": 17,
+            "slot": 0,
+            "owner": 53,
+            "import_position": 52,
+            "final_position": 76,
+            "state_sha256": "2d930a97584a90e87b69d984d55073becdfb48fdc5eb96e3361169974c4d7759"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "c8d7cadf9a9c12778581b9ea627474cf79e57828648352baa394f8aa7fc5e5e4",
+        "decode_steps": 24
+      },
+      {
+        "group_index": 17,
+        "width": 1,
+        "prompt_ids": [
+          "heldout_mixed_review"
+        ],
+        "rows": [
+          {
+            "prompt_id": "heldout_mixed_review",
+            "request_id": 18,
+            "slot": 0,
+            "owner": 54,
+            "import_position": 56,
+            "final_position": 80,
+            "state_sha256": "4cd6f4578bfffe61c2d1e22c8582f18861096de117641805e5b646bf4a967147"
+          }
+        ],
+        "distinct_state_sha256": 1,
+        "state_distinct": true,
+        "ownership_sha256": "5cf47ce5559eb817f585cb7524edff2ecfdd39633842e6d875515e52ab4c442c",
+        "decode_steps": 24
+      }
+    ],
+    "failure": null,
+    "manifest_binding": {
+      "valid": true,
+      "bound": true,
+      "reasons": [],
+      "missing": [],
+      "entries": [
+        {
+          "role": "argmax",
+          "binding": "direct",
+          "scope": "free_decode_only",
+          "identity": "hipengine.kernels.hip_gfx1100.linear.lm_head.argmax_f32_rows_i32",
+          "source": "hipengine/kernels/hip_gfx1100/linear/lm_head.py",
+          "source_sha256": "9f6b7c5d28edffab152454e67cd7023d44bb83efe0d03d7fad0c60acd3567fa6",
+          "function_sha256": "ac7930034948f1bf66ea30c8bebb470c34ec5a29d9987c0c8080f00e8a367031",
+          "build_identity": "b87b64f530b638e014eebefc226c68c482148447e4e72672ffada5164ddf3735",
+          "kernel_symbol": null,
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "embedding",
+          "binding": "registry",
+          "scope": "shared_c1",
+          "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding.gguf_q8_0_embedding_bf16_out",
+          "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py",
+          "source_sha256": "ec7133a6e974681cb8bbb34a8af571a87225eaa50bd82463dab3dd887fe7bc69",
+          "function_sha256": "ee261f12faa6486a6cde86e0d3da37987f98e020f45d10b6dedd88783e66ce81",
+          "build_identity": "253747a35d6d15379c80e7445f6dbfb97a9fd13f7f9b6a6403f4171889a3bdd0",
+          "kernel_symbol": "hipengine_gguf_q8_0_embedding_bf16_out",
+          "registry_key": {
+            "backend": "hip_gfx1151",
+            "layer": "embedding",
+            "quant": "gguf_q8_0",
+            "variant": "lookup_bf16_out"
+          },
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "embedding",
+              "quant": "gguf_q8_0",
+              "variant": "lookup_bf16_out"
+            }
+          ],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "gdn_conv_indexed",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.linear_attn.conv.qwen4_exp_linear_attn_conv_decode_indexed_f32",
+          "source": "hipengine/kernels/hip_gfx1100/linear_attn/conv.py",
+          "source_sha256": "70ac37bc72f813aec4e210b0ea4938dbb8c6767bef9c1111671d5e880ade966a",
+          "function_sha256": "efb34a1736334cf03f3c1022594ee9368c4d427c5dbfe3528fa7560439cb086f",
+          "build_identity": "624ab53d1395a0d5026be9485d1af8cd1b6e365b4a7e39e8bce3be98bc086746",
+          "kernel_symbol": null,
+          "registry_key": null,
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "linear_attn_conv_decode",
+              "quant": "f32_state",
+              "variant": "qwen4exp_conv_indexed_decode"
+            }
+          ],
+          "strict_fallback": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.linear_attn.conv.qwen35_linear_attn_conv_decode_f32",
+            "source": "hipengine/kernels/hip_gfx1100/linear_attn/conv.py",
+            "source_sha256": "70ac37bc72f813aec4e210b0ea4938dbb8c6767bef9c1111671d5e880ade966a",
+            "function_sha256": "ce82fd218fe695df0b88d7a24d4b6cc2733da3a86775b153c052aa431a43fb38",
+            "build_identity": "27888c4ad4005cf71a2d41cdeac74376fe8b686823bb2e2695ee392f0d9efdc0",
+            "kernel_symbol": null,
+            "registry_key": null
+          },
+          "oracle": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.linear_attn.conv.qwen35_linear_attn_conv_decode_f32",
+            "source": "hipengine/kernels/hip_gfx1100/linear_attn/conv.py",
+            "source_sha256": "70ac37bc72f813aec4e210b0ea4938dbb8c6767bef9c1111671d5e880ade966a",
+            "function_sha256": "ce82fd218fe695df0b88d7a24d4b6cc2733da3a86775b153c052aa431a43fb38",
+            "build_identity": "27888c4ad4005cf71a2d41cdeac74376fe8b686823bb2e2695ee392f0d9efdc0",
+            "kernel_symbol": null,
+            "registry_key": null
+          }
+        },
+        {
+          "role": "gdn_recurrence_norm_gate",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn.qwen4_exp_gdn_decode_rowsplit_indexed_f32",
+          "source": "hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.py",
+          "source_sha256": "0c9a26f3fb66619d5460b14f297da149540744b9743f21448758b4d3c60a852f",
+          "function_sha256": "3e6774aa55ccc82a9110463a87478cd291feaac72d81153d1c2c7a8ee02f0ade",
+          "build_identity": "225c6c967848697daa5db035c50c2e64f088736b9ac415128e1ac7ef534846ab",
+          "kernel_symbol": "hipengine_qwen4_exp_gdn_decode_rowsplit_indexed_f32",
+          "registry_key": null,
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "gdn_recurrence_norm_gate",
+              "quant": "f32_state",
+              "variant": "qwen4exp_gdn_indexed_decode"
+            }
+          ],
+          "strict_fallback": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn.qwen4_exp_gdn_decode_f32",
+            "source": "hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.py",
+            "source_sha256": "0c9a26f3fb66619d5460b14f297da149540744b9743f21448758b4d3c60a852f",
+            "function_sha256": "755dea4d96b0f9ade6f8090aedd3f92e1f2cb736d8ef1bdb053d1628b317f113",
+            "build_identity": "bc44289ab3680afc190d553ea770d4a38587a682af29d6699c2a19d8725b8966",
+            "kernel_symbol": "hipengine_qwen4_exp_gdn_decode_f32",
+            "registry_key": null
+          },
+          "oracle": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn.qwen4_exp_gdn_decode_f32",
+            "source": "hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.py",
+            "source_sha256": "0c9a26f3fb66619d5460b14f297da149540744b9743f21448758b4d3c60a852f",
+            "function_sha256": "755dea4d96b0f9ade6f8090aedd3f92e1f2cb736d8ef1bdb053d1628b317f113",
+            "build_identity": "bc44289ab3680afc190d553ea770d4a38587a682af29d6699c2a19d8725b8966",
+            "kernel_symbol": "hipengine_qwen4_exp_gdn_decode_f32",
+            "registry_key": null
+          }
+        },
+        {
+          "role": "gr_read",
+          "binding": "direct",
+          "scope": "shared_c1",
+          "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_gr_read",
+          "source": "hipengine/runtime/qwen4_exp_runner.py",
+          "source_sha256": "28b942fbee65461653f969c5d2cd20181272230081cfff79b02561558d7689f8",
+          "function_sha256": "8e9a67b1b5def1d0c58dd7e520dd4dc891106edb8c92bdae7c14f809d92e2091",
+          "build_identity": "45bdf16a87a7d671ab1b9ddd43fde448f5d3a3fe14c697170fd5c31a4697ab8b",
+          "kernel_symbol": null,
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "gr_write_bf16",
+          "binding": "direct",
+          "scope": "shared_c1",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_gr_write_bf16_bf16",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "source_sha256": "de499bab632d14d330a47e20c9c7cffd1ed858849571abf16f022a2b9ffd5301",
+          "function_sha256": "95ea43dcefbec86160879a624f59e931568c4d1e97d57644693d3eefd8959bf8",
+          "build_identity": "00a6233803ec9f633af6fa5242572cdc5fba127d354b0e9ea62dd1730eebddba",
+          "kernel_symbol": "hipengine_qwen4_exp_gr_write_bf16_bf16",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "gr_write_f32",
+          "binding": "direct",
+          "scope": "shared_c1",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_gr_write_bf16_f32",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "source_sha256": "de499bab632d14d330a47e20c9c7cffd1ed858849571abf16f022a2b9ffd5301",
+          "function_sha256": "3ffe8096c62f869cfb5d9c71c42fb2af309462bf57415a84a79b3d2ee45729d4",
+          "build_identity": "4b7cae4b473d744ebc7b772f1d9c1f5103093333b1c0483910f03c23a66623ec",
+          "kernel_symbol": "hipengine_qwen4_exp_gr_write_bf16_f32",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "moe",
+          "binding": "direct",
+          "scope": "shared_c1",
+          "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_moe",
+          "source": "hipengine/runtime/qwen4_exp_runner.py",
+          "source_sha256": "28b942fbee65461653f969c5d2cd20181272230081cfff79b02561558d7689f8",
+          "function_sha256": "d66d95fbe93b077649f239f3195e77272b7061057b59288de0bc7e9ac9788941",
+          "build_identity": "8c48255efaa38b3adec63c38ece0a37ccc88b22d4410f46c5b05dfe3d37ddc08",
+          "kernel_symbol": null,
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "ple_add_delta",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_add_delta_bf16_f32",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_ple.py",
+          "source_sha256": "6e4fda47740701cf7243bfac078001bde3c27c282f650c589421b57b8c6b006c",
+          "function_sha256": "c92e1d976ca378292722706004c42c13d11e4d80d3b23d54b9c383d0a233bc0e",
+          "build_identity": "9c7c0ffae92f9d8199e6952474377bce52bd8509d1d5396c3d611332e9b7f1b8",
+          "kernel_symbol": "hipengine_qwen4_exp_ple_add_delta_bf16_f32",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "ple_grouped_rmsnorm",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_grouped_rmsnorm_f32",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "source_sha256": "de499bab632d14d330a47e20c9c7cffd1ed858849571abf16f022a2b9ffd5301",
+          "function_sha256": "3c7d05763c2472b0406e7ffc943ac6612d7c66538db58f2ab9788aa33f7abec2",
+          "build_identity": "e2aeef62ce648ffcdf0bd59bc9b98261b16a1106ba6de661a8c3afd8f782c4e3",
+          "kernel_symbol": "hipengine_qwen4_exp_grouped_rmsnorm_f32",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "ple_grouped_rmsnorm_bf16",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_grouped_rmsnorm_bf16_f32",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "source_sha256": "de499bab632d14d330a47e20c9c7cffd1ed858849571abf16f022a2b9ffd5301",
+          "function_sha256": "310d2f329d7f9c71f4f1e2d817a9f5df08951eaf260a3cf28877f6abccec3502",
+          "build_identity": "0be4d4edad81a5766ef8cac5bac210fd7da75abf04df9d185c4aafa3376cac99",
+          "kernel_symbol": "hipengine_qwen4_exp_grouped_rmsnorm_bf16_f32",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "ple_indexed_conv",
+          "binding": "registry",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_dilated_depthwise_conv_indexed_f32",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_ple.py",
+          "source_sha256": "6e4fda47740701cf7243bfac078001bde3c27c282f650c589421b57b8c6b006c",
+          "function_sha256": "4d290800a03dc08a7de713ac09b5279440d4bfeeb3be61409fbaf7441159e8e9",
+          "build_identity": "6b8e1f20097487b54448515116264287410f9fca545e3b72bb49413807058694",
+          "kernel_symbol": "hipengine_qwen4_exp_ple_dilated_depthwise_conv_indexed_f32",
+          "registry_key": {
+            "backend": "hip_gfx1151",
+            "layer": "ple_dilated_depthwise_conv",
+            "quant": "f32",
+            "variant": "qwen4exp_ple_indexed_decode"
+          },
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "ple_dilated_depthwise_conv",
+              "quant": "f32",
+              "variant": "qwen4exp_ple_indexed_decode"
+            }
+          ],
+          "strict_fallback": {
+            "binding": "registry",
+            "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_dilated_depthwise_conv_f32",
+            "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_ple.py",
+            "source_sha256": "6e4fda47740701cf7243bfac078001bde3c27c282f650c589421b57b8c6b006c",
+            "function_sha256": "669c7e8c9167739df641b184f2359198d960cb75aada81c65c31b0fae36dcd2c",
+            "build_identity": "0abb68f91751968795d8a9d65f8da47a15690749ef826b6a496c40c639c54eca",
+            "kernel_symbol": "hipengine_qwen4_exp_ple_dilated_depthwise_conv_f32",
+            "registry_key": {
+              "backend": "hip_gfx1151",
+              "layer": "ple_dilated_depthwise_conv",
+              "quant": "f32",
+              "variant": "strict"
+            }
+          },
+          "oracle": {
+            "binding": "registry",
+            "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_dilated_depthwise_conv_f32",
+            "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_ple.py",
+            "source_sha256": "6e4fda47740701cf7243bfac078001bde3c27c282f650c589421b57b8c6b006c",
+            "function_sha256": "669c7e8c9167739df641b184f2359198d960cb75aada81c65c31b0fae36dcd2c",
+            "build_identity": "0abb68f91751968795d8a9d65f8da47a15690749ef826b6a496c40c639c54eca",
+            "kernel_symbol": "hipengine_qwen4_exp_ple_dilated_depthwise_conv_f32",
+            "registry_key": {
+              "backend": "hip_gfx1151",
+              "layer": "ple_dilated_depthwise_conv",
+              "quant": "f32",
+              "variant": "strict"
+            }
+          }
+        },
+        {
+          "role": "ple_repeat_gated_value",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_repeat_gated_value_f32",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_ple.py",
+          "source_sha256": "6e4fda47740701cf7243bfac078001bde3c27c282f650c589421b57b8c6b006c",
+          "function_sha256": "e256ee7e5f66b718aa78d69f9fc2b2ea417dc2db4219d9e1b259e4d178830d34",
+          "build_identity": "181c20b0bcb4e5bbd2b9499a3bd75ffc6f7c0fbdadb6520e1358dcab0a34cbdd",
+          "kernel_symbol": "hipengine_qwen4_exp_ple_repeat_gated_value_f32",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "ple_scaled_silu",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_scaled_silu_f32",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "source_sha256": "de499bab632d14d330a47e20c9c7cffd1ed858849571abf16f022a2b9ffd5301",
+          "function_sha256": "085c5f2f311af0cd70cd92c3f9f4bfca75d7eaccaf17f00ae0cac100613ab3ef",
+          "build_identity": "d8d4da5cae5593f987252be369520ced56ea1f59f397fda91c675a05c26feb6f",
+          "kernel_symbol": "hipengine_qwen4_exp_scaled_silu_f32",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "ple_signed_sqrt_gate",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple.qwen4_exp_ple_signed_sqrt_gate_f32",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_ple.py",
+          "source_sha256": "6e4fda47740701cf7243bfac078001bde3c27c282f650c589421b57b8c6b006c",
+          "function_sha256": "5d8467a4e2513cff914e5c01ea3cbec3d0da9d1a50eb552603f8aaa185d23b48",
+          "build_identity": "1f01b65a8346807bd45273954d5563e84aa195786dceb68ed326695c44d82d3a",
+          "kernel_symbol": "hipengine_qwen4_exp_ple_signed_sqrt_gate_f32",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "ple_stage",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.runtime.qwen4_exp_batch_ple.run_qwen4_exp_batch_ple_stage",
+          "source": "hipengine/runtime/qwen4_exp_batch_ple.py",
+          "source_sha256": "c7b6d880cb76d27352a82478410c4884b83ae69ad7c4916fef67706207538ce7",
+          "function_sha256": "b79cea8d26b0aa351df7c09d2a6273e44e9a7e5d65951b37a89b72ffb70ab545",
+          "build_identity": "c32b2446b8053d0f59cb15b8fb4bec41bfe37192186f4e45b5548c80075a7186",
+          "kernel_symbol": null,
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": {
+            "binding": "direct",
+            "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_ple",
+            "source": "hipengine/runtime/qwen4_exp_runner.py",
+            "source_sha256": "28b942fbee65461653f969c5d2cd20181272230081cfff79b02561558d7689f8",
+            "function_sha256": "1897abf20e805d1e2875a097c1a0a3b6f2b70eb0cd9ea51db4b42c737378bf53",
+            "build_identity": "6ccfc83113b82815b858aca5975ca387d1f775c6e140d8d1b170174a9b5b9e4c",
+            "kernel_symbol": null,
+            "registry_key": null
+          },
+          "oracle": {
+            "binding": "direct",
+            "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_ple",
+            "source": "hipengine/runtime/qwen4_exp_runner.py",
+            "source_sha256": "28b942fbee65461653f969c5d2cd20181272230081cfff79b02561558d7689f8",
+            "function_sha256": "1897abf20e805d1e2875a097c1a0a3b6f2b70eb0cd9ea51db4b42c737378bf53",
+            "build_identity": "6ccfc83113b82815b858aca5975ca387d1f775c6e140d8d1b170174a9b5b9e4c",
+            "kernel_symbol": null,
+            "registry_key": null
+          }
+        },
+        {
+          "role": "projection_dispatch",
+          "binding": "registry_dispatch",
+          "scope": "decode_rows_1_4",
+          "identity": "hipengine.runtime.gguf_linear.launch_gguf_linear",
+          "source": "hipengine/runtime/gguf_linear.py",
+          "source_sha256": "2769e0ca7e17c849f3a2edf2273f88be4f79505192a185d6c43f86260cf75c5b",
+          "function_sha256": "82d2c3957721185dc17eddf6525d20157bb927a875a16d0a44584a7cfc448c9e",
+          "build_identity": "132617231400f20901f1a5d4ba1cda859338458368eb2927b9708ec1f8bcaffc",
+          "kernel_symbol": null,
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null,
+          "resolver": "hipengine.runtime.gguf_linear.launch_gguf_linear",
+          "observed": [
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "dense_gemv",
+                "quant": "bf16",
+                "variant": "f32_hidden_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_f32_bf16w_f32_out",
+              "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+              "source_sha256": "b7127ff8e1966375c339e114407245bf46256caf45add32fd28a3d9a42e091c7",
+              "function_sha256": "87b82bd39a40f0622ae0004cdaee3bb4ed52acd7fa32809f0f4ceeddbb38835b",
+              "build_identity": "fd6a9d3893ff4672a65882eafbde1268989c3d50f1a313ad0ac62fbc77449b50",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 128,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "dense_bf16",
+              "calls": 28944
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "dense_gemv",
+                "quant": "f32",
+                "variant": "f32_hidden_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+              "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+              "source_sha256": "b7127ff8e1966375c339e114407245bf46256caf45add32fd28a3d9a42e091c7",
+              "function_sha256": "8fb99948d1d4c85bafca553c18fb29ad6561dbed81be80c2f7f31c95e8f31a30",
+              "build_identity": "12e5b00791d35f0a66b378fac573baa08def6e716aa8d2d77c9a5ae60fa95775",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 1,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "dense_bf16",
+              "calls": 115776
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "dense_gemv",
+                "quant": "f32",
+                "variant": "f32_hidden_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+              "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+              "source_sha256": "b7127ff8e1966375c339e114407245bf46256caf45add32fd28a3d9a42e091c7",
+              "function_sha256": "8fb99948d1d4c85bafca553c18fb29ad6561dbed81be80c2f7f31c95e8f31a30",
+              "build_identity": "12e5b00791d35f0a66b378fac573baa08def6e716aa8d2d77c9a5ae60fa95775",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 48,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "dense_bf16",
+              "calls": 173664
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "dense_gemv",
+                "quant": "f32",
+                "variant": "f32_hidden_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+              "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+              "source_sha256": "b7127ff8e1966375c339e114407245bf46256caf45add32fd28a3d9a42e091c7",
+              "function_sha256": "8fb99948d1d4c85bafca553c18fb29ad6561dbed81be80c2f7f31c95e8f31a30",
+              "build_identity": "12e5b00791d35f0a66b378fac573baa08def6e716aa8d2d77c9a5ae60fa95775",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 512,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "dense_bf16",
+              "calls": 115776
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "linear",
+                "quant": "gguf_q8_0",
+                "variant": "pack8_gemv_f32_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+              "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+              "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+              "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 640,
+              "out_features": 2560,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "raw",
+              "calls": 115776
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "linear",
+                "quant": "gguf_q8_0",
+                "variant": "pack8_gemv_f32_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+              "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+              "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+              "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 512,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "raw",
+              "calls": 57888
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "linear",
+                "quant": "gguf_q8_0",
+                "variant": "pack8_gemv_f32_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+              "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+              "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+              "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 640,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "raw",
+              "calls": 231552
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "linear",
+                "quant": "gguf_q8_0",
+                "variant": "pack8_gemv_f32_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+              "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+              "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+              "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 2560,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "raw",
+              "calls": 2412
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "linear",
+                "quant": "gguf_q8_0",
+                "variant": "pack8_gemv_f32_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+              "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+              "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+              "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 6144,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "raw",
+              "calls": 86832
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "linear",
+                "quant": "gguf_q8_0",
+                "variant": "pack8_gemv_f32_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+              "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+              "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+              "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 10240,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "raw",
+              "calls": 89244
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "linear",
+                "quant": "gguf_q8_0",
+                "variant": "pack8_gemv_f32_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+              "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+              "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+              "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 12288,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "raw",
+              "calls": 28944
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "linear",
+                "quant": "gguf_q8_0",
+                "variant": "pack8_gemv_f32_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+              "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+              "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+              "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 2560,
+              "out_features": 248320,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "raw",
+              "calls": 2412
+            },
+            {
+              "key": {
+                "backend": "hip_gfx1151",
+                "layer": "linear",
+                "quant": "gguf_q8_0",
+                "variant": "pack8_gemv_f32_f32_out"
+              },
+              "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+              "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+              "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+              "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+              "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+              "kernel_symbol": null,
+              "rows": 1,
+              "in_features": 6144,
+              "out_features": 2560,
+              "activation_dtype": "f32",
+              "output_dtype": "f32",
+              "abi": "raw",
+              "calls": 115776
+            }
+          ],
+          "rows": [
+            1
+          ],
+          "required_rows": [
+            1
+          ]
+        },
+        {
+          "role": "qsa_gate_context",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_gate_context_f32",
+          "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+          "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+          "function_sha256": "32c6bbbea76c71f33a68c04dbb81bca0e53d79c09d242435835512cd4a701619",
+          "build_identity": "3a2071c61ee485da7f12bcea4859a02881a4f554d0f4555af7c04acd5c11ef70",
+          "kernel_symbol": "hipengine_qwen4_exp_qsa_gate_context_f32",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "qsa_index_append",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_scatter_index_key_device_position_f32",
+          "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+          "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+          "function_sha256": "996883c3206931ee27c90f184e415c6ba99f2d6e8eef106d5161612be0d3af1c",
+          "build_identity": "e04b5de9891754bf9b0daa7b064ddc6124a065ea371a6ddca1556f96c629f1d3",
+          "kernel_symbol": "hipengine_qwen4_exp_qsa_scatter_index_key_device_position_f32",
+          "registry_key": null,
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "qsa_index_append",
+              "quant": "f32",
+              "variant": "strict_device_position_c1"
+            }
+          ],
+          "strict_fallback": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_scatter_index_keys_f32",
+            "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+            "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+            "function_sha256": "303507ebf732bb09b707b7a8738677f13fdbecb5e23e2628942e439e4c0a2961",
+            "build_identity": "9f6545fb7865d63962d823533a9c84d66fec5fe61303a2e2797c8483799c50e3",
+            "kernel_symbol": "hipengine_qwen4_exp_qsa_scatter_index_keys_f32",
+            "registry_key": null
+          },
+          "oracle": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_scatter_index_keys_f32",
+            "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+            "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+            "function_sha256": "303507ebf732bb09b707b7a8738677f13fdbecb5e23e2628942e439e4c0a2961",
+            "build_identity": "9f6545fb7865d63962d823533a9c84d66fec5fe61303a2e2797c8483799c50e3",
+            "kernel_symbol": "hipengine_qwen4_exp_qsa_scatter_index_keys_f32",
+            "registry_key": null
+          }
+        },
+        {
+          "role": "qsa_index_pool_norm_rope",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_pool_norm_rope_f32",
+          "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+          "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+          "function_sha256": "c88f5d07892a019d54979ee1c6e0c7a385b6a0382df70c7ab360389ecb5b1b38",
+          "build_identity": "ca5095535dc3a43bc2b5cc33bb2ebf15678199017b76294d8fdae49df3d163b7",
+          "kernel_symbol": "hipengine_qwen4_exp_qsa_pool_norm_rope_f32",
+          "registry_key": null,
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "qsa_pool_norm_rope",
+              "quant": "f32",
+              "variant": "strict"
+            }
+          ],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "qsa_index_score",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_score_f32",
+          "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+          "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+          "function_sha256": "be848ac64bf12befb1622e991de3ca9fbf8510d36f818010110be6cd58b0ef6e",
+          "build_identity": "51a272d5c46ebe5006aafa1220e79a711277e9daeb41b81784759c8d658dc5f3",
+          "kernel_symbol": null,
+          "registry_key": null,
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "qsa_index_score",
+              "quant": "f32",
+              "variant": "strict"
+            }
+          ],
+          "strict_fallback": null,
+          "oracle": null
+        },
+        {
+          "role": "qsa_index_select",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_topk_expand_rows_f32_i64",
+          "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+          "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+          "function_sha256": "01cfe43b404fa297554529b363975400aed1ffe5ea4662656a957c862c99b891",
+          "build_identity": "3b904d6ebe07066d0f7731a6f91d57931e25b63673c443b9a30186937e114495",
+          "kernel_symbol": "hipengine_qwen4_exp_qsa_topk_expand_rows_f32_i64",
+          "registry_key": null,
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "qsa_select_blocks",
+              "quant": "f32_i64",
+              "variant": "strict_device_expand_rows"
+            }
+          ],
+          "strict_fallback": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_topk_expand_f32_i64",
+            "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+            "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+            "function_sha256": "cab401de5712123d08101b6cf107df46a918247649ad22c7e3a025909314f6d3",
+            "build_identity": "9d9146e6ada76bd98ffc45cd020a58e901859ba257d59a6d245f8b1be8f7e5bb",
+            "kernel_symbol": "hipengine_qwen4_exp_qsa_topk_expand_f32_i64",
+            "registry_key": null
+          },
+          "oracle": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_topk_expand_f32_i64",
+            "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+            "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+            "function_sha256": "cab401de5712123d08101b6cf107df46a918247649ad22c7e3a025909314f6d3",
+            "build_identity": "9d9146e6ada76bd98ffc45cd020a58e901859ba257d59a6d245f8b1be8f7e5bb",
+            "kernel_symbol": "hipengine_qwen4_exp_qsa_topk_expand_f32_i64",
+            "registry_key": null
+          }
+        },
+        {
+          "role": "qsa_mixed_mixer",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.runtime.qwen4_exp_batch_qsa.run_qwen4_exp_batch_qsa_mixed_token_mixer",
+          "source": "hipengine/runtime/qwen4_exp_batch_qsa.py",
+          "source_sha256": "edf1f76f0e901372263bf11938866c8eff5b1d08fe54759d152969708912ff2d",
+          "function_sha256": "d53683bdece4a7ad46388fc2d72747e607f6c5d34df9d0c3e233461b964c3bf3",
+          "build_identity": "567ee2d3e23fe7c935351ec30b8dd565dcfda77491d7c92b019e1010ae85ef7c",
+          "kernel_symbol": null,
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": {
+            "binding": "direct",
+            "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_dense_qsa_token_mixer",
+            "source": "hipengine/runtime/qwen4_exp_runner.py",
+            "source_sha256": "28b942fbee65461653f969c5d2cd20181272230081cfff79b02561558d7689f8",
+            "function_sha256": "14fdc661ec6a217d1bcde0369c88478879b14b694f9c2d4a2aca826c4c1d2b05",
+            "build_identity": "fb02186c460f7e00fb00a6aad99d347e83c0a06261c7dfb47b7d1befe94dc598",
+            "kernel_symbol": null,
+            "registry_key": null
+          },
+          "oracle": {
+            "binding": "direct",
+            "identity": "hipengine.runtime.qwen4_exp_runner.run_qwen4_exp_dense_qsa_token_mixer",
+            "source": "hipengine/runtime/qwen4_exp_runner.py",
+            "source_sha256": "28b942fbee65461653f969c5d2cd20181272230081cfff79b02561558d7689f8",
+            "function_sha256": "14fdc661ec6a217d1bcde0369c88478879b14b694f9c2d4a2aca826c4c1d2b05",
+            "build_identity": "fb02186c460f7e00fb00a6aad99d347e83c0a06261c7dfb47b7d1befe94dc598",
+            "kernel_symbol": null,
+            "registry_key": null
+          }
+        },
+        {
+          "role": "qsa_paged_kv_write",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.attention.paged_kv_write.qwen35_write_paged_kv_f32_batch_spans",
+          "source": "hipengine/kernels/hip_gfx1100/attention/paged_kv_write.py",
+          "source_sha256": "e315804bfd6bbfab237959882ee00860d6302fc658700f32daab25609505d000",
+          "function_sha256": "31b55a39640ceaaf006302c32a862dd99bd7ff765908c72ac82803b3cb891a7e",
+          "build_identity": "41fe1388f8e6feb83ff450e9c4e5c5bbaf62cedc400cdd2e5660c3038f5adcb0",
+          "kernel_symbol": null,
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.paged_kv_write.qwen35_write_paged_kv_f32_spans",
+            "source": "hipengine/kernels/hip_gfx1100/attention/paged_kv_write.py",
+            "source_sha256": "e315804bfd6bbfab237959882ee00860d6302fc658700f32daab25609505d000",
+            "function_sha256": "85ac0fed60ec76ed4f83867f899549462c4110cbd34718d3921510169e166456",
+            "build_identity": "64d02118cb3d9002e47c839148e1449b5974d03ae55119419ff6eb5b67f7b43c",
+            "kernel_symbol": null,
+            "registry_key": null
+          },
+          "oracle": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.paged_kv_write.qwen35_write_paged_kv_f32_spans",
+            "source": "hipengine/kernels/hip_gfx1100/attention/paged_kv_write.py",
+            "source_sha256": "e315804bfd6bbfab237959882ee00860d6302fc658700f32daab25609505d000",
+            "function_sha256": "85ac0fed60ec76ed4f83867f899549462c4110cbd34718d3921510169e166456",
+            "build_identity": "64d02118cb3d9002e47c839148e1449b5974d03ae55119419ff6eb5b67f7b43c",
+            "kernel_symbol": null,
+            "registry_key": null
+          }
+        },
+        {
+          "role": "qsa_rows_attention",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
+          "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+          "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+          "function_sha256": "34a5d83768d19b122571d7b34da836dd5a007a8abab58c2aae58af58367fdf6f",
+          "build_identity": "fd3f616dce637778d89faa3763d9bd9fa85b03db8d317a2133ef3b6320bc1176",
+          "kernel_symbol": "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
+          "registry_key": null,
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "qsa_sparse_attention",
+              "quant": "bf16_kv",
+              "variant": "strict_rows_spans"
+            }
+          ],
+          "strict_fallback": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
+            "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+            "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+            "function_sha256": "1d4ec11d09f49bb26ee98fd679af00378362682b90a2449bb387a93e36eea7de",
+            "build_identity": "e15c8ef0b3a3ec1ceb207da11af17b52f6ac6cafd62ca3bd87fdae07072296ce",
+            "kernel_symbol": "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
+            "registry_key": null
+          },
+          "oracle": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
+            "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+            "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+            "function_sha256": "1d4ec11d09f49bb26ee98fd679af00378362682b90a2449bb387a93e36eea7de",
+            "build_identity": "e15c8ef0b3a3ec1ceb207da11af17b52f6ac6cafd62ca3bd87fdae07072296ce",
+            "kernel_symbol": "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
+            "registry_key": null
+          }
+        },
+        {
+          "role": "qsa_split_norm_rope",
+          "binding": "direct",
+          "scope": "batch_decode",
+          "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_split_norm_rope_rows_f32",
+          "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+          "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+          "function_sha256": "8d12fc3fda9cddfaf5945f40e4b32acbc062530e3fc6292fb2666d5341c499a2",
+          "build_identity": "72b5c7dd7dfec17b5a3ab54099fe16951d61dfd192322e9f6acce5cf3f0d4897",
+          "kernel_symbol": "hipengine_qwen4_exp_qsa_split_norm_rope_rows_f32",
+          "registry_key": null,
+          "registered_keys": [
+            {
+              "backend": "hip_gfx1151",
+              "layer": "qsa_split_norm_rope",
+              "quant": "f32",
+              "variant": "strict_rows"
+            }
+          ],
+          "strict_fallback": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_split_norm_rope_f32",
+            "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+            "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+            "function_sha256": "ec0edf4658987e577ab0aa93f4f89e20768ad3f773c686ceefde066318123501",
+            "build_identity": "2fbe927a9fdf3c44d118a1ba79c1f86344c865513716280507fa3c03e95cd35a",
+            "kernel_symbol": "hipengine_qwen4_exp_qsa_split_norm_rope_f32",
+            "registry_key": null
+          },
+          "oracle": {
+            "binding": "direct",
+            "identity": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa.qwen4_exp_qsa_split_norm_rope_f32",
+            "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+            "source_sha256": "5f9e151d0ffd4391c19b2f3b106c1338cdb013b8f242643c250c013c7e24d20c",
+            "function_sha256": "ec0edf4658987e577ab0aa93f4f89e20768ad3f773c686ceefde066318123501",
+            "build_identity": "2fbe927a9fdf3c44d118a1ba79c1f86344c865513716280507fa3c03e95cd35a",
+            "kernel_symbol": "hipengine_qwen4_exp_qsa_split_norm_rope_f32",
+            "registry_key": null
+          }
+        },
+        {
+          "role": "repeat_branches",
+          "binding": "direct",
+          "scope": "shared_c1",
+          "identity": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr.qwen4_exp_repeat_bf16_branches",
+          "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.py",
+          "source_sha256": "de499bab632d14d330a47e20c9c7cffd1ed858849571abf16f022a2b9ffd5301",
+          "function_sha256": "651eceaec6177a10375334347efeb47adc96bf35ebefdfdf75b9734566ea5502",
+          "build_identity": "55b6fb27721cf9c96edbe158fd3b010a0301ced1d9d849fc282b5bc5da87c75a",
+          "kernel_symbol": "hipengine_qwen4_exp_repeat_bf16_branches",
+          "registry_key": null,
+          "registered_keys": [],
+          "strict_fallback": null,
+          "oracle": null
+        }
+      ],
+      "unbound": [
+        {
+          "role": "prefill",
+          "reason": "prefill is the committed c1 resident path and is excluded from the batch claim"
+        },
+        {
+          "role": "ple_hash_rows",
+          "reason": "host CPU reference n-gram hash, not a registered device kernel"
+        },
+        {
+          "role": "stage_qwen4_exp_ple_rows",
+          "reason": "host staging helper, not a registered device kernel"
+        }
+      ],
+      "not_used": [
+        {
+          "role": "qsa_split_norm_mrope",
+          "reason": "batch runner passes no MRoPE position pointer"
+        },
+        {
+          "role": "dense_paged_decode",
+          "reason": "mixed QSA attends through the variable-selection rows kernel; the dense paged decode is not called"
+        }
+      ],
+      "manifest_sha256": "db5fd3ffaf9e0150b968d6fb431b1f6f85eafddf73a04a726f72648751051f34",
+      "profile_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+      "source_revision": "6b7c70e784446dc216b74faf82be772483f2bdd0",
+      "projection_dispatch": {
+        "role": "projection_dispatch",
+        "binding": "registry_dispatch",
+        "scope": "decode_rows_1_4",
+        "identity": "hipengine.runtime.gguf_linear.launch_gguf_linear",
+        "source": "hipengine/runtime/gguf_linear.py",
+        "source_sha256": "2769e0ca7e17c849f3a2edf2273f88be4f79505192a185d6c43f86260cf75c5b",
+        "function_sha256": "82d2c3957721185dc17eddf6525d20157bb927a875a16d0a44584a7cfc448c9e",
+        "build_identity": "132617231400f20901f1a5d4ba1cda859338458368eb2927b9708ec1f8bcaffc",
+        "kernel_symbol": null,
+        "registry_key": null,
+        "registered_keys": [],
+        "strict_fallback": null,
+        "oracle": null,
+        "resolver": "hipengine.runtime.gguf_linear.launch_gguf_linear",
+        "observed": [
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "dense_gemv",
+              "quant": "bf16",
+              "variant": "f32_hidden_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_f32_bf16w_f32_out",
+            "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+            "source_sha256": "b7127ff8e1966375c339e114407245bf46256caf45add32fd28a3d9a42e091c7",
+            "function_sha256": "87b82bd39a40f0622ae0004cdaee3bb4ed52acd7fa32809f0f4ceeddbb38835b",
+            "build_identity": "fd6a9d3893ff4672a65882eafbde1268989c3d50f1a313ad0ac62fbc77449b50",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 128,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "dense_bf16",
+            "calls": 28944
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "dense_gemv",
+              "quant": "f32",
+              "variant": "f32_hidden_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+            "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+            "source_sha256": "b7127ff8e1966375c339e114407245bf46256caf45add32fd28a3d9a42e091c7",
+            "function_sha256": "8fb99948d1d4c85bafca553c18fb29ad6561dbed81be80c2f7f31c95e8f31a30",
+            "build_identity": "12e5b00791d35f0a66b378fac573baa08def6e716aa8d2d77c9a5ae60fa95775",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 1,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "dense_bf16",
+            "calls": 115776
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "dense_gemv",
+              "quant": "f32",
+              "variant": "f32_hidden_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+            "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+            "source_sha256": "b7127ff8e1966375c339e114407245bf46256caf45add32fd28a3d9a42e091c7",
+            "function_sha256": "8fb99948d1d4c85bafca553c18fb29ad6561dbed81be80c2f7f31c95e8f31a30",
+            "build_identity": "12e5b00791d35f0a66b378fac573baa08def6e716aa8d2d77c9a5ae60fa95775",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 48,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "dense_bf16",
+            "calls": 173664
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "dense_gemv",
+              "quant": "f32",
+              "variant": "f32_hidden_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.linear.dense_gemv.dense_gemv_out_f32",
+            "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.py",
+            "source_sha256": "b7127ff8e1966375c339e114407245bf46256caf45add32fd28a3d9a42e091c7",
+            "function_sha256": "8fb99948d1d4c85bafca553c18fb29ad6561dbed81be80c2f7f31c95e8f31a30",
+            "build_identity": "12e5b00791d35f0a66b378fac573baa08def6e716aa8d2d77c9a5ae60fa95775",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 512,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "dense_bf16",
+            "calls": 115776
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "linear",
+              "quant": "gguf_q8_0",
+              "variant": "pack8_gemv_f32_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+            "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+            "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+            "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 640,
+            "out_features": 2560,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "raw",
+            "calls": 115776
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "linear",
+              "quant": "gguf_q8_0",
+              "variant": "pack8_gemv_f32_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+            "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+            "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+            "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 512,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "raw",
+            "calls": 57888
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "linear",
+              "quant": "gguf_q8_0",
+              "variant": "pack8_gemv_f32_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+            "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+            "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+            "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 640,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "raw",
+            "calls": 231552
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "linear",
+              "quant": "gguf_q8_0",
+              "variant": "pack8_gemv_f32_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+            "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+            "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+            "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 2560,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "raw",
+            "calls": 2412
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "linear",
+              "quant": "gguf_q8_0",
+              "variant": "pack8_gemv_f32_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+            "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+            "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+            "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 6144,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "raw",
+            "calls": 86832
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "linear",
+              "quant": "gguf_q8_0",
+              "variant": "pack8_gemv_f32_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+            "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+            "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+            "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 10240,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "raw",
+            "calls": 89244
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "linear",
+              "quant": "gguf_q8_0",
+              "variant": "pack8_gemv_f32_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+            "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+            "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+            "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 12288,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "raw",
+            "calls": 28944
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "linear",
+              "quant": "gguf_q8_0",
+              "variant": "pack8_gemv_f32_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+            "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+            "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+            "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 2560,
+            "out_features": 248320,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "raw",
+            "calls": 2412
+          },
+          {
+            "key": {
+              "backend": "hip_gfx1151",
+              "layer": "linear",
+              "quant": "gguf_q8_0",
+              "variant": "pack8_gemv_f32_f32_out"
+            },
+            "identity": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv._make_pack8_wrapper.<locals>.wrapper",
+            "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+            "source_sha256": "8de7a585e6d4d11f9daeec257370391ef7d97956933d3c54c31365b620733c56",
+            "function_sha256": "10a9e2fc9e97418ab408cdd6777c93275069f2fad0da3e1cad175d00d9f62827",
+            "build_identity": "978e239cef0c957a6f7bc9e8add10a7ff3b7b667ff6cf33ff9d57aaac8cbcb82",
+            "kernel_symbol": null,
+            "rows": 1,
+            "in_features": 6144,
+            "out_features": 2560,
+            "activation_dtype": "f32",
+            "output_dtype": "f32",
+            "abi": "raw",
+            "calls": 115776
+          }
+        ],
+        "rows": [
+          1
+        ],
+        "required_rows": [
+          1
+        ]
+      },
+      "required_roles": [
+        "gdn_conv_indexed",
+        "gdn_recurrence_norm_gate",
+        "qsa_mixed_mixer",
+        "qsa_split_norm_rope",
+        "qsa_paged_kv_write",
+        "qsa_rows_attention",
+        "qsa_gate_context",
+        "qsa_index_append",
+        "qsa_index_pool_norm_rope",
+        "qsa_index_score",
+        "qsa_index_select",
+        "projection_dispatch",
+        "ple_stage",
+        "ple_indexed_conv"
+      ],
+      "observed_step_widths": {
+        "1": 2412
+      }
+    },
+    "group_count": 54,
+    "group_widths": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "groups_per_repeat": 18,
+    "observed_step_widths": {
+      "1": 2412
+    },
+    "teacher_step_count": 1296,
+    "free_step_count": 1116,
+    "ownership_summary": {
+      "all_groups_state_distinct": true,
+      "all_rows_have_owner_slot_request": true
+    }
+  },
+  "admission": {
+    "eligible": true,
+    "reasons": [],
+    "requirements": {
+      "prompt_set": "full_named_fixture",
+      "prompt_count": 18,
+      "decode_steps": 24,
+      "teacher_rows": 450,
+      "repeat_runs": 3,
+      "free_tokens": 32,
+      "free_runs": 2,
+      "tracked_clean": true,
+      "batch_manifest_bound": true
+    },
+    "observed": {
+      "prompt_count": 18,
+      "decode_steps": 24,
+      "teacher_rows": 450,
+      "repeat_runs": 3,
+      "free_tokens": 32,
+      "free_runs": 2,
+      "tracked_clean": true,
+      "batch_manifest_bound": true
+    },
+    "manifest_binding_summary": {
+      "valid": true,
+      "bound": true,
+      "reasons": [],
+      "missing": [],
+      "entry_count": 27,
+      "manifest_sha256": "db5fd3ffaf9e0150b968d6fb431b1f6f85eafddf73a04a726f72648751051f34",
+      "profile_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+      "source_revision": "6b7c70e784446dc216b74faf82be772483f2bdd0",
+      "observed_step_widths": {
+        "1": 2412
+      },
+      "projection_dispatch_role": "projection_dispatch",
+      "projection_dispatch_observed_rows": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "task_gate": {
+    "status": "requires_review",
+    "candidate_repeat_exact": true,
+    "repeat_mismatches": [],
+    "strict_exact_count": 15,
+    "total": 18,
+    "divergences": [
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "prompt": "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.",
+        "strict_text": "```python\nfrom collections import deque\n\n\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n   ",
+        "candidate_text": "```python\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes",
+        "strict_ids_sha256": "77e6323f5d3a9b1cb1e2b588fa70139453f3e8a39c754b9d8ebba4cf15357336",
+        "candidate_ids_sha256": "89dc81f256787a6332df1ce735e232b483c249cde124309bf63887f797410d85",
+        "classification": "deterministic_cross_route_free_output_divergence",
+        "numerical_failure": false
+      },
+      {
+        "id": "heldout_general_ja_migration",
+        "category": "general_ja",
+        "prompt": "社内向けREST APIを同期処理から非同期ジョブ方式へ移行する計画を、日本語で簡潔に作成してください。互換性、監視、ロールバック条件を含めてください。",
+        "strict_text": "# 社内REST API：同期処理から非同期ジョブ方式への移行計画\n\n## 1. 背景と目的\n高負荷時のレス",
+        "candidate_text": "# 社内REST API：同期処理から非同期ジョブ方式への移行計画\n\n## 1. 概要\n既存の同期型REST APIを",
+        "strict_ids_sha256": "1e4f6ce7fca7141648007213f07a680d2bdeaf925002042ddb4911309d2b2695",
+        "candidate_ids_sha256": "2ee28bda2a2136e51a636b4c4f844360c9355fbacd51543443ef3bd559d9f36e",
+        "classification": "deterministic_cross_route_free_output_divergence",
+        "numerical_failure": false
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "prompt": "投機的デコードが常に高速化につながるわけではない理由を、日本語で技術的に説明してください。受理率、検証コスト、メモリ使用量に触れてください。",
+        "strict_text": "投機的デコード（Speculative Decoding）は、小さな「ドラフトモデル」で生成した候補トークンを、大きな「ターゲットモデル」で一括",
+        "candidate_text": "投機的デコード（Speculative Decoding）は、小さな「ドラフトモデル」で生成した候補トークンを、大きな「ターゲットモデル」で並",
+        "strict_ids_sha256": "457d149d4d5385646d48c2e8ed9a23193e92c8456dfbda6287efcc4236c17768",
+        "candidate_ids_sha256": "00977757b6b9f12f190d514e60929379db2a7704accb951a4264620b190ad089",
+        "classification": "deterministic_cross_route_free_output_divergence",
+        "numerical_failure": false
+      }
+    ],
+    "rows": [
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "1f6728f4c885e9173d64da17c0def730c1b5fe2e917ffcc5cb7bf56468e76865",
+        "candidate_ids_sha256": "1f6728f4c885e9173d64da17c0def730c1b5fe2e917ffcc5cb7bf56468e76865"
+      },
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "candidate_repeat_exact": true,
+        "strict_exact": false,
+        "strict_ids_sha256": "77e6323f5d3a9b1cb1e2b588fa70139453f3e8a39c754b9d8ebba4cf15357336",
+        "candidate_ids_sha256": "89dc81f256787a6332df1ce735e232b483c249cde124309bf63887f797410d85"
+      },
+      {
+        "id": "code_lru_cache",
+        "category": "code",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "3d098ed75ca86100dd9251ef1d9567e7b32487ca3e458338ce39449382a1fad6",
+        "candidate_ids_sha256": "3d098ed75ca86100dd9251ef1d9567e7b32487ca3e458338ce39449382a1fad6"
+      },
+      {
+        "id": "code_markdown_table",
+        "category": "code",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "a60aeaa28b7749f418b6a4ec5e3a94c9f8992b555975013b42bf242c0974ead9",
+        "candidate_ids_sha256": "a60aeaa28b7749f418b6a4ec5e3a94c9f8992b555975013b42bf242c0974ead9"
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "997895a9a25898821f2e8882550aefbd180ebd762ebe395d924737b15cc8b4b2",
+        "candidate_ids_sha256": "997895a9a25898821f2e8882550aefbd180ebd762ebe395d924737b15cc8b4b2"
+      },
+      {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "db2a093bac98ab682c5d698b8dd6fe26340069ebe731b685e8fc20c1070c2dbf",
+        "candidate_ids_sha256": "db2a093bac98ab682c5d698b8dd6fe26340069ebe731b685e8fc20c1070c2dbf"
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "78c9b1cbcd97cb0eb352b7aee6928cceb1c4fb6c2732da23c65bc6db38732658",
+        "candidate_ids_sha256": "78c9b1cbcd97cb0eb352b7aee6928cceb1c4fb6c2732da23c65bc6db38732658"
+      },
+      {
+        "id": "general_ja_explain",
+        "category": "general_ja",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "69f2d2d99a933f3691d991d9d126e20b6b772a0c2cf0214bd316b88314b3a477",
+        "candidate_ids_sha256": "69f2d2d99a933f3691d991d9d126e20b6b772a0c2cf0214bd316b88314b3a477"
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "dce1e54f35d1dc4fe8df204e260f40730b81bc2919b77398cf843d2c3d3144e8",
+        "candidate_ids_sha256": "dce1e54f35d1dc4fe8df204e260f40730b81bc2919b77398cf843d2c3d3144e8"
+      },
+      {
+        "id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "7b092e69a2ab93a9b268e8fe9f6b2d05e4e0b89a7649d13d61ab3ab5711bd36a",
+        "candidate_ids_sha256": "7b092e69a2ab93a9b268e8fe9f6b2d05e4e0b89a7649d13d61ab3ab5711bd36a"
+      },
+      {
+        "id": "heldout_code_rate_limiter",
+        "category": "code",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "067327d55995dc7512d59f1bc2ffb90cb45c7a23c8218a815b9ced3b1f3249e4",
+        "candidate_ids_sha256": "067327d55995dc7512d59f1bc2ffb90cb45c7a23c8218a815b9ced3b1f3249e4"
+      },
+      {
+        "id": "heldout_code_interval_schedule",
+        "category": "code",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "703945b5adaae1dfcc4963cc2efee2d43d699b1d91696e82f22db575283671ef",
+        "candidate_ids_sha256": "703945b5adaae1dfcc4963cc2efee2d43d699b1d91696e82f22db575283671ef"
+      },
+      {
+        "id": "heldout_general_en_incident",
+        "category": "general_en",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "b52773e6c4a4edb0dc13db96ab62ea13fec5bc91c0a8486ad552fe45f6a82209",
+        "candidate_ids_sha256": "b52773e6c4a4edb0dc13db96ab62ea13fec5bc91c0a8486ad552fe45f6a82209"
+      },
+      {
+        "id": "heldout_general_en_quant",
+        "category": "general_en",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "6d1c72d02faa190863ecb96c89549278f24013fdda1462000868c23412dee69b",
+        "candidate_ids_sha256": "6d1c72d02faa190863ecb96c89549278f24013fdda1462000868c23412dee69b"
+      },
+      {
+        "id": "heldout_general_ja_migration",
+        "category": "general_ja",
+        "candidate_repeat_exact": true,
+        "strict_exact": false,
+        "strict_ids_sha256": "1e4f6ce7fca7141648007213f07a680d2bdeaf925002042ddb4911309d2b2695",
+        "candidate_ids_sha256": "2ee28bda2a2136e51a636b4c4f844360c9355fbacd51543443ef3bd559d9f36e"
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "candidate_repeat_exact": true,
+        "strict_exact": false,
+        "strict_ids_sha256": "457d149d4d5385646d48c2e8ed9a23193e92c8456dfbda6287efcc4236c17768",
+        "candidate_ids_sha256": "00977757b6b9f12f190d514e60929379db2a7704accb951a4264620b190ad089"
+      },
+      {
+        "id": "heldout_mixed_summary",
+        "category": "mixed_ja_en",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "86e96177dcd3014c4e4b27bde0a9b92247489e1af3608213b124567e3abfcad0",
+        "candidate_ids_sha256": "86e96177dcd3014c4e4b27bde0a9b92247489e1af3608213b124567e3abfcad0"
+      },
+      {
+        "id": "heldout_mixed_review",
+        "category": "mixed_ja_en",
+        "candidate_repeat_exact": true,
+        "strict_exact": true,
+        "strict_ids_sha256": "8ab9bda7df043cc2c5129555f09307cc93e5853d005ce4983281745729c9c9d5",
+        "candidate_ids_sha256": "8ab9bda7df043cc2c5129555f09307cc93e5853d005ce4983281745729c9c9d5"
+      }
+    ],
+    "note": "Exact gate-recorded free-output snippets and full prompt text are preserved. These are deterministic cross-route text/token divergences; the teacher-forced numerical gate passed. No further long task-review generation was performed."
+  },
+  "lifecycle": {
+    "strict_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 83429817760,
+      "total_allocated_bytes": 83429817760,
+      "total_freed_bytes": 83429817760,
+      "active_allocations": 0,
+      "peak_allocations": 1625
+    },
+    "candidate_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 83642512928,
+      "total_allocated_bytes": 83665156460,
+      "total_freed_bytes": 83665156460,
+      "active_allocations": 0,
+      "peak_allocations": 2026
+    },
+    "passed": true
+  },
+  "decision": {
+    "passed": false,
+    "admitted": false,
+    "numerical_passed": true,
+    "state_passed": true,
+    "task_passed": false,
+    "task_status": "requires_review",
+    "lifecycle_passed": true,
+    "protocol_check_passed": true,
+    "admission_eligible": true,
+    "admission_reasons": [],
+    "admission_decision": {
+      "admitted": false,
+      "reasons": [
+        "task_gate_requires_review"
+      ]
+    },
+    "next": "task review required for deterministic cross-route divergences"
+  },
+  "profiles": {
+    "strict_manifest_sha256": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+    "candidate_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+    "candidate_base_profile": "production",
+    "candidate_named_profile_intact": true,
+    "strict_execution_profile": "strict",
+    "candidate_execution_profile": "production",
+    "strict_selection_count": 28,
+    "candidate_selection_count": 28,
+    "note": "full execution-profile manifests remain in the raw gate JSON; hashes bind them here"
+  },
+  "prompts": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+      "prompt_tokens": 40,
+      "prompt_token_ids_sha256": "df2d91b35856f260bc0f83b53da392a38fb2c844139b8f2aaa308d42e37f1d76"
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+      "prompt_tokens": 50,
+      "prompt_token_ids_sha256": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498"
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+      "prompt_tokens": 47,
+      "prompt_token_ids_sha256": "3b7619476b9bbdeaf418a2e7463d244df53d3de5cd8def0adfbe13c1ed96380a"
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+      "prompt_tokens": 52,
+      "prompt_token_ids_sha256": "826baa75301566149ab7fca4d8e37f7de27fb7381b5e61a528334c86528bdb9e"
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+      "prompt_tokens": 39,
+      "prompt_token_ids_sha256": "fc1069fb8471bda5da1cafdae026d4a93ceacc425630d552d48c3d1aac651156"
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+      "prompt_tokens": 40,
+      "prompt_token_ids_sha256": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd"
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+      "prompt_tokens": 43,
+      "prompt_token_ids_sha256": "79dbc18d76d4fc4a071da62e486d2e7a9d43237a5e773065d8f082bfa1c02de5"
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+      "prompt_tokens": 43,
+      "prompt_token_ids_sha256": "155f9e514f5eba59e5eeecf2c94935827b5d7871ef7144e6e3aba5ea208bd814"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+      "prompt_tokens": 64,
+      "prompt_token_ids_sha256": "3e74801363c2057a4249de6a7515cee2f23e15a74a8181e35342a5adfa80d467"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+      "prompt_tokens": 71,
+      "prompt_token_ids_sha256": "4d58beab6d31fd07ad4c75bea58aecb4c04160bed4439425ab9d284775b18da6"
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+      "prompt_tokens": 55,
+      "prompt_token_ids_sha256": "8da39cefeba185e7467ba519faedbc1d41365b1cbc5cf2b16cd867fa784ad413"
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+      "prompt_tokens": 52,
+      "prompt_token_ids_sha256": "0526022dc0093d1d3f2ca55d3eb3340ab5a997204d9892fb8216a42db2b978f5"
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+      "prompt_tokens": 45,
+      "prompt_token_ids_sha256": "d38575ce43649f7a5914b4e8e4f63f1d6d32229c08dd0e4fc3acb276c021339c"
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+      "prompt_tokens": 56,
+      "prompt_token_ids_sha256": "f1ed6521944613b3452e787a4cccb8c519fa1de7d6ff9d249b09fe6a0c4112b4"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+      "prompt_tokens": 53,
+      "prompt_token_ids_sha256": "337a40f73abf2f5814cbc626bfa520b90e66bf01e405d1472508253776f4a411"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+      "prompt_tokens": 45,
+      "prompt_token_ids_sha256": "f4d1c423950e44fa485b2f84300fbffb8d3295059ad6992da9649947e0552d8e"
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+      "prompt_tokens": 52,
+      "prompt_token_ids_sha256": "af7ae719ee89715769bd4a6010f670aa984f6bfaad9a3d2158970b8e266b33f7"
+    },
+    {
+      "id": "heldout_mixed_review",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+      "prompt_tokens": 56,
+      "prompt_token_ids_sha256": "089b3b0916f856689985204fdaf1e55636f47aedcacf7c44fe0e3876505fce11"
+    }
+  ],
+  "candidate_dispatch_calls": null,
+  "candidate_dispatch_shapes": [],
+  "batch_variant_manifest_sha256": "db5fd3ffaf9e0150b968d6fb431b1f6f85eafddf73a04a726f72648751051f34",
+  "missing_gates": [
+    "task_gate: width1 free-output divergences are requires_review (3 prompt IDs); no semantic task review or further long generation was performed in this measurement",
+    "default_promotion: not performed; admission remains false",
+    "width4: numerical pass retained, task review still open/inconclusive from prior evidence; not rerun here",
+    "long-suite/profile gates: not run in this short-suite measurement; remain open",
+    "protocol_check: --protocol-check was intentionally not run; the gate computed protocol_check_passed=true as a sanity field only"
+  ],
+  "task21_task25_note": "This provides width1 and width2 numerical prerequisite evidence for task21/task25. It does not close task21; the task gate and the other missing gates remain open.",
+  "notes": [
+    "No source edits were made during either measurement; the tracked tree was clean and the runtime was unchanged since the numerical source.",
+    "Width1 and width2 were run sequentially with exclusive GPU access.",
+    "The width1 task gate has 3 divergences; width2 has 4. They are preserved as requires_review, not treated as numerical failures."
+  ]
+}
