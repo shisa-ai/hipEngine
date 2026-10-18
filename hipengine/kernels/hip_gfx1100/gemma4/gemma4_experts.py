@@ -542,6 +542,7 @@ def gemma4_experts_forward_bf16(
     *,
     scratch: Gemma4ExpertScratch,
     rows: int | None = None,
+    row_exact: bool = False,
     stream: int = 0,
     library: object | None = None,
     runtime: object | None = None,
@@ -659,7 +660,7 @@ def gemma4_experts_forward_bf16(
     #    underneath it. The WMMA owners need a padded tile plan, so it is built
     #    once per call and only when a projection will actually use it.
     fused = 2 * intermediate
-    mode = _prefill_mode()
+    mode = "selected" if row_exact else _prefill_mode()
     gate_up_wmma, compensated, use_mmq = _prefill_route_flags(mode)
     pinned = mode != "auto"
     fused_wmma_leaf = None if pinned else _fused_wmma_owner(

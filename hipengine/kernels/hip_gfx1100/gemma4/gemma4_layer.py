@@ -31,11 +31,19 @@ Three Gemma 4 specifics, each a silent-corruption risk if assumed otherwise:
 Attention here is the dense prefill form: it attends over the block it is given
 using a caller-supplied keep mask. Paged-KV decoding is the runner's concern and
 plugs in at the attention step without touching the rest of the layer.
+
+A block may also be **physically packed** from several requests: the dense and
+MoE stages run once over every row, while the rotation, the cache append and the
+attention launch are repeated per request through a
+:class:`Gemma4PackedSegment`. That is what makes a multi-request verify one
+forward pass instead of a loop of full forwards -- the projections are shared,
+the KV is not.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Sequence
 
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
@@ -203,6 +211,100 @@ class Gemma4RowDecodeAttention:
     windows: tuple[int, ...]
     prefill_attention_variants: tuple[str, ...] | None = None
     decode_attention_variants: tuple[str, ...] | None = None
+
+
+@dataclass(frozen=True)
+class Gemma4PackedSegment:
+    """One request's rows inside a physically packed block.
+
+    A packed block concatenates several requests' rows into one physical block
+    so the dense projections and the MoE stage run once over all of them.
+    Everything that is a property of the *request* rather than of the row stays
+    per segment: its own KV cache and write offset, its own sliding-window base
+    and keep mask, its own RoPE tables (positions differ), and its own
+    attention-variant requests.
+
+    The row ranges must tile ``[0, total)`` in order with no gap and no overlap;
+    :func:`gemma4_packed_segment_rows` is the check, and the layer forward runs
+    it before any device work.
+
+    ``key_begin`` and ``window`` are cache-relative, exactly as the one-request
+    call's arguments of the same name: ``key_begin`` is the first key the
+    request's rows read (already translated by its sliding base), and ``window``
+    bounds each row's walk past that. ``keep_mask_ptr`` is the request's own
+    mask, whose column 0 is key ``key_begin`` in absolute terms -- the same
+    relationship the one-request path documents.
+
+    ``row_decode_attention`` is that request's per-row decode ranges, for a
+    speculative verify block whose rows must each repeat the one-token step; a
+    ``None`` attends the segment's rows in one launch, and a one-row segment is
+    attended row-exactly either way.
+
+    ``row_exact`` says the request's rows must each repeat the one-token step.
+    A one-row segment carries no ``row_decode_attention`` -- one row already is
+    that computation -- so this flag is what still tells the block-wide router
+    loop that four one-row requests are four decode steps and not one four-row
+    projection, whose reduction order differs in the last place.
+    """
+
+    row_start: int
+    rows: int
+    kv: Gemma4LayerKV
+    cos_ptr: int
+    sin_ptr: int
+    keep_mask_ptr: int
+    key_begin: int = 0
+    window: int = 0
+    row_exact: bool = False
+    row_decode_attention: Gemma4RowDecodeAttention | None = None
+    prefill_attention_variants: tuple[str, ...] | None = None
+    decode_attention_variants: tuple[str, ...] | None = None
+    exact_prefill_attention_variants: tuple[str, ...] | None = None
+
+
+def gemma4_packed_segment_rows(segments: Sequence[Gemma4PackedSegment]) -> int:
+    """Validate a packed block's segmentation and return its total row count.
+
+    The whole point of packing is that a row lands in exactly one request's row
+    range, so a gap, an overlap or a segment with no cache is a caller bug that
+    would otherwise write one request's keys into another's cache. This runs
+    before any launch, so a malformed packing costs no device work.
+    """
+
+    if not segments:
+        raise ValueError("a packed block needs at least one segment")
+    total = 0
+    for index, segment in enumerate(segments):
+        if segment.rows <= 0:
+            raise ValueError(f"packed segment {index} covers {segment.rows} rows")
+        if int(segment.row_start) != total:
+            raise ValueError(
+                f"packed segment {index} starts at row {segment.row_start} but the "
+                f"segments before it cover rows 0..{total - 1}"
+            )
+        if segment.kv is None:
+            raise ValueError(f"packed segment {index} carries no KV cache")
+        if int(segment.key_begin) < 0:
+            raise ValueError(
+                f"packed segment {index} has key_begin {segment.key_begin}; it must "
+                "be non-negative and cache-relative"
+            )
+        if int(segment.window) < 0:
+            raise ValueError(f"packed segment {index} has window {segment.window}")
+        if not int(segment.keep_mask_ptr):
+            raise ValueError(f"packed segment {index} carries no keep mask")
+        if not int(segment.cos_ptr) or not int(segment.sin_ptr):
+            raise ValueError(f"packed segment {index} carries no rope tables")
+        if segment.row_decode_attention is not None and len(
+            segment.row_decode_attention.key_begins
+        ) != int(segment.rows):
+            raise ValueError(
+                f"packed segment {index} carries "
+                f"{len(segment.row_decode_attention.key_begins)} row ranges for "
+                f"{segment.rows} rows"
+            )
+        total += int(segment.rows)
+    return total
 
 
 @dataclass
@@ -990,6 +1092,14 @@ def gemma4_layer_forward_bf16(
     # Per-row decode ranges for a multi-row block whose attention must repeat
     # the one-token step row by row; ``None`` attends the block in one launch.
     row_decode_attention: Gemma4RowDecodeAttention | None = None,
+    # A physically packed multi-request block: the dense and MoE stages run over
+    # every row of ``hidden_ptr`` once, while rotation, cache append and attention
+    # run once per segment against that segment's own cache, positions, sliding
+    # base and mask. Mutually exclusive with ``kv``, ``int8_kv``, the block-wide
+    # rope tables, keep mask, ``key_begin``, ``window``, ``row_decode_attention``
+    # and the block-wide attention-variant requests: every one of those is a
+    # property of a request, and a packed call carries one per segment.
+    packed_segments: Sequence[Gemma4PackedSegment] | None = None,
     stream: int = 0,
     # -1 (the default) selects a second stream so the MoE branch overlaps the
     # dense branch. Passing ``stream_moe=stream`` restores the single-stream
@@ -1043,6 +1153,17 @@ def gemma4_layer_forward_bf16(
     semantics is refused before device work rather than having its extra
     exclusions silently dropped.
 
+    ``packed_segments`` runs several requests through one physical block. The
+    norm, projection, MoE and combine stages see ``rows`` contiguous rows and do
+    not know the requests exist; the rotation, the KV append and the attention
+    launch are repeated per segment with that segment's own pointers and
+    positions. A request's rows therefore depend only on that request's cache
+    and position, which is the property a multi-request verify needs -- and the
+    reason this is not a loop of one-request forwards: the projections and the
+    MoE stage are launched once, not once per request. The INT8 route has no
+    per-request layout (it derives one block-wide write span), so a packed block
+    refuses it by name.
+
     Returns ``hidden_ptr`` so the call reads as a pipeline stage.
     """
 
@@ -1072,6 +1193,51 @@ def gemma4_layer_forward_bf16(
                 "layer's sliding window and cannot honour an arbitrary exclusion "
                 "mask, so it requires attention_mask_is_causal=True"
             )
+    if packed_segments is not None:
+        # Every one of these arguments is a property of a *request*, and a packed
+        # block carries one per segment. Refusing them by name is what stops a
+        # caller from believing a block-wide mask or rope table applies to rows
+        # that sit at different positions in different caches.
+        if int8_kv is not None:
+            raise ValueError(
+                "packed_segments runs the BF16 KV route; the INT8 per-token/head "
+                "owner derives one block-wide write span and has no per-request "
+                "cache layout"
+            )
+        if kv is not None:
+            raise ValueError(
+                "packed_segments carries each request's own KV cache in its "
+                "segment; pass kv=None"
+            )
+        if int(cos_ptr) or int(sin_ptr) or int(keep_mask_ptr):
+            raise ValueError(
+                "packed_segments carries each request's own rope tables and keep "
+                "mask in its segment; pass 0 for the block-wide cos/sin/mask"
+            )
+        if int(key_begin) or int(window) or row_decode_attention is not None:
+            raise ValueError(
+                "packed_segments carries each request's own key_begin, window and "
+                "row_decode_attention in its segment; leave the block-wide ones "
+                "unset"
+            )
+        if (
+            prefill_attention_variants
+            or decode_attention_variants
+            or exact_prefill_attention_variants
+        ):
+            raise ValueError(
+                "packed_segments carries each request's own attention-variant "
+                "requests in its segment; leave the block-wide ones unset"
+            )
+        packed_rows = gemma4_packed_segment_rows(packed_segments)
+        if rows is not None and int(rows) != packed_rows:
+            raise ValueError(
+                f"rows={int(rows)} does not match the packed segments' "
+                f"{packed_rows} rows"
+            )
+        rows = packed_rows
+        if rows > scratch.tokens:
+            raise ValueError(f"rows={rows} exceeds scratch capacity {scratch.tokens}")
     hidden_size = scratch.hidden_size
     geometry = scratch.geometry
     num_heads = geometry.num_heads
@@ -1156,20 +1322,41 @@ def gemma4_layer_forward_bf16(
         buf("k"), layer.k_norm, buf("k_normed"), rows * num_kv_heads, head_dim, eps, **kwargs
     )
 
-    gemma4_partial_rotary_bf16(
-        buf("q"),
-        buf("k_normed"),
-        cos_ptr,
-        sin_ptr,
-        buf("q_rot"),
-        buf("k_rot"),
-        rows,
-        num_heads,
-        num_kv_heads,
-        head_dim,
-        rotary_dim=rotary_dim,
-        **kwargs,
-    )
+    if packed_segments is None:
+        gemma4_partial_rotary_bf16(
+            buf("q"),
+            buf("k_normed"),
+            cos_ptr,
+            sin_ptr,
+            buf("q_rot"),
+            buf("k_rot"),
+            rows,
+            num_heads,
+            num_kv_heads,
+            head_dim,
+            rotary_dim=rotary_dim,
+            **kwargs,
+        )
+    else:
+        # Rotation is a function of the row's absolute position, so each
+        # request's rows are rotated with that request's own tables. The dense
+        # stages above already ran over the whole packed block; only this stage
+        # and the attention below need to know where one request's rows end.
+        for segment in packed_segments:
+            gemma4_partial_rotary_bf16(
+                buf("q") + segment.row_start * q_width * _BF16_BYTES,
+                buf("k_normed") + segment.row_start * kv_width * _BF16_BYTES,
+                segment.cos_ptr,
+                segment.sin_ptr,
+                buf("q_rot") + segment.row_start * q_width * _BF16_BYTES,
+                buf("k_rot") + segment.row_start * kv_width * _BF16_BYTES,
+                segment.rows,
+                num_heads,
+                num_kv_heads,
+                head_dim,
+                rotary_dim=rotary_dim,
+                **kwargs,
+            )
 
     # With a cache, this block's rotated K and normalized V are appended at
     # ``write_offset`` and attention reads the cache instead of the block. Both
@@ -1197,28 +1384,6 @@ def gemma4_layer_forward_bf16(
             stream=stream,
         )
     else:
-        if kv is not None:
-            _append_kv(
-                kv.key_cache,
-                buf("k_rot"),
-                kv.write_offset * kv_width,
-                rows * kv_width,
-                stream,
-            )
-            _append_kv(
-                kv.value_cache,
-                buf("v"),
-                kv.write_offset * kv_width,
-                rows * kv_width,
-                stream,
-            )
-
-        key_begin = int(key_begin)
-        if key_begin < 0:
-            raise ValueError(f"key_begin must be non-negative, got {key_begin}")
-        if key_begin and kv is None:
-            raise ValueError("key_begin requires a cache to skip into")
-
         def attend(
             rows: int,
             key_begin: int,
@@ -1230,8 +1395,15 @@ def gemma4_layer_forward_bf16(
             prefill_attention_variants: tuple[str, ...] | None,
             decode_attention_variants: tuple[str, ...] | None,
             exact_prefill_attention_variants: tuple[str, ...] | None,
+            kv: Gemma4LayerKV | None,
         ) -> None:
-            """Attend ``rows`` queries whose first row sits at ``write_offset``."""
+            """Attend ``rows`` queries whose first row sits at ``write_offset``.
+
+            ``kv`` is the cache those rows were appended to, or ``None`` to
+            attend the block's own K/V. It is a parameter rather than the
+            enclosing block's cache because a packed block attends each
+            request over that request's own cache.
+            """
 
             global _last_prefill_route
             key_count = rows if kv is None else write_offset + rows - key_begin
@@ -1434,15 +1606,41 @@ def gemma4_layer_forward_bf16(
                     **kwargs,
                 )
 
-        if row_decode_attention is None or rows == 1:
-            attend(
-                rows, key_begin, keep_mask_ptr, window,
-                kv.write_offset if kv is not None else 0,
-                buf("q_rot"), buf("context"),
-                prefill_attention_variants, decode_attention_variants,
-                exact_prefill_attention_variants,
-            )
-        else:
+        def attend_one(
+            *,
+            row_start: int,
+            rows: int,
+            kv: Gemma4LayerKV | None,
+            key_begin: int,
+            keep_mask_ptr: int,
+            window: int,
+            prefill_attention_variants: tuple[str, ...] | None,
+            decode_attention_variants: tuple[str, ...] | None,
+            exact_prefill_attention_variants: tuple[str, ...] | None,
+            row_decode_attention: Gemma4RowDecodeAttention | None,
+        ) -> None:
+            """Attend one request's rows, which start at packed row ``row_start``.
+
+            This is the whole attention step for one request: one launch when
+            the request's rows may be attended together, and one decode-shaped
+            launch per row when they must each repeat the one-token step. The
+            one-request path calls it with ``row_start=0`` and the block's own
+            cache; a packed block calls it once per segment with that segment's
+            cache, mask and positions, so both paths share one definition of
+            what a request's attention is.
+            """
+
+            q_base = buf("q_rot") + row_start * q_width * _BF16_BYTES
+            out_base = buf("context") + row_start * q_width * _BF16_BYTES
+            if row_decode_attention is None or rows == 1:
+                attend(
+                    rows, key_begin, keep_mask_ptr, window,
+                    kv.write_offset if kv is not None else 0,
+                    q_base, out_base,
+                    prefill_attention_variants, decode_attention_variants,
+                    exact_prefill_attention_variants, kv,
+                )
+                return
             # One decode-shaped launch per row. A multi-row launch reduces each
             # row over the block's key range, and the decode kernel partitions
             # its reduction by the key count, so only a launch that carries the
@@ -1462,10 +1660,81 @@ def gemma4_layer_forward_bf16(
                     1, int(row_begin),
                     keep_mask_ptr + row * block_keys + (int(row_begin) - key_begin),
                     int(row_window), kv.write_offset + row,
-                    buf("q_rot") + row * row_bytes, buf("context") + row * row_bytes,
+                    q_base + row * row_bytes, out_base + row * row_bytes,
                     row_decode_attention.prefill_attention_variants,
                     row_decode_attention.decode_attention_variants,
                     None,
+                    kv,
+                )
+
+        if packed_segments is None:
+            if kv is not None:
+                _append_kv(
+                    kv.key_cache,
+                    buf("k_rot"),
+                    kv.write_offset * kv_width,
+                    rows * kv_width,
+                    stream,
+                )
+                _append_kv(
+                    kv.value_cache,
+                    buf("v"),
+                    kv.write_offset * kv_width,
+                    rows * kv_width,
+                    stream,
+                )
+
+            key_begin = int(key_begin)
+            if key_begin < 0:
+                raise ValueError(f"key_begin must be non-negative, got {key_begin}")
+            if key_begin and kv is None:
+                raise ValueError("key_begin requires a cache to skip into")
+            attend_one(
+                row_start=0,
+                rows=rows,
+                kv=kv,
+                key_begin=key_begin,
+                keep_mask_ptr=keep_mask_ptr,
+                window=window,
+                prefill_attention_variants=prefill_attention_variants,
+                decode_attention_variants=decode_attention_variants,
+                exact_prefill_attention_variants=exact_prefill_attention_variants,
+                row_decode_attention=row_decode_attention,
+            )
+        else:
+            # One append and one attention step per request, over the packed
+            # block's rows for that request only. The append is the same
+            # contiguous move as above with the segment's own source offset, and
+            # the attention reads that segment's cache, mask and sliding base,
+            # so no request can see another's keys.
+            for segment in packed_segments:
+                _append_kv(
+                    segment.kv.key_cache,
+                    buf("k_rot") + segment.row_start * kv_width * _BF16_BYTES,
+                    segment.kv.write_offset * kv_width,
+                    segment.rows * kv_width,
+                    stream,
+                )
+                _append_kv(
+                    segment.kv.value_cache,
+                    buf("v") + segment.row_start * kv_width * _BF16_BYTES,
+                    segment.kv.write_offset * kv_width,
+                    segment.rows * kv_width,
+                    stream,
+                )
+                attend_one(
+                    row_start=segment.row_start,
+                    rows=segment.rows,
+                    kv=segment.kv,
+                    key_begin=int(segment.key_begin),
+                    keep_mask_ptr=segment.keep_mask_ptr,
+                    window=int(segment.window),
+                    prefill_attention_variants=segment.prefill_attention_variants,
+                    decode_attention_variants=segment.decode_attention_variants,
+                    exact_prefill_attention_variants=(
+                        segment.exact_prefill_attention_variants
+                    ),
+                    row_decode_attention=segment.row_decode_attention,
                 )
     gemma4_project(
         buf("context"), layer.o_proj, buf("attn_out"), rows, q_width, hidden_size, **project_kwargs
@@ -1542,8 +1811,17 @@ def gemma4_layer_forward_bf16(
     # --- MoE branch ---------------------------------------------------------
     # A row-exact block routes each row through the one-token launch: the
     # fused decode router and the multi-row chain reduce the projection in a
-    # different order, so their weights can differ in the last place.
-    router_rows = 1 if row_decode_attention is not None else rows
+    # different order, so their weights can differ in the last place. A packed
+    # block is row-exact as soon as any request in it asked for a row-exact
+    # step, because the router launch is block-wide and cannot be mixed. The
+    # request's own flag is what carries that: a one-row segment needs no
+    # per-row decode ranges, so the ranges alone would let four one-row requests
+    # route as one four-row block.
+    router_row_exact = row_decode_attention is not None or (
+        packed_segments is not None
+        and any(segment.row_exact for segment in packed_segments)
+    )
+    router_rows = 1 if router_row_exact else rows
     for router_row in range(0, rows, router_rows):
         gemma4_router_topk_bf16(
             buf("hidden") + router_row * hidden_size * _BF16_BYTES,
@@ -1579,6 +1857,7 @@ def gemma4_layer_forward_bf16(
         buf("experts"),
         scratch=scratch.experts,
         rows=rows,
+        row_exact=bool(packed_segments) and all(segment.row_exact for segment in packed_segments),
         stream=moe_stream,
     )
     gemma4_rmsnorm_f32w_bf16(

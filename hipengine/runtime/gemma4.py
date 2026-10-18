@@ -59,6 +59,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rope import gemma4_rope_cos_sin
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
     Gemma4LayerGeometry,
     Gemma4LayerKV,
+    Gemma4PackedSegment,
     Gemma4RowDecodeAttention,
     Gemma4LayerPointers,
     Gemma4LayerScratch,
@@ -2022,6 +2023,349 @@ class Gemma4Runner:
         assert token is not None
         return int(token)
 
+    # --- physically packed multi-request forward ------------------------
+
+    def forward_batch(
+        self,
+        runners: Sequence[Gemma4Runner],
+        token_rows: Sequence[Sequence[int]],
+        *,
+        verification: bool = True,
+        apply_softcap: bool = True,
+    ) -> list[np.ndarray]:
+        """Run several requests through one physically packed block.
+
+        ``self`` is a separate packed execution workspace, not one of
+        ``runners``: it holds the packed block's hidden states, normalized rows
+        and logits, while each runner keeps its own KV cache, position and
+        hidden-state buffer. Every runner and the workspace must be built from
+        the same resident :class:`Gemma4DeviceWeights`, because a packed block
+        runs one layer table over every row.
+
+        ``token_rows[i]`` are the tokens ``runners[i]`` appends. The rows are
+        flattened into one physical block, so every norm, every dense
+        projection, the router, the experts and the lm head run **once over all
+        rows** rather than once per request. Only the rotation, the cache append
+        and the attention launch repeat per request, each against that request's
+        own cache, position, sliding base and keep mask. That is the difference
+        between this and a loop of one-request forwards: a loop re-reads every
+        weight once per request, and this reads each weight once for the whole
+        block.
+
+        Ragged widths are the point: any mix of row counts is one block, up to
+        the workspace's ``max_block``. The concurrency cases the engine runs are
+        C1 through C4, which differ only in how many requests contribute rows.
+
+        ``verification=True`` (the default) is the speculative verify contract:
+        the dense projections stay on the row-exact schedule, each request's
+        rows are attended with that request's own one-token decode ranges, and
+        the router runs row by row. Nothing a neighbor contributes reaches a
+        row's positions, mask, cache or attention range, and the router and
+        attention are per row, so a row cannot depend on who shares its block.
+        That is what strict and batch-invariant keep.
+
+        The dense stages are one launch over the packed rows, so a request's row
+        is computed by the kernel the dispatch selects for the packed width, not
+        for that request's own row count. Under ``verification=True`` both are
+        the row-exact schedule -- the same one the request's own multi-row
+        verify block uses -- and its per-row equality with a one-token forward
+        is the ``verify_dense_exact`` contract, which packing does not change.
+        The expert stage is the one that reads a width as an input: see
+        ``gemma4_experts_forward_bf16``, whose route reads the scratch's declared
+        token count and whose WMMA owners read the live lane count.
+
+        ``verification=False`` runs the production prefill arithmetic. The
+        dense projections are one launch over the packed block, so a request
+        whose rows would individually have taken a different projection kernel
+        now shares this one: one physical launch cannot carry two schedules, and
+        this is a composition change the production profile allows. The WMMA
+        prefill session is therefore enabled only when **every** request's own
+        block would have enabled it, never because the packed total happens to
+        fill the workspace. Callers that must keep the row-exact schedule --
+        strict, batch-invariant, and every verify -- pass ``verification=True``.
+
+        Returns one ``(rows, vocab)`` logits array per request, in the order
+        given, with ``final_logit_softcapping`` applied unless
+        ``apply_softcap=False``. Each runner's position advances by its own row
+        count, its ``hidden_state(row)`` is preserved for its own rows, and its
+        sliding caches are rebased exactly as its own forward would have
+        rebased them.
+
+        Everything that can be refused is refused before the first device call:
+        a request over its own capacity, a token outside the vocabulary, a
+        request or workspace that does not share the weights, a packed block
+        wider than the workspace, INT8 KV storage, and a request whose dense
+        schedule differs from the workspace's. Nothing is partially executed,
+        so a refusal leaves every request exactly where it was.
+        """
+
+        batch = self._validated_batch(runners, token_rows)
+        requests = list(runners)
+        config = self.weights.config
+        hidden = int(config.hidden_size)
+        vocab = int(config.vocab_size or 0)
+        row_exact = bool(verification and self.verify_dense_exact)
+
+        offsets: list[int] = []
+        cursor = 0
+        for rows in batch:
+            offsets.append(cursor)
+            cursor += len(rows)
+        total = cursor
+
+        # Whether this block opts the dense projections into the WMMA prefill
+        # kernels. A one-request block opts in only when it is a full block (see
+        # ``_gemma4_block_wmma_session``), so the packed decision is the
+        # conjunction of the requests' own decisions -- never the packed total
+        # filling the workspace. Otherwise four one-token decode requests would
+        # cross the threshold together and be promoted onto prompt-prefill
+        # arithmetic that none of them would have run alone. When the requests
+        # disagree, the block keeps the non-WMMA schedule: one physical launch
+        # cannot carry two projection schedules, and the conservative side is the
+        # one that does not promote new arithmetic.
+        packed_wmma_prefill = not verification and all(
+            len(rows) == runner.max_block for runner, rows in zip(requests, batch)
+        )
+
+        packed_tokens = [token for rows in batch for token in rows]
+        ids = np.ascontiguousarray(packed_tokens, dtype=np.int64)
+        enqueue_host_to_device(
+            self._token_ids, host_array_ptr(ids), ids.nbytes, stream=0
+        )
+
+        # Each request stages its own rope tables and keep mask into its own
+        # staging buffers, so no two requests can share a table or a mask, and
+        # rebases its own bounded sliding caches before the launches that read
+        # them. Both are ordered on the launch stream ahead of the layers.
+        staged = []
+        for runner, rows in zip(requests, batch):
+            tables, masks = runner._stage_block_content(rows, stream=0)
+            runner._prepare_sliding_caches(runner.position, len(rows), stream=0)
+            staged.append((tables, masks))
+
+        def segments(index: int) -> list[Gemma4PackedSegment]:
+            """This layer's segmentation: one segment per request, in row order."""
+
+            attention = config.geometry(index)
+            layer_segments: list[Gemma4PackedSegment] = []
+            for runner, rows, (tables, masks), row_start in zip(
+                requests, batch, staged, offsets
+            ):
+                rows_i = len(rows)
+                base = int(runner._kv_base[index])
+                entry = runner._kv[index]
+                # ``key_begin`` and the write offset are cache-relative, exactly
+                # as the one-request path computes them from its own base; the
+                # mask keeps absolute columns, which is why it is passed
+                # unshifted and indexed by the shortened key count.
+                write_offset = runner.position - base
+                key_begin = max(
+                    0,
+                    _sliding_read_range(attention, runner.position, rows_i) - base,
+                )
+                window = (
+                    write_offset + rows_i - key_begin
+                    if attention.sliding_window is None
+                    else int(attention.sliding_window)
+                )
+                cos_buf, sin_buf = tables[attention.rope]
+                mask_buf = masks[attention.sliding_window]
+                layer_segments.append(
+                    Gemma4PackedSegment(
+                        row_start=row_start,
+                        rows=rows_i,
+                        kv=Gemma4LayerKV(
+                            key_cache=entry.key_cache,
+                            value_cache=entry.value_cache,
+                            capacity=runner._kv_capacity[index],
+                            write_offset=write_offset,
+                        ),
+                        cos_ptr=cos_buf.ptr,
+                        sin_ptr=sin_buf.ptr,
+                        keep_mask_ptr=mask_buf.ptr,
+                        key_begin=key_begin,
+                        window=window,
+                        # This request's rows each repeat its own one-token
+                        # step, which the router loop needs to know even when
+                        # the request contributes a single row and therefore
+                        # needs no per-row decode ranges.
+                        row_exact=row_exact,
+                        # A row-exact request attends each of its own rows over
+                        # that row's own decode range; a one-row request is
+                        # already that computation.
+                        row_decode_attention=(
+                            runner._row_decode_attention(
+                                attention, runner.position, rows_i, base
+                            )
+                            if row_exact and rows_i > 1
+                            else None
+                        ),
+                        **runner._attention_scope(
+                            rows=rows_i,
+                            verification=bool(verification),
+                            row_exact=row_exact,
+                            # A one-row request is a decode step's computation
+                            # even when it shares the block with a wide verify.
+                            decode_phase=rows_i == 1,
+                        ),
+                    )
+                )
+            return layer_segments
+
+        with self._q8_mmq_prefill_session(), _gemma4_block_wmma_session(
+            packed_wmma_prefill
+        ):
+            self._launch_block(
+                packed_tokens,
+                tables={},
+                masks={},
+                kv_write_offset=0,
+                key_begin_at=None,
+                stream=0,
+                stream_moe=-1,
+                needs_logits=True,
+                return_hidden=False,
+                logits_rows=total,
+                verification=bool(verification),
+                decode_phase=False,
+                packed_segments=segments,
+            )
+
+        # Hand each request its own rows of the final hidden state, so
+        # ``runner.hidden_state(row)`` -- what the assistant head primes from --
+        # keeps meaning that request's verify rows. The copies are enqueued on
+        # the launch stream ahead of the logits copy below, which drains it.
+        from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
+
+        runtime = get_hip_runtime()
+        for runner, rows, offset in zip(requests, batch, offsets):
+            rows_i = len(rows)
+            runtime.memcpy_async(
+                int(runner._hidden.ptr),
+                int(self._hidden.ptr) + offset * hidden * _BF16_BYTES,
+                rows_i * hidden * _BF16_BYTES,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+
+        cap = config.final_logit_softcapping
+        if apply_softcap and cap:
+            gemma4_logit_softcap_f32(
+                self._logits.ptr, total * vocab, float(np.float32(cap)), stream=0
+            )
+
+        results: list[np.ndarray] = []
+        for rows, offset in zip(batch, offsets):
+            rows_i = len(rows)
+            logits = np.empty((rows_i, vocab), dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(logits),
+                DeviceBuffer(
+                    ptr=int(self._logits.ptr) + offset * vocab * _F32_BYTES,
+                    nbytes=rows_i * vocab * _F32_BYTES,
+                ),
+                logits.nbytes,
+            )
+            results.append(logits)
+
+        # Per-request bookkeeping, after every device call that can raise: a
+        # position that advanced for a block whose logits were never read would
+        # silently lose the request's place in the sequence.
+        for runner, rows in zip(requests, batch):
+            rows_i = len(rows)
+            runner._position += rows_i
+            runner._last_rows = rows_i
+            # The normalized rows of this block live in the workspace, not in
+            # the request's buffer, so a consumer must not read stale ones.
+            runner._normalized_hidden_rows = 0
+            for index in range(len(runner._kv)):
+                entry = runner._kv[index]
+                runner._kv[index] = Gemma4LayerKV(
+                    key_cache=entry.key_cache,
+                    value_cache=entry.value_cache,
+                    capacity=runner._kv_capacity[index],
+                    write_offset=runner._position - int(runner._kv_base[index]),
+                )
+        # The workspace holds no sequence of its own; ``hidden_state`` and
+        # ``normalized_hidden`` describe the packed block it just ran.
+        self._last_rows = total
+        return results
+
+    def _validated_batch(
+        self,
+        runners: Sequence[Gemma4Runner],
+        token_rows: Sequence[Sequence[int]],
+    ) -> list[list[int]]:
+        """Admission for :meth:`forward_batch`, before any device work.
+
+        Every check here is a capability question about a request or about the
+        packing, and every one of them is answered before the first device call
+        so a refusal cannot leave one request's cache appended and another's
+        not.
+        """
+
+        if self._closed:
+            raise RuntimeError("runner is closed")
+        requests = list(runners)
+        rows_per_request = list(token_rows)
+        if not requests:
+            raise ValueError("forward_batch needs at least one request")
+        if len(requests) != len(rows_per_request):
+            raise ValueError(
+                f"forward_batch got {len(requests)} runners and "
+                f"{len(rows_per_request)} token rows; they are one-to-one"
+            )
+        batch: list[list[int]] = []
+        total = 0
+        for position, (runner, tokens) in enumerate(zip(requests, rows_per_request)):
+            if runner is self:
+                raise ValueError(
+                    "forward_batch's workspace must not be one of the requests it "
+                    "executes: the workspace holds the packed block's rows, so a "
+                    "request that was also the workspace would have its own hidden "
+                    "state overwritten by every other request's rows"
+                )
+            if runner.weights is not self.weights:
+                raise ValueError(
+                    f"request {position} does not share this workspace's resident "
+                    "weights; a packed block runs one layer table over every row, "
+                    "so the workspace and every request must be built from the "
+                    "same Gemma4DeviceWeights"
+                )
+            if runner._int8_kv is not None or self._int8_kv is not None:
+                raise NotImplementedError(
+                    "forward_batch requires BF16 KV storage on the workspace and "
+                    "on every request; the INT8 per-token/head owner writes one "
+                    "block-wide span and implements no per-request layout"
+                )
+            if bool(runner.verify_dense_exact) != bool(self.verify_dense_exact):
+                raise ValueError(
+                    f"request {position} has verify_dense_exact="
+                    f"{runner.verify_dense_exact} but the workspace has "
+                    f"{self.verify_dense_exact}; one packed launch runs one dense "
+                    "schedule for every row"
+                )
+            rows = runner._validated_tokens(tokens)
+            if len(rows) > runner.max_block:
+                raise ValueError(
+                    f"request {position} contributes {len(rows)} rows but its own "
+                    f"max_block is {runner.max_block}; the packed block's rows are "
+                    "copied into that request's hidden-state buffer"
+                )
+            total += len(rows)
+            batch.append(rows)
+        if total > self.max_block:
+            raise ValueError(
+                f"the packed block holds {total} rows but this workspace's "
+                f"max_block is {self.max_block}"
+            )
+        if total > self.max_logits_rows:
+            raise ValueError(
+                f"the packed block projects {total} logits rows but this "
+                f"workspace's max_logits_rows is {self.max_logits_rows}"
+            )
+        return batch
+
     @contextmanager
     def _q8_mmq_prefill_session(self) -> Iterator[None]:
         """Admit this block's dense Q8_0 projections to the guarded MMQ chain.
@@ -2495,6 +2839,65 @@ class Gemma4Runner:
                 stream,
             )
 
+    def _attention_scope(
+        self,
+        *,
+        rows: int,
+        verification: bool,
+        row_exact: bool,
+        decode_phase: bool,
+    ) -> dict[str, tuple[str, ...] | None]:
+        """The attention-variant requests one request's block carries.
+
+        This is the single definition of the execution-profile scope for a
+        block. The one-request forward and a packed multi-request block both
+        call it, so a packed request is handed exactly what its own forward
+        would have been handed -- the strict verify scope, the decode scope, and
+        the exact-prefill scope are decided here once rather than re-derived at
+        a second call site that could drift.
+
+        ``rows`` is that request's own row count, not the packed block's: a
+        one-row request is a decode step's computation even when it shares a
+        physical launch with a five-row verify.
+        """
+
+        step_like = decode_phase or (verification and rows == 1)
+        return {
+            # The prefill request serves prefill blocks. A plan that also
+            # declares a decode scope owns its decode steps through that scope,
+            # so a decode step forwards no prefill request and the layer's
+            # decode selector decides; a plan without one keeps the prefill
+            # request's own one-token routing.
+            #
+            # A one-row verify block is a decode step's computation and takes
+            # its variants exactly. A wider verify block keeps the strict
+            # prefill request as its fallback and, outside the row-exact form,
+            # also carries the decode scope, whose flash variant serves the
+            # whole block in one launch from the preferred entry up.
+            "prefill_attention_variants": (
+                None if step_like and self.decode_attention_variants is not None
+                else ("gemma4_plain",) if verification
+                else self.prefill_attention_variants
+            ),
+            "decode_attention_variants": (
+                self.decode_attention_variants
+                if step_like or (verification and not row_exact)
+                else None
+            ),
+            # The exact-prefill preference is a prefill scope, so it is
+            # forwarded only for a prefill call: a genuine decode step
+            # (``decode_phase``) disables it outright, so the prefill scope can
+            # never win on a singleton decode. A one-row prefill tail still
+            # forwards it and the layer's selector keeps it native. A verify
+            # block keeps the strict variant, exactly as the prefill-attention
+            # scope does.
+            "exact_prefill_attention_variants": (
+                None
+                if verification or decode_phase
+                else self.exact_prefill_attention_variants
+            ),
+        }
+
     def _launch_block(
         self,
         tokens: Sequence[int],
@@ -2511,6 +2914,7 @@ class Gemma4Runner:
         capture_layers: list[np.ndarray] | None = None,
         verification: bool = False,
         decode_phase: bool = False,
+        packed_segments: Callable[[int], Sequence[Gemma4PackedSegment]] | None = None,
     ) -> None:
         """Enqueue every device launch for this block on ``stream``.
 
@@ -2533,6 +2937,15 @@ class Gemma4Runner:
         a prefill whose final chunk is one row. The decode-attention preference
         is a decode-step scope, so it is forwarded only under ``decode_phase``;
         a one-row prefill tail keeps the native kernel.
+
+        ``packed_segments`` runs several requests through one physical block. It
+        is a factory from layer index to that layer's segments, because each
+        request's cache, sliding base, keep mask and rope tables are per layer.
+        The embedding, every layer's norm/projection/MoE stages and the logits
+        head run once over all packed rows; only the rotation, the cache append
+        and the attention launch repeat per request. The one-request arguments
+        describe a single request's block and are unused here, so a packed call
+        passes an empty ``tables``/``masks`` set and a zero write offset.
         """
 
         config = self.weights.config
@@ -2576,9 +2989,40 @@ class Gemma4Runner:
             verification and self.verify_dense_exact
             and key_begin_at is None and int8_block is None
         )
-        step_like = decode_phase or (verification and rows == 1)
         for index, layer in enumerate(self.weights.layers):
             attention = config.geometry(index)
+            if packed_segments is not None:
+                # The block is physically packed from several requests: the
+                # layer runs its dense and MoE stages once over every row and
+                # its rotation/append/attention once per request, against that
+                # request's own cache, positions and mask.
+                gemma4_layer_forward_bf16(
+                    self._hidden.ptr,
+                    0,
+                    0,
+                    0,
+                    layer,
+                    scratch=self._scratches[index],
+                    packed_segments=packed_segments(index),
+                    rows=rows,
+                    eps=config.rms_norm_eps,
+                    # Every segment's mask is ``key <= query`` plus that
+                    # request's window, which is the semantics ``_keep_mask``
+                    # builds and the only one the flash routes may assume.
+                    attention_mask_is_causal=True,
+                    dense_wmma_prefill=not (
+                        verification and self.verify_dense_exact
+                    ),
+                    stream=stream,
+                    stream_moe=stream_moe,
+                )
+                if capture_layers is not None:
+                    residual = np.empty((rows, hidden), dtype=np.uint16)
+                    copy_device_to_host(
+                        host_array_ptr(residual), self._hidden, residual.nbytes
+                    )
+                    capture_layers.append(residual)
+                continue
             cos_buf, sin_buf = tables[attention.rope]
             mask_buf = masks[attention.sliding_window]
             # ``key_begin_at`` and the mask are absolute positions; the layer
@@ -2633,38 +3077,11 @@ class Gemma4Runner:
                         else int(attention.sliding_window)
                     )
                 ),
-                # The prefill request serves prefill blocks. A plan that also
-                # declares a decode scope owns its decode steps through that
-                # scope, so a decode step forwards no prefill request and the
-                # layer's decode selector decides; a plan without one keeps the
-                # prefill request's own one-token routing.
-                #
-                # A one-row verify block is a decode step's computation and takes
-                # its variants exactly. A wider verify block keeps the strict
-                # prefill request as its fallback and, outside the row-exact
-                # form, also carries the decode scope, whose flash variant serves
-                # the whole block in one launch from the preferred entry up.
-                prefill_attention_variants=(
-                    None if step_like and self.decode_attention_variants is not None
-                    else ("gemma4_plain",) if verification
-                    else self.prefill_attention_variants
-                ),
-                decode_attention_variants=(
-                    self.decode_attention_variants
-                    if step_like or (verification and not row_exact)
-                    else None
-                ),
-                # The exact-prefill preference is a prefill scope, so it is
-                # forwarded only for a prefill call: a genuine decode step
-                # (``decode_phase``) disables it outright, so the prefill scope
-                # can never win on a singleton decode. A one-row prefill tail
-                # still forwards it and the layer's selector keeps it native. A
-                # verify block keeps the strict variant, exactly as the
-                # prefill-attention scope does.
-                exact_prefill_attention_variants=(
-                    None
-                    if verification or decode_phase
-                    else self.exact_prefill_attention_variants
+                **self._attention_scope(
+                    rows=rows,
+                    verification=verification,
+                    row_exact=row_exact,
+                    decode_phase=decode_phase,
                 ),
                 # A verify block under ``verify_dense_exact`` keeps its dense
                 # projections off the WMMA prefill kernels and attends each

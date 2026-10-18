@@ -209,20 +209,16 @@ class Gemma4GGUFGenerator:
     tool_parser_name = "unsupported"
 
     @property
+    def engine_loop_config_defaults(self):
+        # Protect-decode drains an active request before prefilling arrivals,
+        # preventing independent HTTP requests from reaching packed decode.
+        return {"prefill_decode_policy": "fair"}
+
+    @property
     def server_mtp_batch_max_active_requests(self) -> int | None:
-        """The explicit-MTP batch-route width this generator can serve.
+        """Maximum physical request width of the attached resident MTP owner."""
 
-        The Gemma 4 MTP provider commits one draft/verify cycle for exactly one
-        prompt: its ``stream_detailed`` refuses more than one row, and a cycle's
-        KV rewind is expressed in one request's positions. Publishing ``1`` says
-        that, so the server groups explicit-MTP requests one at a time instead of
-        handing the provider a batch it cannot run.
-
-        This is a request-width declaration, not a concurrency limit: every
-        queued client still runs on the MTP route, one group at a time.
-        """
-
-        return 1
+        return 4
 
     def validate_request(self, request: GenerationRequest) -> None:
         """Public pre-admission validation for this generator's requests.
@@ -702,6 +698,12 @@ class Gemma4GGUFGenerator:
         ``True`` and the legacy route is selected.
         """
 
+        if name == "create_resident_model_runner" and callable(
+            getattr(self.__dict__.get("_speculative_provider"), "generation_steps", None)
+        ):
+            from hipengine.generation.gemma4_resident import Gemma4ResidentModelRunner
+
+            return lambda *, capacity=None: Gemma4ResidentModelRunner(self, capacity=capacity)
         if name == "supports_speculative_mtp":
             if self.__dict__.get("_speculative_provider") is not None:
                 return True

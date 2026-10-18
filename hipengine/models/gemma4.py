@@ -50,17 +50,17 @@ class Gemma4GGUFModel:
     # capability miss (storage, backend, width, depth, or sampling mode) refuses.
     # There is no artifact hash, model name, or known-good list here. Depth is
     # the provider's structural maximum (``_MAX_CANDIDATES`` in
-    # ``hipengine/generation/gemma4_mtp.py``) and the width is one row, because
-    # the provider serves a single request at a time.
+    # ``hipengine/generation/gemma4_mtp.py``). The resident owner packs up to
+    # four independent request states into shared target and assistant forwards.
     speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
         SpeculativeMTPServingImplementation(
-            name="gguf_gemma4_assistant_bf16_c1_chain",
+            name="gguf_gemma4_assistant_bf16_c4_chain",
             kv_storage="bf16",
             backends=(("hip_gfx1100", "gfx1100"), ("hip_gfx1151", "gfx1151")),
             max_candidate_count=8,
-            max_group_rows=1,
+            max_group_rows=4,
             group_rejection_reason="gemma4_assistant_group_above_offered_width",
-            sampling_modes=("greedy_fast", "sampled"),
+            sampling_modes=("greedy_fast", "processed_argmax", "sampled"),
             automatic_eligible=True,
         ),
     )

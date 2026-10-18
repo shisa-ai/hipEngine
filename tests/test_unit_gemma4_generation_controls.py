@@ -691,12 +691,12 @@ def test_validate_request_accepts_the_controls_this_route_implements() -> None:
         generator.validate_request(_request(max_tokens=4, **options))
 
 
-def test_the_generator_publishes_a_single_request_mtp_width() -> None:
-    """The provider commits one cycle for one prompt, so the route is width one."""
+def test_the_generator_publishes_the_resident_mtp_width() -> None:
+    """The resident owner physically packs up to four independent requests."""
 
     generator = _ar_generator(_ARRunner(_Target()), _FakeTokenizer())
 
-    assert generator.server_mtp_batch_max_active_requests == 1
+    assert generator.server_mtp_batch_max_active_requests == 4
 
 
 # --- min_tokens and custom stops ---------------------------------------

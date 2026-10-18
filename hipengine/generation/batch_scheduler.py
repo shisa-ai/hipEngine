@@ -1750,6 +1750,18 @@ class ResidentBatchScheduler:
                     break
         return tuple(events)
 
+    def finish_zero_token_requests(self) -> tuple[CompletedRequest, ...]:
+        """Retire admitted zero-output requests without prefill or decode."""
+
+        request_ids = tuple(
+            request_id for request_id, request in self.active_batch.requests.items()
+            if request.max_new_tokens == 0
+        )
+        return tuple(
+            self._reclaim_active_request(request_id, finish_reason="length")
+            for request_id in request_ids
+        )
+
     def cancel(self, request_id: int, *, reason: str = "cancel") -> CompletedRequest | None:
         """Cancel a pending or active request through the unified reclaim path."""
 

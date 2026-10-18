@@ -325,6 +325,19 @@ Gemma 4 MTP applies the autoregressive controls to each verified target row,
 including thinking budgets, forced closing sequences, `min_tokens`, logprobs,
 and token-stop sequences. Those controls do not require an AR substitution.
 Rejected speculative rows do not advance the committed control state.
+Gemma's resident MTP route physically packs up to four requests into target
+verification and assistant projection calls. Requests keep independent KV,
+sampler state, and unpublished output; cancellation releases only that request.
+Prompt prefill and attention execute against each request's own cache. Packed
+verification uses the row-exact target implementation, including under the
+production profile. `GenerationOutput.telemetry.diagnostics` reports
+`physical_target_request_widths` and `physical_proposal_request_widths`.
+Gemma defaults to fair prefill/decode scheduling so arriving requests can join
+active generation; an explicit `HIPENGINE_PREFILL_DECODE_POLICY` overrides it.
+Physical widths can be smaller than the live request count when requests reach
+their next speculative cycle at different times. When a request needs another
+cycle, peers may compute ahead with at most two cycles of unpublished output;
+cancellation discards that private output.
 
 Generic draft-model providers are a separate explicit-only route. For the
 pinned Poolside Laguna B4 DFlash owner, start the server with:

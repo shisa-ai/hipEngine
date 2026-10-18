@@ -48,6 +48,21 @@ from tests.test_unit_speculative_sampling_modes import (
 )
 
 
+def test_gemma_fair_admission_default_preserves_explicit_policy():
+    from hipengine.generation.engine_loop import EngineLoopConfig
+    from hipengine.llm import _engine_loop_config_with_generator_defaults
+
+    generator = object.__new__(Gemma4GGUFGenerator)
+    config = EngineLoopConfig(prefill_decode_policy="protect_decode")
+    assert _engine_loop_config_with_generator_defaults(
+        config, generator, environ={},
+    ).prefill_decode_policy == "fair"
+    assert _engine_loop_config_with_generator_defaults(
+        config, generator,
+        environ={"HIPENGINE_PREFILL_DECODE_POLICY": "protect_decode"},
+    ).prefill_decode_policy == "protect_decode"
+
+
 def _declared_modes() -> tuple[str, ...]:
     return tuple(
         mode
@@ -156,8 +171,11 @@ def _generator(*, backend: str = "hip_gfx1151", plugin=None) -> Gemma4GGUFGenera
         (dict(sampling_mode="greedy_fast", kv_storage="bf16"), True),
         (dict(sampling_mode="sampled", kv_storage="auto"), True),
         (dict(sampling_mode="greedy_fast", kv_storage="int8_per_token_head"), False),
-        (dict(sampling_mode="processed_argmax", kv_storage="bf16"), False),
-        (dict(sampling_mode="greedy_fast", kv_storage="bf16", realized_group_rows=2), False),
+        (dict(sampling_mode="processed_argmax", kv_storage="bf16"), True),
+        (dict(sampling_mode="greedy_fast", kv_storage="bf16", realized_group_rows=2), True),
+        (dict(sampling_mode="greedy_fast", kv_storage="bf16", realized_group_rows=3), True),
+        (dict(sampling_mode="sampled", kv_storage="bf16", realized_group_rows=4), True),
+        (dict(sampling_mode="greedy_fast", kv_storage="bf16", realized_group_rows=5), False),
         (dict(sampling_mode="greedy_fast", kv_storage="bf16", candidate_budget=9), False),
     ],
 )
@@ -364,7 +382,7 @@ def test_server_route_keeps_the_automatic_request_on_mtp(monkeypatch) -> None:
 
 
 def test_server_route_refuses_an_explicit_width_the_capability_lacks(monkeypatch) -> None:
-    """Two rows are above the assistant head's one-request scope: fail loudly."""
+    """Five rows exceed one physical group's four-request capability."""
 
     llm, _provider = _llm_with_generator(monkeypatch)
     with pytest.raises(OpenAIHTTPError) as excinfo:
@@ -373,7 +391,7 @@ def test_server_route_refuses_an_explicit_width_the_capability_lacks(monkeypatch
             SimpleNamespace(speculative_mtp=True, stream=False),
             engine=llm,
             sampling=SamplingParams(max_tokens=8),
-            prompts=("a", "b"),
+            prompts=("a", "b", "c", "d", "e"),
         )
     assert excinfo.value.status_code == 501
     assert excinfo.value.code == "unsupported_feature"

@@ -583,6 +583,12 @@ class SubmitPollTextGenerator:
     def _supports_staged_speculative_mtp(self) -> bool:
         if not self._has_resident_runner:
             return False
+        # Some native owners compute bounded speculative quanta into private
+        # request buffers, then publish one canonical token per scheduler tick.
+        # They use the same service, cancellation and reclaim path without a
+        # second speculative scheduler or an opaque whole-request call.
+        if bool(getattr(self._runner, "supports_buffered_speculative_decode", False)):
+            return True
         capability = callable(getattr(self._runner, "speculative_capability", None))
         opaque = callable(getattr(self._runner, "execute_speculative_cycle", None))
         staged = resolve_staged_speculative_runner(self._runner) is not None
@@ -827,13 +833,20 @@ class SubmitPollTextGenerator:
 
         request_id: int | None = None
         try:
-            request_id = self._loop.submit_speculative(
-                prompt_row,
-                max_new_tokens=max_new_tokens,
-                desired_candidate_count=max(1, desired),
-                cancel_requested=cancel_requested,
-                sampling=PerRowSamplingParams.from_generation_request(request),
-            )
+            if bool(getattr(self._runner, "supports_buffered_speculative_decode", False)):
+                request_id = self._loop.submit(
+                    prompt_row,
+                    max_new_tokens=max_new_tokens,
+                    sampling=PerRowSamplingParams.from_generation_request(request),
+                )
+            else:
+                request_id = self._loop.submit_speculative(
+                    prompt_row,
+                    max_new_tokens=max_new_tokens,
+                    desired_candidate_count=max(1, desired),
+                    cancel_requested=cancel_requested,
+                    sampling=PerRowSamplingParams.from_generation_request(request),
+                )
             runner_request = replace(request, deadline_at=None)
             self._runner.register_batch(
                 (request_id,),
@@ -2388,6 +2401,11 @@ class ResidentEngineLoop:
         events.extend(
             EngineLoopEvent(kind="admitted", request_id=request_id, request_ids=(request_id,))
             for request_id in admitted
+        )
+        events.extend(
+            EngineLoopEvent(kind="completed", request_id=item.request_id,
+                            request_ids=(item.request_id,), completed=item)
+            for item in self.scheduler.finish_zero_token_requests()
         )
 
         if self.prefill_decode_policy == "token_budget":

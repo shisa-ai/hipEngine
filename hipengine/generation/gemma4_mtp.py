@@ -110,6 +110,21 @@ class Gemma4MTPCycle:
     committed: int
 
 
+@dataclass(frozen=True)
+class Gemma4MTPOperation:
+    """One bounded device operation or request-owned committed prefix."""
+
+    kind: str
+    runner: Any = None
+    tokens: tuple[int, ...] = ()
+    token: int = 0
+    hidden_row: int = -1
+    budget: int = 0
+    select: Any = None
+    output: GenerationOutput | None = None
+    terminal: bool = False
+
+
 class Gemma4MTPTextProvider:
     """MTP with a batched verify and exact speculative accept on the backbone's logits."""
 
@@ -237,6 +252,42 @@ class Gemma4MTPTextProvider:
         return [self._generate_one(prompt, request) for prompt in request.prompts]
 
     def _generate_one(self, prompt: Any, request: GenerationRequest) -> GenerationOutput:
+        if request.max_tokens:
+            self._ensure_drafter()
+        runner = self.target_generator._ensure_runner() if request.max_tokens else None
+        steps = self.generation_steps(prompt, request, runner=runner)
+        result = None
+        while True:
+            try:
+                operation = steps.send(result)
+            except StopIteration as done:
+                return done.value
+            result = self.execute_operation(operation)
+
+    def execute_operation(self, operation: Gemma4MTPOperation):
+        """Execute a singleton operation; the resident owner packs device work."""
+        if operation.kind == "commit":
+            return None
+        if operation.kind == "draft":
+            drafter = self._ensure_drafter()
+            drafter.runner = operation.runner
+            drafter.max_drafts = operation.budget
+            return drafter.draft(operation.token, hidden_row=operation.hidden_row,
+                                 select=operation.select)
+        return operation.runner.forward(
+            operation.tokens,
+            logits_rows=len(operation.tokens) if operation.kind == "verify" else 1,
+            verification=operation.kind == "verify",
+        )
+
+    def generation_steps(self, prompt: Any, request: GenerationRequest, *, runner: Any,
+                         candidate_budget: int | None = None):
+        """Yield bounded operations with sampler and rollback state owned by this request.
+
+        A commit publishes a prefix, not a device transaction shared with a peer.
+        Closing a frame discards its unpublished tail; its runner must then be reset
+        before reuse. The shared engine remains the only scheduling owner.
+        """
         raise_if_generation_deadline_expired(request)
         generator = self.target_generator
         tokenizer = generator.tokenizer
@@ -259,8 +310,7 @@ class Gemma4MTPTextProvider:
                 ),
             )
 
-        drafter = self._ensure_drafter()
-        runner = generator._ensure_runner()
+        candidate_budget = self.candidate_budget if candidate_budget is None else int(candidate_budget)
         stop_ids = set(request.stop_token_ids)
         configured_eos = (
             set(
@@ -297,7 +347,7 @@ class Gemma4MTPTextProvider:
         # whole design rests on -- the batched verify reproduces a single-token
         # forward *for this request's own context*.
         runner.reset()
-        logits = runner.forward(token_ids)
+        logits = yield Gemma4MTPOperation("prefill", runner, tuple(token_ids))
         record("target_prefill", prefill_started)
 
         sampler = Gemma4Sampler(
@@ -328,6 +378,16 @@ class Gemma4MTPTextProvider:
             if token in request.stop_token_ids:
                 stop_sequence = stop_sequence or (token,)
 
+        def output():
+            return self._cycle_output(
+                request=request, tokenizer=tokenizer, token_ids=token_ids,
+                generated=generated, token_logprobs=token_logprobs, sampler=sampler,
+                cycles=cycles, reason=reason, stop_sequence=stop_sequence, runner=runner,
+                phase_ms=phase_ms, phase_calls=phase_calls, sampled_drafts=sampled_drafts,
+            )
+
+        yield Gemma4MTPOperation("commit", runner, output=output(),
+                                terminal=reason == "stop" or len(generated) >= request.max_tokens)
         while len(generated) < request.max_tokens and reason != "stop":
             raise_if_generation_deadline_expired(request)
             remaining = request.max_tokens - len(generated)
@@ -337,8 +397,7 @@ class Gemma4MTPTextProvider:
             # `max_tokens`. Leaving a row of headroom bounds the commit by
             # construction, and `remaining == 1` falls through to a zero-draft
             # cycle, which is a plain single-token verify.
-            budget = min(self.candidate_budget, remaining - 1)
-            drafter.max_drafts = budget if budget > 0 else 1
+            budget = min(candidate_budget, remaining - 1)
             start_position = int(runner.position)
 
             proposal_started = time.perf_counter()
@@ -362,10 +421,9 @@ class Gemma4MTPTextProvider:
                 sampler.observe(drafted)
                 return drafted
 
-            drafts = (
-                drafter.draft(token, hidden_row=seed_row, select=propose)
-                if budget > 0 else []
-            )
+            drafts = (yield Gemma4MTPOperation(
+                "draft", runner, token=token, hidden_row=seed_row, budget=budget, select=propose
+            )) if budget > 0 else []
             # The drafts were observed only to condition the next draft's law;
             # the accept walk observes the ones it keeps.
             for drafted in reversed(drafts):
@@ -379,11 +437,7 @@ class Gemma4MTPTextProvider:
             # `rows[i]`, and the token after `accepted` drafts comes from
             # `rows[accepted]`, so the row count is len(drafts) + 1.
             verify_started = time.perf_counter()
-            rows = runner.forward(
-                [token, *drafts],
-                logits_rows=len(drafts) + 1,
-                verification=True,
-            )
+            rows = yield Gemma4MTPOperation("verify", runner, tuple([token, *drafts]))
             if rows.ndim == 1:
                 # ``Gemma4Runner.forward`` returns a flat ``(vocab,)`` array for
                 # the one-row count and a ``(rows, vocab)`` array above it, and a
@@ -524,6 +578,14 @@ class Gemma4MTPTextProvider:
                 )
             )
 
+            yield Gemma4MTPOperation("commit", runner, output=output(),
+                                    terminal=reason == "stop" or len(generated) >= request.max_tokens)
+
+        return output()
+
+    def _cycle_output(self, *, request, tokenizer, token_ids, generated,
+                      token_logprobs, sampler, cycles, reason, stop_sequence,
+                      runner, phase_ms, phase_calls, sampled_drafts):
         self.last_cycles = tuple(cycles)
         verify_exact = bool(getattr(runner, "verify_dense_exact", True))
         proposed = sum(len(cycle.candidates) for cycle in cycles)
